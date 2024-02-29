@@ -1,0 +1,271 @@
+{
+    "page_0":{
+        "para_blocks": [
+          {
+              "block_id": 0,
+              "bbox": [39.0, 34.719993591308594, 347.1359558105469, 51.2079963684082],
+              "text": "IOP Conference Series: Earth and Environmental Science",
+              "dir": [1.0, 0.0],
+              "X0": 39.0,
+              "X1": 347.1359558105469,
+              "avg_char_width": 6.4194990793863935,
+              "avg_char_height": 16.48800277709961,
+              "block_font_type": "Helvetica",
+              "block_font_size": 12.0,
+              "is_segmented": 1,
+              "paras": [
+                  {
+                      "para_id": 0,
+                      "bbox": [39.0, 34.719993591308594, 347.1359558105469, 51.2079963684082],
+                      "text": "IOP Conference Series: Earth and Environmental Science",
+                      "is_matched": 1,
+                      "is_title": 0,
+                      "font_type": "Helvetica",
+                      "font_size": 12.0,
+                      "font_color": 0,
+                      "neighbor_paras": [null, null]
+                  }
+              ],
+              "bboxes_para": [[39.0, 34.719993591308594, 347.1359558105469, 51.2079963684082]]
+          },
+          {
+              "block_id": 1,
+              "bbox": [39.0, 111.38001251220703, 143.67001342773438, 123.77301025390625],
+              "text": "PAPER •  OPEN ACCESS",
+              "dir": [1.0, 0.0],
+              "X0": 39.0,
+              "X1": 143.67001342773438,
+              "avg_char_width": 6.541875839233398,
+              "avg_char_height": 12.392997741699219,
+              "block_font_type": "Helvetica-Bold",
+              "block_font_size": 9.0,
+              "is_segmented": 1,
+              "paras": [
+                  {
+                      "para_id": 0,
+                      "bbox": [39.0, 111.38001251220703, 143.67001342773438, 123.77301025390625],
+                      "text": "PAPER •  OPEN ACCESS",
+                      "is_matched": 1,
+                      "is_title": 0,
+                      "font_type": "Helvetica-Bold",
+                      "font_size": 9.0,
+                      "font_color": 0,
+                      "neighbor_paras": [null, null]
+                  },
+                  {
+                      "para_id": 1,
+                      "bbox": [39.0, 111.38001251220703, 143.67001342773438, 123.77301025390625],
+                      "text": "PAPER •  OPEN ACCESS",
+                      "is_matched": 1,
+                      "is_title": 0,
+                      "font_type": "Helvetica-Bold",
+                      "font_size": 9.0,
+                      "font_color": 0,
+                      "neighbor_paras": [null, null]
+                  }
+              ],
+              "bboxes_para": [[39.0, 111.38001251220703, 143.67001342773438, 123.77301025390625]]
+          }
+        ],
+
+        "line_blocks":[
+            {
+              "number": 0,
+              "type": 0,
+              "bbox": [
+                428.93170166015625,
+                744.921142578125,
+                541.5675048828125,
+                757.8131713867188
+              ],
+              "lines": [
+                {
+                  "spans": [
+                    {
+                      "size": 11.0,
+                      "flags": 20,
+                      "font": "UniversNextPro-BoldCond",
+                      "color": 0,
+                      "ascender": 0.9490000009536743,
+                      "descender": -0.22300000488758087,
+                      "text": "3",
+                      "origin": [
+                        536.37548828125,
+                        755.3601684570312
+                      ],
+                      "bbox": [
+                        536.37548828125,
+                        744.921142578125,
+                        541.5675048828125,
+                        757.8131713867188
+                      ]
+                    }
+                  ],
+                  "wmode": 0,
+                  "dir": [
+                    1.0,
+                    0.0
+                  ],
+                  "bbox": [
+                    536.37548828125,
+                    744.921142578125,
+                    541.5675048828125,
+                    757.8131713867188
+                  ]
+                },
+                {
+                  "spans": [
+                    {
+                      "size": 8.0,
+                      "flags": 20,
+                      "font": "UniversNextPro-BoldCond",
+                      "color": 0,
+                      "ascender": 0.9490000009536743,
+                      "descender": -0.22300000488758087,
+                      "text": "Spektrum ",
+                      "origin": [
+                        428.93170166015625,
+                        755.3601684570312
+                      ],
+                      "bbox": [
+                        428.93170166015625,
+                        747.7681884765625,
+                        458.7516174316406,
+                        757.1441650390625
+                      ]
+                    },
+                    {
+                      "size": 8.0,
+                      "flags": 4,
+                      "font": "UniversNextPro-Cond",
+                      "color": 0,
+                      "ascender": 0.9359999895095825,
+                      "descender": -0.21400000154972076,
+                      "text": "der Wissenschaft ",
+                      "origin": [
+                        458.431884765625,
+                        755.3601684570312
+                      ],
+                      "bbox": [
+                        458.431884765625,
+                        747.8721923828125,
+                        508.0399169921875,
+                        757.0721435546875
+                      ]
+                    },
+                    {
+                      "size": 8.0,
+                      "flags": 4,
+                      "font": "UniversNextPro-Regular",
+                      "color": 0,
+                      "ascender": 0.9290000200271606,
+                      "descender": -0.22200000286102295,
+                      "text": "7.21",
+                      "origin": [
+                        510.2349853515625,
+                        755.3601684570312
+                      ],
+                      "bbox": [
+                        510.2349853515625,
+                        747.9281616210938,
+                        524.5621948242188,
+                        757.1361694335938
+                      ]
+                    }
+                  ],
+                  "wmode": 0,
+                  "dir": [
+                    1.0,
+                    0.0
+                  ],
+                  "bbox": [
+                    428.93170166015625,
+                    747.7681884765625,
+                    524.5621948242188,
+                    757.1441650390625
+                  ]
+                }
+              ]
+            }
+        ],
+
+        "images":[
+            {
+                "image_bbox":[0,0,1,1],
+                "image_path":"path/to/image.jpg"
+            },
+            {
+                "image_bbox":[1,2,3,4],
+                "image_path":"path/to/image.jpg"
+            }
+        ],
+
+        "tables":[
+            {
+                "table_bbox":[0,0,1,1],
+                "image_path":"path/to/image.jpg"
+            },
+            {
+                "table_bbox":[1,2,3,4],
+                "image_path":"path/to/image.jpg"
+            }
+        ],
+
+        "interline_equations":[
+            {
+                "equation_bbox":[0,0,1,1],
+                "image_path":"path/to/equation.jpg"
+            },
+            {
+                "equation_bbox":[1,2,3,4],
+                "image_path":"path/to/equation.jpg"
+            }
+        ],
+
+        "inline_equations":[
+            {
+                "equation_bbox":[0,0,1,1],
+                "image_path":"path/to/equation.jpg"
+            },
+            {
+                "equation_bbox":[1,2,3,4],
+                "image_path":"path/to/equation.jpg"
+            }
+        ],
+
+        "layout_bboxes":[
+            {
+                "layout_bbox": [0,0, 1,1],
+                "layout_label":"V|H|B"
+            },
+            {
+                "layout_bbox": [1,2,3,4],
+                "layout_label":"V|H|B"
+            }
+        ],
+        "pymu_raw_blocks":[],
+
+        "global_statistic":{
+            
+        },
+        "droped_text_block":[
+
+
+        ],
+        "droped_image_block":[
+            
+        ],
+        "droped_table_block":[
+            
+        ],
+        "image_backup":[
+
+        ],
+        "table_backup":[
+
+        ]
+    },
+    "page_1":{
+
+    }
+}

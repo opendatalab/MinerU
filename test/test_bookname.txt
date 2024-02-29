@@ -1,0 +1,87 @@
+    # "scihub/scihub_37000000/libgen.scimag37068000-37068999.zip_10.1080/0015587X.1936.9718622" 新的特殊扫描版，需要更新检测规则
+    # demo_meta_scan(book_name="zlib/zlib_21814955")
+    # demo_meta_scan(book_name="zlib/zlib_22115997")  # meta_scan
+    # demo_classify_by_type("scihub/scihub_04600000/libgen.scimag04690000-04690999.zip_10.1016/s0378-4347(98)00269-2") # classify
+    # demo_parse_pdf("scihub/scihub_28400000/libgen.scimag28413000-28413999.zip_10.2307/1316224")
+    # demo_parse_pdf(book_name="scihub/scihub_65300000/libgen.scimag65336000-65336999.zip_10.1021/acs.jcim.7b00151")  # parse_pdf
+    # demo_parse_pdf(book_name="scihub/scihub_76500000/libgen.scimag76506000-76506999.zip_10.1016/j.nanoen.2019.103943") # parse_pdf
+    # demo_parse_pdf(book_name="zlib/zlib_22115997")  # parse_pdf
+    # demo_parse_pdf(book_name="zlib/zlib_21814957")  # parse_pdf
+    # demo_parse_pdf(book_name="zlib/zlib_21929367",start_page_id=48)  # parse_pdf
+    # demo_save_tables(book_name="scihub/scihub_17200000/libgen.scimag17236000-17236999.zip_10.1016/s0002-9440(10)65013-4")  # parse_pdf
+    # demo_parse_pdf(book_name="scihub/scihub_50200000/libgen.scimag50226000-50226999.zip_10.0000/cyberleninka.ru/article/n/chislennoe-modelirovanie-udarnogo-vozdeystviya-vysokoskorostnoy-strui-na-tverdoe-telo")
+
+    # 无限循环爆内存
+    # demo_parse_pdf(book_name="scihub/scihub_10400000/libgen.scimag10461000-10461999.zip_10.1038/4671055a")
+    # demo_parse_pdf(book_name="scihub/scihub_36400000/libgen.scimag36418000-36418999.zip_10.1038/scientificamerican0115-82b")
+    # 10000页的pdf，中间态dict过大
+    # demo_parse_pdf(book_name="zlib/zlib_17498382")
+    # demo_parse_pdf(book_name="zlib/zlib_22006221")
+
+    # footnote
+    # demo_parse_pdf(book_name="scihub/scihub_09700000/libgen.scimag09782000-09782999.zip_10.1111/j.1540-627x.2006.00176.x")
+    # demo_parse_pdf(book_name="scihub/scihub_17400000/libgen.scimag17488000-17488999.zip_10.1016/s0043-1354(02)00581-x")
+    # demo_parse_pdf(book_name="scihub/scihub_17000000/libgen.scimag17000000-17000999.zip_10.1016/j.pain.2004.06.005")
+    # demo_parse_pdf(book_name="scihub/scihub_46700000/libgen.scimag46727000-46727999.zip_10.2174/157341210791202627")
+    # demo_parse_pdf(book_name="scihub/scihub_68900000/libgen.scimag68948000-68948999.zip_10.1002/uog.18760")
+    # demo_parse_pdf(book_name="scihub/scihub_64600000/libgen.scimag64628000-64628999.zip_10.3892/mmr.2017.6343")
+    # demo_parse_pdf(book_name="scihub/scihub_47200000/libgen.scimag47212000-47212999.zip_10.7589/0090-3558-40.3.579")
+    # demo_parse_pdf(book_name="scihub/scihub_30400000/libgen.scimag30438000-30438999.zip_10.1021/ja048851k")
+    # demo_parse_pdf(book_name="scihub/scihub_43600000/libgen.scimag43628000-43628999.zip_10.1093/toxsci/kfi111")
+    # demo_parse_pdf(book_name="scihub/scihub_14000000/libgen.scimag14081000-14081999.zip_10.1016/s0923-4748(00)00034-5")
+    # demo_parse_pdf(book_name="scihub/scihub_47200000/libgen.scimag47212000-47212999.zip_10.7589/0090-3558-40.3.579")
+    demo_parse_pdf(book_name="scihub/scihub_43200000/libgen.scimag43208000-43208999.zip_10.1645/0022-3395(2000)086[0275:podsri]2.0.co;2")
+    # demo_parse_pdf(book_name="scihub/scihub_55700000/libgen.scimag55717000-55717999.zip_10.1007/s10067-016-3303-0")
+
+    # 内容缺失
+    # demo_parse_pdf(book_name="scihub/scihub_76900000/libgen.scimag76990000-76990999.zip_10.1145/3314111.3319829")
+    # demo_parse_pdf(book_name="scihub/scihub_84600000/libgen.scimag84652000-84652999.zip_10.1163/1876312x-00001010")
+
+    # block line乱序
+    # demo_parse_pdf(book_name="scihub/scihub_04800000/libgen.scimag04807000-04807999.zip_10.1016/s0927-7765(97)00029-5")
+    # demo_parse_pdf(book_name="scihub/scihub_37000000/libgen.scimag37007000-37007999.zip_10.0000/docserver.ingentaconnect.com/generic-24bf2a7237e7")
+    # demo_parse_pdf(book_name="scihub/scihub_44700000/libgen.scimag44733000-44733999.zip_10.1063/1.3631048")
+    # demo_parse_pdf(book_name="scihub/scihub_21100000/libgen.scimag21124000-21124999.zip_10.1080/10447318.2002.9669130")
+    # demo_parse_pdf(book_name="scihub/scihub_80100000/libgen.scimag80185000-80185999.zip_10.1353/sib.0.0003")
+
+    # footnote
+    demo_parse_pdf(book_name="scihub/scihub_09700000/libgen.scimag09782000-09782999.zip_10.1111/j.1540-627x.2006.00176.x")
+    demo_parse_pdf(book_name="scihub/scihub_17400000/libgen.scimag17488000-17488999.zip_10.1016/s0043-1354(02)00581-x")
+    demo_parse_pdf(book_name="scihub/scihub_17000000/libgen.scimag17000000-17000999.zip_10.1016/j.pain.2004.06.005")
+    demo_parse_pdf(book_name="scihub/scihub_46700000/libgen.scimag46727000-46727999.zip_10.2174/157341210791202627")
+    demo_parse_pdf(book_name="scihub/scihub_64600000/libgen.scimag64628000-64628999.zip_10.3892/mmr.2017.6343")
+    demo_parse_pdf(book_name="scihub/scihub_47200000/libgen.scimag47212000-47212999.zip_10.7589/0090-3558-40.3.579")
+    demo_parse_pdf(book_name="scihub/scihub_43600000/libgen.scimag43628000-43628999.zip_10.1093/toxsci/kfi111")
+    demo_parse_pdf(book_name="scihub/scihub_14000000/libgen.scimag14081000-14081999.zip_10.1016/s0923-4748(00)00034-5")
+    demo_parse_pdf(book_name="scihub/scihub_55700000/libgen.scimag55717000-55717999.zip_10.1007/s10067-016-3303-0")
+    demo_parse_pdf(book_name="scihub/scihub_86500000/libgen.scimag86560000-86560999.zip_10.1007/s10995-021-03207-2")
+    demo_parse_pdf(book_name="scihub/scihub_42100000/libgen.scimag42162000-42162999.zip_10.1093/notesj/gjm116")
+    demo_parse_pdf(book_name="scihub/scihub_07500000/libgen.scimag07500000-07500999.zip_10.1007/s00412-005-0007-7")
+    demo_parse_pdf(book_name="scihub/scihub_50800000/libgen.scimag50827000-50827999.zip_10.1210/jc.2015-4251")
+    demo_parse_pdf(book_name="scihub/scihub_07500000/libgen.scimag07537000-07537999.zip_10.1007/s004320050323")
+    demo_parse_pdf(book_name="scihub/scihub_24600000/libgen.scimag24665000-24665999.zip_10.1016/S0387-7604(89)80007-5")
+    demo_parse_pdf(book_name="scihub/scihub_76200000/libgen.scimag76297000-76297999.zip_10.4018/jehmc.2011040101")
+    demo_parse_pdf(book_name="scihub/scihub_29400000/libgen.scimag29456000-29456999.zip_10.1177/0883911505049656")
+    demo_parse_pdf(book_name="scihub/scihub_30200000/libgen.scimag30263000-30263999.zip_10.1081/scc-200036639")
+    demo_parse_pdf(book_name="scihub/scihub_71200000/libgen.scimag71224000-71224999.zip_10.1038/s41396-018-0231-9")
+    demo_parse_pdf(book_name="scihub/scihub_30100000/libgen.scimag30175000-30175999.zip_10.1300/j035v17n04_03")
+    demo_parse_pdf(book_name="scihub/scihub_18900000/libgen.scimag18981000-18981999.zip_10.1016/j.neuroimage.2006.06.030")
+    demo_parse_pdf(book_name="scihub/scihub_53100000/libgen.scimag53119000-53119999.zip_10.1097/01.npt.0000282350.63993.7a")
+    demo_parse_pdf(book_name="scihub/scihub_10000000/libgen.scimag10071000-10071999.zip_10.1111/j.1750-8606.2011.00190.x")
+    demo_parse_pdf(book_name="scihub/scihub_64000000/libgen.scimag64030000-64030999.zip_10.1080/1612197X.2017.1292302")
+    demo_parse_pdf(book_name="scihub/scihub_86000000/libgen.scimag86085000-86085999.zip_10.1016/j.enzmictec.2020.109742")
+    demo_parse_pdf(book_name="scihub/scihub_51000000/libgen.scimag51049000-51049999.zip_10.1117/12.2227997")
+    demo_parse_pdf(book_name="scihub/scihub_43700000/libgen.scimag43768000-43768999.zip_10.1063/1.4895640")
+    demo_parse_pdf(book_name="scihub/scihub_05000000/libgen.scimag05036000-05036999.zip_10.1046/j.1365-2036.2000.00699.x")
+
+    #色块内文本
+    # demo_parse_pdf(book_name="scihub/scihub_87200000/libgen.scimag87202000-87202999.zip_10.1080/10220461.2021.1894971")
+
+    # 0226
+    demo_parse_pdf(book_name="scihub/scihub_76100000/libgen.scimag76174000-76174999.zip_10.1016/j.annemergmed.2019.01.040")
+    demo_parse_pdf(book_name="scihub/scihub_37400000/libgen.scimag37409000-37409999.zip_10.1177/0961203307085251")
+    demo_parse_pdf(book_name="scihub/scihub_26100000/libgen.scimag26107000-26107999.zip_10.1002/ajim.22195")
+    demo_parse_pdf(book_name="scihub/scihub_13100000/libgen.scimag13186000-13186999.zip_10.1016/j.brainres.2006.02.013")
+    demo_parse_pdf(book_name="scihub/scihub_75200000/libgen.scimag75297000-75297999.zip_10.1177/00393207160461-203")
+    demo_parse_pdf(book_name="scihub/scihub_34200000/libgen.scimag34255000-34255999.zip_10.1093/ojls/gqi025")
+    demo_parse_pdf(book_name="scihub/scihub_11300000/libgen.scimag11331000-11331999.zip_10.1208/s12249-011-9638-6")

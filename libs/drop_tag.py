@@ -1,0 +1,2 @@
+
+COLOR_BG_HEADER_TXT_BLOCK = "color_background_header_txt_block"
