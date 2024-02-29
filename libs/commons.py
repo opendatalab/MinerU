@@ -7,8 +7,8 @@ from loguru import logger
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 
-import fitz  # 1.23.9中已经切换到rebase
-# import fitz_new as fitz  # 使用rebased的新版pymupdf库
+import fitz # 1.23.9中已经切换到rebase
+# import fitz_old as fitz  # 使用1.23.9之前的pymupdf库
 
 def get_delta_time(input_time):
     return round(time.time() - input_time, 2)

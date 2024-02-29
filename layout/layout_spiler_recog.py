@@ -2,7 +2,8 @@
 找到能分割布局的水平的横线、色块
 """
 
-import os,  fitz
+import os
+from libs.commons import fitz
 from libs.boxbase import _is_in_or_part_overlap
 
 

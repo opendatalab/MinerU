@@ -1,7 +1,7 @@
 """
 对pymupdf返回的结构里的公式进行替换，替换为模型识别的公式结果
 """
-import fitz
+from libs.commons import fitz
 import json
 import os
 from pathlib import Path
