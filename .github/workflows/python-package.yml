@@ -60,7 +60,7 @@ jobs:
 
       - name: Create and Upload Release
         id: create_release
-        uses: softprops/action-gh-release@ 4634c16e79c963813287e889244c50009e7f0981
+        uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
         with:
           files: './dist/*.whl'
         env:
