@@ -2,7 +2,7 @@ import json
 import unittest
 
 from utils_for_test_para import UtilsForTestPara
-from pdf_tools.post_proc.detect_para import TitleProcessor
+from magic_pdf.post_proc.detect_para import TitleProcessor
 
 # from ... pdf2text_recogPara import * # another way to import
 

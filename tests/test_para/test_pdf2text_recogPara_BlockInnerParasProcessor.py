@@ -1,6 +1,6 @@
 import unittest
 
-from pdf_tools.post_proc.detect_para import BlockTerminationProcessor
+from magic_pdf.post_proc.detect_para import BlockTerminationProcessor
 
 # from ... pdf2text_recogPara import BlockInnerParasProcessor # another way to import
 

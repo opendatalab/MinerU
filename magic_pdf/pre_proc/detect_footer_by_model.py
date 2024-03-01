@@ -1,7 +1,7 @@
 from magic_pdf.libs.commons import fitz             # pyMuPDF库
 
 
-def parse_titles(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict, exclude_bboxes):
+def parse_footers(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict):
     """
     :param page_ID: int类型，当前page在当前pdf文档中是第page_D页。
     :param page :fitz读取的当前页的内容
@@ -16,9 +16,10 @@ def parse_titles(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict, e
     pageD = int(pix.h)
     
 
-    #--------- 通过json_from_DocXchain来获取 title ---------#
-    title_bbox_from_DocXChain = []
+    #--------- 通过json_from_DocXchain来获取 footer ---------#
+    footer_bbox_from_DocXChain = []
 
+    
     xf_json = json_from_DocXchain_obj
     width_from_json = xf_json['page_info']['width']
     height_from_json = xf_json['page_info']['height']
@@ -51,23 +52,23 @@ def parse_titles(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict, e
         # D += pageU
         L, R = min(L, R), max(L, R)
         U, D = min(U, D), max(U, D)
-        if xf['category_id'] == 0 and xf['score'] >= 0.3:
-            title_bbox_from_DocXChain.append((L, U, R, D))
+        if xf['category_id'] == 6 and xf['score'] >= 0.3:
+            footer_bbox_from_DocXChain.append((L, U, R, D))
             
     
-    title_final_names = []
-    title_final_bboxs = []
-    title_ID = 0
-    for L, U, R, D in title_bbox_from_DocXChain:
-        # cur_title = page.get_pixmap(clip=(L,U,R,D))
-        new_title_name = "title_{}_{}.png".format(page_ID, title_ID)    # 标题name
-        # cur_title.save(res_dir_path + '/' + new_title_name)           # 把标题存储在新建的文件夹，并命名
-        title_final_names.append(new_title_name)                        # 把标题的名字存在list中
-        title_final_bboxs.append((L, U, R, D))
-        title_ID += 1
+    footer_final_names = []
+    footer_final_bboxs = []
+    footer_ID = 0
+    for L, U, R, D in footer_bbox_from_DocXChain:
+        # cur_footer = page.get_pixmap(clip=(L,U,R,D))
+        new_footer_name = "footer_{}_{}.png".format(page_ID, footer_ID)    # 脚注name
+        # cur_footer.save(res_dir_path + '/' + new_footer_name)           # 把页脚存储在新建的文件夹，并命名
+        footer_final_names.append(new_footer_name)                        # 把脚注的名字存在list中
+        footer_final_bboxs.append((L, U, R, D))
+        footer_ID += 1
         
 
-    title_final_bboxs.sort(key = lambda LURD: (LURD[1], LURD[0]))
-    curPage_all_title_bboxs = title_final_bboxs
-    return curPage_all_title_bboxs
+    footer_final_bboxs.sort(key = lambda LURD: (LURD[1], LURD[0]))
+    curPage_all_footer_bboxs = footer_final_bboxs
+    return curPage_all_footer_bboxs
 

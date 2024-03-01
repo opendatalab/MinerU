@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="Magic-PDF", # 项目名
-    version="0.1.0", # 版本号
+    name="Magic-PDF",  # 项目名
+    version="0.1.0",  # 版本号
     packages=find_packages(), # 包含所有的包
     install_requires=['PyMuPDF>=1.23.25',
                       'boto3>=1.34.52',

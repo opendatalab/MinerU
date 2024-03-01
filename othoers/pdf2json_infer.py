@@ -3,7 +3,7 @@ from typing import Tuple
 import os
 import boto3, json
 from botocore.config import Config
-from pdf_tools.libs import fitz
+from magic_pdf.libs import fitz
 from loguru import logger
 from pathlib import Path
 from tqdm import tqdm
@@ -22,13 +22,13 @@ from validation import cal_edit_distance, format_gt_bbox, label_match, detect_va
 # from pdf2text_recogPara import parse_blocks_per_page    
 # from bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
 
-from pdf_tools.layout.bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
-from pdf_tools.pre_proc import parse_images          # 获取figures的bbox
-from pdf_tools.pre_proc.detect_tables import parse_tables           # 获取tables的bbox
-from pdf_tools.pre_proc import parse_equations     # 获取equations的bbox
+from magic_pdf.layout.bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
+from magic_pdf.pre_proc import parse_images          # 获取figures的bbox
+from magic_pdf.pre_proc.detect_tables import parse_tables           # 获取tables的bbox
+from magic_pdf.pre_proc import parse_equations     # 获取equations的bbox
 # from pdf2text_recogFootnote import parse_footnotes     # 获取footnotes的bbox
-from pdf_tools.post_proc.detect_para import process_blocks_per_page
-from pdf_tools.libs import parse_aws_param, parse_bucket_key, read_file, join_path
+from magic_pdf.post_proc.detect_para import process_blocks_per_page
+from magic_pdf.libs import parse_aws_param, parse_bucket_key, read_file, join_path
 
 
 def cut_image(bbox: Tuple, page_num: int, page: fitz.Page, save_parent_path: str, s3_profile: str):

@@ -2,7 +2,7 @@ import numpy as np
 import tqdm
 import json
 from validation import cal_edit_distance, format_gt_bbox
-from pdf_tools.layout.layout_sort import sort_with_layout
+from magic_pdf.layout.layout_sort import sort_with_layout
 
 with open('/mnt/petrelfs/share_data/ouyanglinke/OCR/OCR_validation_dataset_final_rotated_formulafix_highdpi_scihub.json', 'r') as f:
     samples = json.load(f)

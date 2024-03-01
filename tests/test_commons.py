@@ -1,10 +1,10 @@
 import io
 import json
 import os
-from pdf_tools.libs import fitz
+from magic_pdf.libs import fitz
 
 from app.common.s3 import get_s3_config, get_s3_client
-from pdf_tools.libs import join_path, json_dump_path, read_file, parse_bucket_key
+from magic_pdf.libs import join_path, json_dump_path, read_file, parse_bucket_key
 from loguru import logger
 
 test_pdf_dir_path = "s3://llm-pdf-text/unittest/pdf/"

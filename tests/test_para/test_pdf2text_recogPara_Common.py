@@ -1,6 +1,6 @@
 import unittest
 
-from pdf_tools.post_proc.detect_para import (
+from magic_pdf.post_proc.detect_para import (
     is_bbox_overlap,
     is_in_bbox,
     is_line_right_aligned_from_neighbors,

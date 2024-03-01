@@ -1,6 +1,6 @@
 import re
-from pdf_tools.libs import _is_in_or_part_overlap
-from pdf_tools.libs import fitz
+from magic_pdf.libs import _is_in_or_part_overlap
+from magic_pdf.libs import fitz
 import collections
 
 

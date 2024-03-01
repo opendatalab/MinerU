@@ -1,4 +1,4 @@
-from pdf_tools.libs import fitz
+from magic_pdf.libs import fitz
 from typing import List
 
 

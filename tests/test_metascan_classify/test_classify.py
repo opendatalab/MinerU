@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from pdf_tools.filter import classify_by_area, classify_by_text_len, classify_by_avg_words, \
+from magic_pdf.filter import classify_by_area, classify_by_text_len, classify_by_avg_words, \
     classify_by_img_num, classify_by_text_layout, classify_by_img_narrow_strips
-from pdf_tools.filter.pdf_meta_scan import get_pdf_page_size_pts, get_pdf_textlen_per_page, get_imgs_per_page
+from magic_pdf.filter.pdf_meta_scan import get_pdf_page_size_pts, get_pdf_textlen_per_page, get_imgs_per_page
 from test.test_commons import get_docs_from_test_pdf, get_test_json_data
 
 # 获取当前目录
