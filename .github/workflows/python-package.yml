@@ -37,8 +37,9 @@ jobs:
       run: |
         python setup.py bdist_wheel
     - name: Upload artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: wheel-file
         path: dist/*.whl
+        retention-days: 30
 
