@@ -43,3 +43,23 @@ jobs:
         path: dist/*.whl
         retention-days: 30
 
+  release:
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel-file
+          path: dist
+
+      - name: Create and Upload Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: './dist/*.whl'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
