@@ -2,10 +2,10 @@
 import boto3
 from botocore.client import Config
 
-from spark import s3_buckets, s3_clusters, get_cluster_name, s3_users
+from app.common import s3_buckets, s3_clusters, get_cluster_name, s3_users
 import re
 import random
-from typing import Dict, Iterator, List, Tuple, Union
+from typing import List, Union
 
 __re_s3_path = re.compile("^s3a?://([^/]+)(?:/(.*))?$")
 def get_s3_config(path: Union[str, List[str]], outside=False):

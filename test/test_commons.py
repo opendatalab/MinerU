@@ -1,10 +1,9 @@
 import io
 import json
 import os
-import unittest
 from libs.commons import fitz
 
-from spark.s3_tools import get_s3_config, get_s3_client
+from app.common.s3 import get_s3_config, get_s3_client
 from libs.commons import join_path, json_dump_path, read_file, parse_bucket_key
 from loguru import logger
 
