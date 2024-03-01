@@ -1,7 +1,6 @@
 import sys
 from typing import Tuple
 import os
-import click
 import boto3, json
 from botocore.config import Config
 from libs.commons import fitz
@@ -24,16 +23,11 @@ from validation import cal_edit_distance, format_gt_bbox, label_match, detect_va
 # from bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
 
 from layout.bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
-from pdf2text_recogFigure import parse_images          # 获取figures的bbox
+from pre_proc.detect_images import parse_images          # 获取figures的bbox
 from pdf2text_recogTable import parse_tables           # 获取tables的bbox
-from pdf2text_recogEquation import parse_equations     # 获取equations的bbox
-from pdf2text_recogTitle import parse_titles           # 获取titles的bbox
-from pdf2text_recogHeader import parse_headers         # 获取headers的bbox
-from pdf2text_recogPageNo import parse_pageNos         # 获取pageNos的bbox
+from pre_proc.detect_equation import parse_equations     # 获取equations的bbox
 # from pdf2text_recogFootnote import parse_footnotes     # 获取footnotes的bbox
-from pdf2text_recogFooter import parse_footers         # 获取footers的bbox
-from pdf2text_evaluatePdfLayout import evaluate_pdf_layout # 评估页面的Layout是否是规整的。
-from pdf2text_recogPara import process_blocks_per_page, postprocess_paras_pipeline
+from pdf2text_recogPara import process_blocks_per_page
 from libs.commons import parse_aws_param, parse_bucket_key, read_file, join_path
 
 

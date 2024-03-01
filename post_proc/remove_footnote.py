@@ -1,5 +1,4 @@
-from libs.boxbase import _is_in
-from pdf2text_recogFootnoteLine import remove_footnote_text, remove_footnote_image
+from libs.boxbase import _is_in, _is_in_or_part_overlap
 import collections      # 统计库
 
 
@@ -113,3 +112,41 @@ def remove_footnote_blocks(page_info):
         del page_info['merged_bboxes']
     del page_info['footnote_bboxes_tmp']
     return page_info
+
+
+def remove_footnote_text(raw_text_block, footnote_bboxes):
+    """
+    :param raw_text_block: str类型，是当前页的文本内容
+    :param footnoteBboxes: list类型，是当前页的脚注bbox
+    """
+    footnote_text_blocks = []
+    for block in raw_text_block:
+        text_bbox = block['bbox']
+        # TODO 更严谨点在line级别做
+        if any([_is_in_or_part_overlap(text_bbox, footnote_bbox) for footnote_bbox in footnote_bboxes]):
+            # if any([text_bbox[3]>=footnote_bbox[1] for footnote_bbox in footnote_bboxes]):
+            block['tag'] = 'footnote'
+            footnote_text_blocks.append(block)
+            # raw_text_block.remove(block)
+
+    # 移除，不能再内部移除，否则会出错
+    for block in footnote_text_blocks:
+        raw_text_block.remove(block)
+
+    return raw_text_block, footnote_text_blocks
+
+
+def remove_footnote_image(image_blocks, footnote_bboxes):
+    """
+    :param image_bboxes: list类型，是当前页的图片bbox(结构体)
+    :param footnoteBboxes: list类型，是当前页的脚注bbox
+    """
+    footnote_imgs_blocks = []
+    for image_block in image_blocks:
+        if any([_is_in(image_block['bbox'], footnote_bbox) for footnote_bbox in footnote_bboxes]):
+            footnote_imgs_blocks.append(image_block)
+
+    for footnote_imgs_block in footnote_imgs_blocks:
+        image_blocks.remove(footnote_imgs_block)
+
+    return image_blocks, footnote_imgs_blocks

@@ -1,17 +1,9 @@
-import os
-import sys
 from pathlib import Path
 
 import click
 import json
-from loguru import logger
 
-from libs.commons import join_path, parse_aws_param, parse_bucket_key, read_file
-from mkcontent import mk_nlp_markdown
-from pdf2md import main
-from pdf_parse_by_model import parse_pdf_by_model
-
-
+from demo.pdf2md import main
 
 
 @click.command()

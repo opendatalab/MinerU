@@ -15,14 +15,13 @@ from libs.drop_reason import DropReason
 from libs.markdown_utils import escape_special_markdown_char
 from libs.safe_filename import sanitize_filename
 from libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
-from pdf2text_recogFigure import parse_images
-from pdf2text_recogFootnoteLine import remove_headder_footer_one_page  # 获取figures的bbox
+from pre_proc.detect_images import parse_images
 from pdf2text_recogTable import parse_tables  # 获取tables的bbox
-from pdf2text_recogEquation import parse_equations  # 获取equations的bbox
+from pre_proc.detect_equation import parse_equations  # 获取equations的bbox
 from pdf2text_recogHeader import parse_headers  # 获取headers的bbox
 from pdf2text_recogPageNo import parse_pageNos  # 获取pageNos的bbox
-from pdf2text_recogFootnote import parse_footnotes_by_model, parse_footnotes_by_rule  # 获取footnotes的bbox
-from pdf2text_recogFooter import parse_footers  # 获取footers的bbox
+from pre_proc.detect_footnote import parse_footnotes_by_model, parse_footnotes_by_rule  # 获取footnotes的bbox
+from pre_proc.detect_footer_by_model import parse_footers  # 获取footers的bbox
 
 from pdf2text_recogPara import (
     ParaProcessPipeline,
@@ -34,6 +33,7 @@ from pdf2text_recogPara import (
 )
 from pre_proc.main_text_font import get_main_text_font
 from pre_proc.remove_colored_strip_bbox import remove_colored_strip_textblock
+from pre_proc.remove_footer_header import remove_headder_footer_one_page
 
 '''
 from para.para_pipeline import ParaProcessPipeline
@@ -48,17 +48,17 @@ from para.exceptions import (
 
 from libs.commons import read_file, join_path
 from libs.pdf_image_tools import save_images_by_bboxes
-from post_proc.footnote_remove import merge_footnote_blocks, remove_footnote_blocks
+from post_proc.remove_footnote import merge_footnote_blocks, remove_footnote_blocks
 from pre_proc.citationmarker_remove import remove_citation_marker
 from pre_proc.equations_replace import combine_chars_to_pymudict, remove_chars_in_text_blocks, replace_equations_in_textblock
-from pre_proc.pdf_filter import pdf_filter
-from pre_proc.detect_footer_header import drop_footer_header
+from pre_proc.pdf_pre_filter import pdf_filter
+from pre_proc.detect_footer_header_by_statistics import drop_footer_header
 from pre_proc.construct_paras import construct_page_component
-from pre_proc.image_fix import combine_images, fix_image_vertical, fix_seperated_image, include_img_title
+from pre_proc.fix_image import combine_images, fix_image_vertical, fix_seperated_image, include_img_title
 from post_proc.pdf_post_filter import pdf_post_filter
 from pre_proc.remove_rotate_bbox import get_side_boundry, remove_rotate_side_textblock, remove_side_blank_block
 from pre_proc.resolve_bbox_conflict import check_text_block_horizontal_overlap, resolve_bbox_overlap_conflict
-from pre_proc.table_fix import fix_table_text_block, fix_tables, include_table_title
+from pre_proc.fix_table import fix_table_text_block, fix_tables, include_table_title
 
 denseSingleLineBlockException_msg = DenseSingleLineBlockException().message
 titleDetectionException_msg = TitleDetectionException().message
@@ -108,7 +108,7 @@ def parse_pdf_by_model(
     debug_mode=False,
 ):
     pdf_bytes = read_file(s3_pdf_path, s3_pdf_profile)
-    save_tmp_path = os.path.join(os.path.dirname(__file__), "..", "tmp", "unittest")
+    save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
     md_bookname_save_path = ""
     book_name = sanitize_filename(book_name)
     if debug_mode:

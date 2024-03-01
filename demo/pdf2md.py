@@ -3,12 +3,11 @@ import sys
 from pathlib import Path
 
 import click
-import json
 from loguru import logger
 
-from libs.commons import join_path, parse_aws_param, parse_bucket_key, read_file
-from mkcontent import mk_mm_markdown, mk_nlp_markdown
-from pdf_parse_by_model import parse_pdf_by_model
+from libs.commons import join_path
+from dict2md.mkcontent import mk_mm_markdown
+from pipeline.pdf_parse_by_model import parse_pdf_by_model
 
 
 
@@ -17,7 +16,7 @@ def main(s3_pdf_path: str, s3_pdf_profile: str, pdf_model_path: str, pdf_model_p
     pth = Path(s3_pdf_path)
     book_name = pth.name
     # book_name = "".join(os.path.basename(s3_pdf_path).split(".")[0:-1])
-    save_tmp_path = os.path.join(os.path.dirname(__file__), "..", "..","tmp", "unittest") 
+    save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "..", "tmp", "unittest")
     save_path = join_path(save_tmp_path, "md")
     text_content_save_path = f"{save_path}/{book_name}/book.md"
     # metadata_save_path = f"{save_path}/{book_name}/metadata.json"
