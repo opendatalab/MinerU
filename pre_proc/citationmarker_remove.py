@@ -114,12 +114,16 @@ def remove_citation_marker(with_char_text_blcoks):
 
             # 找到高度最高的span作为位置比较的基准
             max_hi_span = line['spans'][0]['bbox']
-            min_font_sz = 10000
+            min_font_sz = 10000 # line里最小的字体
+            max_font_sz = 0   # line里最大的字体
+                
             for s in line['spans']:
                 if max_hi_span[3]-max_hi_span[1]<s['bbox'][3]-s['bbox'][1]:
                     max_hi_span = s['bbox']
                 if min_font_sz>s['size']:
                     min_font_sz = s['size']
+                if max_font_sz<s['size']:
+                    max_font_sz = s['size']
                         
             base_span_mid_y = (max_hi_span[3]+max_hi_span[1])/2
             
@@ -129,6 +133,9 @@ def remove_citation_marker(with_char_text_blcoks):
                 span_hi = span['bbox'][3]-span['bbox'][1]
                 span_mid_y = (span['bbox'][3]+span['bbox'][1])/2
                 span_font_sz = span['size']
+                
+                if max_font_sz-span_font_sz<1: # 先以字体过滤正文，如果是正文就不再继续判断了
+                    continue
                 
                 if (base_span_mid_y-span_mid_y)/span_hi>0.2 or (base_span_mid_y-span_mid_y>0 and abs(span_font_sz-min_font_sz)/min_font_sz<0.1):
                     """

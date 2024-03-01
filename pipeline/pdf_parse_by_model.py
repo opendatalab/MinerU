@@ -271,9 +271,8 @@ def parse_pdf_by_model(
         """"以下进入到公式替换环节 """
         char_level_text_blocks = page.get_text("rawdict", flags=fitz.TEXTFLAGS_TEXT)['blocks']
         remain_text_blocks = combine_chars_to_pymudict(remain_text_blocks, char_level_text_blocks)# 合并chars
-        remain_text_blocks = remove_citation_marker(remain_text_blocks) # 先把角标去掉
-        
         remain_text_blocks = replace_equations_in_textblock(remain_text_blocks, inline_eq_info, interline_eq_info)
+        remain_text_blocks = remove_citation_marker(remain_text_blocks) # 公式替换之后去角标，防止公式无法替换成功。但是这样也会带来个问题就是把角标当公式。各有优劣。
         remain_text_blocks = remove_chars_in_text_blocks(remain_text_blocks) # 减少中间态数据体积
         #debug_show_bbox(pdf_docs, page_id, [b['bbox'] for b in inline_eq_info], [b['bbox'] for b in interline_eq_info], [], join_path(save_path, book_name, f"{book_name}_debug.pdf"), 3)
 

@@ -1,10 +1,36 @@
 import os                   
 import collections      # 统计库
-import re               # 正则
+import re
+from libs.boxbase import _is_in               # 正则
 from libs.commons import fitz             # pyMuPDF库
 import json             # json
 from pathlib import Path
 
+
+
+def __solve_contain_bboxs(all_bbox_list: list):
+
+    """将两个公式的bbox做判断是否有包含关系，若有的话则删掉较小的bbox"""
+
+    dump_list = []
+    for i in range(len(all_bbox_list)):
+        for j in range(i + 1, len(all_bbox_list)):
+            # 获取当前两个值
+            bbox1 = all_bbox_list[i][:4]
+            bbox2 = all_bbox_list[j][:4]
+            
+            # 删掉较小的框
+            if _is_in(bbox1, bbox2):
+                dump_list.append(all_bbox_list[i])
+            elif _is_in(bbox2, bbox1):
+                dump_list.append(all_bbox_list[j])
+    
+    # 遍历需要删除的列表中的每个元素
+    for item in dump_list:
+        
+        while item in all_bbox_list:
+            all_bbox_list.remove(item)
+    return all_bbox_list
 
 
 def parse_equations(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict):
@@ -101,4 +127,5 @@ def parse_equations(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict
         for eq_box in equationIsolated_from_DocXChain_bboxs:
             eq_box = [eq_box[0]+cropbox[0], eq_box[1]+cropbox[1], eq_box[2]+cropbox[0], eq_box[3]+cropbox[1], eq_box[4]]
         
-    return equationEmbedding_from_DocXChain_bboxs, equationIsolated_from_DocXChain_bboxs
+    deduped_embedding_eq_bboxes = __solve_contain_bboxs(equationEmbedding_from_DocXChain_bboxs)
+    return deduped_embedding_eq_bboxes, equationIsolated_from_DocXChain_bboxs
