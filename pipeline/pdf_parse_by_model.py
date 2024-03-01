@@ -16,14 +16,14 @@ from libs.markdown_utils import escape_special_markdown_char
 from libs.safe_filename import sanitize_filename
 from libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
 from pre_proc.detect_images import parse_images
-from pdf2text_recogTable import parse_tables  # 获取tables的bbox
+from pre_proc.detect_tables import parse_tables  # 获取tables的bbox
 from pre_proc.detect_equation import parse_equations  # 获取equations的bbox
-from pdf2text_recogHeader import parse_headers  # 获取headers的bbox
-from pdf2text_recogPageNo import parse_pageNos  # 获取pageNos的bbox
+from pre_proc.detect_header import parse_headers  # 获取headers的bbox
+from pre_proc.detect_page_number import parse_pageNos  # 获取pageNos的bbox
 from pre_proc.detect_footnote import parse_footnotes_by_model, parse_footnotes_by_rule  # 获取footnotes的bbox
 from pre_proc.detect_footer_by_model import parse_footers  # 获取footers的bbox
 
-from pdf2text_recogPara import (
+from post_proc.detect_para import (
     ParaProcessPipeline,
     TitleDetectionException,
     TitleLevelException,

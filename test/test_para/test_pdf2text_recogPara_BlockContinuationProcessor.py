@@ -1,6 +1,6 @@
 import unittest
 
-from pdf2text_recogPara import BlockContinuationProcessor
+from post_proc.detect_para import BlockContinuationProcessor
 
 # from ... pdf2text_recogPara import BlockContinuationProcessor # another way to import
 

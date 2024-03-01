@@ -972,10 +972,6 @@ class TitleProcessor:
             .+                                # 标题的其余部分
         """
 
-        self.stage = (
-            0  # Used for distinguishing the stage of title detection, the number is occurred in paragraph process pipeline
-        )
-
     def _is_potential_title(
         self,
         curr_line,
@@ -1520,14 +1516,9 @@ class TitleProcessor:
 
             # prefix text of curr_line satisfies the following title format: x.x
             prefix_text_pattern = r"^\d+\.\d+"
-            subtitle_format_match = re.match(prefix_text_pattern, curr_line["text"])
-            if subtitle_format_match:
-                has_subtitle_format = True
-            else:
-                has_subtitle_format = False
+            has_subtitle_format = re.match(prefix_text_pattern, curr_line["text"])
 
             if has_same_prefix_digit or has_subtitle_format:
-                print("is a consistent sub title")
                 return True
 
         """
@@ -1594,7 +1585,7 @@ class TitleProcessor:
             curr_line_font_type, prev_line_font_type, curr_line_font_size, prev_line_font_size
         )
 
-        is_consistent_sub_title = __is_a_consistent_sub_title(prev_line, curr_line)
+        is_consis_sub_title = __is_a_consistent_sub_title(prev_line, curr_line)
 
         """
         Further aggregated features about the current line.
@@ -1655,7 +1646,7 @@ class TitleProcessor:
                     and is_bold_font
                     and (is_title_by_check_prev_line or is_title_by_check_next_line or is_title_by_check_pre_and_next_line)
                 )
-            )  # not the same font type as the document average font type, which includes the most common font type and the second most common font type
+            )  # Consider the following situations: bold font, much larger font than doc avg, not same font type as doc avg, sufficient spacing above and below
             and (
                 (
                     not is_person_or_org_list_line_by_nlp
@@ -1676,9 +1667,9 @@ class TitleProcessor:
                     and (is_bold_font and is_much_larger_font_than_doc_avg and is_not_same_font_type_of_docAvg)
                 )
                 or (is_numbered_title and not is_a_left_inline_title)
-            )
-            # )
-        ) or (prev_line_is_title and is_consistent_sub_title)
+            )  # Exclude the following situations: person/org list
+        )
+        # ) or (prev_line_is_title and is_consis_sub_title)
 
         is_name_or_org_list_to_be_removed = (
             (is_person_or_org_list_line_by_nlp)
@@ -1693,7 +1684,6 @@ class TitleProcessor:
 
         # return is_title, is_author_or_org_list
 
-        # """
         """
         # print reason why the line is a title
         if is_title:
@@ -1702,19 +1692,14 @@ class TitleProcessor:
             print()
             print("curr_line_text: ", curr_line_text)
             print()
-            print(f"prev_line_is_title: {prev_line_is_title}")
-            print()
-            print(f"is_consistent_sub_title: {is_consistent_sub_title}")
-        """
 
         # print reason why the line is not a title
-        # line_text = curr_line_text.strip()
-        # test_text = "Career/Personal Life"
-        # text_content_condition = line_text == test_text
-        # if not is_title and text_content_condition: # Print specific line
-
-        """
-        if not is_title: # Print each line
+        line_text = curr_line_text.strip()
+        test_text = "Career/Personal Life"
+        text_content_condition = line_text == test_text
+        
+        if not is_title and text_content_condition: # Print specific line
+        # if not is_title: # Print each line
             print_red("This line is not a title.")
             print_red("↓" * 10)
 
@@ -1813,95 +1798,58 @@ class TitleProcessor:
         # print(f"    curr_line_font_type: {curr_line_font_type}")
         # print(f"    curr_line_font_size: {curr_line_font_size}")
         # print()
+
         """
-        # """
 
         return is_title, is_author_or_org_list
 
-    def _detect_title(self, curr_block, pre_block):
+    def _detect_title(self, input_block):
         """
         Use the functions 'is_potential_title' to detect titles of each paragraph block.
         If a line is a title, then the value of key 'is_title' of the line will be set to True.
         """
 
-        raw_lines = curr_block["lines"]
+        raw_lines = input_block["lines"]
 
-        blk_avg_char_width = curr_block["avg_char_width"]
-        blk_avg_char_height = curr_block["avg_char_height"]
-        blk_media_font_size = curr_block["median_font_size"]
+        prev_line_is_title_flag = False
 
-        if self.stage == 0:
-            is_prev_line_a_title = False
+        for i, curr_line in enumerate(raw_lines):
+            prev_line = raw_lines[i - 1] if i > 0 else None
+            next_line = raw_lines[i + 1] if i < len(raw_lines) - 1 else None
 
-            for i, curr_line in enumerate(raw_lines):
-                prev_line = raw_lines[i - 1] if i > 0 else None
-                next_line = raw_lines[i + 1] if i < len(raw_lines) - 1 else None
+            blk_avg_char_width = input_block["avg_char_width"]
+            blk_avg_char_height = input_block["avg_char_height"]
+            blk_media_font_size = input_block["median_font_size"]
 
-                is_line_a_title, is_line_an_entities_list = self._is_potential_title(
-                    curr_line,
-                    prev_line,
-                    is_prev_line_a_title,
-                    next_line,
-                    blk_avg_char_width,
-                    blk_avg_char_height,
-                    blk_media_font_size,
-                )
+            is_title, is_author_or_org_list = self._is_potential_title(
+                curr_line,
+                prev_line,
+                prev_line_is_title_flag,
+                next_line,
+                blk_avg_char_width,
+                blk_avg_char_height,
+                blk_media_font_size,
+            )
 
-                if is_line_a_title:
-                    curr_line["is_title"] = is_line_a_title
-                    is_prev_line_a_title = True  # set the flag to True for the next line
-                else:
-                    curr_line["is_title"] = False
-                    is_prev_line_a_title = False  # set the flag to False for the next line
+            if is_title:
+                curr_line["is_title"] = is_title
+                prev_line_is_title_flag = True
+            else:
+                curr_line["is_title"] = False
+                prev_line_is_title_flag = False
 
-                if is_line_an_entities_list:
-                    curr_line["is_author_or_org_list"] = is_line_an_entities_list
-                else:
-                    curr_line["is_author_or_org_list"] = False
+            # print(f"curr_line['text']: {curr_line['text']}")
+            # print(f"curr_line['is_title']: {curr_line['is_title']}")
+            # print(f"prev_line['text']: {prev_line['text'] if prev_line else None}")
+            # print(f"prev_line_is_title_flag: {prev_line_is_title_flag}")
+            # print()
 
-            return curr_block
+            if is_author_or_org_list:
+                curr_line["is_author_or_org_list"] = is_author_or_org_list
+            else:
+                curr_line["is_author_or_org_list"] = False
 
-        if self.stage == 1:  # Check the block consistent titles.
-            if pre_block and "paras" in pre_block.keys():
-                print_red(f"Checking cross block title...")
-
-                last_para_content = None
-                paras_of_pre_block = pre_block["paras"]
-                last_key = sorted(paras_of_pre_block.keys())[-1]
-                last_para_content = paras_of_pre_block[last_key]
-
-                if last_para_content is not None:
-                    last_line_of_last_para_of_last_block = pre_block["lines"][-1]
-                    first_line_of_curr_block = raw_lines[0]
-                    next_line_of_curr_block = raw_lines[1] if len(raw_lines) > 1 else None
-
-                    is_line_a_title, is_line_an_entities_list = self._is_potential_title(
-                        first_line_of_curr_block,
-                        last_line_of_last_para_of_last_block,
-                        last_line_of_last_para_of_last_block["is_title"],
-                        next_line_of_curr_block,
-                        blk_avg_char_width,
-                        blk_avg_char_height,
-                        blk_media_font_size,
-                    )
-
-                    if is_line_a_title:
-                        first_line_of_curr_block["is_title"] = is_line_a_title
-                    else:
-                        first_line_of_curr_block["is_title"] = False
-
-                    if is_line_an_entities_list:
-                        first_line_of_curr_block["is_author_or_org_list"] = is_line_an_entities_list
-                    else:
-                        first_line_of_curr_block["is_author_or_org_list"] = False
-
-                    # print(f"first_line_of_curr_block: {first_line_of_curr_block['text']}")
-                    # print(f"last_line_of_pre_block: {last_line_of_last_para['text']}")
-
-                    return curr_block
-
-                else:
-                    print_red(f"last_para_content is None")
+        return input_block
 
     def batch_detect_titles(self, pdf_dic):
         """
@@ -1919,12 +1867,11 @@ class TitleProcessor:
         """
         num_titles = 0
 
-        for page_id, page_content in pdf_dic.items():
+        for page_id, blocks in pdf_dic.items():
             if page_id.startswith("page_"):
                 para_blocks = []
-
-                if "para_blocks" in page_content.keys():
-                    para_blocks = page_content["para_blocks"]
+                if "para_blocks" in blocks.keys():
+                    para_blocks = blocks["para_blocks"]
 
                     all_single_line_blocks = []
                     for block in para_blocks:
@@ -1932,60 +1879,36 @@ class TitleProcessor:
                             all_single_line_blocks.append(block)
 
                     new_para_blocks = []
-
                     if not len(all_single_line_blocks) == len(para_blocks):  # Not all blocks are single line blocks.
-                        for para_idx, para_block in enumerate(para_blocks):
-                            print(f"______________________________________________________")
-                            print(f"page_id: {page_id}")
-                            print(f"para_block id: {para_block['block_id']}")
-                            print(f"para_idx: {para_idx}")
-
-                            pre_block = para_blocks[para_idx - 1] if para_idx > 0 else None
-                            curr_block = para_block
-
-                            print_yellow(f"text of current block: {curr_block['text'] if curr_block else None}")
-                            print_green(f"text of previous block: {pre_block['text'] if pre_block else None}")
-
-                            new_block = self._detect_title(curr_block, pre_block)
+                        for para_block in para_blocks:
+                            new_block = self._detect_title(para_block)
                             new_para_blocks.append(new_block)
-                            # num_titles += sum([line.get("is_title", 0) for line in new_block["lines"]])
-                            if new_block is not None:
-                                num_titles += sum([line.get("is_title", 0) for line in new_block["lines"]])
-                            else:
-                                num_titles += 0
-
+                            num_titles += sum([line.get("is_title", 0) for line in new_block["lines"]])
                     else:  # All blocks are single line blocks.
                         for para_block in para_blocks:
                             new_para_blocks.append(para_block)
                             num_titles += sum([line.get("is_title", 0) for line in para_block["lines"]])
                     para_blocks = new_para_blocks
 
-                page_content["para_blocks"] = para_blocks
+                blocks["para_blocks"] = para_blocks
 
                 for para_block in para_blocks:
-                    if para_block is not None:
-                        all_titles = all(safe_get(line, "is_title", False) for line in para_block["lines"])
-                        para_text_len = sum([len(line["text"]) for line in para_block["lines"]])
-                        if (
-                            all_titles and para_text_len < 200
-                        ):  # total length of the paragraph is less than 200, more than this should not be a title
-                            para_block["is_block_title"] = 1
-                        else:
-                            para_block["is_block_title"] = 0
-
-                        all_name_or_org_list_to_be_removed = all(
-                            safe_get(line, "is_author_or_org_list", False) for line in para_block["lines"]
-                        )
-                        if all_name_or_org_list_to_be_removed and page_id == "page_0":
-                            para_block["is_block_an_author_or_org_list"] = 1
-                        else:
-                            para_block["is_block_an_author_or_org_list"] = 0
+                    all_titles = all(safe_get(line, "is_title", False) for line in para_block["lines"])
+                    para_text_len = sum([len(line["text"]) for line in para_block["lines"]])
+                    if (
+                        all_titles and para_text_len < 200
+                    ):  # total length of the paragraph is less than 200, more than this should not be a title
+                        para_block["is_block_title"] = 1
                     else:
-                        all_titles = False
-                        # para_block["is_block_title"] = 0
-                        # para_block["is_block_an_author_or_org_list"] = 0
+                        para_block["is_block_title"] = 0
 
-                # page_content["para_blocks"] = para_blocks
+                    all_name_or_org_list_to_be_removed = all(
+                        safe_get(line, "is_author_or_org_list", False) for line in para_block["lines"]
+                    )
+                    if all_name_or_org_list_to_be_removed and page_id == "page_0":
+                        para_block["is_block_an_author_or_org_list"] = 1
+                    else:
+                        para_block["is_block_an_author_or_org_list"] = 0
 
         pdf_dic["statistics"]["num_titles"] = num_titles
 
@@ -3058,7 +2981,7 @@ class BlockContinuationProcessor:
         block : dict
             The block with the given id.
         """
-        for block in para_blocks:
+        for blk_idx, block in enumerate(para_blocks):
             if block.get("block_id") == block_id:
                 return block
         return None
@@ -3086,13 +3009,23 @@ class BlockContinuationProcessor:
                     paras = current_block["paras"]
 
                     for para_id, curr_para in list(paras.items()):
+                        # print(f"current para_id: {para_id}")
                         # 跳过标题段落
                         if curr_para.get("is_para_title"):
                             continue
 
                         while curr_para.get("merge_next_para"):
+                            curr_para_location = curr_para.get("curr_para_location")
                             next_para_location = curr_para.get("next_para_location")
+
+                            # print(f"curr_para_location: {curr_para_location}, next_para_location: {next_para_location}")
+                            
                             if not next_para_location:
+                                break
+
+                            if curr_para_location == next_para_location:
+                                # print_red("The next para is in the same block as the current para.")
+                                curr_para["merge_next_para"] = False
                                 break
 
                             next_page_idx, next_block_id, next_para_id = next_para_location
@@ -3102,10 +3035,12 @@ class BlockContinuationProcessor:
                                 break
 
                             next_block = self.find_block_by_id(next_page_content.get("para_blocks", []), next_block_id)
+
                             if not next_block:
                                 break
 
                             next_para = next_block["paras"].get(f"para_{next_para_id}")
+
                             if not next_para or next_para.get("is_para_title"):
                                 break
 
@@ -3361,7 +3296,6 @@ class ParaProcessPipeline:
         """
         doc_statistics = pdf_dic["statistics"]
         titleProcessor = TitleProcessor(doc_statistics)
-        titleProcessor.stage = 0
         pdf_dic = titleProcessor.batch_detect_titles(pdf_dic)
 
         if para_debug_mode == "full":
@@ -3397,14 +3331,6 @@ class ParaProcessPipeline:
 
         pdf_dic = blockContinuationProcessor.batch_tag_paras(pdf_dic)
         pdf_dic = blockContinuationProcessor.batch_merge_paras(pdf_dic)
-
-        """
-        Detect titles in the document again
-        """
-        doc_statistics = pdf_dic["statistics"]
-        titleProcessor = TitleProcessor(doc_statistics)
-        titleProcessor.stage = 1
-        # pdf_dic = titleProcessor.batch_detect_titles(pdf_dic)
 
         if para_debug_mode == "full":
             pdf_dic_json_fpath = __save_pdf_dic(pdf_dic, output_pdf_path, stage="4", para_debug_mode=para_debug_mode)
@@ -3469,7 +3395,7 @@ class ParaProcessPipeline:
 """
 Run this script to test the function with Command: 
 
-python pdf2text_recogPara.py [pdf_path] [output_pdf_path]
+python detect_para.py [pdf_path] [output_pdf_path]
 
 Params:
 - pdf_path: the path of the pdf file

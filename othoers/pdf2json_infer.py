@@ -24,10 +24,10 @@ from validation import cal_edit_distance, format_gt_bbox, label_match, detect_va
 
 from layout.bbox_sort import bbox_sort, CONTENT_IDX, CONTENT_TYPE_IDX
 from pre_proc.detect_images import parse_images          # 获取figures的bbox
-from pdf2text_recogTable import parse_tables           # 获取tables的bbox
+from pre_proc.detect_tables import parse_tables           # 获取tables的bbox
 from pre_proc.detect_equation import parse_equations     # 获取equations的bbox
 # from pdf2text_recogFootnote import parse_footnotes     # 获取footnotes的bbox
-from pdf2text_recogPara import process_blocks_per_page
+from post_proc.detect_para import process_blocks_per_page
 from libs.commons import parse_aws_param, parse_bucket_key, read_file, join_path
 
 

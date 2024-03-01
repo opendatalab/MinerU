@@ -1,6 +1,6 @@
 import unittest
 
-from pdf2text_recogPara import (
+from post_proc.detect_para import (
     is_bbox_overlap,
     is_in_bbox,
     is_line_right_aligned_from_neighbors,
