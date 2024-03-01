@@ -6,14 +6,11 @@ Distance==0.1.3
 PyMuPDF==1.23.25
 loguru==0.7.2
 matplotlib==3.8.3
-mmeval==0.2.1
 numpy==1.26.4
 pandas==2.2.1
 pycld2==0.41
-pytest==8.0.2
 regex==2023.12.25
 spacy==3.7.4
 termcolor==2.4.0
-tqdm==4.66.2
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 zh_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.7.0/zh_core_web_sm-3.7.0-py3-none-any.whl
