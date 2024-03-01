@@ -7,7 +7,7 @@ on:
   push:
     branches: [ "master" ]
     tags:
-      - 'released'
+      - '*released'
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
