@@ -31,6 +31,6 @@ tmp/
 tmp
 .vscode
 .vscode/
-/test/
+/tests/
 
 /app/pdf_toolbox/test/test_bookname.txt

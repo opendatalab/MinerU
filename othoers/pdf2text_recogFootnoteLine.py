@@ -1,14 +1,7 @@
-import io
 import re
-import os
-import json
-from libs.boxbase import _is_in_or_part_overlap, calculate_overlap_area_2_minbox_area_ratio
-from libs.commons import fitz
-from fitz import Point
-from pprint import pprint
-import pickle
+from pdf_tools.libs import _is_in_or_part_overlap
+from pdf_tools.libs import fitz
 import collections
-from typing import List
 
 
 def calculate_overlapRatio_between_rect1_and_rect2(L1: float, U1: float, R1: float, D1: float, L2: float, U2: float, R2: float, D2: float) -> (float, float):

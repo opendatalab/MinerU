@@ -5,9 +5,9 @@ from pathlib import Path
 import click
 from loguru import logger
 
-from libs.commons import join_path
-from dict2md.mkcontent import mk_mm_markdown
-from pipeline.pdf_parse_by_model import parse_pdf_by_model
+from pdf_tools.libs import join_path
+from pdf_tools.dict2md.mkcontent import mk_mm_markdown
+from pdf_tools.pipeline import parse_pdf_by_model
 
 
 

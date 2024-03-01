@@ -1,4 +1,4 @@
-from libs.commons import fitz
+from pdf_tools.libs import fitz
 from typing import List
 
 

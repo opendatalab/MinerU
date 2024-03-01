@@ -1,8 +1,4 @@
-import os                   
-import collections      # 统计库
-import re               # 正则
-from libs.commons import fitz             # pyMuPDF库
-import json             # json
+from pdf_tools.libs import fitz             # pyMuPDF库
 
 
 def calculate_overlapRatio_between_rect1_and_rect2(L1: float, U1: float, R1: float, D1: float, L2: float, U2: float, R2: float, D2: float) -> (float, float):

@@ -1,5 +1,5 @@
 # 最终版：把那种text_block有重叠，且inline_formula位置在重叠部分的，认定整个页面都有问题，所有的inline_formula都改成no_check
-from libs.commons import fitz
+from pdf_tools.libs import fitz
 
 
 def check_inline_formula(page, inline_formula_boxes):

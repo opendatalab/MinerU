@@ -2,7 +2,7 @@ import json
 import os
 from tqdm import tqdm
 
-from libs.commons import join_path
+from pdf_tools.libs import join_path
 
 with open('/mnt/petrelfs/share_data/ouyanglinke/OCR/OCR_validation_dataset.json', 'r') as f:
     samples = json.load(f)
