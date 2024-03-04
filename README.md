@@ -22,7 +22,7 @@ git clone https://github.com/myhloli/Magic-PDF.git
 
 ### 版权说明
 
-该项目签署了MIT 授权许可，详情请参阅 [LICENSE.txt](https://github.com/shaojintian/Best_README_template/blob/master/LICENSE.txt)
+[LICENSE.md](https://github.com/myhloli/Magic-PDF/blob/master/LICENSE.md)
 
 ### 鸣谢
 
