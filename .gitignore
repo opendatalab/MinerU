@@ -14,7 +14,6 @@ __pycache__
 debug/
 *.ipynb
 .idea
-spark/__init__.py
 
 # vscode history
 .history
@@ -33,4 +32,4 @@ tmp
 .vscode/
 /tests/
 
-/app/pdf_toolbox/test/test_bookname.txt
+/app/common/__init__.py
