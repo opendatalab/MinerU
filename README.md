@@ -1,19 +1,32 @@
-# pdf_toolbox
-pdf 解析基础函数
 
 
-## pdf是否是文字类型/扫描类型的区分
+# Magic-PDF
 
-```shell
-cat s3_pdf_path.example.pdf | parallel --colsep ' ' -j 10 "python pdf_meta_scan.py --s3-pdf-path {2} --s3-profile {1} >> {/}.jsonl"
+便捷、准确的将PDF转换成Markdown文档
 
-find dir/to/jsonl/ -type f -name "*.jsonl" | parallel -j 10 "python pdf_classfy_by_type.py --json_file {} >> {/}.jsonl"
 
+### 上手指南
+
+###### 开发前的配置要求
+
+python 3.9+
+
+###### **安装步骤**
+
+1.Clone the repo
+
+```sh
+git clone https://github.com/myhloli/Magic-PDF.git
 ```
 
-```shell
-# 如果单独运行脚本，合并到code-clean之后需要运行，参考如下：
-python -m pdf_meta_scan --s3-pdf-path "D:\pdf_files\内容排序测试_pdf\p3_图文混排 5.pdf" --s3-profile s2
-```
 
-## pdf
+### 版权说明
+
+该项目签署了MIT 授权许可，详情请参阅 [LICENSE.txt](https://github.com/shaojintian/Best_README_template/blob/master/LICENSE.txt)
+
+### 鸣谢
+
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+
+
+
