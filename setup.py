@@ -20,7 +20,7 @@ requires = parse_requirements('requirements.txt')
 
 setup(
     name="magic_pdf",  # 项目名
-    version="0.1.1",  # 版本号
+    version="0.1.2",  # 版本号
     packages=find_packages(),  # 包含所有的包
     install_requires=requires,  # 项目依赖的第三方库
     python_requires=">=3.9",  # 项目依赖的 Python 版本
