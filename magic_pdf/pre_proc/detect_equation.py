@@ -1,4 +1,4 @@
-from magic_pdf.libs.boxbase import _is_in               # 正则
+from magic_pdf.libs.boxbase import _is_in, calculate_overlap_area_2_minbox_area_ratio              # 正则
 from magic_pdf.libs.commons import fitz             # pyMuPDF库
 
 
@@ -18,7 +18,16 @@ def __solve_contain_bboxs(all_bbox_list: list):
                 dump_list.append(all_bbox_list[i])
             elif _is_in(bbox2, bbox1):
                 dump_list.append(all_bbox_list[j])
-    
+            else:
+                ratio = calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2)
+                if ratio > 0.7:
+                    s1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]) 
+                    s2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+                    if s2 > s1:  
+                        dump_list.append(all_bbox_list[i])
+                    else:
+                        dump_list.append(all_bbox_list[i]) 
+
     # 遍历需要删除的列表中的每个元素
     for item in dump_list:
         

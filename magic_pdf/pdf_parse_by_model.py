@@ -59,6 +59,7 @@ from magic_pdf.post_proc.pdf_post_filter import pdf_post_filter
 from magic_pdf.pre_proc.remove_rotate_bbox import get_side_boundry, remove_rotate_side_textblock, remove_side_blank_block
 from magic_pdf.pre_proc.resolve_bbox_conflict import check_text_block_horizontal_overlap, resolve_bbox_overlap_conflict
 from magic_pdf.pre_proc.fix_table import fix_table_text_block, fix_tables, include_table_title
+from magic_pdf.pre_proc.solve_line_alien import solve_inline_too_large_interval
 
 denseSingleLineBlockException_msg = DenseSingleLineBlockException().message
 titleDetectionException_msg = TitleDetectionException().message
@@ -446,6 +447,10 @@ def parse_pdf_by_model(
     ==================================================================================================================================
     进入段落处理-2阶段
     """
+
+    # 处理行内文字间距较大问题
+    pdf_info_dict = solve_inline_too_large_interval(pdf_info_dict)
+    
     start_time = time.time()
 
     para_process_pipeline = ParaProcessPipeline()
