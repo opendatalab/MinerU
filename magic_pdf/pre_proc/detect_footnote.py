@@ -104,7 +104,8 @@ def parse_footnotes_by_rule(remain_text_blocks, page_height, page_id, main_text_
         list: 符合规则的脚注文本块的边界框列表。
 
     """
-    if page_id > 20:
+    # if page_id > 20:
+    if page_id > 2:  # 为保证精确度，先只筛选前3页
         return []
     else:
         # 存储每一行的文本块大小的列表
@@ -128,7 +129,7 @@ def parse_footnotes_by_rule(remain_text_blocks, page_height, page_id, main_text_
                         block_line_sizes.append(line_size)
                     span_font = [(span['font'], len(span['text'])) for span in line['spans'] if 'font' in span and len(span['text']) > 0]
                     if span_font:
-                        # # todo main_text_font应该用基于字数最多的字体而不是span级别的统计
+                        #  main_text_font应该用基于字数最多的字体而不是span级别的统计
                         # font_names.append(font_name for font_name in span_font)
                         # block_fonts.append(font_name for font_name in span_font)
                         for font, count in span_font:
@@ -158,9 +159,17 @@ def parse_footnotes_by_rule(remain_text_blocks, page_height, page_id, main_text_
                                # and len(block['lines']) < 5]
             footnote_bboxes = [block['bbox'] for block, block_size, block_font in block_sizes if
                                block['bbox'][1] > page_height * 0.6 and
-                               sum([block_size < main_text_size,
-                                    len(block['lines']) < 5,
-                                    block_font != main_text_font]) >= 2]
+                               #  较为严格的规则
+                               block_size < main_text_size and
+                               (len(block['lines']) < 5 or
+                                block_font != main_text_font)]
+
+                               #  较为宽松的规则
+                               # sum([block_size < main_text_size,
+                               #      len(block['lines']) < 5,
+                               #      block_font != main_text_font])
+                               # >= 2]
+
 
             return footnote_bboxes
         else:

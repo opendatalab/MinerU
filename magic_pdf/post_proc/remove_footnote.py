@@ -75,7 +75,8 @@ def merge_footnote_blocks(page_info, main_text_font):
                                       is_below(block['bbox'], footnote_bbox) and
                                       sum([size >= main_text_size,
                                            len(block['lines']) >= 5,
-                                           block_font == main_text_font]) >= 2]
+                                           block_font == main_text_font])
+                                      >= 2]
             # 如果main_text_bboxes_below不为空，说明footnote下面有正文block，这个footnote不成立，跳过
             if len(main_text_bboxes_below) > 0:
                 continue
