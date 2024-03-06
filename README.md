@@ -19,6 +19,17 @@ python 3.9+
 git clone https://github.com/myhloli/Magic-PDF.git
 ```
 
+2.Install the requirements
+
+```sh
+pip install -r requirements.txt
+```
+
+3.Run the main script
+
+```sh
+use demo/demo_test.py
+```
 
 ### 版权说明
 
