@@ -1,4 +1,4 @@
-from magic_pdf.libs import fitz  # PyMuPDF
+from magic_pdf.libs.commons import fitz  # PyMuPDF
 
 # PDF文件路径
 pdf_path = "D:\\project\\20231108code-clean\\code-clean\\tmp\\unittest\\download-pdfs\\scihub\\scihub_53700000\\libgen.scimag53724000-53724999.zip_10.1097\\00129191-200509000-00018.pdf"

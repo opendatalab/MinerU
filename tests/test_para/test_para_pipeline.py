@@ -11,21 +11,21 @@ Execute the following command to run the tests under directory code-clean:
     
 """
 
-from test.test_para.test_pdf2text_recogPara_Common import (
+from tests.test_para.test_pdf2text_recogPara_Common import (
     TestIsBboxOverlap,
     TestIsInBbox,
     TestIsBboxOverlap,
     TestIsLineLeftAlignedFromNeighbors,
     TestIsLineRightAlignedFromNeighbors,
 )
-from test.test_para.test_pdf2text_recogPara_EquationsProcessor import TestCalcOverlapPct
-from test.test_para.test_pdf2text_recogPara_BlockInnerParasProcessor import TestIsConsistentLines
-from test.test_para.test_pdf2text_recogPara_BlockContinuationProcessor import (
+from tests.test_para.test_pdf2text_recogPara_EquationsProcessor import TestCalcOverlapPct
+from tests.test_para.test_pdf2text_recogPara_BlockInnerParasProcessor import TestIsConsistentLines
+from tests.test_para.test_pdf2text_recogPara_BlockContinuationProcessor import (
     TestIsAlphabetChar,
     TestIsChineseChar,
     TestIsOtherLetterChar,
 )
-from test.test_para.test_pdf2text_recogPara_TitleProcessor import TestTitleProcessor
+from tests.test_para.test_pdf2text_recogPara_TitleProcessor import TestTitleProcessor
 
 
 # Test suite

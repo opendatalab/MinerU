@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 from loguru import logger
 
-from magic_pdf.libs import join_path
+from magic_pdf.libs.commons import join_path
 from magic_pdf.dict2md.mkcontent import mk_mm_markdown
 from magic_pdf.pipeline import parse_pdf_by_model
 
