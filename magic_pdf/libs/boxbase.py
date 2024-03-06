@@ -119,6 +119,20 @@ def _is_left_overlap(box1, box2,):
     return x0_1<=x0_2<=x1_1 and vertical_overlap_cond
 
 
+def __is_overlaps_y_exceeds_threshold(bbox1, bbox2, overlap_ratio_threshold=0.8):
+    """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
+    _, y0_1, _, y1_1 = bbox1
+    _, y0_2, _, y1_2 = bbox2
+
+    overlap = max(0, min(y1_1, y1_2) - max(y0_1, y0_2))
+    height1, height2 = y1_1 - y0_1, y1_2 - y0_2
+    max_height = max(height1, height2)
+    min_height = min(height1, height2)
+
+    return (overlap / min_height) > overlap_ratio_threshold
+
+
+
 def calculate_iou(bbox1, bbox2):
     # Determine the coordinates of the intersection rectangle
     x_left = max(bbox1[0], bbox2[0])
@@ -163,7 +177,25 @@ def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
     else:
         return intersection_area / min_box_area
 
-    
+
+def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
+    """
+    通过calculate_overlap_area_2_minbox_area_ratio计算两个bbox重叠的面积占最小面积的box的比例
+    如果比例大于ratio，则返回小的那个bbox,
+    否则返回None
+    """
+    x1_min, y1_min, x1_max, y1_max = bbox1
+    x2_min, y2_min, x2_max, y2_max = bbox2
+    area1 = (x1_max - x1_min) * (y1_max - y1_min)
+    area2 = (x2_max - x2_min) * (y2_max - y2_min)
+    overlap_ratio = calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2)
+    if overlap_ratio > ratio and area1 < area2:
+        return bbox1
+    elif overlap_ratio > ratio and area2 < area1:
+        return bbox2
+    else:
+        return None
+
 def get_bbox_in_boundry(bboxes:list, boundry:tuple)-> list:
     x0, y0, x1, y1 = boundry
     new_boxes = [box for box in bboxes if box[0] >= x0 and box[1] >= y0 and box[2] <= x1 and box[3] <= y1]
