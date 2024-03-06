@@ -1,3 +1,4 @@
+import json
 import os
 
 from loguru import logger
@@ -20,9 +21,16 @@ def save_markdown(markdown_text, input_filepath):
         file.write(markdown_text)
 
 
+def read_json_file(file_path):
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    return data
+
+
 if __name__ == '__main__':
     ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_0.json"
-    pdf_info_dict = parse_pdf_by_ocr(ocr_json_file_path)
+    ocr_pdf_info = read_json_file(ocr_json_file_path)
+    pdf_info_dict = parse_pdf_by_ocr(ocr_pdf_info)
     markdown_text = mk_nlp_markdown(pdf_info_dict)
     logger.info(markdown_text)
     save_markdown(markdown_text, ocr_json_file_path)

@@ -1,13 +1,5 @@
-import json
-
 from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio
 from magic_pdf.libs.ocr_dict_merge import merge_spans
-
-
-def read_json_file(file_path):
-    with open(file_path, 'r') as f:
-        data = json.load(f)
-    return data
 
 
 def construct_page_component(page_id, text_blocks_preproc):
@@ -19,11 +11,11 @@ def construct_page_component(page_id, text_blocks_preproc):
 
 
 def parse_pdf_by_ocr(
-    ocr_json_file_path,
+    ocr_pdf_info,
     start_page_id=0,
     end_page_id=None,
 ):
-    ocr_pdf_info = read_json_file(ocr_json_file_path)
+
     pdf_info_dict = {}
     end_page_id = end_page_id if end_page_id else len(ocr_pdf_info) - 1
     for page_id in range(start_page_id, end_page_id + 1):
