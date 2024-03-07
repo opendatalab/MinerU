@@ -1,12 +1,12 @@
-from loguru import logger
+from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
+from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
 
-from magic_pdf.libs.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
 
-
-def construct_page_component(page_id, blocks):
+def construct_page_component(page_id, blocks, layout_bboxes):
     return_dict = {
         'preproc_blocks': blocks,
         'page_idx': page_id,
+        'layout_bboxes': layout_bboxes,
     }
     return return_dict
 
@@ -74,9 +74,6 @@ def parse_pdf_by_ocr(
         lines = merge_spans_to_line(spans)
         # logger.info(lines)
 
-        # 从ocr_page_info中获取layout信息
-
-
         # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
         blocks = []
         for line in lines:
@@ -85,8 +82,11 @@ def parse_pdf_by_ocr(
                 "lines": [line],
             })
 
+        # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
+        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'])
+
         # 构造pdf_info_dict
-        page_info = construct_page_component(page_id, blocks)
+        page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     return pdf_info_dict
