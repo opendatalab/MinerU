@@ -10,6 +10,8 @@ def mk_nlp_markdown(pdf_info_dict: dict):
             for line in block['lines']:
                 line_text = ''
                 for span in line['spans']:
+                    if not span.get('content'):
+                        continue
                     content = span['content'].replace('$', '\$')  # 转义$
                     if span['type'] == 'inline_equation':
                         content = f"${content}$"
