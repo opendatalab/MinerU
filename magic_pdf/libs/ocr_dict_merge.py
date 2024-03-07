@@ -1,7 +1,20 @@
-from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
+from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio
 
 
-def merge_spans(spans):
+# 删除重叠spans中较小的那些
+def remove_overlaps_min_spans(spans):
+    for span1 in spans.copy():
+        for span2 in spans.copy():
+            if span1 != span2:
+                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.8)
+                if overlap_box is not None:
+                    bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
+                    if bbox_to_remove is not None:
+                        spans.remove(bbox_to_remove)
+    return spans
+
+
+def merge_spans_to_line(spans):
     # 按照y0坐标排序
     spans.sort(key=lambda span: span['bbox'][1])
 
@@ -9,7 +22,8 @@ def merge_spans(spans):
     current_line = [spans[0]]
     for span in spans[1:]:
         # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
-        if span['type'] == "displayed_equation" or any(s['type'] == "displayed_equation" for s in current_line):
+        # image和table类型，同上
+        if span['type'] in ["displayed_equation", "image", "table"] or any(s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
             # 则开始新行
             lines.append(current_line)
             current_line = [span]

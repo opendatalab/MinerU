@@ -1,11 +1,12 @@
-from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio
-from magic_pdf.libs.ocr_dict_merge import merge_spans
+from loguru import logger
+
+from magic_pdf.libs.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
 
 
-def construct_page_component(page_id, text_blocks_preproc):
+def construct_page_component(page_id, blocks):
     return_dict = {
-        'preproc_blocks': text_blocks_preproc,
-        'page_idx': page_id
+        'preproc_blocks': blocks,
+        'page_idx': page_id,
     }
     return return_dict
 
@@ -24,17 +25,32 @@ def parse_pdf_by_ocr(
         spans = []
         for layout_det in layout_dets:
             category_id = layout_det['category_id']
-            allow_category_id_list = [13, 14, 15]
+            allow_category_id_list = [1, 7, 13, 14, 15]
             if category_id in allow_category_id_list:
                 x0, y0, _, _, x1, y1, _, _ = layout_det['poly']
                 bbox = [int(x0), int(y0), int(x1), int(y1)]
-                #  13: 'embedding',     # 嵌入公式
-                #  14: 'isolated',      # 单行公式
-                #  15: 'ocr_text',      # ocr识别文本
+                '''要删除的'''
+                #  3: 'header',      # 页眉
+                #  4: 'page number', # 页码
+                #  5: 'footnote',    # 脚注
+                #  6: 'footer',      # 页脚
+                '''当成span拼接的'''
+                #  1: 'image', # 图片
+                #  7: 'table',       # 表格
+                #  13: 'inline_equation',     # 行内公式
+                #  14: 'displayed_equation',      # 行间公式
+                #  15: 'text',      # ocr识别文本
+                '''layout信息'''
+                #  11: 'full column',   # 单栏
+                #  12: 'sub column',    # 多栏
                 span = {
                     'bbox': bbox,
                 }
-                if category_id == 13:
+                if category_id == 1:
+                    span['type'] = 'image'
+                elif category_id == 7:
+                    span['type'] = 'table'
+                elif category_id == 13:
                     span['content'] = layout_det['latex']
                     span['type'] = 'inline_equation'
                 elif category_id == 14:
@@ -48,18 +64,18 @@ def parse_pdf_by_ocr(
             else:
                 continue
 
-        # 合并重叠的spans
-        for span1 in spans.copy():
-            for span2 in spans.copy():
-                if span1 != span2:
-                    overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.8)
-                    if overlap_box is not None:
-                        bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
-                        if bbox_to_remove is not None:
-                            spans.remove(bbox_to_remove)
+        # 删除重叠spans中较小的那些
+        spans = remove_overlaps_min_spans(spans)
 
-        # 将spans合并成line
-        lines = merge_spans(spans)
+        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
+
+
+        # 将spans合并成line(从上到下,从左到右)
+        lines = merge_spans_to_line(spans)
+        # logger.info(lines)
+
+        # 从ocr_page_info中获取layout信息
+
 
         # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
         blocks = []
