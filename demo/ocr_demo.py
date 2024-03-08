@@ -30,8 +30,8 @@ def read_json_file(file_path):
 
 
 if __name__ == '__main__':
-    ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_1_org.pdf"
-    ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_1.json"
+    ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_0_org.pdf"
+    ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_0.json"
     try:
         ocr_pdf_model_info = read_json_file(ocr_json_file_path)
         pth = Path(ocr_json_file_path)
@@ -43,6 +43,7 @@ if __name__ == '__main__':
             ocr_pdf_path,
             None,
             ocr_pdf_model_info,
+            save_path,
             book_name,
             debug_mode=True)
         parent_dir = os.path.dirname(text_content_save_path)

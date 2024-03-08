@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -10,6 +11,7 @@ from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
 from magic_pdf.pre_proc.detect_header import parse_headers
 from magic_pdf.pre_proc.detect_page_number import parse_pageNos
+from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import remove_overlaps_min_spans, merge_spans_to_line_by_layout
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
@@ -28,6 +30,7 @@ def parse_pdf_by_ocr(
         pdf_path,
         s3_pdf_profile,
         pdf_model_output,
+        save_path,
         book_name,
         pdf_model_profile=None,
         image_s3_config=None,
@@ -148,6 +151,10 @@ def parse_pdf_by_ocr(
         # 删除remove_span_block_bboxes中的bbox
         spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
 
+        # 对image和table截图
+        spans = cut_image_and_table(spans, page, page_id, book_name, save_path)
+
+
         # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
 
         # 模型识别错误的行间公式, type类型转换成行内公式
@@ -161,7 +168,7 @@ def parse_pdf_by_ocr(
 
         # 将spans合并成line(在layout内,从上到下,从左到右)
         lines = merge_spans_to_line_by_layout(spans, layout_bboxes)
-        # logger.info(lines)
+
 
         # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
         blocks = []
@@ -174,5 +181,18 @@ def parse_pdf_by_ocr(
         # 构造pdf_info_dict
         page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
+
+        # 在测试时,保存调试信息
+        if debug_mode:
+            params_file_save_path = join_path(save_tmp_path, "md", book_name, "preproc_out.json")
+            page_draw_rect_save_path = join_path(save_tmp_path, "md", book_name, "layout.pdf")
+
+            with open(params_file_save_path, "w", encoding="utf-8") as f:
+                json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
+            # 先检测本地 page_draw_rect_save_path 是否存在，如果存在则删除
+            if os.path.exists(page_draw_rect_save_path):
+                os.remove(page_draw_rect_save_path)
+            # 绘制bbox和layout到pdf
+
 
     return pdf_info_dict
