@@ -177,6 +177,27 @@ def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
     else:
         return intersection_area / min_box_area
 
+def calculate_overlap_area_in_bbox1_area_ratio(bbox1, bbox2):
+    """
+    计算box1和box2的重叠面积占bbox1的比例
+    """
+    # Determine the coordinates of the intersection rectangle
+    x_left = max(bbox1[0], bbox2[0])
+    y_top = max(bbox1[1], bbox2[1])
+    x_right = min(bbox1[2], bbox2[2])
+    y_bottom = min(bbox1[3], bbox2[3])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # The area of overlap area
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+    bbox1_area = (bbox1[2]-bbox1[0])*(bbox1[3]-bbox1[1])
+    if bbox1_area == 0:
+        return 0
+    else:
+        return intersection_area / bbox1_area
+
 
 def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
     """
