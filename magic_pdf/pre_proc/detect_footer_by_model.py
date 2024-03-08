@@ -1,4 +1,5 @@
 from magic_pdf.libs.commons import fitz             # pyMuPDF库
+from magic_pdf.libs.coordinate_transform import get_scale_ratio
 
 
 def parse_footers(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict):
@@ -8,23 +9,12 @@ def parse_footers(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict):
     :param res_dir_path: str类型，是每一个pdf文档，在当前.py文件的目录下生成一个与pdf文档同名的文件夹，res_dir_path就是文件夹的dir
     :param json_from_DocXchain_obj: dict类型，把pdf文档送入DocXChain模型中后，提取bbox，结果保存到pdf文档同名文件夹下的 page_ID.json文件中了。json_from_DocXchain_obj就是打开后的dict
     """
-    DPI = 72  # use this resolution
-    pix = page.get_pixmap(dpi=DPI)
-    pageL = 0
-    pageR = int(pix.w)
-    pageU = 0
-    pageD = int(pix.h)
-    
 
     #--------- 通过json_from_DocXchain来获取 footer ---------#
     footer_bbox_from_DocXChain = []
 
-    
     xf_json = json_from_DocXchain_obj
-    width_from_json = xf_json['page_info']['width']
-    height_from_json = xf_json['page_info']['height']
-    LR_scaleRatio = width_from_json / (pageR - pageL)
-    UD_scaleRatio = height_from_json / (pageD - pageU)
+    horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(xf_json, page)
 
     # {0: 'title',  # 标题
     # 1: 'figure', # 图片
@@ -42,10 +32,10 @@ def parse_footers(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict):
     #  13: 'embedding',     # 嵌入公式
     #  14: 'isolated'}      # 单行公式
     for xf in xf_json['layout_dets']:
-        L = xf['poly'][0] / LR_scaleRatio
-        U = xf['poly'][1] / UD_scaleRatio
-        R = xf['poly'][2] / LR_scaleRatio
-        D = xf['poly'][5] / UD_scaleRatio
+        L = xf['poly'][0] / horizontal_scale_ratio
+        U = xf['poly'][1] / vertical_scale_ratio
+        R = xf['poly'][2] / horizontal_scale_ratio
+        D = xf['poly'][5] / vertical_scale_ratio
         # L += pageL          # 有的页面，artBox偏移了。不在（0,0）
         # R += pageL
         # U += pageU

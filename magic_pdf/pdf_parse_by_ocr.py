@@ -4,6 +4,7 @@ import time
 from loguru import logger
 
 from magic_pdf.libs.commons import read_file, join_path, fitz, get_img_s3_client, get_delta_time, get_docx_model_output
+from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
@@ -82,7 +83,7 @@ def parse_pdf_by_ocr(
         page_no_bboxes = parse_pageNos(page_id, page, ocr_page_info)
         header_bboxes = parse_headers(page_id, page, ocr_page_info)
         footer_bboxes = parse_footers(page_id, page, ocr_page_info)
-        footnote_bboxes =  parse_footnotes_by_model(page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode)
+        footnote_bboxes = parse_footnotes_by_model(page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode)
 
         # 构建需要remove的bbox列表
         need_remove_spans_bboxes = []
@@ -90,35 +91,19 @@ def parse_pdf_by_ocr(
         need_remove_spans_bboxes.extend(header_bboxes)
         need_remove_spans_bboxes.extend(footer_bboxes)
         need_remove_spans_bboxes.extend(footnote_bboxes)
-        remove_bboxes.append(need_remove_spans_bboxes)
-
-
 
         layout_dets = ocr_page_info['layout_dets']
         spans = []
 
-        # 将模型坐标转换成pymu格式下的未缩放坐标
-        DPI = 72  # use this resolution
-        pix = page.get_pixmap(dpi=DPI)
-        pageL = 0
-        pageR = int(pix.w)
-        pageU = 0
-        pageD = int(pix.h)
-        width_from_json = ocr_page_info['page_info']['width']
-        height_from_json = ocr_page_info['page_info']['height']
-        LR_scaleRatio = width_from_json / (pageR - pageL)
-        UD_scaleRatio = height_from_json / (pageD - pageU)
+        # 计算模型坐标和pymu坐标的缩放比例
+        horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(ocr_page_info, page)
 
         for layout_det in layout_dets:
             category_id = layout_det['category_id']
             allow_category_id_list = [1, 7, 13, 14, 15]
             if category_id in allow_category_id_list:
                 x0, y0, _, _, x1, y1, _, _ = layout_det['poly']
-                x0 = x0 / LR_scaleRatio
-                y0 = y0 / UD_scaleRatio
-                x1 = x1 / LR_scaleRatio
-                y1 = y1 / UD_scaleRatio
-                bbox = [int(x0), int(y0), int(x1), int(y1)]
+                bbox = [int(x0/horizontal_scale_ratio), int(y0/vertical_scale_ratio), int(x1/horizontal_scale_ratio), int(y1/vertical_scale_ratio)]
                 '''要删除的'''
                 #  3: 'header',      # 页眉
                 #  4: 'page number', # 页码
@@ -184,6 +169,5 @@ def parse_pdf_by_ocr(
         page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
-    # logger.info(remove_bboxes)
     return pdf_info_dict
 
