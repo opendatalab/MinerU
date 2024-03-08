@@ -57,4 +57,4 @@ if __name__ == '__main__':
         # logger.info(markdown_content)
         # save_markdown(markdown_text, ocr_json_file_path)
     except Exception as e:
-        logger.error(e)
+        logger.exception(e)

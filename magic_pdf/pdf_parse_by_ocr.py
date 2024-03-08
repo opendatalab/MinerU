@@ -11,7 +11,7 @@ from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
 from magic_pdf.pre_proc.detect_header import parse_headers
 from magic_pdf.pre_proc.detect_page_number import parse_pageNos
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
-from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
+from magic_pdf.pre_proc.ocr_dict_merge import remove_overlaps_min_spans, merge_spans_to_line_by_layout
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 
 
@@ -151,10 +151,10 @@ def parse_pdf_by_ocr(
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
 
         # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
-        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'], page)
+        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
 
         # 将spans合并成line(在layout内,从上到下,从左到右)
-        lines = merge_spans_to_line(spans, layout_bboxes)
+        lines = merge_spans_to_line_by_layout(spans, layout_bboxes)
         # logger.info(lines)
 
         # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
