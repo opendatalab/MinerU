@@ -25,15 +25,15 @@ def construct_page_component(page_id, blocks, layout_bboxes):
 
 
 def parse_pdf_by_ocr(
-    pdf_path,
-    s3_pdf_profile,
-    pdf_model_output,
-    book_name,
-    pdf_model_profile=None,
-    image_s3_config=None,
-    start_page_id=0,
-    end_page_id=None,
-    debug_mode=False,
+        pdf_path,
+        s3_pdf_profile,
+        pdf_model_output,
+        book_name,
+        pdf_model_profile=None,
+        image_s3_config=None,
+        start_page_id=0,
+        end_page_id=None,
+        debug_mode=False,
 ):
     pdf_bytes = read_file(pdf_path, s3_pdf_profile)
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
@@ -54,7 +54,6 @@ def parse_pdf_by_ocr(
 
         with open(pdf_local_path + ".pdf", "wb") as pdf_file:
             pdf_file.write(pdf_bytes)
-
 
     pdf_docs = fitz.open("pdf", pdf_bytes)
     # 初始化空的pdf_info_dict
@@ -83,7 +82,8 @@ def parse_pdf_by_ocr(
         page_no_bboxes = parse_pageNos(page_id, page, ocr_page_info)
         header_bboxes = parse_headers(page_id, page, ocr_page_info)
         footer_bboxes = parse_footers(page_id, page, ocr_page_info)
-        footnote_bboxes = parse_footnotes_by_model(page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode)
+        footnote_bboxes = parse_footnotes_by_model(page_id, page, ocr_page_info, md_bookname_save_path,
+                                                   debug_mode=debug_mode)
 
         # 构建需要remove的bbox列表
         need_remove_spans_bboxes = []
@@ -103,7 +103,8 @@ def parse_pdf_by_ocr(
             allow_category_id_list = [1, 7, 13, 14, 15]
             if category_id in allow_category_id_list:
                 x0, y0, _, _, x1, y1, _, _ = layout_det['poly']
-                bbox = [int(x0/horizontal_scale_ratio), int(y0/vertical_scale_ratio), int(x1/horizontal_scale_ratio), int(y1/vertical_scale_ratio)]
+                bbox = [int(x0 / horizontal_scale_ratio), int(y0 / vertical_scale_ratio),
+                        int(x1 / horizontal_scale_ratio), int(y1 / vertical_scale_ratio)]
                 '''要删除的'''
                 #  3: 'header',      # 页眉
                 #  4: 'page number', # 页码
@@ -149,9 +150,11 @@ def parse_pdf_by_ocr(
 
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
 
+        # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
+        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'], page)
 
-        # 将spans合并成line(从上到下,从左到右)
-        lines = merge_spans_to_line(spans)
+        # 将spans合并成line(在layout内,从上到下,从左到右)
+        lines = merge_spans_to_line(spans, layout_bboxes)
         # logger.info(lines)
 
         # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
@@ -162,12 +165,8 @@ def parse_pdf_by_ocr(
                 "lines": [line],
             })
 
-        # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
-        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'])
-
         # 构造pdf_info_dict
         page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     return pdf_info_dict
-

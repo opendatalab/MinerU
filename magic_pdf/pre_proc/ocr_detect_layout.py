@@ -1,4 +1,8 @@
+import fitz
+
 from magic_pdf.libs.boxbase import _is_part_overlap, _is_in
+from magic_pdf.libs.coordinate_transform import get_scale_ratio
+
 
 def get_center_point(bbox):
     """
@@ -62,9 +66,7 @@ def adjust_layouts(layout_bboxes):
     return layout_bboxes
 
 
-
-
-def layout_detect(layout_info):
+def layout_detect(layout_info, page: fitz.Page):
     """
     对输入的布局信息进行解析，提取出每个子布局的边界框，并对所有子布局进行排序调整。
 
@@ -75,15 +77,18 @@ def layout_detect(layout_info):
         list: 经过排序调整后的所有子布局边界框信息的列表，每个边界框信息为字典类型，包含'layout_bbox'字段，表示边界框的坐标信息。
 
     """
+    horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(layout_info, page)
     # 初始化布局边界框列表
     layout_bboxes = []
     # 遍历每个子布局
     for sub_layout in layout_info:
         # 提取子布局的边界框坐标信息
         x0, y0, _, _, x1, y1, _, _ = sub_layout['poly']
+        bbox = [int(x0 / horizontal_scale_ratio), int(y0 / vertical_scale_ratio),
+                int(x1 / horizontal_scale_ratio), int(y1 / vertical_scale_ratio)]
         # 创建子布局的边界框字典
         layout_bbox = {
-            "layout_bbox": [x0, y0, x1, y1],
+            "layout_bbox": bbox,
         }
         # 将子布局的边界框添加到列表中
         layout_bboxes.append(layout_bbox)
@@ -119,5 +124,3 @@ def layout_detect(layout_info):
 
     # 返回排序调整后的布局边界框列表
     return layout_bboxes
-
-
