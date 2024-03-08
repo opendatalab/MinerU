@@ -148,7 +148,13 @@ def parse_pdf_by_ocr(
         # 删除remove_span_block_bboxes中的bbox
         spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
 
-        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
+        # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
+
+        # 模型识别错误的行间公式, type类型转换成行内公式
+
+        # bbox去除粘连
+
+        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
 
         # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
         layout_bboxes = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
