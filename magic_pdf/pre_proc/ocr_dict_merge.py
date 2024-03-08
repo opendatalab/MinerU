@@ -77,6 +77,10 @@ def merge_spans_to_line_by_layout(spans, layout_bboxes):
                 layout_sapns.append(span)
         new_spans.append(layout_sapns)
 
+        # 从spans删除已经放入layout_sapns中的span
+        for layout_sapn in layout_sapns:
+            spans.remove(layout_sapn)
+
     for layout_sapns in new_spans:
         layout_lines = merge_spans_to_line(layout_sapns)
         lines.extend(layout_lines)
