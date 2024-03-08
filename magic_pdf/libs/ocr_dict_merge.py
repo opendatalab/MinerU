@@ -58,3 +58,72 @@ def merge_spans_to_line(spans):
         })
 
     return line_objects
+
+
+
+def modify_y_axis(spans: list):
+    inline_list = []
+    displayed_list = []
+    text_list = []
+    image_list = []
+    table_list = []
+
+    spans.sort(key=lambda span: span['bbox'][1])
+
+    lines = []
+    current_line = [spans[0]]
+    if spans[0]["type"] in ["displayed_equation", "image", "table"]:
+        displayed_list.append(spans[0])
+    line_first_y0 = spans[0]["bbox"][1]
+    line_first_y = spans[0]["bbox"][3]
+    #用于给行间公式搜索
+    text_inline_lines = []
+    for span in spans[1:]:
+        # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
+        # image和table类型，同上
+        if span['type'] in ["displayed_equation", "image", "table"] or any(
+                s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
+            #传入
+            if spans[0]["type"] in ["displayed_equation", "image", "table"]:
+                displayed_list.append(span)
+            # 则开始新行
+            lines.append(current_line)
+            current_line = [span]
+            line_first_y0 = spans[0]["bbox"][1]
+            line_first_y = spans[0]["bbox"][3]
+            continue
+
+        # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
+        if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox']):
+
+            span["bbox"][1] = line_first_y0
+            span["bbox"][3] = line_first_y
+            current_line.append(span)
+
+        else:
+            # 否则，开始新行
+            lines.append(current_line)
+            text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
+            current_line = [span]
+            line_first_y0 = spans[0]["bbox"][1]
+            line_first_y = spans[0]["bbox"][3]
+
+        # 添加最后一行
+    if current_line:
+        lines.append(current_line)
+
+    for line in text_inline_lines:
+        # 按照x0坐标排序
+        line.sort(key=lambda span: span[0]['bbox'][0])
+
+
+
+    #错误行间公式转行内公式
+    for i in range(len(displayed_list)):
+        span = displayed_list[i]
+
+
+
+
+
+

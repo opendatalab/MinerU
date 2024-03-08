@@ -28,7 +28,7 @@ def read_json_file(file_path):
 
 
 if __name__ == '__main__':
-    ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_0.json"
+    ocr_json_file_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_0.json"
     ocr_pdf_info = read_json_file(ocr_json_file_path)
     pdf_info_dict = parse_pdf_by_ocr(ocr_pdf_info)
     markdown_text = mk_nlp_markdown(pdf_info_dict)
