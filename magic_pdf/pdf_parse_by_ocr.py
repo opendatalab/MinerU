@@ -1,5 +1,17 @@
+import os
+import time
+
+from loguru import logger
+
+from magic_pdf.libs.commons import read_file, join_path, fitz, get_img_s3_client, get_delta_time, get_docx_model_output
+from magic_pdf.libs.safe_filename import sanitize_filename
+from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
+from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
+from magic_pdf.pre_proc.detect_header import parse_headers
+from magic_pdf.pre_proc.detect_page_number import parse_pageNos
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
+from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 
 
 def construct_page_component(page_id, blocks, layout_bboxes):
@@ -12,22 +24,100 @@ def construct_page_component(page_id, blocks, layout_bboxes):
 
 
 def parse_pdf_by_ocr(
-    ocr_pdf_info,
+    pdf_path,
+    s3_pdf_profile,
+    pdf_model_output,
+    book_name,
+    pdf_model_profile=None,
+    image_s3_config=None,
     start_page_id=0,
     end_page_id=None,
+    debug_mode=False,
 ):
+    pdf_bytes = read_file(pdf_path, s3_pdf_profile)
+    save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
+    book_name = sanitize_filename(book_name)
+    md_bookname_save_path = ""
+    if debug_mode:
+        save_path = join_path(save_tmp_path, "md")
+        pdf_local_path = join_path(save_tmp_path, "download-pdfs", book_name)
 
+        if not os.path.exists(os.path.dirname(pdf_local_path)):
+            # 如果目录不存在，创建它
+            os.makedirs(os.path.dirname(pdf_local_path))
+
+        md_bookname_save_path = join_path(save_tmp_path, "md", book_name)
+        if not os.path.exists(md_bookname_save_path):
+            # 如果目录不存在，创建它
+            os.makedirs(md_bookname_save_path)
+
+        with open(pdf_local_path + ".pdf", "wb") as pdf_file:
+            pdf_file.write(pdf_bytes)
+
+
+    pdf_docs = fitz.open("pdf", pdf_bytes)
+    # 初始化空的pdf_info_dict
     pdf_info_dict = {}
-    end_page_id = end_page_id if end_page_id else len(ocr_pdf_info) - 1
+    img_s3_client = get_img_s3_client(save_path, image_s3_config)
+
+    start_time = time.time()
+
+    remove_bboxes = []
+
+    end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
     for page_id in range(start_page_id, end_page_id + 1):
-        ocr_page_info = ocr_pdf_info[page_id]
+
+        # 获取当前页的page对象
+        page = pdf_docs[page_id]
+
+        if debug_mode:
+            time_now = time.time()
+            logger.info(f"page_id: {page_id}, last_page_cost_time: {get_delta_time(start_time)}")
+            start_time = time_now
+
+        # 获取当前页的模型数据
+        ocr_page_info = get_docx_model_output(pdf_model_output, pdf_model_profile, page_id)
+
+        """从json中获取每页的页码、页眉、页脚的bbox"""
+        page_no_bboxes = parse_pageNos(page_id, page, ocr_page_info)
+        header_bboxes = parse_headers(page_id, page, ocr_page_info)
+        footer_bboxes = parse_footers(page_id, page, ocr_page_info)
+        footnote_bboxes =  parse_footnotes_by_model(page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode)
+
+        # 构建需要remove的bbox列表
+        need_remove_spans_bboxes = []
+        need_remove_spans_bboxes.extend(page_no_bboxes)
+        need_remove_spans_bboxes.extend(header_bboxes)
+        need_remove_spans_bboxes.extend(footer_bboxes)
+        need_remove_spans_bboxes.extend(footnote_bboxes)
+        remove_bboxes.append(need_remove_spans_bboxes)
+
+
+
         layout_dets = ocr_page_info['layout_dets']
         spans = []
+
+        # 将模型坐标转换成pymu格式下的未缩放坐标
+        DPI = 72  # use this resolution
+        pix = page.get_pixmap(dpi=DPI)
+        pageL = 0
+        pageR = int(pix.w)
+        pageU = 0
+        pageD = int(pix.h)
+        width_from_json = ocr_page_info['page_info']['width']
+        height_from_json = ocr_page_info['page_info']['height']
+        LR_scaleRatio = width_from_json / (pageR - pageL)
+        UD_scaleRatio = height_from_json / (pageD - pageU)
+
         for layout_det in layout_dets:
             category_id = layout_det['category_id']
             allow_category_id_list = [1, 7, 13, 14, 15]
             if category_id in allow_category_id_list:
                 x0, y0, _, _, x1, y1, _, _ = layout_det['poly']
+                x0 = x0 / LR_scaleRatio
+                y0 = y0 / UD_scaleRatio
+                x1 = x1 / LR_scaleRatio
+                y1 = y1 / UD_scaleRatio
                 bbox = [int(x0), int(y0), int(x1), int(y1)]
                 '''要删除的'''
                 #  3: 'header',      # 页眉
@@ -48,8 +138,10 @@ def parse_pdf_by_ocr(
                 }
                 if category_id == 1:
                     span['type'] = 'image'
+
                 elif category_id == 7:
                     span['type'] = 'table'
+
                 elif category_id == 13:
                     span['content'] = layout_det['latex']
                     span['type'] = 'inline_equation'
@@ -66,6 +158,9 @@ def parse_pdf_by_ocr(
 
         # 删除重叠spans中较小的那些
         spans = remove_overlaps_min_spans(spans)
+
+        # 删除remove_span_block_bboxes中的bbox
+        spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
 
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
 
@@ -89,5 +184,6 @@ def parse_pdf_by_ocr(
         page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
+    # logger.info(remove_bboxes)
     return pdf_info_dict
 
