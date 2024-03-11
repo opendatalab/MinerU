@@ -1,7 +1,7 @@
 from magic_pdf.libs.commons import fitz  # PyMuPDF
 
 # PDF文件路径
-pdf_path = r"D:\project\20231108code-clean\magic_pdf\tmp\unittest\download-pdfs\ocr_1.json.pdf"
+pdf_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_1_org.pdf"
 
 doc = fitz.open(pdf_path)  # Open the PDF
 # 你的数据
@@ -18,4 +18,4 @@ for i, page in enumerate(doc):
         page.draw_rect(rect_coords, color=(1, 0, 0), fill=None, width=1.5, overlay=True)  # Draw the rectangle
 
 # Save the PDF
-doc.save(r"D:\project\20231108code-clean\magic_pdf\tmp\unittest\download-pdfs\ocr_1.json_new.pdf")
+doc.save(r"D:\projects\Magic-PDF\ocr_demo\ocr_1_new2.pdf")
