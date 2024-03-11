@@ -61,6 +61,8 @@ def adjust_layouts(layout_bboxes):
                         larger_layout["layout_bbox"][1] = smaller_layout["layout_bbox"][3]
                     else:
                         larger_layout["layout_bbox"][3] = smaller_layout["layout_bbox"][1]
+    # todo 排序调整布局边界框列表
+
 
     # 返回排序调整后的布局边界框列表
     return layout_bboxes
