@@ -42,4 +42,4 @@ for i, page in enumerate(doc):
         page.draw_rect(rect_coords, color=(1, 0, 0), fill=None, width=1.5, overlay=True)  # Draw the rectangle
 
 # Save the PDF
-doc.save("D:\\projects\\Magic-PDF\\ocr_demo\\ocr_0_new.pdf")
+doc.save("D:\\projects\\Magic-PDF\\ocr_demo\\ocr_0_new1.pdf")
