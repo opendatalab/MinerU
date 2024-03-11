@@ -75,15 +75,17 @@ def merge_spans_to_line_by_layout(spans, layout_bboxes):
         for span in spans:
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], layout_bbox) > 0.8:
                 layout_sapns.append(span)
-        new_spans.append(layout_sapns)
+        # 如果layout_sapns不为空，则放入new_spans中
+        if len(layout_sapns) > 0:
+            new_spans.append(layout_sapns)
+            # 从spans删除已经放入layout_sapns中的span
+            for layout_sapn in layout_sapns:
+                spans.remove(layout_sapn)
 
-        # 从spans删除已经放入layout_sapns中的span
-        for layout_sapn in layout_sapns:
-            spans.remove(layout_sapn)
-
-    for layout_sapns in new_spans:
-        layout_lines = merge_spans_to_line(layout_sapns)
-        lines.extend(layout_lines)
+    if len(new_spans) > 0:
+        for layout_sapns in new_spans:
+            layout_lines = merge_spans_to_line(layout_sapns)
+            lines.extend(layout_lines)
 
     #对line中的span进行排序
     lines = line_sort_spans_by_left_to_right(lines)

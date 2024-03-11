@@ -32,7 +32,7 @@ def adjust_layouts(layout_bboxes):
         # 遍历当前布局框之后的布局框
         for j in range(i + 1, len(layout_bboxes)):
             # 判断两个布局框是否重叠
-            if _is_part_overlap(layout_bboxes[i], layout_bboxes[j]):
+            if _is_part_overlap(layout_bboxes[i]["layout_bbox"], layout_bboxes[j]["layout_bbox"]):
                 # 计算每个布局框的中心点坐标和面积
                 center_i = get_center_point(layout_bboxes[i]["layout_bbox"])
                 area_i = get_area(layout_bboxes[i]["layout_bbox"])
