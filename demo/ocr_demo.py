@@ -2,8 +2,10 @@ import json
 import os
 
 from loguru import logger
+from pathlib import Path
 
 from magic_pdf.dict2md.ocr_mkcontent import mk_nlp_markdown
+from magic_pdf.libs.commons import join_path
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
 
@@ -28,10 +30,32 @@ def read_json_file(file_path):
 
 
 if __name__ == '__main__':
-    ocr_json_file_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_0.json"
-    ocr_pdf_info = read_json_file(ocr_json_file_path)
-    pdf_info_dict = parse_pdf_by_ocr(ocr_pdf_info)
-    markdown_text = mk_nlp_markdown(pdf_info_dict)
-    logger.info(markdown_text)
-    save_markdown(markdown_text, ocr_json_file_path)
+    ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_0_org.pdf"
+    ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\demo_4\ocr_demo\ocr_0.json"
+    try:
+        ocr_pdf_model_info = read_json_file(ocr_json_file_path)
+        pth = Path(ocr_json_file_path)
+        book_name = pth.name
+        save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
+        save_path = join_path(save_tmp_path, "md")
+        text_content_save_path = f"{save_path}/{book_name}/book.md"
+        pdf_info_dict = parse_pdf_by_ocr(
+            ocr_pdf_path,
+            None,
+            ocr_pdf_model_info,
+            save_path,
+            book_name,
+            debug_mode=True)
+        parent_dir = os.path.dirname(text_content_save_path)
+        if not os.path.exists(parent_dir):
+            os.makedirs(parent_dir)
 
+        markdown_content = mk_nlp_markdown(pdf_info_dict)
+
+        with open(text_content_save_path, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+
+        # logger.info(markdown_content)
+        # save_markdown(markdown_text, ocr_json_file_path)
+    except Exception as e:
+        logger.exception(e)
