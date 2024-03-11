@@ -74,6 +74,7 @@ def modify_y_axis(spans: list):
     current_line = [spans[0]]
     if spans[0]["type"] in ["displayed_equation", "image", "table"]:
         displayed_list.append(spans[0])
+
     line_first_y0 = spans[0]["bbox"][1]
     line_first_y = spans[0]["bbox"][3]
     #用于给行间公式搜索
@@ -89,15 +90,16 @@ def modify_y_axis(spans: list):
             # 则开始新行
             lines.append(current_line)
             current_line = [span]
-            line_first_y0 = spans[0]["bbox"][1]
-            line_first_y = spans[0]["bbox"][3]
+            line_first_y0 = span["bbox"][1]
+            line_first_y = span["bbox"][3]
             continue
 
         # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
         if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox']):
-
-            span["bbox"][1] = line_first_y0
-            span["bbox"][3] = line_first_y
+            if span["bbox"][1] < line_first_y0:
+                line_first_y0 = span["bbox"][1]
+            if span["bbox"][3] > line_first_y:
+                line_first_y = span["bbox"][3]
             current_line.append(span)
 
         else:
@@ -111,18 +113,41 @@ def modify_y_axis(spans: list):
         # 添加最后一行
     if current_line:
         lines.append(current_line)
+        if len(current_line)>1 or current_line[0]["type"] in ["text", "inline_equation"]:
+            text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
 
     for line in text_inline_lines:
         # 按照x0坐标排序
-        line.sort(key=lambda span: span[0]['bbox'][0])
+        current_line = line[0]
+        current_line.sort(key=lambda span: span['bbox'][0])
 
 
-
+    #调整每一个文字行内bbox统一
+    for line in text_inline_lines:
+        current_line, (line_first_y0, line_first_y) = line
+        for span in current_line:
+            span["bbox"][1] = line_first_y0
+            span["bbox"][3] = line_first_y
     #错误行间公式转行内公式
+    j = 0
     for i in range(len(displayed_list)):
         span = displayed_list[i]
+        span_y0, span_y = span["bbox"][1], span["bbox"][3]
+        while j < len(text_inline_lines):
+            text_line = text_inline_lines[j]
+            y0, y1 = text_line[1]
+            if span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1 and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
+                span["bbox"][1] = y0
+                span["bbox"][3] = y1
+                if span["type"] == "displayed_equation":
+                    span["type"] = "inline_equation"
+                break
+            elif span_y < y0 or span_y0 < y0 and span_y > y0 and not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
+                break
+            else:
+                j += 1
 
-
+    return spans
 
 
 

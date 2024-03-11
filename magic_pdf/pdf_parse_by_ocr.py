@@ -1,6 +1,6 @@
 from loguru import logger
 
-from magic_pdf.libs.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans
+from magic_pdf.libs.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans, modify_y_axis
 
 
 def construct_page_component(page_id, blocks):
@@ -68,7 +68,7 @@ def parse_pdf_by_ocr(
         spans = remove_overlaps_min_spans(spans)
 
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
-
+        #spans = modify_y_axis(spans)
 
         # 将spans合并成line(从上到下,从左到右)
         lines = merge_spans_to_line(spans)
