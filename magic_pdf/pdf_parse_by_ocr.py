@@ -4,7 +4,6 @@ import time
 
 from loguru import logger
 
-from magic_pdf.libs.ocr_dict_merge import merge_spans_to_line, remove_overlaps_min_spans, modify_y_axis
 from magic_pdf.libs.commons import read_file, join_path, fitz, get_img_s3_client, get_delta_time, get_docx_model_output
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.safe_filename import sanitize_filename
@@ -14,7 +13,7 @@ from magic_pdf.pre_proc.detect_header import parse_headers
 from magic_pdf.pre_proc.detect_page_number import parse_pageNos
 from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
-from magic_pdf.pre_proc.ocr_dict_merge import remove_overlaps_min_spans, merge_spans_to_line_by_layout
+from magic_pdf.pre_proc.ocr_dict_merge import remove_overlaps_min_spans, merge_spans_to_line_by_layout, modify_y_axis
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 
 
@@ -150,7 +149,7 @@ def parse_pdf_by_ocr(
         spans = remove_overlaps_min_spans(spans)
 
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
-        # spans = modify_y_axis(spans)
+        spans = modify_y_axis(spans)
 
         # 删除remove_span_block_bboxes中的bbox
         spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)

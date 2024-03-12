@@ -113,15 +113,19 @@ def modify_y_axis(spans: list):
     #用于给行间公式搜索
     text_inline_lines = []
     for span in spans[1:]:
+        if span.get("content","") == "78.":
+            print("debug")
         # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
         # image和table类型，同上
         if span['type'] in ["displayed_equation", "image", "table"] or any(
                 s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
             #传入
-            if spans[0]["type"] in ["displayed_equation", "image", "table"]:
+            if span["type"] in ["displayed_equation", "image", "table"]:
                 displayed_list.append(span)
             # 则开始新行
             lines.append(current_line)
+            if len(current_line) > 1 or current_line[0]["type"] in ["text", "inline_equation"]:
+                text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
             current_line = [span]
             line_first_y0 = span["bbox"][1]
             line_first_y = span["bbox"][3]
@@ -140,15 +144,14 @@ def modify_y_axis(spans: list):
             lines.append(current_line)
             text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
             current_line = [span]
-            line_first_y0 = spans[0]["bbox"][1]
-            line_first_y = spans[0]["bbox"][3]
+            line_first_y0 = span["bbox"][1]
+            line_first_y = span["bbox"][3]
 
         # 添加最后一行
     if current_line:
         lines.append(current_line)
-        if len(current_line)>1 or current_line[0]["type"] in ["text", "inline_equation"]:
+        if len(current_line) > 1 or current_line[0]["type"] in ["text", "inline_equation"]:
             text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
-
     for line in text_inline_lines:
         # 按照x0坐标排序
         current_line = line[0]
@@ -164,14 +167,17 @@ def modify_y_axis(spans: list):
     #错误行间公式转行内公式
     j = 0
     for i in range(len(displayed_list)):
+        if i == 8:
+            print("debug")
         span = displayed_list[i]
         span_y0, span_y = span["bbox"][1], span["bbox"][3]
+
         while j < len(text_inline_lines):
             text_line = text_inline_lines[j]
             y0, y1 = text_line[1]
-            if span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1 and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
+            if (span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
                 span["bbox"][1] = y0
-                span["bbox"][3] = y1
+                # span["bbox"][3] = y1
                 if span["type"] == "displayed_equation":
                     span["type"] = "inline_equation"
                 break

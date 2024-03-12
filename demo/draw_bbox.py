@@ -1,7 +1,9 @@
-from magic_pdf.libs.commons import fitz  # PyMuPDF
+from pathlib import Path
+
+from magic_pdf.libs.commons import fitz, join_path  # PyMuPDF
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 import json
-
+import os
 
 
 
@@ -20,7 +22,19 @@ doc = fitz.open(pdf_path)  # Open the PDF
 data = [[[-2, 0, 603, 80, 24]], [[-3, 0, 602, 80, 24]]]
 ocr_json_file_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_0.json"
 ocr_pdf_info = read_json_file(ocr_json_file_path)
-pdf_info_dict = parse_pdf_by_ocr(ocr_pdf_info)
+
+pth = Path(ocr_json_file_path)
+book_name = pth.name
+save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
+save_path = join_path(save_tmp_path, "md")
+
+pdf_info_dict = parse_pdf_by_ocr(
+            pdf_path,
+            None,
+            ocr_pdf_info,
+            save_path,
+            book_name,
+            debug_mode=True)
 data_list = []
 for page in pdf_info_dict.values():
     page_list = []
