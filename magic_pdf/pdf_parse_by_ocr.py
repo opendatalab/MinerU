@@ -24,6 +24,7 @@ from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
     remove_overlaps_min_spans,
     merge_spans_to_line_by_layout,
+    modify_y_axis
 )
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
@@ -175,6 +176,9 @@ def parse_pdf_by_ocr(
 
         # 删除重叠spans中较小的那些
         spans = remove_overlaps_min_spans(spans)
+
+        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
+        spans = modify_y_axis(spans)
 
         # 删除remove_span_block_bboxes中的bbox
         spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
