@@ -12,8 +12,8 @@ def cut_image_and_table(spans, page, page_id, book_name, save_path):
     for span in spans:
         span_type = span['type']
         if span_type == 'image':
-            span['image_path'] = cut_image(span['bbox'], page_id, page, img_save_path('image'))
+            span['image_path'] = cut_image(span['bbox'], page_id, page, img_save_path('images'))
         elif span_type == 'table':
-            span['image_path'] = cut_image(span['bbox'], page_id, page, img_save_path('table'))
+            span['image_path'] = cut_image(span['bbox'], page_id, page, img_save_path('tables'))
 
     return spans
