@@ -4,7 +4,7 @@ import time
 
 from loguru import logger
 
-from demo.draw_bbox import draw_layout_bbox, draw_text_bbox
+from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_text_bbox
 from magic_pdf.libs.commons import (
     read_file,
     join_path,
