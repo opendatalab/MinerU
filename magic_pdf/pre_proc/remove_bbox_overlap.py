@@ -14,7 +14,7 @@ def _remove_overlap_between_bbox(spans):
                 diff_x = min(x1, ix1) - max(x0, ix0)
                 diff_y = min(y1, iy1) - max(y0, iy0)
 
-                if diff_x > diff_y:
+                if diff_y > diff_x:
                     if x1 >= ix1:
                         mid = (x0 + ix1) // 2
                         ix1 = min(mid, ix1)
