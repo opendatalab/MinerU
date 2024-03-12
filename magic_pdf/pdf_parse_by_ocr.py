@@ -18,11 +18,13 @@ from magic_pdf.pre_proc.ocr_dict_merge import remove_overlaps_min_spans, merge_s
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 
 
-def construct_page_component(page_id, blocks, layout_bboxes):
+def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree):
     return_dict = {
         'preproc_blocks': blocks,
-        'page_idx': page_id,
         'layout_bboxes': layout_bboxes,
+        'page_idx': page_id,
+        'page_size': [page_w, page_h],
+        '_layout_tree': layout_tree,
     }
     return return_dict
 
@@ -73,6 +75,9 @@ def parse_pdf_by_ocr(
 
         # 获取当前页的page对象
         page = pdf_docs[page_id]
+        # 获取当前页的宽高
+        page_w = page.rect.width
+        page_h = page.rect.height
 
         if debug_mode:
             time_now = time.time()
@@ -165,7 +170,7 @@ def parse_pdf_by_ocr(
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
 
         # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
-        layout_bboxes = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
+        layout_bboxes, layout_tree = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
 
         # 将spans合并成line(在layout内,从上到下,从左到右)
         lines = merge_spans_to_line_by_layout(spans, layout_bboxes)
@@ -180,7 +185,7 @@ def parse_pdf_by_ocr(
             })
 
         # 构造pdf_info_dict
-        page_info = construct_page_component(page_id, blocks, layout_bboxes)
+        page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     # 在测试时,保存调试信息
@@ -188,6 +193,7 @@ def parse_pdf_by_ocr(
         params_file_save_path = join_path(save_tmp_path, "md", book_name, "preproc_out.json")
         with open(params_file_save_path, "w", encoding="utf-8") as f:
             json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
+
         # drow_bbox
         draw_layout_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
         draw_text_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
