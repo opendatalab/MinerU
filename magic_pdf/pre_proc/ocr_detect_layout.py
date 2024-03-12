@@ -69,7 +69,7 @@ def adjust_layouts(layout_bboxes, page_boundry, page_id):
     layout_bboxes, layout_tree = get_bboxes_layout(new_bboxes, page_boundry, page_id)
 
     # 返回排序调整后的布局边界框列表
-    return layout_bboxes
+    return layout_bboxes, layout_tree
 
 
 def layout_detect(layout_info, page: fitz.Page, ocr_page_info):
@@ -127,7 +127,7 @@ def layout_detect(layout_info, page: fitz.Page, ocr_page_info):
     page_width = page.rect.width
     page_height = page.rect.height
     page_boundry = [0, 0, page_width, page_height]
-    layout_bboxes = adjust_layouts(new_layout_bboxes, page_boundry, page_id)
+    layout_bboxes, layout_tree = adjust_layouts(new_layout_bboxes, page_boundry, page_id)
 
     # 返回排序调整后的布局边界框列表
-    return layout_bboxes
+    return layout_bboxes, layout_tree
