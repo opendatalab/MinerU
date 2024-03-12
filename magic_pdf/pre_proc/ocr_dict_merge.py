@@ -178,6 +178,7 @@ def modify_y_axis(spans: list):
             if (span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
                 span["bbox"][1] = y0
                 # span["bbox"][3] = y1
+                #调整公式类型
                 if span["type"] == "displayed_equation":
                     span["type"] = "inline_equation"
                 break
