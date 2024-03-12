@@ -15,12 +15,12 @@ def read_json_file(file_path):
 
 
 # PDF文件路径
-pdf_path = "D:\\projects\\Magic-PDF\\ocr_demo\\ocr_0_org.pdf"
+pdf_path = "D:\\projects\\Magic-PDF\\ocr_demo\\ocr_1_org.pdf"
 
 doc = fitz.open(pdf_path)  # Open the PDF
 # 你的数据
 data = [[[-2, 0, 603, 80, 24]], [[-3, 0, 602, 80, 24]]]
-ocr_json_file_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_0.json"
+ocr_json_file_path = r"D:\projects\Magic-PDF\ocr_demo\ocr_1.json"
 ocr_pdf_info = read_json_file(ocr_json_file_path)
 
 pth = Path(ocr_json_file_path)
@@ -56,4 +56,4 @@ for i, page in enumerate(doc):
         page.draw_rect(rect_coords, color=(1, 0, 0), fill=None, width=1.5, overlay=True)  # Draw the rectangle
 
 # Save the PDF
-doc.save("D:\\projects\\Magic-PDF\\ocr_demo\\ocr_0_new1.pdf")
+doc.save("D:\\projects\\Magic-PDF\\ocr_demo\\ocr_1_new2.pdf")
