@@ -4,6 +4,7 @@ import time
 
 from loguru import logger
 
+from demo.draw_bbox import draw_layout_bbox, draw_text_bbox
 from magic_pdf.libs.commons import read_file, join_path, fitz, get_img_s3_client, get_delta_time, get_docx_model_output
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.safe_filename import sanitize_filename
@@ -185,17 +186,14 @@ def parse_pdf_by_ocr(
         page_info = construct_page_component(page_id, blocks, layout_bboxes)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
-        # 在测试时,保存调试信息
-        if debug_mode:
-            params_file_save_path = join_path(save_tmp_path, "md", book_name, "preproc_out.json")
-            page_draw_rect_save_path = join_path(save_tmp_path, "md", book_name, "layout.pdf")
-
-            with open(params_file_save_path, "w", encoding="utf-8") as f:
-                json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
-            # 先检测本地 page_draw_rect_save_path 是否存在，如果存在则删除
-            if os.path.exists(page_draw_rect_save_path):
-                os.remove(page_draw_rect_save_path)
-            # 绘制bbox和layout到pdf
+    # 在测试时,保存调试信息
+    if debug_mode:
+        params_file_save_path = join_path(save_tmp_path, "md", book_name, "preproc_out.json")
+        with open(params_file_save_path, "w", encoding="utf-8") as f:
+            json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
+        # drow_bbox
+        draw_layout_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
+        draw_text_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
 
 
     return pdf_info_dict
