@@ -1,3 +1,5 @@
+from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio
+from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
     __is_overlaps_y_exceeds_threshold
 
@@ -128,16 +130,21 @@ def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines:
             text_line = text_inline_lines[j]
             y0, y1 = text_line[1]
             if (span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
-                span["bbox"][1] = y0
-                # span["bbox"][3] = y1
-                # 调整公式类型
+
+                #调整公式类型
                 if span["type"] == "displayed_equation":
+                    #最后一行是行间公式
                     if j+1 >= len(text_inline_lines):
                         span["type"] = "inline_equation"
+                        span["bbox"][1] = y0
+                        span["bbox"][3] = y1
                     else:
+                        #行间公式旁边有多行文字或者行间公式比文字高3倍则不转换
                         y0_next, y1_next = text_inline_lines[j + 1][1]
-                        if not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0_next, 0, y1_next)):
+                        if not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0_next, 0, y1_next)) and 3*(y1-y0) > span_y - span_y0:
                             span["type"] = "inline_equation"
+                            span["bbox"][1] = y0
+                            span["bbox"][3] = y1
                 break
             elif span_y < y0 or span_y0 < y0 and span_y > y0 and not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
                 break
