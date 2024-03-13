@@ -22,12 +22,12 @@ from magic_pdf.pre_proc.detect_page_number import parse_pageNos
 from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
-    remove_overlaps_min_spans,
     merge_spans_to_line_by_layout,
     modify_y_axis,
     modify_inline_equation
 )
-from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
+from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remove_overlaps_min_spans, \
+    adjust_bbox_for_standalone_block
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 
@@ -195,6 +195,8 @@ def parse_pdf_by_ocr(
         spans = remove_overlap_between_bbox(spans)
 
         # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
+        spans = adjust_bbox_for_standalone_block(spans)
+
 
         # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
         layout_bboxes, layout_tree = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)

@@ -4,19 +4,6 @@ from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox
     calculate_overlap_area_in_bbox1_area_ratio
 
 
-# 删除重叠spans中较小的那些
-def remove_overlaps_min_spans(spans):
-    for span1 in spans.copy():
-        for span2 in spans.copy():
-            if span1 != span2:
-                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.8)
-                if overlap_box is not None:
-                    bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
-                    if bbox_to_remove is not None:
-                        spans.remove(bbox_to_remove)
-    return spans
-
-
 # 将每一个line中的span从左到右排序
 def line_sort_spans_by_left_to_right(lines):
     line_objects = []
