@@ -24,7 +24,8 @@ from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
     remove_overlaps_min_spans,
     merge_spans_to_line_by_layout,
-    modify_y_axis
+    modify_y_axis,
+    modify_inline_equation
 )
 from magic_pdf.pre_proc.ocr_remove_spans import remove_spans_by_bboxes
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
@@ -184,8 +185,11 @@ def parse_pdf_by_ocr(
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path)
 
         # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
+        displayed_list = []
+        text_inline_lines = []
+        modify_y_axis(spans, displayed_list, text_inline_lines)
         # 模型识别错误的行间公式, type类型转换成行内公式
-        spans = modify_y_axis(spans)
+        spans = modify_inline_equation(spans, displayed_list, text_inline_lines)
 
         # bbox去除粘连
         spans = remove_overlap_between_bbox(spans)
