@@ -23,11 +23,9 @@ from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
     merge_spans_to_line_by_layout,
-    modify_y_axis,
-    modify_inline_equation
 )
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remove_overlaps_min_spans, \
-    adjust_bbox_for_standalone_block
+    adjust_bbox_for_standalone_block,modify_y_axis,modify_inline_equation
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 
