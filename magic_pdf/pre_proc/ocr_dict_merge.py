@@ -80,6 +80,19 @@ def merge_spans_to_line_by_layout(spans, layout_bboxes):
     return lines
 
 
+def merge_lines_to_block(lines):
+    # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
+    blocks = []
+    for line in lines:
+        blocks.append(
+            {
+                "bbox": line["bbox"],
+                "lines": [line],
+            }
+        )
+    return blocks
+
+
 
 
 

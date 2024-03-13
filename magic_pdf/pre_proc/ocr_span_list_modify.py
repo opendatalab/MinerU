@@ -1,3 +1,5 @@
+from loguru import logger
+
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
     __is_overlaps_y_exceeds_threshold
 
@@ -31,6 +33,32 @@ def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
     return spans
 
 
+def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
+    dropped_text_block = []
+    dropped_image_block = []
+    dropped_table_block = []
+    for key, value in need_remove_spans_bboxes_dict.items():
+        # logger.info(f"remove spans by bbox dict, key: {key}, value: {value}")
+        need_remove_spans = []
+        for span in spans:
+            for removed_bbox in value:
+                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], removed_bbox) > 0.5:
+                    need_remove_spans.append(span)
+                    break
+
+        for span in need_remove_spans:
+            spans.remove(span)
+            span['tag'] = key
+            if span['type'] in ['text', 'inline_equation', 'displayed_equation']:
+                dropped_text_block.append(span)
+            elif span['type'] == 'image':
+                dropped_image_block.append(span)
+            elif span['type'] == 'table':
+                dropped_table_block.append(span)
+
+    return spans, dropped_text_block, dropped_image_block, dropped_table_block
+
+
 def adjust_bbox_for_standalone_block(spans):
     # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
     for sb_span in spans:
@@ -44,7 +72,6 @@ def adjust_bbox_for_standalone_block(spans):
                             # 调整span的y0和span2的y0一致
                             sb_span['bbox'][1] = text_span['bbox'][1]
     return spans
-
 
 
 def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
@@ -105,8 +132,7 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
         current_line = line[0]
         current_line.sort(key=lambda span: span['bbox'][0])
 
-
-    #调整每一个文字行内bbox统一
+    # 调整每一个文字行内bbox统一
     for line in text_inline_lines:
         current_line, (line_first_y0, line_first_y) = line
         for span in current_line:
@@ -115,8 +141,9 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
 
     # return spans, displayed_list, text_inline_lines
 
+
 def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines: list):
-    #错误行间公式转行内公式
+    # 错误行间公式转行内公式
     j = 0
     for i in range(len(displayed_list)):
         # if i == 8:
@@ -127,26 +154,53 @@ def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines:
         while j < len(text_inline_lines):
             text_line = text_inline_lines[j]
             y0, y1 = text_line[1]
-            if (span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
+            if (
+                    span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(
+                    span['bbox'], (0, y0, 0, y1)):
 
-                #调整公式类型
+                # 调整公式类型
                 if span["type"] == "displayed_equation":
-                    #最后一行是行间公式
-                    if j+1 >= len(text_inline_lines):
+                    # 最后一行是行间公式
+                    if j + 1 >= len(text_inline_lines):
                         span["type"] = "inline_equation"
                         span["bbox"][1] = y0
                         span["bbox"][3] = y1
                     else:
-                        #行间公式旁边有多行文字或者行间公式比文字高3倍则不转换
+                        # 行间公式旁边有多行文字或者行间公式比文字高3倍则不转换
                         y0_next, y1_next = text_inline_lines[j + 1][1]
-                        if not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0_next, 0, y1_next)) and 3*(y1-y0) > span_y - span_y0:
+                        if not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0_next, 0, y1_next)) and 3 * (
+                                y1 - y0) > span_y - span_y0:
                             span["type"] = "inline_equation"
                             span["bbox"][1] = y0
                             span["bbox"][3] = y1
                 break
-            elif span_y < y0 or span_y0 < y0 and span_y > y0 and not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0, 0, y1)):
+            elif span_y < y0 or span_y0 < y0 and span_y > y0 and not __is_overlaps_y_exceeds_threshold(span['bbox'],
+                                                                                                       (0, y0, 0, y1)):
                 break
             else:
                 j += 1
 
     return spans
+
+
+def get_qa_need_list(blocks):
+    # 创建 images, tables, interline_equations, inline_equations 的副本
+    images = []
+    tables = []
+    interline_equations = []
+    inline_equations = []
+
+    for block in blocks:
+        for line in block["lines"]:
+            for span in line["spans"]:
+                if span["type"] == "image":
+                    images.append(span)
+                elif span["type"] == "table":
+                    tables.append(span)
+                elif span["type"] == "inline_equation":
+                    inline_equations.append(span)
+                elif span["type"] == "displayed_equation":
+                    interline_equations.append(span)
+                else:
+                    continue
+    return images, tables, interline_equations, inline_equations

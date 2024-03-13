@@ -22,20 +22,30 @@ from magic_pdf.pre_proc.detect_page_number import parse_pageNos
 from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
-    merge_spans_to_line_by_layout,
+    merge_spans_to_line_by_layout, merge_lines_to_block,
 )
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remove_overlaps_min_spans, \
-    adjust_bbox_for_standalone_block,modify_y_axis,modify_inline_equation
+    adjust_bbox_for_standalone_block, modify_y_axis, modify_inline_equation, get_qa_need_list, \
+    remove_spans_by_bboxes_dict
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 
-def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree):
+def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+                             images, tables, interline_equations, inline_equations,
+                             dropped_text_block, dropped_image_block, dropped_table_block):
     return_dict = {
         'preproc_blocks': blocks,
         'layout_bboxes': layout_bboxes,
         'page_idx': page_id,
         'page_size': [page_w, page_h],
         '_layout_tree': layout_tree,
+        'images': images,
+        'tables': tables,
+        'interline_equations': interline_equations,
+        'inline_equations': inline_equations,
+        'dropped_text_block': dropped_text_block,
+        'dropped_image_block': dropped_image_block,
+        'dropped_table_block': dropped_table_block,
     }
     return return_dict
 
@@ -79,7 +89,6 @@ def parse_pdf_by_ocr(
 
     start_time = time.time()
 
-    remove_bboxes = []
 
     end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
     for page_id in range(start_page_id, end_page_id + 1):
@@ -111,11 +120,19 @@ def parse_pdf_by_ocr(
         )
 
         # 构建需要remove的bbox列表
-        need_remove_spans_bboxes = []
-        need_remove_spans_bboxes.extend(page_no_bboxes)
-        need_remove_spans_bboxes.extend(header_bboxes)
-        need_remove_spans_bboxes.extend(footer_bboxes)
-        need_remove_spans_bboxes.extend(footnote_bboxes)
+        # need_remove_spans_bboxes = []
+        # need_remove_spans_bboxes.extend(page_no_bboxes)
+        # need_remove_spans_bboxes.extend(header_bboxes)
+        # need_remove_spans_bboxes.extend(footer_bboxes)
+        # need_remove_spans_bboxes.extend(footnote_bboxes)
+
+        # 构建需要remove的bbox字典
+        need_remove_spans_bboxes_dict = {
+            "page_no": page_no_bboxes,
+            "header": header_bboxes,
+            "footer": footer_bboxes,
+            "footnote": footnote_bboxes,
+        }
 
         layout_dets = ocr_page_info["layout_dets"]
         spans = []
@@ -177,7 +194,9 @@ def parse_pdf_by_ocr(
         spans = remove_overlaps_min_spans(spans)
 
         # 删除remove_span_block_bboxes中的bbox
-        spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
+        # spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
+        # 按qa要求，增加drop相关数据
+        spans, dropped_text_block, dropped_image_block, dropped_table_block = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         # 对image和table截图
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path)
@@ -202,18 +221,19 @@ def parse_pdf_by_ocr(
         # 将spans合并成line(在layout内,从上到下,从左到右)
         lines = merge_spans_to_line_by_layout(spans, layout_bboxes)
 
-        # 目前不做block拼接,先做个结构,每个block中只有一个line,block的bbox就是line的bbox
-        blocks = []
-        for line in lines:
-            blocks.append(
-                {
-                    "bbox": line["bbox"],
-                    "lines": [line],
-                }
-            )
+        # 将lines合并成block
+        blocks = merge_lines_to_block(lines)
+
+        # 根据block合并段落
+
+
+        # 获取QA需要外置的list
+        images, tables, interline_equations, inline_equations = get_qa_need_list(blocks)
 
         # 构造pdf_info_dict
-        page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree)
+        page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+                                             images, tables, interline_equations, inline_equations,
+                                             dropped_text_block, dropped_image_block, dropped_table_block)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     # 在测试时,保存调试信息
