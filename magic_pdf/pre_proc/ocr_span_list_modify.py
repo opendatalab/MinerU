@@ -1,5 +1,3 @@
-from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio
-from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
     __is_overlaps_y_exceeds_threshold
 
