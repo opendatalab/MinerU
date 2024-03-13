@@ -1,5 +1,8 @@
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
+from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
+    __is_overlaps_y_exceeds_threshold
+
 
 def remove_overlaps_min_spans(spans):
     #  删除重叠spans中较小的那些
@@ -58,7 +61,7 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
 
     line_first_y0 = spans[0]["bbox"][1]
     line_first_y = spans[0]["bbox"][3]
-    #用于给行间公式搜索
+    # 用于给行间公式搜索
     # text_inline_lines = []
     for span in spans[1:]:
         # if span.get("content","") == "78.":
@@ -67,7 +70,7 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
         # image和table类型，同上
         if span['type'] in ["displayed_equation", "image", "table"] or any(
                 s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
-            #传入
+            # 传入
             if span["type"] in ["displayed_equation", "image", "table"]:
                 displayed_list.append(span)
             # 则开始新行
