@@ -64,7 +64,7 @@ def adjust_layouts(layout_bboxes, page_boundry, page_id):
     # 排序调整布局边界框列表
     new_bboxes = []
     for layout_bbox in layout_bboxes:
-        new_bboxes.append([layout_bbox[0], layout_bbox[1], layout_bbox[2], layout_bbox[3], None, None, None, None, None, None, None, None,None])
+        new_bboxes.append([layout_bbox[0], layout_bbox[1], layout_bbox[2], layout_bbox[3], None, None, None, None, None, None, None, None, None])
 
     layout_bboxes, layout_tree = get_bboxes_layout(new_bboxes, page_boundry, page_id)
 

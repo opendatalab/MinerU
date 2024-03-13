@@ -9,7 +9,7 @@ def remove_overlaps_min_spans(spans):
     for span1 in spans.copy():
         for span2 in spans.copy():
             if span1 != span2:
-                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.5)
+                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.8)
                 if overlap_box is not None:
                     bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
                     if bbox_to_remove is not None:
@@ -113,8 +113,8 @@ def modify_y_axis(spans: list):
     #用于给行间公式搜索
     text_inline_lines = []
     for span in spans[1:]:
-        if span.get("content","") == "78.":
-            print("debug")
+        # if span.get("content","") == "78.":
+        #     print("debug")
         # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
         # image和table类型，同上
         if span['type'] in ["displayed_equation", "image", "table"] or any(
@@ -167,8 +167,8 @@ def modify_y_axis(spans: list):
     #错误行间公式转行内公式
     j = 0
     for i in range(len(displayed_list)):
-        if i == 8:
-            print("debug")
+        # if i == 8:
+        #     print("debug")
         span = displayed_list[i]
         span_y0, span_y = span["bbox"][1], span["bbox"][3]
 

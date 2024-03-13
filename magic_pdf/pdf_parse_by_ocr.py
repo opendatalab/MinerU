@@ -177,9 +177,6 @@ def parse_pdf_by_ocr(
         # 删除重叠spans中较小的那些
         spans = remove_overlaps_min_spans(spans)
 
-        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整低于文字的y0
-        spans = modify_y_axis(spans)
-
         # 删除remove_span_block_bboxes中的bbox
         spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
 
@@ -187,8 +184,8 @@ def parse_pdf_by_ocr(
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path)
 
         # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
-
         # 模型识别错误的行间公式, type类型转换成行内公式
+        spans = modify_y_axis(spans)
 
         # bbox去除粘连
         spans = remove_overlap_between_bbox(spans)
