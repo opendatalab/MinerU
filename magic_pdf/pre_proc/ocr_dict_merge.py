@@ -9,7 +9,7 @@ def remove_overlaps_min_spans(spans):
     for span1 in spans.copy():
         for span2 in spans.copy():
             if span1 != span2:
-                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.8)
+                overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.65)
                 if overlap_box is not None:
                     bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
                     if bbox_to_remove is not None:
