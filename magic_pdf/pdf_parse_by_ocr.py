@@ -156,6 +156,9 @@ def parse_pdf_by_ocr(
                     int(x1 / horizontal_scale_ratio),
                     int(y1 / vertical_scale_ratio),
                 ]
+                # 删除高度或者宽度为0的spans
+                if bbox[2] - bbox[0] == 0 or bbox[3] - bbox[1] == 0:
+                    continue
                 """要删除的"""
                 #  3: 'header',      # 页眉
                 #  4: 'page number', # 页码
@@ -192,6 +195,9 @@ def parse_pdf_by_ocr(
                 spans.append(span)
             else:
                 continue
+
+
+
 
         # 删除重叠spans中较小的那些
         spans = remove_overlaps_min_spans(spans)
