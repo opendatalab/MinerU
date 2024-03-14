@@ -1,7 +1,7 @@
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
-def mk_nlp_markdown(pdf_info_dict: dict):
+def ocr_mk_nlp_markdown(pdf_info_dict: dict):
     markdown = []
 
     for _, page_info in pdf_info_dict.items():
@@ -25,7 +25,7 @@ def mk_nlp_markdown(pdf_info_dict: dict):
     return '\n'.join(markdown)
 
 
-def mk_mm_markdown(pdf_info_dict: dict):
+def ocr_mk_mm_markdown(pdf_info_dict: dict):
 
     markdown = []
 
