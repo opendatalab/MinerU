@@ -36,7 +36,7 @@ def draw_layout_bbox(pdf_info_dict, input_path, out_path):
         for layout in page['layout_bboxes']:
             page_layout_list.append(layout['layout_bbox'])
         layout_bbox_list.append(page_layout_list)
-        for drop_tag, dropped_bboxes in page['dropped_bboxes'].items():
+        for drop_tag, dropped_bboxes in page['droped_bboxes'].items():
             for dropped_bbox in dropped_bboxes:
                 page_dropped_list.append(dropped_bbox)
         dropped_bbox_list.append(page_dropped_list)

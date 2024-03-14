@@ -23,6 +23,27 @@ def exception_handler(jso: dict, e):
     return jso
 
 
+def get_data_type(jso: dict):
+    data_type = jso.get('data_type')
+    if data_type is None:
+        data_type = jso.get('file_type')
+    return data_type
+
+
+def get_bookid(jso: dict):
+    book_id = jso.get('bookid')
+    if book_id is None:
+        book_id = jso.get('original_file_id')
+    return book_id
+
+
+def get_data_source(jso: dict):
+    data_source = jso.get('data_source')
+    if data_source is None:
+        data_source = jso.get('file_source')
+    return data_source
+
+
 def meta_scan(jso: dict, doc_layout_check=True) -> dict:
     s3_pdf_path = jso.get('file_location')
     s3_config = get_s3_config(s3_pdf_path)
@@ -32,7 +53,7 @@ def meta_scan(jso: dict, doc_layout_check=True) -> dict:
             jso['drop_reason'] = DropReason.MISS_DOC_LAYOUT_RESULT
             return jso
     try:
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
         book_name = data_source + "/" + file_id
 
@@ -78,7 +99,7 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
     # 开始正式逻辑
     try:
         pdf_meta = jso.get('pdf_meta')
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
         book_name = data_source + "/" + file_id
         total_page = pdf_meta["total_page"]
@@ -140,11 +161,11 @@ def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
         pass
     else:# 如果debug没开，则检测是否有needdrop字段
         if jso.get('need_drop', False):
-            logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']} need drop", file=sys.stderr)
+            logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop", file=sys.stderr)
             jso["dropped"] = True
             return jso
     try:
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
         book_name = data_source + "/" + file_id
         title = jso.get('title')
@@ -195,7 +216,7 @@ def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
 
 def drop_needdrop_pdf(jso: dict) -> dict:
     if jso.get('need_drop', False):
-        logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']} need drop", file=sys.stderr)
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop", file=sys.stderr)
         jso["dropped"] = True
     return jso
 
@@ -206,7 +227,7 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
         pass
     else:# 如果debug没开，则检测是否有needdrop字段
         if jso.get('need_drop', False):
-            book_name = join_path(jso['data_source'], jso['file_id'])
+            book_name = join_path(get_data_source(jso), jso['file_id'])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
             return jso
@@ -216,7 +237,7 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
         pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
         markdown_content = mk_nlp_markdown(pdf_intermediate_dict)
         jso["content"] = markdown_content
-        logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']},markdown content length is {len(markdown_content)}", file=sys.stderr)
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']},markdown content length is {len(markdown_content)}", file=sys.stderr)
         # 把无用的信息清空
         jso["doc_layout_result"] = ""
         jso["pdf_intermediate_dict"] = ""
@@ -237,7 +258,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     s3_pdf_path = jso.get('file_location')
     s3_config = get_s3_config(s3_pdf_path)
     model_output_json_list = jso.get('doc_layout_result')
-    data_source = jso.get('data_source')
+    data_source = get_data_source(jso)
     file_id = jso.get('file_id')
     book_name = data_source + "/" + file_id
 
@@ -288,6 +309,10 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
         except Exception as e:
             jso = exception_handler(jso, e)
     return jso
+
+
+def ocr_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    pass
 
 
 if __name__ == "__main__":
