@@ -208,7 +208,7 @@ def parse_pdf_by_ocr(
         spans, dropped_text_block, dropped_image_block, dropped_table_block = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         # 对image和table截图
-        spans = cut_image_and_table(spans, page, page_id, book_name, save_path)
+        spans = cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client)
 
         # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
         displayed_list = []
