@@ -1,3 +1,4 @@
+from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
@@ -14,7 +15,7 @@ def ocr_mk_nlp_markdown(pdf_info_dict: dict):
                 for span in line['spans']:
                     if not span.get('content'):
                         continue
-                    content = span['content'].replace('$', '\$')  # 转义$
+                    content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
                     if span['type'] == ContentType.InlineEquation:
                         content = f"${content}$"
                     elif span['type'] == ContentType.InterlineEquation:
@@ -43,7 +44,7 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                         else:
                             content = f"![]({span['image_path']})"
                     else:
-                        content = span['content'].replace('$', '\$')  # 转义$
+                        content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
                         if span['type'] == ContentType.InlineEquation:
                             content = f"${content}$"
                         elif span['type'] == ContentType.InterlineEquation:
