@@ -1,3 +1,6 @@
+from magic_pdf.libs.ocr_content_type import ContentType
+
+
 def mk_nlp_markdown(pdf_info_dict: dict):
     markdown = []
 
@@ -12,9 +15,9 @@ def mk_nlp_markdown(pdf_info_dict: dict):
                     if not span.get('content'):
                         continue
                     content = span['content'].replace('$', '\$')  # 转义$
-                    if span['type'] == 'inline_equation':
+                    if span['type'] == ContentType.InlineEquation:
                         content = f"${content}$"
-                    elif span['type'] == 'displayed_equation':
+                    elif span['type'] == ContentType.InterlineEquation:
                         content = f"$$\n{content}\n$$"
                     line_text += content + ' '
                 # 在行末添加两个空格以强制换行
@@ -41,9 +44,9 @@ def mk_mm_markdown(pdf_info_dict: dict):
                             content = f"![]({span['image_path']})"
                     else:
                         content = span['content'].replace('$', '\$')  # 转义$
-                        if span['type'] == 'inline_equation':
+                        if span['type'] == ContentType.InlineEquation:
                             content = f"${content}$"
-                        elif span['type'] == 'displayed_equation':
+                        elif span['type'] == ContentType.InterlineEquation:
                             content = f"$$\n{content}\n$$"
                     line_text += content + ' '
                 # 在行末添加两个空格以强制换行

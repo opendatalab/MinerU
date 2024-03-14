@@ -14,6 +14,7 @@ from magic_pdf.libs.commons import (
     get_docx_model_output,
 )
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
+from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
@@ -44,10 +45,10 @@ def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, lay
         'tables': tables,
         'interline_equations': interline_equations,
         'inline_equations': inline_equations,
-        'dropped_text_block': dropped_text_block,
-        'dropped_image_block': dropped_image_block,
-        'dropped_table_block': dropped_table_block,
-        'dropped_bboxes': need_remove_spans_bboxes_dict,
+        'droped_text_block': dropped_text_block,
+        'droped_image_block': dropped_image_block,
+        'droped_table_block': dropped_table_block,
+        'droped_bboxes': need_remove_spans_bboxes_dict,
     }
     return return_dict
 
@@ -164,7 +165,7 @@ def parse_pdf_by_ocr(
                 #  1: 'image', # 图片
                 #  7: 'table',       # 表格
                 #  13: 'inline_equation',     # 行内公式
-                #  14: 'displayed_equation',      # 行间公式
+                #  14: 'interline_equation',      # 行间公式
                 #  15: 'text',      # ocr识别文本
                 """layout信息"""
                 #  11: 'full column',   # 单栏
@@ -173,20 +174,20 @@ def parse_pdf_by_ocr(
                     "bbox": bbox,
                 }
                 if category_id == 1:
-                    span["type"] = "image"
+                    span["type"] = ContentType.Image
 
                 elif category_id == 7:
-                    span["type"] = "table"
+                    span["type"] = ContentType.Table
 
                 elif category_id == 13:
                     span["content"] = layout_det["latex"]
-                    span["type"] = "inline_equation"
+                    span["type"] = ContentType.InlineEquation
                 elif category_id == 14:
                     span["content"] = layout_det["latex"]
-                    span["type"] = "displayed_equation"
+                    span["type"] = ContentType.InterlineEquation
                 elif category_id == 15:
                     span["content"] = layout_det["text"]
-                    span["type"] = "text"
+                    span["type"] = ContentType.Text
                 # print(span)
                 spans.append(span)
             else:
@@ -213,7 +214,7 @@ def parse_pdf_by_ocr(
         # bbox去除粘连
         spans = remove_overlap_between_bbox(spans)
 
-        # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
+        # 对tpye=["interline_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
         spans = adjust_bbox_for_standalone_block(spans)
 
 

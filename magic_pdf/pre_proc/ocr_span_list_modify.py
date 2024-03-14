@@ -2,6 +2,7 @@ from loguru import logger
 
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
     __is_overlaps_y_exceeds_threshold
+from magic_pdf.libs.ocr_content_type import ContentType
 
 
 def remove_overlaps_min_spans(spans):
@@ -49,22 +50,22 @@ def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
         for span in need_remove_spans:
             spans.remove(span)
             span['tag'] = drop_tag
-            if span['type'] in ['text', 'inline_equation', 'displayed_equation']:
+            if span['type'] in [ContentType.Text, ContentType.InlineEquation, ContentType.InterlineEquation]:
                 dropped_text_block.append(span)
-            elif span['type'] == 'image':
+            elif span['type'] == ContentType.Image:
                 dropped_image_block.append(span)
-            elif span['type'] == 'table':
+            elif span['type'] == ContentType.Table:
                 dropped_table_block.append(span)
 
     return spans, dropped_text_block, dropped_image_block, dropped_table_block
 
 
 def adjust_bbox_for_standalone_block(spans):
-    # 对tpye=["displayed_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
+    # 对tpye=["interline_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
     for sb_span in spans:
-        if sb_span['type'] in ["displayed_equation", "image", "table"]:
+        if sb_span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
             for text_span in spans:
-                if text_span['type'] in ['text', 'inline_equation']:
+                if text_span['type'] in [ContentType.Text, ContentType.InlineEquation]:
                     # 判断span2的纵向高度是否被span所覆盖
                     if sb_span['bbox'][1] < text_span['bbox'][1] and sb_span['bbox'][3] > text_span['bbox'][3]:
                         # 判断span2是否在span左边
@@ -81,7 +82,7 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
 
     lines = []
     current_line = [spans[0]]
-    if spans[0]["type"] in ["displayed_equation", "image", "table"]:
+    if spans[0]["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
         displayed_list.append(spans[0])
 
     line_first_y0 = spans[0]["bbox"][1]
@@ -91,16 +92,16 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
     for span in spans[1:]:
         # if span.get("content","") == "78.":
         #     print("debug")
-        # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
+        # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
         # image和table类型，同上
-        if span['type'] in ["displayed_equation", "image", "table"] or any(
-                s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
+                s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
             # 传入
-            if span["type"] in ["displayed_equation", "image", "table"]:
+            if span["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
                 displayed_list.append(span)
             # 则开始新行
             lines.append(current_line)
-            if len(current_line) > 1 or current_line[0]["type"] in ["text", "inline_equation"]:
+            if len(current_line) > 1 or current_line[0]["type"] in [ContentType.Text, ContentType.InlineEquation]:
                 text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
             current_line = [span]
             line_first_y0 = span["bbox"][1]
@@ -125,7 +126,7 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
         # 添加最后一行
     if current_line:
         lines.append(current_line)
-        if len(current_line) > 1 or current_line[0]["type"] in ["text", "inline_equation"]:
+        if len(current_line) > 1 or current_line[0]["type"] in [ContentType.Text, ContentType.InlineEquation]:
             text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
     for line in text_inline_lines:
         # 按照x0坐标排序
@@ -159,10 +160,10 @@ def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines:
                     span['bbox'], (0, y0, 0, y1)):
 
                 # 调整公式类型
-                if span["type"] == "displayed_equation":
+                if span["type"] == ContentType.InterlineEquation:
                     # 最后一行是行间公式
                     if j + 1 >= len(text_inline_lines):
-                        span["type"] = "inline_equation"
+                        span["type"] = ContentType.InlineEquation
                         span["bbox"][1] = y0
                         span["bbox"][3] = y1
                     else:
@@ -170,7 +171,7 @@ def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines:
                         y0_next, y1_next = text_inline_lines[j + 1][1]
                         if not __is_overlaps_y_exceeds_threshold(span['bbox'], (0, y0_next, 0, y1_next)) and 3 * (
                                 y1 - y0) > span_y - span_y0:
-                            span["type"] = "inline_equation"
+                            span["type"] = ContentType.InlineEquation
                             span["bbox"][1] = y0
                             span["bbox"][3] = y1
                 break
@@ -193,13 +194,13 @@ def get_qa_need_list(blocks):
     for block in blocks:
         for line in block["lines"]:
             for span in line["spans"]:
-                if span["type"] == "image":
+                if span["type"] == ContentType.Image:
                     images.append(span)
-                elif span["type"] == "table":
+                elif span["type"] == ContentType.Table:
                     tables.append(span)
-                elif span["type"] == "inline_equation":
+                elif span["type"] == ContentType.InlineEquation:
                     inline_equations.append(span)
-                elif span["type"] == "displayed_equation":
+                elif span["type"] == ContentType.InterlineEquation:
                     interline_equations.append(span)
                 else:
                     continue

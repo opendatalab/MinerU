@@ -2,6 +2,7 @@ from loguru import logger
 
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio, \
     calculate_overlap_area_in_bbox1_area_ratio
+from magic_pdf.libs.ocr_content_type import ContentType
 
 
 # 将每一个line中的span从左到右排序
@@ -29,10 +30,10 @@ def merge_spans_to_line(spans):
     lines = []
     current_line = [spans[0]]
     for span in spans[1:]:
-        # 如果当前的span类型为"displayed_equation" 或者 当前行中已经有"displayed_equation"
+        # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
         # image和table类型，同上
-        if span['type'] in ["displayed_equation", "image", "table"] or any(
-                s['type'] in ["displayed_equation", "image", "table"] for s in current_line):
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
+                s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
             # 则开始新行
             lines.append(current_line)
             current_line = [span]

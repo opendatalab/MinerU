@@ -1,4 +1,6 @@
 from magic_pdf.libs.commons import fitz  # PyMuPDF
+from magic_pdf.libs.ocr_content_type import ContentType
+
 
 def draw_bbox_without_number(i, bbox_list, page, rgb_config):
     new_rgb = []
@@ -49,30 +51,30 @@ def draw_layout_bbox(pdf_info_dict, input_path, out_path):
 def draw_text_bbox(pdf_info_dict, input_path, out_path):
     text_list = []
     inline_equation_list = []
-    displayed_equation_list = []
+    interline_equation_list = []
     for page in pdf_info_dict.values():
         page_text_list = []
         page_inline_equation_list = []
-        page_displayed_equation_list = []
+        page_interline_equation_list = []
         for block in page['preproc_blocks']:
             for line in block['lines']:
                 for span in line['spans']:
-                    if span['type'] == 'text':
+                    if span['type'] == ContentType.Text:
                         page_text_list.append(span['bbox'])
-                    elif span['type'] == 'inline_equation':
+                    elif span['type'] == ContentType.InlineEquation:
                         page_inline_equation_list.append(span['bbox'])
-                    elif span['type'] == 'displayed_equation':
-                        page_displayed_equation_list.append(span['bbox'])
+                    elif span['type'] == ContentType.InterlineEquation:
+                        page_interline_equation_list.append(span['bbox'])
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
-        displayed_equation_list.append(page_displayed_equation_list)
+        interline_equation_list.append(page_interline_equation_list)
 
     doc = fitz.open(input_path)
     for i, page in enumerate(doc):
         # 获取当前页面的数据
         draw_bbox_without_number(i, text_list, page, [255, 0, 0])
         draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0])
-        draw_bbox_without_number(i, displayed_equation_list, page, [0, 0, 255])
+        draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255])
 
     # Save the PDF
     doc.save(f"{out_path}/text.pdf")
