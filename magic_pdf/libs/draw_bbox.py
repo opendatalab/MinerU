@@ -27,15 +27,22 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config):
 
 def draw_layout_bbox(pdf_info_dict, input_path, out_path):
     layout_bbox_list = []
+    dropped_bbox_list = []
     for page in pdf_info_dict.values():
-        page_list = []
+        page_layout_list = []
+        page_dropped_list = []
         for layout in page['layout_bboxes']:
-            page_list.append(layout['layout_bbox'])
-        layout_bbox_list.append(page_list)
+            page_layout_list.append(layout['layout_bbox'])
+        layout_bbox_list.append(page_layout_list)
+        for drop_tag, dropped_bboxes in page['dropped_bboxes'].items():
+            for dropped_bbox in dropped_bboxes:
+                page_dropped_list.append(dropped_bbox)
+        dropped_bbox_list.append(page_dropped_list)
 
     doc = fitz.open(input_path)
     for i, page in enumerate(doc):
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0])
+        draw_bbox_without_number(i, dropped_bbox_list, page, [0, 255, 0])
     # Save the PDF
     doc.save(f"{out_path}/layout.pdf")
 

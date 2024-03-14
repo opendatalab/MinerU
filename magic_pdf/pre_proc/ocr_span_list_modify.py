@@ -37,18 +37,18 @@ def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
     dropped_text_block = []
     dropped_image_block = []
     dropped_table_block = []
-    for key, value in need_remove_spans_bboxes_dict.items():
-        # logger.info(f"remove spans by bbox dict, key: {key}, value: {value}")
+    for drop_tag, removed_bboxes in need_remove_spans_bboxes_dict.items():
+        # logger.info(f"remove spans by bbox dict, drop_tag: {drop_tag}, removed_bboxes: {removed_bboxes}")
         need_remove_spans = []
         for span in spans:
-            for removed_bbox in value:
+            for removed_bbox in removed_bboxes:
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], removed_bbox) > 0.5:
                     need_remove_spans.append(span)
                     break
 
         for span in need_remove_spans:
             spans.remove(span)
-            span['tag'] = key
+            span['tag'] = drop_tag
             if span['type'] in ['text', 'inline_equation', 'displayed_equation']:
                 dropped_text_block.append(span)
             elif span['type'] == 'image':

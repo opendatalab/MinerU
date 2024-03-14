@@ -32,7 +32,8 @@ from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                              images, tables, interline_equations, inline_equations,
-                             dropped_text_block, dropped_image_block, dropped_table_block):
+                             dropped_text_block, dropped_image_block, dropped_table_block,
+                             need_remove_spans_bboxes_dict):
     return_dict = {
         'preproc_blocks': blocks,
         'layout_bboxes': layout_bboxes,
@@ -46,6 +47,7 @@ def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, lay
         'dropped_text_block': dropped_text_block,
         'dropped_image_block': dropped_image_block,
         'dropped_table_block': dropped_table_block,
+        'dropped_bboxes': need_remove_spans_bboxes_dict,
     }
     return return_dict
 
@@ -233,7 +235,8 @@ def parse_pdf_by_ocr(
         # 构造pdf_info_dict
         page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                                              images, tables, interline_equations, inline_equations,
-                                             dropped_text_block, dropped_image_block, dropped_table_block)
+                                             dropped_text_block, dropped_image_block, dropped_table_block,
+                                             need_remove_spans_bboxes_dict)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     # 在测试时,保存调试信息

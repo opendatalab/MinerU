@@ -1,5 +1,4 @@
 def mk_nlp_markdown(pdf_info_dict: dict):
-
     markdown = []
 
     for _, page_info in pdf_info_dict.items():
@@ -21,6 +20,7 @@ def mk_nlp_markdown(pdf_info_dict: dict):
                 # 在行末添加两个空格以强制换行
                 markdown.append(line_text.strip() + '  ')
     return '\n'.join(markdown)
+
 
 def mk_mm_markdown(pdf_info_dict: dict):
 
