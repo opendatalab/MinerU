@@ -57,7 +57,7 @@ def meta_scan(jso: dict, doc_layout_check=True) -> dict:
     try:
         data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
 
         # 首页存在超量drawing问题
         # special_pdf_list = ['zlib/zlib_21822650']
@@ -103,7 +103,7 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
         pdf_meta = jso.get('pdf_meta')
         data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
         total_page = pdf_meta["total_page"]
         page_width = pdf_meta["page_width_pts"]
         page_height = pdf_meta["page_height_pts"]
@@ -169,7 +169,7 @@ def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
     try:
         data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
         title = jso.get('title')
         url_encode_title = quote(title, safe='')
         if data_source != 'scihub':
@@ -262,7 +262,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     model_output_json_list = jso.get('doc_layout_result')
     data_source = get_data_source(jso)
     file_id = jso.get('file_id')
-    book_name = data_source + "/" + file_id
+    book_name = f"{data_source}/{file_id}"
 
     # 1.23.22已修复
     # if debug_mode:
@@ -326,7 +326,7 @@ def ocr_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     model_output_json_list = jso.get('doc_layout_result')
     data_source = get_data_source(jso)
     file_id = jso.get('file_id')
-    book_name = data_source + "/" + file_id
+    book_name = f"{data_source}/{file_id}"
     try:
         save_path = "s3://mllm-raw-media/pdf2md_img/"
         image_s3_config = get_s3_config(save_path)
