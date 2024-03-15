@@ -66,13 +66,13 @@ def mk_mm_markdown2(pdf_info_dict:dict):
             for line in para:
                 for span in line['spans']:
                     span_type = span.get('type')
-                    if span_type == 'text':
+                    if span_type == ContentType.Text:
                         para_text += span['content']
-                    elif span_type == 'inline_equation':
+                    elif span_type == ContentType.InlineEquation:
                         para_text += f" ${span['content']}$ "
-                    elif span_type == 'displayed_equation':
+                    elif span_type == ContentType.InterlineEquation:
                         para_text += f"$$\n{span['content']}\n$$ "
-                    elif span_type == 'image':
+                    elif span_type == ContentType.Image:
                         para_text += f"![](s3://mllm-raw-media/pdf2md_img/{span['image_path']}) "
             markdown.append(para_text)
 
