@@ -42,7 +42,7 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                         if not span.get('image_path'):
                             continue
                         else:
-                            content = f"![]({span['image_path']})"
+                            content = f"![](s3://mllm-raw-media/pdf2md_img/{span['image_path']})"
                     else:
                         content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
                         if span['type'] == ContentType.InlineEquation:
@@ -53,3 +53,11 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                 # 在行末添加两个空格以强制换行
                 markdown.append(line_text.strip() + '  ')
     return '\n'.join(markdown)
+
+def ocr_mk_mm_standard_format():
+    '''
+    content_list
+    type string image/text/table/equation(行间的单独拿出来，行内的和text合并)
+
+    '''
+    pass
