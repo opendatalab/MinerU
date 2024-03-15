@@ -77,70 +77,73 @@ def adjust_bbox_for_standalone_block(spans):
 
 def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
     # displayed_list = []
+    # 如果spans为空,则不处理
+    if len(spans) == 0:
+        pass
+    else:
+        spans.sort(key=lambda span: span['bbox'][1])
 
-    spans.sort(key=lambda span: span['bbox'][1])
+        lines = []
+        current_line = [spans[0]]
+        if spans[0]["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+            displayed_list.append(spans[0])
 
-    lines = []
-    current_line = [spans[0]]
-    if spans[0]["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
-        displayed_list.append(spans[0])
+        line_first_y0 = spans[0]["bbox"][1]
+        line_first_y = spans[0]["bbox"][3]
+        # 用于给行间公式搜索
+        # text_inline_lines = []
+        for span in spans[1:]:
+            # if span.get("content","") == "78.":
+            #     print("debug")
+            # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
+            # image和table类型，同上
+            if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
+                    s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
+                # 传入
+                if span["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+                    displayed_list.append(span)
+                # 则开始新行
+                lines.append(current_line)
+                if len(current_line) > 1 or current_line[0]["type"] in [ContentType.Text, ContentType.InlineEquation]:
+                    text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
+                current_line = [span]
+                line_first_y0 = span["bbox"][1]
+                line_first_y = span["bbox"][3]
+                continue
 
-    line_first_y0 = spans[0]["bbox"][1]
-    line_first_y = spans[0]["bbox"][3]
-    # 用于给行间公式搜索
-    # text_inline_lines = []
-    for span in spans[1:]:
-        # if span.get("content","") == "78.":
-        #     print("debug")
-        # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
-        # image和table类型，同上
-        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
-                s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
-            # 传入
-            if span["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
-                displayed_list.append(span)
-            # 则开始新行
+            # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
+            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox']):
+                if span["type"] == "text":
+                    line_first_y0 = span["bbox"][1]
+                    line_first_y = span["bbox"][3]
+                current_line.append(span)
+
+            else:
+                # 否则，开始新行
+                lines.append(current_line)
+                text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
+                current_line = [span]
+                line_first_y0 = span["bbox"][1]
+                line_first_y = span["bbox"][3]
+
+            # 添加最后一行
+        if current_line:
             lines.append(current_line)
             if len(current_line) > 1 or current_line[0]["type"] in [ContentType.Text, ContentType.InlineEquation]:
                 text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
-            current_line = [span]
-            line_first_y0 = span["bbox"][1]
-            line_first_y = span["bbox"][3]
-            continue
+        for line in text_inline_lines:
+            # 按照x0坐标排序
+            current_line = line[0]
+            current_line.sort(key=lambda span: span['bbox'][0])
 
-        # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-        if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox']):
-            if span["type"] == "text":
-                line_first_y0 = span["bbox"][1]
-                line_first_y = span["bbox"][3]
-            current_line.append(span)
+        # 调整每一个文字行内bbox统一
+        for line in text_inline_lines:
+            current_line, (line_first_y0, line_first_y) = line
+            for span in current_line:
+                span["bbox"][1] = line_first_y0
+                span["bbox"][3] = line_first_y
 
-        else:
-            # 否则，开始新行
-            lines.append(current_line)
-            text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
-            current_line = [span]
-            line_first_y0 = span["bbox"][1]
-            line_first_y = span["bbox"][3]
-
-        # 添加最后一行
-    if current_line:
-        lines.append(current_line)
-        if len(current_line) > 1 or current_line[0]["type"] in [ContentType.Text, ContentType.InlineEquation]:
-            text_inline_lines.append((current_line, (line_first_y0, line_first_y)))
-    for line in text_inline_lines:
-        # 按照x0坐标排序
-        current_line = line[0]
-        current_line.sort(key=lambda span: span['bbox'][0])
-
-    # 调整每一个文字行内bbox统一
-    for line in text_inline_lines:
-        current_line, (line_first_y0, line_first_y) = line
-        for span in current_line:
-            span["bbox"][1] = line_first_y0
-            span["bbox"][3] = line_first_y
-
-    # return spans, displayed_list, text_inline_lines
+        # return spans, displayed_list, text_inline_lines
 
 
 def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines: list):
