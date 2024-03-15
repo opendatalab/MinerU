@@ -54,6 +54,31 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                 markdown.append(line_text.strip() + '  ')
     return '\n'.join(markdown)
 
+
+def mk_mm_markdown2(pdf_info_dict:dict):
+    markdown = []
+    for _, page_info in pdf_info_dict.items():
+        paras = page_info.get("para_blocks")
+        if not paras:
+            continue
+        for para in paras:
+            para_text = ''
+            for line in para:
+                for span in line['spans']:
+                    span_type = span.get('type')
+                    if span_type == 'text':
+                        para_text += span['content']
+                    elif span_type == 'inline_equation':
+                        para_text += f" ${span['content']}$ "
+                    elif span_type == 'displayed_equation':
+                        para_text += f"$$\n{span['content']}\n$$ "
+                    elif span_type == 'image':
+                        para_text += f"![](s3://mllm-raw-media/pdf2md_img/{span['image_path']}) "
+            markdown.append(para_text)
+
+    return '\n\n'.join(markdown)
+
+
 def ocr_mk_mm_standard_format():
     '''
     content_list

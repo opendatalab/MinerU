@@ -257,7 +257,6 @@ def parse_pdf_by_model(
         footnote_bboxes_by_model = parse_footnotes_by_model(page_id, page, model_output_json, md_bookname_save_path, debug_mode=debug_mode)
         # 通过规则识别到的footnote
         footnote_bboxes_by_rule = parse_footnotes_by_rule(remain_text_blocks, page_height, page_id, main_text_font)
-
         """进入pdf过滤器，去掉一些不合理的pdf"""
         is_good_pdf, err = pdf_filter(page, remain_text_blocks, table_bboxes, image_bboxes)
         if not is_good_pdf:
