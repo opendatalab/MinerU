@@ -28,7 +28,6 @@ def ocr_mk_nlp_markdown(pdf_info_dict: dict):
 
 
 def ocr_mk_mm_markdown(pdf_info_dict: dict):
-
     markdown = []
 
     for _, page_info in pdf_info_dict.items():
@@ -56,7 +55,7 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
     return '\n'.join(markdown)
 
 
-def mk_mm_markdown2(pdf_info_dict:dict):
+def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     markdown = []
     for _, page_info in pdf_info_dict.items():
         paras = page_info.get("para_blocks")
@@ -80,10 +79,64 @@ def mk_mm_markdown2(pdf_info_dict:dict):
     return '\n\n'.join(markdown)
 
 
-def ocr_mk_mm_standard_format():
+def line_to_standard_format(line):
+    line_text = ""
+    inline_equation_num = 0
+    for span in line['spans']:
+        if not span.get('content'):
+            if not span.get('image_path'):
+                continue
+            else:
+                if span['type'] == ContentType.Image:
+                    content = {
+                        'type': 'image',
+                        'img_path': join_path(s3_image_save_path, span['image_path'])
+                    }
+                    return content
+                elif span['type'] == ContentType.Table:
+                    content = {
+                        'type': 'table',
+                        'img_path': join_path(s3_image_save_path, span['image_path'])
+                    }
+                    return content
+        else:
+            if span['type'] == ContentType.InterlineEquation:
+                interline_equation = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                content = {
+                    'type': 'equation',
+                    'latex': f"$$\n{interline_equation}\n$$"
+                }
+                return content
+            elif span['type'] == ContentType.InlineEquation:
+                inline_equation = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                line_text += f"${inline_equation}$"
+                inline_equation_num += 1
+            elif span['type'] == ContentType.Text:
+                line_text += span['content']
+    content = {
+        'type': 'text',
+        'text': line_text,
+        'inline_equation_num': inline_equation_num
+    }
+    return content
+
+
+def ocr_mk_mm_standard_format(pdf_info_dict: dict):
     '''
     content_list
-    type string image/text/table/equation(行间的单独拿出来，行内的和text合并)
-
+    type         string      image/text/table/equation(行间的单独拿出来，行内的和text合并)
+    latex        string      latex文本字段。
+    text         string      纯文本格式的文本数据。
+    md           string      markdown格式的文本数据。
+    img_path     string      s3://full/path/to/img.jpg
     '''
-    pass
+    content_list = []
+    for _, page_info in pdf_info_dict.items():
+        blocks = page_info.get("preproc_blocks")
+        if not blocks:
+            continue
+        for block in blocks:
+            for line in block['lines']:
+                content = line_to_standard_format(line)
+                content_list.append(content)
+    return content_list

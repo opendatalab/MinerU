@@ -4,7 +4,7 @@ import os
 from loguru import logger
 from pathlib import Path
 
-from magic_pdf.dict2md.ocr_mkcontent import mk_mm_markdown2, mk_nlp_markdown, mk_mm_markdown
+from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_mm_markdown_with_para, ocr_mk_nlp_markdown, ocr_mk_mm_markdown, ocr_mk_mm_standard_format
 from magic_pdf.libs.commons import join_path
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
@@ -35,8 +35,8 @@ if __name__ == '__main__':
     # ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.pdf"
     # ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.json"
     
-    ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
-    ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
+    # ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
+    # ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
     try:
         ocr_pdf_model_info = read_json_file(ocr_json_file_path)
         pth = Path(ocr_json_file_path)
@@ -58,10 +58,15 @@ if __name__ == '__main__':
             os.makedirs(parent_dir)
 
         # markdown_content = mk_nlp_markdown(pdf_info_dict)
-        markdown_content = mk_mm_markdown2(pdf_info_dict)
+        markdown_content = ocr_mk_mm_markdown_with_para(pdf_info_dict)
 
         with open(text_content_save_path, "w", encoding="utf-8") as f:
             f.write(markdown_content)
+
+        standard_format = ocr_mk_mm_standard_format(pdf_info_dict)
+        standard_format_save_path = f"{save_path_with_bookname}/standard_format.txt"
+        with open(standard_format_save_path, "w", encoding="utf-8") as f:
+            f.write(str(standard_format))
 
         # logger.info(markdown_content)
         # save_markdown(markdown_text, ocr_json_file_path)
