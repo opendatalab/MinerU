@@ -16,7 +16,8 @@ def get_delta_time(input_time):
 
 
 def join_path(*args):
-    return '/'.join(s.rstrip('/') for s in args)
+    return '/'.join(str(s).rstrip('/') for s in args)
+
 
 #配置全局的errlog_path，方便demo同步引用
 error_log_path = "s3://llm-pdf-text/err_logs/"
