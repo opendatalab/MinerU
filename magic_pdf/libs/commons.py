@@ -24,6 +24,8 @@ error_log_path = "s3://llm-pdf-text/err_logs/"
 # json_dump_path = "s3://pdf_books_temp/json_dump/" # 这条路径仅用于临时本地测试,不能提交到main
 json_dump_path = "s3://llm-pdf-text/json_dump/"
 
+s3_image_save_path = "s3://mllm-raw-media/pdf2md_img/"
+
 
 def get_top_percent_list(num_list, percent):
     """

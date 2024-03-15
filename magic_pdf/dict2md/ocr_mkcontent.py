@@ -1,3 +1,4 @@
+from magic_pdf.libs.commons import s3_image_save_path, join_path
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
 
@@ -42,7 +43,7 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                         if not span.get('image_path'):
                             continue
                         else:
-                            content = f"![](s3://mllm-raw-media/pdf2md_img/{span['image_path']})"
+                            content = f"![]({join_path(s3_image_save_path, span['image_path'])})"
                     else:
                         content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
                         if span['type'] == ContentType.InlineEquation:
@@ -73,7 +74,7 @@ def mk_mm_markdown2(pdf_info_dict:dict):
                     elif span_type == ContentType.InterlineEquation:
                         para_text += f"$$\n{span['content']}\n$$ "
                     elif span_type == ContentType.Image:
-                        para_text += f"![](s3://mllm-raw-media/pdf2md_img/{span['image_path']}) "
+                        para_text += f"![]({join_path(s3_image_save_path, span['image_path'])})"
             markdown.append(para_text)
 
     return '\n\n'.join(markdown)

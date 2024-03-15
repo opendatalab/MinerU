@@ -4,7 +4,7 @@ import time
 from urllib.parse import quote
 
 from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_nlp_markdown, ocr_mk_mm_markdown
-from magic_pdf.libs.commons import read_file, join_path, parse_bucket_key, formatted_time
+from magic_pdf.libs.commons import read_file, join_path, parse_bucket_key, formatted_time, s3_image_save_path
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.dict2md.mkcontent import mk_nlp_markdown
@@ -287,7 +287,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     #     jso['drop_reason'] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_TOTAL_PAGES
     else:
         try:
-            save_path = "s3://mllm-raw-media/pdf2md_img/"
+            save_path = s3_image_save_path
             image_s3_config = get_s3_config(save_path)
             start_time = time.time()  # 记录开始时间
             # 先打印一下book_name和解析开始的时间
@@ -328,7 +328,7 @@ def ocr_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     file_id = jso.get('file_id')
     book_name = f"{data_source}/{file_id}"
     try:
-        save_path = "s3://mllm-raw-media/pdf2md_img/"
+        save_path = s3_image_save_path
         image_s3_config = get_s3_config(save_path)
         start_time = time.time()  # 记录开始时间
         # 先打印一下book_name和解析开始的时间
