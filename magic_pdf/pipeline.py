@@ -7,7 +7,7 @@ from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_nlp_markdown, ocr_mk_mm_markd
 from magic_pdf.libs.commons import read_file, join_path, parse_bucket_key, formatted_time, s3_image_save_path
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.dict2md.mkcontent import mk_nlp_markdown
+from magic_pdf.dict2md.mkcontent import mk_nlp_markdown, mk_universal_format
 from magic_pdf.pdf_parse_by_model import parse_pdf_by_model
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
@@ -237,9 +237,10 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
         pdf_intermediate_dict = jso['pdf_intermediate_dict']
         # 将 pdf_intermediate_dict 解压
         pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
-        markdown_content = mk_nlp_markdown(pdf_intermediate_dict)
-        jso["content"] = markdown_content
-        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']},markdown content length is {len(markdown_content)}", file=sys.stderr)
+        #markdown_content = mk_nlp_markdown(pdf_intermediate_dict)
+        jso['content_list'] = mk_universal_format(pdf_intermediate_dict)
+        #jso["content"] = markdown_content
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']}")
         # 把无用的信息清空
         jso["doc_layout_result"] = ""
         jso["pdf_intermediate_dict"] = ""

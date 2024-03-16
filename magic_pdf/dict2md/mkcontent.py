@@ -2,9 +2,15 @@ import math
 from loguru import logger
 
 from magic_pdf.libs.boxbase import find_bottom_nearest_text_bbox, find_top_nearest_text_bbox
+from magic_pdf.libs.ocr_content_type import ContentType
+
+TYPE_INLINE_EQUATION = ContentType.InlineEquation
+TYPE_INTERLINE_EQUATION = ContentType.InterlineEquation
+UNI_FORMAT_TEXT_TYPE = ['text', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']
 
 
-def mk_nlp_markdown(para_dict: dict):
+@DeprecationWarning
+def mk_nlp_markdown_1(para_dict: dict):
     """
     对排序后的bboxes拼接内容
     """
@@ -69,14 +75,14 @@ def __insert_before(content, image_content, target):
     return content
 
 
-
-def mk_mm_markdown(para_dict: dict):
+@DeprecationWarning
+def mk_mm_markdown_1(para_dict: dict):
     """拼装多模态markdown"""
     content_lst = []
     for _, page_info in para_dict.items():
         page_lst = [] # 一个page内的段落列表
         para_blocks = page_info.get("para_blocks")
-        pymu_raw_blocks = page_info.get("preproc_blocks")  
+        pymu_raw_blocks = page_info.get("preproc_blocks")
         
         all_page_images = []
         all_page_images.extend(page_info.get("images",[]))
@@ -137,7 +143,7 @@ def mk_mm_markdown(para_dict: dict):
                                 else:
                                     page_md = __insert_before(page_md, img_content, line_txt)
                             else:
-                                logger.error(f"Can't find the location of image {img['image_path']} in the markdown file")
+                                logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #1")
                 else:# 应当在两个block之间
                     # 找到上方最近的block，如果上方没有就找大下方最近的block
                     top_txt_block = find_top_nearest_text_bbox(pymu_raw_blocks, imgbox)
@@ -150,7 +156,7 @@ def mk_mm_markdown(para_dict: dict):
                             line_txt = "".join([s['text'] for s in bottom_txt_block['lines'][0]['spans']])
                             page_md = __insert_before(page_md, img_content, line_txt)
                         else:
-                            logger.error(f"Can't find the location of image {img['image_path']} in the markdown file")
+                            logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #2")
                     
         content_lst.append(page_md)
                     
@@ -158,92 +164,186 @@ def mk_mm_markdown(para_dict: dict):
     content_text = "\n\n".join(content_lst)
 
     return content_text
-    
-    
-@DeprecationWarning
-def mk_mm_markdown_1(para_dict: dict):
+
+
+def __insert_after_para(text, image_path, content_list):
     """
-    得到images和tables变量
+    在content_list中找到text，将image_path作为一个新的node插入到text后面
     """
-    image_all_list = []
+    for i, c in enumerate(content_list):
+        content_type = c.get("type")
+        if content_type in UNI_FORMAT_TEXT_TYPE and text in c.get("text", ''):
+            img_node = {
+                "type": "image",
+                "img_path": image_path,
+                "img_alt":"",
+                "img_title":"",
+                "img_caption":""
+            }
+            content_list.insert(i+1, img_node)
+            break
+    else:
+        logger.error(f"Can't find the location of image {image_path} in the markdown file, search target is {text}")
     
+
+
+def __insert_before_para(text, image_path, content_list):
+    """
+    在content_list中找到text，将image_path作为一个新的node插入到text前面
+    """
+    for i, c in enumerate(content_list):
+        content_type = c.get("type")
+        if content_type in  UNI_FORMAT_TEXT_TYPE and text in c.get("text", ''):
+            img_node = {
+                "type": "image",
+                "img_path": image_path,
+                "img_alt":"",
+                "img_title":"",
+                "img_caption":""
+            }
+            content_list.insert(i, img_node)
+            break
+    else:
+        logger.error(f"Can't find the location of image {image_path} in the markdown file, search target is {text}")
+         
+
+def mk_universal_format(para_dict: dict):
+    """
+    构造统一格式 https://aicarrier.feishu.cn/wiki/FqmMwcH69iIdCWkkyjvcDwNUnTY
+    """
+    content_lst = []
     for _, page_info in para_dict.items():
-        images = page_info.get("images",[])
-        tables = page_info.get("tables",[])
-        image_backup = page_info.get("image_backup", [])  
-        table_backup = page_info.get("table_backup",[]) 
-        all_page_images = []
-        all_page_images.extend(images)
-        all_page_images.extend(image_backup)
-        all_page_images.extend(tables)
-        all_page_images.extend(table_backup)
+        page_lst = [] # 一个page内的段落列表
+        para_blocks = page_info.get("para_blocks")
+        pymu_raw_blocks = page_info.get("preproc_blocks")
         
-        pymu_raw_blocks = page_info.get("pymu_raw_blocks")  
-
-        # 提取每个图片所在位置
-        for image_info in all_page_images:
-            x0_image, y0_image, x1_image, y1_image = image_info['bbox'][:4]
-            image_path = image_info['image_path']
-            
-            # 判断图片处于原始PDF中哪个模块之间
-            image_internal_dict = {}
-            image_external_dict = {}
-            between_dict = {}
+        all_page_images = []
+        all_page_images.extend(page_info.get("images",[]))
+        all_page_images.extend(page_info.get("image_backup", []) )
+        all_page_images.extend(page_info.get("tables",[]))
+        all_page_images.extend(page_info.get("table_backup",[]) )
+        
+        if not para_blocks or not pymu_raw_blocks: # 只有图片的拼接的场景
+            for img in all_page_images:
+                content_node = {
+                    "type": "image",
+                    "img_path": img['image_path'],
+                    "img_alt":"",
+                    "img_title":"",
+                    "img_caption":""
+                }
+                page_lst.append(content_node) # TODO 图片顺序
+        else:
+            for block in para_blocks:
+                item = block["paras"]
+                for _, p in item.items():
+                    font_type = p['para_font_type']# 对于文本来说，要么是普通文本，要么是个行间公式
+                    if font_type == TYPE_INTERLINE_EQUATION:
+                        content_node = {
+                            "type": "equation",
+                            "latex": p["para_text"]
+                        }
+                        page_lst.append(content_node)
+                    else:
+                        para_text = p["para_text"]
+                        is_title = p["is_para_title"]
+                        title_level = p['para_title_level']
+                        
+                        if is_title:
+                            content_node = {
+                                "type": f"h{title_level}",
+                                "text": para_text
+                            }
+                            page_lst.append(content_node)
+                        else:
+                            content_node = {
+                                "type": "text",
+                                "text": para_text
+                            }
+                            page_lst.append(content_node)
+                            
+        content_lst.extend(page_lst)
+        
+        """插入图片"""
+        for img in all_page_images:
+            imgbox = img['bbox']
+            img_content = f"{img['image_path']}"
+            # 先看在哪个block内
             for block in pymu_raw_blocks:
-                x0, y0, x1, y1 = block['bbox'][:4]
-
-                # 在某个模块内部
-                if x0 <= x0_image < x1 and y0 <= y0_image < y1:
-                    image_internal_dict['bbox'] = [x0_image, y0_image, x1_image, y1_image]
-                    image_internal_dict['path'] = image_path
-                    
-                    # 确定图片在哪句文本之前
-                    y_pre = 0
-                    for line in block['lines']:
-                        x0, y0, x1, y1 = line['spans'][0]['bbox']
-                        if x0 <= x0_image < x1 and y_pre <= y0_image < y0: 
-                            text = line['spans']['text']
-                            image_internal_dict['text'] = text
-                            image_internal_dict['markdown_image'] = f'![image_path]({image_path})'
+                bbox = block['bbox']
+                if bbox[0]-1 <= imgbox[0] < bbox[2]+1 and bbox[1]-1 <= imgbox[1] < bbox[3]+1:# 确定在这个大的block内，然后进入逐行比较距离
+                    for l in block['lines']:
+                        line_box = l['bbox']
+                        if line_box[0]-1 <= imgbox[0] < line_box[2]+1 and line_box[1]-1 <= imgbox[1] < line_box[3]+1: # 在line内的，插入line前面
+                            line_txt = "".join([s['text'] for s in l['spans']])
+                            __insert_before_para(line_txt, img_content, content_lst)
+                            break
+                        break
+                    else:# 在行与行之间
+                        # 找到图片x0,y0与line的x0,y0最近的line
+                        min_distance = 100000
+                        min_line = None
+                        for l in block['lines']:
+                            line_box = l['bbox']
+                            distance = math.sqrt((line_box[0] - imgbox[0])**2 + (line_box[1] - imgbox[1])**2)
+                            if distance < min_distance:
+                                min_distance = distance
+                                min_line = l
+                        if min_line:
+                            line_txt = "".join([s['text'] for s in min_line['spans']])
+                            img_h = imgbox[3] - imgbox[1]
+                            if min_distance<img_h: # 文字在图片前面
+                                __insert_after_para(line_txt, img_content, content_lst)
+                            else:
+                                __insert_before_para(line_txt, img_content, content_lst) 
                             break
                         else:
-                            y_pre = y0
-                # 在某两个模块之间
-                elif x0 <= x0_image < x1:
-                    distance = math.sqrt((x1_image - x0)**2 + (y1_image - y0)**2)
-                    between_dict[block['number']] = distance
-            
-            # 找到与定位点距离最小的文本block
-            if between_dict:
-                min_key = min(between_dict, key=between_dict.get)
-                spans_list = []
-                for span in pymu_raw_blocks[min_key]['lines']: 
-                    for text_piece in span['spans']:
-                        # 防止索引定位文本内容过多
-                        if len(spans_list) < 60:
-                            spans_list.append(text_piece['text'])
-                text1 = ''.join(spans_list)
-                
-                image_external_dict['bbox'] = [x0_image, y0_image, x1_image, y1_image]
-                image_external_dict['path'] = image_path 
-                image_external_dict['text'] = text1
-                image_external_dict['markdown_image'] = f'![image_path]({image_path})'
+                            logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #1")
+            else:# 应当在两个block之间
+                # 找到上方最近的block，如果上方没有就找大下方最近的block
+                top_txt_block = find_top_nearest_text_bbox(pymu_raw_blocks, imgbox)
+                if top_txt_block:
+                    line_txt = "".join([s['text'] for s in top_txt_block['lines'][-1]['spans']])
+                    __insert_after_para(line_txt, img_content, content_lst) 
+                else:
+                    bottom_txt_block = find_bottom_nearest_text_bbox(pymu_raw_blocks, imgbox)
+                    if bottom_txt_block:
+                        line_txt = "".join([s['text'] for s in bottom_txt_block['lines'][0]['spans']])
+                        __insert_before_para(line_txt, img_content, content_lst) 
+                    else: # TODO ，图片可能独占一列，这种情况上下是没有图片的
+                        logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #2")
+    # end for
+    return content_lst
 
-            # 将内部图片或外部图片存入当页所有图片的列表
-            if len(image_internal_dict) != 0:
-                image_all_list.append(image_internal_dict)
-            elif len(image_external_dict) != 0:
-                image_all_list.append(image_external_dict)
-            else:
-                logger.error(f"Can't find the location of image {image_path} in the markdown file")
 
-    content_text = mk_nlp_markdown(para_dict)
+def mk_mm_markdown(content_list):
+    """
+    基于同一格式的内容列表，构造markdown，含图片
+    """
+    content_md = []
+    for c in content_list:
+        content_type = c.get("type")
+        if content_type == "text":
+            content_md.append(c.get("text"))
+        elif content_type == "equation":
+            content_md.append(f"$$\n{c.get('latex')}\n$$")
+        elif content_type in UNI_FORMAT_TEXT_TYPE:
+            content_md.append(f"{'#'*int(content_type[1])} {c.get('text')}")
+        elif content_type == "image":
+            content_md.append(f"![]({c.get('img_path')})")
+    return "\n\n".join(content_md)
 
-    for image_info_extract in image_all_list:
-        loc = __find_index(content_text, image_info_extract['text'])
-        if loc is not None:
-            content_text = __insert_string(content_text, image_info_extract['markdown_image'], loc)
-        else:
-            logger.error(f"Can't find the location of image {image_info_extract['path']} in the markdown file")
-
-    return content_text
+def mk_nlp_markdown(content_list):
+    """
+    基于同一格式的内容列表，构造markdown，不含图片
+    """
+    content_md = []
+    for c in content_list:
+        content_type = c.get("type")
+        if content_type == "text":
+            content_md.append(c.get("text"))
+        elif content_type == "equation":
+            content_md.append(f"$$\n{c.get('latex')}\n$$")
+        elif content_type in UNI_FORMAT_TEXT_TYPE:
+            content_md.append(f"{'#'*int(content_type[1])} {c.get('text')}")
+    return "\n\n".join(content_md)

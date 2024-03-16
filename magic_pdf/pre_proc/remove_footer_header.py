@@ -1,6 +1,7 @@
 import re
 
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap
+from magic_pdf.libs.drop_tag import CONTENT_IN_FOOT_OR_HEADER, PAGE_NO
 
 
 def remove_headder_footer_one_page(text_raw_blocks, image_bboxes, table_bboxes, header_bboxs, footer_bboxs,
@@ -67,7 +68,7 @@ def remove_headder_footer_one_page(text_raw_blocks, image_bboxes, table_bboxes, 
                 blk['lines'].remove(line)
         else:
             # if not blk['lines']:
-            blk['tag'] = 'in-foot-header-area'
+            blk['tag'] = CONTENT_IN_FOOT_OR_HEADER
             text_block_to_remove.append(blk)
 
     """有的时候由于pageNo太小了，总是会有一点和content_boundry重叠一点，被放入正文，因此对于pageNo，进行span粒度的删除"""
@@ -80,7 +81,7 @@ def remove_headder_footer_one_page(text_raw_blocks, image_bboxes, table_bboxes, 
                         for span in line['spans']:
                             if _is_in_or_part_overlap(pagenobox, span['bbox']):
                                 # span['text'] = ''
-                                span['tag'] = "page-no"
+                                span['tag'] = PAGE_NO
                                 # 检查这个block是否只有这一个span，如果是，那么就把这个block也删除
                                 if len(line['spans']) == 1 and len(block['lines']) == 1:
                                     page_no_block_2_remove.append(block)
@@ -96,7 +97,7 @@ def remove_headder_footer_one_page(text_raw_blocks, image_bboxes, table_bboxes, 
                     if last_span['text'].strip() and not re.search('[a-zA-Z]', last_span['text']) and re.search('[0-9]',
                                                                                                                 last_span[
                                                                                                                     'text']):
-                        last_span['tag'] = "page-no"
+                        last_span['tag'] = PAGE_NO
                         page_no_block_2_remove.append(last_block)
 
     for b in page_no_block_2_remove:
