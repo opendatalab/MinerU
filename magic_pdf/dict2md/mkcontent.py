@@ -326,7 +326,11 @@ def mk_mm_markdown(content_list):
         if content_type == "text":
             content_md.append(c.get("text"))
         elif content_type == "equation":
-            content_md.append(f"$$\n{c.get('latex')}\n$$")
+            content = c.get("latex")
+            if content.startswith("$$") and content.endswith("$$"):
+                content_md.append(content)
+            else:
+                content_md.append(f"\n$$\n{c.get('latex')}\n$$\n")
         elif content_type in UNI_FORMAT_TEXT_TYPE:
             content_md.append(f"{'#'*int(content_type[1])} {c.get('text')}")
         elif content_type == "image":

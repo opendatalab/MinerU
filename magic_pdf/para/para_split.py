@@ -3,11 +3,12 @@ import numpy as np
 from loguru import logger
 
 from magic_pdf.libs.boxbase import _is_in
+from magic_pdf.libs.ocr_content_type import ContentType
 
 
 LINE_STOP_FLAG = ['.', '!', '?', '。', '！', '？',"：", ":", ")", "）", ";"]
-INLINE_EQUATION = 'inline_equation'
-INTER_EQUATION = "displayed_equation"
+INLINE_EQUATION = ContentType.InlineEquation
+INTERLINE_EQUATION = ContentType.InterlineEquation
 TEXT = "text"
 
 def __add_line_period(blocks, layout_bboxes):
@@ -20,20 +21,19 @@ def __add_line_period(blocks, layout_bboxes):
         for line in block['lines']:
             last_span = line['spans'][-1]
             span_type = last_span['type']
-            if span_type in [TEXT, INLINE_EQUATION]:
+            if span_type in [INLINE_EQUATION]:
                 span_content = last_span['content'].strip()
                 if span_type==INLINE_EQUATION and span_content[-1] not in LINE_STOP_FLAG:
-                    if span_type in [INLINE_EQUATION, INTER_EQUATION]:
+                    if span_type in [INLINE_EQUATION, INTERLINE_EQUATION]:
                         last_span['content'] = span_content + '.'
 
 
 
 def __valign_lines(blocks, layout_bboxes):
     """
-    对齐行的左侧和右侧。
-    扫描行的左侧和右侧，如果x0, x1差距不超过3就强行对齐到所处layout的左右两侧（和layout有一段距离）。
-    3是个经验值，TODO，计算得来
-    
+    在一个layoutbox内对齐行的左侧和右侧。
+    扫描行的左侧和右侧，如果x0, x1差距不超过一个阈值，就强行对齐到所处layout的左右两侧（和layout有一段距离）。
+    3是个经验值，TODO，计算得来，可以设置为1.5个正文字符。
     """
     
     min_distance = 3
@@ -159,11 +159,14 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
                 else: 
                     para.append(line)
             else: # 其他，图片、表格、行间公式，各自占一段
-                para.append(line)
-                paras.append(para)
+                if len(para)>0:
+                    paras.append(para)
+                    para = []
+                else:
+                    paras.append([line])
+                    para = []
                 # para_text = ''.join([get_span_text(span) for line in para for span in line['spans']])
                 # logger.info(para_text)
-                para = []
         if len(para)>0:
             paras.append(para)
             # para_text = ''.join([get_span_text(span) for line in para for span in line['spans']])
