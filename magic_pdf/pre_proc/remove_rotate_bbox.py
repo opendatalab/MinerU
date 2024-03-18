@@ -1,6 +1,7 @@
 import math
 
 from magic_pdf.libs.boxbase import is_vbox_on_side
+from magic_pdf.libs.drop_tag import EMPTY_SIDE_BLOCK, ROTATE_TEXT, VERTICAL_TEXT
 
 
 def detect_non_horizontal_texts(result_dict):
@@ -134,13 +135,13 @@ def remove_rotate_side_textblock(pymu_text_block, page_width, page_height):
             is_box_valign = (len(set([int(line['spans'][0]['bbox'][0] ) for line in lines if len(line['spans'])>0]))==1) and (len([int(line['spans'][0]['bbox'][0] ) for line in lines if len(line['spans'])>0])>1)  # 测试bbox在垂直方向是不是x0都相等，也就是在垂直方向排列.同时必须大于等于2个字
             
             if is_box_valign:
-                block['tag'] = "vertical-text"
+                block['tag'] = VERTICAL_TEXT
                 removed_text_block.append(block)
                 continue
         
         for line in lines:
             if line['dir']!=(1,0):
-                block['tag'] = "rotate"
+                block['tag'] = ROTATE_TEXT
                 removed_text_block.append(block) # 只要有一个line不是dir=(1,0)，就把整个block都删掉
                 break
         
@@ -177,7 +178,7 @@ def remove_side_blank_block(pymu_text_block, page_width, page_height):
            continue
             
         if __is_empty_side_box(block):
-            block['tag'] = "empty-side-block"
+            block['tag'] = EMPTY_SIDE_BLOCK
             removed_text_block.append(block)
             continue
         
