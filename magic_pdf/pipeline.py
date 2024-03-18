@@ -414,5 +414,65 @@ def ocr_pdf_intermediate_dict_to_standard_format(jso: dict, debug_mode=False) ->
     return jso
 
 
+'''
+统一处理逻辑
+1.先调用parse_pdf对文本类pdf进行处理
+2.再调用ocr_dropped_parse_pdf,对之前drop的pdf进行处理
+'''
+def uni_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    jso = parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    jso = ocr_dropped_parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    return jso
+
+
+def ocr_dropped_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    # 检测debug开关
+    if debug_mode:
+        pass
+    else:  # 如果debug没开，则检测是否有needdrop字段
+        if not jso.get('need_drop', False):
+            return jso
+        else:
+            s3_pdf_path = jso.get('file_location')
+            s3_config = get_s3_config(s3_pdf_path)
+            model_output_json_list = jso.get('doc_layout_result')
+            data_source = get_data_source(jso)
+            file_id = jso.get('file_id')
+            book_name = f"{data_source}/{file_id}"
+            try:
+                save_path = s3_image_save_path
+                image_s3_config = get_s3_config(save_path)
+                start_time = time.time()  # 记录开始时间
+                # 先打印一下book_name和解析开始的时间
+                logger.info(f"book_name is:{book_name},start_time is:{formatted_time(start_time)}", file=sys.stderr)
+                pdf_info_dict = parse_pdf_by_ocr(
+                    s3_pdf_path,
+                    s3_config,
+                    model_output_json_list,
+                    save_path,
+                    book_name,
+                    pdf_model_profile=None,
+                    image_s3_config=image_s3_config,
+                    start_page_id=start_page_id,
+                    debug_mode=debug_mode
+                )
+                if pdf_info_dict.get('need_drop', False):  # 如果返回的字典里有need_drop，则提取drop_reason并跳过本次解析
+                    jso['need_drop'] = True
+                    jso['drop_reason'] = pdf_info_dict["drop_reason"]
+                else:  # 正常返回，将 pdf_info_dict 压缩并存储
+                    pdf_info_dict = JsonCompressor.compress_json(pdf_info_dict)
+                    jso['pdf_intermediate_dict'] = pdf_info_dict
+                end_time = time.time()  # 记录完成时间
+                parse_time = int(end_time - start_time)  # 计算执行时间
+                # 解析完成后打印一下book_name和耗时
+                logger.info(
+                    f"book_name is:{book_name},end_time is:{formatted_time(end_time)},cost_time is:{parse_time}",
+                    file=sys.stderr)
+                jso['parse_time'] = parse_time
+            except Exception as e:
+                jso = exception_handler(jso, e)
+                return jso
+
+
 if __name__ == "__main__":
     pass
