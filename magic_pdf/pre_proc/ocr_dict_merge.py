@@ -2,6 +2,7 @@ from loguru import logger
 
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio, \
     calculate_overlap_area_in_bbox1_area_ratio
+from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
@@ -59,6 +60,7 @@ def merge_spans_to_line(spans):
 def merge_spans_to_line_by_layout(spans, layout_bboxes):
     lines = []
     new_spans = []
+    dropped_spans = []
     for item in layout_bboxes:
         layout_bbox = item['layout_bbox']
         # 遍历spans,将每个span放入对应的layout中
@@ -78,10 +80,14 @@ def merge_spans_to_line_by_layout(spans, layout_bboxes):
             layout_lines = merge_spans_to_line(layout_sapns)
             lines.extend(layout_lines)
 
-    #对line中的span进行排序
+    # 对line中的span进行排序
     lines = line_sort_spans_by_left_to_right(lines)
 
-    return lines
+    for span in spans:
+        span['tag'] = DropTag.NOT_IN_LAYOUT
+        dropped_spans.append(span)
+
+    return lines, dropped_spans
 
 
 def merge_lines_to_block(lines):

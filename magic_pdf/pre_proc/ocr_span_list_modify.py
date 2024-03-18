@@ -2,10 +2,12 @@ from loguru import logger
 
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
     __is_overlaps_y_exceeds_threshold
+from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
 def remove_overlaps_min_spans(spans):
+    dropped_spans = []
     #  删除重叠spans中较小的那些
     for span1 in spans.copy():
         for span2 in spans.copy():
@@ -15,7 +17,9 @@ def remove_overlaps_min_spans(spans):
                     bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
                     if bbox_to_remove is not None:
                         spans.remove(bbox_to_remove)
-    return spans
+                        bbox_to_remove['tag'] = DropTag.SPAN_OVERLAP
+                        dropped_spans.append(bbox_to_remove)
+    return spans, dropped_spans
 
 
 def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
@@ -35,9 +39,7 @@ def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
 
 
 def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
-    dropped_text_block = []
-    dropped_image_block = []
-    dropped_table_block = []
+    dropped_spans = []
     for drop_tag, removed_bboxes in need_remove_spans_bboxes_dict.items():
         # logger.info(f"remove spans by bbox dict, drop_tag: {drop_tag}, removed_bboxes: {removed_bboxes}")
         need_remove_spans = []
@@ -50,14 +52,9 @@ def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
         for span in need_remove_spans:
             spans.remove(span)
             span['tag'] = drop_tag
-            if span['type'] in [ContentType.Text, ContentType.InlineEquation, ContentType.InterlineEquation]:
-                dropped_text_block.append(span)
-            elif span['type'] == ContentType.Image:
-                dropped_image_block.append(span)
-            elif span['type'] == ContentType.Table:
-                dropped_table_block.append(span)
+            dropped_spans.append(span)
 
-    return spans, dropped_text_block, dropped_image_block, dropped_table_block
+    return spans, dropped_spans
 
 
 def adjust_bbox_for_standalone_block(spans):
@@ -98,7 +95,8 @@ def modify_y_axis(spans: list, displayed_list: list, text_inline_lines: list):
             # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
             # image和table类型，同上
             if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
-                    s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
+                    s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in
+                    current_line):
                 # 传入
                 if span["type"] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
                     displayed_list.append(span)
@@ -160,7 +158,7 @@ def modify_inline_equation(spans: list, displayed_list: list, text_inline_lines:
             y0, y1 = text_line[1]
             if (
                     span_y0 < y0 and span_y > y0 or span_y0 < y1 and span_y > y1 or span_y0 < y0 and span_y > y1) and __is_overlaps_y_exceeds_threshold(
-                    span['bbox'], (0, y0, 0, y1)):
+                span['bbox'], (0, y0, 0, y1)):
 
                 # 调整公式类型
                 if span["type"] == ContentType.InterlineEquation:

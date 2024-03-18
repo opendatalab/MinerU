@@ -14,6 +14,7 @@ from magic_pdf.libs.commons import (
     get_docx_model_output,
 )
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
+from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.para.para_split import para_split
@@ -34,7 +35,7 @@ from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 def construct_page_component(blocks, para_blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                              images, tables, interline_equations, inline_equations,
-                             dropped_text_block, dropped_image_block, dropped_table_block,
+                             dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
                              need_remove_spans_bboxes_dict):
     return_dict = {
         'preproc_blocks': blocks,
@@ -50,6 +51,7 @@ def construct_page_component(blocks, para_blocks, layout_bboxes, page_id, page_w
         'droped_text_block': dropped_text_block,
         'droped_image_block': dropped_image_block,
         'droped_table_block': dropped_table_block,
+        'dropped_equation_block': dropped_equation_block,
         'droped_bboxes': need_remove_spans_bboxes_dict,
     }
     return return_dict
@@ -133,10 +135,10 @@ def parse_pdf_by_ocr(
 
         # 构建需要remove的bbox字典
         need_remove_spans_bboxes_dict = {
-            "page_no": page_no_bboxes,
-            "header": header_bboxes,
-            "footer": footer_bboxes,
-            "footnote": footnote_bboxes,
+            DropTag.PAGE_NUMBER: page_no_bboxes,
+            DropTag.HEADER: header_bboxes,
+            DropTag.FOOTER: footer_bboxes,
+            DropTag.FOOTNOTE: footnote_bboxes,
         }
 
         layout_dets = ocr_page_info["layout_dets"]
@@ -202,12 +204,12 @@ def parse_pdf_by_ocr(
 
 
         # 删除重叠spans中较小的那些
-        spans = remove_overlaps_min_spans(spans)
+        spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
 
         # 删除remove_span_block_bboxes中的bbox
         # spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
         # 按qa要求，增加drop相关数据
-        spans, dropped_text_block, dropped_image_block, dropped_table_block = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
+        spans, dropped_spans_by_removed_bboxes = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         # 对image和table截图
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client)
@@ -230,7 +232,7 @@ def parse_pdf_by_ocr(
         layout_bboxes, layout_tree = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
 
         # 将spans合并成line(在layout内,从上到下,从左到右)
-        lines = merge_spans_to_line_by_layout(spans, layout_bboxes)
+        lines, dropped_spans_by_layout = merge_spans_to_line_by_layout(spans, layout_bboxes)
 
         # 将lines合并成block
         blocks = merge_lines_to_block(lines)
@@ -241,10 +243,33 @@ def parse_pdf_by_ocr(
         # 获取QA需要外置的list
         images, tables, interline_equations, inline_equations = get_qa_need_list(blocks)
 
+        # drop的span_list合并
+        dropped_spans = []
+        dropped_spans.extend(dropped_spans_by_span_overlap)
+        dropped_spans.extend(dropped_spans_by_removed_bboxes)
+        dropped_spans.extend(dropped_spans_by_layout)
+
+        dropped_text_block = []
+        dropped_image_block = []
+        dropped_table_block = []
+        dropped_equation_block = []
+        for span in dropped_spans:
+            # drop出的spans进行分类
+            if span['type'] == ContentType.Text:
+                dropped_text_block.append(span)
+            elif span['type'] == ContentType.Image:
+                dropped_image_block.append(span)
+            elif span['type'] == ContentType.Table:
+                dropped_table_block.append(span)
+            elif span['type'] in [ContentType.InlineEquation, ContentType.InterlineEquation]:
+                dropped_equation_block.append(span)
+
+
+
         # 构造pdf_info_dict
         page_info = construct_page_component(blocks, para_blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                                              images, tables, interline_equations, inline_equations,
-                                             dropped_text_block, dropped_image_block, dropped_table_block,
+                                             dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
                                              need_remove_spans_bboxes_dict)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
