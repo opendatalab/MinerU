@@ -6,9 +6,10 @@ import json
 import os
 from pathlib import Path
 from loguru import logger
+from magic_pdf.libs.ocr_content_type import ContentType
 
-TYPE_INLINE_EQUATION = "inline-equation"
-TYPE_INTERLINE_EQUATION = "interline-equation"
+TYPE_INLINE_EQUATION = ContentType.InlineEquation
+TYPE_INTERLINE_EQUATION = ContentType.InterlineEquation
 
 
 def combine_chars_to_pymudict(block_dict, char_dict):

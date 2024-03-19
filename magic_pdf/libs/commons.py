@@ -1,4 +1,5 @@
 import datetime
+import json
 import os, re, configparser
 import time
 
@@ -15,12 +16,15 @@ def get_delta_time(input_time):
 
 
 def join_path(*args):
-    return '/'.join(s.rstrip('/') for s in args)
+    return '/'.join(str(s).rstrip('/') for s in args)
+
 
 #配置全局的errlog_path，方便demo同步引用
 error_log_path = "s3://llm-pdf-text/err_logs/"
 # json_dump_path = "s3://pdf_books_temp/json_dump/" # 这条路径仅用于临时本地测试,不能提交到main
 json_dump_path = "s3://llm-pdf-text/json_dump/"
+
+s3_image_save_path = "s3://mllm-raw-media/pdf2md_img/"
 
 
 def get_top_percent_list(num_list, percent):
@@ -114,6 +118,34 @@ def read_file(pdf_path: str, s3_profile):
     else:
         with open(pdf_path, "rb") as f:
             return f.read()
+
+
+def get_docx_model_output(pdf_model_output, pdf_model_s3_profile, page_id):
+    if isinstance(pdf_model_output, str):
+        model_output_json_path = join_path(pdf_model_output, f"page_{page_id + 1}.json")  # 模型输出的页面编号从1开始的
+        if os.path.exists(model_output_json_path):
+            json_from_docx = read_file(model_output_json_path, pdf_model_s3_profile)
+            model_output_json = json.loads(json_from_docx)
+        else:
+            try:
+                model_output_json_path = join_path(pdf_model_output, "model.json")
+                with open(model_output_json_path, "r", encoding="utf-8") as f:
+                    model_output_json = json.load(f)
+                    model_output_json = model_output_json["doc_layout_result"][page_id]
+            except:
+                s3_model_output_json_path = join_path(pdf_model_output, f"page_{page_id + 1}.json")
+                s3_model_output_json_path = join_path(pdf_model_output, f"{page_id}.json")
+                #s3_model_output_json_path = join_path(pdf_model_output, f"page_{page_id }.json")
+                # logger.warning(f"model_output_json_path: {model_output_json_path} not found. try to load from s3: {s3_model_output_json_path}")
+
+                s = read_file(s3_model_output_json_path, pdf_model_s3_profile)
+                return json.loads(s)
+
+    elif isinstance(pdf_model_output, list):
+        model_output_json = pdf_model_output[page_id]
+
+    return model_output_json
+
 
 def list_dir(dir_path:str, s3_profile:str):
     """

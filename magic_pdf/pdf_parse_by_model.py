@@ -2,7 +2,7 @@ import time
 
 # from anyio import Path
 
-from magic_pdf.libs.commons import fitz, get_delta_time, get_img_s3_client
+from magic_pdf.libs.commons import fitz, get_delta_time, get_img_s3_client, get_docx_model_output
 import json
 import os
 import math
@@ -68,31 +68,6 @@ paraSplitException_msg = ParaSplitException().message
 paraMergeException_msg = ParaMergeException().message
 
 
-def get_docx_model_output(pdf_model_output, pdf_model_s3_profile, page_id):
-    if isinstance(pdf_model_output, str):
-        model_output_json_path = join_path(pdf_model_output, f"page_{page_id + 1}.json")  # 模型输出的页面编号从1开始的
-        if os.path.exists(model_output_json_path):
-            json_from_docx = read_file(model_output_json_path, pdf_model_s3_profile)
-            model_output_json = json.loads(json_from_docx)
-        else:
-            try:
-                model_output_json_path = join_path(pdf_model_output, "model.json")
-                with open(model_output_json_path, "r", encoding="utf-8") as f:
-                    model_output_json = json.load(f)
-                    model_output_json = model_output_json["doc_layout_result"][page_id]
-            except:
-                s3_model_output_json_path = join_path(pdf_model_output, f"page_{page_id + 1}.json")
-                s3_model_output_json_path = join_path(pdf_model_output, f"{page_id}.json")
-                #s3_model_output_json_path = join_path(pdf_model_output, f"page_{page_id }.json")
-                # logger.warning(f"model_output_json_path: {model_output_json_path} not found. try to load from s3: {s3_model_output_json_path}")
-
-                s = read_file(s3_model_output_json_path, pdf_model_s3_profile)
-                return json.loads(s)
-
-    elif isinstance(pdf_model_output, list):
-        model_output_json = pdf_model_output[page_id]
-
-    return model_output_json
 
 
 def parse_pdf_by_model(
@@ -282,7 +257,6 @@ def parse_pdf_by_model(
         footnote_bboxes_by_model = parse_footnotes_by_model(page_id, page, model_output_json, md_bookname_save_path, debug_mode=debug_mode)
         # 通过规则识别到的footnote
         footnote_bboxes_by_rule = parse_footnotes_by_rule(remain_text_blocks, page_height, page_id, main_text_font)
-
         """进入pdf过滤器，去掉一些不合理的pdf"""
         is_good_pdf, err = pdf_filter(page, remain_text_blocks, table_bboxes, image_bboxes)
         if not is_good_pdf:

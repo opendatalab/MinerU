@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from magic_pdf.dict2md.mkcontent import mk_mm_markdown
 from magic_pdf.pipeline import (
     meta_scan,
     classify_by_type,
@@ -55,14 +56,19 @@ def demo_parse_pdf(book_name=None, start_page_id=0, debug_mode=True):
     write_json_to_local(jso, book_name)
 
     jso_md = pdf_intermediate_dict_to_markdown(jso, debug_mode=debug_mode)
-    md_content = jso_md.get("content")
+    content = jso_md.get("content_list")
+    markdown_content = mk_mm_markdown(content)
     if book_name is not None:
-        save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
-        markdown_save_path = join_path(save_tmp_path, "md", book_name + ".md")
+        save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest", "md", book_name)
+        uni_format_save_path = join_path(save_tmp_path,  "book" + ".json")
+        markdown_save_path = join_path(save_tmp_path,  "book" + ".md")
+        with open(uni_format_save_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(content, ensure_ascii=False, indent=4))
         with open(markdown_save_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
+            f.write(markdown_content)
+            
     else:
-        logger.info(md_content)
+        logger.info(json.dumps(content, ensure_ascii=False))
 
 
 def demo_save_tables(book_name=None, start_page_id=0, debug_mode=True):

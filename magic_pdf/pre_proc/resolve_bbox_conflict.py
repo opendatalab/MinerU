@@ -6,6 +6,7 @@
 """
 
 from magic_pdf.libs.boxbase import _is_in, _is_in_or_part_overlap, _is_left_overlap
+from magic_pdf.libs.drop_tag import ON_IMAGE_TEXT, ON_TABLE_TEXT
 
 
 def resolve_bbox_overlap_conflict(images:list, tables:list, interline_equations:list, inline_equations:list, text_raw_blocks:list):
@@ -27,14 +28,14 @@ def resolve_bbox_overlap_conflict(images:list, tables:list, interline_equations:
         for text_block in text_raw_blocks:
             text_bbox = text_block["bbox"]
             if _is_in(text_bbox, image_box):
-                text_block['tag'] = "on-image"
+                text_block['tag'] = ON_IMAGE_TEXT
                 text_block_removed.append(text_block)
     # 去掉table上的文字block
     for table_box in tables:
         for text_block in text_raw_blocks:
             text_bbox = text_block["bbox"]
             if _is_in(text_bbox, table_box):
-                text_block['tag'] = "on-table"
+                text_block['tag'] = ON_TABLE_TEXT
                 text_block_removed.append(text_block)
                 
     for text_block in text_block_removed:

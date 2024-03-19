@@ -3,16 +3,18 @@ import sys
 import time
 from urllib.parse import quote
 
-from magic_pdf.libs.commons import read_file, join_path, parse_bucket_key, formatted_time
+from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_nlp_markdown, ocr_mk_mm_markdown, ocr_mk_mm_standard_format
+from magic_pdf.libs.commons import read_file, join_path, parse_bucket_key, formatted_time, s3_image_save_path
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.dict2md.mkcontent import mk_nlp_markdown
+from magic_pdf.dict2md.mkcontent import mk_nlp_markdown, mk_universal_format
 from magic_pdf.pdf_parse_by_model import parse_pdf_by_model
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
 from loguru import logger
 
 from app.common.s3 import get_s3_config, get_s3_client
+from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
 
 def exception_handler(jso: dict, e):
@@ -21,6 +23,27 @@ def exception_handler(jso: dict, e):
     jso['drop_reason'] = DropReason.Exception
     jso['exception'] = f"ERROR: {e}"
     return jso
+
+
+def get_data_type(jso: dict):
+    data_type = jso.get('data_type')
+    if data_type is None:
+        data_type = jso.get('file_type')
+    return data_type
+
+
+def get_bookid(jso: dict):
+    book_id = jso.get('bookid')
+    if book_id is None:
+        book_id = jso.get('original_file_id')
+    return book_id
+
+
+def get_data_source(jso: dict):
+    data_source = jso.get('data_source')
+    if data_source is None:
+        data_source = jso.get('file_source')
+    return data_source
 
 
 def meta_scan(jso: dict, doc_layout_check=True) -> dict:
@@ -32,9 +55,9 @@ def meta_scan(jso: dict, doc_layout_check=True) -> dict:
             jso['drop_reason'] = DropReason.MISS_DOC_LAYOUT_RESULT
             return jso
     try:
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
 
         # 首页存在超量drawing问题
         # special_pdf_list = ['zlib/zlib_21822650']
@@ -78,9 +101,9 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
     # 开始正式逻辑
     try:
         pdf_meta = jso.get('pdf_meta')
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
         total_page = pdf_meta["total_page"]
         page_width = pdf_meta["page_width_pts"]
         page_height = pdf_meta["page_height_pts"]
@@ -140,13 +163,13 @@ def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
         pass
     else:# 如果debug没开，则检测是否有needdrop字段
         if jso.get('need_drop', False):
-            logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']} need drop", file=sys.stderr)
+            logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop", file=sys.stderr)
             jso["dropped"] = True
             return jso
     try:
-        data_source = jso.get('data_source')
+        data_source = get_data_source(jso)
         file_id = jso.get('file_id')
-        book_name = data_source + "/" + file_id
+        book_name = f"{data_source}/{file_id}"
         title = jso.get('title')
         url_encode_title = quote(title, safe='')
         if data_source != 'scihub':
@@ -195,7 +218,7 @@ def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
 
 def drop_needdrop_pdf(jso: dict) -> dict:
     if jso.get('need_drop', False):
-        logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']} need drop", file=sys.stderr)
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop", file=sys.stderr)
         jso["dropped"] = True
     return jso
 
@@ -206,7 +229,7 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
         pass
     else:# 如果debug没开，则检测是否有needdrop字段
         if jso.get('need_drop', False):
-            book_name = join_path(jso['data_source'], jso['file_id'])
+            book_name = join_path(get_data_source(jso), jso['file_id'])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
             return jso
@@ -214,9 +237,10 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
         pdf_intermediate_dict = jso['pdf_intermediate_dict']
         # 将 pdf_intermediate_dict 解压
         pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
-        markdown_content = mk_nlp_markdown(pdf_intermediate_dict)
-        jso["content"] = markdown_content
-        logger.info(f"book_name is:{jso['data_source']}/{jso['file_id']},markdown content length is {len(markdown_content)}", file=sys.stderr)
+        #markdown_content = mk_nlp_markdown(pdf_intermediate_dict)
+        jso['content_list'] = mk_universal_format(pdf_intermediate_dict)
+        #jso["content"] = markdown_content
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']}")
         # 把无用的信息清空
         jso["doc_layout_result"] = ""
         jso["pdf_intermediate_dict"] = ""
@@ -237,9 +261,9 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     s3_pdf_path = jso.get('file_location')
     s3_config = get_s3_config(s3_pdf_path)
     model_output_json_list = jso.get('doc_layout_result')
-    data_source = jso.get('data_source')
+    data_source = get_data_source(jso)
     file_id = jso.get('file_id')
-    book_name = data_source + "/" + file_id
+    book_name = f"{data_source}/{file_id}"
 
     # 1.23.22已修复
     # if debug_mode:
@@ -264,7 +288,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     #     jso['drop_reason'] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_TOTAL_PAGES
     else:
         try:
-            save_path = "s3://mllm-raw-media/pdf2md_img/"
+            save_path = s3_image_save_path
             image_s3_config = get_s3_config(save_path)
             start_time = time.time()  # 记录开始时间
             # 先打印一下book_name和解析开始的时间
@@ -287,6 +311,125 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
             jso['parse_time'] = parse_time
         except Exception as e:
             jso = exception_handler(jso, e)
+    return jso
+
+'''
+统一处理逻辑
+1.先调用parse_pdf对文本类pdf进行处理
+2.再调用ocr_dropped_parse_pdf,对之前drop的pdf进行处理
+'''
+def uni_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    jso = parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    jso = ocr_dropped_parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    return jso
+
+# 专门用来跑被drop的pdf，跑完之后需要把need_drop字段置为false
+def ocr_dropped_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    if not jso.get('need_drop', False):
+        return jso
+    else:
+        jso = ocr_parse_pdf_core(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+        jso['need_drop'] = False
+        return jso
+
+
+def ocr_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    # 检测debug开关
+    if debug_mode:
+        pass
+    else:  # 如果debug没开，则检测是否有needdrop字段
+        if jso.get('need_drop', False):
+            return jso
+
+    jso = ocr_parse_pdf_core(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    return jso
+
+
+def ocr_parse_pdf_core(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    s3_pdf_path = jso.get('file_location')
+    s3_config = get_s3_config(s3_pdf_path)
+    model_output_json_list = jso.get('doc_layout_result')
+    data_source = get_data_source(jso)
+    file_id = jso.get('file_id')
+    book_name = f"{data_source}/{file_id}"
+    try:
+        save_path = s3_image_save_path
+        image_s3_config = get_s3_config(save_path)
+        start_time = time.time()  # 记录开始时间
+        # 先打印一下book_name和解析开始的时间
+        logger.info(f"book_name is:{book_name},start_time is:{formatted_time(start_time)}", file=sys.stderr)
+        pdf_info_dict = parse_pdf_by_ocr(
+            s3_pdf_path,
+            s3_config,
+            model_output_json_list,
+            save_path,
+            book_name,
+            pdf_model_profile=None,
+            image_s3_config=image_s3_config,
+            start_page_id=start_page_id,
+            debug_mode=debug_mode
+        )
+        pdf_info_dict = JsonCompressor.compress_json(pdf_info_dict)
+        jso['pdf_intermediate_dict'] = pdf_info_dict
+        end_time = time.time()  # 记录完成时间
+        parse_time = int(end_time - start_time)  # 计算执行时间
+        # 解析完成后打印一下book_name和耗时
+        logger.info(f"book_name is:{book_name},end_time is:{formatted_time(end_time)},cost_time is:{parse_time}", file=sys.stderr)
+        jso['parse_time'] = parse_time
+    except Exception as e:
+        jso = exception_handler(jso, e)
+    return jso
+
+
+def ocr_pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
+
+    if debug_mode:
+        pass
+    else:  # 如果debug没开，则检测是否有needdrop字段
+        if jso.get('need_drop', False):
+            book_name = join_path(get_data_source(jso), jso['file_id'])
+            logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
+            jso["dropped"] = True
+            return jso
+    try:
+        pdf_intermediate_dict = jso['pdf_intermediate_dict']
+        # 将 pdf_intermediate_dict 解压
+        pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
+        markdown_content = ocr_mk_mm_markdown(pdf_intermediate_dict)
+        jso["content"] = markdown_content
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']},markdown content length is {len(markdown_content)}", file=sys.stderr)
+        # 把无用的信息清空
+        jso["doc_layout_result"] = ""
+        jso["pdf_intermediate_dict"] = ""
+        jso["pdf_meta"] = ""
+    except Exception as e:
+        jso = exception_handler(jso, e)
+    return jso
+
+
+def ocr_pdf_intermediate_dict_to_standard_format(jso: dict, debug_mode=False) -> dict:
+
+    if debug_mode:
+        pass
+    else:  # 如果debug没开，则检测是否有needdrop字段
+        if jso.get('need_drop', False):
+            book_name = join_path(get_data_source(jso), jso['file_id'])
+            logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
+            jso["dropped"] = True
+            return jso
+    try:
+        pdf_intermediate_dict = jso['pdf_intermediate_dict']
+        # 将 pdf_intermediate_dict 解压
+        pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
+        standard_format = ocr_mk_mm_standard_format(pdf_intermediate_dict)
+        jso["content_list"] = standard_format
+        logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']},content_list length is {len(standard_format)}", file=sys.stderr)
+        # 把无用的信息清空
+        jso["doc_layout_result"] = ""
+        jso["pdf_intermediate_dict"] = ""
+        jso["pdf_meta"] = ""
+    except Exception as e:
+        jso = exception_handler(jso, e)
     return jso
 
 
