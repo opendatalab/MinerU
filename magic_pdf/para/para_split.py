@@ -15,7 +15,7 @@ TEXT = "text"
 def __get_span_text(span):
     c = span.get('content', '')
     if len(c)==0:
-        c = span.get('image-path', '')
+        c = span.get('image_path', '')
         
     return c
     
