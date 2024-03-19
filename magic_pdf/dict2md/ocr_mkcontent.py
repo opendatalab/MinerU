@@ -79,6 +79,19 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     return '\n\n'.join(markdown)
 
 
+def make_standard_format_with_para(pdf_info_dict: dict):
+    content_list = []
+    for _, page_info in pdf_info_dict.items():
+        paras = page_info.get("para_blocks")
+        if not paras:
+            continue
+        for para in paras:
+            for line in para:
+                content = line_to_standard_format(line)
+                content_list.append(content)
+    return content_list
+
+
 def line_to_standard_format(line):
     line_text = ""
     inline_equation_num = 0

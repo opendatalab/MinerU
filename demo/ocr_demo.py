@@ -4,6 +4,7 @@ import os
 from loguru import logger
 from pathlib import Path
 
+from demo.demo_test import get_json_from_local_or_s3
 from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_mm_markdown_with_para, ocr_mk_nlp_markdown, ocr_mk_mm_markdown, ocr_mk_mm_standard_format
 from magic_pdf.libs.commons import join_path
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
@@ -29,14 +30,7 @@ def read_json_file(file_path):
     return data
 
 
-if __name__ == '__main__':
-    #ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.pdf"
-    #ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.json"
-    # ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.pdf"
-    # ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.json"
-    
-    ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.pdf"
-    ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.json"
+def ocr_local_parse(ocr_pdf_path, ocr_json_file_path):
     try:
         ocr_pdf_model_info = read_json_file(ocr_json_file_path)
         pth = Path(ocr_json_file_path)
@@ -72,3 +66,19 @@ if __name__ == '__main__':
         # save_markdown(markdown_text, ocr_json_file_path)
     except Exception as e:
         logger.exception(e)
+
+
+def ocr_online_parse(book_name, start_page_id=0, debug_mode=True):
+    json_object = get_json_from_local_or_s3(book_name)
+    logger.info(json_object)
+
+if __name__ == '__main__':
+    #ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.pdf"
+    #ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.json"
+    # ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.pdf"
+    # ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.json"
+    ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.pdf"
+    ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.json"
+    ocr_online_parse(book_name="数学新星网/edu_00001236")
+    ocr_local_parse(ocr_pdf_path, ocr_json_file_path)
+    pass
