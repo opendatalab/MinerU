@@ -133,7 +133,7 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
     def get_span_text(span):
         c = span.get('content', '')
         if len(c)==0:
-            c = span.get('image-path', '')
+            c = span.get('image_path', '')
             
         return c
     
