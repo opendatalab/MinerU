@@ -172,12 +172,11 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
                 else: 
                     para.append(line)
             else: # 其他，图片、表格、行间公式，各自占一段
-                if len(para)>0:
+                if len(para)>0:  # 先把之前的段落加入到结果中
                     paras.append(para)
                     para = []
-                else:
-                    paras.append([line])
-                    para = []
+                paras.append([line]) # 再把当前行加入到结果中。当前行为行间公式、图、表等。
+                para = []
                 # para_text = ''.join([get_span_text(span) for line in para for span in line['spans']])
                 # logger.info(para_text)
         if len(para)>0:
@@ -239,6 +238,40 @@ def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
     return connected_layout_paras
 
 
+def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, lang):
+    """
+    连接起来相邻两个页面的段落——前一个页面最后一个段落和后一个页面的第一个段落。
+    是否可以连接的条件：
+    1. 前一个页面的最后一个段落最后一行沾满整个行。并且没有结尾符号。
+    2. 后一个页面的第一个段落第一行没有空白开头。
+    """
+    pre_last_para = pre_page_paras[-1]
+    next_first_para = next_page_paras[0]
+    pre_last_line = pre_last_para[-1]
+    next_first_line = next_first_para[0]
+    pre_last_line_text = ''.join([__get_span_text(span) for span in pre_last_line['spans']])
+    pre_last_line_type = pre_last_line['spans'][-1]['type']
+    next_first_line_text = ''.join([__get_span_text(span) for span in next_first_line['spans']])
+    next_first_line_type = next_first_line['spans'][0]['type']
+    
+    if pre_last_line_type not in [TEXT, INLINE_EQUATION] or next_first_line_type not in [TEXT, INLINE_EQUATION]: # TODO，真的要做好，要考虑跨table, image, 行间的情况
+        # 不是文本，不连接
+        return False
+    
+    pre_x2_max = __find_layout_bbox_by_line(pre_last_line['bbox'], pre_page_layout_bbox)[2]
+    next_x0_min = __find_layout_bbox_by_line(next_first_line['bbox'], next_page_layout_bbox)[0]
+    
+    pre_last_line_text = pre_last_line_text.strip()
+    next_first_line_text = next_first_line_text.strip()
+    if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and next_first_line['bbox'][0]==next_x0_min: # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
+        """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
+        pre_page_paras[-1].extend(next_first_para)
+        next_page_paras.pop(0) # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
+        return True
+    else:
+        return False
+
+
 def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     """
     根据line和layout情况进行分段
@@ -254,18 +287,32 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
     layout_paras = __split_para_in_layoutbox(lines_group, layout_bboxes, lang) # layout内分段
     connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang) # layout间链接段落
-    # TODO 不同页面连接
-    
-    
-    
     return connected_layout_paras
     
     
-def para_split(blocks, layout_bboxes, lang="en"):
+def para_split(pdf_info_dict, lang="en"):
     """
     根据line和layout情况进行分段
     """
-    new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
-    splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, lang)
-    
-    return splited_blocks
+    new_layout_of_pages = [] # 数组的数组，每个元素是一个页面的layoutS
+    for _, page in pdf_info_dict.items():
+        blocks = page['preproc_blocks']
+        layout_bboxes = page['layout_bboxes']
+        new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
+        new_layout_of_pages.append(new_layout_bbox)
+        splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, lang)
+        page['para_blocks'] = splited_blocks
+        
+    """连接页面与页面之间的可能合并的段落"""
+    pdf_infos = list(pdf_info_dict.values())
+    for i, page in enumerate(pdf_info_dict.values()):
+        if i==0:
+            continue
+        pre_page_paras = pdf_infos[i-1]['para_blocks']
+        next_page_paras = pdf_infos[i]['para_blocks']
+        pre_page_layout_bbox = new_layout_of_pages[i-1]
+        next_page_layout_bbox = new_layout_of_pages[i]
+        
+        is_conn= __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, lang) 
+        if is_conn:
+            logger.info(f"连接了第{i-1}页和第{i}页的段落")
