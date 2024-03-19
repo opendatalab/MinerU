@@ -11,6 +11,15 @@ INLINE_EQUATION = ContentType.InlineEquation
 INTERLINE_EQUATION = ContentType.InterlineEquation
 TEXT = "text"
 
+
+def __get_span_text(span):
+    c = span.get('content', '')
+    if len(c)==0:
+        c = span.get('image-path', '')
+        
+    return c
+    
+    
 def __add_line_period(blocks, layout_bboxes):
     """
     为每行添加句号
@@ -38,6 +47,7 @@ def __valign_lines(blocks, layout_bboxes):
     
     min_distance = 3
     min_sample = 2
+    new_layout_bboxes = []
     
     for layout_box in layout_bboxes:
         blocks_in_layoutbox = [b for b in blocks if _is_in(b['bbox'], layout_box['layout_bbox'])]
@@ -84,15 +94,25 @@ def __valign_lines(blocks, layout_bboxes):
                             min([line['bbox'][1] for line in block['lines']]), 
                             max([line['bbox'][2] for line in block['lines']]), 
                             max([line['bbox'][3] for line in block['lines']])]
+            
+        """新计算layout的bbox，因为block的bbox变了。"""
+        layout_x0 = min([block['bbox'][0] for block in blocks_in_layoutbox])
+        layout_y0 = min([block['bbox'][1] for block in blocks_in_layoutbox])
+        layout_x1 = max([block['bbox'][2] for block in blocks_in_layoutbox])
+        layout_y1 = max([block['bbox'][3] for block in blocks_in_layoutbox])
+        new_layout_bboxes.append([layout_x0, layout_y0, layout_x1, layout_y1])
+            
+    return new_layout_bboxes
 
 
 def __common_pre_proc(blocks, layout_bboxes):
     """
     不分语言的，对文本进行预处理
     """
-    __add_line_period(blocks, layout_bboxes)
-    __valign_lines(blocks, layout_bboxes)
+    #__add_line_period(blocks, layout_bboxes)
+    aligned_layout_bboxes = __valign_lines(blocks, layout_bboxes)
     
+    return aligned_layout_bboxes
 
 def __pre_proc_zh_blocks(blocks, layout_bboxes):
     """
@@ -130,13 +150,6 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
         末尾特征：以句号等结束符结尾。并且距离右侧边界有一定距离。
     
     """
-    def get_span_text(span):
-        c = span.get('content', '')
-        if len(c)==0:
-            c = span.get('image_path', '')
-            
-        return c
-    
     paras = []
     right_tail_distance = 1.5 * char_avg_len
     for lines in lines_group:
@@ -145,7 +158,7 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
         layout_right = max([line['bbox'][2] for line in lines])
         para = [] # 元素是line
         for line in lines:
-            line_text = ''.join([get_span_text(span) for span in line['spans']])
+            line_text = ''.join([__get_span_text(span) for span in line['spans']])
             #logger.info(line_text)
             last_span_type = line['spans'][-1]['type']
             if last_span_type in [TEXT, INLINE_EQUATION]:
@@ -174,9 +187,59 @@ def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_le
             para = []
                     
     return paras
-            
 
-def __do_split(blocks, layout_bboxes, lang="en"):
+
+def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
+    """
+    根据line找到所在的layout
+    """
+    for layout in layout_bboxes:
+        if _is_in(line_bbox, layout):
+            return layout
+    return None
+
+
+def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
+    """
+    layout之间进行分段。
+    主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
+    连接的条件需要同时满足：
+    1. 上一个layout的最后一行沾满整个行。并且没有结尾符号。
+    2. 下一行开头不留空白。
+
+    """
+    connected_layout_paras = []
+    for i, para in enumerate(layout_paras):
+        if i==0:
+            connected_layout_paras.append(para)
+            continue
+        pre_last_line = layout_paras[i-1][-1]
+        next_first_line = layout_paras[i][0]
+        pre_last_line_text = ''.join([__get_span_text(span) for span in pre_last_line['spans']])
+        pre_last_line_type = pre_last_line['spans'][-1]['type']
+        next_first_line_text = ''.join([__get_span_text(span) for span in next_first_line['spans']])
+        next_first_line_type = next_first_line['spans'][0]['type']
+        if pre_last_line_type not in [TEXT, INLINE_EQUATION] or next_first_line_type not in [TEXT, INLINE_EQUATION]: # TODO，真的要做好，要考虑跨table, image, 行间的情况
+            connected_layout_paras.append(para)
+            continue
+        
+        
+        pre_x2_max = __find_layout_bbox_by_line(pre_last_line['bbox'], new_layout_bbox)[2]
+        next_x0_min = __find_layout_bbox_by_line(next_first_line['bbox'], new_layout_bbox)[0]
+        
+        pre_last_line_text = pre_last_line_text.strip()
+        next_first_line_text = next_first_line_text.strip()
+        if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and next_first_line['bbox'][0]==next_x0_min: # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
+            """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
+            connected_layout_paras[-1].extend(para)
+        else:
+            """连接段落条件不成立，将前一个layout的段落加入到结果中。"""
+            connected_layout_paras.append(para)
+    
+    return connected_layout_paras
+
+
+def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     """
     根据line和layout情况进行分段
     先实现一个根据行末尾特征分段的简单方法。
@@ -189,21 +252,20 @@ def __do_split(blocks, layout_bboxes, lang="en"):
     4. 图、表，目前独占一行，不考虑分段。
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
-    layout_paras = __split_para_in_layoutbox(lines_group, layout_bboxes, lang) # block间连接分段
+    layout_paras = __split_para_in_layoutbox(lines_group, layout_bboxes, lang) # layout内分段
+    connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang) # layout间链接段落
+    # TODO 不同页面连接
     
-    return layout_paras
+    
+    
+    return connected_layout_paras
     
     
 def para_split(blocks, layout_bboxes, lang="en"):
     """
     根据line和layout情况进行分段
     """
-    __common_pre_proc(blocks, layout_bboxes)
-    if lang=='en':
-        __do_split(blocks, layout_bboxes, lang)
-    elif lang=='zh':
-        __do_split(blocks, layout_bboxes, lang)
-    
-    splited_blocks = __do_split(blocks, layout_bboxes, lang)
+    new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
+    splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, lang)
     
     return splited_blocks
