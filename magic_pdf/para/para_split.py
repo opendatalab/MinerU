@@ -142,47 +142,51 @@ def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
     return lines_group
     
 
-def __split_para_in_layoutbox(lines_group, layout_bboxes, lang="en", char_avg_len=10):
+def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_len=10):
     """
-    lines_group 进行行分段——layout内部进行分段。
+    lines_group 进行行分段——layout内部进行分段。lines_group内每个元素是一个Layoutbox内的所有行。
     1. 先计算每个group的左右边界。
     2. 然后根据行末尾特征进行分段。
         末尾特征：以句号等结束符结尾。并且距离右侧边界有一定距离。
+        且下一行开头不留空白。
     
     """
     paras = []
     right_tail_distance = 1.5 * char_avg_len
     for lines in lines_group:
-        if len(lines)==0:
+        total_lines = len(lines)
+        if total_lines<=1: # 0行无需处理。1行无法分段。
             continue
-        layout_right = max([line['bbox'][2] for line in lines])
+        #layout_right = max([line['bbox'][2] for line in lines])
+        layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
         para = [] # 元素是line
-        for line in lines:
-            line_text = ''.join([__get_span_text(span) for span in line['spans']])
-            #logger.info(line_text)
-            last_span_type = line['spans'][-1]['type']
-            if last_span_type in [TEXT, INLINE_EQUATION]:
-                last_char = line['spans'][-1]['content'][-1]
-                if last_char in LINE_STOP_FLAG or line['bbox'][2] < layout_right - right_tail_distance:
+        
+        for i, line in enumerate(lines):
+            # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
+            
+            cur_line_type = line['spans'][-1]['type']
+            #cur_line_last_char = line['spans'][-1]['content'][-1]
+            next_line = lines[i+1] if i<total_lines-1 else None
+            
+            if cur_line_type in [TEXT, INLINE_EQUATION]:
+                if line['bbox'][2] < layout_right - right_tail_distance:
                     para.append(line)
                     paras.append(para)
-                    # para_text = ''.join([span['content'] for line in para for span in line['spans']])
-                    # logger.info(para_text)
                     para = []
+                elif line['bbox'][2] >= layout_right - right_tail_distance and next_line and next_line['bbox'][0] == layout_right: # 现在这行到了行尾沾满，下一行存在且顶格。
+                    para.append(line)
                 else: 
                     para.append(line)
+                    paras.append(para)
+                    para = []
             else: # 其他，图片、表格、行间公式，各自占一段
                 if len(para)>0:  # 先把之前的段落加入到结果中
                     paras.append(para)
                     para = []
                 paras.append([line]) # 再把当前行加入到结果中。当前行为行间公式、图、表等。
                 para = []
-                # para_text = ''.join([get_span_text(span) for line in para for span in line['spans']])
-                # logger.info(para_text)
         if len(para)>0:
             paras.append(para)
-            # para_text = ''.join([get_span_text(span) for line in para for span in line['spans']])
-            # logger.info(para_text)
             para = []
                     
     return paras
@@ -285,7 +289,7 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     4. 图、表，目前独占一行，不考虑分段。
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
-    layout_paras = __split_para_in_layoutbox(lines_group, layout_bboxes, lang) # layout内分段
+    layout_paras = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
     connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang) # layout间链接段落
     return connected_layout_paras
     
