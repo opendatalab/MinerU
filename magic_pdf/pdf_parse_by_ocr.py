@@ -33,13 +33,12 @@ from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remo
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 
-def construct_page_component(blocks, para_blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                              images, tables, interline_equations, inline_equations,
                              dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
                              need_remove_spans_bboxes_dict):
     return_dict = {
         'preproc_blocks': blocks,
-        "para_blocks": para_blocks, # 分好段落的blocks
         'layout_bboxes': layout_bboxes,
         'page_idx': page_id,
         'page_size': [page_w, page_h],
@@ -238,7 +237,7 @@ def parse_pdf_by_ocr(
         blocks = merge_lines_to_block(lines)
 
         # 根据block合并段落
-        para_blocks = para_split(blocks, layout_bboxes)
+        #para_blocks = para_split(blocks, layout_bboxes)
         
         # 获取QA需要外置的list
         images, tables, interline_equations, inline_equations = get_qa_need_list(blocks)
@@ -267,12 +266,15 @@ def parse_pdf_by_ocr(
 
 
         # 构造pdf_info_dict
-        page_info = construct_page_component(blocks, para_blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+        page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                                              images, tables, interline_equations, inline_equations,
                                              dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
                                              need_remove_spans_bboxes_dict)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
+    """分段"""
+    para_split(pdf_info_dict)
+    
     # 在测试时,保存调试信息
     if debug_mode:
         params_file_save_path = join_path(
