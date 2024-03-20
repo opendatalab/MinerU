@@ -282,7 +282,7 @@ def parse_pdf_by_ocr(
             json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
 
         # drow_bbox
-        draw_layout_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
-        draw_text_bbox(pdf_info_dict, pdf_path, md_bookname_save_path)
+        draw_layout_bbox(pdf_info_dict, pdf_bytes, md_bookname_save_path)
+        draw_text_bbox(pdf_info_dict, pdf_bytes, md_bookname_save_path)
 
     return pdf_info_dict

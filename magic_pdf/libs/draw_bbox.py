@@ -27,7 +27,7 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config):
         page.insert_text((x0, y0), str(j + 1), fontsize=10, color=new_rgb)  # Insert the index at the top left corner of the rectangle
 
 
-def draw_layout_bbox(pdf_info_dict, input_path, out_path):
+def draw_layout_bbox(pdf_info_dict, pdf_bytes, out_path):
     layout_bbox_list = []
     dropped_bbox_list = []
     for page in pdf_info_dict.values():
@@ -40,15 +40,14 @@ def draw_layout_bbox(pdf_info_dict, input_path, out_path):
             for dropped_bbox in dropped_bboxes:
                 page_dropped_list.append(dropped_bbox)
         dropped_bbox_list.append(page_dropped_list)
-
-    doc = fitz.open(input_path)
-    for i, page in enumerate(doc):
+    pdf_docs = fitz.open("pdf", pdf_bytes)
+    for i, page in enumerate(pdf_docs):
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0])
         draw_bbox_without_number(i, dropped_bbox_list, page, [0, 255, 0])
     # Save the PDF
-    doc.save(f"{out_path}/layout.pdf")
+    pdf_docs.save(f"{out_path}/layout.pdf")
 
-def draw_text_bbox(pdf_info_dict, input_path, out_path):
+def draw_text_bbox(pdf_info_dict, pdf_bytes, out_path):
     text_list = []
     inline_equation_list = []
     interline_equation_list = []
@@ -68,13 +67,12 @@ def draw_text_bbox(pdf_info_dict, input_path, out_path):
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
         interline_equation_list.append(page_interline_equation_list)
-
-    doc = fitz.open(input_path)
-    for i, page in enumerate(doc):
+    pdf_docs = fitz.open("pdf", pdf_bytes)
+    for i, page in enumerate(pdf_docs):
         # 获取当前页面的数据
         draw_bbox_without_number(i, text_list, page, [255, 0, 0])
         draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0])
         draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255])
 
     # Save the PDF
-    doc.save(f"{out_path}/text.pdf")
+    pdf_docs.save(f"{out_path}/text.pdf")
