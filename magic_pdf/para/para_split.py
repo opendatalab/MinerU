@@ -2,7 +2,7 @@ from sklearn.cluster import DBSCAN
 import numpy as np
 from loguru import logger
 
-from magic_pdf.libs.boxbase import _is_in
+from magic_pdf.libs.boxbase import _is_in_or_part_overlap
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
@@ -50,7 +50,7 @@ def __valign_lines(blocks, layout_bboxes):
     new_layout_bboxes = []
     
     for layout_box in layout_bboxes:
-        blocks_in_layoutbox = [b for b in blocks if _is_in(b['bbox'], layout_box['layout_bbox'])]
+        blocks_in_layoutbox = [b for b in blocks if _is_in_or_part_overlap(b['bbox'], layout_box['layout_bbox'])]
         if len(blocks_in_layoutbox)==0:
             continue
         
@@ -136,7 +136,7 @@ def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
     lines_group = []
     
     for lyout in layout_bboxes:
-        lines = [line for block in blocks if _is_in(block['bbox'], lyout['layout_bbox']) for line in block['lines']]
+        lines = [line for block in blocks if _is_in_or_part_overlap(block['bbox'], lyout['layout_bbox']) for line in block['lines']]
         lines_group.append(lines)
 
     return lines_group
@@ -159,6 +159,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
             continue
         #layout_right = max([line['bbox'][2] for line in lines])
         layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
+        layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
         para = [] # 元素是line
         
         for i, line in enumerate(lines):
@@ -173,7 +174,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                     para.append(line)
                     paras.append(para)
                     para = []
-                elif line['bbox'][2] >= layout_right - right_tail_distance and next_line and next_line['bbox'][0] == layout_right: # 现在这行到了行尾沾满，下一行存在且顶格。
+                elif line['bbox'][2] >= layout_right - right_tail_distance and next_line and next_line['bbox'][0] == layout_left: # 现在这行到了行尾沾满，下一行存在且顶格。
                     para.append(line)
                 else: 
                     para.append(line)
@@ -197,7 +198,7 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     根据line找到所在的layout
     """
     for layout in layout_bboxes:
-        if _is_in(line_bbox, layout):
+        if _is_in_or_part_overlap(line_bbox, layout):
             return layout
     return None
 
