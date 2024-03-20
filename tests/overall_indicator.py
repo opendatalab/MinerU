@@ -22,9 +22,9 @@ def indicator_cal(json_standard,json_test):
     '''数据集总体指标'''
     
     a=json_test[['id','mid_json']]
-    b=json_standard[['id','mid_json']]
+    b=json_standard[['id','mid_json','pass_label']]
     outer_merge=pd.merge(a,b,on='id',how='outer')
-    outer_merge.columns=['id','standard_mid_json','test_mid_json']
+    outer_merge.columns=['id','standard_mid_json','test_mid_json','pass_label']
     standard_exist=outer_merge.standard_mid_json.apply(lambda x: not isnull(x))
     test_exist=outer_merge.test_mid_json.apply(lambda x: not isnull(x))
 
@@ -36,7 +36,7 @@ def indicator_cal(json_standard,json_test):
 
 
     inner_merge=pd.merge(a,b,on='id',how='inner')
-    inner_merge.columns=['id','standard_mid_json','test_mid_json']
+    inner_merge.columns=['id','standard_mid_json','test_mid_json','pass_label']
     json_standard = inner_merge['standard_mid_json']#check一下是否对齐
     json_test = inner_merge['test_mid_json']
 
@@ -156,7 +156,14 @@ def indicator_cal(json_standard,json_test):
     """
 
 
-    '''计算pdf之间的总体编辑距离和bleu'''
+    '''
+    计算pdf之间的总体编辑距离和bleu
+    这里只计算正例的pdf
+    '''
+    
+    test_para_text=np.asarray(test_para_text, dtype = object)[inner_merge['pass_label']=='yes']
+    standard_para_text=np.asarray(standard_para_text, dtype = object)[inner_merge['pass_label']=='yes']
+
     pdf_dis=[]
     pdf_bleu=[]
     for a,b in zip(test_para_text,standard_para_text):
