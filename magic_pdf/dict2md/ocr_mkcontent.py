@@ -67,16 +67,17 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
                 for span in line['spans']:
                     span_type = span.get('type')
                     if span_type == ContentType.Text:
-                        para_text += span['content']
+                        content = span['content']
                     elif span_type == ContentType.InlineEquation:
-                        para_text += f" ${span['content']}$ "
+                        content = f" ${span['content']}$ "
                     elif span_type == ContentType.InterlineEquation:
-                        para_text += f"$$\n{span['content']}\n$$ "
-                    elif span_type in [ ContentType.Image, ContentType.Table ]:
-                        para_text += f"![]({join_path(s3_image_save_path, span['image_path'])})"
-            markdown.append(para_text)
+                        content = f"$$\n{span['content']}\n$$ "
+                    elif span_type in [ContentType.Image, ContentType.Table]:
+                        content = f"![]({join_path(s3_image_save_path, span['image_path'])})"
+                    para_text += content + ' '
+            markdown.append(para_text.strip() + '  ')
 
-    return '\n\n'.join(markdown)
+    return '\n'.join(markdown)
 
 
 def make_standard_format_with_para(pdf_info_dict: dict):
