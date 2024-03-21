@@ -1,6 +1,19 @@
 from magic_pdf.libs.commons import s3_image_save_path, join_path
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
+import wordninja
+import re
+
+
+def split_long_words(text):
+    segments = text.split(' ')
+    for i in range(len(segments)):
+        words = re.findall(r'\w+|[^\w\s]', segments[i], re.UNICODE)
+        for j in range(len(words)):
+            if len(words[j]) > 15:
+                words[j] = ' '.join(wordninja.split(words[j]))
+        segments[i] = ''.join(words)
+    return ' '.join(segments)
 
 
 def ocr_mk_nlp_markdown(pdf_info_dict: dict):
@@ -67,17 +80,18 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
                 for span in line['spans']:
                     span_type = span.get('type')
                     if span_type == ContentType.Text:
-                        content = span['content']
+                        content = split_long_words(span['content'])
+                        # content = span['content']
                     elif span_type == ContentType.InlineEquation:
-                        content = f" ${span['content']}$ "
+                        content = f"${span['content']}$"
                     elif span_type == ContentType.InterlineEquation:
-                        content = f"$$\n{span['content']}\n$$ "
+                        content = f"\n$$\n{span['content']}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
-                        content = f"![]({join_path(s3_image_save_path, span['image_path'])})"
+                        content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
                     para_text += content + ' '
             markdown.append(para_text.strip() + '  ')
 
-    return '\n'.join(markdown)
+    return '\n\n'.join(markdown)
 
 
 def make_standard_format_with_para(pdf_info_dict: dict):
