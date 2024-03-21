@@ -620,9 +620,9 @@ def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> d
                 jso["need_drop"] = True
                 jso["drop_reason"] = pdf_info_dict["drop_reason"]
             else:  # 正常返回，将 pdf_info_dict 压缩并存储
+                jso["parsed_results"] = convert_to_train_format(pdf_info_dict)
                 pdf_info_dict = JsonCompressor.compress_json(pdf_info_dict)
                 jso["pdf_intermediate_dict"] = pdf_info_dict
-                jso["parsed_results"] = convert_to_train_format(pdf_info_dict)
             end_time = time.time()  # 记录完成时间
             parse_time = int(end_time - start_time)  # 计算执行时间
             # 解析完成后打印一下book_name和耗时
