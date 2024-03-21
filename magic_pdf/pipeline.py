@@ -24,7 +24,7 @@ from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
 from loguru import logger
 from magic_pdf.pdf_parse_for_train import parse_pdf_for_train
-rom magic_pdf.train_utils.convert_to_train_format import convert_to_train_format
+from magic_pdf.train_utils.convert_to_train_format import convert_to_train_format
 from app.common.s3 import get_s3_config, get_s3_client
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
