@@ -37,6 +37,122 @@ def __add_line_period(blocks, layout_bboxes):
                         last_span['content'] = span_content + '.'
 
 
+def __detect_line_align_direction(line, new_layout_bboxes):
+    """
+    探测line是左对齐，还是右对齐，还是居中。
+    """
+    lbox = line['bbox']
+    x0, x1 = lbox[0], lbox[2]
+    layout_x0, layout_x1 = new_layout_bboxes[0], new_layout_bboxes[2]
+    if x0 <= layout_x0 and x1 < layout_x1:
+        return "left"
+    elif x0 > layout_x0 and x1 >= layout_x1:
+        return "right"
+    else:
+        return "center"
+    
+def __detect_line_group_align_direction(lines, new_layout_bboxes):
+    """
+    首先把lines按照行距离分成几部分。针对每一部分分别探测。
+    最后返回[(dir, lines), (dir, lines), ...]
+    """
+    pass
+
+def __detect_list_lines(lines, new_layout_bboxes, lang='en'):
+    """
+    探测是否包含了列表，并且把列表的行分开.
+    这样的段落特点是，顶格字母大写/数字，紧跟着几行缩进的。缩进的行首字母含小写的。
+    """
+    def find_repeating_patterns(lst):
+        indices = []
+        ones_indices = []
+        i = 0
+        while i < len(lst) - 1:  # 确保余下元素至少有2个
+            if lst[i] == 1 and lst[i+1] in [2, 3]:  # 额外检查以防止连续出现的1
+                start = i
+                ones_in_this_interval = [i]
+                i += 1
+                while i < len(lst) and lst[i] in [2, 3]:
+                    i += 1
+                # 验证下一个序列是否符合条件
+                if i < len(lst) - 1 and lst[i] == 1 and lst[i+1] in [2, 3] and lst[i-1] in [2, 3]:
+                    while i < len(lst) and lst[i] in [1, 2, 3]:
+                        if lst[i] == 1:
+                            ones_in_this_interval.append(i)
+                        i += 1
+                    indices.append((start, i - 1))
+                    ones_indices.append(ones_in_this_interval)
+                else:
+                    i += 1
+            else:
+                i += 1
+        return indices, ones_indices
+    """===================="""
+    def split_indices(slen, index_array):
+        result = []
+        last_end = 0
+        
+        for start, end in sorted(index_array):
+            if start > last_end:
+                # 前一个区间结束到下一个区间开始之间的部分标记为"text"
+                result.append(('text', last_end, start - 1))
+            # 区间内标记为"list"
+            result.append(('list', start, end))
+            last_end = end + 1
+
+        if last_end < slen:
+            # 如果最后一个区间结束后还有剩余的字符串，将其标记为"text"
+            result.append(('text', last_end, slen - 1))
+
+        return result
+    """===================="""
+
+    if lang!='en':
+        return lines, None
+    else:
+        total_lines = len(lines)
+        line_fea_encode = []
+        """
+        对每一行进行特征编码，编码规则如下：
+        1. 如果行顶格，且大写字母开头或者数字开头，编码为1
+        2. 如果顶格，其他非大写开头编码为4
+        3. 如果非顶格，首字符大写，编码为2
+        4. 如果非顶格，首字符非大写编码为3
+        """
+        for l in lines:
+            first_char = __get_span_text(l['spans'][0])[0]
+            layout_left = __find_layout_bbox_by_line(l['bbox'], new_layout_bboxes)[0]
+            if l['bbox'][0] == layout_left:
+                if first_char.isupper() or first_char.isdigit():
+                    line_fea_encode.append(1)
+                else:
+                    line_fea_encode.append(4)
+            else:
+                if first_char.isupper():
+                    line_fea_encode.append(2)
+                else:
+                    line_fea_encode.append(3)
+                    
+        # 然后根据编码进行分段, 选出来 1,2,3连续出现至少2次的行，认为是列表。
+        
+        list_indice, list_start_idx  = find_repeating_patterns(line_fea_encode)
+        if len(list_indice)>0:
+            logger.info(f"发现了列表，列表行数：{list_indice}， {list_start_idx}")
+        
+        # TODO check一下这个特列表里缩进的行左侧是不是对齐的。
+        segments = []
+        for start, end in list_indice:
+            for i in range(start, end+1):
+                if i>0:
+                    if line_fea_encode[i] == 4:
+                        logger.info(f"列表行的第{i}行不是顶格的")
+                        break
+            else:
+                logger.info(f"列表行的第{start}到第{end}行是列表")
+        
+        return split_indices(total_lines, list_indice), list_start_idx
+        
+            
 
 def __valign_lines(blocks, layout_bboxes):
     """
@@ -157,38 +273,67 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
         total_lines = len(lines)
         if total_lines<=1: # 0行无需处理。1行无法分段。
             continue
-        #layout_right = max([line['bbox'][2] for line in lines])
+        
+        """在进入到真正的分段之前，要对文字块从统计维度进行对齐方式的探测，
+            对齐方式分为以下：
+            1. 左对齐的文本块(特点是左侧顶格，或者左侧不顶格但是右侧顶格的行数大于非顶格的行数，顶格的首字母有大写也有小写)
+                1) 右侧对齐的行，单独成一段
+                2) 中间对齐的行，按照字体/行高聚合成一段
+            2. 左对齐的列表块（其特点是左侧顶格的行数小于等于非顶格的行数，非定格首字母会有小写，顶格90%是大写。并且左侧顶格行数大于1，大于1是为了这种模式连续出现才能称之为列表）
+                这样的文本块，顶格的为一个段落开头，紧随其后非顶格的行属于这个段落。
+        """
+        
+        text_segments, list_start_line = __detect_list_lines(lines, new_layout_bbox, lang)
+        """根据list_range，把lines分成几个部分
+        
+        """
+        
         layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
         layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
         para = [] # 元素是line
         
-        for i, line in enumerate(lines):
-            # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
-            
-            cur_line_type = line['spans'][-1]['type']
-            #cur_line_last_char = line['spans'][-1]['content'][-1]
-            next_line = lines[i+1] if i<total_lines-1 else None
-            
-            if cur_line_type in [TEXT, INLINE_EQUATION]:
-                if line['bbox'][2] < layout_right - right_tail_distance:
-                    para.append(line)
+        for content_type, start, end in text_segments:
+            if content_type == 'list':
+                for i, line in enumerate(lines[start:end+1]):
+                    line_x0 = line['bbox'][0]
+                    if line_x0 == layout_left: # 列表开头
+                        if len(para)>0:
+                            paras.append(para)
+                            para = []
+                        para.append(line)
+                    else:
+                        para.append(line)
+                if len(para)>0:
                     paras.append(para)
                     para = []
-                elif line['bbox'][2] >= layout_right - right_tail_distance and next_line and next_line['bbox'][0] == layout_left: # 现在这行到了行尾沾满，下一行存在且顶格。
-                    para.append(line)
-                else: 
-                    para.append(line)
+                
+            else:
+                for i, line in enumerate(lines[start:end+1]):
+                    # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
+                    cur_line_type = line['spans'][-1]['type']
+                    next_line = lines[i+1] if i<total_lines-1 else None
+                    
+                    if cur_line_type in [TEXT, INLINE_EQUATION]:
+                        if line['bbox'][2] < layout_right - right_tail_distance:
+                            para.append(line)
+                            paras.append(para)
+                            para = []
+                        elif line['bbox'][2] >= layout_right - right_tail_distance and next_line and next_line['bbox'][0] == layout_left: # 现在这行到了行尾沾满，下一行存在且顶格。
+                            para.append(line)
+                        else: 
+                            para.append(line)
+                            paras.append(para)
+                            para = []
+                    else: # 其他，图片、表格、行间公式，各自占一段
+                        if len(para)>0:  # 先把之前的段落加入到结果中
+                            paras.append(para)
+                            para = []
+                        paras.append([line]) # 再把当前行加入到结果中。当前行为行间公式、图、表等。
+                        para = []
+                        
+                if len(para)>0:
                     paras.append(para)
                     para = []
-            else: # 其他，图片、表格、行间公式，各自占一段
-                if len(para)>0:  # 先把之前的段落加入到结果中
-                    paras.append(para)
-                    para = []
-                paras.append([line]) # 再把当前行加入到结果中。当前行为行间公式、图、表等。
-                para = []
-        if len(para)>0:
-            paras.append(para)
-            para = []
                     
     return paras
 
