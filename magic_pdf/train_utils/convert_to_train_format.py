@@ -1,8 +1,8 @@
-
-
 def convert_to_train_format(jso: dict) -> []:
     pages = []
     for k, v in jso.items():
+        if not k.startswith("page_"):
+            continue
         page_idx = v["page_idx"]
         width, height = v["page_size"]
 
@@ -47,6 +47,7 @@ def convert_to_train_format(jso: dict) -> []:
             bboxes.append(n_bbox)
 
         info["bboxes"] = bboxes
+        info["layout_tree"] = v["layout_bboxes"]
         pages.append(info)
 
     return pages
