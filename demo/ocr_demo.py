@@ -92,5 +92,5 @@ if __name__ == '__main__':
     ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
     # ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.pdf"
     # ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.json"
-    ocr_local_parse(ocr_pdf_path, ocr_json_file_path)
-    #ocr_online_parse(book_name="数学新星网/edu_00001236")
+    #ocr_local_parse(ocr_pdf_path, ocr_json_file_path)
+    ocr_online_parse(book_name="美国加州中学教材/edu_00000060")

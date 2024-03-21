@@ -267,6 +267,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
         且下一行开头不留空白。
     
     """
+    line_group_end_with_list = [] # 这个layout最后是不是列表，用于跨layout列表合并
     paras = []
     right_tail_distance = 1.5 * char_avg_len
     for lines in lines_group:
@@ -291,7 +292,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
         layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
         layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
         para = [] # 元素是line
-        
+        is_lines_end_with_list = False
         for content_type, start, end in text_segments:
             if content_type == 'list':
                 for i, line in enumerate(lines[start:end+1]):
@@ -306,7 +307,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                 if len(para)>0:
                     paras.append(para)
                     para = []
-                
+                is_lines_end_with_list = True
             else:
                 for i, line in enumerate(lines[start:end+1]):
                     # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
@@ -334,8 +335,12 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                 if len(para)>0:
                     paras.append(para)
                     para = []
+                is_lines_end_with_list = False
+                
+        line_group_end_with_list.append(is_lines_end_with_list)
+                
                     
-    return paras
+    return paras, line_group_end_with_list
 
 
 def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
@@ -348,7 +353,7 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     return None
 
 
-def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
+def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end_with_list, lang="en"):
     """
     layout之间进行分段。
     主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
@@ -395,6 +400,9 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     1. 前一个页面的最后一个段落最后一行沾满整个行。并且没有结尾符号。
     2. 后一个页面的第一个段落第一行没有空白开头。
     """
+    # 有的页面可能压根没有文字
+    if len(pre_page_paras)==0 or len(next_page_paras)==0:
+        return False
     pre_last_para = pre_page_paras[-1]
     next_first_para = next_page_paras[0]
     pre_last_line = pre_last_para[-1]
@@ -435,8 +443,8 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     4. 图、表，目前独占一行，不考虑分段。
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
-    layout_paras = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
-    connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang) # layout间链接段落
+    layout_paras, line_group_end_with_list = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
+    connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end_with_list, lang) # layout间链接段落
     return connected_layout_paras
     
     
