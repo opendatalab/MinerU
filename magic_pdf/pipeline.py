@@ -520,7 +520,7 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para_for_qa(
         )
         # 把无用的信息清空
         jso["doc_layout_result"] = ""
-        jso["pdf_intermediate_dict"] = ""
+        jso["pdf_intermediate_dict"] = pdf_intermediate_dict
         jso["pdf_meta"] = ""
     except Exception as e:
         jso = exception_handler(jso, e)
