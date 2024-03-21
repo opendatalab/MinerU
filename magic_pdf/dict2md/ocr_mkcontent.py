@@ -72,7 +72,7 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
                         para_text += f" ${span['content']}$ "
                     elif span_type == ContentType.InterlineEquation:
                         para_text += f"$$\n{span['content']}\n$$ "
-                    elif span_type == ContentType.Image:
+                    elif span_type in [ ContentType.Image, ContentType.Table ]:
                         para_text += f"![]({join_path(s3_image_save_path, span['image_path'])})"
             markdown.append(para_text)
 
