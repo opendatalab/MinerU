@@ -125,7 +125,8 @@ def line_to_standard_format(line):
                 line_text += f"${inline_equation}$"
                 inline_equation_num += 1
             elif span['type'] == ContentType.Text:
-                line_text += span['content']
+                text_content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                line_text += text_content
     content = {
         'type': 'text',
         'text': line_text,
