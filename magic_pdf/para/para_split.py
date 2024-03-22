@@ -2,7 +2,7 @@ from sklearn.cluster import DBSCAN
 import numpy as np
 from loguru import logger
 
-from magic_pdf.libs.boxbase import _is_in_or_part_overlap
+from magic_pdf.libs.boxbase import _is_in_or_part_overlap_with_area_ratio as is_in_layout
 from magic_pdf.libs.ocr_content_type import ContentType
 
 
@@ -19,44 +19,6 @@ def __get_span_text(span):
         
     return c
     
-    
-def __add_line_period(blocks, layout_bboxes):
-    """
-    为每行添加句号
-    如果这个行
-    1. 以行内公式结尾，但没有任何标点符号,此时加个句号，认为他就是段落结尾。
-    """
-    for block in blocks:
-        for line in block['lines']:
-            last_span = line['spans'][-1]
-            span_type = last_span['type']
-            if span_type in [INLINE_EQUATION]:
-                span_content = last_span['content'].strip()
-                if span_type==INLINE_EQUATION and span_content[-1] not in LINE_STOP_FLAG:
-                    if span_type in [INLINE_EQUATION, INTERLINE_EQUATION]:
-                        last_span['content'] = span_content + '.'
-
-
-def __detect_line_align_direction(line, new_layout_bboxes):
-    """
-    探测line是左对齐，还是右对齐，还是居中。
-    """
-    lbox = line['bbox']
-    x0, x1 = lbox[0], lbox[2]
-    layout_x0, layout_x1 = new_layout_bboxes[0], new_layout_bboxes[2]
-    if x0 <= layout_x0 and x1 < layout_x1:
-        return "left"
-    elif x0 > layout_x0 and x1 >= layout_x1:
-        return "right"
-    else:
-        return "center"
-    
-def __detect_line_group_align_direction(lines, new_layout_bboxes):
-    """
-    首先把lines按照行距离分成几部分。针对每一部分分别探测。
-    最后返回[(dir, lines), (dir, lines), ...]
-    """
-    pass
 
 def __detect_list_lines(lines, new_layout_bboxes, lang='en'):
     """
@@ -166,7 +128,7 @@ def __valign_lines(blocks, layout_bboxes):
     new_layout_bboxes = []
     
     for layout_box in layout_bboxes:
-        blocks_in_layoutbox = [b for b in blocks if _is_in_or_part_overlap(b['bbox'], layout_box['layout_bbox'])]
+        blocks_in_layoutbox = [b for b in blocks if is_in_layout(b['bbox'], layout_box['layout_bbox'])]
         if len(blocks_in_layoutbox)==0:
             continue
         
@@ -252,7 +214,7 @@ def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
     lines_group = []
     
     for lyout in layout_bboxes:
-        lines = [line for block in blocks if _is_in_or_part_overlap(block['bbox'], lyout['layout_bbox']) for line in block['lines']]
+        lines = [line for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox']) for line in block['lines']]
         lines_group.append(lines)
 
     return lines_group
@@ -267,12 +229,19 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
         且下一行开头不留空白。
     
     """
-    line_group_end_with_list = [] # 这个layout最后是不是列表，用于跨layout列表合并
-    paras = []
+    list_info = [] # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
+    layout_paras = []
     right_tail_distance = 1.5 * char_avg_len
+    
+    
     for lines in lines_group:
+        paras = []
         total_lines = len(lines)
-        if total_lines<=1: # 0行无需处理。1行无法分段。
+        if total_lines==0:
+            continue # 0行无需处理
+        if total_lines==1: # 1行无法分段。
+            layout_paras.append([lines])
+            list_info.append([False, False])
             continue
         
         """在进入到真正的分段之前，要对文字块从统计维度进行对齐方式的探测，
@@ -292,7 +261,7 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
         layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
         layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
         para = [] # 元素是line
-        is_lines_end_with_list = False
+        layout_list_info = [False, False] # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
         for content_type, start, end in text_segments:
             if content_type == 'list':
                 for i, line in enumerate(lines[start:end+1]):
@@ -307,7 +276,10 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                 if len(para)>0:
                     paras.append(para)
                     para = []
-                is_lines_end_with_list = True
+                if start==0:
+                    layout_list_info[0] = True
+                if end==total_lines-1:
+                    layout_list_info[1] = True
             else:
                 for i, line in enumerate(lines[start:end+1]):
                     # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
@@ -335,12 +307,18 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                 if len(para)>0:
                     paras.append(para)
                     para = []
-                is_lines_end_with_list = False
                 
-        line_group_end_with_list.append(is_lines_end_with_list)
+        list_info.append(layout_list_info)
+        layout_paras.append(paras)
+        paras = []
                 
                     
-    return paras, line_group_end_with_list
+    return layout_paras, list_info
+
+def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, lang="en"):
+    # TODO 
+    
+    return layout_paras
 
 
 def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
@@ -348,12 +326,12 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     根据line找到所在的layout
     """
     for layout in layout_bboxes:
-        if _is_in_or_part_overlap(line_bbox, layout):
+        if is_in_layout(line_bbox, layout):
             return layout
     return None
 
 
-def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end_with_list, lang="en"):
+def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
     """
     layout之间进行分段。
     主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
@@ -363,20 +341,17 @@ def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end
 
     """
     connected_layout_paras = []
-    for i, para in enumerate(layout_paras):
-        if i==0:
-            connected_layout_paras.append(para)
-            continue
-        pre_last_line = layout_paras[i-1][-1]
-        next_first_line = layout_paras[i][0]
+    connected_layout_paras.append(layout_paras[0])
+    for i in range(1, len(layout_paras)):
+        pre_last_line = layout_paras[i-1][-1][-1]
+        next_first_line = layout_paras[i][0][0]
         pre_last_line_text = ''.join([__get_span_text(span) for span in pre_last_line['spans']])
         pre_last_line_type = pre_last_line['spans'][-1]['type']
         next_first_line_text = ''.join([__get_span_text(span) for span in next_first_line['spans']])
         next_first_line_type = next_first_line['spans'][0]['type']
-        if pre_last_line_type not in [TEXT, INLINE_EQUATION] or next_first_line_type not in [TEXT, INLINE_EQUATION]: # TODO，真的要做好，要考虑跨table, image, 行间的情况
-            connected_layout_paras.append(para)
+        if pre_last_line_type not in [TEXT, INLINE_EQUATION] or next_first_line_type not in [TEXT, INLINE_EQUATION]:
+            connected_layout_paras.append(layout_paras[i])
             continue
-        
         
         pre_x2_max = __find_layout_bbox_by_line(pre_last_line['bbox'], new_layout_bbox)[2]
         next_x0_min = __find_layout_bbox_by_line(next_first_line['bbox'], new_layout_bbox)[0]
@@ -385,10 +360,15 @@ def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end
         next_first_line_text = next_first_line_text.strip()
         if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and next_first_line['bbox'][0]==next_x0_min: # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
-            connected_layout_paras[-1].extend(para)
-        else:
+            connected_layout_paras[-1][-1].extend(layout_paras[i][0])
+            layout_paras[i].pop(0) # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
+            if len(layout_paras[i])==0:
+                layout_paras.pop(i)
+            else:
+                connected_layout_paras.append(layout_paras[i])
+        else:                            
             """连接段落条件不成立，将前一个layout的段落加入到结果中。"""
-            connected_layout_paras.append(para)
+            connected_layout_paras.append(layout_paras[i])
     
     return connected_layout_paras
 
@@ -403,8 +383,8 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     # 有的页面可能压根没有文字
     if len(pre_page_paras)==0 or len(next_page_paras)==0:
         return False
-    pre_last_para = pre_page_paras[-1]
-    next_first_para = next_page_paras[0]
+    pre_last_para = pre_page_paras[-1][-1]
+    next_first_para = next_page_paras[0][0]
     pre_last_line = pre_last_para[-1]
     next_first_line = next_first_para[0]
     pre_last_line_text = ''.join([__get_span_text(span) for span in pre_last_line['spans']])
@@ -423,8 +403,8 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     next_first_line_text = next_first_line_text.strip()
     if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and next_first_line['bbox'][0]==next_x0_min: # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
         """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
-        pre_page_paras[-1].extend(next_first_para)
-        next_page_paras.pop(0) # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
+        pre_last_para.extend(next_first_para)
+        next_page_paras[0].pop(0) # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
         return True
     else:
         return False
@@ -443,8 +423,10 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     4. 图、表，目前独占一行，不考虑分段。
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
-    layout_paras, line_group_end_with_list = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
-    connected_layout_paras = __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, line_group_end_with_list, lang) # layout间链接段落
+    layout_paras, layout_list_info = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
+    layout_paras2 = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, lang) # layout之间连接列表段落
+    connected_layout_paras = __connect_para_inter_layoutbox(layout_paras2, new_layout_bbox, lang) # layout间链接段落
+    
     return connected_layout_paras
     
     

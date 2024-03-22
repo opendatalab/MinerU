@@ -18,6 +18,33 @@ def _is_in_or_part_overlap(box1, box2) -> bool:
                 y1_1 < y0_2 or  # box1在box2的上边
                 y0_1 > y1_2)    # box1在box2的下边
 
+def _is_in_or_part_overlap_with_area_ratio(box1, box2, area_ratio_threshold=0.6):
+    """
+    判断box1是否在box2里面，或者box1和box2有部分重叠，且重叠面积占box1的比例超过area_ratio_threshold
+    
+    """
+    if box1 is None or box2 is None:
+        return False
+    
+    x0_1, y0_1, x1_1, y1_1 = box1
+    x0_2, y0_2, x1_2, y1_2 = box2
+
+    if not _is_in_or_part_overlap(box1, box2):
+        return False
+    
+    # 计算重叠面积
+    x_left = max(x0_1, x0_2)
+    y_top = max(y0_1, y0_2)
+    x_right = min(x1_1, x1_2)
+    y_bottom = min(y1_1, y1_2)
+    overlap_area = (x_right - x_left) * (y_bottom - y_top)
+    
+    # 计算box1的面积
+    box1_area = (x1_1 - x0_1) * (y1_1 - y0_1)
+    
+    return overlap_area / box1_area > area_ratio_threshold
+    
+    
 def _is_in(box1, box2) -> bool:
     """
     box1是否完全在box2里面
