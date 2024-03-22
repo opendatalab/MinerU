@@ -315,9 +315,36 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                     
     return layout_paras, list_info
 
-def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, lang="en"):
-    # TODO 
-    
+def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang="en"):
+    """
+    如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。
+    根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
+    """
+    for i in range(1, len(layout_paras)):
+        pre_layout_list_info = layout_list_info[i-1]
+        next_layout_list_info = layout_list_info[i]
+        pre_last_para = layout_paras[i-1][-1]
+        next_paras = layout_paras[i]
+        next_first_para = next_paras[0]
+        
+        if pre_layout_list_info[1] and not next_layout_list_info[0]: # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
+            logger.info(f"连接page {page_num} 内的list")
+            # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
+            may_list_lines = []
+            for j in range(len(next_paras)):
+                line = next_paras[j]
+                if len(line)==1: # 只可能是一行，多行情况再需要分析了
+                    if line[0]['bbox'][0] > __find_layout_bbox_by_line(line[0]['bbox'], new_layout_bbox)[0]:
+                        may_list_lines.append(line[0])
+                    else:
+                        break
+                else:
+                    break
+            # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
+            if len(may_list_lines)>0 and len(set([x['bbox'][0] for x in may_list_lines]))==1:
+                pre_last_para.extend(may_list_lines)
+                layout_paras[i] = layout_paras[i][len(may_list_lines):]
+                           
     return layout_paras
 
 
@@ -410,7 +437,7 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         return False
 
 
-def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
+def __do_split(blocks, layout_bboxes, new_layout_bbox, page_num, lang="en"):
     """
     根据line和layout情况进行分段
     先实现一个根据行末尾特征分段的简单方法。
@@ -424,7 +451,7 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, lang="en"):
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
     layout_paras, layout_list_info = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
-    layout_paras2 = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, lang) # layout之间连接列表段落
+    layout_paras2 = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang) # layout之间连接列表段落
     connected_layout_paras = __connect_para_inter_layoutbox(layout_paras2, new_layout_bbox, lang) # layout间链接段落
     
     return connected_layout_paras
@@ -435,12 +462,12 @@ def para_split(pdf_info_dict, lang="en"):
     根据line和layout情况进行分段
     """
     new_layout_of_pages = [] # 数组的数组，每个元素是一个页面的layoutS
-    for _, page in pdf_info_dict.items():
+    for page_num, page in pdf_info_dict.items():
         blocks = page['preproc_blocks']
         layout_bboxes = page['layout_bboxes']
         new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
         new_layout_of_pages.append(new_layout_bbox)
-        splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, lang)
+        splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, page_num, lang)
         page['para_blocks'] = splited_blocks
         
     """连接页面与页面之间的可能合并的段落"""
