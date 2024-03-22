@@ -6,7 +6,13 @@ from pathlib import Path
 
 from app.common.s3 import get_s3_config
 from demo.demo_test import get_json_from_local_or_s3
-from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_mm_markdown_with_para, ocr_mk_nlp_markdown, ocr_mk_mm_markdown, ocr_mk_mm_standard_format
+from magic_pdf.dict2md.ocr_mkcontent import (
+    ocr_mk_mm_markdown_with_para,
+    ocr_mk_nlp_markdown,
+    ocr_mk_mm_markdown,
+    ocr_mk_mm_standard_format,
+    ocr_mk_mm_markdown_with_para_and_pagination
+)
 from magic_pdf.libs.commons import join_path
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
@@ -47,7 +53,7 @@ def ocr_online_parse(book_name, start_page_id=0, debug_mode=True):
         # logger.info(json_object)
         s3_pdf_path = json_object["file_location"]
         s3_config = get_s3_config(s3_pdf_path)
-        ocr_pdf_model_info = json_object["doc_layout_result"]
+        ocr_pdf_model_info = json_object.get("doc_layout_result")
         ocr_parse_core(book_name, s3_pdf_path, ocr_pdf_model_info, s3_config=s3_config)
     except Exception as e:
         logger.exception(e)
@@ -72,6 +78,7 @@ def ocr_parse_core(book_name, ocr_pdf_path, ocr_pdf_model_info, start_page_id=0,
 
     # markdown_content = mk_nlp_markdown(pdf_info_dict)
     markdown_content = ocr_mk_mm_markdown_with_para(pdf_info_dict)
+    # markdown_pagination = ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict)
 
     with open(text_content_save_path, "w", encoding="utf-8") as f:
         f.write(markdown_content)
@@ -83,14 +90,9 @@ def ocr_parse_core(book_name, ocr_pdf_path, ocr_pdf_model_info, start_page_id=0,
 
 
 if __name__ == '__main__':
-    #ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.pdf"
-    #ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\s0043-1354(02)00581-x.json"
-    # ocr_pdf_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.pdf"
-    # ocr_json_file_path = r"D:\project\20231108code-clean\ocr\new\双栏\j.1540-627x.2006.00176.x.json"
-    
-    ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
-    ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
-    # ocr_pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.pdf"
-    # ocr_json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/ocr_1.json"
-    ocr_local_parse(ocr_pdf_path, ocr_json_file_path)
-    #ocr_online_parse(book_name="美国加州中学教材/edu_00000060")
+    # pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
+    # json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
+    # ocr_local_parse(pdf_path, json_file_path)
+    # book_name = "数学新星网/edu_00001236"
+    # ocr_online_parse(book_name)
+    pass
