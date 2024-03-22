@@ -35,8 +35,16 @@ def convert_to_train_format(jso: dict) -> []:
 
         # 脚注， 目前没有看到例子
         for para in v["para_blocks"]:
-            n_bbox = {"category_id": 2, "bbox": para["bbox"]}
-            bboxes.append(n_bbox)
+            if "paras" in para:
+                paras = para["paras"]
+                for para_key, para_content in paras.items():
+                    para_bbox = para_content["para_bbox"]
+                    is_para_title = para_content["is_para_title"]
+                    if is_para_title:
+                        n_bbox = {"category_id": 0, "bbox": para_bbox}
+                    else:
+                        n_bbox = {"category_id": 2, "bbox": para_bbox}
+                    bboxes.append(n_bbox)
 
         for inline_equation in v["inline_equations"]:
             n_bbox = {"category_id": 13, "bbox": inline_equation["bbox"]}
@@ -44,6 +52,10 @@ def convert_to_train_format(jso: dict) -> []:
 
         for inter_equation in v["interline_equations"]:
             n_bbox = {"category_id": 10, "bbox": inter_equation["bbox"]}
+            bboxes.append(n_bbox)
+
+        for footnote in v['footnote_bboxes_tmp']:
+            n_bbox = {"category_id": 5, "bbox": footnote["bbox"]}
             bboxes.append(n_bbox)
 
         info["bboxes"] = bboxes
