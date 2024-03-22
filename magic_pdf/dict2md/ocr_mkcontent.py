@@ -94,6 +94,36 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     return '\n\n'.join(markdown)
 
 
+def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
+    markdown_with_para_and_pagination = []
+    for page_no, page_info in pdf_info_dict.items():
+        page_markdown = []
+        paras = page_info.get("para_blocks")
+        if not paras:
+            continue
+        for para in paras:
+            para_text = ''
+            for line in para:
+                for span in line['spans']:
+                    span_type = span.get('type')
+                    if span_type == ContentType.Text:
+                        content = split_long_words(span['content'])
+                        # content = span['content']
+                    elif span_type == ContentType.InlineEquation:
+                        content = f"${span['content']}$"
+                    elif span_type == ContentType.InterlineEquation:
+                        content = f"\n$$\n{span['content']}\n$$\n"
+                    elif span_type in [ContentType.Image, ContentType.Table]:
+                        content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
+                    para_text += content + ' '
+            page_markdown.append(para_text.strip() + '  ')
+        markdown_with_para_and_pagination.append({
+            'page_no': page_no,
+            'md': '\n\n'.join(page_markdown)
+        })
+    return markdown_with_para_and_pagination
+
+
 def make_standard_format_with_para(pdf_info_dict: dict):
     content_list = []
     for _, page_info in pdf_info_dict.items():

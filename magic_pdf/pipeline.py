@@ -7,7 +7,7 @@ from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_nlp_markdown,
     ocr_mk_mm_markdown,
     ocr_mk_mm_standard_format,
-    ocr_mk_mm_markdown_with_para,
+    ocr_mk_mm_markdown_with_para, ocr_mk_mm_markdown_with_para_and_pagination,
 )
 from magic_pdf.libs.commons import (
     read_file,
@@ -520,6 +520,35 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para(jso: dict, debug_mode=False)
         jso["doc_layout_result"] = ""
         jso["pdf_intermediate_dict"] = ""
         jso["pdf_meta"] = ""
+    except Exception as e:
+        jso = exception_handler(jso, e)
+    return jso
+
+
+def ocr_pdf_intermediate_dict_to_markdown_with_para_and_pagination(jso: dict, debug_mode=False) -> dict:
+
+    if debug_mode:
+        pass
+    else:  # 如果debug没开，则检测是否有needdrop字段
+        if jso.get("need_drop", False):
+            book_name = join_path(get_data_source(jso), jso["file_id"])
+            logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
+            jso["dropped"] = True
+            return jso
+    try:
+        pdf_intermediate_dict = jso["pdf_intermediate_dict"]
+        # 将 pdf_intermediate_dict 解压
+        pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
+        markdown_content = ocr_mk_mm_markdown_with_para_and_pagination(pdf_intermediate_dict)
+        jso["content"] = markdown_content
+        logger.info(
+            f"book_name is:{get_data_source(jso)}/{jso['file_id']},markdown content length is {len(markdown_content)}",
+            file=sys.stderr,
+        )
+        # 把无用的信息清空
+        # jso["doc_layout_result"] = ""
+        jso["pdf_intermediate_dict"] = ""
+        # jso["pdf_meta"] = ""
     except Exception as e:
         jso = exception_handler(jso, e)
     return jso
