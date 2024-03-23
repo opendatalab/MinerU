@@ -9,7 +9,7 @@ from magic_pdf.libs.ocr_content_type import ContentType
 LINE_STOP_FLAG = ['.', '!', '?', '。', '！', '？',"：", ":", ")", "）", ";"]
 INLINE_EQUATION = ContentType.InlineEquation
 INTERLINE_EQUATION = ContentType.InterlineEquation
-TEXT = "text"
+TEXT = ContentType.Text
 
 
 def __get_span_text(span):
@@ -20,7 +20,7 @@ def __get_span_text(span):
     return c
     
 
-def __detect_list_lines(lines, new_layout_bboxes, lang='en'):
+def __detect_list_lines(lines, new_layout_bboxes, lang):
     """
     探测是否包含了列表，并且把列表的行分开.
     这样的段落特点是，顶格字母大写/数字，紧跟着几行缩进的。缩进的行首字母含小写的。
@@ -315,9 +315,9 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                     
     return layout_paras, list_info
 
-def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang="en"):
+def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang):
     """
-    如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。
+    如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。 TODO 因为没有区分列表和段落，所以这个方法暂时不实现。
     根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
     """
     for i in range(1, len(layout_paras)):
@@ -345,7 +345,34 @@ def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info,
                 pre_last_para.extend(may_list_lines)
                 layout_paras[i] = layout_paras[i][len(may_list_lines):]
                            
-    return layout_paras
+    return layout_paras, [layout_list_info[0][0], layout_list_info[-1][1]] # 同时还返回了这个页面级别的开头、结尾是不是列表的信息
+
+
+def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox,  pre_page_list_info, next_page_list_info, page_num, lang):
+    """
+    如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。 TODO 因为没有区分列表和段落，所以这个方法暂时不实现。
+    根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
+    """
+    if pre_page_list_info[1] and not next_page_list_info[0]: # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
+        logger.info(f"连接page {page_num} 内的list")
+        # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
+        may_list_lines = []
+        for j in range(len(next_page_paras[0])):
+            line = next_page_paras[0][j]
+            if len(line)==1: # 只可能是一行，多行情况再需要分析了
+                if line[0]['bbox'][0] > __find_layout_bbox_by_line(line[0]['bbox'], next_page_layout_bbox)[0]:
+                    may_list_lines.append(line[0])
+                else:
+                    break
+            else:
+                break
+        # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
+        if len(may_list_lines)>0 and len(set([x['bbox'][0] for x in may_list_lines]))==1:
+            pre_page_paras[-1].append(may_list_lines)
+            next_page_paras[0] = next_page_paras[0][len(may_list_lines):]
+            return True
+                       
+    return False
 
 
 def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
@@ -358,7 +385,7 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     return None
 
 
-def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
+def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang):
     """
     layout之间进行分段。
     主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
@@ -400,7 +427,7 @@ def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang="en"):
     return connected_layout_paras
 
 
-def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, lang):
+def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, page_num, lang):
     """
     连接起来相邻两个页面的段落——前一个页面最后一个段落和后一个页面的第一个段落。
     是否可以连接的条件：
@@ -437,7 +464,7 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         return False
 
 
-def __do_split(blocks, layout_bboxes, new_layout_bbox, page_num, lang="en"):
+def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     """
     根据line和layout情况进行分段
     先实现一个根据行末尾特征分段的简单方法。
@@ -451,35 +478,44 @@ def __do_split(blocks, layout_bboxes, new_layout_bbox, page_num, lang="en"):
     """
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
     layout_paras, layout_list_info = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
-    layout_paras2 = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang) # layout之间连接列表段落
+    layout_paras2, page_list_info = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang) # layout之间连接列表段落
     connected_layout_paras = __connect_para_inter_layoutbox(layout_paras2, new_layout_bbox, lang) # layout间链接段落
     
-    return connected_layout_paras
     
-    
+    return connected_layout_paras, page_list_info
+   
+
 def para_split(pdf_info_dict, lang="en"):
     """
     根据line和layout情况进行分段
     """
     new_layout_of_pages = [] # 数组的数组，每个元素是一个页面的layoutS
+    all_page_list_info = [] # 保存每个页面开头和结尾是否是列表
     for page_num, page in pdf_info_dict.items():
         blocks = page['preproc_blocks']
         layout_bboxes = page['layout_bboxes']
         new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
         new_layout_of_pages.append(new_layout_bbox)
-        splited_blocks = __do_split(blocks, layout_bboxes, new_layout_bbox, page_num, lang)
+        splited_blocks, page_list_info = __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang)
+        all_page_list_info.append(page_list_info)
         page['para_blocks'] = splited_blocks
         
     """连接页面与页面之间的可能合并的段落"""
     pdf_infos = list(pdf_info_dict.values())
-    for i, page in enumerate(pdf_info_dict.values()):
-        if i==0:
+    for page_num, page in enumerate(pdf_info_dict.values()):
+        if page_num==0:
             continue
-        pre_page_paras = pdf_infos[i-1]['para_blocks']
-        next_page_paras = pdf_infos[i]['para_blocks']
-        pre_page_layout_bbox = new_layout_of_pages[i-1]
-        next_page_layout_bbox = new_layout_of_pages[i]
+        pre_page_paras = pdf_infos[page_num-1]['para_blocks']
+        next_page_paras = pdf_infos[page_num]['para_blocks']
+        pre_page_layout_bbox = new_layout_of_pages[page_num-1]
+        next_page_layout_bbox = new_layout_of_pages[page_num]
         
-        is_conn= __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, lang) 
+        is_conn= __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, page_num, lang) 
         if is_conn:
-            logger.info(f"连接了第{i-1}页和第{i}页的段落")
+            logger.info(f"连接了第{page_num-1}页和第{page_num}页的段落")
+            
+        is_list_conn = __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, all_page_list_info[page_num-1], all_page_list_info[page_num], page_num, lang)
+        if is_list_conn:
+            logger.info(f"连接了第{page_num-1}页和第{page_num}页的列表段落")
+            
+        
