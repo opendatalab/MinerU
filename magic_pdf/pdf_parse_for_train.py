@@ -531,6 +531,7 @@ def parse_pdf_for_train(
         page_info["bak_page_no_bboxes"] = page_no_bboxs
         page_info["bak_header_bboxes"] = header_bboxs
         page_info["bak_footer_bboxes"] = footer_bboxs
+        page_info["bak_footer_note_bboxes"] = footnote_bboxes_tmp
 
         pdf_info_dict[f"page_{page_id}"] = page_info
 
