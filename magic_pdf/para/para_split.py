@@ -463,6 +463,82 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     else:
         return False
 
+def find_consecutive_true_regions(input_array):
+    start_index = None  # 连续True区域的起始索引
+    regions = []  # 用于保存所有连续True区域的起始和结束索引
+
+    for i in range(len(input_array)):
+        # 如果我们找到了一个True值，并且当前并没有在连续True区域中
+        if input_array[i] and start_index is None:
+            start_index = i  # 记录连续True区域的起始索引
+
+        # 如果我们找到了一个False值，并且当前在连续True区域中
+        elif not input_array[i] and start_index is not None:
+            # 如果连续True区域长度大于1，那么将其添加到结果列表中
+            if i - start_index > 1: 
+                regions.append((start_index, i-1)) 
+            start_index = None  # 重置起始索引
+
+    # 如果最后一个元素是True，那么需要将最后一个连续True区域加入到结果列表中
+    if start_index is not None and len(input_array) - start_index > 1:
+        regions.append((start_index, len(input_array)-1))
+
+    return regions
+
+
+def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
+    """
+    找出来中间对齐的连续单行文本，如果连续行高度相同，那么合并为一个段落。
+    一个line居中的条件是：
+    1. 水平中心点跨越layout的中心点。
+    2. 左右两侧都有空白
+    """
+    
+    for layout_i, layout_para in enumerate(page_paras):
+        layout_box = new_layout_bbox[layout_i]
+        single_line_paras_tag = []
+        for i in range(len(layout_para)):
+            single_line_paras_tag.append(len(layout_para[i])==1 and layout_para[i][0]['spans'][0]['type']==TEXT)
+            
+        """找出来连续的单行文本，如果连续行高度相同，那么合并为一个段落。"""
+        consecutive_single_line_indices = find_consecutive_true_regions(single_line_paras_tag)
+        if len(consecutive_single_line_indices)>0:
+            index_offset = 0
+            """检查这些行是否是高度相同的，居中的"""
+            for start, end in consecutive_single_line_indices:
+                start += index_offset
+                end += index_offset
+                line_hi = np.array([line[0]['bbox'][3]-line[0]['bbox'][1] for line in layout_para[start:end+1]])
+                first_line_text = ''.join([__get_span_text(span) for span in layout_para[start][0]['spans']])
+                if "Table" in first_line_text or "Figure" in first_line_text:
+                    pass
+                
+                logger.info(line_hi.std())                
+                
+                if line_hi.std()<2:
+                    """行高度相同，那么判断是否居中"""
+                    all_left_x0 = [line[0]['bbox'][0] for line in layout_para[start:end+1]]
+                    all_right_x1 = [line[0]['bbox'][2] for line in layout_para[start:end+1]]
+                    layout_center = (layout_box[0] + layout_box[2]) / 2
+                    if all([x0 < layout_center < x1 for x0, x1 in zip(all_left_x0, all_right_x1)]) \
+                    and not all([x0==layout_box[0] for x0 in all_left_x0]) \
+                    and not all([x1==layout_box[2] for x1 in all_right_x1]):
+                        merge_para = [l[0] for l in layout_para[start:end+1]]
+                        para_text = ''.join([__get_span_text(span) for line in merge_para for span in line['spans']])
+                        logger.info(para_text)
+                        layout_para[start:end+1] = [merge_para]
+                        index_offset -= end-start
+                        
+    return
+            
+
+def __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang):
+    """
+    找出来连续的单行文本，如果首行顶格，接下来的几个单行段落缩进对齐，那么合并为一个段落。
+    """
+    
+    pass
+
 
 def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     """
@@ -518,4 +594,12 @@ def para_split(pdf_info_dict, lang="en"):
         if is_list_conn:
             logger.info(f"连接了第{page_num-1}页和第{page_num}页的列表段落")
             
-        
+    """接下来可能会漏掉一些特别的一些可以合并的内容，对他们进行段落连接
+    1. 正文中有时出现一个行顶格，接下来几行缩进的情况。
+    2. 居中的一些连续单行，如果高度相同，那么可能是一个段落。
+    """
+    for page_num, page in enumerate(pdf_info_dict.values()):
+        page_paras = page['para_blocks']
+        new_layout_bbox = new_layout_of_pages[page_num]
+        __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang)
+        __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang)
