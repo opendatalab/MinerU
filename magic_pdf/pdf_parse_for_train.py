@@ -253,7 +253,7 @@ def parse_pdf_for_train(
         # isSimpleLayout_flag, fullColumn_cnt, subColumn_cnt, curPage_loss = evaluate_pdf_layout(page_id, page, model_output_json)
         接下来开始进行预处理过程
         """
-        title_bboxs = parse_titles(page_id, page, model_output_json)
+        # title_bboxs = parse_titles(page_id, page, model_output_json)
         
         """去掉每页的页码、页眉、页脚"""
         page_no_bboxs = parse_pageNos(page_id, page, model_output_json)
