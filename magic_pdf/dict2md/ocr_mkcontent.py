@@ -107,6 +107,7 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
             for line in para:
                 for span in line['spans']:
                     span_type = span.get('type')
+                    content = ''
                     if span_type == ContentType.Text:
                         content = split_long_words(span['content'])
                         # content = span['content']
@@ -119,7 +120,7 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                             content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
                         elif mode == 'nlp':
                             pass
-                    if content:
+                    if content != '':
                         para_text += content + ' '
             page_markdown.append(para_text.strip() + '  ')
     return page_markdown
