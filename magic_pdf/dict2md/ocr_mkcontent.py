@@ -72,10 +72,18 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     markdown = []
     for _, page_info in pdf_info_dict.items():
         paras_of_layout = page_info.get("para_blocks")
-        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout)
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
+
+def ocr_mk_nlp_markdown_with_para(pdf_info_dict: dict):
+    markdown = []
+    for _, page_info in pdf_info_dict.items():
+        paras_of_layout = page_info.get("para_blocks")
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "nlp")
+        markdown.extend(page_markdown)
+    return '\n\n'.join(markdown)
 
 def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
     markdown_with_para_and_pagination = []
@@ -83,7 +91,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
-        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout)
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
         markdown_with_para_and_pagination.append({
             'page_no': page_no,
             'md_content': '\n\n'.join(page_markdown)
@@ -91,7 +99,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
     return markdown_with_para_and_pagination
 
 
-def ocr_mk_mm_markdown_with_para_core(paras_of_layout):
+def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
     page_markdown = []
     for paras in paras_of_layout:
         for para in paras:
@@ -107,8 +115,12 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout):
                     elif span_type == ContentType.InterlineEquation:
                         content = f"\n$$\n{span['content']}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
-                        content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
-                    para_text += content + ' '
+                        if mode == 'mm':
+                            content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
+                        elif mode == 'nlp':
+                            pass
+                    if content:
+                        para_text += content + ' '
             page_markdown.append(para_text.strip() + '  ')
     return page_markdown
 
