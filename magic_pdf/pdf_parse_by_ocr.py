@@ -269,7 +269,7 @@ def parse_pdf_by_ocr(
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    para_split(pdf_info_dict)
+    para_split(pdf_info_dict, debug_mode=debug_mode)
 
     '''在测试时,保存调试信息'''
     if debug_mode:

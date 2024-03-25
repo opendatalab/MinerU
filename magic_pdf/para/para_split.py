@@ -501,7 +501,7 @@ def find_consecutive_true_regions(input_array):
     return regions
 
 
-def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
+def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode):
     """
     找出来中间对齐的连续单行文本，如果连续行高度相同，那么合并为一个段落。
     一个line居中的条件是：
@@ -527,8 +527,8 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
                 first_line_text = ''.join([__get_span_text(span) for span in layout_para[start][0]['spans']])
                 if "Table" in first_line_text or "Figure" in first_line_text:
                     pass
-                
-                logger.info(line_hi.std())                
+                if debug_mode:
+                    logger.info(line_hi.std())
                 
                 if line_hi.std()<2:
                     """行高度相同，那么判断是否居中"""
@@ -540,7 +540,8 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
                     and not all([x1==layout_box[2] for x1 in all_right_x1]):
                         merge_para = [l[0] for l in layout_para[start:end+1]]
                         para_text = ''.join([__get_span_text(span) for line in merge_para for span in line['spans']])
-                        logger.info(para_text)
+                        if debug_mode:
+                            logger.info(para_text)
                         layout_para[start:end+1] = [merge_para]
                         index_offset -= end-start
                         
@@ -576,7 +577,7 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     return connected_layout_paras, page_list_info
    
 
-def para_split(pdf_info_dict, lang="en"):
+def para_split(pdf_info_dict, debug_mode, lang="en"):
     """
     根据line和layout情况进行分段
     """
@@ -601,13 +602,15 @@ def para_split(pdf_info_dict, lang="en"):
         pre_page_layout_bbox = new_layout_of_pages[page_num-1]
         next_page_layout_bbox = new_layout_of_pages[page_num]
         
-        is_conn= __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, page_num, lang) 
-        if is_conn:
-            logger.info(f"连接了第{page_num-1}页和第{page_num}页的段落")
+        is_conn = __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, page_num, lang)
+        if debug_mode:
+            if is_conn:
+                logger.info(f"连接了第{page_num-1}页和第{page_num}页的段落")
             
         is_list_conn = __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox, next_page_layout_bbox, all_page_list_info[page_num-1], all_page_list_info[page_num], page_num, lang)
-        if is_list_conn:
-            logger.info(f"连接了第{page_num-1}页和第{page_num}页的列表段落")
+        if debug_mode:
+            if is_list_conn:
+                logger.info(f"连接了第{page_num-1}页和第{page_num}页的列表段落")
             
     """接下来可能会漏掉一些特别的一些可以合并的内容，对他们进行段落连接
     1. 正文中有时出现一个行顶格，接下来几行缩进的情况。
@@ -616,5 +619,5 @@ def para_split(pdf_info_dict, lang="en"):
     for page_num, page in enumerate(pdf_info_dict.values()):
         page_paras = page['para_blocks']
         new_layout_bbox = new_layout_of_pages[page_num]
-        __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang)
+        __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode=debug_mode)
         __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang)
