@@ -122,7 +122,10 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                             pass
                     if content != '':
                         para_text += content + ' '
-            page_markdown.append(para_text.strip() + '  ')
+            if para_text.strip() == '':
+                continue
+            else:
+                page_markdown.append(para_text.strip() + '  ')
     return page_markdown
 
 
