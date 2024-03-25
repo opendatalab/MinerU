@@ -124,13 +124,6 @@ def parse_pdf_by_ocr(
             page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode
         )
 
-        # 构建需要remove的bbox列表
-        # need_remove_spans_bboxes = []
-        # need_remove_spans_bboxes.extend(page_no_bboxes)
-        # need_remove_spans_bboxes.extend(header_bboxes)
-        # need_remove_spans_bboxes.extend(footer_bboxes)
-        # need_remove_spans_bboxes.extend(footnote_bboxes)
-
         # 构建需要remove的bbox字典
         need_remove_spans_bboxes_dict = {
             DropTag.PAGE_NUMBER: page_no_bboxes,
