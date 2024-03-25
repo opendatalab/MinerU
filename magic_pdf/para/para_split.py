@@ -320,6 +320,9 @@ def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info,
     如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。 TODO 因为没有区分列表和段落，所以这个方法暂时不实现。
     根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
     """
+    if len(layout_paras)==0 or len(layout_list_info)==0: # 0的时候最后的return 会出错
+        return layout_paras, [False, False]
+        
     for i in range(1, len(layout_paras)):
         pre_layout_list_info = layout_list_info[i-1]
         next_layout_list_info = layout_list_info[i]
@@ -353,6 +356,9 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。 TODO 因为没有区分列表和段落，所以这个方法暂时不实现。
     根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
     """
+    if len(pre_page_paras)==0 or len(next_page_paras)==0: # 0的时候最后的return 会出错
+        return False
+    
     if pre_page_list_info[1] and not next_page_list_info[0]: # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
         logger.info(f"连接page {page_num} 内的list")
         # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
@@ -395,10 +401,19 @@ def __connect_para_inter_layoutbox(layout_paras, new_layout_bbox, lang):
 
     """
     connected_layout_paras = []
+    if len(layout_paras)==0:
+        return connected_layout_paras
+    
     connected_layout_paras.append(layout_paras[0])
     for i in range(1, len(layout_paras)):
-        pre_last_line = layout_paras[i-1][-1][-1]
-        next_first_line = layout_paras[i][0][0]
+        try:
+            if len(layout_paras[i])==0 or len(layout_paras[i-1])==0: #  TODO 考虑连接问题，
+                continue
+            pre_last_line = layout_paras[i-1][-1][-1]
+            next_first_line = layout_paras[i][0][0]
+        except Exception as e:
+            logger.error(f"page layout {i} has no line")
+            continue
         pre_last_line_text = ''.join([__get_span_text(span) for span in pre_last_line['spans']])
         pre_last_line_type = pre_last_line['spans'][-1]['type']
         next_first_line_text = ''.join([__get_span_text(span) for span in next_first_line['spans']])
@@ -435,7 +450,7 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     2. 后一个页面的第一个段落第一行没有空白开头。
     """
     # 有的页面可能压根没有文字
-    if len(pre_page_paras)==0 or len(next_page_paras)==0:
+    if len(pre_page_paras)==0 or len(next_page_paras)==0 or len(pre_page_paras[0])==0 or len(next_page_paras[0])==0: # TODO [[]]为什么出现在pre_page_paras里？
         return False
     pre_last_para = pre_page_paras[-1][-1]
     next_first_para = next_page_paras[0][0]
