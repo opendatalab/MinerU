@@ -57,16 +57,16 @@ def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, lay
 
 
 def parse_pdf_by_ocr(
-    pdf_path,
-    s3_pdf_profile,
-    pdf_model_output,
-    save_path,
-    book_name,
-    pdf_model_profile=None,
-    image_s3_config=None,
-    start_page_id=0,
-    end_page_id=None,
-    debug_mode=False,
+        pdf_path,
+        s3_pdf_profile,
+        pdf_model_output,
+        save_path,
+        book_name,
+        pdf_model_profile=None,
+        image_s3_config=None,
+        start_page_id=0,
+        end_page_id=None,
+        debug_mode=False,
 ):
     pdf_bytes = read_file(pdf_path, s3_pdf_profile)
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
@@ -94,7 +94,6 @@ def parse_pdf_by_ocr(
     img_s3_client = get_img_s3_client(save_path, image_s3_config)
 
     start_time = time.time()
-
 
     end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
     for page_id in range(start_page_id, end_page_id + 1):
@@ -199,50 +198,48 @@ def parse_pdf_by_ocr(
             else:
                 continue
 
-
-
-
-        # 删除重叠spans中较小的那些
+        '''删除重叠spans中较小的那些'''
         spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
 
-        # 删除remove_span_block_bboxes中的bbox
-        # spans = remove_spans_by_bboxes(spans, need_remove_spans_bboxes)
-        # 按qa要求，增加drop相关数据
+        '''
+        删除remove_span_block_bboxes中的bbox
+        并增加drop相关数据
+        '''
         spans, dropped_spans_by_removed_bboxes = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
-        # 对image和table截图
+        '''对image和table截图'''
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client)
 
-        # 行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)
+        '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
         displayed_list = []
         text_inline_lines = []
         modify_y_axis(spans, displayed_list, text_inline_lines)
-        # 模型识别错误的行间公式, type类型转换成行内公式
+
+        '''模型识别错误的行间公式, type类型转换成行内公式'''
         spans = modify_inline_equation(spans, displayed_list, text_inline_lines)
 
-        # bbox去除粘连
+        '''bbox去除粘连'''
         spans = remove_overlap_between_bbox(spans)
 
-        # 对tpye=["interline_equation", "image", "table"]进行额外处理,如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
+        '''
+        对tpye=["interline_equation", "image", "table"]进行额外处理,
+        如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
+        '''
         spans = adjust_bbox_for_standalone_block(spans)
 
-
-        # 从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)
+        '''从ocr_page_info中解析layout信息(按自然阅读方向排序,并修复重叠和交错的bad case)'''
         layout_bboxes, layout_tree = layout_detect(ocr_page_info['subfield_dets'], page, ocr_page_info)
 
-        # 将spans合并成line(在layout内,从上到下,从左到右)
+        '''将spans合并成line(在layout内,从上到下,从左到右)'''
         lines, dropped_spans_by_layout = merge_spans_to_line_by_layout(spans, layout_bboxes)
 
-        # 将lines合并成block
+        '''将lines合并成block'''
         blocks = merge_lines_to_block(lines)
 
-        # 根据block合并段落
-        #para_blocks = para_split(blocks, layout_bboxes)
-        
-        # 获取QA需要外置的list
+        '''获取QA需要外置的list'''
         images, tables, interline_equations, inline_equations = get_qa_need_list(blocks)
 
-        # drop的span_list合并
+        '''drop的span_list合并'''
         dropped_spans = []
         dropped_spans.extend(dropped_spans_by_span_overlap)
         dropped_spans.extend(dropped_spans_by_removed_bboxes)
@@ -263,19 +260,18 @@ def parse_pdf_by_ocr(
             elif span['type'] in [ContentType.InlineEquation, ContentType.InterlineEquation]:
                 dropped_equation_block.append(span)
 
-
-
-        # 构造pdf_info_dict
+        '''构造pdf_info_dict'''
         page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                                              images, tables, interline_equations, inline_equations,
-                                             dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
+                                             dropped_text_block, dropped_image_block, dropped_table_block,
+                                             dropped_equation_block,
                                              need_remove_spans_bboxes_dict)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
     para_split(pdf_info_dict)
-    
-    # 在测试时,保存调试信息
+
+    '''在测试时,保存调试信息'''
     if debug_mode:
         params_file_save_path = join_path(
             save_tmp_path, "md", book_name, "preproc_out.json"
