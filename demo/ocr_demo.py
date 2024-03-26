@@ -11,7 +11,8 @@ from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_nlp_markdown,
     ocr_mk_mm_markdown,
     ocr_mk_mm_standard_format,
-    ocr_mk_mm_markdown_with_para_and_pagination
+    ocr_mk_mm_markdown_with_para_and_pagination,
+    make_standard_format_with_para
 )
 from magic_pdf.libs.commons import join_path
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
@@ -83,10 +84,11 @@ def ocr_parse_core(book_name, ocr_pdf_path, ocr_pdf_model_info, start_page_id=0,
     with open(text_content_save_path, "w", encoding="utf-8") as f:
         f.write(markdown_content)
 
-    standard_format = ocr_mk_mm_standard_format(pdf_info_dict)
+    standard_format = make_standard_format_with_para(pdf_info_dict)
     standard_format_save_path = f"{save_path_with_bookname}/standard_format.txt"
     with open(standard_format_save_path, "w", encoding="utf-8") as f:
-        f.write(str(standard_format))
+        # 将standard_format dump成json文本并保存
+        f.write(json.dumps(standard_format, ensure_ascii=False))
 
 
 if __name__ == '__main__':
