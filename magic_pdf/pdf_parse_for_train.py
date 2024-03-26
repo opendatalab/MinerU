@@ -220,7 +220,7 @@ def parse_pdf_for_train(
         # 解析表格并对table_bboxes进行位置的微调,防止表格周围的文字被截断
         table_bboxes = parse_tables(page_id, page, model_output_json)
         table_bboxes = fix_tables(
-            page, table_bboxes, include_table_title=True, scan_line_num=2
+            page, table_bboxes, include_table_title=False, scan_line_num=2
         )  # 修正
         table_bboxes = fix_table_text_block(
             text_raw_blocks, table_bboxes
