@@ -109,12 +109,11 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                     span_type = span.get('type')
                     content = ''
                     if span_type == ContentType.Text:
-                        content = split_long_words(span['content'])
-                        # content = span['content']
+                        content = ocr_escape_special_markdown_char(split_long_words(span['content']))
                     elif span_type == ContentType.InlineEquation:
-                        content = f"${span['content']}$"
+                        content = f"${ocr_escape_special_markdown_char(span['content'])}$"
                     elif span_type == ContentType.InterlineEquation:
-                        content = f"\n$$\n{span['content']}\n$$\n"
+                        content = f"\n$$\n{ocr_escape_special_markdown_char(span['content'])}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
                         if mode == 'mm':
                             content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
@@ -129,16 +128,39 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
     return page_markdown
 
 
+def para_to_standard_format(para):
+    para_content = {}
+    if len(para) == 1:
+        para_content = line_to_standard_format(para[0])
+    elif len(para) > 1:
+        para_text = ''
+        inline_equation_num = 0
+        for line in para:
+            for span in line['spans']:
+                span_type = span.get('type')
+                if span_type == ContentType.Text:
+                    content = ocr_escape_special_markdown_char(split_long_words(span['content']))
+                elif span_type == ContentType.InlineEquation:
+                    content = f"${ocr_escape_special_markdown_char(span['content'])}$"
+                    inline_equation_num += 1
+                para_text += content + ' '
+        para_content = {
+            'type': 'text',
+            'text': para_text,
+            'inline_equation_num': inline_equation_num
+        }
+    return para_content
+
 def make_standard_format_with_para(pdf_info_dict: dict):
     content_list = []
     for _, page_info in pdf_info_dict.items():
-        paras = page_info.get("para_blocks")
-        if not paras:
+        paras_of_layout = page_info.get("para_blocks")
+        if not paras_of_layout:
             continue
-        for para in paras:
-            for line in para:
-                content = line_to_standard_format(line)
-                content_list.append(content)
+        for paras in paras_of_layout:
+            for para in paras:
+                para_content = para_to_standard_format(para)
+                content_list.append(para_content)
     return content_list
 
 
