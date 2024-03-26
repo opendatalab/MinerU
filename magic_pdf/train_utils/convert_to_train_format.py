@@ -54,8 +54,8 @@ def convert_to_train_format(jso: dict) -> []:
             n_bbox = {"category_id": 10, "bbox": inter_equation["bbox"]}
             bboxes.append(n_bbox)
 
-        for footnote in v['bak_footer_note_bboxes']:
-            n_bbox = {"category_id": 5, "bbox": footnote["bbox"]}
+        for footnote_bbox in v["bak_footer_note_bboxes"]:
+            n_bbox = {"category_id": 5, "bbox": list(footnote_bbox)}
             bboxes.append(n_bbox)
 
         info["bboxes"] = bboxes
