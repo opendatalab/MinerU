@@ -23,16 +23,10 @@ from loguru import logger
 
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_for_train import parse_pdf_for_train
+from magic_pdf.spark.base import exception_handler, get_data_source
 from magic_pdf.train_utils.convert_to_train_format import convert_to_train_format
 from app.common.s3 import get_s3_config, get_s3_client
 
-
-def exception_handler(jso: dict, e):
-    logger.exception(e)
-    jso["need_drop"] = True
-    jso["drop_reason"] = DropReason.Exception
-    jso["exception"] = f"ERROR: {e}"
-    return jso
 
 
 def get_data_type(jso: dict):
@@ -47,13 +41,6 @@ def get_bookid(jso: dict):
     if book_id is None:
         book_id = jso.get("original_file_id")
     return book_id
-
-
-def get_data_source(jso: dict):
-    data_source = jso.get("data_source")
-    if data_source is None:
-        data_source = jso.get("file_source")
-    return data_source
 
 
 def meta_scan(jso: dict, doc_layout_check=True) -> dict:
