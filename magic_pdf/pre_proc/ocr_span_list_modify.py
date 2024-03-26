@@ -44,8 +44,13 @@ def remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict):
         # logger.info(f"remove spans by bbox dict, drop_tag: {drop_tag}, removed_bboxes: {removed_bboxes}")
         need_remove_spans = []
         for span in spans:
+            # 通过判断span的bbox是否在removed_bboxes中, 判断是否需要删除该span
             for removed_bbox in removed_bboxes:
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], removed_bbox) > 0.5:
+                    need_remove_spans.append(span)
+                    break
+                # 当drop_tag为DropTag.FOOTNOTE时, 判断span是否在removed_bboxes中任意一个的下方，如果是,则删除该span
+                elif drop_tag == DropTag.FOOTNOTE and (span['bbox'][1]+span['bbox'][3])/2 > removed_bbox[3] and removed_bbox[0] < (span['bbox'][0]+span['bbox'][2])/2 < removed_bbox[2]:
                     need_remove_spans.append(span)
                     break
 
