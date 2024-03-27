@@ -46,6 +46,8 @@ def indicator_cal(json_standard,json_test):
     '''批量读取中间生成的json文件'''
     test_inline_equations=[]
     test_interline_equations=[]
+    test_inline_euqations_bboxs=[]
+    test_interline_equations_bboxs=[]
     test_dropped_text_bboxes=[]
     test_dropped_text_tag=[]
     test_dropped_image_bboxes=[]
@@ -58,15 +60,20 @@ def indicator_cal(json_standard,json_test):
         mid_json=pd.DataFrame(i)
         mid_json=mid_json.iloc[:,:-1]
         for j1 in mid_json.loc['inline_equations',:]:
-            page_in=[]
+            page_in_text=[]
+            page_in_bbox=[]
             for k1 in j1:
-                page_in.append(k1['latex_text'])
-            test_inline_equations.append(page_in)
+                page_in_text.append(k1['latex_text'])
+                page_in_bbox.append(k1['bbox'])
+            test_inline_equations.append(page_in_text)
+            test_inline_euqations_bboxs.append(page_in_bbox)
         for j2 in mid_json.loc['interline_equations',:]:
-            page_in=[]
+            page_in_text=[]
+            page_in_bbox=[]
             for k2 in j2:
-                page_in.append(k2['latex_text'])
-            test_interline_equations.append(page_in)
+                page_in_text.append(k2['latex_text'])
+            test_interline_equations.append(page_in_text)
+            test_interline_equations_bboxs.append(page_in_bbox)
 
         for j3 in mid_json.loc['droped_text_block',:]:
             page_in_bbox=[]
@@ -101,6 +108,8 @@ def indicator_cal(json_standard,json_test):
 
     standard_inline_equations=[]
     standard_interline_equations=[]
+    standard_inline_euqations_bboxs=[]
+    standard_interline_equations_bboxs=[]
     standard_dropped_text_bboxes=[]
     standard_dropped_text_tag=[]
     standard_dropped_image_bboxes=[]
@@ -113,15 +122,21 @@ def indicator_cal(json_standard,json_test):
         mid_json=pd.DataFrame(i)
         mid_json=mid_json.iloc[:,:-1]
         for j1 in mid_json.loc['inline_equations',:]:
-            page_in=[]
+            page_in_text=[]
+            page_in_bbox=[]
             for k1 in j1:
-                page_in.append(k1['latex_text'])
-            standard_inline_equations.append(page_in)
+                page_in_text.append(k1['latex_text'])
+                page_in_bbox.append(k1['bbox'])
+            standard_inline_equations.append(page_in_text)
+            standard_inline_euqations_bboxs.append(page_in_bbox)
         for j2 in mid_json.loc['interline_equations',:]:
-            page_in=[]
+            page_in_text=[]
+            page_in_bbox=[]
             for k2 in j2:
-                page_in.append(k2['latex_text'])
-            standard_interline_equations.append(page_in)
+                page_in_text.append(k2['latex_text'])
+                page_in_bbox.append(k2['bbox'])
+            standard_interline_equations.append(page_in_text)
+            standard_interline_equations_bboxs.append(page_in_bbox)
         for j3 in mid_json.loc['droped_text_block',:]:
             page_in_bbox=[]
             page_in_tag=[]
@@ -195,6 +210,9 @@ def indicator_cal(json_standard,json_test):
     inline_equations_edit=np.mean(dis1)
     inline_equations_bleu=np.mean(bleu1)
 
+    '''行内公式bbox匹配相关指标'''
+    inline_equations_bbox_report=bbox_match_indicator(test_inline_euqations_bboxs,standard_inline_euqations_bboxs)
+
 
     '''行间公式编辑距离和bleu'''
     dis2=[]
@@ -215,6 +233,10 @@ def indicator_cal(json_standard,json_test):
                 bleu2.append(sentence_bleu([a],b))
     interline_equations_edit=np.mean(dis2)
     interline_equations_bleu=np.mean(bleu2)
+
+
+    '''行间公式bbox匹配相关指标'''
+    interline_equations_bbox_report=bbox_match_indicator(test_interline_equations_bboxs,standard_interline_equations_bboxs)
 
 
 
@@ -289,87 +311,11 @@ def indicator_cal(json_standard,json_test):
 
     '''dropped_image_block的bbox匹配相关指标'''
     '''有数据格式不一致的问题'''
+    image_block_report=bbox_match_indicator(test_dropped_image_bboxes,standard_dropped_image_bboxes)
     
-    test_image_bbox=[]
-    standard_image_bbox=[]
-    for a,b in zip(test_dropped_image_bboxes,standard_dropped_image_bboxes):
-
-        test_page_bbox=[]
-        standard_page_bbox=[]
-        if len(a)==0 and len(b)==0:
-            pass
-        else:
-            for i in b:
-                if len(i)!=4:
-                    continue
-                else:
-                    judge=0
-                    standard_page_bbox.append(1)
-                    for j in a:
-                        if bbox_offset(i,j):
-                            judge=1
-                            test_page_bbox.append(1)
-                            break
-                    if judge==0:
-                        test_page_bbox.append(0)
-                        
-            diff_num=len(a)+test_page_bbox.count(0)-len(b)
-            if diff_num>0:#有多删的情况出现
-                test_page_bbox.extend([1]*diff_num)
-                standard_page_bbox.extend([0]*diff_num)
-
-          
-            test_image_bbox.extend(test_page_bbox)
-            standard_image_bbox.extend(standard_page_bbox)
-
-    
-    image_block_report = {}
-    image_block_report['accuracy']=metrics.accuracy_score(standard_image_bbox,test_image_bbox)
-    image_block_report['precision']=metrics.precision_score(standard_image_bbox,test_image_bbox)
-    image_block_report['recall']=metrics.recall_score(standard_image_bbox,test_image_bbox)
-    image_block_report['f1_score']=metrics.f1_score(standard_image_bbox,test_image_bbox)
-    
-
-
     
     '''dropped_table_block的bbox匹配相关指标'''
-    test_table_bbox=[]
-    standard_table_bbox=[]
-    for a,b in zip(test_dropped_table_bboxes,standard_dropped_table_bboxes):
-
-        test_page_bbox=[]
-        standard_page_bbox=[]
-        if len(a)==0 and len(b)==0:
-            pass
-        else:
-            for i in b:
-                if len(i)!=4:
-                    continue
-                else:
-                    judge=0
-                    standard_page_bbox.append(1)
-                    for j in a:
-                        if bbox_offset(i,j):
-                            judge=1
-                            test_page_bbox.append(1)
-                            break
-                    if judge==0:
-                        test_page_bbox.append(0)
-                        
-            diff_num=len(a)+test_page_bbox.count(0)-len(b)
-            if diff_num>0:#有多删的情况出现
-                test_page_bbox.extend([1]*diff_num)
-                standard_page_bbox.extend([0]*diff_num)
-
-          
-            test_table_bbox.extend(test_page_bbox)
-            standard_table_bbox.extend(standard_page_bbox)
-
-    table_block_report = {}
-    table_block_report['accuracy']=metrics.accuracy_score(standard_table_bbox,test_table_bbox)
-    table_block_report['precision']=metrics.precision_score(standard_table_bbox,test_table_bbox)
-    table_block_report['recall']=metrics.recall_score(standard_table_bbox,test_table_bbox)
-    table_block_report['f1_score']=metrics.f1_score(standard_table_bbox,test_table_bbox)
+    table_block_report=bbox_match_indicator(test_dropped_table_bboxes,standard_dropped_table_bboxes)
     
    
     '''阅读顺序编辑距离的均值'''
@@ -392,6 +338,8 @@ def indicator_cal(json_standard,json_test):
     output['行间公式平均编辑距离']=[interline_equations_edit]
     output['行内公式平均bleu']=[inline_equations_bleu]
     output['行间公式平均bleu']=[interline_equations_bleu]
+    output['行内公式识别相关指标']=[inline_equations_bbox_report]
+    output['行间公式识别相关指标']=[interline_equations_bbox_report]
     output['阅读顺序平均编辑距离']=[preproc_num_edit]
     output['分段准确率']=[acc_para]
     output['删除的text block的相关指标']=[text_block_report]
@@ -434,6 +382,52 @@ def bbox_offset(b_t,b_s):
         return True
     else:
         return False
+    
+
+'''bbox匹配和对齐函数，输出相关指标'''
+'''输入的是以page为单位的bbox列表'''
+def bbox_match_indicator(test_bbox_list,standard_bbox_list):
+    
+    test_bbox=[]
+    standard_bbox=[]
+    for a,b in zip(test_bbox_list,standard_bbox_list):
+
+        test_page_bbox=[]
+        standard_page_bbox=[]
+        if len(a)==0 and len(b)==0:
+            pass
+        else:
+            for i in b:
+                if len(i)!=4:
+                    continue
+                else:
+                    judge=0
+                    standard_page_bbox.append(1)
+                    for j in a:
+                        if bbox_offset(i,j):
+                            judge=1
+                            test_page_bbox.append(1)
+                            break
+                    if judge==0:
+                        test_page_bbox.append(0)
+                        
+            diff_num=len(a)+test_page_bbox.count(0)-len(b)
+            if diff_num>0:#有多删的情况出现
+                test_page_bbox.extend([1]*diff_num)
+                standard_page_bbox.extend([0]*diff_num)
+
+          
+            test_bbox.extend(test_page_bbox)
+            standard_bbox.extend(standard_page_bbox)
+
+    
+    block_report = {}
+    block_report['accuracy']=metrics.accuracy_score(standard_bbox,test_bbox)
+    block_report['precision']=metrics.precision_score(standard_bbox,test_bbox)
+    block_report['recall']=metrics.recall_score(standard_bbox,test_bbox)
+    block_report['f1_score']=metrics.f1_score(standard_bbox,test_bbox)
+
+    return block_report
 
 
 
