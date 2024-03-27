@@ -1,6 +1,19 @@
 from magic_pdf.libs.commons import s3_image_save_path, join_path
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
+import wordninja
+import re
+
+
+def split_long_words(text):
+    segments = text.split(' ')
+    for i in range(len(segments)):
+        words = re.findall(r'\w+|[^\w\s]', segments[i], re.UNICODE)
+        for j in range(len(words)):
+            if len(words[j]) > 15:
+                words[j] = ' '.join(wordninja.split(words[j]))
+        segments[i] = ''.join(words)
+    return ' '.join(segments)
 
 
 def ocr_mk_nlp_markdown(pdf_info_dict: dict):
@@ -58,37 +71,96 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
 def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     markdown = []
     for _, page_info in pdf_info_dict.items():
-        paras = page_info.get("para_blocks")
-        if not paras:
+        paras_of_layout = page_info.get("para_blocks")
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
+        markdown.extend(page_markdown)
+    return '\n\n'.join(markdown)
+
+
+def ocr_mk_nlp_markdown_with_para(pdf_info_dict: dict):
+    markdown = []
+    for _, page_info in pdf_info_dict.items():
+        paras_of_layout = page_info.get("para_blocks")
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "nlp")
+        markdown.extend(page_markdown)
+    return '\n\n'.join(markdown)
+
+def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
+    markdown_with_para_and_pagination = []
+    for page_no, page_info in pdf_info_dict.items():
+        paras_of_layout = page_info.get("para_blocks")
+        if not paras_of_layout:
             continue
+        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
+        markdown_with_para_and_pagination.append({
+            'page_no': page_no,
+            'md_content': '\n\n'.join(page_markdown)
+        })
+    return markdown_with_para_and_pagination
+
+
+def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
+    page_markdown = []
+    for paras in paras_of_layout:
         for para in paras:
             para_text = ''
             for line in para:
                 for span in line['spans']:
                     span_type = span.get('type')
+                    content = ''
                     if span_type == ContentType.Text:
-                        para_text += span['content']
+                        content = ocr_escape_special_markdown_char(split_long_words(span['content']))
                     elif span_type == ContentType.InlineEquation:
-                        para_text += f" ${span['content']}$ "
+                        content = f"${ocr_escape_special_markdown_char(span['content'])}$"
                     elif span_type == ContentType.InterlineEquation:
-                        para_text += f"$$\n{span['content']}\n$$ "
-                    elif span_type == ContentType.Image:
-                        para_text += f"![]({join_path(s3_image_save_path, span['image_path'])})"
-            markdown.append(para_text)
+                        content = f"\n$$\n{ocr_escape_special_markdown_char(span['content'])}\n$$\n"
+                    elif span_type in [ContentType.Image, ContentType.Table]:
+                        if mode == 'mm':
+                            content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
+                        elif mode == 'nlp':
+                            pass
+                    if content != '':
+                        para_text += content + ' '
+            if para_text.strip() == '':
+                continue
+            else:
+                page_markdown.append(para_text.strip() + '  ')
+    return page_markdown
 
-    return '\n\n'.join(markdown)
 
+def para_to_standard_format(para):
+    para_content = {}
+    if len(para) == 1:
+        para_content = line_to_standard_format(para[0])
+    elif len(para) > 1:
+        para_text = ''
+        inline_equation_num = 0
+        for line in para:
+            for span in line['spans']:
+                span_type = span.get('type')
+                if span_type == ContentType.Text:
+                    content = ocr_escape_special_markdown_char(split_long_words(span['content']))
+                elif span_type == ContentType.InlineEquation:
+                    content = f"${ocr_escape_special_markdown_char(span['content'])}$"
+                    inline_equation_num += 1
+                para_text += content + ' '
+        para_content = {
+            'type': 'text',
+            'text': para_text,
+            'inline_equation_num': inline_equation_num
+        }
+    return para_content
 
 def make_standard_format_with_para(pdf_info_dict: dict):
     content_list = []
     for _, page_info in pdf_info_dict.items():
-        paras = page_info.get("para_blocks")
-        if not paras:
+        paras_of_layout = page_info.get("para_blocks")
+        if not paras_of_layout:
             continue
-        for para in paras:
-            for line in para:
-                content = line_to_standard_format(line)
-                content_list.append(content)
+        for paras in paras_of_layout:
+            for para in paras:
+                para_content = para_to_standard_format(para)
+                content_list.append(para_content)
     return content_list
 
 
@@ -125,7 +197,8 @@ def line_to_standard_format(line):
                 line_text += f"${inline_equation}$"
                 inline_equation_num += 1
             elif span['type'] == ContentType.Text:
-                line_text += span['content']
+                text_content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                line_text += text_content
     content = {
         'type': 'text',
         'text': line_text,

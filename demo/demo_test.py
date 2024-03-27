@@ -34,7 +34,7 @@ def get_json_from_local_or_s3(book_name=None):
         s3_config = get_s3_config(json_path)
         file_content = read_file(json_path, s3_config)
         json_str = file_content.decode("utf-8")
-        logger.info(json_str)
+        # logger.info(json_str)
         json_object = json.loads(json_str)
     return json_object
 

@@ -66,7 +66,7 @@ def merge_spans_to_line_by_layout(spans, layout_bboxes):
         # 遍历spans,将每个span放入对应的layout中
         layout_sapns = []
         for span in spans:
-            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], layout_bbox) > 0.65:
+            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], layout_bbox) > 0.6:
                 layout_sapns.append(span)
         # 如果layout_sapns不为空，则放入new_spans中
         if len(layout_sapns) > 0:
