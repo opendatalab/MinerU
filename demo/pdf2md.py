@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 from loguru import logger
 
-from magic_pdf.libs.commons import join_path
+from magic_pdf.libs.commons import join_path, read_file
 from magic_pdf.dict2md.mkcontent import mk_mm_markdown
 from magic_pdf.pipeline import parse_pdf_by_model
 
@@ -21,9 +21,11 @@ def main(s3_pdf_path: str, s3_pdf_profile: str, pdf_model_path: str, pdf_model_p
     text_content_save_path = f"{save_path}/{book_name}/book.md"
     # metadata_save_path = f"{save_path}/{book_name}/metadata.json"
 
+    pdf_bytes = read_file(s3_pdf_path, s3_pdf_profile)
+
     try:
         paras_dict = parse_pdf_by_model(
-            s3_pdf_path, s3_pdf_profile, pdf_model_path, save_path, book_name, pdf_model_profile, start_page_num, debug_mode=debug_mode
+            pdf_bytes, pdf_model_path, save_path, book_name, pdf_model_profile, start_page_num, debug_mode=debug_mode
         )
         parent_dir = os.path.dirname(text_content_save_path)
         if not os.path.exists(parent_dir):

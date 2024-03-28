@@ -71,8 +71,7 @@ paraMergeException_msg = ParaMergeException().message
 
 
 def parse_pdf_by_model(
-    s3_pdf_path,
-    s3_pdf_profile,
+    pdf_bytes,
     pdf_model_output,
     save_path,
     book_name,
@@ -83,7 +82,7 @@ def parse_pdf_by_model(
     junk_img_bojids=[],
     debug_mode=False,
 ):
-    pdf_bytes = read_file(s3_pdf_path, s3_pdf_profile)
+
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
     md_bookname_save_path = ""
     book_name = sanitize_filename(book_name)

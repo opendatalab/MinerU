@@ -304,6 +304,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     # 开始正式逻辑
     s3_pdf_path = jso.get("file_location")
     s3_config = get_s3_config(s3_pdf_path)
+    pdf_bytes = read_file(s3_pdf_path, s3_config)
     model_output_json_list = jso.get("doc_layout_result")
     data_source = get_data_source(jso)
     file_id = jso.get("file_id")
@@ -341,8 +342,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
                 file=sys.stderr,
             )
             pdf_info_dict = parse_pdf_by_model(
-                s3_pdf_path,
-                s3_config,
+                pdf_bytes,
                 model_output_json_list,
                 save_path,
                 book_name,
@@ -372,18 +372,6 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
             jso = exception_handler(jso, e)
     return jso
 
-
-"""
-统一处理逻辑
-1.先调用parse_pdf对文本类pdf进行处理
-2.再调用ocr_dropped_parse_pdf,对之前drop的pdf进行处理
-"""
-
-
-def uni_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
-    jso = parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
-    jso = ocr_dropped_parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
-    return jso
 
 def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     # 检测debug开关
@@ -462,6 +450,19 @@ def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> d
             jso["parse_time"] = parse_time
         except Exception as e:
             jso = exception_handler(jso, e)
+    return jso
+
+
+"""
+统一处理逻辑
+1.先调用parse_pdf对文本类pdf进行处理
+2.再调用ocr_dropped_parse_pdf,对之前drop的pdf进行处理
+"""
+
+
+def uni_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
+    jso = parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
+    jso = ocr_dropped_parse_pdf(jso, start_page_id=start_page_id, debug_mode=debug_mode)
     return jso
 
 
