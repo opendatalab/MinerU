@@ -28,7 +28,9 @@ pip install -r requirements.txt
 3.Run the main script
 
 ```sh
-use demo/demo_test.py
+use demo/text_demo.py
+or
+use demo/ocr_demo.py
 ```
 
 ### 版权说明

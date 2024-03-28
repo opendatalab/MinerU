@@ -5,7 +5,7 @@ from loguru import logger
 from pathlib import Path
 
 from app.common.s3 import get_s3_config
-from demo.demo_test import get_json_from_local_or_s3
+from demo.demo_commons import get_json_from_local_or_s3
 from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_mm_markdown_with_para,
     ocr_mk_nlp_markdown,
@@ -14,7 +14,7 @@ from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_mm_markdown_with_para_and_pagination,
     make_standard_format_with_para
 )
-from magic_pdf.libs.commons import join_path
+from magic_pdf.libs.commons import join_path, read_file
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
 
@@ -43,7 +43,8 @@ def ocr_local_parse(ocr_pdf_path, ocr_json_file_path):
         ocr_pdf_model_info = read_json_file(ocr_json_file_path)
         pth = Path(ocr_json_file_path)
         book_name = pth.name
-        ocr_parse_core(book_name, ocr_pdf_path, ocr_pdf_model_info)
+        pdf_bytes = read_file(ocr_pdf_path, None)
+        ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info)
     except Exception as e:
         logger.exception(e)
 
@@ -54,20 +55,20 @@ def ocr_online_parse(book_name, start_page_id=0, debug_mode=True):
         # logger.info(json_object)
         s3_pdf_path = json_object["file_location"]
         s3_config = get_s3_config(s3_pdf_path)
+        pdf_bytes = read_file(s3_pdf_path, s3_config)
         ocr_pdf_model_info = json_object.get("doc_layout_result")
-        ocr_parse_core(book_name, s3_pdf_path, ocr_pdf_model_info, s3_config=s3_config)
+        ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info)
     except Exception as e:
         logger.exception(e)
 
 
-def ocr_parse_core(book_name, ocr_pdf_path, ocr_pdf_model_info, start_page_id=0, s3_config=None):
+def ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info, start_page_id=0):
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
     save_path = join_path(save_tmp_path, "md")
     save_path_with_bookname = os.path.join(save_path, book_name)
     text_content_save_path = f"{save_path_with_bookname}/book.md"
     pdf_info_dict = parse_pdf_by_ocr(
-        ocr_pdf_path,
-        s3_config,
+        pdf_bytes,
         ocr_pdf_model_info,
         save_path,
         book_name,
