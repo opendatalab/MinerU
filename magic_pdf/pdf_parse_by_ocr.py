@@ -18,6 +18,7 @@ from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.para.para_split import para_split
+from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component
 from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
 from magic_pdf.pre_proc.detect_header import parse_headers
@@ -32,28 +33,6 @@ from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remo
     remove_spans_by_bboxes_dict
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
-
-def construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
-                             images, tables, interline_equations, inline_equations,
-                             dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
-                             need_remove_spans_bboxes_dict):
-    return_dict = {
-        'preproc_blocks': blocks,
-        'layout_bboxes': layout_bboxes,
-        'page_idx': page_id,
-        'page_size': [page_w, page_h],
-        '_layout_tree': layout_tree,
-        'images': images,
-        'tables': tables,
-        'interline_equations': interline_equations,
-        'inline_equations': inline_equations,
-        'droped_text_block': dropped_text_block,
-        'droped_image_block': dropped_image_block,
-        'droped_table_block': dropped_table_block,
-        'dropped_equation_block': dropped_equation_block,
-        'droped_bboxes': need_remove_spans_bboxes_dict,
-    }
-    return return_dict
 
 
 def parse_pdf_by_ocr(
@@ -254,7 +233,7 @@ def parse_pdf_by_ocr(
                 dropped_equation_block.append(span)
 
         '''构造pdf_info_dict'''
-        page_info = construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+        page_info = ocr_construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
                                              images, tables, interline_equations, inline_equations,
                                              dropped_text_block, dropped_image_block, dropped_table_block,
                                              dropped_equation_block,

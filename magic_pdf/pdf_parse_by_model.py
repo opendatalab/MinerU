@@ -53,7 +53,7 @@ from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
 from magic_pdf.pre_proc.equations_replace import combine_chars_to_pymudict, remove_chars_in_text_blocks, replace_equations_in_textblock
 from magic_pdf.pre_proc.pdf_pre_filter import pdf_filter
 from magic_pdf.pre_proc.detect_footer_header_by_statistics import drop_footer_header
-from magic_pdf.pre_proc.construct_paras import construct_page_component
+from magic_pdf.pre_proc.construct_page_dict import construct_page_component
 from magic_pdf.pre_proc.fix_image import combine_images, fix_image_vertical, fix_seperated_image, include_img_title
 from magic_pdf.post_proc.pdf_post_filter import pdf_post_filter
 from magic_pdf.pre_proc.remove_rotate_bbox import get_side_boundry, remove_rotate_side_textblock, remove_side_blank_block

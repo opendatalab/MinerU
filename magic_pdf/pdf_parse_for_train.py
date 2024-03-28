@@ -75,7 +75,7 @@ from magic_pdf.pre_proc.equations_replace import (
 )
 from magic_pdf.pre_proc.pdf_pre_filter import pdf_filter
 from magic_pdf.pre_proc.detect_footer_header_by_statistics import drop_footer_header
-from magic_pdf.pre_proc.construct_paras import construct_page_component
+from magic_pdf.pre_proc.construct_page_dict import construct_page_component
 from magic_pdf.pre_proc.fix_image import (
     combine_images,
     fix_image_vertical,

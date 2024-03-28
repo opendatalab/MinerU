@@ -28,3 +28,26 @@ def construct_page_component(page_id, image_info, table_info,  text_blocks_prepr
     return_dict['footnote_bboxes_tmp'] = footnote_bboxes_tmp
     
     return return_dict
+
+
+def ocr_construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
+                             images, tables, interline_equations, inline_equations,
+                             dropped_text_block, dropped_image_block, dropped_table_block, dropped_equation_block,
+                             need_remove_spans_bboxes_dict):
+    return_dict = {
+        'preproc_blocks': blocks,
+        'layout_bboxes': layout_bboxes,
+        'page_idx': page_id,
+        'page_size': [page_w, page_h],
+        '_layout_tree': layout_tree,
+        'images': images,
+        'tables': tables,
+        'interline_equations': interline_equations,
+        'inline_equations': inline_equations,
+        'droped_text_block': dropped_text_block,
+        'droped_image_block': dropped_image_block,
+        'droped_table_block': dropped_table_block,
+        'dropped_equation_block': dropped_equation_block,
+        'droped_bboxes': need_remove_spans_bboxes_dict,
+    }
+    return return_dict
