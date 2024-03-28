@@ -36,8 +36,7 @@ from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 
 
 def parse_pdf_by_ocr(
-        pdf_path,
-        s3_pdf_profile,
+        pdf_bytes,
         pdf_model_output,
         save_path,
         book_name,
@@ -47,7 +46,7 @@ def parse_pdf_by_ocr(
         end_page_id=None,
         debug_mode=False,
 ):
-    pdf_bytes = read_file(pdf_path, s3_pdf_profile)
+
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
     book_name = sanitize_filename(book_name)
     md_bookname_save_path = ""
