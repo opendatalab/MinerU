@@ -1,6 +1,6 @@
 import json
 
-from app.common.s3 import get_s3_config
+from magic_pdf.spark.s3 import get_s3_config
 from magic_pdf.libs.commons import join_path, read_file, json_dump_path
 
 

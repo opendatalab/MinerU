@@ -4,14 +4,11 @@ import os
 from loguru import logger
 from pathlib import Path
 
-from app.common.s3 import get_s3_config
+from magic_pdf.pipeline_ocr import ocr_parse_pdf_core
+from magic_pdf.spark.s3 import get_s3_config
 from demo.demo_commons import get_json_from_local_or_s3
 from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_mm_markdown_with_para,
-    ocr_mk_nlp_markdown,
-    ocr_mk_mm_markdown,
-    ocr_mk_mm_standard_format,
-    ocr_mk_mm_markdown_with_para_and_pagination,
     make_standard_format_with_para
 )
 from magic_pdf.libs.commons import join_path, read_file
@@ -67,12 +64,7 @@ def ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info, start_page_id=0):
     save_path = join_path(save_tmp_path, "md")
     save_path_with_bookname = os.path.join(save_path, book_name)
     text_content_save_path = f"{save_path_with_bookname}/book.md"
-    pdf_info_dict = parse_pdf_by_ocr(
-        pdf_bytes,
-        ocr_pdf_model_info,
-        save_path,
-        book_name,
-        debug_mode=True)
+    pdf_info_dict, parse_time = ocr_parse_pdf_core(pdf_bytes, ocr_pdf_model_info, book_name, start_page_id=start_page_id, debug_mode=True)
 
     parent_dir = os.path.dirname(text_content_save_path)
     if not os.path.exists(parent_dir):

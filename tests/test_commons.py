@@ -3,7 +3,7 @@ import json
 import os
 from magic_pdf.libs.commons import fitz
 
-from app.common.s3 import get_s3_config, get_s3_client
+from magic_pdf.spark.s3 import get_s3_config, get_s3_client
 from magic_pdf.libs.commons import join_path, json_dump_path, read_file, parse_bucket_key
 from loguru import logger
 
