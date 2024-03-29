@@ -24,7 +24,7 @@ error_log_path = "s3://llm-pdf-text/err_logs/"
 # json_dump_path = "s3://pdf_books_temp/json_dump/" # 这条路径仅用于临时本地测试,不能提交到main
 json_dump_path = "s3://llm-pdf-text/json_dump/"
 
-s3_image_save_path = "s3://mllm-raw-media/pdf2md_img/"
+s3_image_save_path = "s3://mllm-raw-media/pdf2md_img/" # TODO 基础库不应该有这些存在的路径，应该在业务代码中定义
 
 
 def get_top_percent_list(num_list, percent):
@@ -213,29 +213,6 @@ def get_img_s3_client(save_path:str, image_s3_config:str):
         img_s3_client = None
         
     return img_s3_client
-
-# def get_s3_object(path):
-#     src_cli_config = Config(**{
-#
-#         "connect_timeout": 60,
-#         "read_timeout": 20,
-#         "max_pool_connections": 500,
-#         "s3": {
-#             "addressing_style": "path",
-#         },
-#         "retries": {
-#             "max_attempts": 3,
-#         }
-#     })
-#     full_path = f"{bucket_name}/{bucket_prefix}/{path}"
-#     try:
-#         src_cli = boto3.session.Session().client("s3", aws_access_key_id=ak, aws_secret_access_key=sk, endpoint_url=endpoint, region_name='', config=src_cli_config)
-#         res = src_cli.get_object(Bucket=bucket_name, Key=f"{bucket_prefix}/{path}")
-#         file_content = res["Body"].read()
-#         return file_content
-#     except Exception as e:
-#         logger.error(f"get_s3_object({full_path}) error: {e}")
-#         return b''
 
 if __name__=="__main__":
     s3_path = "s3://llm-pdf-text/layout_det/scihub/scimag07865000-07865999/10.1007/s10729-011-9175-6.pdf/"
