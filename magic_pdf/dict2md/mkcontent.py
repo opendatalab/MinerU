@@ -166,45 +166,65 @@ def mk_mm_markdown_1(para_dict: dict):
     return content_text
 
 
-def __insert_after_para(text, image_path, content_list):
+def __insert_after_para(text, type, element, content_list):
     """
     在content_list中找到text，将image_path作为一个新的node插入到text后面
     """
     for i, c in enumerate(content_list):
         content_type = c.get("type")
         if content_type in UNI_FORMAT_TEXT_TYPE and text in c.get("text", ''):
-            img_node = {
-                "type": "image",
-                "img_path": image_path,
-                "img_alt":"",
-                "img_title":"",
-                "img_caption":""
-            }
-            content_list.insert(i+1, img_node)
+            if type == "image":
+                content_node = {
+                    "type": "image",
+                    "img_path": element.get("image_path"),
+                    "img_alt": "",
+                    "img_title": "",
+                    "img_caption": "",
+                }
+            elif type == "table":
+                content_node = {
+                    "type": "table",
+                    "img_path": element.get("image_path"),
+                    "table_latex": element.get("text"),
+                    "table_title": "",
+                    "table_caption": "",
+                    "table_quality": element.get("quality"),
+                }
+            content_list.insert(i+1, content_node)
             break
     else:
-        logger.error(f"Can't find the location of image {image_path} in the markdown file, search target is {text}")
+        logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file, search target is {text}")
     
 
 
-def __insert_before_para(text, image_path, content_list):
+def __insert_before_para(text, type, element, content_list):
     """
     在content_list中找到text，将image_path作为一个新的node插入到text前面
     """
     for i, c in enumerate(content_list):
         content_type = c.get("type")
         if content_type in  UNI_FORMAT_TEXT_TYPE and text in c.get("text", ''):
-            img_node = {
-                "type": "image",
-                "img_path": image_path,
-                "img_alt":"",
-                "img_title":"",
-                "img_caption":""
-            }
-            content_list.insert(i, img_node)
+            if type == "image":
+                content_node = {
+                    "type": "image",
+                    "img_path": element.get("image_path"),
+                    "img_alt": "",
+                    "img_title": "",
+                    "img_caption": "",
+                }
+            elif type == "table":
+                content_node = {
+                    "type": "table",
+                    "img_path": element.get("image_path"),
+                    "table_latex": element.get("text"),
+                    "table_title": "",
+                    "table_caption": "",
+                    "table_quality": element.get("quality"),
+                }
+            content_list.insert(i, content_node)
             break
     else:
-        logger.error(f"Can't find the location of image {image_path} in the markdown file, search target is {text}")
+        logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file, search target is {text}")
          
 
 def mk_universal_format(para_dict: dict):
@@ -220,9 +240,11 @@ def mk_universal_format(para_dict: dict):
         all_page_images = []
         all_page_images.extend(page_info.get("images",[]))
         all_page_images.extend(page_info.get("image_backup", []) )
-        all_page_images.extend(page_info.get("tables",[]))
-        all_page_images.extend(page_info.get("table_backup",[]) )
-        
+        # all_page_images.extend(page_info.get("tables",[]))
+        # all_page_images.extend(page_info.get("table_backup",[]) )
+        all_page_tables = []
+        all_page_tables.extend(page_info.get("tables", []))
+
         if not para_blocks or not pymu_raw_blocks: # 只有图片的拼接的场景
             for img in all_page_images:
                 content_node = {
@@ -231,6 +253,16 @@ def mk_universal_format(para_dict: dict):
                     "img_alt":"",
                     "img_title":"",
                     "img_caption":""
+                }
+                page_lst.append(content_node) # TODO 图片顺序
+            for table in all_page_tables:
+                content_node = {
+                    "type": "table",
+                    "img_path": table['image_path'],
+                    "table_latex": table.get("text"),
+                    "table_title": "",
+                    "table_caption": "",
+                    "table_quality": table.get("quality"),
                 }
                 page_lst.append(content_node) # TODO 图片顺序
         else:
@@ -266,54 +298,63 @@ def mk_universal_format(para_dict: dict):
         
         """插入图片"""
         for img in all_page_images:
-            imgbox = img['bbox']
-            img_content = f"{img['image_path']}"
-            # 先看在哪个block内
-            for block in pymu_raw_blocks:
-                bbox = block['bbox']
-                if bbox[0]-1 <= imgbox[0] < bbox[2]+1 and bbox[1]-1 <= imgbox[1] < bbox[3]+1:# 确定在这个大的block内，然后进入逐行比较距离
-                    for l in block['lines']:
-                        line_box = l['bbox']
-                        if line_box[0]-1 <= imgbox[0] < line_box[2]+1 and line_box[1]-1 <= imgbox[1] < line_box[3]+1: # 在line内的，插入line前面
-                            line_txt = "".join([s['text'] for s in l['spans']])
-                            __insert_before_para(line_txt, img_content, content_lst)
-                            break
-                        break
-                    else:# 在行与行之间
-                        # 找到图片x0,y0与line的x0,y0最近的line
-                        min_distance = 100000
-                        min_line = None
-                        for l in block['lines']:
-                            line_box = l['bbox']
-                            distance = math.sqrt((line_box[0] - imgbox[0])**2 + (line_box[1] - imgbox[1])**2)
-                            if distance < min_distance:
-                                min_distance = distance
-                                min_line = l
-                        if min_line:
-                            line_txt = "".join([s['text'] for s in min_line['spans']])
-                            img_h = imgbox[3] - imgbox[1]
-                            if min_distance<img_h: # 文字在图片前面
-                                __insert_after_para(line_txt, img_content, content_lst)
-                            else:
-                                __insert_before_para(line_txt, img_content, content_lst) 
-                            break
-                        else:
-                            logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #1")
-            else:# 应当在两个block之间
-                # 找到上方最近的block，如果上方没有就找大下方最近的block
-                top_txt_block = find_top_nearest_text_bbox(pymu_raw_blocks, imgbox)
-                if top_txt_block:
-                    line_txt = "".join([s['text'] for s in top_txt_block['lines'][-1]['spans']])
-                    __insert_after_para(line_txt, img_content, content_lst) 
-                else:
-                    bottom_txt_block = find_bottom_nearest_text_bbox(pymu_raw_blocks, imgbox)
-                    if bottom_txt_block:
-                        line_txt = "".join([s['text'] for s in bottom_txt_block['lines'][0]['spans']])
-                        __insert_before_para(line_txt, img_content, content_lst) 
-                    else: # TODO ，图片可能独占一列，这种情况上下是没有图片的
-                        logger.error(f"Can't find the location of image {img['image_path']} in the markdown file #2")
+            insert_img_or_table("image", img, pymu_raw_blocks, content_lst)
+
+        """插入表格"""
+        for table in all_page_tables:
+            insert_img_or_table("table", table, pymu_raw_blocks, content_lst)
     # end for
     return content_lst
+
+
+def insert_img_or_table(type, element, pymu_raw_blocks, content_lst):
+    element_bbox = element['bbox']
+    # 先看在哪个block内
+    for block in pymu_raw_blocks:
+        bbox = block['bbox']
+        if bbox[0] - 1 <= element_bbox[0] < bbox[2] + 1 and bbox[1] - 1 <= element_bbox[1] < bbox[
+            3] + 1:  # 确定在这个大的block内，然后进入逐行比较距离
+            for l in block['lines']:
+                line_box = l['bbox']
+                if line_box[0] - 1 <= element_bbox[0] < line_box[2] + 1 and line_box[1] - 1 <= element_bbox[1] < line_box[
+                    3] + 1:  # 在line内的，插入line前面
+                    line_txt = "".join([s['text'] for s in l['spans']])
+                    __insert_before_para(line_txt, type, element, content_lst)
+                    break
+                break
+            else:  # 在行与行之间
+                # 找到图片x0,y0与line的x0,y0最近的line
+                min_distance = 100000
+                min_line = None
+                for l in block['lines']:
+                    line_box = l['bbox']
+                    distance = math.sqrt((line_box[0] - element_bbox[0]) ** 2 + (line_box[1] - element_bbox[1]) ** 2)
+                    if distance < min_distance:
+                        min_distance = distance
+                        min_line = l
+                if min_line:
+                    line_txt = "".join([s['text'] for s in min_line['spans']])
+                    img_h = element_bbox[3] - element_bbox[1]
+                    if min_distance < img_h:  # 文字在图片前面
+                        __insert_after_para(line_txt, type, element, content_lst)
+                    else:
+                        __insert_before_para(line_txt, type, element, content_lst)
+                    break
+                else:
+                    logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file #1")
+    else:  # 应当在两个block之间
+        # 找到上方最近的block，如果上方没有就找大下方最近的block
+        top_txt_block = find_top_nearest_text_bbox(pymu_raw_blocks, element_bbox)
+        if top_txt_block:
+            line_txt = "".join([s['text'] for s in top_txt_block['lines'][-1]['spans']])
+            __insert_after_para(line_txt, type, element, content_lst)
+        else:
+            bottom_txt_block = find_bottom_nearest_text_bbox(pymu_raw_blocks, element_bbox)
+            if bottom_txt_block:
+                line_txt = "".join([s['text'] for s in bottom_txt_block['lines'][0]['spans']])
+                __insert_before_para(line_txt, type, element, content_lst)
+            else:  # TODO ，图片可能独占一列，这种情况上下是没有图片的
+                logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file #2")
 
 
 def mk_mm_markdown(content_list):
@@ -348,6 +389,8 @@ def mk_nlp_markdown(content_list):
             content_md.append(c.get("text"))
         elif content_type == "equation":
             content_md.append(f"$$\n{c.get('latex')}\n$$")
+        elif content_type == "table":
+            content_md.append(f"$$\n{c.get('table_latex')}\n$$")
         elif content_type in UNI_FORMAT_TEXT_TYPE:
             content_md.append(f"{'#'*int(content_type[1])} {c.get('text')}")
     return "\n\n".join(content_md)
