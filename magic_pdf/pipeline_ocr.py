@@ -41,7 +41,7 @@ def ocr_pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
     return jso
 
 
-def ocr_pdf_intermediate_dict_to_markdown_with_para(jso: dict, debug_mode=False) -> dict:
+def ocr_pdf_intermediate_dict_to_markdown_with_para(jso: dict, mode, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
@@ -54,8 +54,12 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para(jso: dict, debug_mode=False)
         pdf_intermediate_dict = jso["pdf_intermediate_dict"]
         # 将 pdf_intermediate_dict 解压
         pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
-        # markdown_content = ocr_mk_mm_markdown_with_para(pdf_intermediate_dict)
-        markdown_content = ocr_mk_nlp_markdown_with_para(pdf_intermediate_dict)
+
+        if mode == "mm":
+            markdown_content = ocr_mk_mm_markdown_with_para(pdf_intermediate_dict)
+        elif mode == "nlp":
+            markdown_content = ocr_mk_nlp_markdown_with_para(pdf_intermediate_dict)
+
         jso["content"] = markdown_content
         logger.info(
             f"book_name is:{get_data_source(jso)}/{jso['file_id']},markdown content length is {len(markdown_content)}",
