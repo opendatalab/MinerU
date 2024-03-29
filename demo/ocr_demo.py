@@ -12,7 +12,6 @@ from magic_pdf.dict2md.ocr_mkcontent import (
     make_standard_format_with_para
 )
 from magic_pdf.libs.commons import join_path, read_file
-from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
 
 def save_markdown(markdown_text, input_filepath):

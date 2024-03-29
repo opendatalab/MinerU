@@ -19,9 +19,9 @@ from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
 from loguru import logger
 
 from magic_pdf.pdf_parse_for_train import parse_pdf_for_train
-from magic_pdf.spark.base import exception_handler, get_data_source, get_bookname, get_pdf_bytes
+from magic_pdf.spark import exception_handler, get_data_source
 from magic_pdf.train_utils.convert_to_train_format import convert_to_train_format
-from magic_pdf.spark.s3 import get_s3_config, get_s3_client
+from magic_pdf.spark import get_s3_config, get_s3_client
 
 
 

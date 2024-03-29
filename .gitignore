@@ -34,4 +34,4 @@ tmp
 ocr_demo
 
 /app/common/__init__.py
-/magic_pdf/spark/__init__.py
+/magic_pdf/config/__init__.py

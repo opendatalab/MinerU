@@ -8,7 +8,7 @@ from loguru import logger
 from magic_pdf.dict2md.mkcontent import mk_mm_markdown, mk_universal_format
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.spark.base import exception_handler, get_data_source
+from magic_pdf.spark import exception_handler, get_data_source
 
 
 def txt_pdf_to_standard_format(jso: dict, debug_mode=False) -> dict:
