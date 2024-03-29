@@ -390,7 +390,7 @@ def mk_nlp_markdown(content_list):
         elif content_type == "equation":
             content_md.append(f"$$\n{c.get('latex')}\n$$")
         elif content_type == "table":
-            content_md.append(f"$$\n{c.get('table_latex')}\n$$")
+            content_md.append(f"$$$\n{c.get('table_latex')}\n$$$")
         elif content_type in UNI_FORMAT_TEXT_TYPE:
             content_md.append(f"{'#'*int(content_type[1])} {c.get('text')}")
     return "\n\n".join(content_md)
