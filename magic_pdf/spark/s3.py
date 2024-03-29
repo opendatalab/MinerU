@@ -6,7 +6,7 @@ import re
 import random
 from typing import List, Union
 try:
-    from app.common import s3_buckets, s3_clusters, get_cluster_name, s3_users
+    from app.config import s3_buckets, s3_clusters, get_cluster_name, s3_users
 except ImportError:
     from magic_pdf.spark import s3_buckets, s3_clusters, get_cluster_name, s3_users
 
