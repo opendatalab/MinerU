@@ -16,7 +16,7 @@ python 3.9+
 1.Clone the repo
 
 ```sh
-git clone https://github.com/myhloli/Magic-PDF.git
+git clone https://github.com/magicpdf/Magic-PDF.git
 ```
 
 2.Install the requirements
@@ -35,7 +35,7 @@ use demo/ocr_demo.py
 
 ### 版权说明
 
-[LICENSE.md](https://github.com/myhloli/Magic-PDF/blob/master/LICENSE.md)
+[LICENSE.md](https://github.com/magicpdf/Magic-PDF/blob/master/LICENSE.md)
 
 ### 鸣谢
 
