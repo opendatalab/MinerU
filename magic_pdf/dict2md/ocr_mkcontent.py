@@ -208,14 +208,14 @@ def line_to_standard_format(line):
 
 
 def ocr_mk_mm_standard_format(pdf_info_dict: dict):
-    '''
+    """
     content_list
     type         string      image/text/table/equation(行间的单独拿出来，行内的和text合并)
     latex        string      latex文本字段。
     text         string      纯文本格式的文本数据。
     md           string      markdown格式的文本数据。
     img_path     string      s3://full/path/to/img.jpg
-    '''
+    """
     content_list = []
     for _, page_info in pdf_info_dict.items():
         blocks = page_info.get("preproc_blocks")
