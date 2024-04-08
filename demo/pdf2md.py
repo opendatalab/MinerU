@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from pathlib import Path
@@ -6,7 +7,7 @@ import click
 from loguru import logger
 
 from magic_pdf.libs.commons import join_path, read_file
-from magic_pdf.dict2md.mkcontent import mk_mm_markdown
+from magic_pdf.dict2md.mkcontent import mk_mm_markdown, mk_universal_format
 from magic_pdf.pipeline import parse_pdf_by_model
 
 
@@ -32,7 +33,8 @@ def main(s3_pdf_path: str, s3_pdf_profile: str, pdf_model_path: str, pdf_model_p
             os.makedirs(parent_dir)
                 
         if not paras_dict.get('need_drop'):
-            markdown_content = mk_mm_markdown(paras_dict)
+            content_list = mk_universal_format(paras_dict)
+            markdown_content = mk_mm_markdown(content_list)
         else:
             markdown_content = paras_dict['drop_reason']
             
@@ -70,8 +72,8 @@ def main_shell(pdf_file_path: str, save_path: str):
 
 
 @click.command()
-@click.option("--pdf-dir", help="s3上pdf文件的路径")
-@click.option("--model-dir", help="s3上pdf文件的路径")
+@click.option("--pdf-dir", help="本地pdf文件的路径")
+@click.option("--model-dir", help="本地模型文件的路径")
 @click.option("--start-page-num", default=0, help="从第几页开始解析")
 def main_shell2(pdf_dir: str, model_dir: str,start_page_num: int):
     # 先扫描所有的pdf目录里的文件名字
@@ -86,8 +88,10 @@ def main_shell2(pdf_dir: str, model_dir: str,start_page_num: int):
 
     for pdf_file in pdf_file_names:
         pdf_file_path = os.path.join(pdf_dir, pdf_file)
-        model_file_path = os.path.join(model_dir, pdf_file)
-        main(pdf_file_path, None, model_file_path, None, start_page_num)
+        model_file_path = os.path.join(model_dir, pdf_file).rstrip(".pdf") + ".json"
+        with open(model_file_path, "r") as json_file:
+            model_list = json.load(json_file)
+        main(pdf_file_path, None, model_list, None, start_page_num)
 
 
 
