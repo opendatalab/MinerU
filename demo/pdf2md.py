@@ -8,7 +8,7 @@ from loguru import logger
 
 from magic_pdf.libs.commons import join_path, read_file
 from magic_pdf.dict2md.mkcontent import mk_mm_markdown, mk_universal_format
-from magic_pdf.pipeline import parse_pdf_by_model
+from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
 
 
 
@@ -25,7 +25,7 @@ def main(s3_pdf_path: str, s3_pdf_profile: str, pdf_model_path: str, pdf_model_p
     pdf_bytes = read_file(s3_pdf_path, s3_pdf_profile)
 
     try:
-        paras_dict = parse_pdf_by_model(
+        paras_dict = parse_pdf_by_txt(
             pdf_bytes, pdf_model_path, save_path, book_name, pdf_model_profile, start_page_num, debug_mode=debug_mode
         )
         parent_dir = os.path.dirname(text_content_save_path)

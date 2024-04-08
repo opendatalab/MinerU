@@ -13,7 +13,7 @@ from magic_pdf.libs.commons import (
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.dict2md.mkcontent import mk_universal_format
-from magic_pdf.pdf_parse_by_model import parse_pdf_by_model
+from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
 from loguru import logger
@@ -310,7 +310,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
                 f"book_name is:{book_name},start_time is:{formatted_time(start_time)}",
                 file=sys.stderr,
             )
-            pdf_info_dict = parse_pdf_by_model(
+            pdf_info_dict = parse_pdf_by_txt(
                 pdf_bytes,
                 model_output_json_list,
                 save_path,

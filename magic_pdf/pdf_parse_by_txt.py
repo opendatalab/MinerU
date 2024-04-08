@@ -70,7 +70,7 @@ paraMergeException_msg = ParaMergeException().message
 
 
 
-def parse_pdf_by_model(
+def parse_pdf_by_txt(
     pdf_bytes,
     pdf_model_output,
     save_path,
