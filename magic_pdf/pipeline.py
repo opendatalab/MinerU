@@ -130,6 +130,7 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
             classify_time = int(time.time() - start_time)  # 计算执行时间
             if is_text_pdf:
                 pdf_meta["is_text_pdf"] = is_text_pdf
+                jso["_pdf_type"] = "TXT"
                 jso["pdf_meta"] = pdf_meta
                 jso["classify_time"] = classify_time
                 # print(json.dumps(pdf_meta, ensure_ascii=False))
@@ -144,10 +145,11 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
             else:
                 # 先不drop
                 pdf_meta["is_text_pdf"] = is_text_pdf
+                jso["_pdf_type"] = "OCR"
                 jso["pdf_meta"] = pdf_meta
                 jso["classify_time"] = classify_time
-                jso["need_drop"] = True
-                jso["drop_reason"] = DropReason.NOT_IS_TEXT_PDF
+                # jso["need_drop"] = True
+                # jso["drop_reason"] = DropReason.NOT_IS_TEXT_PDF
                 extra_info = {"classify_rules": []}
                 for condition, result in results.items():
                     if not result:
