@@ -73,7 +73,7 @@ def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
     markdown = []
     for _, page_info in pdf_info_dict.items():
         paras_of_layout = page_info.get("para_blocks")
-        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
+        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm")
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
@@ -82,7 +82,7 @@ def ocr_mk_nlp_markdown_with_para(pdf_info_dict: dict):
     markdown = []
     for _, page_info in pdf_info_dict.items():
         paras_of_layout = page_info.get("para_blocks")
-        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "nlp")
+        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "nlp")
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
@@ -92,7 +92,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
-        page_markdown = ocr_mk_mm_markdown_with_para_core(paras_of_layout, "mm")
+        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm")
         markdown_with_para_and_pagination.append({
             'page_no': page_no,
             'md_content': '\n\n'.join(page_markdown)
@@ -100,7 +100,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
     return markdown_with_para_and_pagination
 
 
-def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
+def ocr_mk_markdown_with_para_core(paras_of_layout, mode):
     page_markdown = []
     for paras in paras_of_layout:
         for para in paras:
@@ -118,9 +118,9 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                         else:
                             content = ocr_escape_special_markdown_char(content)
                     elif span_type == ContentType.InlineEquation:
-                        content = f"${ocr_escape_special_markdown_char(span['content'])}$"
+                        content = f"${span['content']}$"
                     elif span_type == ContentType.InterlineEquation:
-                        content = f"\n$$\n{ocr_escape_special_markdown_char(span['content'])}\n$$\n"
+                        content = f"\n$$\n{span['content']}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
                         if mode == 'mm':
                             content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
@@ -147,13 +147,23 @@ def para_to_standard_format(para):
         inline_equation_num = 0
         for line in para:
             for span in line['spans']:
+                language = ''
                 span_type = span.get('type')
                 if span_type == ContentType.Text:
-                    content = ocr_escape_special_markdown_char(split_long_words(span['content']))
+                    content = span['content']
+                    language = detect_lang(content)
+                    if language == 'en':  # 只对英文长词进行分词处理，中文分词会丢失文本
+                        content = ocr_escape_special_markdown_char(split_long_words(content))
+                    else:
+                        content = ocr_escape_special_markdown_char(content)
                 elif span_type == ContentType.InlineEquation:
-                    content = f"${ocr_escape_special_markdown_char(span['content'])}$"
+                    content = f"${span['content']}$"
                     inline_equation_num += 1
-                para_text += content + ' '
+
+                if language == 'en':  # 英文语境下 content间需要空格分隔
+                    para_text += content + ' '
+                else:  # 中文语境下，content间不需要空格分隔
+                    para_text += content
         para_content = {
             'type': 'text',
             'text': para_text,
@@ -196,14 +206,14 @@ def line_to_standard_format(line):
                     return content
         else:
             if span['type'] == ContentType.InterlineEquation:
-                interline_equation = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                interline_equation = span['content']  # 转义特殊符号
                 content = {
                     'type': 'equation',
                     'latex': f"$$\n{interline_equation}\n$$"
                 }
                 return content
             elif span['type'] == ContentType.InlineEquation:
-                inline_equation = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
+                inline_equation = span['content']  # 转义特殊符号
                 line_text += f"${inline_equation}$"
                 inline_equation_num += 1
             elif span['type'] == ContentType.Text:
