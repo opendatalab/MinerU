@@ -1,4 +1,5 @@
 from magic_pdf.libs.commons import s3_image_save_path, join_path
+from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
 import wordninja
@@ -108,8 +109,14 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                 for span in line['spans']:
                     span_type = span.get('type')
                     content = ''
+                    language = ''
                     if span_type == ContentType.Text:
-                        content = ocr_escape_special_markdown_char(split_long_words(span['content']))
+                        content = span['content']
+                        language = detect_lang(content)
+                        if language == 'en':  # 只对英文长词进行分词处理，中文分词会丢失文本
+                            content = ocr_escape_special_markdown_char(split_long_words(content))
+                        else:
+                            content = ocr_escape_special_markdown_char(content)
                     elif span_type == ContentType.InlineEquation:
                         content = f"${ocr_escape_special_markdown_char(span['content'])}$"
                     elif span_type == ContentType.InterlineEquation:
@@ -120,7 +127,10 @@ def ocr_mk_mm_markdown_with_para_core(paras_of_layout, mode):
                         elif mode == 'nlp':
                             pass
                     if content != '':
-                        para_text += content + ' '
+                        if language == 'en':  # 英文语境下 content间需要空格分隔
+                            para_text += content + ' '
+                        else:  # 中文语境下，content间不需要空格分隔
+                            para_text += content
             if para_text.strip() == '':
                 continue
             else:
