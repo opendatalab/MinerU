@@ -30,16 +30,16 @@ def get_s3_config(bucket_name: str):
     if bucket_name not in config:
         raise Exception("bucket_name not found in magic_pdf_config.json")
 
-    ak = config[bucket_name].get("ak")
-    sk = config[bucket_name].get("sk")
-    endpoint = config[bucket_name].get("endpoint")
+    access_key = config[bucket_name].get("ak")
+    secret_key = config[bucket_name].get("sk")
+    storage_endpoint = config[bucket_name].get("endpoint")
 
-    if ak is None or sk is None or endpoint is None:
+    if access_key is None or secret_key is None or storage_endpoint is None:
         raise Exception("ak, sk or endpoint not found in magic_pdf_config.json")
 
-    # logger.info(f"get_s3_config: ak={ak}, sk={sk}, endpoint={endpoint}")
+    # logger.info(f"get_s3_config: ak={access_key}, sk={secret_key}, endpoint={storage_endpoint}")
 
-    return ak, sk, endpoint
+    return access_key, secret_key, storage_endpoint
 
 
 if __name__ == '__main__':

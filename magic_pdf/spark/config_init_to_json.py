@@ -52,6 +52,6 @@ def write_json_to_home(my_dict):
 
 
 if __name__ == '__main__':
-    bucket_configs = get_bucket_configs_dict(s3_buckets, s3_clusters, s3_users)
-    logger.info(bucket_configs)
-    write_json_to_home(bucket_configs)
+    bucket_configs_dict = get_bucket_configs_dict(s3_buckets, s3_clusters, s3_users)
+    logger.info(bucket_configs_dict)
+    write_json_to_home(bucket_configs_dict)
