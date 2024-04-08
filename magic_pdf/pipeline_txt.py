@@ -57,12 +57,13 @@ def txt_pdf_to_mm_markdown_format(jso: dict, debug_mode=False) -> dict:
         pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
         standard_format = mk_universal_format(pdf_intermediate_dict)
         mm_content = mk_mm_markdown(standard_format)
-        jso["content_list"] = mm_content
+        jso["content"] = mm_content
         logger.info(f"book_name is:{get_data_source(jso)}/{jso['file_id']},content_list length is {len(standard_format)}",)
         # 把无用的信息清空
-        jso["doc_layout_result"] = ""
-        jso["pdf_intermediate_dict"] = ""
-        jso["pdf_meta"] = ""
+        to_del_keys = ["doc_layout_result", "pdf_intermediate_dict", "pdf_meta", "parsed_result"]
+        for key in to_del_keys:
+            if jso.get(key):
+                del jso[key]
     except Exception as e:
         jso = exception_handler(jso, e)
     return jso
