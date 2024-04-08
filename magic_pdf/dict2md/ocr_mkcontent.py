@@ -206,14 +206,14 @@ def line_to_standard_format(line):
                     return content
         else:
             if span['type'] == ContentType.InterlineEquation:
-                interline_equation = span['content']  # 转义特殊符号
+                interline_equation = span['content']
                 content = {
                     'type': 'equation',
                     'latex': f"$$\n{interline_equation}\n$$"
                 }
                 return content
             elif span['type'] == ContentType.InlineEquation:
-                inline_equation = span['content']  # 转义特殊符号
+                inline_equation = span['content']
                 line_text += f"${inline_equation}$"
                 inline_equation_num += 1
             elif span['type'] == ContentType.Text:
