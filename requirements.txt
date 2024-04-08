@@ -11,7 +11,8 @@ pycld2>=0.41
 regex>=2023.12.25
 spacy>=3.7.4
 termcolor>=2.4.0
-scikit-learn
 wordninja>=2.0.0
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 zh_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.7.0/zh_core_web_sm-3.7.0-py3-none-any.whl
+scikit-learn==1.4.1.post1
+nltk==3.8.1
