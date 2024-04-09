@@ -24,6 +24,8 @@ jobs:
         fetch-depth: 2
     - name: check-requirements
       run: |
+        export http_proxy=http://quyuan:qywan77236=@10.1.8.50:33128/
+        export https_proxy=http://quyuan:qywan77236=@10.1.8.50:33128/
         changed_files=$(git diff --name-only -r HEAD~1 HEAD)
         echo $changed_files
         if [[ $changed_files =~ "requirements.txt" ]]; then
@@ -34,4 +36,4 @@ jobs:
     - name: benchmark
       run: |
         echo "start test"
-        python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
+        cd tools && python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
