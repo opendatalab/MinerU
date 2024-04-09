@@ -46,6 +46,7 @@ class S3ReaderWriter(AbsReaderWriter):
             raise ValueError("Invalid mode. Use 'text' or 'binary'.")
         bucket_name, bucket_key = parse_bucket_key(s3_path)
         self.client.put_object(Body=body, Bucket=bucket_name, Key=bucket_key)
+        logger.info(f"内容已写入 {s3_path} ")
 
 
 if __name__ == "__main__":
@@ -64,12 +65,11 @@ if __name__ == "__main__":
 
     # Read text data from S3
     text_data_read = s3_reader_writer.read(s3_path = "s3://bucket_name/ebook/test/test.json", mode='text')
-    print(f"Read text data from S3: {text_data_read}")
-
+    logger.info(f"Read text data from S3: {text_data_read}")
     # Write binary data to S3
     binary_data = b"This is some binary data"
     s3_reader_writer.write(data=text_data, s3_path = "s3://bucket_name/ebook/test/test2.json", mode='binary')
 
     # Read binary data from S3
     binary_data_read = s3_reader_writer.read(s3_path = "s3://bucket_name/ebook/test/test2.json", mode='binary')
-    print(f"Read binary data from S3: {binary_data_read}")
+    logger.info(f"Read binary data from S3: {binary_data_read}")
