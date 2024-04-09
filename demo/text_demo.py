@@ -6,84 +6,93 @@ from pathlib import Path
 import click
 
 from demo.demo_commons import get_json_from_local_or_s3, write_json_to_local, local_jsonl_path, local_json_path
-from magic_pdf.dict2md.mkcontent import mk_mm_markdown
-from magic_pdf.pipeline import (
-    meta_scan,
-    classify_by_type,
-    parse_pdf,
-    pdf_intermediate_dict_to_markdown,
-    save_tables_to_s3,
-)
-from magic_pdf.libs.commons import join_path
+from magic_pdf.dict2md.mkcontent import mk_mm_markdown, mk_universal_format
+from magic_pdf.filter.pdf_classify_by_type import classify
+
+from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
+from magic_pdf.libs.commons import join_path, read_file
 from loguru import logger
 
-
+from magic_pdf.libs.config_reader import get_s3_config_dict
+from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
+from magic_pdf.spark.base import get_data_source
 
 
 def demo_parse_pdf(book_name=None, start_page_id=0, debug_mode=True):
     json_object = get_json_from_local_or_s3(book_name)
 
-    jso = parse_pdf(json_object, start_page_id=start_page_id, debug_mode=debug_mode)
-    logger.info(f"pdf_parse_time: {jso['parse_time']}")
+    s3_pdf_path = json_object.get("file_location")
+    s3_config = get_s3_config_dict(s3_pdf_path)
+    pdf_bytes = read_file(s3_pdf_path, s3_config)
+    model_output_json_list = json_object.get("doc_layout_result")
+    data_source = get_data_source(json_object)
+    file_id = json_object.get("file_id")
+    junk_img_bojids = json_object["pdf_meta"]["junk_img_bojids"]
+    save_path = ""
+    pdf_info_dict = parse_pdf_by_txt(
+        pdf_bytes,
+        model_output_json_list,
+        save_path,
+        f"{data_source}/{file_id}",
+        pdf_model_profile=None,
+        start_page_id=start_page_id,
+        junk_img_bojids=junk_img_bojids,
+        debug_mode=debug_mode,
+    )
 
-    write_json_to_local(jso, book_name)
-
-    jso_md = pdf_intermediate_dict_to_markdown(jso, debug_mode=debug_mode)
-    content = jso_md.get("content_list")
-    markdown_content = mk_mm_markdown(content)
+    write_json_to_local(pdf_info_dict, book_name)
+    content_list = mk_universal_format(pdf_info_dict)
+    markdown_content = mk_mm_markdown(content_list)
     if book_name is not None:
         save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest", "md", book_name)
-        uni_format_save_path = join_path(save_tmp_path,  "book" + ".json")
-        markdown_save_path = join_path(save_tmp_path,  "book" + ".md")
+        uni_format_save_path = join_path(save_tmp_path, "book" + ".json")
+        markdown_save_path = join_path(save_tmp_path, "book" + ".md")
         with open(uni_format_save_path, "w", encoding="utf-8") as f:
-            f.write(json.dumps(content, ensure_ascii=False, indent=4))
+            f.write(json.dumps(content_list, ensure_ascii=False, indent=4))
         with open(markdown_save_path, "w", encoding="utf-8") as f:
             f.write(markdown_content)
-            
+
     else:
-        logger.info(json.dumps(content, ensure_ascii=False))
-
-
-def demo_save_tables(book_name=None, start_page_id=0, debug_mode=True):
-    json_object = get_json_from_local_or_s3(book_name)
-
-    jso = parse_pdf(json_object, start_page_id=start_page_id, debug_mode=debug_mode)
-    logger.info(f"pdf_parse_time: {jso['parse_time']}")
-
-    write_json_to_local(jso, book_name)
-
-    save_tables_to_s3(jso, debug_mode=debug_mode)
+        logger.info(json.dumps(content_list, ensure_ascii=False))
 
 
 def demo_classify_by_type(book_name=None, debug_mode=True):
     json_object = get_json_from_local_or_s3(book_name)
 
-    jso = classify_by_type(json_object, debug_mode=debug_mode)
-
-    logger.info(json.dumps(jso, ensure_ascii=False))
-    logger.info(f"classify_time: {jso['classify_time']}")
-    write_json_to_local(jso, book_name)
+    pdf_meta = json_object.get("pdf_meta")
+    total_page = pdf_meta["total_page"]
+    page_width = pdf_meta["page_width_pts"]
+    page_height = pdf_meta["page_height_pts"]
+    img_sz_list = pdf_meta["image_info_per_page"]
+    img_num_list = pdf_meta["imgs_per_page"]
+    text_len_list = pdf_meta["text_len_per_page"]
+    text_layout_list = pdf_meta["text_layout_per_page"]
+    pdf_path = json_object.get("file_location")
+    is_text_pdf, results = classify(
+        pdf_path,
+        total_page,
+        page_width,
+        page_height,
+        img_sz_list,
+        text_len_list,
+        img_num_list,
+        text_layout_list,
+    )
+    logger.info(f"is_text_pdf: {is_text_pdf}")
+    logger.info(json.dumps(results, ensure_ascii=False))
+    write_json_to_local(results, book_name)
 
 
 def demo_meta_scan(book_name=None, debug_mode=True):
     json_object = get_json_from_local_or_s3(book_name)
 
-    # doc_layout_check=False
-    jso = meta_scan(json_object, doc_layout_check=True)
+    s3_pdf_path = json_object.get("file_location")
+    s3_config = get_s3_config_dict(s3_pdf_path)
+    pdf_bytes = read_file(s3_pdf_path, s3_config)
+    res = pdf_meta_scan(s3_pdf_path, pdf_bytes)
 
-    logger.info(json.dumps(jso, ensure_ascii=False))
-    logger.info(f"meta_scan_time: {jso['meta_scan_time']}")
-    write_json_to_local(jso, book_name)
-
-
-def demo_meta_scan_from_jsonl():
-    with open(local_jsonl_path, "r", encoding="utf-8") as jsonl_file:
-        for line in jsonl_file:
-            jso = json.loads(line)
-            jso = meta_scan(jso)
-            logger.info(f"pdf_path: {jso['content']['pdf_path']}")
-            logger.info(f"read_file_time: {jso['read_file_time']}")
-            logger.info(f"meta_scan_time: {jso['meta_scan_time']}")
+    logger.info(json.dumps(res, ensure_ascii=False))
+    write_json_to_local(res, book_name)
 
 
 def demo_test5():
@@ -92,7 +101,6 @@ def demo_test5():
         jso = json.loads(json_line)
     img_list_len = len(jso["content"]["image_info_per_page"])
     logger.info(f"img_list_len: {img_list_len}")
-
 
 
 def read_more_para_test_samples(type="scihub"):
