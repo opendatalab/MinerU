@@ -21,7 +21,7 @@ from loguru import logger
 from magic_pdf.pdf_parse_for_train import parse_pdf_for_train
 from magic_pdf.spark.base import exception_handler, get_data_source
 from magic_pdf.train_utils.convert_to_train_format import convert_to_train_format
-from magic_pdf.spark.s3 import get_s3_config, get_s3_client
+from magic_pdf.spark.s3 import get_s3_config
 
 
 
@@ -156,86 +156,6 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
                         extra_info["classify_rules"].append(condition)
                 jso["extra_info"] = extra_info
 
-    except Exception as e:
-        jso = exception_handler(jso, e)
-    return jso
-
-
-def save_tables_to_s3(jso: dict, debug_mode=False) -> dict:
-
-    if debug_mode:
-        pass
-    else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
-            logger.info(
-                f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop",
-                file=sys.stderr,
-            )
-            jso["dropped"] = True
-            return jso
-    try:
-        data_source = get_data_source(jso)
-        file_id = jso.get("file_id")
-        book_name = f"{data_source}/{file_id}"
-        title = jso.get("title")
-        url_encode_title = quote(title, safe="")
-        if data_source != "scihub":
-            return jso
-        pdf_intermediate_dict = jso["pdf_intermediate_dict"]
-        # 将 pdf_intermediate_dict 解压
-        pdf_intermediate_dict = JsonCompressor.decompress_json(pdf_intermediate_dict)
-        i = 0
-        for page in pdf_intermediate_dict.values():
-            if page.get("tables"):
-                if len(page["tables"]) > 0:
-                    j = 0
-                    for table in page["tables"]:
-                        if debug_mode:
-                            image_path = join_path(
-                                "s3://mllm-raw-media/pdf2md_img/",
-                                book_name,
-                                table["image_path"],
-                            )
-                        else:
-                            image_path = join_path(
-                                "s3://mllm-raw-media/pdf2md_img/", table["image_path"]
-                            )
-
-                        if image_path.endswith(".jpg"):
-                            j += 1
-                            s3_client = get_s3_client(image_path)
-                            bucket_name, bucket_key = parse_bucket_key(image_path)
-                            # 通过s3_client获取图片到内存
-                            image_bytes = s3_client.get_object(
-                                Bucket=bucket_name, Key=bucket_key
-                            )["Body"].read()
-                            # 保存图片到新的位置
-                            if debug_mode:
-                                new_image_path = join_path(
-                                    "s3://mllm-raw-media/pdf2md_img/table_new/",
-                                    url_encode_title
-                                    + "_"
-                                    + table["image_path"].lstrip("tables/"),
-                                )
-                            else:
-                                new_image_path = join_path(
-                                    "s3://mllm-raw-media/pdf2md_img/table_new/",
-                                    url_encode_title + f"_page{i}_{j}.jpg",
-                                )
-
-                            logger.info(new_image_path, file=sys.stderr)
-                            bucket_name, bucket_key = parse_bucket_key(new_image_path)
-                            s3_client.put_object(
-                                Bucket=bucket_name, Key=bucket_key, Body=image_bytes
-                            )
-                        else:
-                            continue
-            i += 1
-
-        # 把无用的信息清空
-        jso["doc_layout_result"] = ""
-        jso["pdf_intermediate_dict"] = ""
-        jso["pdf_meta"] = ""
     except Exception as e:
         jso = exception_handler(jso, e)
     return jso

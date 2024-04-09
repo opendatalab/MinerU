@@ -1,6 +1,6 @@
 import json
 
-from magic_pdf.spark.s3 import get_s3_config
+from magic_pdf.libs.config_reader import get_s3_config_dict
 from magic_pdf.libs.commons import join_path, read_file, json_dump_path
 
 
@@ -16,7 +16,7 @@ def get_json_from_local_or_s3(book_name=None):
         # error_log_path & json_dump_path
         # 可配置从上述两个地址获取源json
         json_path = join_path(json_dump_path, book_name + ".json")
-        s3_config = get_s3_config(json_path)
+        s3_config = get_s3_config_dict(json_path)
         file_content = read_file(json_path, s3_config)
         json_str = file_content.decode("utf-8")
         # logger.info(json_str)
