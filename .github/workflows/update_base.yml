@@ -8,6 +8,7 @@ on:
       - master
     tags:        
       - .*magic_pdf.*
+  workflow_dispatch:
 jobs:
   pdf-test:
     runs-on: pdf
