@@ -1,17 +1,19 @@
 import json
 import os
+import sys
+import time
 
 from loguru import logger
 from pathlib import Path
 
-from magic_pdf.pipeline_ocr import ocr_parse_pdf_core
-from magic_pdf.spark.s3 import get_s3_config
+from magic_pdf.libs.config_reader import get_s3_config_dict
+from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 from demo.demo_commons import get_json_from_local_or_s3
 from magic_pdf.dict2md.ocr_mkcontent import (
     ocr_mk_mm_markdown_with_para,
     make_standard_format_with_para
 )
-from magic_pdf.libs.commons import join_path, read_file
+from magic_pdf.libs.commons import join_path, read_file, formatted_time
 
 
 def save_markdown(markdown_text, input_filepath):
@@ -50,7 +52,7 @@ def ocr_online_parse(book_name, start_page_id=0, debug_mode=True):
         json_object = get_json_from_local_or_s3(book_name)
         # logger.info(json_object)
         s3_pdf_path = json_object["file_location"]
-        s3_config = get_s3_config(s3_pdf_path)
+        s3_config = get_s3_config_dict(s3_pdf_path)
         pdf_bytes = read_file(s3_pdf_path, s3_config)
         ocr_pdf_model_info = json_object.get("doc_layout_result")
         ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info)
@@ -81,6 +83,33 @@ def ocr_parse_core(book_name, pdf_bytes, ocr_pdf_model_info, start_page_id=0):
     with open(standard_format_save_path, "w", encoding="utf-8") as f:
         # 将standard_format dump成json文本并保存
         f.write(json.dumps(standard_format, ensure_ascii=False))
+
+
+def ocr_parse_pdf_core(pdf_bytes, model_output_json_list, book_name, start_page_id=0, debug_mode=False):
+    start_time = time.time()  # 记录开始时间
+    # 先打印一下book_name和解析开始的时间
+    logger.info(
+        f"book_name is:{book_name},start_time is:{formatted_time(start_time)}",
+        file=sys.stderr,
+    )
+    pdf_info_dict = parse_pdf_by_ocr(
+        pdf_bytes,
+        model_output_json_list,
+        "",
+        book_name,
+        pdf_model_profile=None,
+        start_page_id=start_page_id,
+        debug_mode=debug_mode,
+    )
+    end_time = time.time()  # 记录完成时间
+    parse_time = int(end_time - start_time)  # 计算执行时间
+    # 解析完成后打印一下book_name和耗时
+    logger.info(
+        f"book_name is:{book_name},end_time is:{formatted_time(end_time)},cost_time is:{parse_time}",
+        file=sys.stderr,
+    )
+
+    return pdf_info_dict, parse_time
 
 
 if __name__ == '__main__':
