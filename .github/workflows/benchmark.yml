@@ -21,10 +21,6 @@ jobs:
     - name: PDF benchmark
       uses: actions/checkout@v3
 
-    - name: install-dependency
-      run: |
-        echo "install dependency"
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: benchmark
       run: |
