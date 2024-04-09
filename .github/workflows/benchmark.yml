@@ -1,0 +1,38 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: PDF
+on:
+  push:
+    branches:
+      - master
+  paths-ignore:
+      - "cmds/**"
+      - "**.md"
+
+jobs:
+  pdf-test:
+    runs-on: pdf
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+    - name: PDF benchmark
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: init_python
+      run: |
+        conda activate base
+
+    - name: install-dependency
+      run: |
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: benchmark
+      run: |
+        python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
