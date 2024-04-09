@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - master
-  paths-ignore:
+    paths-ignore:
       - "cmds/**"
       - "**.md"
 
