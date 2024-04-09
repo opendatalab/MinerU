@@ -21,10 +21,6 @@ jobs:
     - name: PDF benchmark
       uses: actions/checkout@v3
 
-    - name: init_python
-      run: |
-        conda activate base
-
     - name: install-dependency
       run: |
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
