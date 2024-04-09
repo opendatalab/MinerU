@@ -3,12 +3,8 @@
 
 name: PDF
 on:
-  push:
-    tags:
-      - released
-    paths-ignore:
-      - "cmds/**"
-      - "**.md"
+release:
+  types: [published]
 
 jobs:
   pdf-test:
