@@ -10,32 +10,27 @@ from loguru import logger
 
 def get_s3_config(bucket_name: str):
     """
-    ~/magic_pdf_config.json 读出来
+    ~/magic-pdf.json 读出来
     """
-    if os.name == "posix":  # Linux or macOS
-        home_dir = os.path.expanduser("~")
-    elif os.name == "nt":  # Windows
-        home_dir = os.path.expandvars("%USERPROFILE%")
-    else:
-        raise Exception("Unsupported operating system")
 
-    config_file = os.path.join(home_dir, "magic_pdf_config.json")
+    home_dir = os.path.expanduser("~")
+
+    config_file = os.path.join(home_dir, "magic-pdf.json")
 
     if not os.path.exists(config_file):
-        raise Exception("magic_pdf_config.json not found")
+        raise Exception("magic-pdf.json not found")
 
     with open(config_file, "r") as f:
         config = json.load(f)
 
-    if bucket_name not in config:
-        raise Exception("bucket_name not found in magic_pdf_config.json")
+    bucket_info = config.get("bucket_info")
+    if bucket_name not in bucket_info:
+        raise Exception("bucket_name not found in magic-pdf.json")
 
-    access_key = config[bucket_name].get("ak")
-    secret_key = config[bucket_name].get("sk")
-    storage_endpoint = config[bucket_name].get("endpoint")
+    access_key, secret_key, storage_endpoint = bucket_info[bucket_name]
 
     if access_key is None or secret_key is None or storage_endpoint is None:
-        raise Exception("ak, sk or endpoint not found in magic_pdf_config.json")
+        raise Exception("ak, sk or endpoint not found in magic-pdf.json")
 
     # logger.info(f"get_s3_config: ak={access_key}, sk={secret_key}, endpoint={storage_endpoint}")
 
