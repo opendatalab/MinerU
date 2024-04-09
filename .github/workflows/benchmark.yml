@@ -21,6 +21,14 @@ jobs:
     - name: PDF benchmark
       uses: actions/checkout@v3
 
+    - name: check-requirements
+      run: |
+        changed_files=$(git diff --name-only -r HEAD^1 HEAD)
+        echo $changed_files
+        if [[ $changed_files =~ "requirements.txt" ]]; then
+          pip install -r requirements.txt
+        fi
+
 
     - name: benchmark
       run: |
