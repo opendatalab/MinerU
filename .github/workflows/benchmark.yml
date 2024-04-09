@@ -23,7 +23,7 @@ jobs:
 
     - name: check-requirements
       run: |
-        changed_files=$(git diff --name-only -r HEAD^1 HEAD)
+        changed_files=$(git diff --name-only -r HEAD~1 HEAD)
         echo $changed_files
         if [[ $changed_files =~ "requirements.txt" ]]; then
           pip install -r requirements.txt
