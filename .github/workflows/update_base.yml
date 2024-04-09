@@ -3,8 +3,9 @@
 
 name: update-base
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - '*released'
   workflow_dispatch:
 jobs:
   pdf-test:
