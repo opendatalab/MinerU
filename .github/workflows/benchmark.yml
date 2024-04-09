@@ -20,7 +20,8 @@ jobs:
     steps:
     - name: PDF benchmark
       uses: actions/checkout@v3
-
+      with:
+        fetch-depth: 2
     - name: check-requirements
       run: |
         changed_files=$(git diff --name-only -r HEAD~1 HEAD)
