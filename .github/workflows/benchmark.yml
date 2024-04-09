@@ -16,8 +16,6 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: true
-      matrix:
-        python-version: ["3.12"]
 
     steps:
     - name: PDF benchmark
