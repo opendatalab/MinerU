@@ -7,7 +7,7 @@ on:
     branches:    
       - master
     tags:        
-      - v.*
+      - .*magic_pdf.*
 jobs:
   pdf-test:
     runs-on: pdf
