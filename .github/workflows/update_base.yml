@@ -3,9 +3,9 @@
 
 name: update-base
 on:
-  release:
-    type: [released]
-
+  push:
+    tags:        
+      - v.*
 jobs:
   pdf-test:
     runs-on: pdf
