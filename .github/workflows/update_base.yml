@@ -4,6 +4,8 @@
 name: update-base
 on:
   push:
+    branches:    
+      - master
     tags:        
       - v.*
 jobs:
