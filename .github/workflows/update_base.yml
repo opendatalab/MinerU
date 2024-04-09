@@ -1,11 +1,10 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: PDF
+name: update-base
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    type: [released]
 
 jobs:
   pdf-test:
@@ -17,5 +16,5 @@ jobs:
     - name: update-base
       uses: actions/checkout@v3
       run: |
-          echo "start test"
+        echo "start test"
   
