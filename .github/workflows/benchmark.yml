@@ -23,6 +23,7 @@ jobs:
 
     - name: install-dependency
       run: |
+        echo "install dependency"
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: benchmark
