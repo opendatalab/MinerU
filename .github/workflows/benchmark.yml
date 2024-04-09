@@ -32,5 +32,4 @@ jobs:
 
     - name: benchmark
       run: |
-        echo "start test"
         python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
