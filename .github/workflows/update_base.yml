@@ -4,8 +4,8 @@
 name: update-base
 on:
   push:
-    branches:    
-      - master
+    #branches:    
+    #  - master
     tags:        
       - .*magic_pdf.*
   workflow_dispatch:
