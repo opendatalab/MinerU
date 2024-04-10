@@ -9,7 +9,7 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
-
+  workflow_dispatch:
 jobs:
   pdf-test:
     runs-on: pdf
