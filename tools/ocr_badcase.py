@@ -843,8 +843,8 @@ def main(standard_file, test_file, zip_file, badcase_path, overall_path,base_dat
     save_results(result_dict, overall_report_dict,badcase_file,overall_file)
 
     result=compare_edit_distance(base_data_path, overall_report_dict)
-    
     print(result)
+    assert result == 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="主函数，执行整个评估流程。")

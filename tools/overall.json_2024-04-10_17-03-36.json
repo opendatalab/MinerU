@@ -3,7 +3,7 @@
     "precision": 1.0,
     "recall": 1.0,
     "f1_score": 1.0,
-    "pdf间的平均编辑距离": 131.10256410256412,
+    "pdf间的平均编辑距离": 10.10256410256412,
     "pdf间的平均bleu": 0.28838311595434046,
     "分段准确率": 0.07220216606498195,
     "行内公式准确率": {
@@ -29,47 +29,47 @@
         "f1_score": 0.0007077140835102619
     },
     "丢弃文本标签准确率": {
+        "rotate": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
+            "support": 63
+        },
         "color_background_header_txt_block": {
             "precision": 0.0,
             "recall": 0.0,
             "f1-score": 0.0,
-            "support": 41.0
+            "support": 41
+        },
+        "footnote": {
+            "precision": 1.0,
+            "recall": 0.009708737864077669,
+            "f1-score": 0.01923076923076923,
+            "support": 103
         },
         "header": {
             "precision": 0.0,
             "recall": 0.0,
             "f1-score": 0.0,
-            "support": 4.0
-        },
-        "footnote": {
-            "precision": 1.0,
-            "recall": 0.009708737864077669,
-            "f1-score": 0.019230769230769232,
-            "support": 103.0
-        },
-        "on-table": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 665.0
-        },
-        "rotate": {
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1-score": 0.0,
-            "support": 63.0
+            "support": 4
         },
         "on-image": {
             "precision": 0.0,
             "recall": 0.0,
             "f1-score": 0.0,
-            "support": 380.0
+            "support": 380
+        },
+        "on-table": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1-score": 0.0,
+            "support": 665
         },
         "micro avg": {
             "precision": 1.0,
             "recall": 0.0007961783439490446,
-            "f1-score": 0.0015910898965791568,
-            "support": 1256.0
+            "f1-score": 0.001591089896579157,
+            "support": 1256
         }
     },
     "丢弃图片准确率": {
