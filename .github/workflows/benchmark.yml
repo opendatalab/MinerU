@@ -39,9 +39,7 @@ jobs:
         cd tools && python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
-    needs: [
-      pdf-test
-      ]
+    needs: [pdf-test]
     runs-on: [pdf]
     steps:
     - name: notify
