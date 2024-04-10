@@ -30,6 +30,9 @@ def parse_txt_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter
         start_page_id=start_page,
         debug_mode=is_debug,
     )
+
+    pdf_info_dict["parse_type"] = "txt"
+
     return pdf_info_dict
 
 
@@ -44,6 +47,9 @@ def parse_ocr_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWrite
         start_page_id=start_page,
         debug_mode=is_debug,
     )
+
+    pdf_info_dict["parse_type"] = "ocr"
+
     return pdf_info_dict
 
 
@@ -65,12 +71,16 @@ def parse_union_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWri
             return None
 
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
+
     if pdf_info_dict is None or pdf_info_dict.get("need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
-
-    if pdf_info_dict is None:
-        raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
+        if pdf_info_dict is None:
+            raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
+        else:
+            pdf_info_dict["parse_type"] = "ocr"
+    else:
+        pdf_info_dict["parse_type"] = "txt"
 
     return pdf_info_dict
 
