@@ -9,21 +9,18 @@ from botocore.config import Config
 
 
 class S3ReaderWriter(AbsReaderWriter):
-    def __init__(self, s3_profile):
-        self.client = self._get_client(s3_profile)
+    def __init__(self, ak: str, sk: str, endpoint_url: str, addressing_style: str):
+        self.client = self._get_client(ak, sk, endpoint_url, addressing_style)
 
-    def _get_client(self, s3_profile):
-
-        ak, sk, end_point, addressing_style = parse_aws_param(s3_profile)
+    def _get_client(self, ak: str, sk: str, endpoint_url: str, addressing_style: str):
         s3_client = boto3.client(
             service_name="s3",
             aws_access_key_id=ak,
             aws_secret_access_key=sk,
-            endpoint_url=end_point,
+            endpoint_url=endpoint_url,
             config=Config(s3={"addressing_style": addressing_style},
                           retries={'max_attempts': 5, 'mode': 'standard'}),
         )
-
         return s3_client
     def read(self, s3_path, mode="text", encoding="utf-8"):
         bucket_name, bucket_key = parse_bucket_key(s3_path)
@@ -51,13 +48,13 @@ class S3ReaderWriter(AbsReaderWriter):
 
 if __name__ == "__main__":
     # Config the connection info
-    profile = {
-        'ak': '',
-        'sk': '',
-        'endpoint': ''
-    }
+    ak = ""
+    sk = ""
+    endpoint_url = ""
+    addressing_style = ""
+
     # Create an S3ReaderWriter object
-    s3_reader_writer = S3ReaderWriter(profile)
+    s3_reader_writer = S3ReaderWriter(ak, sk, endpoint_url, addressing_style)
 
     # Write text data to S3
     text_data = "This is some text data"
