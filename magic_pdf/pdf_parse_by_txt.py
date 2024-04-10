@@ -73,13 +73,8 @@ paraMergeException_msg = ParaMergeException().message
 def parse_pdf_by_txt(
     pdf_bytes,
     pdf_model_output,
-    save_path,
-    book_name,
-    pdf_model_profile=None,
-    image_s3_config=None,
     start_page_id=0,
     end_page_id=None,
-    junk_img_bojids=[],
     debug_mode=False,
 ):
 
@@ -128,22 +123,29 @@ def parse_pdf_by_txt(
         # 对单页面非重复id的img数量做统计,如果当前页超过1500则直接return need_drop
         """
         page_imgs = page.get_images()
-        img_counts = 0
-        for img in page_imgs:
-            img_bojid = img[0]
-            if img_bojid in junk_img_bojids:  # 判断这个图片在不在junklist中
-                continue  # 如果在junklist就不用管了，跳过
-            else:
-                recs = page.get_image_rects(img, transform=True)
-                if recs:  # 如果这张图在当前页面有展示
-                    img_counts += 1
-        if img_counts >= 1500:  # 如果去除了junkimg的影响，单页img仍然超过1500的话，就排除当前pdf
-            logger.warning(
-                f"page_id: {page_id}, img_counts: {img_counts}, drop this pdf: {book_name}, drop_reason: {DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}"
-            )
+
+        # 去除对junkimg的依赖，简化逻辑
+        if len(page_imgs) > 1500:  # 如果当前页超过1500张图片，直接跳过
+            logger.warning(f"page_id: {page_id}, img_counts: {len(page_imgs)}, drop this pdf: {book_name}")
             result = {"need_drop": True, "drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}
             if not debug_mode:
                 return result
+        # img_counts = 0
+        # for img in page_imgs:
+        #     img_bojid = img[0]
+        #     if img_bojid in junk_img_bojids:  # 判断这个图片在不在junklist中
+        #         continue  # 如果在junklist就不用管了，跳过
+        #     else:
+        #         recs = page.get_image_rects(img, transform=True)
+        #         if recs:  # 如果这张图在当前页面有展示
+        #             img_counts += 1
+        # if img_counts >= 1500:  # 如果去除了junkimg的影响，单页img仍然超过1500的话，就排除当前pdf
+        #     logger.warning(
+        #         f"page_id: {page_id}, img_counts: {img_counts}, drop this pdf: {book_name}, drop_reason: {DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}"
+        #     )
+        #     result = {"need_drop": True, "drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}
+        #     if not debug_mode:
+        #         return result
 
         """
         ==================================================================================================================================
@@ -154,10 +156,10 @@ def parse_pdf_by_txt(
             "dict",
             flags=fitz.TEXTFLAGS_TEXT,
         )["blocks"]
-        model_output_json = get_docx_model_output(pdf_model_output, pdf_model_profile, page_id)
+        model_output_json = get_docx_model_output(pdf_model_output, page_id)
 
         # 解析图片
-        image_bboxes = parse_images(page_id, page, model_output_json, junk_img_bojids)
+        image_bboxes = parse_images(page_id, page, model_output_json)
         image_bboxes = fix_image_vertical(image_bboxes, text_raw_blocks)  # 修正图片的位置
         image_bboxes = fix_seperated_image(image_bboxes)  # 合并有边重合的图片
         image_bboxes = include_img_title(text_raw_blocks, image_bboxes)  # 向图片上方和下方寻找title，使用规则进行匹配，暂时只支持英文规则
