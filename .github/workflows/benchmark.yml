@@ -38,7 +38,7 @@ jobs:
     - name: benchmark
       run: |
         echo "start test"
-        cd tools && python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip output.json
+        cd tools && python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip badcase.json overall.json base_data.json
   notify_to_feishu:
     if: ${{ (github.ref_name == 'master') }}
     needs: [pdf-test]
