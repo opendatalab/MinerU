@@ -801,7 +801,7 @@ def compare_edit_distance(json_file, overall_report):
     
     json_edit_distance = json_data['pdf间的平均编辑距离']
     
-    if overall_report['pdf间的平均编辑距离'] >= json_edit_distance:
+    if overall_report['pdf间的平均编辑距离'] > json_edit_distance:
         return 0
     else:
         return 1
