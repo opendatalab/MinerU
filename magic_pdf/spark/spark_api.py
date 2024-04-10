@@ -12,7 +12,7 @@
 其余部分至于构造s3cli, 获取ak,sk都在code-clean里写代码完成。不要反向依赖！！！
 
 """
-
+from loguru import logger
 
 from magic_pdf.io import AbsReaderWriter
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
@@ -31,7 +31,6 @@ def parse_txt_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter
         debug_mode=is_debug,
     )
     return pdf_info_dict
-    pass
 
 
 def parse_ocr_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
@@ -52,4 +51,29 @@ def parse_union_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWri
     """
     ocr和文本混合的pdf，全部解析出来
     """
+    def parse_pdf(method):
+        try:
+            return method(
+                pdf_bytes,
+                pdf_models,
+                imageWriter,
+                start_page_id=start_page,
+                debug_mode=is_debug,
+            )
+        except Exception as e:
+            logger.error(f"{method.__name__} error: {e}")
+            return None
+
+    pdf_info_dict = parse_pdf(parse_pdf_by_txt)
+    if pdf_info_dict is None or pdf_info_dict.get("need_drop", False):
+        logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
+        pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
+
+    if pdf_info_dict is None:
+        raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
+
+    return pdf_info_dict
+
+
+def spark_json_extractor(jso:dict):
     pass

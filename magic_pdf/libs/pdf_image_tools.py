@@ -5,7 +5,7 @@ from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.hash_utils import compute_sha256
 
 
-def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWriter, upload=True):
+def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWriter):
     """
     从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径
     save_path：需要同时支持s3和本地, 图片存放在save_path下，文件名是: {page_num}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg , bbox内数字取整。
@@ -19,17 +19,16 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
     # 新版本生成平铺路径
     img_hash256_path = f"{compute_sha256(img_path)}.jpg"
 
-    if upload:
-        # 将坐标转换为fitz.Rect对象
-        rect = fitz.Rect(*bbox)
-        # 配置缩放倍数为3倍
-        zoom = fitz.Matrix(3, 3)
-        # 截取图片
-        pix = page.get_pixmap(clip=rect, matrix=zoom)
+    # 将坐标转换为fitz.Rect对象
+    rect = fitz.Rect(*bbox)
+    # 配置缩放倍数为3倍
+    zoom = fitz.Matrix(3, 3)
+    # 截取图片
+    pix = page.get_pixmap(clip=rect, matrix=zoom)
 
-        byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
+    byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
 
-        imageWriter.write(data=byte_data, path=img_hash256_path, mode="binary")
+    imageWriter.write(data=byte_data, path=img_hash256_path, mode="binary")
 
     return img_hash256_path
 
@@ -73,19 +72,5 @@ def save_images_by_bboxes(page_num: int, page: fitz.Page, pdf_bytes_md5: str,
             continue
         image_path = cut_image(bbox, page_num, page, return_path("tables"), imageWriter)
         table_info.append({"bbox": bbox, "image_path": image_path})
-
-    for bbox in equation_inline_bboxes:
-        if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
-            logger.warning(f"equation_inline_bboxes: 错误的box, {bbox}")
-            continue
-        image_path = cut_image(bbox[:4], page_num, page, return_path("equations_inline"), imageWriter, upload=False)
-        inline_eq_info.append({'bbox': bbox[:4], "image_path": image_path, "latex_text": bbox[4]})
-
-    for bbox in equation_interline_bboxes:
-        if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
-            logger.warning(f"equation_interline_bboxes: 错误的box, {bbox}")
-            continue
-        image_path = cut_image(bbox[:4], page_num, page, return_path("equation_interline"), imageWriter, upload=False)
-        interline_eq_info.append({"bbox": bbox[:4], "image_path": image_path, "latex_text": bbox[4]})
 
     return image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info
