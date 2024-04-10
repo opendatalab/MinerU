@@ -15,6 +15,7 @@
 
 
 from magic_pdf.io import AbsReaderWriter
+from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 
 
 def parse_txt_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
@@ -28,7 +29,14 @@ def parse_ocr_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWrite
     """
     解析ocr类pdf
     """
-    pass
+    pdf_info_dict = parse_pdf_by_ocr(
+        pdf_bytes,
+        pdf_models,
+        imageWriter,
+        start_page_id=start_page,
+        debug_mode=is_debug,
+    )
+    return pdf_info_dict
 
 
 def parse_union_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,  *args, **kwargs):

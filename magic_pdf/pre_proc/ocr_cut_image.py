@@ -4,6 +4,9 @@ from magic_pdf.libs.pdf_image_tools import cut_image
 
 
 def cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client):
+
+    """spark环境book_name为pdf_bytes_md5，本地环境会传正常bookname"""
+
     def s3_return_path(type):
         return join_path(book_name, type)
 

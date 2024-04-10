@@ -7,6 +7,7 @@ import io
 from magic_pdf.libs.commons import fitz
 from loguru import logger
 from magic_pdf.libs.commons import parse_bucket_key, join_path
+from magic_pdf.libs.hash_utils import compute_sha256
 
 
 def cut_image(bbox: Tuple, page_num: int, page: fitz.Page, save_parent_path: str, s3_return_path=None, img_s3_client=None, upload_switch=True):
@@ -16,9 +17,13 @@ def cut_image(bbox: Tuple, page_num: int, page: fitz.Page, save_parent_path: str
     """
     # 拼接文件名
     filename = f"{page_num}_{int(bbox[0])}_{int(bbox[1])}_{int(bbox[2])}_{int(bbox[3])}.jpg"
-    # 拼接路径
-    image_save_path = join_path(save_parent_path, filename)
+
+    # 老版本返回不带bucket的路径
     s3_img_path = join_path(s3_return_path, filename) if s3_return_path is not None else None
+
+    # 新版本生成s3的平铺路径
+    s3_img_hash256_path = f"{compute_sha256(s3_img_path)}.jpg"
+
     # 打印图片文件名
     # print(f"Saved {image_save_path}")
 
@@ -42,12 +47,16 @@ def cut_image(bbox: Tuple, page_num: int, page: fitz.Page, save_parent_path: str
     # 截取图片
     pix = page.get_pixmap(clip=rect, matrix=zoom)
 
-    if image_save_path.startswith("s3://"):
+    if save_parent_path.startswith("s3://"):
         if not upload_switch:
             pass
         else:
-            # 图片保存到s3
-            bucket_name, bucket_key = parse_bucket_key(image_save_path)
+            """图片保存到s3"""
+            # 从save_parent_path获取bucket_name
+            bucket_name, bucket_key = parse_bucket_key(save_parent_path)
+            # 平铺路径赋值给bucket_key
+            bucket_key = s3_img_hash256_path
+
             # 将字节流上传到s3
             byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
             file_obj = io.BytesIO(byte_data)
@@ -58,18 +67,21 @@ def cut_image(bbox: Tuple, page_num: int, page: fitz.Page, save_parent_path: str
                 # img_s3_client_once.upload_fileobj(file_obj, bucket_name, bucket_key)
             else:
                 logger.exception("must input img_s3_client")
-        return s3_img_path
+        # return s3_img_path # 早期版本要求返回不带bucket的路径
+        s3_image_save_path = f"s3://{bucket_name}/{s3_img_hash256_path}"  # 新版本返回平铺的s3路径
+        return s3_image_save_path
     else:
         # 保存图片到本地
         # 先检查一下image_save_path的父目录是否存在，如果不存在，就创建
-        parent_dir = os.path.dirname(image_save_path)
+        local_image_save_path = join_path(save_parent_path, filename)
+        parent_dir = os.path.dirname(local_image_save_path)
         if not os.path.exists(parent_dir):
             os.makedirs(parent_dir)
-        pix.save(image_save_path, jpg_quality=95)
+        pix.save(local_image_save_path, jpg_quality=95)
         # 为了直接能在markdown里看，这里把地址改为相对于mardown的地址
-        pth = Path(image_save_path)
-        image_save_path = f"{pth.parent.name}/{pth.name}"
-        return image_save_path
+        pth = Path(local_image_save_path)
+        local_image_save_path = f"{pth.parent.name}/{pth.name}"
+        return local_image_save_path
 
 
 def save_images_by_bboxes(book_name: str, page_num: int, page: fitz.Page, save_path: str,

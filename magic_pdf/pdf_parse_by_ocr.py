@@ -15,6 +15,7 @@ from magic_pdf.libs.commons import (
 )
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.drop_tag import DropTag
+from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.para.para_split import para_split
@@ -39,18 +40,18 @@ def parse_pdf_by_ocr(
         pdf_bytes,
         pdf_model_output,
         save_path,
-        book_name,
+        book_name="",
         pdf_model_profile=None,
         image_s3_config=None,
         start_page_id=0,
         end_page_id=None,
         debug_mode=False,
 ):
-
+    pdf_bytes_md5 = compute_md5(pdf_bytes)
     save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
-    book_name = sanitize_filename(book_name)
     md_bookname_save_path = ""
     if debug_mode:
+        book_name = sanitize_filename(book_name)
         save_path = join_path(save_tmp_path, "md")
         pdf_local_path = join_path(save_tmp_path, "download-pdfs", book_name)
 
@@ -179,6 +180,8 @@ def parse_pdf_by_ocr(
         spans, dropped_spans_by_removed_bboxes = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         '''对image和table截图'''
+        if book_name == "":
+            book_name = pdf_bytes_md5
         spans = cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
