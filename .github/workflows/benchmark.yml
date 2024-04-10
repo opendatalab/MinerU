@@ -18,14 +18,16 @@ jobs:
       fail-fast: true
 
     steps:
+    - name: config-net
+      run: |
+        export http_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
+        export https_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
     - name: PDF benchmark
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
     - name: check-requirements
       run: |
-        export http_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
-        export https_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
         changed_files=$(git diff --name-only -r HEAD~1 HEAD)
         echo $changed_files
         if [[ $changed_files =~ "requirements.txt" ]]; then
