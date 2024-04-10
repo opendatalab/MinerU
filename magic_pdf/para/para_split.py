@@ -183,11 +183,31 @@ def __valign_lines(blocks, layout_bboxes):
     return new_layout_bboxes
 
 
+def __align_text_in_layout(blocks, layout_bboxes):
+    """
+    由于ocr出来的line，有时候会在前后有一段空白，这个时候需要对文本进行对齐，超出的部分被layout左右侧截断。
+    """
+    for layout in layout_bboxes:
+        lb = layout['layout_bbox']
+        blocks_in_layoutbox = [b for b in blocks if is_in_layout(b['bbox'], lb)]
+        if len(blocks_in_layoutbox)==0:
+            continue
+        
+        for block in blocks_in_layoutbox:
+            for line in block['lines']:
+                x0, x1 = line['bbox'][0], line['bbox'][2]
+                if x0 < lb[0]:
+                    line['bbox'][0] = lb[0]
+                if x1 > lb[2]:
+                    line['bbox'][2] = lb[2]
+    
+ 
 def __common_pre_proc(blocks, layout_bboxes):
     """
     不分语言的，对文本进行预处理
     """
     #__add_line_period(blocks, layout_bboxes)
+    __align_text_in_layout(blocks, layout_bboxes)
     aligned_layout_bboxes = __valign_lines(blocks, layout_bboxes)
     
     return aligned_layout_bboxes
@@ -232,7 +252,6 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
     list_info = [] # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
     layout_paras = []
     right_tail_distance = 1.5 * char_avg_len
-    
     
     for lines in lines_group:
         paras = []
@@ -575,8 +594,8 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     
     
     return connected_layout_paras, page_list_info
-   
-
+       
+    
 def para_split(pdf_info_dict, debug_mode, lang="en"):
     """
     根据line和layout情况进行分段

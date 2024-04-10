@@ -116,6 +116,7 @@ if __name__ == '__main__':
     pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
     json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
     # ocr_local_parse(pdf_path, json_file_path)
+    
     book_name = "数学新星网/edu_00001236"
     ocr_online_parse(book_name)
     
