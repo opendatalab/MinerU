@@ -115,8 +115,9 @@ def ocr_parse_pdf_core(pdf_bytes, model_output_json_list, book_name, start_page_
 if __name__ == '__main__':
     pdf_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.pdf"
     json_file_path = r"/home/cxu/workspace/Magic-PDF/ocr_demo/j.1540-627x.2006.00176.x.json"
-    ocr_local_parse(pdf_path, json_file_path)
-    # book_name = "科数网/edu_00011318"
-    # ocr_online_parse(book_name)
+    # ocr_local_parse(pdf_path, json_file_path)
+    
+    book_name = "数学新星网/edu_00001236"
+    ocr_online_parse(book_name)
     
     pass

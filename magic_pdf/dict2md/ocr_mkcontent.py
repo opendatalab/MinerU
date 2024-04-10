@@ -1,4 +1,3 @@
-from magic_pdf.libs.commons import s3_image_save_path, join_path
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
@@ -56,7 +55,7 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
                         if not span.get('image_path'):
                             continue
                         else:
-                            content = f"![]({join_path(s3_image_save_path, span['image_path'])})"
+                            content = f"![]({span['image_path']})"
                     else:
                         content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
                         if span['type'] == ContentType.InlineEquation:
@@ -123,7 +122,7 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode):
                         content = f"\n$$\n{span['content']}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
                         if mode == 'mm':
-                            content = f"\n![]({join_path(s3_image_save_path, span['image_path'])})\n"
+                            content = f"\n![]({span['image_path']})\n"
                         elif mode == 'nlp':
                             pass
                     if content != '':
@@ -195,13 +194,13 @@ def line_to_standard_format(line):
                 if span['type'] == ContentType.Image:
                     content = {
                         'type': 'image',
-                        'img_path': join_path(s3_image_save_path, span['image_path'])
+                        'img_path': span['image_path']
                     }
                     return content
                 elif span['type'] == ContentType.Table:
                     content = {
                         'type': 'table',
-                        'img_path': join_path(s3_image_save_path, span['image_path'])
+                        'img_path': span['image_path']
                     }
                     return content
         else:
