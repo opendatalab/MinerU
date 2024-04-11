@@ -17,3 +17,4 @@ zh_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/zh_
 scikit-learn==1.4.1.post1
 nltk==3.8.1
 s3pathlib>=2.1.1
+
