@@ -5,7 +5,13 @@ name: PDF
 on:
   push:
     branches:
-      - master
+      - "master"
+    paths-ignore:
+      - "cmds/**"
+      - "**.md"
+  pull_request:
+    branches:
+      - "master"
     paths-ignore:
       - "cmds/**"
       - "**.md"
