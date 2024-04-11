@@ -31,10 +31,21 @@ from magic_pdf.libs.path_utils import (
 from magic_pdf.libs.config_reader import get_local_dir
 from magic_pdf.io.S3ReaderWriter import S3ReaderWriter, MODE_BIN
 from magic_pdf.io.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.spark.spark_api import parse_union_pdf
+from magic_pdf.spark.spark_api import parse_union_pdf, parse_txt_pdf, parse_ocr_pdf
 import os
 import json as json_parse
 from datetime import datetime
+
+
+parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
+
+
+def get_pdf_parse_method(method):
+    if method == "ocr":
+        return parse_ocr_pdf
+    elif method == "txt":
+        return parse_txt_pdf
+    return parse_union_pdf
 
 
 def prepare_env():
@@ -56,7 +67,13 @@ def cli():
 
 @cli.command()
 @click.option("--json", type=str, help="输入一个S3路径")
-def json_command(json):
+@click.option(
+    "--method",
+    type=parse_pdf_methods,
+    help="指定解析方法。txt: 文本型 pdf 解析方法， ocr: 光学识别解析 pdf, auto: 程序智能选择解析方法",
+    default="auto",
+)
+def json_command(json, method):
     if not json.startswith("s3://"):
         print("usage: python magipdf.py --json s3://some_bucket/some_path")
         os.exit(1)
@@ -82,7 +99,8 @@ def json_command(json):
     local_image_dir, _ = prepare_env()
 
     local_image_rw = DiskReaderWriter(local_image_dir)
-    parse_union_pdf(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
+    parse = get_pdf_parse_method(method)
+    parse(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
 
 
 @cli.command()
@@ -90,7 +108,13 @@ def json_command(json):
     "--pdf", type=click.Path(exists=True), required=True, help="PDF文件的路径"
 )
 @click.option("--model", type=click.Path(exists=True), help="模型的路径")
-def pdf_command(pdf, model):
+@click.option(
+    "--method",
+    type=parse_pdf_methods,
+    help="指定解析方法。txt: 文本型 pdf 解析方法， ocr: 光学识别解析 pdf, auto: 程序智能选择解析方法",
+    default="auto",
+)
+def pdf_command(pdf, model, method):
     # 这里处理pdf和模型相关的逻辑
     if model is None:
         model = pdf.replace(".pdf", ".json")
@@ -107,7 +131,8 @@ def pdf_command(pdf, model):
 
     local_image_dir, _ = prepare_env()
     local_image_rw = DiskReaderWriter(local_image_dir)
-    parse_union_pdf(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
+    parse = get_pdf_parse_method(method)
+    parse(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
 
 
 if __name__ == "__main__":
