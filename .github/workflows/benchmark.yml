@@ -52,10 +52,10 @@ jobs:
     steps:
     - name: notify
       run: |
-        curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'    -d '{
+        curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'  -d '{
         "msgtype": "markdown",
         "markdown": {
             "content": "'${{ github.repository }}' GitHubAction Failed!\n
-         >失败详清查看:<font color=\"comment\">https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}</font> "
+         >失败详清查看:<font color=\"comment\">https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}</font>"
         } 
         }'                                                                                                                            
