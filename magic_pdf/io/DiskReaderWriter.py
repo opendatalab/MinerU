@@ -5,9 +5,11 @@ from loguru import logger
 
 MODE_TXT = "text"
 MODE_BIN = "binary"
+
+
 class DiskReaderWriter(AbsReaderWriter):
 
-    def __init__(self, parent_path, encoding='utf-8'):
+    def __init__(self, parent_path, encoding="utf-8"):
         self.path = parent_path
         self.encoding = encoding
 
@@ -20,10 +22,10 @@ class DiskReaderWriter(AbsReaderWriter):
             logger.error(f"文件 {abspath} 不存在")
             raise Exception(f"文件 {abspath} 不存在")
         if mode == MODE_TXT:
-            with open(abspath, 'r', encoding = self.encoding) as f:
+            with open(abspath, "r", encoding=self.encoding) as f:
                 return f.read()
         elif mode == MODE_BIN:
-            with open(abspath, 'rb') as f:
+            with open(abspath, "rb") as f:
                 return f.read()
         else:
             raise ValueError("Invalid mode. Use 'text' or 'binary'.")
@@ -34,19 +36,20 @@ class DiskReaderWriter(AbsReaderWriter):
         else:
             abspath = os.path.join(self.path, path)
         if mode == MODE_TXT:
-            with open(abspath, 'w', encoding=self.encoding) as f:
+            with open(abspath, "w", encoding=self.encoding) as f:
                 f.write(content)
                 logger.info(f"内容已成功写入 {abspath}")
 
         elif mode == MODE_BIN:
-            with open(abspath, 'wb') as f:
+            with open(abspath, "wb") as f:
                 f.write(content)
                 logger.info(f"内容已成功写入 {abspath}")
         else:
             raise ValueError("Invalid mode. Use 'text' or 'binary'.")
 
-    def read_jsonl(self, path: str, byte_start=0, byte_end=None, encoding='utf-8'):
+    def read_jsonl(self, path: str, byte_start=0, byte_end=None, encoding="utf-8"):
         return self.read(path)
+
 
 # 使用示例
 if __name__ == "__main__":
@@ -60,5 +63,3 @@ if __name__ == "__main__":
     content = drw.read(path=file_path)
     if content:
         logger.info(f"从 {file_path} 读取的内容: {content}")
-
-
