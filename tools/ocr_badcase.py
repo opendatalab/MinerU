@@ -867,6 +867,7 @@ def main(standard_file, test_file, zip_file, badcase_path, overall_path,base_dat
     save_results(result_dict, overall_report_dict,badcase_file,overall_file)
 
     result=compare_edit_distance(base_data_path, overall_report_dict)
+<<<<<<< HEAD
 
     if all([s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url]):
         try:
@@ -874,7 +875,10 @@ def main(standard_file, test_file, zip_file, badcase_path, overall_path,base_dat
             upload_to_s3(overall_file, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
         except Exception as e:
             print(f"上传到S3时发生错误: {e}")
+=======
+>>>>>>> ff8f62aa3c28facc192104387f131d87978064fc
     print(result)
+    assert result == 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="主函数，执行整个评估流程。")

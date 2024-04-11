@@ -112,7 +112,6 @@ def parse_pdf_for_train(
     pdf_model_output,
     save_path,
     book_name,
-    pdf_model_profile=None,
     image_s3_config=None,
     start_page_id=0,
     end_page_id=None,
@@ -200,7 +199,7 @@ def parse_pdf_for_train(
             flags=fitz.TEXTFLAGS_TEXT,
         )["blocks"]
         model_output_json = get_docx_model_output(
-            pdf_model_output, pdf_model_profile, page_id
+            pdf_model_output, page_id
         )
 
         # 解析图片

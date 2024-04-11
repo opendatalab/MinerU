@@ -3,7 +3,7 @@ from magic_pdf.libs.commons import fitz             # pyMuPDF库
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 
 
-def parse_footnotes_by_model(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict, md_bookname_save_path, debug_mode=False):
+def parse_footnotes_by_model(page_ID: int, page: fitz.Page, json_from_DocXchain_obj: dict, md_bookname_save_path=None, debug_mode=False):
     """
     :param page_ID: int类型，当前page在当前pdf文档中是第page_D页。
     :param page :fitz读取的当前页的内容
