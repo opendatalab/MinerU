@@ -1,3 +1,4 @@
+from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import ContentType
@@ -137,10 +138,10 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode):
     return page_markdown
 
 
-def para_to_standard_format(para):
+def para_to_standard_format(para, img_buket_path):
     para_content = {}
     if len(para) == 1:
-        para_content = line_to_standard_format(para[0])
+        para_content = line_to_standard_format(para[0], img_buket_path)
     elif len(para) > 1:
         para_text = ''
         inline_equation_num = 0
@@ -170,7 +171,7 @@ def para_to_standard_format(para):
         }
     return para_content
 
-def make_standard_format_with_para(pdf_info_dict: dict):
+def make_standard_format_with_para(pdf_info_dict: dict, img_buket_path: str):
     content_list = []
     for _, page_info in pdf_info_dict.items():
         paras_of_layout = page_info.get("para_blocks")
@@ -178,12 +179,12 @@ def make_standard_format_with_para(pdf_info_dict: dict):
             continue
         for paras in paras_of_layout:
             for para in paras:
-                para_content = para_to_standard_format(para)
+                para_content = para_to_standard_format(para, img_buket_path)
                 content_list.append(para_content)
     return content_list
 
 
-def line_to_standard_format(line):
+def line_to_standard_format(line, img_buket_path):
     line_text = ""
     inline_equation_num = 0
     for span in line['spans']:
@@ -194,13 +195,13 @@ def line_to_standard_format(line):
                 if span['type'] == ContentType.Image:
                     content = {
                         'type': 'image',
-                        'img_path': span['image_path']
+                        'img_path': join_path(img_buket_path, span['image_path'])
                     }
                     return content
                 elif span['type'] == ContentType.Table:
                     content = {
                         'type': 'table',
-                        'img_path': span['image_path']
+                        'img_path': join_path(img_buket_path, span['image_path'])
                     }
                     return content
         else:

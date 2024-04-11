@@ -15,6 +15,7 @@ from collections import Counter
 
 import click
 import numpy as np
+from loguru import logger
 
 from magic_pdf.libs.commons import mymax, get_top_percent_list
 from magic_pdf.filter.pdf_meta_scan import scan_max_page, junk_limit_min
@@ -298,7 +299,7 @@ def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
     return narrow_strip_pages_ratio < 0.5
 
 
-def classify(pdf_path, total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list, text_layout_list: list):
+def classify(total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list, text_layout_list: list):
     """
     这里的图片和页面长度单位是pts
     :param total_page:
@@ -323,7 +324,7 @@ def classify(pdf_path, total_page: int, page_width, page_height, img_sz_list: li
     elif not any(results.values()):
         return False, results
     else:
-        print(f"WARNING: {pdf_path} is not classified by area and text_len, by_image_area: {results['by_image_area']}, by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']}, by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']}", file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
+        logger.warning(f"pdf is not classified by area and text_len, by_image_area: {results['by_image_area']}, by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']}, by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']}", file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
         return False, results
 
 
@@ -350,7 +351,7 @@ def main(json_file):
                 is_needs_password = o['is_needs_password']
                 if is_encrypted or total_page == 0 or is_needs_password:  # 加密的，需要密码的，没有页面的，都不处理
                     continue
-                tag = classify(pdf_path, total_page, page_width, page_height, img_sz_list, text_len_list, text_layout_list)
+                tag = classify(total_page, page_width, page_height, img_sz_list, text_len_list, text_layout_list)
                 o['is_text_pdf'] = tag
                 print(json.dumps(o, ensure_ascii=False))
     except Exception as e:
