@@ -55,5 +55,8 @@ jobs:
         curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'    -d '{
         "msgtype": "text",
         "text": {
-            "content": "'${{ github.repository }}' GitHubAction Failed! \n" + "Please click here for details \n" + "https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
-        }                                                                                                                             }'
+            "content": '''
+               "'${{ github.repository }}' GitHubAction Failed! \n" +   "Please click here for details \n" + "https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
+              '''
+        } 
+        }'                                                                                                                            
