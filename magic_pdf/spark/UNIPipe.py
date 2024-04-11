@@ -4,6 +4,7 @@ from magic_pdf.dict2md.mkcontent import mk_universal_format
 from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
+from magic_pdf.libs.detect_language_from_model import get_language_from_model
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.spark.spark_api import parse_union_pdf, parse_ocr_pdf
@@ -36,16 +37,7 @@ class UNIPipe:
                     pdf_meta["text_layout_per_page"],
                 )
                 if is_text_pdf:
-                    allow_language = ["zh", "en"]  # 允许的语言,目前只允许简中和英文的
-                    text_language = pdf_meta["text_language"]
-                    logger.info(f"pdf meta_scan text_language is {text_language}")
-                    if text_language not in allow_language:  # 如果语言不在允许的语言中，则drop
-                        if text_language == "un":  # unknow的话可能是中文乱码，可以尝试用ocr识别
-                            return "ocr"
-                        else:
-                            raise Exception(f"pdf meta_scan need_drop,reason is {DropReason.NOT_ALLOW_LANGUAGE}")
-                    else:
-                        return "txt"
+                    return "txt"
                 else:
                     return "ocr"
 
@@ -53,13 +45,19 @@ class UNIPipe:
         """
         根据pdf类型，解析pdf
         """
-        if jso_useful_key['_pdf_type'] == "txt":
-            pdf_mid_data = parse_union_pdf(pdf_bytes, jso_useful_key['model_list'], image_writer)
-        elif jso_useful_key['_pdf_type'] == "ocr":
-            pdf_mid_data = parse_ocr_pdf(pdf_bytes, jso_useful_key['model_list'], image_writer)
+        text_language = get_language_from_model(jso_useful_key['model_list'])
+        allow_language = ["zh", "en"]  # 允许的语言,目前只允许简中和英文的
+        logger.info(f"pdf text_language is {text_language}")
+        if text_language not in allow_language:  # 如果语言不在允许的语言中，则drop
+            raise Exception(f"pdf meta_scan need_drop,reason is {DropReason.NOT_ALLOW_LANGUAGE}")
         else:
-            raise Exception(f"pdf type is not txt or ocr")
-        return JsonCompressor.compress(pdf_mid_data)
+            if jso_useful_key['_pdf_type'] == "txt":
+                pdf_mid_data = parse_union_pdf(pdf_bytes, jso_useful_key['model_list'], image_writer)
+            elif jso_useful_key['_pdf_type'] == "ocr":
+                pdf_mid_data = parse_ocr_pdf(pdf_bytes, jso_useful_key['model_list'], image_writer)
+            else:
+                raise Exception(f"pdf type is not txt or ocr")
+            return JsonCompressor.compress(pdf_mid_data)
 
     def mk_uni_format(self, pdf_mid_data: str, img_buket_path: str) -> list:
         """
