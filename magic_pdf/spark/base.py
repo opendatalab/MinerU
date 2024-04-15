@@ -26,9 +26,9 @@ def get_bookid(jso: dict):
 
 def exception_handler(jso: dict, e):
     logger.exception(e)
-    jso["need_drop"] = True
-    jso["drop_reason"] = DropReason.Exception
-    jso["exception"] = f"ERROR: {e}"
+    jso["_need_drop"] = True
+    jso["_drop_reason"] = DropReason.Exception
+    jso["_exception"] = f"ERROR: {e}"
     return jso
 
 

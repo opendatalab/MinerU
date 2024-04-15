@@ -2,6 +2,7 @@ import math
 from loguru import logger
 
 from magic_pdf.libs.boxbase import find_bottom_nearest_text_bbox, find_top_nearest_text_bbox
+from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.ocr_content_type import ContentType
 
 TYPE_INLINE_EQUATION = ContentType.InlineEquation
@@ -227,7 +228,7 @@ def __insert_before_para(text, type, element, content_list):
         logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file, search target is {text}")
          
 
-def mk_universal_format(para_dict: dict):
+def mk_universal_format(para_dict: dict, img_buket_path):
     """
     构造统一格式 https://aicarrier.feishu.cn/wiki/FqmMwcH69iIdCWkkyjvcDwNUnTY
     """
@@ -249,7 +250,7 @@ def mk_universal_format(para_dict: dict):
             for img in all_page_images:
                 content_node = {
                     "type": "image",
-                    "img_path": img['image_path'],
+                    "img_path": join_path(img_buket_path, img['image_path']),
                     "img_alt":"",
                     "img_title":"",
                     "img_caption":""
@@ -258,7 +259,7 @@ def mk_universal_format(para_dict: dict):
             for table in all_page_tables:
                 content_node = {
                     "type": "table",
-                    "img_path": table['image_path'],
+                    "img_path": join_path(img_buket_path, table['image_path']),
                     "table_latex": table.get("text"),
                     "table_title": "",
                     "table_caption": "",

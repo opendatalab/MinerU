@@ -1,22 +1,14 @@
-import json
-import os
 import time
-
 from loguru import logger
-
-from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_text_bbox
 from magic_pdf.libs.commons import (
-    read_file,
-    join_path,
     fitz,
-    get_img_s3_client,
     get_delta_time,
     get_docx_model_output,
 )
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.drop_tag import DropTag
+from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.ocr_content_type import ContentType
-from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.para.para_split import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component
 from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
@@ -38,38 +30,16 @@ from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 def parse_pdf_by_ocr(
         pdf_bytes,
         pdf_model_output,
-        save_path,
-        book_name,
-        pdf_model_profile=None,
-        image_s3_config=None,
+        imageWriter,
         start_page_id=0,
         end_page_id=None,
         debug_mode=False,
 ):
-
-    save_tmp_path = os.path.join(os.path.dirname(__file__), "../..", "tmp", "unittest")
-    book_name = sanitize_filename(book_name)
-    md_bookname_save_path = ""
-    if debug_mode:
-        save_path = join_path(save_tmp_path, "md")
-        pdf_local_path = join_path(save_tmp_path, "download-pdfs", book_name)
-
-        if not os.path.exists(os.path.dirname(pdf_local_path)):
-            # 如果目录不存在，创建它
-            os.makedirs(os.path.dirname(pdf_local_path))
-
-        md_bookname_save_path = join_path(save_tmp_path, "md", book_name)
-        if not os.path.exists(md_bookname_save_path):
-            # 如果目录不存在，创建它
-            os.makedirs(md_bookname_save_path)
-
-        with open(pdf_local_path + ".pdf", "wb") as pdf_file:
-            pdf_file.write(pdf_bytes)
+    pdf_bytes_md5 = compute_md5(pdf_bytes)
 
     pdf_docs = fitz.open("pdf", pdf_bytes)
     # 初始化空的pdf_info_dict
     pdf_info_dict = {}
-    img_s3_client = get_img_s3_client(save_path, image_s3_config)
 
     start_time = time.time()
 
@@ -91,16 +61,14 @@ def parse_pdf_by_ocr(
 
         # 获取当前页的模型数据
         ocr_page_info = get_docx_model_output(
-            pdf_model_output, pdf_model_profile, page_id
+            pdf_model_output, page_id
         )
 
         """从json中获取每页的页码、页眉、页脚的bbox"""
         page_no_bboxes = parse_pageNos(page_id, page, ocr_page_info)
         header_bboxes = parse_headers(page_id, page, ocr_page_info)
         footer_bboxes = parse_footers(page_id, page, ocr_page_info)
-        footnote_bboxes = parse_footnotes_by_model(
-            page_id, page, ocr_page_info, md_bookname_save_path, debug_mode=debug_mode
-        )
+        footnote_bboxes = parse_footnotes_by_model(page_id, page, ocr_page_info, debug_mode=debug_mode)
 
         # 构建需要remove的bbox字典
         need_remove_spans_bboxes_dict = {
@@ -179,7 +147,7 @@ def parse_pdf_by_ocr(
         spans, dropped_spans_by_removed_bboxes = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         '''对image和table截图'''
-        spans = cut_image_and_table(spans, page, page_id, book_name, save_path, img_s3_client)
+        spans = cut_image_and_table(spans, page, page_id, pdf_bytes_md5, imageWriter)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
         displayed_list = []
@@ -241,17 +209,5 @@ def parse_pdf_by_ocr(
 
     """分段"""
     para_split(pdf_info_dict, debug_mode=debug_mode)
-
-    '''在测试时,保存调试信息'''
-    if debug_mode:
-        params_file_save_path = join_path(
-            save_tmp_path, "md", book_name, "preproc_out.json"
-        )
-        with open(params_file_save_path, "w", encoding="utf-8") as f:
-            json.dump(pdf_info_dict, f, ensure_ascii=False, indent=4)
-
-        # drow_bbox
-        draw_layout_bbox(pdf_info_dict, pdf_bytes, md_bookname_save_path)
-        draw_text_bbox(pdf_info_dict, pdf_bytes, md_bookname_save_path)
 
     return pdf_info_dict
