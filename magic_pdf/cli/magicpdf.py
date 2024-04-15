@@ -50,7 +50,7 @@ def get_pdf_parse_method(method):
 
 def prepare_env():
     local_parent_dir = os.path.join(
-        get_local_dir(), "magic-pdf", datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        get_local_dir(), "magic-pdf", datetime.now().strftime("%Y-%m-%d")
     )
 
     local_image_dir = os.path.join(local_parent_dir, "images")
