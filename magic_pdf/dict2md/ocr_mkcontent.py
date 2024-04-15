@@ -69,11 +69,11 @@ def ocr_mk_mm_markdown(pdf_info_dict: dict):
     return '\n'.join(markdown)
 
 
-def ocr_mk_mm_markdown_with_para(pdf_info_dict: dict):
+def ocr_mk_mm_markdown_with_para(pdf_info_list: list, img_buket_path):
     markdown = []
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_list:
         paras_of_layout = page_info.get("para_blocks")
-        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm")
+        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm", img_buket_path)
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
@@ -100,7 +100,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
     return markdown_with_para_and_pagination
 
 
-def ocr_mk_markdown_with_para_core(paras_of_layout, mode):
+def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path):
     page_markdown = []
     for paras in paras_of_layout:
         for para in paras:
@@ -123,7 +123,7 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode):
                         content = f"\n$$\n{span['content']}\n$$\n"
                     elif span_type in [ContentType.Image, ContentType.Table]:
                         if mode == 'mm':
-                            content = f"\n![]({span['image_path']})\n"
+                            content = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
                         elif mode == 'nlp':
                             pass
                     if content != '':

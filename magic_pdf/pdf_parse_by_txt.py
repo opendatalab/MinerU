@@ -11,6 +11,7 @@ from magic_pdf.layout.bbox_sort import (
     prepare_bboxes_for_layout_split,
 )
 from magic_pdf.layout.layout_sort import LAYOUT_UNPROC, get_bboxes_layout, get_columns_cnt_of_layout, sort_text_block
+from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.markdown_utils import escape_special_markdown_char
@@ -400,4 +401,11 @@ def parse_pdf_by_txt(
     if error_info is not None:
         return _deal_with_text_exception(error_info)
 
-    return pdf_info_dict
+
+    """dict转list"""
+    pdf_info_list = dict_to_list(pdf_info_dict)
+    new_pdf_info_dict = {
+        "pdf_info": pdf_info_list,
+    }
+
+    return new_pdf_info_dict

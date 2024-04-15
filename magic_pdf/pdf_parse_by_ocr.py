@@ -5,6 +5,7 @@ from magic_pdf.libs.commons import (
     get_delta_time,
     get_docx_model_output,
 )
+from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.hash_utils import compute_md5
@@ -210,4 +211,10 @@ def parse_pdf_by_ocr(
     """分段"""
     para_split(pdf_info_dict, debug_mode=debug_mode)
 
-    return pdf_info_dict
+    """dict转list"""
+    pdf_info_list = dict_to_list(pdf_info_dict)
+    new_pdf_info_dict = {
+        "pdf_info": pdf_info_list,
+    }
+
+    return new_pdf_info_dict

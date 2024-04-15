@@ -228,12 +228,12 @@ def __insert_before_para(text, type, element, content_list):
         logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file, search target is {text}")
          
 
-def mk_universal_format(para_dict: dict, img_buket_path):
+def mk_universal_format(pdf_info_list: list, img_buket_path):
     """
     构造统一格式 https://aicarrier.feishu.cn/wiki/FqmMwcH69iIdCWkkyjvcDwNUnTY
     """
     content_lst = []
-    for _, page_info in para_dict.items():
+    for page_info in pdf_info_list:
         page_lst = [] # 一个page内的段落列表
         para_blocks = page_info.get("para_blocks")
         pymu_raw_blocks = page_info.get("preproc_blocks")
