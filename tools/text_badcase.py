@@ -886,6 +886,7 @@ def main(standard_file, test_file, zip_file, badcase_path, overall_path,base_dat
         except Exception as e:
             print(f"上传到S3时发生错误: {e}")
     print(result)
+    assert result == 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="主函数，执行整个评估流程。")
