@@ -36,7 +36,7 @@ def parse_txt_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter
     return pdf_info_dict
 
 
-def parse_ocr_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
+def parse_ocr_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
     """
     解析ocr类pdf
     """
@@ -48,12 +48,12 @@ def parse_ocr_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWrite
         debug_mode=is_debug,
     )
 
-    pdf_info_dict["parse_type"] = "ocr"
+    pdf_info_dict["_parse_type"] = "ocr"
 
     return pdf_info_dict
 
 
-def parse_union_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,  *args, **kwargs):
+def parse_union_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,  *args, **kwargs):
     """
     ocr和文本混合的pdf，全部解析出来
     """
@@ -72,18 +72,26 @@ def parse_union_pdf(pdf_bytes:bytes,  pdf_models:list, imageWriter: AbsReaderWri
 
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
 
-    if pdf_info_dict is None or pdf_info_dict.get("need_drop", False):
+    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
         else:
-            pdf_info_dict["parse_type"] = "ocr"
+            pdf_info_dict["_parse_type"] = "ocr"
     else:
-        pdf_info_dict["parse_type"] = "txt"
+        pdf_info_dict["_parse_type"] = "txt"
 
     return pdf_info_dict
 
 
-def spark_json_extractor(jso:dict):
-    pass
+def spark_json_extractor(jso: dict) -> dict:
+
+    """
+    从json中提取数据，返回一个dict
+    """
+
+    return {
+        "_pdf_type": jso["_pdf_type"],
+        "model_list": jso["doc_layout_result"],
+    }

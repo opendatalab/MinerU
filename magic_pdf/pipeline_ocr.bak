@@ -17,7 +17,7 @@ def ocr_pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -45,7 +45,7 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para(jso: dict, mode, debug_mode=
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -78,7 +78,7 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para_and_pagination(jso: dict, de
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -108,7 +108,7 @@ def ocr_pdf_intermediate_dict_to_markdown_with_para_for_qa(
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -137,7 +137,7 @@ def ocr_pdf_intermediate_dict_to_standard_format(jso: dict, debug_mode=False) ->
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -165,7 +165,7 @@ def ocr_pdf_intermediate_dict_to_standard_format_with_para(jso: dict, debug_mode
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -221,7 +221,7 @@ def ocr_parse_pdf_core(pdf_bytes, model_output_json_list, book_name, start_page_
 
 # 专门用来跑被drop的pdf，跑完之后需要把need_drop字段置为false
 def ocr_dropped_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
-    if not jso.get("need_drop", False):
+    if not jso.get("_need_drop", False):
         return jso
     else:
         try:
@@ -233,7 +233,7 @@ def ocr_dropped_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
             )
             jso["pdf_intermediate_dict"] = JsonCompressor.compress_json(pdf_info_dict)
             jso["parse_time"] = parse_time
-            jso["need_drop"] = False
+            jso["_need_drop"] = False
         except Exception as e:
             jso = exception_handler(jso, e)
         return jso
@@ -244,7 +244,7 @@ def ocr_parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             return jso
     try:
         pdf_bytes = get_pdf_bytes(jso)

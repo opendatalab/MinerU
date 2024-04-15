@@ -67,9 +67,7 @@ def demo_classify_by_type(book_name=None, debug_mode=True):
     img_num_list = pdf_meta["imgs_per_page"]
     text_len_list = pdf_meta["text_len_per_page"]
     text_layout_list = pdf_meta["text_layout_per_page"]
-    pdf_path = json_object.get("file_location")
     is_text_pdf, results = classify(
-        pdf_path,
         total_page,
         page_width,
         page_height,
@@ -89,7 +87,7 @@ def demo_meta_scan(book_name=None, debug_mode=True):
     s3_pdf_path = json_object.get("file_location")
     s3_config = get_s3_config_dict(s3_pdf_path)
     pdf_bytes = read_file(s3_pdf_path, s3_config)
-    res = pdf_meta_scan(s3_pdf_path, pdf_bytes)
+    res = pdf_meta_scan(pdf_bytes)
 
     logger.info(json.dumps(res, ensure_ascii=False))
     write_json_to_local(res, book_name)

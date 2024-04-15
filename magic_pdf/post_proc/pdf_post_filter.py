@@ -62,6 +62,6 @@ def pdf_post_filter(page_info) -> tuple:
     """
     bool_is_pseudo_single_column, extra_info = __is_pseudo_single_column(page_info)
     if bool_is_pseudo_single_column:
-        return False, {"need_drop": True, "drop_reason": DropReason.PSEUDO_SINGLE_COLUMN, "extra_info": extra_info}
+        return False, {"_need_drop": True, "_drop_reason": DropReason.PSEUDO_SINGLE_COLUMN, "extra_info": extra_info}
 
     return True, None

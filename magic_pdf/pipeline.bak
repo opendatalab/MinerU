@@ -32,8 +32,8 @@ def meta_scan(jso: dict, doc_layout_check=True) -> dict:
         if (
             "doc_layout_result" not in jso
         ):  # 检测json中是存在模型数据，如果没有则需要跳过该pdf
-            jso["need_drop"] = True
-            jso["drop_reason"] = DropReason.MISS_DOC_LAYOUT_RESULT
+            jso["_need_drop"] = True
+            jso["_drop_reason"] = DropReason.MISS_DOC_LAYOUT_RESULT
             return jso
     try:
         data_source = get_data_source(jso)
@@ -58,10 +58,10 @@ def meta_scan(jso: dict, doc_layout_check=True) -> dict:
         start_time = time.time()  # 记录开始时间
         res = pdf_meta_scan(s3_pdf_path, file_content)
         if res.get(
-            "need_drop", False
+            "_need_drop", False
         ):  # 如果返回的字典里有need_drop，则提取drop_reason并跳过本次解析
-            jso["need_drop"] = True
-            jso["drop_reason"] = res["drop_reason"]
+            jso["_need_drop"] = True
+            jso["_drop_reason"] = res["_drop_reason"]
         else:  # 正常返回
             jso["pdf_meta"] = res
             jso["content"] = ""
@@ -85,7 +85,7 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             return jso
     # 开始正式逻辑
     try:
@@ -113,8 +113,8 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
         if (
             is_encrypted or is_needs_password
         ):  # 加密的，需要密码的，没有页面的，都不处理
-            jso["need_drop"] = True
-            jso["drop_reason"] = DropReason.ENCRYPTED
+            jso["_need_drop"] = True
+            jso["_drop_reason"] = DropReason.ENCRYPTED
         else:
             start_time = time.time()  # 记录开始时间
             is_text_pdf, results = classify(
@@ -139,8 +139,8 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
                 if (
                     text_language not in allow_language
                 ):  # 如果语言不在允许的语言中，则drop
-                    jso["need_drop"] = True
-                    jso["drop_reason"] = DropReason.NOT_ALLOW_LANGUAGE
+                    jso["_need_drop"] = True
+                    jso["_drop_reason"] = DropReason.NOT_ALLOW_LANGUAGE
                     return jso
             else:
                 # 先不drop
@@ -148,8 +148,8 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
                 jso["_pdf_type"] = "OCR"
                 jso["pdf_meta"] = pdf_meta
                 jso["classify_time"] = classify_time
-                # jso["need_drop"] = True
-                # jso["drop_reason"] = DropReason.NOT_IS_TEXT_PDF
+                # jso["_need_drop"] = True
+                # jso["_drop_reason"] = DropReason.NOT_IS_TEXT_PDF
                 extra_info = {"classify_rules": []}
                 for condition, result in results.items():
                     if not result:
@@ -162,7 +162,7 @@ def classify_by_type(jso: dict, debug_mode=False) -> dict:
 
 
 def drop_needdrop_pdf(jso: dict) -> dict:
-    if jso.get("need_drop", False):
+    if jso.get("_need_drop", False):
         logger.info(
             f"book_name is:{get_data_source(jso)}/{jso['file_id']} need drop",
             file=sys.stderr,
@@ -176,7 +176,7 @@ def pdf_intermediate_dict_to_markdown(jso: dict, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             book_name = join_path(get_data_source(jso), jso["file_id"])
             logger.info(f"book_name is:{book_name} need drop", file=sys.stderr)
             jso["dropped"] = True
@@ -203,7 +203,7 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             return jso
     # 开始正式逻辑
     s3_pdf_path = jso.get("file_location")
@@ -220,8 +220,8 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
     svgs_per_page_list = jso["pdf_meta"]["svgs_per_page"]
     max_svgs = max(svgs_per_page_list)
     if max_svgs > 3000:
-        jso["need_drop"] = True
-        jso["drop_reason"] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_SVGS
+        jso["_need_drop"] = True
+        jso["_drop_reason"] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_SVGS
     else:
         try:
             save_path = s3_image_save_path
@@ -244,10 +244,10 @@ def parse_pdf(jso: dict, start_page_id=0, debug_mode=False) -> dict:
                 debug_mode=debug_mode,
             )
             if pdf_info_dict.get(
-                "need_drop", False
+                "_need_drop", False
             ):  # 如果返回的字典里有need_drop，则提取drop_reason并跳过本次解析
-                jso["need_drop"] = True
-                jso["drop_reason"] = pdf_info_dict["drop_reason"]
+                jso["_need_drop"] = True
+                jso["_drop_reason"] = pdf_info_dict["_drop_reason"]
             else:  # 正常返回，将 pdf_info_dict 压缩并存储
                 pdf_info_dict = JsonCompressor.compress_json(pdf_info_dict)
                 jso["pdf_intermediate_dict"] = pdf_info_dict
@@ -269,7 +269,7 @@ def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> d
     if debug_mode:
         pass
     else:  # 如果debug没开，则检测是否有needdrop字段
-        if jso.get("need_drop", False):
+        if jso.get("_need_drop", False):
             return jso
     # 开始正式逻辑
     s3_pdf_path = jso.get("file_location")
@@ -295,8 +295,8 @@ def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> d
     svgs_per_page_list = jso["pdf_meta"]["svgs_per_page"]
     max_svgs = max(svgs_per_page_list)
     if max_svgs > 3000:
-        jso["need_drop"] = True
-        jso["drop_reason"] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_SVGS
+        jso["_need_drop"] = True
+        jso["_drop_reason"] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_SVGS
     # elif total_page > 1000:
     #     jso['need_drop'] = True
     #     jso['drop_reason'] = DropReason.HIGH_COMPUTATIONAL_lOAD_BY_TOTAL_PAGES
@@ -323,10 +323,10 @@ def parse_pdf_for_model_train(jso: dict, start_page_id=0, debug_mode=False) -> d
                 debug_mode=debug_mode,
             )
             if pdf_info_dict.get(
-                "need_drop", False
+                "_need_drop", False
             ):  # 如果返回的字典里有need_drop，则提取drop_reason并跳过本次解析
-                jso["need_drop"] = True
-                jso["drop_reason"] = pdf_info_dict["drop_reason"]
+                jso["_need_drop"] = True
+                jso["_drop_reason"] = pdf_info_dict["_drop_reason"]
             else:  # 正常返回，将 pdf_info_dict 压缩并存储
                 jso["parsed_results"] = convert_to_train_format(pdf_info_dict)
                 pdf_info_dict = JsonCompressor.compress_json(pdf_info_dict)
