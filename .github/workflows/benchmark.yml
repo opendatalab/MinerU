@@ -41,7 +41,7 @@ jobs:
         fi
 
 
-    - name: benchmark
+    - name: get-benchmark-result
       run: |
         echo "start test"
         cd tools && python text_badcase.py pdf_json_label_0306.json pdf_json_label_0229.json json_files.zip text_badcase text_overall base_data_text.json
