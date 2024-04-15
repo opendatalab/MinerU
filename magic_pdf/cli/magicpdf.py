@@ -132,7 +132,7 @@ def pdf_command(pdf, model, method):
     local_image_dir, _ = prepare_env()
     local_image_rw = DiskReaderWriter(local_image_dir)
     parse = get_pdf_parse_method(method)
-    parse(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
+    parse(pdf_data, jso, local_image_rw, is_debug=True)
 
 
 if __name__ == "__main__":
