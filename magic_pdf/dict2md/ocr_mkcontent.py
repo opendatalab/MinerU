@@ -17,10 +17,10 @@ def split_long_words(text):
     return ' '.join(segments)
 
 
-def ocr_mk_nlp_markdown(pdf_info_dict: dict):
+def ocr_mk_nlp_markdown(pdf_info_dict: list):
     markdown = []
 
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_dict:
         blocks = page_info.get("preproc_blocks")
         if not blocks:
             continue
@@ -41,10 +41,10 @@ def ocr_mk_nlp_markdown(pdf_info_dict: dict):
     return '\n'.join(markdown)
 
 
-def ocr_mk_mm_markdown(pdf_info_dict: dict):
+def ocr_mk_mm_markdown(pdf_info_dict: list):
     markdown = []
 
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_dict:
         blocks = page_info.get("preproc_blocks")
         if not blocks:
             continue
@@ -78,17 +78,18 @@ def ocr_mk_mm_markdown_with_para(pdf_info_list: list, img_buket_path):
     return '\n\n'.join(markdown)
 
 
-def ocr_mk_nlp_markdown_with_para(pdf_info_dict: dict):
+def ocr_mk_nlp_markdown_with_para(pdf_info_dict: list):
     markdown = []
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
         page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "nlp")
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
-def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
+def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list):
     markdown_with_para_and_pagination = []
-    for page_no, page_info in pdf_info_dict.items():
+    page_no = 0
+    for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
@@ -97,6 +98,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: dict):
             'page_no': page_no,
             'md_content': '\n\n'.join(page_markdown)
         })
+        page_no += 1
     return markdown_with_para_and_pagination
 
 
@@ -171,9 +173,9 @@ def para_to_standard_format(para, img_buket_path):
         }
     return para_content
 
-def make_standard_format_with_para(pdf_info_dict: dict, img_buket_path: str):
+def make_standard_format_with_para(pdf_info_dict: list, img_buket_path: str):
     content_list = []
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
@@ -227,7 +229,7 @@ def line_to_standard_format(line, img_buket_path):
     return content
 
 
-def ocr_mk_mm_standard_format(pdf_info_dict: dict):
+def ocr_mk_mm_standard_format(pdf_info_dict: list):
     """
     content_list
     type         string      image/text/table/equation(行间的单独拿出来，行内的和text合并)
@@ -237,7 +239,7 @@ def ocr_mk_mm_standard_format(pdf_info_dict: dict):
     img_path     string      s3://full/path/to/img.jpg
     """
     content_list = []
-    for _, page_info in pdf_info_dict.items():
+    for page_info in pdf_info_dict:
         blocks = page_info.get("preproc_blocks")
         if not blocks:
             continue
