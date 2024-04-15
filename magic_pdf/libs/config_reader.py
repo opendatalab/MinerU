@@ -17,7 +17,7 @@ def read_config():
     config_file = os.path.join(home_dir, "magic-pdf.json")
 
     if not os.path.exists(config_file):
-        raise Exception("magic-pdf.json not found")
+        raise Exception(f"{config_file} not found")
 
     with open(config_file, "r") as f:
         config = json.load(f)
