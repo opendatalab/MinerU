@@ -40,12 +40,15 @@ jobs:
           pip install -r requirements.txt
         fi
 
-
+    - name: config-net-reset
+      run: |
+        export http_proxy=""
+        export https_proxy=""
     - name: get-benchmark-result
       run: |
         echo "start test"
-        cd tools && python text_badcase.py pdf_json_label_0306.json pdf_json_label_0229.json json_files.zip text_badcase text_overall base_data_text.json
-        python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip ocr_badcase ocr_overall base_data_ocr.json
+        cd tools && python text_badcase.py pdf_json_label_0306.json pdf_json_label_0229.json json_files.zip text_badcase text_overall base_data_text.json --s3_bucket_name llm-process-pperf --s3_file_directory qa-validate/pdf-datasets/badcase --AWS_ACCESS_KEY 7X9CWNHIVOHH3LXRD5WK  --AWS_SECRET_KEY IHLyTsv7h4ArzReLWUGZNKvwqB7CMrRi6e7ZyUt0 --END_POINT_URL http://p-ceph-norm-inside.pjlab.org.cn:80
+        python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip ocr_badcase ocr_overall base_data_ocr.json --s3_bucket_name llm-process-pperf --s3_file_directory qa-validate/pdf-datasets/badcase --AWS_ACCESS_KEY 7X9CWNHIVOHH3LXRD5WK  --AWS_SECRET_KEY IHLyTsv7h4ArzReLWUGZNKvwqB7CMrRi6e7ZyUt0 --END_POINT_URL http://p-ceph-norm-inside.pjlab.org.cn:80
   
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
