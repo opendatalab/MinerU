@@ -15,7 +15,7 @@ from loguru import logger
 
 from magic_pdf.libs.config_reader import get_s3_config_dict
 from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
-from magic_pdf.spark.base import get_data_source
+from magic_pdf.spark.spark_api import get_data_source
 
 
 def demo_parse_pdf(book_name=None, start_page_id=0, debug_mode=True):

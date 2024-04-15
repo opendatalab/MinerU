@@ -28,7 +28,7 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
 
     byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
 
-    imageWriter.write(data=byte_data, path=img_hash256_path, mode="binary")
+    imageWriter.write(content=byte_data, path=img_hash256_path, mode="binary")
 
     return img_hash256_path
 

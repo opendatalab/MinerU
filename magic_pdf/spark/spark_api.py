@@ -1,88 +1,42 @@
-
-"""
-用户输入：
-    model数组，每个元素代表一个页面
-    pdf在s3的路径
-    截图保存的s3位置
-
-然后：
-    1）根据s3路径，调用spark集群的api,拿到ak,sk,endpoint，构造出s3PDFReader
-    2）根据用户输入的s3地址，调用spark集群的api,拿到ak,sk,endpoint，构造出s3ImageWriter
-
-其余部分至于构造s3cli, 获取ak,sk都在code-clean里写代码完成。不要反向依赖！！！
-
-"""
 from loguru import logger
 
-from magic_pdf.io import AbsReaderWriter
-from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
-from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
+from magic_pdf.libs.drop_reason import DropReason
 
 
-def parse_txt_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
-    """
-    解析文本类pdf
-    """
-    pdf_info_dict = parse_pdf_by_txt(
-        pdf_bytes,
-        pdf_models,
-        imageWriter,
-        start_page_id=start_page,
-        debug_mode=is_debug,
-    )
-
-    pdf_info_dict["parse_type"] = "txt"
-
-    return pdf_info_dict
+def get_data_source(jso: dict):
+    data_source = jso.get("data_source")
+    if data_source is None:
+        data_source = jso.get("file_source")
+    return data_source
 
 
-def parse_ocr_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args, **kwargs):
-    """
-    解析ocr类pdf
-    """
-    pdf_info_dict = parse_pdf_by_ocr(
-        pdf_bytes,
-        pdf_models,
-        imageWriter,
-        start_page_id=start_page,
-        debug_mode=is_debug,
-    )
-
-    pdf_info_dict["_parse_type"] = "ocr"
-
-    return pdf_info_dict
+def get_data_type(jso: dict):
+    data_type = jso.get("data_type")
+    if data_type is None:
+        data_type = jso.get("file_type")
+    return data_type
 
 
-def parse_union_pdf(pdf_bytes:bytes, pdf_models:list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,  *args, **kwargs):
-    """
-    ocr和文本混合的pdf，全部解析出来
-    """
-    def parse_pdf(method):
-        try:
-            return method(
-                pdf_bytes,
-                pdf_models,
-                imageWriter,
-                start_page_id=start_page,
-                debug_mode=is_debug,
-            )
-        except Exception as e:
-            logger.error(f"{method.__name__} error: {e}")
-            return None
+def get_bookid(jso: dict):
+    book_id = jso.get("bookid")
+    if book_id is None:
+        book_id = jso.get("original_file_id")
+    return book_id
 
-    pdf_info_dict = parse_pdf(parse_pdf_by_txt)
 
-    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
-        logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
-        pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
-        if pdf_info_dict is None:
-            raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
-        else:
-            pdf_info_dict["_parse_type"] = "ocr"
-    else:
-        pdf_info_dict["_parse_type"] = "txt"
+def exception_handler(jso: dict, e):
+    logger.exception(e)
+    jso["_need_drop"] = True
+    jso["_drop_reason"] = DropReason.Exception
+    jso["_exception"] = f"ERROR: {e}"
+    return jso
 
-    return pdf_info_dict
+
+def get_bookname(jso: dict):
+    data_source = get_data_source(jso)
+    file_id = jso.get("file_id")
+    book_name = f"{data_source}/{file_id}"
+    return book_name
 
 
 def spark_json_extractor(jso: dict) -> dict:

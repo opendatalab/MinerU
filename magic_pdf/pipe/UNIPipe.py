@@ -1,20 +1,26 @@
+import json
+
 from loguru import logger
 
-from magic_pdf.dict2md.mkcontent import mk_universal_format
-from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para
+from magic_pdf.dict2md.mkcontent import mk_universal_format, mk_mm_markdown
+from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para, ocr_mk_mm_markdown_with_para
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
+from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.io.DiskReaderWriter import DiskReaderWriter
+from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.detect_language_from_model import get_language_from_model
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.spark.spark_api import parse_union_pdf, parse_ocr_pdf
+from magic_pdf.user_api import parse_union_pdf, parse_ocr_pdf
 
 
 class UNIPipe:
     def __init__(self):
         pass
 
-    def classify(self, pdf_bytes: bytes) -> str:
+    @staticmethod
+    def classify(pdf_bytes: bytes) -> str:
         """
         根据pdf的元数据，判断是否是文本pdf，还是ocr pdf
         """
@@ -57,25 +63,64 @@ class UNIPipe:
                 pdf_mid_data = parse_ocr_pdf(pdf_bytes, jso_useful_key['model_list'], image_writer)
             else:
                 raise Exception(f"pdf type is not txt or ocr")
-            return JsonCompressor.compress(pdf_mid_data)
+            return JsonCompressor.compress_json(pdf_mid_data)
 
-    def mk_uni_format(self, pdf_mid_data: str, img_buket_path: str) -> list:
+    @staticmethod
+    def mk_uni_format(pdf_mid_data: str, img_buket_path: str) -> list:
         """
         根据pdf类型，生成统一格式content_list
         """
         pdf_mid_data = JsonCompressor.decompress_json(pdf_mid_data)
         parse_type = pdf_mid_data["_parse_type"]
+        pdf_info_list = pdf_mid_data["pdf_info"]
         if parse_type == "txt":
-            content_list = mk_universal_format(pdf_mid_data, img_buket_path)
+            content_list = mk_universal_format(pdf_info_list, img_buket_path)
         elif parse_type == "ocr":
-            content_list = make_standard_format_with_para(pdf_mid_data, img_buket_path)
+            content_list = make_standard_format_with_para(pdf_info_list, img_buket_path)
         return content_list
+
+    @staticmethod
+    def mk_markdown(pdf_mid_data: str, img_buket_path: str) -> list:
+        """
+        根据pdf类型，markdown
+        """
+        pdf_mid_data = JsonCompressor.decompress_json(pdf_mid_data)
+        parse_type = pdf_mid_data["_parse_type"]
+        pdf_info_list = pdf_mid_data["pdf_info"]
+        if parse_type == "txt":
+            content_list = mk_universal_format(pdf_info_list, img_buket_path)
+            md_content = mk_mm_markdown(content_list)
+        elif parse_type == "ocr":
+            md_content = ocr_mk_mm_markdown_with_para(pdf_info_list, img_buket_path)
+        return md_content
 
 
 if __name__ == '__main__':
     # 测试
-    pipe = UNIPipe()
-    pdf_bytes = open(r"D:\project\20231108code-clean\magic_pdf\tmp\unittest\download-pdfs\数学新星网\edu_00001544.pdf",
-                     "rb").read()
-    pdf_type = pipe.classify(pdf_bytes)
+    # file_path = r"tmp/unittest/download-pdfs/数学新星网/edu_00001236.pdf"
+    drw = DiskReaderWriter(r"D:/project/20231108code-clean")
+    # pdf_bytes = drw.read(path=file_path, mode=AbsReaderWriter.MODE_BIN)
+    # pdf_type = UNIPipe.classify(pdf_bytes)
+    # logger.info(f"pdf_type is {pdf_type}")
+
+    pdf_file_path = r"linshixuqiu\25536-00.pdf"
+    model_file_path = r"linshixuqiu\25536-00.json"
+    pdf_bytes = drw.read(path=pdf_file_path, mode=AbsReaderWriter.MODE_BIN)
+    model_json_txt = drw.read(path=model_file_path, mode=AbsReaderWriter.MODE_TXT)
+
+    pdf_type = UNIPipe.classify(pdf_bytes)
     logger.info(f"pdf_type is {pdf_type}")
+    jso_useful_key = {
+        "_pdf_type": pdf_type,
+        "model_list": json.loads(model_json_txt),
+    }
+    pipe = UNIPipe()
+    write_path = r"D:\project\20231108code-clean\linshixuqiu\25536-00"
+    img_buket_path = "imgs"
+    img_writer = DiskReaderWriter(join_path(write_path, img_buket_path))
+    pdf_mid_data = pipe.parse(pdf_bytes, img_writer, jso_useful_key)
+
+    md_content = pipe.mk_markdown(pdf_mid_data, "imgs")
+    md_writer = DiskReaderWriter(write_path)
+    md_writer.write(content=md_content, path="25536-00.md", mode=AbsReaderWriter.MODE_TXT)
+    md_writer.write(content=json.dumps(JsonCompressor.decompress_json(pdf_mid_data), ensure_ascii=False, indent=4), path="25536-00.json", mode=AbsReaderWriter.MODE_TXT)
