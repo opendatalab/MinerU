@@ -780,14 +780,14 @@ def save_results(result_dict,overall_report_dict,badcase_path,overall_path,):
     with open(badcase_path, 'w', encoding='utf-8') as f:
         # 将结果字典转换为JSON格式并写入文件
         json.dump(result_dict, f, ensure_ascii=False, indent=4)
-
-    print(f"文本型PDF抽取方案评测badcase输出报告查看：{badcase_path}")
+    badcase_path_res = "文本型PDF抽取方案评测badcase输出报告查看：" + badcase_path
+    print(f'\033[31m{badcase_path_res}\033[0m')
 
     with open(overall_path, 'w', encoding='utf-8') as f:
     # 将结果字典转换为JSON格式并写入文件
         json.dump(overall_report_dict, f, ensure_ascii=False, indent=4)
-
-    print(f"文本型PDF抽取方案整体评测指标结果请查看：{overall_path}")
+    overall_path_res = "文本型PDF抽取方案整体评测指标结果请查看：" + overall_path
+    print(f'\033[31m{overall_path_res}\033[0m')
 
     
 def upload_to_s3(file_path, bucket_name, s3_directory, AWS_ACCESS_KEY, AWS_SECRET_KEY, END_POINT_URL):
