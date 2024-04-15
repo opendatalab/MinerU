@@ -45,7 +45,7 @@ jobs:
       run: |
         echo "start test"
         cd tools && python text_badcase.py pdf_json_label_0306.json pdf_json_label_0229.json json_files.zip text_badcase text_overall base_data_text.json
-        cd tools && python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip ocr_badcase ocr_overall base_data_ocr.json
+        python ocr_badcase.py pdf_json_label_0306.json ocr_dataset.json json_files.zip ocr_badcase ocr_overall base_data_ocr.json
   
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
