@@ -769,13 +769,13 @@ def save_results(result_dict,overall_report_dict,badcase_path,overall_path,):
         # 将结果字典转换为JSON格式并写入文件
         json.dump(result_dict, f, ensure_ascii=False, indent=4)
 
-    print(f"计算结果已经保存到文件：{badcase_path}")
+    print(f"评测badcase输出报告查看：{badcase_path}")
 
     with open(overall_path, 'w', encoding='utf-8') as f:
     # 将结果字典转换为JSON格式并写入文件
         json.dump(overall_report_dict, f, ensure_ascii=False, indent=4)
 
-    print(f"计算结果已经保存到文件：{overall_path}")
+    print(f"整体评测指标结果请查看：{overall_path}")
 
 def upload_to_s3(file_path, bucket_name, s3_directory, AWS_ACCESS_KEY, AWS_SECRET_KEY, END_POINT_URL):
     """
