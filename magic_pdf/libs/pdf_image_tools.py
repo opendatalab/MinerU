@@ -1,4 +1,4 @@
-
+from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.commons import fitz
 from loguru import logger
 from magic_pdf.libs.commons import join_path
@@ -28,7 +28,7 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
 
     byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
 
-    imageWriter.write(content=byte_data, path=img_hash256_path, mode="binary")
+    imageWriter.write(byte_data, img_hash256_path, AbsReaderWriter.MODE_BIN)
 
     return img_hash256_path
 
