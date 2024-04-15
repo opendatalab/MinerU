@@ -768,7 +768,7 @@ def merge_json_data(json_test_df, json_standard_df):
 
     return inner_merge, standard_exist, test_exist
 
-def save_results(result_dict,overall_report_dict,badcase_path,overall_path,):
+def save_results(result_dict,overall_report_dict,badcase_path,overall_path, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url):
     """
     将结果字典保存为JSON文件至指定路径。
 
@@ -776,18 +776,21 @@ def save_results(result_dict,overall_report_dict,badcase_path,overall_path,):
     - result_dict: 包含计算结果的字典。
     - overall_path: 结果文件的保存路径，包括文件名。
     """
+    with open(overall_path, 'w', encoding='utf-8') as f:
+    # 将结果字典转换为JSON格式并写入文件
+        json.dump(overall_report_dict, f, ensure_ascii=False, indent=4)
+    final_overall_path = upload_to_s3(overall_path, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
+    overall_path_res = "文本型PDF抽取方案整体评测指标结果请查看：" + final_overall_path
+    print(f'\033[31m{overall_path_res}\033[0m')
     # 打开指定的文件以写入
     with open(badcase_path, 'w', encoding='utf-8') as f:
         # 将结果字典转换为JSON格式并写入文件
         json.dump(result_dict, f, ensure_ascii=False, indent=4)
-    badcase_path_res = "文本型PDF抽取方案评测badcase输出报告查看：" + badcase_path
+    final_badcase_path = upload_to_s3(badcase_path, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
+    badcase_path_res = "文本型PDF抽取方案评测badcase输出报告查看：" + final_badcase_path
     print(f'\033[31m{badcase_path_res}\033[0m')
 
-    with open(overall_path, 'w', encoding='utf-8') as f:
-    # 将结果字典转换为JSON格式并写入文件
-        json.dump(overall_report_dict, f, ensure_ascii=False, indent=4)
-    overall_path_res = "文本型PDF抽取方案整体评测指标结果请查看：" + overall_path
-    print(f'\033[31m{overall_path_res}\033[0m')
+
 
     
 def upload_to_s3(file_path, bucket_name, s3_directory, AWS_ACCESS_KEY, AWS_SECRET_KEY, END_POINT_URL):
@@ -805,8 +808,9 @@ def upload_to_s3(file_path, bucket_name, s3_directory, AWS_ACCESS_KEY, AWS_SECRE
         
         # 上传文件到S3
         s3.upload_file(file_path, bucket_name, s3_object_key)
-        
-        print(f"文件 {file_path} 成功上传到S3存储桶 {bucket_name} 中的目录 {s3_directory}，文件名为 {file_name}")
+        s3_path = f"http://st.bigdata.shlab.tech/S3_Browser?output_path=s3://{bucket_name}/{s3_directory}/{file_name}"
+        return s3_path
+        #print(f"文件 {file_path} 成功上传到S3存储桶 {bucket_name} 中的目录 {s3_directory}，文件名为 {file_name}")
     except FileNotFoundError:
         print(f"文件 {file_path} 未找到，请检查文件路径是否正确。")
     except NoCredentialsError:
@@ -875,17 +879,17 @@ def main(standard_file, test_file, zip_file, badcase_path, overall_path,base_dat
     badcase_file,overall_file = generate_filename(badcase_path,overall_path)
 
     # 保存结果到JSON文件
-    save_results(result_dict, overall_report_dict,badcase_file,overall_file)
+    save_results(result_dict, overall_report_dict,badcase_file,overall_file,  s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
 
     result=compare_edit_distance(base_data_path, overall_report_dict)
-
+    """
     if all([s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url]):
         try:
             upload_to_s3(badcase_file, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
             upload_to_s3(overall_file, s3_bucket_name, s3_file_directory, aws_access_key, aws_secret_key, end_point_url)
         except Exception as e:
             print(f"上传到S3时发生错误: {e}")
-    print(result)
+    """
     assert result == 1
 
 if __name__ == "__main__":
