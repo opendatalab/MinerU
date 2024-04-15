@@ -2,6 +2,7 @@
 根据bucket的名字返回对应的s3 AK， SK，endpoint三元组
 
 """
+
 import json
 import os
 
@@ -10,11 +11,7 @@ from loguru import logger
 from magic_pdf.libs.commons import parse_bucket_key
 
 
-def get_s3_config(bucket_name: str):
-    """
-    ~/magic-pdf.json 读出来
-    """
-
+def read_config():
     home_dir = os.path.expanduser("~")
 
     config_file = os.path.join(home_dir, "magic-pdf.json")
@@ -24,6 +21,14 @@ def get_s3_config(bucket_name: str):
 
     with open(config_file, "r") as f:
         config = json.load(f)
+    return config
+
+
+def get_s3_config(bucket_name: str):
+    """
+    ~/magic-pdf.json 读出来
+    """
+    config = read_config()
 
     bucket_info = config.get("bucket_info")
     if bucket_name not in bucket_info:
@@ -49,5 +54,10 @@ def get_bucket_name(path):
     return bucket
 
 
-if __name__ == '__main__':
+def get_local_dir():
+    config = read_config()
+    return config.get("temp-output-dir", "/tmp")
+
+
+if __name__ == "__main__":
     ak, sk, endpoint = get_s3_config("llm-raw")
