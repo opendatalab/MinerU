@@ -35,8 +35,8 @@ class DiskReaderWriter(AbsReaderWriter):
             abspath = path
         else:
             abspath = os.path.join(self.path, path)
-        if not os.path.exists(abspath):
-            directory_path = os.path.dirname(abspath)
+        directory_path = os.path.dirname(abspath)
+        if not os.path.exists(directory_path):
             os.makedirs(directory_path)
         if mode == MODE_TXT:
             with open(abspath, "w", encoding=self.encoding) as f:
