@@ -32,7 +32,7 @@ class MagicModel():
     def get_equations(self, page_no:int)->list: # 有坐标，也有字
         return inline_equations, interline_equations  # @凯文
         
-    def get_discarded(self, page_no:int)->list: # 自研模型，只有坐标
+    def get_discarded(self, page_no:int)->list: # 自研模型，只有坐标 
         pass # @凯文
         
     def get_text_blocks(self, page_no:int)->list: # 自研模型搞的，只有坐标，没有字
