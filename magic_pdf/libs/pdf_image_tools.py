@@ -1,6 +1,6 @@
 from loguru import logger
 
-from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.commons import fitz
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.hash_utils import compute_sha256

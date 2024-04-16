@@ -1,4 +1,4 @@
-from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.commons import parse_aws_param, parse_bucket_key
 import boto3
 from loguru import logger

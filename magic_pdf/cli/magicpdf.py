@@ -33,8 +33,8 @@ from magic_pdf.libs.path_utils import (
     remove_non_official_s3_args,
 )
 from magic_pdf.libs.config_reader import get_local_dir
-from magic_pdf.io.S3ReaderWriter import S3ReaderWriter, MODE_BIN, MODE_TXT
-from magic_pdf.io.DiskReaderWriter import DiskReaderWriter
+from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter, MODE_BIN, MODE_TXT
+from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.json_compressor import JsonCompressor
 
 
@@ -119,7 +119,7 @@ def json_command(json, method):
 
     _do_parse(
         pdf_data,
-        jso,
+        jso['doc_layout_result'],
         method,
         local_image_rw,
         local_md_rw,

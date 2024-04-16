@@ -1,5 +1,5 @@
 import os
-from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from loguru import logger
 
 
