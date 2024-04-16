@@ -1,4 +1,3 @@
-from loguru import logger
 
 from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.commons import fitz
@@ -19,10 +18,6 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
 
     # 新版本生成平铺路径
     img_hash256_path = f"{compute_sha256(img_path)}.jpg"
-
-    if any([bbox[0] >= bbox[2], bbox[1] >= bbox[3]]):
-        logger.warning(f"image_bboxes: 错误的box, {bbox}")
-        return img_hash256_path
 
     # 将坐标转换为fitz.Rect对象
     rect = fitz.Rect(*bbox)
