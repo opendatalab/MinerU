@@ -16,7 +16,7 @@ from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
 from magic_pdf.pre_proc.detect_header import parse_headers
 from magic_pdf.pre_proc.detect_page_number import parse_pageNos
-from magic_pdf.pre_proc.ocr_cut_image import cut_image_and_table
+from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_layout import layout_detect
 from magic_pdf.pre_proc.ocr_dict_merge import (
     merge_spans_to_line_by_layout, merge_lines_to_block,
@@ -25,7 +25,6 @@ from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remo
     adjust_bbox_for_standalone_block, modify_y_axis, modify_inline_equation, get_qa_need_list, \
     remove_spans_by_bboxes_dict
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
-
 
 
 def parse_pdf_by_ocr(
@@ -148,7 +147,7 @@ def parse_pdf_by_ocr(
         spans, dropped_spans_by_removed_bboxes = remove_spans_by_bboxes_dict(spans, need_remove_spans_bboxes_dict)
 
         '''对image和table截图'''
-        spans = cut_image_and_table(spans, page, page_id, pdf_bytes_md5, imageWriter)
+        spans = ocr_cut_image_and_table(spans, page, page_id, pdf_bytes_md5, imageWriter)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
         displayed_list = []
@@ -202,10 +201,10 @@ def parse_pdf_by_ocr(
 
         '''构造pdf_info_dict'''
         page_info = ocr_construct_page_component(blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
-                                             images, tables, interline_equations, inline_equations,
-                                             dropped_text_block, dropped_image_block, dropped_table_block,
-                                             dropped_equation_block,
-                                             need_remove_spans_bboxes_dict)
+                                                 images, tables, interline_equations, inline_equations,
+                                                 dropped_text_block, dropped_image_block, dropped_table_block,
+                                                 dropped_equation_block,
+                                                 need_remove_spans_bboxes_dict)
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
