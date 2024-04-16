@@ -29,9 +29,9 @@ class UNIPipe(AbsPipe):
 
     def pipe_parse(self):
         if self.pdf_type == "txt":
-            self.pdf_mid_data = parse_union_pdf(pdf_bytes, self.model_list, self.image_writer)
+            self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer)
         elif self.pdf_type == "ocr":
-            self.pdf_mid_data = parse_ocr_pdf(pdf_bytes, self.model_list, self.image_writer)
+            self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer)
         self.compressed_pdf_mid_data = JsonCompressor.compress_json(self.pdf_mid_data)
 
     def pipe_mk_uni_format(self):

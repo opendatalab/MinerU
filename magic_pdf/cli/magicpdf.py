@@ -54,7 +54,7 @@ def prepare_env():
 
 
 def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
-    uni_pipe = UNIPipe()
+    uni_pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir)
     jso_useful_key = {
         "_pdf_type": "txt",
         "model_list": model_list,
@@ -62,7 +62,7 @@ def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, imag
     if parse_method == "ocr":
         jso_useful_key["_pdf_type"] = "ocr"
 
-    pdf_mid_data = uni_pipe.parse(pdf_bytes, image_writer, jso_useful_key)
+    pdf_mid_data = uni_pipe.pipe_parse()
     md_content = UNIPipe.mk_markdown(pdf_mid_data, image_dir)
     part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(content=md_content, path=f"{part_file_name}.md", mode=MODE_TXT)
