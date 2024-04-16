@@ -21,7 +21,11 @@ python magicpdf.py --json  s3://llm-pdf-text/scihub/xxxx.json?bytes=0,81350
 python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf --model /home/llm/Downloads/xxxx.json  或者 python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf
 """
 
+import os
+import json as json_parse
+from datetime import datetime
 import click
+from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import (
     parse_s3path,
@@ -29,23 +33,12 @@ from magic_pdf.libs.path_utils import (
     remove_non_official_s3_args,
 )
 from magic_pdf.libs.config_reader import get_local_dir
-from magic_pdf.io.S3ReaderWriter import S3ReaderWriter, MODE_BIN
-from magic_pdf.io.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.spark.spark_api import parse_union_pdf, parse_txt_pdf, parse_ocr_pdf
-import os
-import json as json_parse
-from datetime import datetime
+from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter, MODE_BIN, MODE_TXT
+from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+from magic_pdf.libs.json_compressor import JsonCompressor
 
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
-
-
-def get_pdf_parse_method(method):
-    if method == "ocr":
-        return parse_ocr_pdf
-    elif method == "txt":
-        return parse_txt_pdf
-    return parse_union_pdf
 
 
 def prepare_env():
@@ -58,6 +51,28 @@ def prepare_env():
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
+
+
+def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
+    uni_pipe = UNIPipe()
+    jso_useful_key = {
+        "_pdf_type": "txt",
+        "model_list": model_list,
+    }
+    if parse_method == "ocr":
+        jso_useful_key["_pdf_type"] = "ocr"
+
+    pdf_mid_data = uni_pipe.parse(pdf_bytes, image_writer, jso_useful_key)
+    md_content = UNIPipe.mk_markdown(pdf_mid_data, image_dir)
+    part_file_name = datetime.now().strftime("%H-%M-%S")
+    md_writer.write(content=md_content, path=f"{part_file_name}.md", mode=MODE_TXT)
+    md_writer.write(
+        content=json_parse.dumps(
+            JsonCompressor.decompress_json(pdf_mid_data), ensure_ascii=False, indent=4
+        ),
+        path=f"{part_file_name}.json",
+        mode=MODE_TXT,
+    )
 
 
 @click.group()
@@ -96,11 +111,20 @@ def json_command(json, method):
 
     jso = json_parse.loads(read_s3_path(json).decode("utf-8"))
     pdf_data = read_s3_path(jso["file_location"])
-    local_image_dir, _ = prepare_env()
+    local_image_dir, local_md_dir = prepare_env()
 
-    local_image_rw = DiskReaderWriter(local_image_dir)
-    parse = get_pdf_parse_method(method)
-    parse(pdf_data, jso["doc_layout_result"], local_image_rw, is_debug=True)
+    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
+        local_md_dir
+    )
+
+    _do_parse(
+        pdf_data,
+        jso['doc_layout_result'],
+        method,
+        local_image_rw,
+        local_md_rw,
+        local_image_dir,
+    )
 
 
 @cli.command()
@@ -128,15 +152,22 @@ def pdf_command(pdf, model, method):
 
     pdf_data = read_fn(pdf)
     jso = json_parse.loads(read_fn(model).decode("utf-8"))
-
-    local_image_dir, _ = prepare_env()
-    local_image_rw = DiskReaderWriter(local_image_dir)
-    parse = get_pdf_parse_method(method)
-    parse(pdf_data, jso, local_image_rw, is_debug=True)
+    local_image_dir, local_md_dir = prepare_env()
+    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
+        local_md_dir
+    )
+    _do_parse(
+        pdf_data,
+        jso,
+        method,
+        local_image_rw,
+        local_md_rw,
+        local_image_dir,
+    )
 
 
 if __name__ == "__main__":
     """
-    python magic_pdf/cli/magicpdf.py json-command --json s3://llm-pdf-text/pdf_ebook_and_paper/format/v070/part-66028dd46437-000076.jsonl?bytes=0,308393
+    python magic_pdf/cli/magicpdf.py json-command --json s3://llm-pdf-text/pdf_ebook_and_paper/manual/v001/part-660407a28beb-000002.jsonl?bytes=0,63551
     """
     cli()

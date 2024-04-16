@@ -299,9 +299,9 @@ def __split_para_in_layoutbox(lines_group, new_layout_bbox, lang="en", char_avg_
                     layout_list_info[0] = True
                 if end==total_lines-1:
                     layout_list_info[1] = True
-            else:
+            else: # 是普通文本
                 for i, line in enumerate(lines[start:end+1]):
-                    # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断一下行结尾特征。
+                    # 如果i有下一行，那么就要根据下一行位置综合判断是否要分段。如果i之后没有行，那么只需要判断i行自己的结尾特征。
                     cur_line_type = line['spans'][-1]['type']
                     next_line = lines[i+1] if i<total_lines-1 else None
                     
@@ -341,6 +341,8 @@ def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info,
     """
     if len(layout_paras)==0 or len(layout_list_info)==0: # 0的时候最后的return 会出错
         return layout_paras, [False, False]
+    # if page_num==343:
+    #     pass
         
     for i in range(1, len(layout_paras)):
         pre_layout_list_info = layout_list_info[i-1]
