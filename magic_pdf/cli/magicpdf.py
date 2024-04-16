@@ -119,7 +119,7 @@ def json_command(json, method):
 
     _do_parse(
         pdf_data,
-        jso["doc_layout_result"],
+        jso,
         method,
         local_image_rw,
         local_md_rw,
@@ -158,7 +158,7 @@ def pdf_command(pdf, model, method):
     )
     _do_parse(
         pdf_data,
-        jso["doc_layout_result"],
+        jso,
         method,
         local_image_rw,
         local_md_rw,
