@@ -1,3 +1,5 @@
+from loguru import logger
+
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
@@ -151,6 +153,7 @@ def para_to_standard_format(para, img_buket_path):
             for span in line['spans']:
                 language = ''
                 span_type = span.get('type')
+                content = ""
                 if span_type == ContentType.Text:
                     content = span['content']
                     language = detect_lang(content)
