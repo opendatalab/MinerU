@@ -105,8 +105,8 @@ if __name__ == '__main__':
 
     pdf_file_path = r"linshixuqiu\25536-00.pdf"
     model_file_path = r"linshixuqiu\25536-00.json"
-    pdf_bytes = drw.read(path=pdf_file_path, mode=AbsReaderWriter.MODE_BIN)
-    model_json_txt = drw.read(path=model_file_path, mode=AbsReaderWriter.MODE_TXT)
+    pdf_bytes = drw.read(pdf_file_path, AbsReaderWriter.MODE_BIN)
+    model_json_txt = drw.read(model_file_path, AbsReaderWriter.MODE_TXT)
 
     pdf_type = UNIPipe.classify(pdf_bytes)
     logger.info(f"pdf_type is {pdf_type}")
@@ -122,5 +122,5 @@ if __name__ == '__main__':
 
     md_content = pipe.mk_markdown(pdf_mid_data, "imgs")
     md_writer = DiskReaderWriter(write_path)
-    md_writer.write(content=md_content, path="25536-00.md", mode=AbsReaderWriter.MODE_TXT)
-    md_writer.write(content=json.dumps(JsonCompressor.decompress_json(pdf_mid_data), ensure_ascii=False, indent=4), path="25536-00.json", mode=AbsReaderWriter.MODE_TXT)
+    md_writer.write(md_content, "25536-00.md", AbsReaderWriter.MODE_TXT)
+    md_writer.write(json.dumps(JsonCompressor.decompress_json(pdf_mid_data), ensure_ascii=False, indent=4), "25536-00.json", AbsReaderWriter.MODE_TXT)

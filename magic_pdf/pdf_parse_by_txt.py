@@ -17,6 +17,7 @@ from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.markdown_utils import escape_special_markdown_char
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
+from magic_pdf.pre_proc.cut_image import txt_save_images_by_bboxes
 from magic_pdf.pre_proc.detect_images import parse_images
 from magic_pdf.pre_proc.detect_tables import parse_tables  # 获取tables的bbox
 from magic_pdf.pre_proc.detect_equation import parse_equations  # 获取equations的bbox
@@ -48,8 +49,6 @@ from para.exceptions import (
 )
 '''
 
-from magic_pdf.libs.commons import read_file, join_path
-from magic_pdf.libs.pdf_image_tools import save_images_by_bboxes
 from magic_pdf.post_proc.remove_footnote import merge_footnote_blocks, remove_footnote_blocks
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
 from magic_pdf.pre_proc.equations_replace import combine_chars_to_pymudict, remove_chars_in_text_blocks, replace_equations_in_textblock
@@ -194,7 +193,7 @@ def parse_pdf_by_txt(
         """
 
         # 把图、表、公式都进行截图，保存到存储上，返回图片路径作为内容
-        image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = save_images_by_bboxes(
+        image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = txt_save_images_by_bboxes(
             page_id,
             page,
             pdf_bytes_md5,

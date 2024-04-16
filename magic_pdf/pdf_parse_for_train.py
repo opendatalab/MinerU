@@ -26,6 +26,7 @@ from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.markdown_utils import escape_special_markdown_char
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
+from magic_pdf.pre_proc.cut_image import txt_save_images_by_bboxes
 from magic_pdf.pre_proc.detect_images import parse_images
 from magic_pdf.pre_proc.detect_tables import parse_tables  # 获取tables的bbox
 from magic_pdf.pre_proc.detect_equation import parse_equations  # 获取equations的bbox
@@ -62,7 +63,6 @@ from para.exceptions import (
 """
 
 from magic_pdf.libs.commons import read_file, join_path
-from magic_pdf.libs.pdf_image_tools import save_images_by_bboxes
 from magic_pdf.post_proc.remove_footnote import (
     merge_footnote_blocks,
     remove_footnote_blocks,
@@ -323,7 +323,7 @@ def parse_pdf_for_train(
 
         # 把图、表、公式都进行截图，保存到存储上，返回图片路径作为内容
         image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = (
-            save_images_by_bboxes(
+            txt_save_images_by_bboxes(
                 book_name,
                 page_id,
                 page,
