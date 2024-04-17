@@ -19,6 +19,9 @@ from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
 
 
+PARSE_TYPE_TXT = "txt"
+PARSE_TYPE_OCR = "ocr"
+
 def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args,
                   **kwargs):
     """
@@ -32,7 +35,7 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
         debug_mode=is_debug,
     )
 
-    pdf_info_dict["parse_type"] = "txt"
+    pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
 
     return pdf_info_dict
 
@@ -50,7 +53,7 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
         debug_mode=is_debug,
     )
 
-    pdf_info_dict["_parse_type"] = "ocr"
+    pdf_info_dict["_parse_type"] = PARSE_TYPE_OCR
 
     return pdf_info_dict
 
@@ -82,8 +85,8 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
         else:
-            pdf_info_dict["_parse_type"] = "ocr"
+            pdf_info_dict["_parse_type"] = PARSE_TYPE_OCR
     else:
-        pdf_info_dict["_parse_type"] = "txt"
+        pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
 
     return pdf_info_dict
