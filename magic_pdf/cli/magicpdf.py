@@ -99,7 +99,7 @@ def json_command(json, method):
         s3_rw = S3ReaderWriter(
             s3_ak, s3_sk, s3_endpoint, "auto", remove_non_official_s3_args(s3path)
         )
-        may_range_params = parse_s3_range_params(json)
+        may_range_params = parse_s3_range_params(s3path)
         if may_range_params is None or 2 != len(may_range_params):
             byte_start, byte_end = 0, None
         else:
