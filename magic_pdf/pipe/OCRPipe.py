@@ -6,14 +6,14 @@ from magic_pdf.user_api import parse_ocr_pdf
 
 class OCRPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str):
-        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path)
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str, is_debug:bool=False):
+        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path, is_debug)
 
     def pipe_classify(self):
         pass
 
     def pipe_parse(self):
-        self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer)
+        self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
 
     def pipe_mk_uni_format(self):
         content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), self.img_parent_path)

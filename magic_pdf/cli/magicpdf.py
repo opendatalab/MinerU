@@ -35,7 +35,6 @@ from magic_pdf.libs.path_utils import (
 from magic_pdf.libs.config_reader import get_local_dir
 from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter, MODE_BIN, MODE_TXT
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.libs.json_compressor import JsonCompressor
 
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
@@ -54,7 +53,7 @@ def prepare_env():
 
 
 def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
-    uni_pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir)
+    uni_pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
     jso_useful_key = {
         "_pdf_type": "txt",
         "model_list": model_list,

@@ -549,7 +549,7 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, deb
                 if "Table" in first_line_text or "Figure" in first_line_text:
                     pass
                 if debug_mode:
-                    logger.info(line_hi.std())
+                    logger.debug(line_hi.std())
                 
                 if line_hi.std()<2:
                     """行高度相同，那么判断是否居中"""
@@ -562,7 +562,7 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, deb
                         merge_para = [l[0] for l in layout_para[start:end+1]]
                         para_text = ''.join([__get_span_text(span) for line in merge_para for span in line['spans']])
                         if debug_mode:
-                            logger.info(para_text)
+                            logger.debug(para_text)
                         layout_para[start:end+1] = [merge_para]
                         index_offset -= end-start
                         

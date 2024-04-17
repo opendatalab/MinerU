@@ -17,6 +17,11 @@ class MagicModel():
     def get_imgs(self, page_no:int): # @许瑞
         
         return_lst = []
+        
+        image_block = {
+            
+        }
+        
         img = {
         "bbox":[x0,y0,x1,y1]
         }
@@ -24,10 +29,16 @@ class MagicModel():
         "bbox":[x0,y0,x1,y1],
         "text":"",
         }
-        return [{"img":img, "caption":img_caption},]
+        
+        image_block['bbox'] = [x0, y0, x1, y1]# 计算出来
+        image_block['img_body'] = img
+        image_blcok['img_caption'] = img_caption
+        
+        
+        return [image_block,]
         
     def get_tables(self, page_no:int) ->list: # 3个坐标， caption, table主体，table-note
-        pass # 许瑞
+        pass # 许瑞, 结构和image一样
         
     def get_equations(self, page_no:int)->list: # 有坐标，也有字
         return inline_equations, interline_equations  # @凯文

@@ -15,18 +15,18 @@ from magic_pdf.user_api import parse_union_pdf, parse_ocr_pdf
 
 class UNIPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str):
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str, is_debug: bool = False):
         self.pdf_type = self.PIP_OCR
-        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path)
+        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path, is_debug)
 
     def pipe_classify(self):
         self.pdf_type = UNIPipe.classify(self.pdf_bytes)
 
     def pipe_parse(self):
         if self.pdf_type == self.PIP_TXT:
-            self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer)
+            self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
         elif self.pdf_type == self.PIP_OCR:
-            self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer)
+            self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
 
     def pipe_mk_uni_format(self):
         content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), self.img_parent_path)
