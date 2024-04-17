@@ -13,11 +13,18 @@ class AbsPipe(ABC):
     """
     txt和ocr处理的抽象类
     """
+    PIP_OCR = "ocr"
+    PIP_TXT = "txt"
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter):
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path:str, ):
         self.pdf_bytes = pdf_bytes
         self.model_list = model_list
         self.image_writer = image_writer
+        self.img_parent_path = img_parent_path
+        self.pdf_mid_data = None # 未压缩
+    
+    def get_compress_pdf_mid_data(self):
+        return JsonCompressor.compress_json(self.pdf_mid_data)
 
     @abstractmethod
     def pipe_classify(self):

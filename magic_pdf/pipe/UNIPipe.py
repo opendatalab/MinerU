@@ -15,31 +15,25 @@ from magic_pdf.user_api import parse_union_pdf, parse_ocr_pdf
 
 class UNIPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_bucket_path: str):
-        self.pdf_type = "ocr"
-        self.compressed_pdf_mid_data = None
-        self.pdf_mid_data = None
-        self.pdf_bytes = pdf_bytes
-        self.model_list = model_list
-        self.image_writer = image_writer
-        self.img_bucket_path = img_bucket_path
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str):
+        self.pdf_type = self.PIP_OCR
+        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path)
 
     def pipe_classify(self):
         self.pdf_type = UNIPipe.classify(self.pdf_bytes)
 
     def pipe_parse(self):
-        if self.pdf_type == "txt":
+        if self.pdf_type == self.PIP_TXT:
             self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer)
-        elif self.pdf_type == "ocr":
+        elif self.pdf_type == self.PIP_OCR:
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer)
-        self.compressed_pdf_mid_data = JsonCompressor.compress_json(self.pdf_mid_data)
 
     def pipe_mk_uni_format(self):
-        content_list = AbsPipe.mk_uni_format(self.compressed_pdf_mid_data, self.img_bucket_path)
+        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), self.img_parent_path)
         return content_list
 
     def pipe_mk_markdown(self):
-        markdown_content = AbsPipe.mk_markdown(self.compressed_pdf_mid_data, self.img_bucket_path)
+        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), self.img_parent_path)
         return markdown_content
 
 if __name__ == '__main__':

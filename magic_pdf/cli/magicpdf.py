@@ -62,13 +62,13 @@ def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, imag
     if parse_method == "ocr":
         jso_useful_key["_pdf_type"] = "ocr"
 
-    pdf_mid_data = uni_pipe.pipe_parse()
-    md_content = UNIPipe.mk_markdown(pdf_mid_data, image_dir)
+    uni_pipe.pipe_parse()
+    md_content = uni_pipe.pipe_mk_markdown()
     part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(content=md_content, path=f"{part_file_name}.md", mode=MODE_TXT)
     md_writer.write(
         content=json_parse.dumps(
-            JsonCompressor.decompress_json(pdf_mid_data), ensure_ascii=False, indent=4
+            uni_pipe.pdf_mid_data, ensure_ascii=False, indent=4
         ),
         path=f"{part_file_name}.json",
         mode=MODE_TXT,

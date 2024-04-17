@@ -41,12 +41,10 @@ class DiskReaderWriter(AbsReaderWriter):
         if mode == MODE_TXT:
             with open(abspath, "w", encoding=self.encoding) as f:
                 f.write(content)
-                logger.info(f"内容已成功写入 {abspath}")
 
         elif mode == MODE_BIN:
             with open(abspath, "wb") as f:
                 f.write(content)
-                logger.info(f"内容已成功写入 {abspath}")
         else:
             raise ValueError("Invalid mode. Use 'text' or 'binary'.")
 

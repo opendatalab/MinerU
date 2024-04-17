@@ -589,6 +589,8 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     3. 参照上述行尾特征进行分段。
     4. 图、表，目前独占一行，不考虑分段。
     """
+    if page_num==343:
+        pass
     lines_group = __group_line_by_layout(blocks, layout_bboxes, lang) # block内分段
     layout_paras, layout_list_info = __split_para_in_layoutbox(lines_group, new_layout_bbox, lang) # layout内分段
     layout_paras2, page_list_info = __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info, page_num, lang) # layout之间连接列表段落
