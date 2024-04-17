@@ -9,10 +9,10 @@ class MagicModel():
         # TODO 计算
         self.__model_list = xx
         
-    def __init__(model_list:list, page:Page):
+    def __init__(model_list:list, doc:Fitz.Document):
         self.__model_list = model_list
         self.__fix_axis()
-        self.__page = page
+        self.__doc = doc
         
     def get_imgs(self, page_no:int): # @许瑞
         
