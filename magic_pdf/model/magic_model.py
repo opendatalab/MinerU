@@ -16,23 +16,13 @@ class MagicModel():
         
     def get_imgs(self, page_no:int): # @许瑞
         
-        return_lst = []
-        
         image_block = {
             
         }
-        
-        img = {
-        "bbox":[x0,y0,x1,y1]
-        }
-        img_caption = {
-        "bbox":[x0,y0,x1,y1],
-        "text":"",
-        }
-        
         image_block['bbox'] = [x0, y0, x1, y1]# 计算出来
-        image_block['img_body'] = img
-        image_blcok['img_caption'] = img_caption
+        image_block['img_body_bbox'] = [x0, y0, x1, y1]
+        image_blcok['img_caption_bbox'] =  [x0, y0, x1, y1] # 如果没有就是None，但是保证key存在
+        image_blcok['img_caption_text']=  [x0, y0, x1, y1] # 如果没有就是空字符串，但是保证key存在
         
         
         return [image_block,]
