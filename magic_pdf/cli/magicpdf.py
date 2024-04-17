@@ -105,6 +105,7 @@ def json_command(json, method):
             byte_start, byte_end = 0, None
         else:
             byte_start, byte_end = int(may_range_params[0]), int(may_range_params[1])
+            byte_end += byte_start - 1
         return s3_rw.read_jsonl(
             remove_non_official_s3_args(s3path), byte_start, byte_end, MODE_BIN
         )
