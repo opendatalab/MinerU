@@ -143,7 +143,7 @@ def pdf_command(pdf, model, method):
         model = pdf.replace(".pdf", ".json")
         if not os.path.exists(model):
             print(f"make sure json file existed and place under {os.dirname(pdf)}")
-            os.eixt(1)
+            os.exit(1)
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))

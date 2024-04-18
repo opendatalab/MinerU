@@ -160,9 +160,6 @@ def parse_pdf_by_ocr(
         '''bbox去除粘连'''
         spans = remove_overlap_between_bbox(spans)
 
-        '''用现有的bbox计算layout'''
-
-
         '''
         对tpye=["interline_equation", "image", "table"]进行额外处理,
         如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
