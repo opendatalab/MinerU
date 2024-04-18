@@ -1,7 +1,7 @@
 
 
 from loguru import logger
-
+import math
 
 def _is_in_or_part_overlap(box1, box2) -> bool:
     """
@@ -332,3 +332,42 @@ def find_right_nearest_text_bbox(pymu_blocks, obj_bbox):
         return right_boxes[0]
     else:
         return None
+
+
+def bbox_relative_pos(bbox1, bbox2):
+    x1, y1, x1b, y1b = bbox1
+    x2, y2, x2b, y2b = bbox2
+    
+    left = x2b < x1
+    right = x1b < x2
+    bottom = y2b < y1
+    top = y1b < y2
+    return left, right, bottom, top
+    
+def bbox_distance(bbox1, bbox2):
+    def dist(point1, point2):
+            return math.sqrt((point1[0]-point2[0])**2 + (point1[1]-point2[1])**2)
+    
+    x1, y1, x1b, y1b = bbox1
+    x2, y2, x2b, y2b = bbox2
+    
+    left, right, bottom, top = bbox_relative_pos(bbox1, bbox2)
+    
+    if top and left:
+        return dist((x1, y1b), (x2b, y2))
+    elif left and bottom:
+        return dist((x1, y1), (x2b, y2b))
+    elif bottom and right:
+        return dist((x1b, y1), (x2, y2b))
+    elif right and top:
+        return dist((x1b, y1b), (x2, y2))
+    elif left:
+        return x1 - x2b
+    elif right:
+        return x2 - x1b
+    elif bottom:
+        return y1 - y2b
+    elif top:
+        return y2 - y1b
+    else:             # rectangles intersect
+        return 0

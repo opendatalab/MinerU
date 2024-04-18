@@ -341,8 +341,6 @@ def __connect_list_inter_layout(layout_paras, new_layout_bbox, layout_list_info,
     """
     if len(layout_paras)==0 or len(layout_list_info)==0: # 0的时候最后的return 会出错
         return layout_paras, [False, False]
-    # if page_num==343:
-    #     pass
         
     for i in range(1, len(layout_paras)):
         pre_layout_list_info = layout_list_info[i-1]
