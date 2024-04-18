@@ -6,6 +6,7 @@ from loguru import logger
 
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
+from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.math import float_gt
@@ -19,6 +20,7 @@ class MagicModel:
     """
 
     def __fix_axis(self):
+        need_remove_list = []
         for model_page_info in self.__model_list:
             page_no = model_page_info["page_info"]["page_no"]
             horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(
@@ -34,6 +36,12 @@ class MagicModel:
                     int(y1 / vertical_scale_ratio),
                 ]
                 layout_det["bbox"] = bbox
+                # 删除高度或者宽度为0的spans
+                if bbox[2] - bbox[0] == 0 or bbox[3] - bbox[1] == 0:
+                    need_remove_list.append(layout_det)
+            for need_remove in need_remove_list:
+                layout_dets.remove(need_remove)
+
 
     def __init__(self, model_list: list, docs: fitz.Document):
         self.__model_list = model_list
@@ -175,9 +183,11 @@ class MagicModel:
                         if l in (j, k) or l in used or l in seen:
                             continue
 
+
                         if not float_gt(dis[l][k], dis[j][k]):
                             is_nearest = False
                             break
+
 
                     if is_nearest:
                         tmp.append(k)
@@ -349,10 +359,58 @@ class MagicModel:
         pass  # @凯文
 
     def get_ocr_text(self, page_no: int) -> list:  # paddle 搞的，有字也有坐标
-        pass  # @小蒙
+        text_spans = []
+        model_page_info = self.__model_list[page_no]
+        layout_dets = model_page_info["layout_dets"]
+        for layout_det in layout_dets:
+            if layout_det["category_id"] == "15":
+                span = {
+                    "bbox": layout_det['bbox'],
+                    "content": layout_det["text"],
+                }
+                text_spans.append(span)
+        return text_spans
 
-    def get_ocr_spans(self, page_no: int) -> list:
-        pass  # @小蒙
+    def get_all_spans(self, page_no: int) -> list:
+        all_spans = []
+        model_page_info = self.__model_list[page_no]
+        layout_dets = model_page_info["layout_dets"]
+        allow_category_id_list = [3, 5, 13, 14, 15]
+        """当成span拼接的"""
+        #  3: 'image', # 图片
+        #  4: 'table',       # 表格
+        #  13: 'inline_equation',     # 行内公式
+        #  14: 'interline_equation',      # 行间公式
+        #  15: 'text',      # ocr识别文本
+        for layout_det in layout_dets:
+            category_id = layout_det["category_id"]
+            if category_id in allow_category_id_list:
+                span = {
+                    "bbox": layout_det['bbox']
+                }
+                if category_id == 3:
+                    span["type"] = ContentType.Image
+                elif category_id == 5:
+                    span["type"] = ContentType.Table
+                elif category_id == 13:
+                    span["content"] = layout_det["latex"]
+                    span["type"] = ContentType.InlineEquation
+                elif category_id == 14:
+                    span["content"] = layout_det["latex"]
+                    span["type"] = ContentType.InterlineEquation
+                elif category_id == 15:
+                    span["content"] = layout_det["text"]
+                    span["type"] = ContentType.Text
+                all_spans.append(span)
+        return all_spans
+
+    def get_page_size(self, page_no: int):  # 获取页面宽高
+        # 获取当前页的page对象
+        page = self.__docs[page_no]
+        # 获取当前页的宽高
+        page_w = page.rect.width
+        page_h = page.rect.height
+        return page_w, page_h
 
 
 if __name__ == "__main__":
