@@ -11,6 +11,7 @@ from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.math import float_gt
 from magic_pdf.libs.boxbase import _is_in, bbox_relative_pos, bbox_distance
+from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
 
 
 class MagicModel:
@@ -347,16 +348,22 @@ class MagicModel:
         return ret
 
     def get_equations(self, page_no: int) -> list:  # 有坐标，也有字
-        return inline_equations, interline_equations  # @凯文
+        inline_equations = self.__get_blocks_by_type(ModelBlockTypeEnum.EMBEDDING.value, page_no, ["latex"])
+        interline_equations = self.__get_blocks_by_type(ModelBlockTypeEnum.ISOLATED.value, page_no, ["latex"])
+        interline_equations_blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.ISOLATE_FORMULA.value, page_no)
+        return inline_equations, interline_equations, interline_equations_blocks
 
     def get_discarded(self, page_no: int) -> list:  # 自研模型，只有坐标
-        pass  # @凯文
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.ABANDON.value, page_no)
+        return blocks
 
     def get_text_blocks(self, page_no: int) -> list:  # 自研模型搞的，只有坐标，没有字
-        pass  # @凯文
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.PLAIN_TEXT.value, page_no)
+        return blocks
 
     def get_title_blocks(self, page_no: int) -> list:  # 自研模型，只有坐标，没字
-        pass  # @凯文
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.TITLE.value, page_no)
+        return blocks
 
     def get_ocr_text(self, page_no: int) -> list:  # paddle 搞的，有字也有坐标
         text_spans = []
@@ -412,6 +419,26 @@ class MagicModel:
         page_h = page.rect.height
         return page_w, page_h
 
+    def __get_blocks_by_type(self, types: list, page_no: int, extra_col: list[str] = []) -> list:
+        blocks = []
+        for page_dict in self.__model_list:
+            layout_dets = page_dict.get("layout_dets", [])
+            page_info = page_dict.get("page_info", {})
+            page_number = page_info.get("page_no", -1)
+            if page_no != page_number:
+                continue
+            for item in layout_dets:
+                category_id = item.get("category_id", -1)
+                bbox = item.get("bbox", None)
+
+                if category_id in types:
+                    block = {
+                        "bbox": bbox
+                    }
+                    for col in extra_col:
+                        block[col] = item.get(col, None)
+                    blocks.append(block)
+        return blocks
 
 if __name__ == "__main__":
     drw = DiskReaderWriter(r"D:/project/20231108code-clean")
