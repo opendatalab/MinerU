@@ -1,6 +1,7 @@
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
-from magic_pdf.libs.ocr_content_type import ContentType
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line, line_sort_spans_by_left_to_right
+
 
 def merge_spans_to_block(spans: list, block_bbox: list, block_type: str):
     block_spans = []
@@ -17,6 +18,7 @@ def merge_spans_to_block(spans: list, block_bbox: list, block_type: str):
         'lines': sort_block_lines
     }
     return block, block_spans
+
 
 def make_body_block(span: dict, block_bbox: list, block_type: str):
     # 创建body_block
@@ -41,7 +43,7 @@ def fix_image_block(block, img_blocks):
             for span in block['spans']:
                 if span['type'] == ContentType.Image and span['bbox'] == img_block['img_body_bbox']:
                     # 创建img_body_block
-                    img_body_block = make_body_block(span, img_block['img_body_bbox'], 'img_body_block')
+                    img_body_block = make_body_block(span, img_block['img_body_bbox'], BlockType.ImageBody)
                     block['blocks'].append(img_body_block)
 
                     # 从spans中移除img_body_block中已经放入的span
@@ -51,7 +53,7 @@ def fix_image_block(block, img_blocks):
             # 根据list长度，判断img_block中是否有img_caption
             if len(img_block['img_caption_bbox']) > 0:
                 img_caption_block, img_caption_spans = merge_spans_to_block(
-                    block['spans'], img_block['img_caption_bbox'], 'img_caption_block'
+                    block['spans'], img_block['img_caption_bbox'], BlockType.ImageCaption
                 )
                 block['blocks'].append(img_caption_block)
 
@@ -69,7 +71,7 @@ def fix_table_block(block, table_blocks):
             for span in block['spans']:
                 if span['type'] == ContentType.Table and span['bbox'] == table_block['table_body_bbox']:
                     # 创建table_body_block
-                    table_body_block = make_body_block(span, table_block['table_body_bbox'], 'table_body_block')
+                    table_body_block = make_body_block(span, table_block['table_body_bbox'], BlockType.TableBody)
                     block['blocks'].append(table_body_block)
 
                     # 从spans中移除img_body_block中已经放入的span
@@ -79,7 +81,7 @@ def fix_table_block(block, table_blocks):
             # 根据list长度，判断table_block中是否有caption
             if len(table_block['table_caption_bbox']) > 0:
                 table_caption_block, table_caption_spans = merge_spans_to_block(
-                    block['spans'], table_block['table_caption_bbox'], 'table_caption_block'
+                    block['spans'], table_block['table_caption_bbox'], BlockType.TableCaption
                 )
                 block['blocks'].append(table_caption_block)
 
@@ -92,10 +94,20 @@ def fix_table_block(block, table_blocks):
             # 根据list长度，判断table_block中是否有table_note
             if len(table_block['table_footnote_bbox']) > 0:
                 table_footnote_block, table_footnote_spans = merge_spans_to_block(
-                    block['spans'], table_block['table_footnote_bbox'], 'table_footnote_block'
+                    block['spans'], table_block['table_footnote_bbox'], BlockType.TableFootnote
                 )
                 block['blocks'].append(table_footnote_block)
 
             break
     del block['spans']
     return block
+
+
+def fix_text_block(block):
+    block_lines = merge_spans_to_line(block['spans'])
+    sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
+    block['lines'] = sort_block_lines
+    del block['spans']
+    return block
+
+
