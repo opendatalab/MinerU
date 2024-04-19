@@ -3,8 +3,8 @@ from loguru import logger
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio, \
     calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.drop_tag import DropTag
-from magic_pdf.libs.ocr_content_type import ContentType
-from magic_pdf.pre_proc.ocr_fix_block_logic import fix_image_block, fix_table_block
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType
+from magic_pdf.pre_proc.ocr_fix_block_logic import fix_image_block, fix_table_block, fix_text_block
 
 
 # 将每一个line中的span从左到右排序
@@ -117,7 +117,7 @@ def sort_blocks_by_layout(all_bboxes, layout_bboxes):
         layout_blocks = []
         for block in all_bboxes:
             # 如果是footnote则跳过
-            if block[7] == 'footnote':
+            if block[7] == BlockType.Footnote:
                 continue
             block_bbox = [block[0], block[1], block[2], block[3]]
             if calculate_overlap_area_in_bbox1_area_ratio(block_bbox, layout_bbox) > 0.8:
@@ -141,6 +141,9 @@ def sort_blocks_by_layout(all_bboxes, layout_bboxes):
 
 
 def fill_spans_in_blocks(blocks, spans):
+    '''
+    将allspans中的span按位置关系，放入blocks中
+    '''
     block_with_spans = []
     for block in blocks:
         block_type = block[7]
@@ -166,20 +169,22 @@ def fill_spans_in_blocks(blocks, spans):
 
 
 def fix_block_spans(block_with_spans, img_blocks, table_blocks):
+    '''
+    1、img_block和table_block因为包含caption和footnote的关系，存在block的嵌套关系
+        需要将caption和footnote的text_span放入相应img_block和table_block内的
+        caption_block和footnote_block中
+    2、同时需要删除block中的spans字段
+    '''
     fix_blocks = []
     for block in block_with_spans:
         block_type = block['block_type']
-        # 只有type为image_block和table_block才需要处理
-        if block_type == 'image_block':
+
+        if block_type == BlockType.Image:
             block = fix_image_block(block, img_blocks)
-        elif block_type == 'table_block':
+        elif block_type == BlockType.Table:
             block = fix_table_block(block, table_blocks)
-        elif block_type == 'text_block':
-            pass
-        elif block_type == 'title_block':
-            pass
-        elif block_type == 'interline_equation_block':
-            pass
+        elif block_type in [BlockType.Text, BlockType.Title, BlockType.InterlineEquation]:
+            block = fix_text_block(block)
         else:
             continue
         fix_blocks.append(block)
