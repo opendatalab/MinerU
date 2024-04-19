@@ -11,6 +11,7 @@ from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.math import float_gt
 from magic_pdf.libs.boxbase import _is_in, bbox_relative_pos, bbox_distance
+from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
 
 
 class MagicModel:
