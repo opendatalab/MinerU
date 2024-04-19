@@ -3,7 +3,8 @@ from loguru import logger
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio, \
     calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.drop_tag import DropTag
-from magic_pdf.libs.ocr_content_type import ContentType
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType
+from magic_pdf.pre_proc.ocr_fix_block_logic import fix_image_block, fix_table_block, fix_text_block
 
 
 # 将每一个line中的span从左到右排序
@@ -24,6 +25,7 @@ def line_sort_spans_by_left_to_right(lines):
         })
     return line_objects
 
+
 def merge_spans_to_line(spans):
     if len(spans) == 0:
         return []
@@ -37,7 +39,8 @@ def merge_spans_to_line(spans):
             # 如果当前的span类型为"interline_equation" 或者 当前行中已经有"interline_equation"
             # image和table类型，同上
             if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] or any(
-                    s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in current_line):
+                    s['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table] for s in
+                    current_line):
                 # 则开始新行
                 lines.append(current_line)
                 current_line = [span]
@@ -56,6 +59,7 @@ def merge_spans_to_line(spans):
             lines.append(current_line)
 
         return lines
+
 
 def merge_spans_to_line_by_layout(spans, layout_bboxes):
     lines = []
@@ -103,7 +107,85 @@ def merge_lines_to_block(lines):
     return blocks
 
 
+def sort_blocks_by_layout(all_bboxes, layout_bboxes):
+    new_blocks = []
+    sort_blocks = []
+    for item in layout_bboxes:
+        layout_bbox = item['layout_bbox']
+
+        # 遍历blocks,将每个blocks放入对应的layout中
+        layout_blocks = []
+        for block in all_bboxes:
+            # 如果是footnote则跳过
+            if block[7] == BlockType.Footnote:
+                continue
+            block_bbox = [block[0], block[1], block[2], block[3]]
+            if calculate_overlap_area_in_bbox1_area_ratio(block_bbox, layout_bbox) > 0.8:
+                layout_blocks.append(block)
+
+        # 如果layout_blocks不为空，则放入new_blocks中
+        if len(layout_blocks) > 0:
+            new_blocks.append(layout_blocks)
+            # 从spans删除已经放入layout_sapns中的span
+            for layout_block in layout_blocks:
+                all_bboxes.remove(layout_block)
+
+    # 如果new_blocks不为空，则对new_blocks中每个block进行排序
+    if len(new_blocks) > 0:
+        for bboxes_in_layout_block in new_blocks:
+            bboxes_in_layout_block.sort(key=lambda x: x[1])  # 一个layout内部的box，按照y0自上而下排序
+            sort_blocks.extend(bboxes_in_layout_block)
+
+    # sort_blocks中已经包含了当前页面所有最终留下的block，且已经排好了顺序
+    return sort_blocks
 
 
+def fill_spans_in_blocks(blocks, spans):
+    '''
+    将allspans中的span按位置关系，放入blocks中
+    '''
+    block_with_spans = []
+    for block in blocks:
+        block_type = block[7]
+        block_bbox = block[0:4]
+        block_dict = {
+            'block_type': block_type,
+            'bbox': block_bbox,
+        }
+        block_spans = []
+        for span in spans:
+            span_bbox = span['bbox']
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.8:
+                block_spans.append(span)
+        block_dict['spans'] = block_spans
+        block_with_spans.append(block_dict)
+
+        # 从spans删除已经放入block_spans中的span
+        if len(block_spans) > 0:
+            for span in block_spans:
+                spans.remove(span)
+
+    return block_with_spans
 
 
+def fix_block_spans(block_with_spans, img_blocks, table_blocks):
+    '''
+    1、img_block和table_block因为包含caption和footnote的关系，存在block的嵌套关系
+        需要将caption和footnote的text_span放入相应img_block和table_block内的
+        caption_block和footnote_block中
+    2、同时需要删除block中的spans字段
+    '''
+    fix_blocks = []
+    for block in block_with_spans:
+        block_type = block['block_type']
+
+        if block_type == BlockType.Image:
+            block = fix_image_block(block, img_blocks)
+        elif block_type == BlockType.Table:
+            block = fix_table_block(block, table_blocks)
+        elif block_type in [BlockType.Text, BlockType.Title, BlockType.InterlineEquation]:
+            block = fix_text_block(block)
+        else:
+            continue
+        fix_blocks.append(block)
+    return fix_blocks

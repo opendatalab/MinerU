@@ -99,11 +99,12 @@ def json_command(json, method):
         s3_rw = S3ReaderWriter(
             s3_ak, s3_sk, s3_endpoint, "auto", remove_non_official_s3_args(s3path)
         )
-        may_range_params = parse_s3_range_params(json)
+        may_range_params = parse_s3_range_params(s3path)
         if may_range_params is None or 2 != len(may_range_params):
             byte_start, byte_end = 0, None
         else:
             byte_start, byte_end = int(may_range_params[0]), int(may_range_params[1])
+            byte_end += byte_start - 1
         return s3_rw.read_jsonl(
             remove_non_official_s3_args(s3path), byte_start, byte_end, MODE_BIN
         )
@@ -143,7 +144,7 @@ def pdf_command(pdf, model, method):
         model = pdf.replace(".pdf", ".json")
         if not os.path.exists(model):
             print(f"make sure json file existed and place under {os.dirname(pdf)}")
-            os.eixt(1)
+            os.exit(1)
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))

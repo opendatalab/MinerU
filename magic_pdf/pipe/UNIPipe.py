@@ -1,21 +1,17 @@
 import json
 
 from loguru import logger
-from magic_pdf.dict2md.mkcontent import mk_universal_format, mk_mm_markdown
-from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para, ocr_mk_mm_markdown_with_para
-from magic_pdf.filter.pdf_classify_by_type import classify
-from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.commons import join_path
-from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.pipe.AbsPipe import AbsPipe
 from magic_pdf.user_api import parse_union_pdf, parse_ocr_pdf
 
 
 class UNIPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str, is_debug: bool = False):
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str,
+                 is_debug: bool = False):
         self.pdf_type = self.PIP_OCR
         super().__init__(pdf_bytes, model_list, image_writer, img_parent_path, is_debug)
 
@@ -24,9 +20,11 @@ class UNIPipe(AbsPipe):
 
     def pipe_parse(self):
         if self.pdf_type == self.PIP_TXT:
-            self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
+            self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer,
+                                                is_debug=self.is_debug)
         elif self.pdf_type == self.PIP_OCR:
-            self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
+            self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
+                                              is_debug=self.is_debug)
 
     def pipe_mk_uni_format(self):
         content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), self.img_parent_path)
@@ -35,6 +33,7 @@ class UNIPipe(AbsPipe):
     def pipe_mk_markdown(self):
         markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), self.img_parent_path)
         return markdown_content
+
 
 if __name__ == '__main__':
     # 测试
@@ -60,5 +59,6 @@ if __name__ == '__main__':
 
     md_writer = DiskReaderWriter(write_path)
     md_writer.write(md_content, "19983-00.md", AbsReaderWriter.MODE_TXT)
-    md_writer.write(json.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4), "19983-00.json", AbsReaderWriter.MODE_TXT)
+    md_writer.write(json.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4), "19983-00.json",
+                    AbsReaderWriter.MODE_TXT)
     md_writer.write(str(content_list), "19983-00.txt", AbsReaderWriter.MODE_TXT)
