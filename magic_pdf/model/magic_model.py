@@ -419,7 +419,7 @@ class MagicModel:
         page_h = page.rect.height
         return page_w, page_h
 
-    def __get_blocks_by_type(self, types: list, page_no: int, extra_col: list[str] = []) -> list:
+    def __get_blocks_by_type(self, type: int, page_no: int, extra_col: list[str] = []) -> list:
         blocks = []
         for page_dict in self.__model_list:
             layout_dets = page_dict.get("layout_dets", [])
@@ -431,7 +431,7 @@ class MagicModel:
                 category_id = item.get("category_id", -1)
                 bbox = item.get("bbox", None)
 
-                if category_id in types:
+                if category_id == type:
                     block = {
                         "bbox": bbox
                     }
