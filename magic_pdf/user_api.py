@@ -16,7 +16,7 @@ from loguru import logger
 
 from magic_pdf.rw import AbsReaderWriter
 from magic_pdf.pdf_parse_by_ocr_v2 import parse_pdf_by_ocr
-from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
+from magic_pdf.pdf_parse_by_txt_v2 import parse_pdf_by_txt
 
 
 PARSE_TYPE_TXT = "txt"
