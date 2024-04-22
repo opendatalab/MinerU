@@ -132,7 +132,8 @@ def __valign_lines(blocks, layout_bboxes):
 
     for layout_box in layout_bboxes:
         blocks_in_layoutbox = [b for b in blocks if b["type"] == BlockType.Text and is_in_layout(b['bbox'], layout_box['layout_bbox'])]
-        if len(blocks_in_layoutbox) == 0:
+        if len(blocks_in_layoutbox) == 0 or len(blocks_in_layoutbox[0]["lines"]) == 0:
+            new_layout_bboxes.append(layout_box['layout_bbox'])
             continue
 
         x0_lst = np.array([[line['bbox'][0], 0] for block in blocks_in_layoutbox for line in block['lines']])
@@ -399,6 +400,8 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
     """
     if len(pre_page_paras) == 0 or len(next_page_paras) == 0:  # 0的时候最后的return 会出错
+        return False
+    if len(pre_page_paras[-1]) == 0 or len(next_page_paras[0]) == 0:
         return False
     if pre_page_paras[-1][-1]["type"] != BlockType.Text or next_page_paras[0][0]["type"] != BlockType.Text:
         return False
@@ -694,3 +697,9 @@ def para_split(pdf_info_dict, debug_mode, lang="en"):
         new_layout_bbox = new_layout_of_pages[page_num]
         __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode=debug_mode)
         __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang)
+
+    # layout展平
+    for page_num, page in enumerate(pdf_info_dict.values()):
+        page_paras = page['para_blocks']
+        page_blocks = [block for layout in page_paras for block in layout]
+        page["para_blocks"] = page_blocks
