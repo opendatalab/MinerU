@@ -222,10 +222,10 @@ def get_qa_need_list_v2(blocks):
     interline_equations = []
 
     for block in blocks:
-        if block["type"] == BlockType.Image:
+        if block["block_type"] == BlockType.Image:
             images.append(block)
-        elif block["type"] == BlockType.Table:
+        elif block["block_type"] == BlockType.Table:
             tables.append(block)
-        elif block["type"] == BlockType.InterlineEquation:
+        elif block["block_type"] == BlockType.InterlineEquation:
             interline_equations.append(block)
     return images, tables, interline_equations

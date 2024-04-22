@@ -252,7 +252,7 @@ def fix_image_block(block, img_blocks):
                     break
 
             # 根据list长度，判断img_block中是否有img_caption
-            if len(img_block['img_caption_bbox']) > 0:
+            if img_block['img_caption_bbox'] is not None:
                 img_caption_block, img_caption_spans = merge_spans_to_block(
                     block['spans'], img_block['img_caption_bbox'], BlockType.ImageCaption
                 )
@@ -280,7 +280,7 @@ def fix_table_block(block, table_blocks):
                     break
 
             # 根据list长度，判断table_block中是否有caption
-            if len(table_block['table_caption_bbox']) > 0:
+            if table_block['table_caption_bbox'] is not None:
                 table_caption_block, table_caption_spans = merge_spans_to_block(
                     block['spans'], table_block['table_caption_bbox'], BlockType.TableCaption
                 )
@@ -293,7 +293,7 @@ def fix_table_block(block, table_blocks):
                         block['spans'].remove(span)
 
             # 根据list长度，判断table_block中是否有table_note
-            if len(table_block['table_footnote_bbox']) > 0:
+            if table_block['table_footnote_bbox'] is not None:
                 table_footnote_block, table_footnote_spans = merge_spans_to_block(
                     block['spans'], table_block['table_footnote_bbox'], BlockType.TableFootnote
                 )
