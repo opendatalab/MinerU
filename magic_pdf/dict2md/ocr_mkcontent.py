@@ -19,58 +19,6 @@ def split_long_words(text):
     return ' '.join(segments)
 
 
-def ocr_mk_nlp_markdown(pdf_info_dict: list):
-    markdown = []
-
-    for page_info in pdf_info_dict:
-        blocks = page_info.get("preproc_blocks")
-        if not blocks:
-            continue
-        for block in blocks:
-            for line in block['lines']:
-                line_text = ''
-                for span in line['spans']:
-                    if not span.get('content'):
-                        continue
-                    content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
-                    if span['type'] == ContentType.InlineEquation:
-                        content = f"${content}$"
-                    elif span['type'] == ContentType.InterlineEquation:
-                        content = f"$$\n{content}\n$$"
-                    line_text += content + ' '
-                # 在行末添加两个空格以强制换行
-                markdown.append(line_text.strip() + '  ')
-    return '\n'.join(markdown)
-
-
-def ocr_mk_mm_markdown(pdf_info_dict: list):
-    markdown = []
-
-    for page_info in pdf_info_dict:
-        blocks = page_info.get("preproc_blocks")
-        if not blocks:
-            continue
-        for block in blocks:
-            for line in block['lines']:
-                line_text = ''
-                for span in line['spans']:
-                    if not span.get('content'):
-                        if not span.get('image_path'):
-                            continue
-                        else:
-                            content = f"![]({span['image_path']})"
-                    else:
-                        content = ocr_escape_special_markdown_char(span['content'])  # 转义特殊符号
-                        if span['type'] == ContentType.InlineEquation:
-                            content = f"${content}$"
-                        elif span['type'] == ContentType.InterlineEquation:
-                            content = f"$$\n{content}\n$$"
-                    line_text += content + ' '
-                # 在行末添加两个空格以强制换行
-                markdown.append(line_text.strip() + '  ')
-    return '\n'.join(markdown)
-
-
 def ocr_mk_mm_markdown_with_para(pdf_info_list: list, img_buket_path):
     markdown = []
     for page_info in pdf_info_list:
@@ -88,14 +36,14 @@ def ocr_mk_nlp_markdown_with_para(pdf_info_dict: list):
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
-def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list):
+def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list, img_buket_path):
     markdown_with_para_and_pagination = []
     page_no = 0
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
-        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm")
+        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm", img_buket_path)
         markdown_with_para_and_pagination.append({
             'page_no': page_no,
             'md_content': '\n\n'.join(page_markdown)
@@ -104,7 +52,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list):
     return markdown_with_para_and_pagination
 
 
-def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path):
+def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path=""):
     page_markdown = []
     for paras in paras_of_layout:
         for para in paras:
