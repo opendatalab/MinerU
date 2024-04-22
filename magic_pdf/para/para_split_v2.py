@@ -697,3 +697,9 @@ def para_split(pdf_info_dict, debug_mode, lang="en"):
         new_layout_bbox = new_layout_of_pages[page_num]
         __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode=debug_mode)
         __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang)
+
+    # layout展平
+    for page_num, page in enumerate(pdf_info_dict.values()):
+        page_paras = page['para_blocks']
+        page_blocks = [block for layout in page_paras for block in layout]
+        page["para_blocks"] = page_blocks
