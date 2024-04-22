@@ -31,7 +31,8 @@ from magic_pdf.pre_proc.equations_replace import (
     replace_equations_in_textblock,
 )
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
-
+from magic_pdf.libs.math import float_equal
+from magic_pdf.para.para_split_v2 import para_split
 
 def txt_spans_extract(pdf_page, inline_equations, interline_equations):
     text_raw_blocks = pdf_page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
@@ -48,6 +49,9 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
     for v in text_blocks:
         for line in v["lines"]:
             for span in line["spans"]:
+                bbox = span["bbox"]
+                if float_equal(bbox[0], bbox[2]) or float_equal(bbox[1], bbox[3]):
+                    continue
                 spans.append(
                     {
                         "bbox": list(span["bbox"]),
@@ -167,7 +171,7 @@ def parse_pdf_by_txt(
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    pass
+    para_split(pdf_info_dict, debug_mode=debug_mode)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
