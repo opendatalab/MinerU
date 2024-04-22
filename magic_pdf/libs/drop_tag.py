@@ -16,3 +16,4 @@ class DropTag:
     FOOTNOTE = "footnote"
     NOT_IN_LAYOUT = "not_in_layout"
     SPAN_OVERLAP = "span_overlap"
+    BLOCK_OVERLAP = "block_overlap"

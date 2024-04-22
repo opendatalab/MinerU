@@ -150,7 +150,7 @@ def fill_spans_in_blocks(blocks, spans):
         block_type = block[7]
         block_bbox = block[0:4]
         block_dict = {
-            'block_type': block_type,
+            'type': block_type,
             'bbox': block_bbox,
         }
         block_spans = []
@@ -190,7 +190,7 @@ def fix_block_spans(block_with_spans, img_blocks, table_blocks):
     '''
     fix_blocks = []
     for block in block_with_spans:
-        block_type = block['block_type']
+        block_type = block['type']
 
         if block_type == BlockType.Image:
             block = fix_image_block(block, img_blocks)
@@ -215,7 +215,7 @@ def merge_spans_to_block(spans: list, block_bbox: list, block_type: str):
     sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
     block = {
         'bbox': block_bbox,
-        'block_type': block_type,
+        'type': block_type,
         'lines': sort_block_lines
     }
     return block, block_spans
@@ -229,7 +229,7 @@ def make_body_block(span: dict, block_bbox: list, block_type: str):
     }
     body_block = {
         'bbox': block_bbox,
-        'block_type': block_type,
+        'type': block_type,
         'lines': [body_line]
     }
     return body_block
