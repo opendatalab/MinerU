@@ -11,6 +11,7 @@ from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.para.para_split import para_split
+from magic_pdf.para.para_split_by_model import para_split_by_model
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component
 from magic_pdf.pre_proc.detect_footer_by_model import parse_footers
 from magic_pdf.pre_proc.detect_footnote import parse_footnotes_by_model
@@ -208,7 +209,10 @@ def parse_pdf_by_ocr(
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    para_split(pdf_info_dict, debug_mode=debug_mode)
+    if debug_mode:
+        para_split_by_model(pdf_info_dict, debug_mode=debug_mode)
+    else:
+        para_split(pdf_info_dict, debug_mode=debug_mode)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)

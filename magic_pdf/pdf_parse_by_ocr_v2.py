@@ -12,6 +12,8 @@ from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split
 from magic_pdf.pre_proc.ocr_dict_merge import sort_blocks_by_layout, fill_spans_in_blocks, fix_block_spans
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_overlaps_min_spans, get_qa_need_list_v2
+from magic_pdf.para.para_split import para_split
+from magic_pdf.para.para_split_by_model import para_split_by_model
 
 
 def parse_pdf_by_ocr(pdf_bytes,
@@ -94,7 +96,10 @@ def parse_pdf_by_ocr(pdf_bytes,
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    pass
+    if debug_mode:
+        para_split_by_model(pdf_info_dict, debug_mode=debug_mode)
+    else:
+        para_split(pdf_info_dict, debug_mode=debug_mode)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
