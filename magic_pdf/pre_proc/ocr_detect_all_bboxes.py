@@ -28,7 +28,7 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
         all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.InterlineEquation, None, None, None, None])
 
     '''block嵌套问题解决'''
-    '''文本框与标题框重叠，优先信任标题框'''
+    '''文本框与标题框重叠，优先信任文本框'''
     all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
     '''任何框体与舍弃框重叠，优先信任舍弃框'''
     all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
@@ -60,7 +60,7 @@ def fix_text_overlap_title_blocks(all_bboxes):
             text_block_bbox = text_block[0], text_block[1], text_block[2], text_block[3]
             title_block_bbox = title_block[0], title_block[1], title_block[2], title_block[3]
             if calculate_iou(text_block_bbox, title_block_bbox) > 0.8:
-                all_bboxes.remove(text_block)
+                all_bboxes.remove(title_block)
 
     return all_bboxes
 
