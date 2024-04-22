@@ -15,7 +15,7 @@
 from loguru import logger
 
 from magic_pdf.rw import AbsReaderWriter
-from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
+from magic_pdf.pdf_parse_by_ocr_v2 import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
 
 
