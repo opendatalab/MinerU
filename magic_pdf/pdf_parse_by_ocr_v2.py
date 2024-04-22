@@ -71,6 +71,7 @@ def parse_pdf_by_ocr(pdf_bytes,
         '''block嵌套问题解决'''
         #@todo 1. text block大框套小框，删除小框 2. 图片或文本框与舍弃框重叠，优先信任舍弃框 3. 文本框与标题框重叠，优先信任文本框
 
+
         '''获取所有需要拼接的span资源'''
         spans = magic_model.get_all_spans(page_id)
         '''删除重叠spans中较小的那些'''
