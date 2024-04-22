@@ -92,7 +92,6 @@ def parse_pdf_by_ocr(pdf_bytes,
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    # if debug_mode:
     para_split(pdf_info_dict, debug_mode=debug_mode)
 
     """dict转list"""
