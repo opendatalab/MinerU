@@ -132,7 +132,7 @@ def __valign_lines(blocks, layout_bboxes):
 
     for layout_box in layout_bboxes:
         blocks_in_layoutbox = [b for b in blocks if b["type"] == BlockType.Text and is_in_layout(b['bbox'], layout_box['layout_bbox'])]
-        if len(blocks_in_layoutbox) == 0:
+        if len(blocks_in_layoutbox) == 0 or len(blocks_in_layoutbox[0]["lines"]) == 0:
             continue
 
         x0_lst = np.array([[line['bbox'][0], 0] for block in blocks_in_layoutbox for line in block['lines']])
