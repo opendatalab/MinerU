@@ -256,7 +256,7 @@ def __split_para_in_layoutbox2(lines_group, new_layout_bbox, lang="en", char_avg
 
 
 
-def __split_para_in_layoutbox(blocks_group, new_layout_bbox, text_blocks, lang="en", char_avg_len=10):
+def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg_len=10):
     """
     lines_group 进行行分段——layout内部进行分段。lines_group内每个元素是一个Layoutbox内的所有行。
     1. 先计算每个group的左右边界。
@@ -624,7 +624,7 @@ def __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang):
     pass
 
 
-def __do_split_page(blocks, layout_bboxes, new_layout_bbox, text_blocks, page_num, lang):
+def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     """
     根据line和layout情况进行分段
     先实现一个根据行末尾特征分段的简单方法。
@@ -637,7 +637,7 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, text_blocks, page_nu
     4. 图、表，目前独占一行，不考虑分段。
     """
     lines_group, blocks_group = __group_line_by_layout(blocks, layout_bboxes, lang)  # block内分段
-    layout_list_info = __split_para_in_layoutbox(blocks_group, new_layout_bbox, text_blocks, lang)  # layout内分段
+    layout_list_info = __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang)  # layout内分段
     blocks_group, page_list_info = __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
                                                                 page_num, lang)  # layout之间连接列表段落
     connected_layout_blocks = __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang)  # layout间链接段落
@@ -646,16 +646,15 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, text_blocks, page_nu
 
 
 
-def para_split_by_model(pdf_info_dict, debug_mode, magic_model: MagicModel, lang="en"):
+def para_split(pdf_info_dict, debug_mode, lang="en"):
     new_layout_of_pages = []  # 数组的数组，每个元素是一个页面的layoutS
     all_page_list_info = []  # 保存每个页面开头和结尾是否是列表
     for page_num, page in pdf_info_dict.items():
         blocks = page['preproc_blocks']
         layout_bboxes = page['layout_bboxes']
-        text_blocks = magic_model.get_text_blocks(page_num)
         new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
         new_layout_of_pages.append(new_layout_bbox)
-        splited_blocks, page_list_info = __do_split_page(blocks, layout_bboxes, new_layout_bbox, text_blocks, page_num, lang)
+        splited_blocks, page_list_info = __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang)
         all_page_list_info.append(page_list_info)
         page['para_blocks'] = splited_blocks
 
