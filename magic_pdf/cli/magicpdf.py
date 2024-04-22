@@ -26,6 +26,8 @@ import json as json_parse
 from datetime import datetime
 import click
 from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.pipe.OCRPipe import OCRPipe
+from magic_pdf.pipe.TXTPipe import TXTPipe
 from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import (
     parse_s3path,
@@ -33,9 +35,9 @@ from magic_pdf.libs.path_utils import (
     remove_non_official_s3_args,
 )
 from magic_pdf.libs.config_reader import get_local_dir
-from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter, MODE_BIN, MODE_TXT
+from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
@@ -53,24 +55,34 @@ def prepare_env():
 
 
 def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
-    uni_pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
-    jso_useful_key = {
-        "_pdf_type": "txt",
-        "model_list": model_list,
-    }
-    if parse_method == "ocr":
-        jso_useful_key["_pdf_type"] = "ocr"
+    if parse_method == "auto":
+        pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+    elif parse_method == "txt":
+        pipe = TXTPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+    elif parse_method == "ocr":
+        pipe = OCRPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+    else:
+        print("unknow parse method")
+        os.exit(1)
 
-    uni_pipe.pipe_parse()
-    md_content = uni_pipe.pipe_mk_markdown()
+    pipe.pipe_classify()
+    pipe.pipe_parse()
+    md_content = pipe.pipe_mk_markdown()
     part_file_name = datetime.now().strftime("%H-%M-%S")
-    md_writer.write(content=md_content, path=f"{part_file_name}.md", mode=MODE_TXT)
     md_writer.write(
-        content=json_parse.dumps(
-            uni_pipe.pdf_mid_data, ensure_ascii=False, indent=4
-        ),
+        content=md_content, path=f"{part_file_name}.md", mode=AbsReaderWriter.MODE_TXT
+    )
+    md_writer.write(
+        content=json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
         path=f"{part_file_name}.json",
-        mode=MODE_TXT,
+        mode=AbsReaderWriter.MODE_TXT,
+    )
+    try:
+        content_list = pipe.pipe_mk_uni_format()
+    except Exception as e:
+        print(e)
+    md_writer.write(
+        str(content_list), f"{part_file_name}.txt", AbsReaderWriter.MODE_TXT
     )
 
 
@@ -106,7 +118,10 @@ def json_command(json, method):
             byte_start, byte_end = int(may_range_params[0]), int(may_range_params[1])
             byte_end += byte_start - 1
         return s3_rw.read_jsonl(
-            remove_non_official_s3_args(s3path), byte_start, byte_end, MODE_BIN
+            remove_non_official_s3_args(s3path),
+            byte_start,
+            byte_end,
+            AbsReaderWriter.MODE_BIN,
         )
 
     jso = json_parse.loads(read_s3_path(json).decode("utf-8"))
@@ -119,7 +134,7 @@ def json_command(json, method):
 
     _do_parse(
         pdf_data,
-        jso['doc_layout_result'],
+        jso["doc_layout_result"],
         method,
         local_image_rw,
         local_md_rw,
@@ -148,7 +163,7 @@ def pdf_command(pdf, model, method):
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
-        return disk_rw.read(os.path.basename(path), MODE_BIN)
+        return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
     pdf_data = read_fn(pdf)
     jso = json_parse.loads(read_fn(model).decode("utf-8"))
