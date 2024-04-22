@@ -32,7 +32,7 @@ def ocr_mk_nlp_markdown_with_para(pdf_info_dict: list):
     markdown = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
-        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "nlp")
+        page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, "nlp")
         markdown.extend(page_markdown)
     return '\n\n'.join(markdown)
 
@@ -44,7 +44,7 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list, img_buket_p
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
-        page_markdown = ocr_mk_markdown_with_para_core(paras_of_layout, "mm", img_buket_path)
+        page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, "mm", img_buket_path)
         markdown_with_para_and_pagination.append({
             'page_no': page_no,
             'md_content': '\n\n'.join(page_markdown)
@@ -93,50 +93,49 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path=""):
 
 def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
     page_markdown = []
-    for paras in paras_of_layout:
-        for para in paras:
-            para_type = para.get('type')
-            if para_type == BlockType.Text:
-                para_text = merge_para_with_text(para)
-            elif para_type == BlockType.Title:
-                para_text = f"# {merge_para_with_text(para)}"
-            elif para_type == BlockType.InterlineEquation:
-                para_text = merge_para_with_text(para)
-            elif para_type == BlockType.Image:
-                if mode == 'nlp':
-                    continue
-                elif mode == 'mm':
-                    img_blocks = para.get('blocks')
-                    for img_block in img_blocks:
-                        if img_block.get('type') == BlockType.ImageBody:
-                            for line in img_block.get('lines'):
-                                for span in line['spans']:
-                                    if span.get('type') == ContentType.Image:
-                                        para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                    for img_block in img_blocks:
-                        if img_block.get('type') == BlockType.ImageCaption:
-                            para_text += merge_para_with_text(img_block)
-            elif para_type == BlockType.Table:
-                if mode == 'nlp':
-                    continue
-                elif mode == 'mm':
-                    table_blocks = para.get('blocks')
-                    for table_block in table_blocks:
-                        if table_block.get('type') == BlockType.TableBody:
-                            for line in table_block.get('lines'):
-                                for span in line['spans']:
-                                    if span.get('type') == ContentType.Table:
-                                        para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                    for table_block in table_blocks:
-                        if table_block.get('type') == BlockType.TableCaption:
-                            para_text += merge_para_with_text(table_block)
-                        elif table_block.get('type') == BlockType.TableFootnote:
-                            para_text += merge_para_with_text(table_block)
-
-            if para_text.strip() == '':
+    for para_block in paras_of_layout:
+        para_type = para_block.get('type')
+        if para_type == BlockType.Text:
+            para_text = merge_para_with_text(para_block)
+        elif para_type == BlockType.Title:
+            para_text = f"# {merge_para_with_text(para_block)}"
+        elif para_type == BlockType.InterlineEquation:
+            para_text = merge_para_with_text(para_block)
+        elif para_type == BlockType.Image:
+            if mode == 'nlp':
                 continue
-            else:
-                page_markdown.append(para_text.strip() + '  ')
+            elif mode == 'mm':
+                img_blocks = para_block.get('blocks')
+                for img_block in img_blocks:
+                    if img_block.get('type') == BlockType.ImageBody:
+                        for line in img_block.get('lines'):
+                            for span in line['spans']:
+                                if span.get('type') == ContentType.Image:
+                                    para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
+                for img_block in img_blocks:
+                    if img_block.get('type') == BlockType.ImageCaption:
+                        para_text += merge_para_with_text(img_block)
+        elif para_type == BlockType.Table:
+            if mode == 'nlp':
+                continue
+            elif mode == 'mm':
+                table_blocks = para_block.get('blocks')
+                for table_block in table_blocks:
+                    if table_block.get('type') == BlockType.TableBody:
+                        for line in table_block.get('lines'):
+                            for span in line['spans']:
+                                if span.get('type') == ContentType.Table:
+                                    para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
+                for table_block in table_blocks:
+                    if table_block.get('type') == BlockType.TableCaption:
+                        para_text += merge_para_with_text(table_block)
+                    elif table_block.get('type') == BlockType.TableFootnote:
+                        para_text += merge_para_with_text(table_block)
+
+        if para_text.strip() == '':
+            continue
+        else:
+            page_markdown.append(para_text.strip() + '  ')
 
     return page_markdown
 
