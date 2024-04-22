@@ -48,6 +48,7 @@ class MagicModel:
         self.__model_list = model_list
         self.__docs = docs
         self.__fix_axis()
+        #@todo 移除置信度小于0.6的所有block
 
     def __reduct_overlap(self, bboxes):
         N = len(bboxes)
