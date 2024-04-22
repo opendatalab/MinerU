@@ -385,7 +385,7 @@ class MagicModel:
         allow_category_id_list = [3, 5, 13, 14, 15]
         """当成span拼接的"""
         #  3: 'image', # 图片
-        #  4: 'table',       # 表格
+        #  5: 'table',       # 表格
         #  13: 'inline_equation',     # 行内公式
         #  14: 'interline_equation',      # 行间公式
         #  15: 'text',      # ocr识别文本
