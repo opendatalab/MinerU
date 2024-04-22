@@ -171,10 +171,11 @@ def __valign_lines(blocks, layout_bboxes):
 
         # 由于修改了block里的line长度，现在需要重新计算block的bbox
         for block in blocks_in_layoutbox:
-            block['bbox'] = [min([line['bbox'][0] for line in block['lines']]),
-                             min([line['bbox'][1] for line in block['lines']]),
-                             max([line['bbox'][2] for line in block['lines']]),
-                             max([line['bbox'][3] for line in block['lines']])]
+            if len(block["lines"]) > 0:
+                block['bbox'] = [min([line['bbox'][0] for line in block['lines']]),
+                                 min([line['bbox'][1] for line in block['lines']]),
+                                 max([line['bbox'][2] for line in block['lines']]),
+                                 max([line['bbox'][3] for line in block['lines']])]
 
         """新计算layout的bbox，因为block的bbox变了。"""
         layout_x0 = min([block['bbox'][0] for block in blocks_in_layoutbox])
@@ -192,7 +193,7 @@ def __align_text_in_layout(blocks, layout_bboxes):
     """
     for layout in layout_bboxes:
         lb = layout['layout_bbox']
-        blocks_in_layoutbox = [b for b in blocks if block["type"] == BlockType.Text and is_in_layout(b['bbox'], lb)]
+        blocks_in_layoutbox = [block for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lb)]
         if len(blocks_in_layoutbox) == 0:
             continue
 
@@ -270,6 +271,7 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg
         is_start_list = None
         is_end_list = None
         if len(blocks) == 0:
+            list_info.append([False, False])
             continue
         if blocks[0]["type"] != BlockType.Text and blocks[-1]["type"] != BlockType.Text:
             list_info.append([False, False])
@@ -360,6 +362,8 @@ def __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
         return blocks_group, [False, False]
 
     for i in range(1, len(blocks_group)):
+        if len(blocks_group[i]) == 0 or len(blocks_group[i-1]) == 0:
+            continue
         pre_layout_list_info = layout_list_info[i - 1]
         next_layout_list_info = layout_list_info[i]
         pre_last_para = blocks_group[i - 1][-1].get("lines", [])
@@ -431,7 +435,7 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     return None
 
 
-def __connect_para_inter_layoutbox(layout_paras, blocks_group, new_layout_bbox, lang):
+def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
     """
     layout之间进行分段。
     主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
@@ -479,7 +483,7 @@ def __connect_para_inter_layoutbox(layout_paras, blocks_group, new_layout_bbox, 
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
             #connected_layout_paras[-1][-1].extend(layout_paras[i][0])
             connected_layout_blocks[-1][-1]["lines"].extend(blocks_group[i][0]["lines"])
-            layout_paras[i].pop(0)  # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
+            #layout_paras[i].pop(0)  # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
             blocks_group[i][0]["lines"] = [] #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
             blocks_group[i][0]["lines_deleted"] = True
             # if len(layout_paras[i]) == 0:
