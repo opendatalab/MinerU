@@ -44,9 +44,9 @@ from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
 
-def prepare_env(pdf_file_name):
+def prepare_env(pdf_file_name, method):
     local_parent_dir = os.path.join(
-        get_local_dir(), "magic-pdf", pdf_file_name
+        get_local_dir(), "magic-pdf", pdf_file_name, method
     )
 
     local_image_dir = os.path.join(local_parent_dir, "images")
@@ -130,7 +130,7 @@ def json_command(json, method):
     s3_file_path = jso["file_location"]
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name)
+    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
     
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
         local_md_dir
@@ -173,7 +173,7 @@ def pdf_command(pdf, model, method):
     pdf_data = read_fn(pdf)
     jso = json_parse.loads(read_fn(model).decode("utf-8"))
     pdf_file_name = Path(pdf).stem
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name)
+    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
         local_md_dir
     )
