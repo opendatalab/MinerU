@@ -48,7 +48,7 @@ class MagicModel:
             need_remove_list = []
             layout_dets = model_page_info["layout_dets"]
             for layout_det in layout_dets:
-                if layout_det["score"] < 0.95:
+                if layout_det["score"] <= 0.05:
                     need_remove_list.append(layout_det)
                 else:
                     continue
