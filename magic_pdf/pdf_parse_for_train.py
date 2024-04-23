@@ -26,6 +26,7 @@ from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.markdown_utils import escape_special_markdown_char
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
+from magic_pdf.pre_proc.cut_image import txt_save_images_by_bboxes
 from magic_pdf.pre_proc.detect_images import parse_images
 from magic_pdf.pre_proc.detect_tables import parse_tables  # 获取tables的bbox
 from magic_pdf.pre_proc.detect_equation import parse_equations  # 获取equations的bbox
@@ -62,7 +63,6 @@ from para.exceptions import (
 """
 
 from magic_pdf.libs.commons import read_file, join_path
-from magic_pdf.libs.pdf_image_tools import save_images_by_bboxes
 from magic_pdf.post_proc.remove_footnote import (
     merge_footnote_blocks,
     remove_footnote_blocks,
@@ -183,8 +183,8 @@ def parse_pdf_for_train(
                 f"page_id: {page_id}, img_counts: {img_counts}, drop this pdf: {book_name}, drop_reason: {DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS,
+                "_need_drop": True,
+                "_drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS,
             }
             if not debug_mode:
                 return result
@@ -323,7 +323,7 @@ def parse_pdf_for_train(
 
         # 把图、表、公式都进行截图，保存到存储上，返回图片路径作为内容
         image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = (
-            save_images_by_bboxes(
+            txt_save_images_by_bboxes(
                 book_name,
                 page_id,
                 page,
@@ -396,8 +396,8 @@ def parse_pdf_for_train(
                 f"page_id: {page_id}, drop this pdf: {book_name}, reason: {DropReason.TEXT_BLCOK_HOR_OVERLAP}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.TEXT_BLCOK_HOR_OVERLAP,
+                "_need_drop": True,
+                "_drop_reason": DropReason.TEXT_BLCOK_HOR_OVERLAP,
             }
             if not debug_mode:
                 return result
@@ -443,8 +443,8 @@ def parse_pdf_for_train(
                 f"page_id: {page_id}, drop this pdf: {book_name}, reason: {DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.CAN_NOT_DETECT_PAGE_LAYOUT,
+                "_need_drop": True,
+                "_drop_reason": DropReason.CAN_NOT_DETECT_PAGE_LAYOUT,
             }
             if not debug_mode:
                 return result
@@ -456,7 +456,7 @@ def parse_pdf_for_train(
             logger.warning(
                 f"page_id: {page_id}, drop this pdf: {book_name}, reason: {DropReason.COMPLICATED_LAYOUT}"
             )
-            result = {"need_drop": True, "drop_reason": DropReason.COMPLICATED_LAYOUT}
+            result = {"_need_drop": True, "_drop_reason": DropReason.COMPLICATED_LAYOUT}
             if not debug_mode:
                 return result
 
@@ -466,8 +466,8 @@ def parse_pdf_for_train(
                 f"page_id: {page_id}, drop this pdf: {book_name}, reason: {DropReason.TOO_MANY_LAYOUT_COLUMNS}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.TOO_MANY_LAYOUT_COLUMNS,
+                "_need_drop": True,
+                "_drop_reason": DropReason.TOO_MANY_LAYOUT_COLUMNS,
                 "extra_info": {"column_cnt": layout_column_width},
             }
             if not debug_mode:
@@ -616,8 +616,8 @@ def parse_pdf_for_train(
                 f"Drop this pdf: {book_name}, reason: {DropReason.DENSE_SINGLE_LINE_BLOCK}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.DENSE_SINGLE_LINE_BLOCK,
+                "_need_drop": True,
+                "_drop_reason": DropReason.DENSE_SINGLE_LINE_BLOCK,
             }
             return result
         if error_info == titleDetectionException_msg:
@@ -625,27 +625,27 @@ def parse_pdf_for_train(
                 f"Drop this pdf: {book_name}, reason: {DropReason.TITLE_DETECTION_FAILED}"
             )
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.TITLE_DETECTION_FAILED,
+                "_need_drop": True,
+                "_drop_reason": DropReason.TITLE_DETECTION_FAILED,
             }
             return result
         elif error_info == titleLevelException_msg:
             logger.warning(
                 f"Drop this pdf: {book_name}, reason: {DropReason.TITLE_LEVEL_FAILED}"
             )
-            result = {"need_drop": True, "drop_reason": DropReason.TITLE_LEVEL_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.TITLE_LEVEL_FAILED}
             return result
         elif error_info == paraSplitException_msg:
             logger.warning(
                 f"Drop this pdf: {book_name}, reason: {DropReason.PARA_SPLIT_FAILED}"
             )
-            result = {"need_drop": True, "drop_reason": DropReason.PARA_SPLIT_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.PARA_SPLIT_FAILED}
             return result
         elif error_info == paraMergeException_msg:
             logger.warning(
                 f"Drop this pdf: {book_name}, reason: {DropReason.PARA_MERGE_FAILED}"
             )
-            result = {"need_drop": True, "drop_reason": DropReason.PARA_MERGE_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.PARA_MERGE_FAILED}
             return result
 
     if debug_mode:

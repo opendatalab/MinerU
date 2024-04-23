@@ -11,11 +11,13 @@ from magic_pdf.layout.bbox_sort import (
     prepare_bboxes_for_layout_split,
 )
 from magic_pdf.layout.layout_sort import LAYOUT_UNPROC, get_bboxes_layout, get_columns_cnt_of_layout, sort_text_block
+from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.markdown_utils import escape_special_markdown_char
 from magic_pdf.libs.safe_filename import sanitize_filename
 from magic_pdf.libs.vis_utils import draw_bbox_on_page, draw_layout_bbox_on_page
+from magic_pdf.pre_proc.cut_image import txt_save_images_by_bboxes
 from magic_pdf.pre_proc.detect_images import parse_images
 from magic_pdf.pre_proc.detect_tables import parse_tables  # 获取tables的bbox
 from magic_pdf.pre_proc.detect_equation import parse_equations  # 获取equations的bbox
@@ -47,8 +49,6 @@ from para.exceptions import (
 )
 '''
 
-from magic_pdf.libs.commons import read_file, join_path
-from magic_pdf.libs.pdf_image_tools import save_images_by_bboxes
 from magic_pdf.post_proc.remove_footnote import merge_footnote_blocks, remove_footnote_blocks
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
 from magic_pdf.pre_proc.equations_replace import combine_chars_to_pymudict, remove_chars_in_text_blocks, replace_equations_in_textblock
@@ -107,7 +107,7 @@ def parse_pdf_by_txt(
         # 去除对junkimg的依赖，简化逻辑
         if len(page_imgs) > 1500:  # 如果当前页超过1500张图片，直接跳过
             logger.warning(f"page_id: {page_id}, img_counts: {len(page_imgs)}, drop this pdf")
-            result = {"need_drop": True, "drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}
+            result = {"_need_drop": True, "_drop_reason": DropReason.HIGH_COMPUTATIONAL_lOAD_BY_IMGS}
             if not debug_mode:
                 return result
 
@@ -193,7 +193,7 @@ def parse_pdf_by_txt(
         """
 
         # 把图、表、公式都进行截图，保存到存储上，返回图片路径作为内容
-        image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = save_images_by_bboxes(
+        image_info, image_backup_info, table_info, inline_eq_info, interline_eq_info = txt_save_images_by_bboxes(
             page_id,
             page,
             pdf_bytes_md5,
@@ -236,7 +236,7 @@ def parse_pdf_by_txt(
         if is_text_block_horz_overlap:
             # debug_show_bbox(pdf_docs, page_id, [b['bbox'] for b in remain_text_blocks], [], [], join_path(save_path, book_name, f"{book_name}_debug.pdf"), 0)
             logger.warning(f"page_id: {page_id}, drop this pdf: {pdf_bytes_md5}, reason: {DropReason.TEXT_BLCOK_HOR_OVERLAP}")
-            result = {"need_drop": True, "drop_reason": DropReason.TEXT_BLCOK_HOR_OVERLAP}
+            result = {"_need_drop": True, "_drop_reason": DropReason.TEXT_BLCOK_HOR_OVERLAP}
             if not debug_mode:
                 return result
 
@@ -255,14 +255,14 @@ def parse_pdf_by_txt(
         
         if len(remain_text_blocks)>0 and len(all_bboxes)>0 and len(layout_bboxes)==0:
             logger.warning(f"page_id: {page_id}, drop this pdf: {pdf_bytes_md5}, reason: {DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}")
-            result = {"need_drop": True, "drop_reason": DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}
+            result = {"_need_drop": True, "_drop_reason": DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}
             if not debug_mode:
                 return result
 
         """以下去掉复杂的布局和超过2列的布局"""
         if any([lay["layout_label"] == LAYOUT_UNPROC for lay in layout_bboxes]):  # 复杂的布局
             logger.warning(f"page_id: {page_id}, drop this pdf: {pdf_bytes_md5}, reason: {DropReason.COMPLICATED_LAYOUT}")
-            result = {"need_drop": True, "drop_reason": DropReason.COMPLICATED_LAYOUT}
+            result = {"_need_drop": True, "_drop_reason": DropReason.COMPLICATED_LAYOUT}
             if not debug_mode:
                 return result
 
@@ -270,8 +270,8 @@ def parse_pdf_by_txt(
         if layout_column_width > 2:  # 去掉超过2列的布局pdf
             logger.warning(f"page_id: {page_id}, drop this pdf: {pdf_bytes_md5}, reason: {DropReason.TOO_MANY_LAYOUT_COLUMNS}")
             result = {
-                "need_drop": True,
-                "drop_reason": DropReason.TOO_MANY_LAYOUT_COLUMNS,
+                "_need_drop": True,
+                "_drop_reason": DropReason.TOO_MANY_LAYOUT_COLUMNS,
                 "extra_info": {"column_cnt": layout_column_width},
             }
             if not debug_mode:
@@ -377,27 +377,34 @@ def parse_pdf_by_txt(
         logger.warning(f"page_id: {page_id}, drop this pdf: {pdf_bytes_md5}, reason: {error_info}")
         if error_info == denseSingleLineBlockException_msg:
             logger.warning(f"Drop this pdf: {pdf_bytes_md5}, reason: {DropReason.DENSE_SINGLE_LINE_BLOCK}")
-            result = {"need_drop": True, "drop_reason": DropReason.DENSE_SINGLE_LINE_BLOCK}
+            result = {"_need_drop": True, "_drop_reason": DropReason.DENSE_SINGLE_LINE_BLOCK}
             return result
         if error_info == titleDetectionException_msg:
             logger.warning(f"Drop this pdf: {pdf_bytes_md5}, reason: {DropReason.TITLE_DETECTION_FAILED}")
-            result = {"need_drop": True, "drop_reason": DropReason.TITLE_DETECTION_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.TITLE_DETECTION_FAILED}
             return result
         elif error_info == titleLevelException_msg:
             logger.warning(f"Drop this pdf: {pdf_bytes_md5}, reason: {DropReason.TITLE_LEVEL_FAILED}")
-            result = {"need_drop": True, "drop_reason": DropReason.TITLE_LEVEL_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.TITLE_LEVEL_FAILED}
             return result
         elif error_info == paraSplitException_msg:
             logger.warning(f"Drop this pdf: {pdf_bytes_md5}, reason: {DropReason.PARA_SPLIT_FAILED}")
-            result = {"need_drop": True, "drop_reason": DropReason.PARA_SPLIT_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.PARA_SPLIT_FAILED}
             return result
         elif error_info == paraMergeException_msg:
             logger.warning(f"Drop this pdf: {pdf_bytes_md5}, reason: {DropReason.PARA_MERGE_FAILED}")
-            result = {"need_drop": True, "drop_reason": DropReason.PARA_MERGE_FAILED}
+            result = {"_need_drop": True, "_drop_reason": DropReason.PARA_MERGE_FAILED}
             return result
 
     pdf_info_dict, error_info = para_process_pipeline.para_process_pipeline(pdf_info_dict)
     if error_info is not None:
         return _deal_with_text_exception(error_info)
 
-    return pdf_info_dict
+
+    """dict转list"""
+    pdf_info_list = dict_to_list(pdf_info_dict)
+    new_pdf_info_dict = {
+        "pdf_info": pdf_info_list,
+    }
+
+    return new_pdf_info_dict

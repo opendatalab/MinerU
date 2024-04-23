@@ -287,7 +287,7 @@ def get_language(doc: fitz.Document):
     return language
 
 
-def pdf_meta_scan(s3_pdf_path: str, pdf_bytes: bytes):
+def pdf_meta_scan(pdf_bytes: bytes):
     """
     :param s3_pdf_path:
     :param pdf_bytes: pdf文件的二进制数据
@@ -298,8 +298,8 @@ def pdf_meta_scan(s3_pdf_path: str, pdf_bytes: bytes):
     is_encrypted = doc.is_encrypted
     total_page = len(doc)
     if total_page == 0:
-        logger.warning(f"drop this pdf: {s3_pdf_path}, drop_reason: {DropReason.EMPTY_PDF}")
-        result = {"need_drop": True, "drop_reason": DropReason.EMPTY_PDF}
+        logger.warning(f"drop this pdf, drop_reason: {DropReason.EMPTY_PDF}")
+        result = {"_need_drop": True, "_drop_reason": DropReason.EMPTY_PDF}
         return result
     else:
         page_width_pts, page_height_pts = get_pdf_page_size_pts(doc)
@@ -322,7 +322,6 @@ def pdf_meta_scan(s3_pdf_path: str, pdf_bytes: bytes):
 
         # 最后输出一条json
         res = {
-            "pdf_path": s3_pdf_path,
             "is_needs_password": is_needs_password,
             "is_encrypted": is_encrypted,
             "total_page": total_page,
@@ -350,7 +349,7 @@ def main(s3_pdf_path: str, s3_profile: str):
     """
     try:
         file_content = read_file(s3_pdf_path, s3_profile)
-        pdf_meta_scan(s3_pdf_path, file_content)
+        pdf_meta_scan(file_content)
     except Exception as e:
         print(f"ERROR: {s3_pdf_path}, {e}", file=sys.stderr)
         logger.exception(e)

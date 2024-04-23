@@ -14,5 +14,7 @@ termcolor>=2.4.0
 wordninja>=2.0.0
 en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 zh_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.7.0/zh_core_web_sm-3.7.0-py3-none-any.whl
-scikit-learn==1.4.1.post1
+scikit-learn>=1.0.2
 nltk==3.8.1
+s3pathlib>=2.1.1
+

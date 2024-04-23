@@ -1,4 +1,4 @@
-from magic_pdf.io.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.commons import parse_aws_param, parse_bucket_key
 import boto3
 from loguru import logger
@@ -11,7 +11,7 @@ MODE_BIN = "binary"
 
 
 class S3ReaderWriter(AbsReaderWriter):
-    def __init__(self, ak: str, sk: str, endpoint_url: str, addressing_style: str, parent_path: str):
+    def __init__(self, ak: str, sk: str, endpoint_url: str, addressing_style: str = 'auto', parent_path: str = ''):
         self.client = self._get_client(ak, sk, endpoint_url, addressing_style)
         self.path = parent_path
 

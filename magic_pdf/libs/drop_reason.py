@@ -8,7 +8,7 @@ class DropReason:
     HIGH_COMPUTATIONAL_lOAD_BY_SVGS = "high_computational_load_by_svgs" # 特殊的SVG图，计算量太大，从而丢弃
     HIGH_COMPUTATIONAL_lOAD_BY_TOTAL_PAGES = "high_computational_load_by_total_pages" # 计算量超过负荷，当前方法下计算量消耗过大
     MISS_DOC_LAYOUT_RESULT = "missing doc_layout_result" # 版面分析失败
-    Exception = "exception" # 解析中发生异常
+    Exception = "_exception" # 解析中发生异常
     ENCRYPTED = "encrypted" # PDF是加密的
     EMPTY_PDF = "total_page=0" # PDF页面总数为0
     NOT_IS_TEXT_PDF = "not_is_text_pdf" # 不是文字版PDF，无法直接解析

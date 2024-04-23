@@ -68,7 +68,7 @@ def pdf_filter(page:fitz.Page, text_blocks, table_bboxes, image_bboxes) -> tuple
         
     """
     if __is_contain_color_background_rect(page, text_blocks, image_bboxes):
-        return False, {"need_drop": True, "drop_reason": DropReason.COLOR_BACKGROUND_TEXT_BOX}
+        return False, {"_need_drop": True, "_drop_reason": DropReason.COLOR_BACKGROUND_TEXT_BOX}
 
     
     return True, None
