@@ -120,14 +120,14 @@ def sort_blocks_by_layout(all_bboxes, layout_bboxes):
             # 如果是footnote则跳过
             if block[7] == BlockType.Footnote:
                 continue
-            block_bbox = [block[0], block[1], block[2], block[3]]
+            block_bbox = block[:4]
             if calculate_overlap_area_in_bbox1_area_ratio(block_bbox, layout_bbox) > 0.8:
                 layout_blocks.append(block)
 
         # 如果layout_blocks不为空，则放入new_blocks中
         if len(layout_blocks) > 0:
             new_blocks.append(layout_blocks)
-            # 从spans删除已经放入layout_sapns中的span
+            # 从all_bboxes删除已经放入layout_blocks中的block
             for layout_block in layout_blocks:
                 all_bboxes.remove(layout_block)
 
