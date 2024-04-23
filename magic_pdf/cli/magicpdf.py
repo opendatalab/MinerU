@@ -25,6 +25,8 @@ import os
 import json as json_parse
 from datetime import datetime
 import click
+from loguru import logger
+
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -77,13 +79,13 @@ def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, imag
         path=f"{part_file_name}.json",
         mode=AbsReaderWriter.MODE_TXT,
     )
-    try:
-        content_list = pipe.pipe_mk_uni_format()
-    except Exception as e:
-        print(e)
-    md_writer.write(
-        str(content_list), f"{part_file_name}.txt", AbsReaderWriter.MODE_TXT
-    )
+    # try:
+    #     content_list = pipe.pipe_mk_uni_format()
+    # except Exception as e:
+    #     logger.exception(e)
+    # md_writer.write(
+    #     str(content_list), f"{part_file_name}.txt", AbsReaderWriter.MODE_TXT
+    # )
 
 
 @click.group()
