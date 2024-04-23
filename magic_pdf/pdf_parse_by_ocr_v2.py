@@ -92,7 +92,11 @@ def parse_pdf_by_ocr(pdf_bytes,
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    para_split(pdf_info_dict, debug_mode=debug_mode)
+    try:
+        para_split(pdf_info_dict, debug_mode=debug_mode)
+    except Exception as e:
+        logger.exception(e)
+        raise e
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
