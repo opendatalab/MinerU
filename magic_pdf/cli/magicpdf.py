@@ -23,9 +23,9 @@ python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf --model /home/llm/Downloa
 
 import os
 import json as json_parse
-from datetime import datetime
 import click
 from loguru import logger
+from pathlib import Path
 
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
@@ -44,9 +44,9 @@ from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
 
-def prepare_env():
+def prepare_env(pdf_file_name):
     local_parent_dir = os.path.join(
-        get_local_dir(), "magic-pdf", datetime.now().strftime("%Y-%m-%d")
+        get_local_dir(), "magic-pdf",pdf_file_name
     )
 
     local_image_dir = os.path.join(local_parent_dir, "images")
@@ -56,7 +56,7 @@ def prepare_env():
     return local_image_dir, local_md_dir
 
 
-def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
+def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
     if parse_method == "auto":
         pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
     elif parse_method == "txt":
@@ -70,13 +70,13 @@ def _do_parse(pdf_bytes, model_list, parse_method, image_writer, md_writer, imag
     pipe.pipe_classify()
     pipe.pipe_parse()
     md_content = pipe.pipe_mk_markdown()
-    part_file_name = datetime.now().strftime("%H-%M-%S")
+    #part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(
-        content=md_content, path=f"{part_file_name}.md", mode=AbsReaderWriter.MODE_TXT
+        content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
     )
     md_writer.write(
         content=json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
-        path=f"{part_file_name}.json",
+        path=f"{pdf_file_name}.json",
         mode=AbsReaderWriter.MODE_TXT,
     )
     # try:
@@ -127,14 +127,17 @@ def json_command(json, method):
         )
 
     jso = json_parse.loads(read_s3_path(json).decode("utf-8"))
-    pdf_data = read_s3_path(jso["file_location"])
-    local_image_dir, local_md_dir = prepare_env()
-
+    s3_file_path = jso["file_location"]
+    pdf_file_name = Path(s3_file_path).stem
+    pdf_data = read_s3_path(s3_file_path)
+    local_image_dir, local_md_dir = prepare_env(pdf_file_name)
+    
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
         local_md_dir
     )
 
     _do_parse(
+        pdf_file_name,
         pdf_data,
         jso["doc_layout_result"],
         method,
@@ -169,11 +172,13 @@ def pdf_command(pdf, model, method):
 
     pdf_data = read_fn(pdf)
     jso = json_parse.loads(read_fn(model).decode("utf-8"))
-    local_image_dir, local_md_dir = prepare_env()
+    pdf_file_name = Path(pdf).stem
+    local_image_dir, local_md_dir = prepare_env(pdf_file_name)
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
         local_md_dir
     )
     _do_parse(
+        pdf_file_name,
         pdf_data,
         jso,
         method,
