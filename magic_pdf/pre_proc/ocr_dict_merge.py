@@ -156,7 +156,7 @@ def fill_spans_in_blocks(blocks, spans):
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.8:
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.7:
                 block_spans.append(span)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
