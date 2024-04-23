@@ -94,6 +94,7 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path=""):
 def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
     page_markdown = []
     for para_block in paras_of_layout:
+        para_text = ''
         para_type = para_block.get('type')
         if para_type == BlockType.Text:
             para_text = merge_para_with_text(para_block)
