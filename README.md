@@ -22,15 +22,15 @@ git clone https://github.com/magicpdf/Magic-PDF.git
 2.Install the requirements
 
 ```sh
+cd Magic-PDF
 pip install -r requirements.txt
 ```
 
-3.Run the main script
+3.Run the command line
 
 ```sh
-use demo/text_demo.py
-or
-use demo/ocr_demo.py
+export PYTHONPATH=.
+python magic_pdf/cli/magicpdf.py --help
 ```
 
 ### 版权说明
