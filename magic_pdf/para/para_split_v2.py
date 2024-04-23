@@ -517,6 +517,8 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     next_first_block = next_page_paras[0][0]
     if pre_last_block["type"] != BlockType.Text or next_first_block["type"] != BlockType.Text:
         return False
+    if len(pre_last_block["lines"]) == 0 or len(next_first_block["lines"]) == 0:
+        return False
     pre_last_para = pre_last_block["lines"]
     next_first_para = next_first_block["lines"]
     pre_last_line = pre_last_para[-1]
