@@ -87,17 +87,21 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
         """
         for l in lines:
             first_char = __get_span_text(l['spans'][0])[0]
-            layout_left = __find_layout_bbox_by_line(l['bbox'], new_layout_bboxes)[0]
-            if l['bbox'][0] == layout_left:
-                if first_char.isupper() or first_char.isdigit():
-                    line_fea_encode.append(1)
-                else:
-                    line_fea_encode.append(4)
+            layout = __find_layout_bbox_by_line(l['bbox'], new_layout_bboxes)
+            if not layout:
+                line_fea_encode.append(0)
             else:
-                if first_char.isupper():
-                    line_fea_encode.append(2)
+                layout_left = layout[0]
+                if l['bbox'][0] == layout_left:
+                    if first_char.isupper() or first_char.isdigit():
+                        line_fea_encode.append(1)
+                    else:
+                        line_fea_encode.append(4)
                 else:
-                    line_fea_encode.append(3)
+                    if first_char.isupper():
+                        line_fea_encode.append(2)
+                    else:
+                        line_fea_encode.append(3)
 
         # 然后根据编码进行分段, 选出来 1,2,3连续出现至少2次的行，认为是列表。
 
