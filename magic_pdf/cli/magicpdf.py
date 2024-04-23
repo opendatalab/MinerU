@@ -46,11 +46,11 @@ parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
 def prepare_env(pdf_file_name):
     local_parent_dir = os.path.join(
-        get_local_dir(), "magic-pdf",pdf_file_name
+        get_local_dir(), "magic-pdf", pdf_file_name
     )
 
     local_image_dir = os.path.join(local_parent_dir, "images")
-    local_md_dir = os.path.join(local_parent_dir, "md")
+    local_md_dir = local_parent_dir
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
@@ -143,7 +143,7 @@ def json_command(json, method):
         method,
         local_image_rw,
         local_md_rw,
-        local_image_dir,
+        os.path.basename(local_image_dir),
     )
 
 
@@ -184,7 +184,7 @@ def pdf_command(pdf, model, method):
         method,
         local_image_rw,
         local_md_rw,
-        local_image_dir,
+        os.path.basename(local_image_dir),
     )
 
 
