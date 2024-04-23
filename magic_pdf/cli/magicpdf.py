@@ -23,6 +23,7 @@ python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf --model /home/llm/Downloa
 
 import os
 import json as json_parse
+import sys
 import click
 from loguru import logger
 from pathlib import Path
@@ -163,8 +164,8 @@ def pdf_command(pdf, model, method):
     if model is None:
         model = pdf.replace(".pdf", ".json")
         if not os.path.exists(model):
-            print(f"make sure json file existed and place under {os.dirname(pdf)}")
-            os.exit(1)
+            print(f"make sure json {model} existed and place under {os.path.dirname(pdf)}", file=sys.stderr)
+            exit(1)
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
