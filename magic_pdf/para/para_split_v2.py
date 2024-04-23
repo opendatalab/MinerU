@@ -246,11 +246,11 @@ def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
     for lyout in layout_bboxes:
         lines = [line for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lyout['layout_bbox']) for line in
                  block['lines']]
-        blocks = [block for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox'])]
+        blocks_in_layout = [block for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox'])]
 
 
         lines_group.append(lines)
-        blocks_group.append(blocks)
+        blocks_group.append(blocks_in_layout)
     return lines_group, blocks_group
 
 
