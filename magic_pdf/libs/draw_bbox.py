@@ -1,5 +1,5 @@
 from magic_pdf.libs.commons import fitz  # PyMuPDF
-from magic_pdf.libs.ocr_content_type import ContentType
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 
 
 def draw_bbox_without_number(i, bbox_list, page, rgb_config, fill_config):
@@ -58,32 +58,59 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
     # Save the PDF
     pdf_docs.save(f"{out_path}/layout.pdf")
 
-def draw_text_bbox(pdf_info_dict, pdf_bytes, out_path):
+def draw_span_bbox(pdf_info, pdf_bytes, out_path):
     text_list = []
     inline_equation_list = []
     interline_equation_list = []
-    for page in pdf_info_dict.values():
+    image_list = []
+    table_list = []
+    for page in pdf_info:
         page_text_list = []
         page_inline_equation_list = []
         page_interline_equation_list = []
+        page_image_list = []
+        page_table_list = []
         for block in page['para_blocks']:
-            for line in block['lines']:
-                for span in line['spans']:
-                    if span['type'] == ContentType.Text:
-                        page_text_list.append(span['bbox'])
-                    elif span['type'] == ContentType.InlineEquation:
-                        page_inline_equation_list.append(span['bbox'])
-                    elif span['type'] == ContentType.InterlineEquation:
-                        page_interline_equation_list.append(span['bbox'])
+            if block['type'] in [BlockType.Text, BlockType.Title, BlockType.InterlineEquation]:
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if span['type'] == ContentType.Text:
+                            page_text_list.append(span['bbox'])
+                        elif span['type'] == ContentType.InlineEquation:
+                            page_inline_equation_list.append(span['bbox'])
+                        elif span['type'] == ContentType.InterlineEquation:
+                            page_interline_equation_list.append(span['bbox'])
+                        elif span['type'] == ContentType.Image:
+                            page_image_list.append(span['bbox'])
+                        elif span['type'] == ContentType.Table:
+                            page_table_list.append(span['bbox'])
+            elif block['type'] in [BlockType.Image, BlockType.Table]:
+                for sub_block in block["blocks"]:
+                    for line in sub_block['lines']:
+                        for span in line['spans']:
+                            if span['type'] == ContentType.Text:
+                                page_text_list.append(span['bbox'])
+                            elif span['type'] == ContentType.InlineEquation:
+                                page_inline_equation_list.append(span['bbox'])
+                            elif span['type'] == ContentType.InterlineEquation:
+                                page_interline_equation_list.append(span['bbox'])
+                            elif span['type'] == ContentType.Image:
+                                page_image_list.append(span['bbox'])
+                            elif span['type'] == ContentType.Table:
+                                page_table_list.append(span['bbox'])
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
         interline_equation_list.append(page_interline_equation_list)
+        image_list.append(page_image_list)
+        table_list.append(page_table_list)
     pdf_docs = fitz.open("pdf", pdf_bytes)
     for i, page in enumerate(pdf_docs):
         # 获取当前页面的数据
-        draw_bbox_without_number(i, text_list, page, [255, 0, 0])
-        draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0])
-        draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255])
+        draw_bbox_without_number(i, text_list, page, [255, 0, 0], False)
+        draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0], False)
+        draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255], False)
+        draw_bbox_without_number(i, image_list, page, [255, 204, 0], False)
+        draw_bbox_without_number(i, table_list, page, [204, 0, 255], False)
 
     # Save the PDF
-    pdf_docs.save(f"{out_path}/text.pdf")
+    pdf_docs.save(f"{out_path}/spans.pdf")
