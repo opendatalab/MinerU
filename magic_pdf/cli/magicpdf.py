@@ -27,6 +27,7 @@ import click
 from loguru import logger
 from pathlib import Path
 
+from magic_pdf.libs.draw_bbox import draw_layout_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -56,7 +57,7 @@ def prepare_env(pdf_file_name, method):
     return local_image_dir, local_md_dir
 
 
-def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir):
+def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir, local_md_dir):
     if parse_method == "auto":
         pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
     elif parse_method == "txt":
@@ -69,6 +70,8 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
 
     pipe.pipe_classify()
     pipe.pipe_parse()
+    pdf_info = pipe.pdf_mid_data['pdf_info']
+    draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     md_content = pipe.pipe_mk_markdown()
     #part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(
@@ -144,6 +147,7 @@ def json_command(json, method):
         local_image_rw,
         local_md_rw,
         os.path.basename(local_image_dir),
+        local_md_dir
     )
 
 
@@ -185,6 +189,7 @@ def pdf_command(pdf, model, method):
         local_image_rw,
         local_md_rw,
         os.path.basename(local_image_dir),
+        local_md_dir
     )
 
 
