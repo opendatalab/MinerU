@@ -28,7 +28,7 @@ import click
 from loguru import logger
 from pathlib import Path
 
-from magic_pdf.libs.draw_bbox import draw_layout_bbox
+from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -73,6 +73,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     pipe.pipe_parse()
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
+    draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
     md_content = pipe.pipe_mk_markdown()
     #part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(
