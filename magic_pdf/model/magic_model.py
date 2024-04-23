@@ -48,7 +48,7 @@ class MagicModel:
             need_remove_list = []
             layout_dets = model_page_info["layout_dets"]
             for layout_det in layout_dets:
-                if layout_det["score"] < 0.6:
+                if layout_det["score"] < 0.95:
                     need_remove_list.append(layout_det)
                 else:
                     continue
@@ -59,8 +59,7 @@ class MagicModel:
         self.__model_list = model_list
         self.__docs = docs
         self.__fix_axis()
-        #@TODO 删除掉一些低置信度的会导致分段错误，后面再修复
-        # self.__fix_by_confidence()
+        self.__fix_by_confidence()
 
     def __reduct_overlap(self, bboxes):
         N = len(bboxes)
