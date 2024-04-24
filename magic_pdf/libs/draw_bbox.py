@@ -132,7 +132,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
     pdf_docs = fitz.open("pdf", pdf_bytes)
     for i, page in enumerate(pdf_docs):
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
-        draw_bbox_without_number(i, dropped_bbox_list, page, [0, 255, 0], True)
+        draw_bbox_without_number(i, dropped_bbox_list, page, [158, 158, 158], True)
         draw_bbox_without_number(i, tables_list, page, [153, 153, 0], True)  # color !
         draw_bbox_without_number(i, tables_body_list, page, [204, 204, 0], True)
         draw_bbox_without_number(i, tables_caption_list, page, [255, 255, 102], True)
@@ -142,7 +142,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
         draw_bbox_without_number(i, imgs_caption_list, page, [102, 178, 255], True)
         draw_bbox_without_number(i, titles_list, page, [102, 102, 255], True)
         draw_bbox_without_number(i, texts_list, page, [153, 0, 76], True)
-        draw_bbox_without_number(i, interequations_list, page, [160, 160, 160], True)
+        draw_bbox_without_number(i, interequations_list, page, [0, 255, 0], True)
 
     # Save the PDF
     pdf_docs.save(f"{out_path}/layout.pdf")
