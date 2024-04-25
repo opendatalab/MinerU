@@ -17,7 +17,7 @@ on:
       - "**.md"
   workflow_dispatch:
 jobs:
-  pdf-test:
+  cli-test:
     runs-on: pdf
     timeout-minutes: 40
     strategy:
@@ -46,7 +46,7 @@ jobs:
         export https_proxy=""
     - name: get-benchmark-result
       run: |
-        echo $CI_PROJECT_DIR
-        pytest -v tests/test_cli/test_cli.py -s
+        echo $GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE && pytest -v tests/test_cli/test_cli.py -s
 
                                                                                                                             
