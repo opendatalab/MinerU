@@ -201,16 +201,58 @@ def para_to_standard_format(para, img_buket_path):
     return para_content
 
 
+def para_to_standard_format_v2(para_block, img_buket_path):
+    para_type = para_block['type']
+    if para_type == BlockType.Text:
+        para_content = {
+            'type': 'text',
+            'text': merge_para_with_text(para_block),
+        }
+    elif para_type == BlockType.Title:
+        para_content = {
+            'type': 'text',
+            'text': merge_para_with_text(para_block),
+            'text_level': 1
+        }
+    elif para_type == BlockType.InterlineEquation:
+        para_content = {
+            'type': 'equation',
+            'text': merge_para_with_text(para_block),
+            'text_format': "latex"
+        }
+    elif para_type == BlockType.Image:
+        para_content = {
+            'type': 'image',
+        }
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.ImageBody:
+                para_content['img_path'] = join_path(img_buket_path, block["lines"][0]["spans"][0]['image_path'])
+            if block['type'] == BlockType.ImageCaption:
+                para_content['img_caption'] = merge_para_with_text(block)
+    elif para_type == BlockType.Table:
+        para_content = {
+            'type': 'table',
+        }
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.TableBody:
+                para_content['img_path'] = join_path(img_buket_path, block["lines"][0]["spans"][0]['image_path'])
+            if block['type'] == BlockType.TableCaption:
+                para_content['table_caption'] = merge_para_with_text(block)
+            if block['type'] == BlockType.TableFootnote:
+                para_content['table_footnote'] = merge_para_with_text(block)
+
+    return para_content
+
+
 def make_standard_format_with_para(pdf_info_dict: list, img_buket_path: str):
     content_list = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get("para_blocks")
         if not paras_of_layout:
             continue
-        for paras in paras_of_layout:
-            for para in paras:
-                para_content = para_to_standard_format(para, img_buket_path)
-                content_list.append(para_content)
+        for para_block in paras_of_layout:
+            para_content = para_to_standard_format_v2(para_block, img_buket_path)
+            content_list.append(para_content)
     return content_list
 
 
