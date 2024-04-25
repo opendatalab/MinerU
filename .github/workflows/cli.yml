@@ -65,7 +65,7 @@ jobs:
             ${metion_list} = "xurui1"
           fi
           echo "METIONS=${metion_list}" >> "$GITHUB_ENV"
-
+          echo ${{ env.METIONS }}
 
     - name: notify
       run: |
