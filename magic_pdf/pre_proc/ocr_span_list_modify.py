@@ -9,16 +9,20 @@ from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 def remove_overlaps_min_spans(spans):
     dropped_spans = []
     #  删除重叠spans中较小的那些
-    for span1 in spans.copy():
-        for span2 in spans.copy():
+    for span1 in spans:
+        for span2 in spans:
             if span1 != span2:
                 overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.65)
                 if overlap_box is not None:
-                    bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
-                    if bbox_to_remove is not None:
-                        spans.remove(bbox_to_remove)
-                        bbox_to_remove['tag'] = DropTag.SPAN_OVERLAP
-                        dropped_spans.append(bbox_to_remove)
+                    span_need_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
+                    if span_need_remove is not None and span_need_remove not in dropped_spans:
+                        dropped_spans.append(span_need_remove)
+
+    if len(dropped_spans) > 0:
+        for span_need_remove in dropped_spans:
+            spans.remove(span_need_remove)
+            span_need_remove['tag'] = DropTag.SPAN_OVERLAP
+
     return spans, dropped_spans
 
 
@@ -29,11 +33,13 @@ def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
     for span in spans:
         for removed_bbox in need_remove_spans_bboxes:
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], removed_bbox) > 0.5:
-                need_remove_spans.append(span)
-                break
+                if span not in need_remove_spans:
+                    need_remove_spans.append(span)
+                    break
 
-    for span in need_remove_spans:
-        spans.remove(span)
+    if len(need_remove_spans) > 0:
+        for span in need_remove_spans:
+            spans.remove(span)
 
     return spans
 

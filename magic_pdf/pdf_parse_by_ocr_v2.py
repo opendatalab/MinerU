@@ -61,7 +61,7 @@ def parse_pdf_by_ocr(pdf_bytes,
         '''将所有区块的bbox整理到一起'''
         all_bboxes = ocr_prepare_bboxes_for_layout_split(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
-            interline_equation_blocks, page_w, page_h)
+            interline_equations, page_w, page_h)
 
         '''根据区块信息计算layout'''
         page_boundry = [0, 0, page_w, page_h]
