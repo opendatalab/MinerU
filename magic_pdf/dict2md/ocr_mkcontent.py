@@ -95,7 +95,7 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
     page_markdown = []
     for para_block in paras_of_layout:
         para_text = ''
-        para_type = para_block.get('type')
+        para_type = para_block['type']
         if para_type == BlockType.Text:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.Title:
@@ -106,32 +106,30 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
             if mode == 'nlp':
                 continue
             elif mode == 'mm':
-                img_blocks = para_block.get('blocks')
-                for img_block in img_blocks:
-                    if img_block.get('type') == BlockType.ImageBody:
-                        for line in img_block.get('lines'):
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.ImageBody:
+                        for line in block['lines']:
                             for span in line['spans']:
-                                if span.get('type') == ContentType.Image:
+                                if span['type'] == ContentType.Image:
                                     para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                for img_block in img_blocks:
-                    if img_block.get('type') == BlockType.ImageCaption:
-                        para_text += merge_para_with_text(img_block)
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.ImageCaption:
+                        para_text += merge_para_with_text(block)
         elif para_type == BlockType.Table:
             if mode == 'nlp':
                 continue
             elif mode == 'mm':
-                table_blocks = para_block.get('blocks')
-                for table_block in table_blocks:
-                    if table_block.get('type') == BlockType.TableBody:
-                        for line in table_block.get('lines'):
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.TableBody:
+                        for line in block['lines']:
                             for span in line['spans']:
-                                if span.get('type') == ContentType.Table:
+                                if span['type'] == ContentType.Table:
                                     para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                for table_block in table_blocks:
-                    if table_block.get('type') == BlockType.TableCaption:
-                        para_text += merge_para_with_text(table_block)
-                    elif table_block.get('type') == BlockType.TableFootnote:
-                        para_text += merge_para_with_text(table_block)
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.TableCaption:
+                        para_text += merge_para_with_text(block)
+                    elif block['type'] == BlockType.TableFootnote:
+                        para_text += merge_para_with_text(block)
 
         if para_text.strip() == '':
             continue
@@ -141,11 +139,11 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
     return page_markdown
 
 
-def merge_para_with_text(para):
+def merge_para_with_text(para_block):
     para_text = ''
-    for line in para['lines']:
+    for line in para_block['lines']:
         for span in line['spans']:
-            span_type = span.get('type')
+            span_type = span['type']
             content = ''
             language = ''
             if span_type == ContentType.Text:
@@ -159,6 +157,7 @@ def merge_para_with_text(para):
                 content = f"${span['content']}$"
             elif span_type == ContentType.InterlineEquation:
                 content = f"\n$$\n{span['content']}\n$$\n"
+
             if content != '':
                 if language == 'en':  # 英文语境下 content间需要空格分隔
                     para_text += content + ' '
