@@ -74,7 +74,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
                 debug_mode=is_debug,
             )
         except Exception as e:
-            logger.error(f"{method.__name__} error: {e}")
+            logger.exception(e)
             return None
 
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
