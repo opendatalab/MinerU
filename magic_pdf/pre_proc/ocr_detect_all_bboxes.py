@@ -57,8 +57,8 @@ def fix_text_overlap_title_blocks(all_bboxes):
 
     for text_block in text_blocks:
         for title_block in title_blocks:
-            text_block_bbox = text_block[0], text_block[1], text_block[2], text_block[3]
-            title_block_bbox = title_block[0], title_block[1], title_block[2], title_block[3]
+            text_block_bbox = text_block[:4]
+            title_block_bbox = title_block[:4]
             if calculate_iou(text_block_bbox, title_block_bbox) > 0.8:
                 all_bboxes.remove(title_block)
 
@@ -66,27 +66,34 @@ def fix_text_overlap_title_blocks(all_bboxes):
 
 
 def remove_need_drop_blocks(all_bboxes, discarded_blocks):
-    for block in all_bboxes.copy():
+    need_remove = []
+    for block in all_bboxes:
         for discarded_block in discarded_blocks:
-            block_bbox = block[0], block[1], block[2], block[3]
+            block_bbox = block[:4]
             if calculate_overlap_area_in_bbox1_area_ratio(block_bbox, discarded_block['bbox']) > 0.6:
-                all_bboxes.remove(block)
+                need_remove.append(block)
+
+    for block in need_remove:
+        all_bboxes.remove(block)
+
     return all_bboxes
 
 
 def remove_overlaps_min_blocks(all_bboxes):
     #  删除重叠blocks中较小的那些
-    for block1 in all_bboxes.copy():
-        for block2 in all_bboxes.copy():
+    need_remove = []
+    for block1 in all_bboxes:
+        for block2 in all_bboxes:
             if block1 != block2:
-                block1_bbox = [block1[0], block1[1], block1[2], block1[3]]
-                block2_bbox = [block2[0], block2[1], block2[2], block2[3]]
+                block1_bbox = block1[:4]
+                block2_bbox = block2[:4]
                 overlap_box = get_minbox_if_overlap_by_ratio(block1_bbox, block2_bbox, 0.8)
                 if overlap_box is not None:
-                    bbox_to_remove = next(
-                        (block for block in all_bboxes if [block[0], block[1], block[2], block[3]] == overlap_box),
-                        None)
+                    bbox_to_remove = next((block for block in all_bboxes if block[:4] == overlap_box), None)
                     if bbox_to_remove is not None:
-                        all_bboxes.remove(bbox_to_remove)
+                        need_remove.append(bbox_to_remove)
+    if len(need_remove) > 0:
+        for block in need_remove:
+            all_bboxes.remove(block)
 
     return all_bboxes
