@@ -92,7 +92,8 @@ class AbsPipe(ABC):
         parse_type = pdf_mid_data["_parse_type"]
         pdf_info_list = pdf_mid_data["pdf_info"]
         if parse_type == AbsPipe.PIP_TXT:
-            content_list = mk_universal_format(pdf_info_list, img_buket_path)
+            # content_list = mk_universal_format(pdf_info_list, img_buket_path)
+            content_list = make_standard_format_with_para(pdf_info_list, img_buket_path)
         elif parse_type == AbsPipe.PIP_OCR:
             content_list = make_standard_format_with_para(pdf_info_list, img_buket_path)
         return content_list

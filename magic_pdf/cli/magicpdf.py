@@ -84,13 +84,13 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         path=f"{pdf_file_name}.json",
         mode=AbsReaderWriter.MODE_TXT,
     )
-    # try:
-    #     content_list = pipe.pipe_mk_uni_format()
-    # except Exception as e:
-    #     logger.exception(e)
-    # md_writer.write(
-    #     str(content_list), f"{part_file_name}.txt", AbsReaderWriter.MODE_TXT
-    # )
+    try:
+        content_list = pipe.pipe_mk_uni_format()
+    except Exception as e:
+        logger.exception(e)
+    md_writer.write(
+        str(content_list), f"{pdf_file_name}.txt", AbsReaderWriter.MODE_TXT
+    )
 
 
 @click.group()
