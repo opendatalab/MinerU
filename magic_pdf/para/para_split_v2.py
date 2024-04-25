@@ -479,9 +479,11 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
             #connected_layout_paras.append(layout_paras[i])
             connected_layout_blocks.append(blocks_group[i])
             continue
+        pre_layout = __find_layout_bbox_by_line(pre_last_line['bbox'], new_layout_bbox)
+        next_layout = __find_layout_bbox_by_line(next_first_line['bbox'], new_layout_bbox)
 
-        pre_x2_max = __find_layout_bbox_by_line(pre_last_line['bbox'], new_layout_bbox)[2]
-        next_x0_min = __find_layout_bbox_by_line(next_first_line['bbox'], new_layout_bbox)[0]
+        pre_x2_max = pre_layout[2] if pre_layout else -1
+        next_x0_min = next_layout[0] if next_layout else -1
 
         pre_last_line_text = pre_last_line_text.strip()
         next_first_line_text = next_first_line_text.strip()
