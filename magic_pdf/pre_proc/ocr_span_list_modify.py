@@ -18,10 +18,11 @@ def remove_overlaps_min_spans(spans):
                     if bbox_to_remove is not None:
                         dropped_spans.append(bbox_to_remove)
 
-    if len(dropped_spans > 0):
+    if len(dropped_spans) > 0:
         for dropped_span in dropped_spans:
             spans.remove(dropped_span)
             dropped_span['tag'] = DropTag.SPAN_OVERLAP
+
     return spans, dropped_spans
 
 
@@ -35,8 +36,9 @@ def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
                 need_remove_spans.append(span)
                 break
 
-    for span in need_remove_spans:
-        spans.remove(span)
+    if len(need_remove_spans) > 0:
+        for span in need_remove_spans:
+            spans.remove(span)
 
     return spans
 
