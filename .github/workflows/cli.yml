@@ -75,6 +75,6 @@ jobs:
         curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'  -d '{
         "msgtype": "text",
         "text": {
-            "mentioned_list": ['${{ env.METIONS }}'] , "content": "'${{ github.repository }}' GitHubAction Failed!\n 细节请查看：https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
+            "mentioned_list": ["${{ env.METIONS }}"] , "content": "'${{ github.repository }}' GitHubAction Failed!\n 细节请查看：https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
         } 
         }'     
