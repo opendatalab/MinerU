@@ -47,6 +47,6 @@ jobs:
     - name: test_cli
       run: |
         echo $GITHUB_WORKSPACE
-        cd $GITHUB_WORKSPACE && pytest -v tests/test_cli/test_cli.py -s
+        cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli.py
 
                                                                                                                             
