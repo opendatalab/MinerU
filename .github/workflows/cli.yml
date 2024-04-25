@@ -54,25 +54,24 @@ jobs:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
     needs: [cli-test]
     runs-on: pdf
-    env:
-      metion_list: "quyuan"
     steps:
     - name: get_actor
       run: |
-          echo $metion_list
           if [[ $GITHUB_ACTOR == "drunkpig" ]]; then
-            metion_list = "xuchao"
+            ${metion_list} = "xuchao"
           elif [[ $GITHUB_ACTOR == "myhloli" ]]; then
-            metion_list = "zhaoxiaomeng"
+            ${metion_list} = "zhaoxiaomeng"
           elif [[ $GITHUB_ACTOR == "icecraft" ]]; then
-            metion_list = "xurui1"
+            ${metion_list} = "xurui1"
           fi
+          echo "METIONS=${metion_list}" >> "$GITHUB_ENV"
+
 
     - name: notify
       run: |
         curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'  -d '{
         "msgtype": "text",
         "text": {
-            "mentioned_list": [${{ metion_list }}] , "content": "'${{ github.repository }}' GitHubAction Failed!\n 细节请查看：https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
+            "mentioned_list": [${{ env.METIONS }}] , "content": "'${{ github.repository }}' GitHubAction Failed!\n 细节请查看：https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
         } 
         }'     
