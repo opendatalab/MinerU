@@ -52,7 +52,7 @@ jobs:
                                                                                                                             
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
-    needs: [pdf-test]
+    needs: [cli-test]
     runs-on: pdf
     env:
       metion_list: "quyuan"
