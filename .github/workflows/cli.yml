@@ -57,6 +57,8 @@ jobs:
     steps:
     - name: get_actor
       run: |
+          metion_list = "quyuan"
+          echo $GITHUB_ACTOR
           if [[ $GITHUB_ACTOR == "drunkpig" ]]; then
             metion_list = "xuchao"
           elif [[ $GITHUB_ACTOR == "myhloli" ]]; then
