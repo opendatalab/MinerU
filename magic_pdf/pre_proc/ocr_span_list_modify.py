@@ -14,14 +14,14 @@ def remove_overlaps_min_spans(spans):
             if span1 != span2:
                 overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.65)
                 if overlap_box is not None:
-                    bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
-                    if bbox_to_remove is not None:
-                        dropped_spans.append(bbox_to_remove)
+                    span_need_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
+                    if span_need_remove is not None and span_need_remove not in dropped_spans:
+                        dropped_spans.append(span_need_remove)
 
     if len(dropped_spans) > 0:
-        for dropped_span in dropped_spans:
-            spans.remove(dropped_span)
-            dropped_span['tag'] = DropTag.SPAN_OVERLAP
+        for span_need_remove in dropped_spans:
+            spans.remove(span_need_remove)
+            span_need_remove['tag'] = DropTag.SPAN_OVERLAP
 
     return spans, dropped_spans
 
@@ -33,8 +33,9 @@ def remove_spans_by_bboxes(spans, need_remove_spans_bboxes):
     for span in spans:
         for removed_bbox in need_remove_spans_bboxes:
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], removed_bbox) > 0.5:
-                need_remove_spans.append(span)
-                break
+                if span not in need_remove_spans:
+                    need_remove_spans.append(span)
+                    break
 
     if len(need_remove_spans) > 0:
         for span in need_remove_spans:
