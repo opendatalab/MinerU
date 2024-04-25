@@ -73,9 +73,9 @@ def remove_need_drop_blocks(all_bboxes, discarded_blocks):
             if calculate_overlap_area_in_bbox1_area_ratio(block_bbox, discarded_block['bbox']) > 0.6:
                 need_remove.append(block)
 
-    for block in need_remove:
-        all_bboxes.remove(block)
-
+    if len(need_remove) > 0:
+        for block in need_remove:
+            all_bboxes.remove(block)
     return all_bboxes
 
 
@@ -92,6 +92,7 @@ def remove_overlaps_min_blocks(all_bboxes):
                     bbox_to_remove = next((block for block in all_bboxes if block[:4] == overlap_box), None)
                     if bbox_to_remove is not None:
                         need_remove.append(bbox_to_remove)
+
     if len(need_remove) > 0:
         for block in need_remove:
             all_bboxes.remove(block)
