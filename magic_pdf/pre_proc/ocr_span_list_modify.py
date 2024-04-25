@@ -9,16 +9,19 @@ from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 def remove_overlaps_min_spans(spans):
     dropped_spans = []
     #  删除重叠spans中较小的那些
-    for span1 in spans.copy():
-        for span2 in spans.copy():
+    for span1 in spans:
+        for span2 in spans:
             if span1 != span2:
                 overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.65)
                 if overlap_box is not None:
                     bbox_to_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
                     if bbox_to_remove is not None:
-                        spans.remove(bbox_to_remove)
-                        bbox_to_remove['tag'] = DropTag.SPAN_OVERLAP
                         dropped_spans.append(bbox_to_remove)
+
+    if len(dropped_spans > 0):
+        for dropped_span in dropped_spans:
+            spans.remove(dropped_span)
+            dropped_span['tag'] = DropTag.SPAN_OVERLAP
     return spans, dropped_spans
 
 
