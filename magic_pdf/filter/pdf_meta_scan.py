@@ -305,7 +305,7 @@ def pdf_meta_scan(pdf_bytes: bytes):
         page_width_pts, page_height_pts = get_pdf_page_size_pts(doc)
         # logger.info(f"page_width_pts: {page_width_pts}, page_height_pts: {page_height_pts}")
 
-        svgs_per_page = get_svgs_per_page(doc)
+        # svgs_per_page = get_svgs_per_page(doc)
         # logger.info(f"svgs_per_page: {svgs_per_page}")
         imgs_per_page = get_imgs_per_page(doc)
         # logger.info(f"imgs_per_page: {imgs_per_page}")
@@ -331,7 +331,7 @@ def pdf_meta_scan(pdf_bytes: bytes):
             "text_len_per_page": text_len_per_page,
             "text_layout_per_page": text_layout_per_page,
             "text_language": text_language,
-            "svgs_per_page": svgs_per_page,
+            # "svgs_per_page": svgs_per_page,
             "imgs_per_page": imgs_per_page,  # 增加每页img数量list
             "junk_img_bojids": junk_img_bojids,  # 增加垃圾图片的bojid list
             "metadata": doc.metadata
