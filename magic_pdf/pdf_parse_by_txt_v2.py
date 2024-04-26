@@ -118,7 +118,7 @@ def parse_pdf_by_txt(
             discarded_blocks,
             text_blocks,
             title_blocks,
-            interline_equation_blocks,
+            interline_equations,
             page_w,
             page_h,
         )
