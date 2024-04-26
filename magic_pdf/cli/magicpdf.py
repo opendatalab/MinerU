@@ -60,11 +60,11 @@ def prepare_env(pdf_file_name, method):
 
 def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir, local_md_dir):
     if parse_method == "auto":
-        pipe = UNIPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+        pipe = UNIPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     elif parse_method == "txt":
-        pipe = TXTPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+        pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     elif parse_method == "ocr":
-        pipe = OCRPipe(pdf_bytes, model_list, image_writer, image_dir, is_debug=True)
+        pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     else:
         print("unknow parse method")
         os.exit(1)
@@ -74,7 +74,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
-    md_content = pipe.pipe_mk_markdown()
+    md_content = pipe.pipe_mk_markdown(image_dir)
     #part_file_name = datetime.now().strftime("%H-%M-%S")
     md_writer.write(
         content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
@@ -85,7 +85,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         mode=AbsReaderWriter.MODE_TXT,
     )
     try:
-        content_list = pipe.pipe_mk_uni_format()
+        content_list = pipe.pipe_mk_uni_format(image_dir)
     except Exception as e:
         logger.exception(e)
     md_writer.write(

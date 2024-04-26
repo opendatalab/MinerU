@@ -10,10 +10,8 @@ from magic_pdf.user_api import parse_union_pdf, parse_ocr_pdf
 
 class UNIPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, img_parent_path: str,
-                 is_debug: bool = False):
-        self.pdf_type = self.PIP_OCR
-        super().__init__(pdf_bytes, model_list, image_writer, img_parent_path, is_debug)
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool = False):
+        super().__init__(pdf_bytes, model_list, image_writer, is_debug)
 
     def pipe_classify(self):
         self.pdf_type = UNIPipe.classify(self.pdf_bytes)
@@ -26,12 +24,12 @@ class UNIPipe(AbsPipe):
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                               is_debug=self.is_debug)
 
-    def pipe_mk_uni_format(self):
-        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), self.img_parent_path)
+    def pipe_mk_uni_format(self, img_parent_path: str):
+        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path)
         return content_list
 
-    def pipe_mk_markdown(self):
-        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), self.img_parent_path)
+    def pipe_mk_markdown(self, img_parent_path: str):
+        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path)
         return markdown_content
 
 
