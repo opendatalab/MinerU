@@ -414,7 +414,10 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
         may_list_lines = []
         for j in range(len(next_page_paras[0])):
-            lines = next_page_paras[0][j]["lines"]
+            next_page_block_j = next_page_paras[0][j]
+            if next_page_block_j["type"] != BlockType.Text:
+                break
+            lines = next_page_block_j["lines"]
             if len(lines) == 1:  # 只可能是一行，多行情况再需要分析了
                 if lines[0]['bbox'][0] > __find_layout_bbox_by_line(lines[0]['bbox'], next_page_layout_bbox)[0]:
                     may_list_lines.append(lines[0])
