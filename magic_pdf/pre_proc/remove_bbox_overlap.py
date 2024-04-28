@@ -3,9 +3,21 @@ from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in
 
 def _remove_overlap_between_bbox(spans):
     res = []
-    for v in spans:
+
+    keeps = [True] * len(spans)
+    for i in range(len(spans)):
+        for j in range(len(spans)):
+            if i == j:
+                continue
+            if _is_in(spans[i]["bbox"], spans[j]["bbox"]):
+                keeps[i] = False
+
+    for idx, v in enumerate(spans):
+        if not keeps[idx]:
+            continue
+
         for i in range(len(res)):
-            if _is_in(res[i]["bbox"], v["bbox"]) or _is_in(v["bbox"], res[i]["bbox"]):
+            if  _is_in(v["bbox"], res[i]["bbox"]):
                 continue
             if _is_in_or_part_overlap(res[i]["bbox"], v["bbox"]):
                 ix0, iy0, ix1, iy1 = res[i]["bbox"]
