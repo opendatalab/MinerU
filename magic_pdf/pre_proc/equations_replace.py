@@ -309,22 +309,22 @@ def replace_line_v2(eqinfo, line):
 
     equation_span = {
         "size": 9.962599754333496,
-        "_type": TYPE_INLINE_EQUATION,
+        "type": TYPE_INLINE_EQUATION,
         "flags": 4,
         "font": TYPE_INLINE_EQUATION,
         "color": 0,
         "ascender": 0.9409999847412109,
         "descender": -0.3050000071525574,
-        "text": "",
+        "latex": "",
         "origin": [337.1410153102337, 216.0205245153934],
         "bbox": eqinfo["bbox"]
     }
     # equation_span = line['spans'][0].copy()
-    equation_span["text"] = f" ${eqinfo['latex']}$ "
+    equation_span["latex"] = f" ${eqinfo['latex']}$ "
     equation_span["bbox"] = [x0, equation_span["bbox"][1], x1, equation_span["bbox"][3]]
     equation_span["origin"] = [equation_span["bbox"][0], equation_span["bbox"][1]]
     equation_span["chars"] = delete_chars
-    equation_span["_type"] = TYPE_INLINE_EQUATION
+    equation_span["type"] = TYPE_INLINE_EQUATION
     equation_span["_eq_bbox"] = eqinfo["bbox"]
     line["spans"].insert(first_overlap_span_idx + 1, equation_span)  # 放入公式
 
@@ -468,23 +468,16 @@ def replace_equations_in_textblock(
     """
     替换行间和和行内公式为latex
     """
-    # debug 
-    from magic_pdf.debug_utils import flatten_spans
-
     raw_text_blocks = remove_text_block_in_interline_equation_bbox(
         interline_equation_bboxes, raw_text_blocks
     )  # 消除重叠：第一步，在公式内部的
-    flatten_spans(raw_text_blocks)
 
     raw_text_blocks = remove_text_block_overlap_interline_equation_bbox(
         interline_equation_bboxes, raw_text_blocks
     )  # 消重，第二步，和公式覆盖的
-    flatten_spans(raw_text_blocks)
 
     insert_interline_equations_textblock(interline_equation_bboxes, raw_text_blocks)
-    flatten_spans(raw_text_blocks)
     raw_text_blocks = replace_inline_equations(inline_equation_bboxes, raw_text_blocks)
-    flatten_spans(raw_text_blocks)  
     return raw_text_blocks
 
 
