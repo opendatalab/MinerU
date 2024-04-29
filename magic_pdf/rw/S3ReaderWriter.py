@@ -1,5 +1,5 @@
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.libs.commons import parse_aws_param, parse_bucket_key
+from magic_pdf.libs.commons import parse_aws_param, parse_bucket_key, join_path
 import boto3
 from loguru import logger
 from boto3.s3.transfer import TransferConfig
@@ -30,7 +30,7 @@ class S3ReaderWriter(AbsReaderWriter):
         if s3_relative_path.startswith("s3://"):
             s3_path = s3_relative_path
         else:
-            s3_path = os.path.join(self.path, s3_relative_path)
+            s3_path = join_path(self.path, s3_relative_path)
         bucket_name, key = parse_bucket_key(s3_path)
         res = self.client.get_object(Bucket=bucket_name, Key=key)
         body = res["Body"].read()
@@ -46,7 +46,7 @@ class S3ReaderWriter(AbsReaderWriter):
         if s3_relative_path.startswith("s3://"):
             s3_path = s3_relative_path
         else:
-            s3_path = os.path.join(self.path, s3_relative_path)
+            s3_path = join_path(self.path, s3_relative_path)
         if mode == MODE_TXT:
             body = content.encode(encoding)  # Encode text data as bytes
         elif mode == MODE_BIN:
@@ -61,7 +61,7 @@ class S3ReaderWriter(AbsReaderWriter):
         if path.startswith("s3://"):
             s3_path = path
         else:
-            s3_path = os.path.join(self.path, path)
+            s3_path = join_path(self.path, path)
         bucket_name, key = parse_bucket_key(s3_path)
 
         range_header = f'bytes={byte_start}-{byte_end}' if byte_end else f'bytes={byte_start}-'

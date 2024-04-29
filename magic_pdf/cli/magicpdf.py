@@ -60,7 +60,11 @@ def prepare_env(pdf_file_name, method):
 
 def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir, local_md_dir):
     if parse_method == "auto":
-        pipe = UNIPipe(pdf_bytes, model_list, image_writer, is_debug=True)
+        jso_useful_key = {
+            "_pdf_type": "",
+            "model_list": model_list
+        }
+        pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True)
     elif parse_method == "txt":
         pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     elif parse_method == "ocr":

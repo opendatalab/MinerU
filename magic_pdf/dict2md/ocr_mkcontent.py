@@ -106,29 +106,30 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
             if mode == 'nlp':
                 continue
             elif mode == 'mm':
-                for block in para_block['blocks']:
+                for block in para_block['blocks']:  # 1st.拼image_body
                     if block['type'] == BlockType.ImageBody:
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.Image:
-                                    para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                for block in para_block['blocks']:
+                                    para_text += f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
+                for block in para_block['blocks']:  # 2nd.拼image_caption
                     if block['type'] == BlockType.ImageCaption:
                         para_text += merge_para_with_text(block)
         elif para_type == BlockType.Table:
             if mode == 'nlp':
                 continue
             elif mode == 'mm':
-                for block in para_block['blocks']:
+                for block in para_block['blocks']:  # 1st.拼table_caption
+                    if block['type'] == BlockType.TableCaption:
+                        para_text += merge_para_with_text(block)
+                for block in para_block['blocks']:  # 2nd.拼table_body
                     if block['type'] == BlockType.TableBody:
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.Table:
-                                    para_text = f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
-                for block in para_block['blocks']:
-                    if block['type'] == BlockType.TableCaption:
-                        para_text += merge_para_with_text(block)
-                    elif block['type'] == BlockType.TableFootnote:
+                                    para_text += f"\n![]({join_path(img_buket_path, span['image_path'])})\n"
+                for block in para_block['blocks']:  # 3rd.拼table_footnote
+                    if block['type'] == BlockType.TableFootnote:
                         para_text += merge_para_with_text(block)
 
         if para_text.strip() == '':
@@ -159,10 +160,10 @@ def merge_para_with_text(para_block):
                 content = f"\n$$\n{span['content']}\n$$\n"
 
             if content != '':
-                if language in ['en', 'un']:  # 英文语境下 content间需要空格分隔
-                    para_text += content + ' '
-                else:  # 中文语境下，content间不需要空格分隔
-                    para_text += content
+                if 'zh' in language:
+                    para_text += content  # 中文语境下，content间不需要空格分隔
+                else:
+                    para_text += content + ' '  # 英文语境下 content间需要空格分隔
     return para_text
 
 
