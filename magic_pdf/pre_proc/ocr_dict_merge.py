@@ -156,7 +156,7 @@ def fill_spans_in_blocks(blocks, spans):
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.7:
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.6:
                 block_spans.append(span)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
@@ -167,8 +167,8 @@ def fill_spans_in_blocks(blocks, spans):
         '''模型识别错误的行间公式, type类型转换成行内公式'''
         block_spans = modify_inline_equation(block_spans, displayed_list, text_inline_lines)
 
-        '''bbox去除粘连'''
-        block_spans = remove_overlap_between_bbox(block_spans)
+        '''bbox去除粘连'''  # 去粘连会影响span的bbox，导致后续fill的时候出错
+        # block_spans = remove_overlap_between_bbox(block_spans)
 
         block_dict['spans'] = block_spans
         block_with_spans.append(block_dict)
@@ -208,7 +208,7 @@ def merge_spans_to_block(spans: list, block_bbox: list, block_type: str):
     block_spans = []
     # 如果有img_caption，则将img_block中的text_spans放入img_caption_block中
     for span in spans:
-        if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.8:
+        if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.6:
             block_spans.append(span)
     block_lines = merge_spans_to_line(block_spans)
     # 对line中的span进行排序
@@ -268,6 +268,7 @@ def fix_table_block(block, table_blocks):
     # 遍历table_blocks,找到与当前block匹配的table_block
     for table_block in table_blocks:
         if table_block['bbox'] == block['bbox']:
+
             # 创建table_body_block
             for span in block['spans']:
                 if span['type'] == ContentType.Table and span['bbox'] == table_block['table_body_bbox']:
