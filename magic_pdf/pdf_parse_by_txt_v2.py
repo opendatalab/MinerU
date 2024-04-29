@@ -32,6 +32,22 @@ from magic_pdf.libs.math import float_equal
 from magic_pdf.para.para_split_v2 import para_split
 from magic_pdf.pre_proc.resolve_bbox_conflict import check_useful_block_horizontal_overlap
 
+def remove_horizontal_overlap_block_which_smaller(all_bboxes):
+    useful_blocks = []
+    for bbox in all_bboxes:
+        useful_blocks.append({
+            "bbox": bbox[:4]
+        })
+    is_useful_block_horz_overlap, smaller_bbox = check_useful_block_horizontal_overlap(useful_blocks)
+    if is_useful_block_horz_overlap:
+        logger.warning(
+            f"skip this page, reason: {DropReason.USEFUL_BLOCK_HOR_OVERLAP}")
+        for bbox in all_bboxes.copy():
+            if smaller_bbox == bbox[:4]:
+                all_bboxes.remove(bbox)
+
+    return is_useful_block_horz_overlap, all_bboxes
+
 
 def txt_spans_extract(pdf_page, inline_equations, interline_equations):
     text_raw_blocks = pdf_page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
@@ -91,6 +107,9 @@ def parse_pdf_by_txt(
     end_page_id=None,
     debug_mode=False,
 ):
+    need_drop = False
+    drop_reason = ""
+
     pdf_bytes_md5 = compute_md5(pdf_bytes)
     pdf_docs = fitz.open("pdf", pdf_bytes)
 
@@ -141,16 +160,14 @@ def parse_pdf_by_txt(
         )
 
         """在切分之前，先检查一下bbox是否有左右重叠的情况，如果有，那么就认为这个pdf暂时没有能力处理好，这种左右重叠的情况大概率是由于pdf里的行间公式、表格没有被正确识别出来造成的 """
-        useful_blocks = []
-        for bbox in all_bboxes:
-            useful_blocks.append({
-                "bbox": bbox[:4]
-            })
-        is_useful_block_horz_overlap = check_useful_block_horizontal_overlap(useful_blocks)
-        if is_useful_block_horz_overlap:
-            logger.warning(
-                f"pdf: {pdf_bytes_md5}, skip this page, page_id: {page_id}, reason: {DropReason.TEXT_BLCOK_HOR_OVERLAP}")
-            continue
+
+        while True:  # 循环检查左右重叠的情况，如果存在就删除掉较小的那个bbox，直到不存在左右重叠的情况
+            is_useful_block_horz_overlap, all_bboxes = remove_horizontal_overlap_block_which_smaller(all_bboxes)
+            if is_useful_block_horz_overlap:
+                need_drop = True
+                drop_reason = DropReason.USEFUL_BLOCK_HOR_OVERLAP
+            else:
+                break
 
         '''根据区块信息计算layout'''
         page_boundry = [0, 0, page_w, page_h]
@@ -159,19 +176,22 @@ def parse_pdf_by_txt(
         if len(text_blocks) > 0 and len(all_bboxes) > 0 and len(layout_bboxes) == 0:
             logger.warning(
                 f"pdf: {pdf_bytes_md5}, skip this page, page_id: {page_id}, reason: {DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}")
-            continue
+            need_drop = True
+            drop_reason = DropReason.CAN_NOT_DETECT_PAGE_LAYOUT
 
         """以下去掉复杂的布局和超过2列的布局"""
         if any([lay["layout_label"] == LAYOUT_UNPROC for lay in layout_bboxes]):  # 复杂的布局
             logger.warning(
                 f"pdf: {pdf_bytes_md5}, skip this page, page_id: {page_id}, reason: {DropReason.COMPLICATED_LAYOUT}")
-            continue
+            need_drop = True
+            drop_reason = DropReason.COMPLICATED_LAYOUT
 
         layout_column_width = get_columns_cnt_of_layout(layout_tree)
         if layout_column_width > 2:  # 去掉超过2列的布局pdf
             logger.warning(
                 f"pdf: {pdf_bytes_md5}, skip this page, page_id: {page_id}, reason: {DropReason.TOO_MANY_LAYOUT_COLUMNS}")
-            continue
+            need_drop = True
+            drop_reason = DropReason.TOO_MANY_LAYOUT_COLUMNS
 
         """根据layout顺序，对当前页面所有需要留下的block进行排序"""
         sorted_blocks = sort_blocks_by_layout(all_bboxes, layout_bboxes)
@@ -211,6 +231,8 @@ def parse_pdf_by_txt(
             tables,
             interline_equations,
             discarded_blocks,
+            need_drop,
+            drop_reason
         )
         pdf_info_dict[f"page_{page_id}"] = page_info
 
