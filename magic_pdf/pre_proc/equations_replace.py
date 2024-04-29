@@ -191,13 +191,13 @@ def insert_interline_equations_textblock(interline_eq_bboxes, pymu_block_list):
                     "spans": [
                         {
                             "size": 9.962599754333496,
-                            "_type": TYPE_INTERLINE_EQUATION,
+                            "type": TYPE_INTERLINE_EQUATION,
                             "flags": 4,
                             "font": TYPE_INTERLINE_EQUATION,
                             "color": 0,
                             "ascender": 0.9409999847412109,
                             "descender": -0.3050000071525574,
-                            "text": f"\n$$\n{latex_content}\n$$\n",
+                            "latex": latex_content,
                             "origin": [bbox[0], bbox[1]],
                             "bbox": bbox,
                         }
@@ -309,13 +309,13 @@ def replace_line_v2(eqinfo, line):
 
     equation_span = {
         "size": 9.962599754333496,
-        "_type": TYPE_INLINE_EQUATION,
+        "type": TYPE_INLINE_EQUATION,
         "flags": 4,
         "font": TYPE_INLINE_EQUATION,
         "color": 0,
         "ascender": 0.9409999847412109,
         "descender": -0.3050000071525574,
-        "text": "",
+        "latex": "",
         "origin": [337.1410153102337, 216.0205245153934],
         "bbox": [
             337.1410153102337,
@@ -325,11 +325,11 @@ def replace_line_v2(eqinfo, line):
         ],
     }
     # equation_span = line['spans'][0].copy()
-    equation_span["text"] = f" ${eqinfo['latex']}$ "
+    equation_span["latex"] = eqinfo['latex']
     equation_span["bbox"] = [x0, equation_span["bbox"][1], x1, equation_span["bbox"][3]]
     equation_span["origin"] = [equation_span["bbox"][0], equation_span["bbox"][1]]
     equation_span["chars"] = delete_chars
-    equation_span["_type"] = TYPE_INLINE_EQUATION
+    equation_span["type"] = TYPE_INLINE_EQUATION
     equation_span["_eq_bbox"] = eqinfo["bbox"]
     line["spans"].insert(first_overlap_span_idx + 1, equation_span)  # 放入公式
 
