@@ -159,7 +159,7 @@ def merge_para_with_text(para_block):
                 content = f"\n$$\n{span['content']}\n$$\n"
 
             if content != '':
-                if language == 'en':  # 英文语境下 content间需要空格分隔
+                if language in ['en', 'un']:  # 英文语境下 content间需要空格分隔
                     para_text += content + ' '
                 else:  # 中文语境下，content间不需要空格分隔
                     para_text += content
