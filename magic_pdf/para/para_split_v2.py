@@ -40,7 +40,7 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
                     if lst[i] == 1:
                         ones_in_this_interval.append(i)
                     i += 1
-                if len(ones_in_this_interval) > 1 or (ones_in_this_interval and lst[start + 1] in [2, 3]):
+                if len(ones_in_this_interval) > 1 or (start < len(lst) - 1 and ones_in_this_interval and lst[start + 1] in [2, 3]):
                     indices.append((start, i - 1))
                     ones_indices.append(ones_in_this_interval)
             else:
