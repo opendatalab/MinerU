@@ -11,7 +11,7 @@ import re
 def split_long_words(text):
     segments = text.split(' ')
     for i in range(len(segments)):
-        words = re.findall(r'\w+|[^\w\s]', segments[i], re.UNICODE)
+        words = re.findall(r'\w+|[^\w]', segments[i], re.UNICODE)
         for j in range(len(words)):
             if len(words[j]) > 15:
                 words[j] = ' '.join(wordninja.split(words[j]))
