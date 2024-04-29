@@ -1,6 +1,7 @@
 import subprocess
+import os
 def check_shell(cmd):
-    res = subprocess.check_output(cmd, shell=True)
+    res = os.system(cmd)
     assert res == 0
 
 def count_folders_and_check_contents(directory):
