@@ -1,6 +1,7 @@
 
 class DropReason:
     TEXT_BLCOK_HOR_OVERLAP = "text_block_horizontal_overlap" # 文字块有水平互相覆盖，导致无法准确定位文字顺序
+    USEFUL_BLOCK_HOR_OVERLAP = "useful_block_horizontal_overlap" # 需保留的block水平覆盖
     COMPLICATED_LAYOUT = "complicated_layout" # 复杂的布局，暂时不支持
     TOO_MANY_LAYOUT_COLUMNS = "too_many_layout_columns" # 目前不支持分栏超过2列的
     COLOR_BACKGROUND_TEXT_BOX = "color_background_text_box" # 含有带色块的PDF，色块会改变阅读顺序，目前不支持带底色文字块的PDF。
