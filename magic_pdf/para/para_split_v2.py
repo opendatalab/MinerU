@@ -26,6 +26,26 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
     这样的段落特点是，顶格字母大写/数字，紧跟着几行缩进的。缩进的行首字母含小写的。
     """
 
+    def find_repeating_patterns2(lst):
+        indices = []
+        ones_indices = []
+        i = 0
+        while i < len(lst):  # Loop through the entire list
+            if lst[i] == 1:  # If we encounter a '1', we might be at the start of a pattern
+                start = i
+                ones_in_this_interval = [i]
+                i += 1
+                # Traverse elements that are 1, 2 or 3, until we encounter something else
+                while i < len(lst) and lst[i] in [1, 2, 3]:
+                    if lst[i] == 1:
+                        ones_in_this_interval.append(i)
+                    i += 1
+                if len(ones_in_this_interval) > 1 or (ones_in_this_interval and lst[start + 1] in [2, 3]):
+                    indices.append((start, i - 1))
+                    ones_indices.append(ones_in_this_interval)
+            else:
+                i += 1
+        return indices, ones_indices
     def find_repeating_patterns(lst):
         indices = []
         ones_indices = []
@@ -93,7 +113,7 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
             else:
                 layout_left = layout[0]
                 if l['bbox'][0] == layout_left:
-                    if first_char.isupper() or first_char.isdigit():
+                    if first_char.isupper() or first_char.isdigit() or not first_char.isalnum():
                         line_fea_encode.append(1)
                     else:
                         line_fea_encode.append(4)
@@ -105,7 +125,7 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
 
         # 然后根据编码进行分段, 选出来 1,2,3连续出现至少2次的行，认为是列表。
 
-        list_indice, list_start_idx = find_repeating_patterns(line_fea_encode)
+        list_indice, list_start_idx = find_repeating_patterns2(line_fea_encode)
         if len(list_indice) > 0:
             logger.info(f"发现了列表，列表行数：{list_indice}， {list_start_idx}")
 
@@ -241,17 +261,13 @@ def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
     每个layout内的行进行聚合
     """
     # 因为只是一个block一行目前, 一个block就是一个段落
-    lines_group = []
     blocks_group = []
     for lyout in layout_bboxes:
-        lines = [line for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lyout['layout_bbox']) for line in
-                 block['lines']]
+        #lines = [line for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lyout['layout_bbox']) for line in
+        #         block['lines']]
         blocks_in_layout = [block for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox'])]
-
-
-        lines_group.append(lines)
         blocks_group.append(blocks_in_layout)
-    return lines_group, blocks_group
+    return blocks_group
 
 
 def __split_para_in_layoutbox2(lines_group, new_layout_bbox, lang="en", char_avg_len=10):
@@ -305,7 +321,12 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg
         """根据list_range，把lines分成几个部分
 
         """
-
+        for list_start in list_start_line:
+            if len(list_start) > 1:
+                for i in range(1, len(list_start)):
+                    index = list_start[i] - 1
+                    if "content" in lines[index]["spans"][-1]:
+                        lines[index]["spans"][-1]["content"] += '\n\n'
         # layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
         # layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
         para = []  # 元素是line
@@ -654,7 +675,7 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     3. 参照上述行尾特征进行分段。
     4. 图、表，目前独占一行，不考虑分段。
     """
-    lines_group, blocks_group = __group_line_by_layout(blocks, layout_bboxes, lang)  # block内分段
+    blocks_group = __group_line_by_layout(blocks, layout_bboxes, lang)  # block内分段
     layout_list_info = __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang)  # layout内分段
     blocks_group, page_list_info = __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
                                                                 page_num, lang)  # layout之间连接列表段落
