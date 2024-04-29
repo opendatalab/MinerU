@@ -21,11 +21,7 @@ from magic_pdf.pre_proc.ocr_span_list_modify import (
     remove_overlaps_min_spans,
     get_qa_need_list_v2,
 )
-from magic_pdf.pre_proc.equations_replace import (
-    combine_chars_to_pymudict,
-    remove_chars_in_text_blocks,
-    replace_equations_in_textblock,
-)
+
 from magic_pdf.pre_proc.equations_replace import (
     combine_chars_to_pymudict,
     remove_chars_in_text_blocks,
@@ -55,14 +51,32 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                 bbox = span["bbox"]
                 if float_equal(bbox[0], bbox[2]) or float_equal(bbox[1], bbox[3]):
                     continue
-                spans.append(
-                    {
-                        "bbox": list(span["bbox"]),
-                        "content": span["text"],
-                        "type": ContentType.Text,
-                    }
-                )
+                if span.get('type') == ContentType.InlineEquation:
+                    spans.append(
+                        {
+                            "bbox": list(span["bbox"]),
+                            "content": span["latex"],
+                            "type": ContentType.InlineEquation,
+                        }
+                    )
+                elif span.get('type') == ContentType.InterlineEquation:
+                    spans.append(
+                        {
+                            "bbox": list(span["bbox"]),
+                            "content": span["latex"],
+                            "type": ContentType.InterlineEquation,
+                        }
+                    )
+                else:
+                    spans.append(
+                        {
+                            "bbox": list(span["bbox"]),
+                            "content": span["text"],
+                            "type": ContentType.Text,
+                        }
+                    )
     return spans
+
 
 
 def replace_text_span(pymu_spans, ocr_spans):
