@@ -1,6 +1,8 @@
 import json
 
 from loguru import logger
+
+from magic_pdf.libs.MakeContentConfig import DropMode
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.commons import join_path
@@ -25,12 +27,12 @@ class UNIPipe(AbsPipe):
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                               is_debug=self.is_debug)
 
-    def pipe_mk_uni_format(self, img_parent_path: str):
-        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path)
+    def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
+        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
         return content_list
 
-    def pipe_mk_markdown(self, img_parent_path: str):
-        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path)
+    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
+        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
         return markdown_content
 
 

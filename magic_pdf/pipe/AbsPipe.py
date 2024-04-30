@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 
 from magic_pdf.dict2md.mkcontent import mk_universal_format, mk_mm_markdown
-from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para, ocr_mk_mm_markdown_with_para
+from magic_pdf.dict2md.ocr_mkcontent import make_standard_format_with_para, ocr_mk_mm_markdown_with_para, union_make
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
+from magic_pdf.libs.MakeContentConfig import MakeMode, DropMode
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
@@ -41,14 +42,14 @@ class AbsPipe(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def pipe_mk_uni_format(self):
+    def pipe_mk_uni_format(self, img_parent_path, drop_mode):
         """
         有状态的组装统一格式
         """
         raise NotImplementedError
 
     @abstractmethod
-    def pipe_mk_markdown(self):
+    def pipe_mk_markdown(self, img_parent_path, drop_mode):
         """
         有状态的组装markdown
         """
@@ -83,34 +84,23 @@ class AbsPipe(ABC):
                     return AbsPipe.PIP_OCR
 
     @staticmethod
-    def mk_uni_format(compressed_pdf_mid_data: str, img_buket_path: str) -> list:
+    def mk_uni_format(compressed_pdf_mid_data: str, img_buket_path: str, drop_mode=DropMode.WHOLE_PDF) -> list:
         """
         根据pdf类型，生成统一格式content_list
         """
         pdf_mid_data = JsonCompressor.decompress_json(compressed_pdf_mid_data)
-        parse_type = pdf_mid_data["_parse_type"]
         pdf_info_list = pdf_mid_data["pdf_info"]
-        if parse_type == AbsPipe.PIP_TXT:
-            # content_list = mk_universal_format(pdf_info_list, img_buket_path)
-            content_list = make_standard_format_with_para(pdf_info_list, img_buket_path)
-        elif parse_type == AbsPipe.PIP_OCR:
-            content_list = make_standard_format_with_para(pdf_info_list, img_buket_path)
+        content_list = union_make(pdf_info_list, MakeMode.STANDARD_FORMAT, drop_mode, img_buket_path)
         return content_list
 
     @staticmethod
-    def mk_markdown(compressed_pdf_mid_data: str, img_buket_path: str) -> list:
+    def mk_markdown(compressed_pdf_mid_data: str, img_buket_path: str, drop_mode=DropMode.WHOLE_PDF) -> list:
         """
         根据pdf类型，markdown
         """
         pdf_mid_data = JsonCompressor.decompress_json(compressed_pdf_mid_data)
-        parse_type = pdf_mid_data["_parse_type"]
         pdf_info_list = pdf_mid_data["pdf_info"]
-        if parse_type == AbsPipe.PIP_TXT:
-            # content_list = mk_universal_format(pdf_info_list, img_buket_path)
-            # md_content = mk_mm_markdown(content_list)
-            md_content = ocr_mk_mm_markdown_with_para(pdf_info_list, img_buket_path)
-        elif parse_type == AbsPipe.PIP_OCR:
-            md_content = ocr_mk_mm_markdown_with_para(pdf_info_list, img_buket_path)
+        md_content = union_make(pdf_info_list, MakeMode.MM_MD, drop_mode, img_buket_path)
         return md_content
 
 
