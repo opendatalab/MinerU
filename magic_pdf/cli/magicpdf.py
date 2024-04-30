@@ -28,6 +28,7 @@ import click
 from loguru import logger
 from pathlib import Path
 
+from magic_pdf.libs.MakeContentConfig import DropMode
 from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
@@ -78,8 +79,8 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
-    md_content = pipe.pipe_mk_markdown(image_dir)
-    #part_file_name = datetime.now().strftime("%H-%M-%S")
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
+
     md_writer.write(
         content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
     )
@@ -89,7 +90,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         mode=AbsReaderWriter.MODE_TXT,
     )
     try:
-        content_list = pipe.pipe_mk_uni_format(image_dir)
+        content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
     except Exception as e:
         logger.exception(e)
     md_writer.write(
