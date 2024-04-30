@@ -258,6 +258,9 @@ def replace_line_v2(eqinfo, line):
     last_overlap_span = -1
     delete_chars = []
     for i in range(0, len(line["spans"])):
+        if "chars" not in line["spans"][i]:
+            continue
+
         if line["spans"][i].get("_type", None) is not None:
             continue  # 忽略，因为已经是插入的伪造span公式了
 
