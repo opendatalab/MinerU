@@ -126,6 +126,13 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
         img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
         interline_equations, page_w, page_h)
 
+    '''如果当前页面没有bbox则跳过'''
+    if len(all_bboxes) == 0:
+        logger.warning(f"skip this page, not found bbox, page_id: {page_id}")
+        return ocr_construct_page_component_v2([], [], page_id, page_w, page_h, [],
+                                               [], [], interline_equations, discarded_blocks,
+                                               need_drop, drop_reason)
+
     """在切分之前，先检查一下bbox是否有左右重叠的情况，如果有，那么就认为这个pdf暂时没有能力处理好，这种左右重叠的情况大概率是由于pdf里的行间公式、表格没有被正确识别出来造成的 """
 
     while True:  # 循环检查左右重叠的情况，如果存在就删除掉较小的那个bbox，直到不存在左右重叠的情况
@@ -178,6 +185,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
                                                 need_drop, drop_reason)
     return page_info
 
+
 def pdf_parse_union(pdf_bytes,
                     model_list,
                     imageWriter,
@@ -225,3 +233,7 @@ def pdf_parse_union(pdf_bytes,
     }
 
     return new_pdf_info_dict
+
+
+if __name__ == '__main__':
+    pass
