@@ -233,3 +233,7 @@ def pdf_parse_union(pdf_bytes,
     }
 
     return new_pdf_info_dict
+
+
+if __name__ == '__main__':
+    pass
