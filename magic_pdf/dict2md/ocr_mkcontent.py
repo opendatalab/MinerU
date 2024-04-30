@@ -1,5 +1,6 @@
 from loguru import logger
 
+from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
@@ -319,3 +320,37 @@ def ocr_mk_mm_standard_format(pdf_info_dict: list):
                 content = line_to_standard_format(line)
                 content_list.append(content)
     return content_list
+
+
+def union_make(pdf_info_dict: list, make_mode: str, drop_mode: str, img_buket_path: str = ""):
+    output_content = []
+    for page_info in pdf_info_dict:
+        if page_info.get("need_drop", False):
+            drop_reason = page_info.get("drop_reason")
+            if drop_mode == DropMode.NONE:
+                pass
+            elif drop_mode == DropMode.WHOLE_PDF:
+                raise Exception(f"drop_mode is {DropMode.WHOLE_PDF} , drop_reason is {drop_reason}")
+            elif drop_mode == DropMode.SINGLE_PAGE:
+                logger.warning(f"drop_mode is {DropMode.SINGLE_PAGE} , drop_reason is {drop_reason}")
+                continue
+            else:
+                raise Exception(f"drop_mode can not be null")
+
+        paras_of_layout = page_info.get("para_blocks")
+        if not paras_of_layout:
+            continue
+        if make_mode == MakeMode.MM_MD:
+            page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, "mm", img_buket_path)
+            output_content.extend(page_markdown)
+        elif make_mode == MakeMode.NLP_MD:
+            page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, "nlp")
+            output_content.extend(page_markdown)
+        elif make_mode == MakeMode.STANDARD_FORMAT:
+            for para_block in paras_of_layout:
+                para_content = para_to_standard_format_v2(para_block, img_buket_path)
+                output_content.append(para_content)
+    if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
+        return '\n\n'.join(output_content)
+    elif make_mode == MakeMode.STANDARD_FORMAT:
+        return output_content
