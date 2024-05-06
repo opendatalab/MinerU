@@ -17,7 +17,8 @@ from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.equations_replace import remove_chars_in_text_blocks, replace_equations_in_textblock, \
     combine_chars_to_pymudict
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split
-from magic_pdf.pre_proc.ocr_dict_merge import sort_blocks_by_layout, fill_spans_in_blocks, fix_block_spans
+from magic_pdf.pre_proc.ocr_dict_merge import sort_blocks_by_layout, fill_spans_in_blocks, fix_block_spans, \
+    fix_discarded_block
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_overlaps_min_spans, get_qa_need_list_v2
 from magic_pdf.pre_proc.resolve_bbox_conflict import check_useful_block_horizontal_overlap
 
@@ -122,15 +123,19 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     spans = ocr_cut_image_and_table(spans, pdf_docs[page_id], page_id, pdf_bytes_md5, imageWriter)
 
     '''将所有区块的bbox整理到一起'''
-    all_bboxes = ocr_prepare_bboxes_for_layout_split(
+    all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split(
         img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
         interline_equations, page_w, page_h)
 
+    '''先处理不需要排版的discarded_blocks'''
+    discarded_block_with_spans, spans = fill_spans_in_blocks(all_discarded_blocks, spans, 0.4)
+    fix_discarded_blocks = fix_discarded_block(discarded_block_with_spans)
+
     '''如果当前页面没有bbox则跳过'''
     if len(all_bboxes) == 0:
-        logger.warning(f"skip this page, not found bbox, page_id: {page_id}")
+        logger.warning(f"skip this page, not found useful bbox, page_id: {page_id}")
         return ocr_construct_page_component_v2([], [], page_id, page_w, page_h, [],
-                                               [], [], interline_equations, discarded_blocks,
+                                               [], [], interline_equations, fix_discarded_blocks,
                                                need_drop, drop_reason)
 
     """在切分之前，先检查一下bbox是否有左右重叠的情况，如果有，那么就认为这个pdf暂时没有能力处理好，这种左右重叠的情况大概率是由于pdf里的行间公式、表格没有被正确识别出来造成的 """
@@ -171,7 +176,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     sorted_blocks = sort_blocks_by_layout(all_bboxes, layout_bboxes)
 
     '''将span填入排好序的blocks中'''
-    block_with_spans = fill_spans_in_blocks(sorted_blocks, spans)
+    block_with_spans, spans = fill_spans_in_blocks(sorted_blocks, spans, 0.6)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
@@ -181,7 +186,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
 
     '''构造pdf_info_dict'''
     page_info = ocr_construct_page_component_v2(fix_blocks, layout_bboxes, page_id, page_w, page_h, layout_tree,
-                                                images, tables, interline_equations, discarded_blocks,
+                                                images, tables, interline_equations, fix_discarded_blocks,
                                                 need_drop, drop_reason)
     return page_info
 

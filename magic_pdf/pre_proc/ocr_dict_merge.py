@@ -141,7 +141,7 @@ def sort_blocks_by_layout(all_bboxes, layout_bboxes):
     return sort_blocks
 
 
-def fill_spans_in_blocks(blocks, spans):
+def fill_spans_in_blocks(blocks, spans, radio):
     '''
     将allspans中的span按位置关系，放入blocks中
     '''
@@ -156,7 +156,7 @@ def fill_spans_in_blocks(blocks, spans):
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.6:
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > radio:
                 block_spans.append(span)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
@@ -178,7 +178,7 @@ def fill_spans_in_blocks(blocks, spans):
             for span in block_spans:
                 spans.remove(span)
 
-    return block_with_spans
+    return block_with_spans, spans
 
 
 def fix_block_spans(block_with_spans, img_blocks, table_blocks):
@@ -202,6 +202,14 @@ def fix_block_spans(block_with_spans, img_blocks, table_blocks):
             continue
         fix_blocks.append(block)
     return fix_blocks
+
+
+def fix_discarded_block(discarded_block_with_spans):
+    fix_discarded_blocks = []
+    for block in discarded_block_with_spans:
+        block = fix_text_block(block)
+        fix_discarded_blocks.append(block)
+    return fix_discarded_blocks
 
 
 def merge_spans_to_block(spans: list, block_bbox: list, block_type: str):

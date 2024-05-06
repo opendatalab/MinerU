@@ -65,14 +65,8 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config):
 
 def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
     layout_bbox_list = []
-    blocks_bbox_list = []
     dropped_bbox_list = []
-    tables_list, tables_body_list, tables_caption_list, tables_footnote_list = (
-        [],
-        [],
-        [],
-        [],
-    )
+    tables_list, tables_body_list, tables_caption_list, tables_footnote_list = [], [], [], []
     imgs_list, imgs_body_list, imgs_caption_list = [], [], []
     titles_list = []
     texts_list = []
@@ -80,7 +74,6 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
     for page in pdf_info:
         page_layout_list = []
         page_dropped_list = []
-        page_blocks_bbox_list = []
         tables, tables_body, tables_caption, tables_footnote = [], [], [], []
         imgs, imgs_body, imgs_caption = [], [], []
         titles = []
@@ -154,12 +147,22 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
     interline_equation_list = []
     image_list = []
     table_list = []
+    dropped_list = []
     for page in pdf_info:
         page_text_list = []
         page_inline_equation_list = []
         page_interline_equation_list = []
         page_image_list = []
         page_table_list = []
+        page_dropped_list = []
+        # 构造dropped_list
+        for block in page["discarded_blocks"]:
+            if block["type"] == BlockType.Discarded:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        page_dropped_list.append(span["bbox"])
+        dropped_list.append(page_dropped_list)
+        # 构造其余useful_list
         for block in page["para_blocks"]:
             if block["type"] in [
                 BlockType.Text,
@@ -205,6 +208,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
         draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255], False)
         draw_bbox_without_number(i, image_list, page, [255, 204, 0], False)
         draw_bbox_without_number(i, table_list, page, [204, 0, 255], False)
+        draw_bbox_without_number(i, dropped_list, page, [158, 158, 158], False)
 
     # Save the PDF
     pdf_docs.save(f"{out_path}/spans.pdf")

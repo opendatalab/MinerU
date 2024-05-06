@@ -17,4 +17,5 @@ class BlockType:
     Title = "title"
     InterlineEquation = "interline_equation"
     Footnote = "footnote"
+    Discarded = "discarded"
 
