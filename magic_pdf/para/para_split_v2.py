@@ -452,7 +452,7 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
             #pre_page_paras[-1].append(may_list_lines)
             # 下一页合并到上一页最后一段，打一个cross_page的标签
             for line in may_list_lines:
-                for span in line:
+                for span in line["spans"]:
                     span[CROSS_PAGE] = True
             pre_page_paras[-1][-1]["lines"].extend(may_list_lines)
             next_page_paras[0] = next_page_paras[0][len(may_list_lines):]
@@ -578,7 +578,7 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
         # 下一页合并到上一页最后一段，打一个cross_page的标签
         for line in next_first_para:
-            for span in line:
+            for span in line["spans"]:
                 span[CROSS_PAGE] = True
         pre_last_para.extend(next_first_para)
 
