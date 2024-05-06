@@ -5,6 +5,7 @@ from loguru import logger
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap_with_area_ratio as is_in_layout
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.model.magic_model import MagicModel
+from magic_pdf.libs.Constants import *
 
 LINE_STOP_FLAG = ['.', '!', '?', '。', '！', '？', "：", ":", ")", "）", ";"]
 INLINE_EQUATION = ContentType.InlineEquation
@@ -449,6 +450,10 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
         if len(may_list_lines) > 0 and len(set([x['bbox'][0] for x in may_list_lines])) == 1:
             #pre_page_paras[-1].append(may_list_lines)
+            # 下一页合并到上一页最后一段，打一个cross_page的标签
+            for line in may_list_lines:
+                for span in line["spans"]:
+                    span[CROSS_PAGE] = True
             pre_page_paras[-1][-1]["lines"].extend(may_list_lines)
             next_page_paras[0] = next_page_paras[0][len(may_list_lines):]
             return True
@@ -518,7 +523,7 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
             connected_layout_blocks[-1][-1]["lines"].extend(blocks_group[i][0]["lines"])
             #layout_paras[i].pop(0)  # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
             blocks_group[i][0]["lines"] = [] #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
-            blocks_group[i][0]["lines_deleted"] = True
+            blocks_group[i][0][LINES_DELETED] = True
             # if len(layout_paras[i]) == 0:
             #     layout_paras.pop(i)
             # else:
@@ -571,10 +576,15 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and \
             next_first_line['bbox'][0] == next_x0_min:  # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
         """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
+        # 下一页合并到上一页最后一段，打一个cross_page的标签
+        for line in next_first_para:
+            for span in line["spans"]:
+                span[CROSS_PAGE] = True
         pre_last_para.extend(next_first_para)
+
         #next_page_paras[0].pop(0)  # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
         next_page_paras[0][0]["lines"] = []
-        next_page_paras[0][0]["lines_deleted"] = True
+        next_page_paras[0][0][LINES_DELETED] = True
         return True
     else:
         return False
@@ -647,7 +657,7 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, deb
                         layout_para[start]["lines"] = merge_para
                         for i_para in range(start+1, end+1):
                             layout_para[i_para]["lines"] = []
-                            layout_para[i_para]["lines_deleted"] = True
+                            layout_para[i_para][LINES_DELETED] = True
                         #layout_para[start:end + 1] = [merge_para]
 
                         #index_offset -= end - start
