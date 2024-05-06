@@ -7,6 +7,7 @@ from magic_pdf.libs.ocr_content_type import BlockType
 def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_blocks, text_blocks,
                                         title_blocks, interline_equation_blocks, page_w, page_h):
     all_bboxes = []
+    all_discarded_blocks = []
     for image in img_blocks:
         x0, y0, x1, y1 = image['bbox']
         all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Image, None, None, None, None])
@@ -38,10 +39,12 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:
         x0, y0, x1, y1 = discarded['bbox']
+        all_discarded_blocks.append([x0, y0, x1, y1, None, None, None, BlockType.Discarded, None, None, None, None])
+        # 将footnote加入到all_bboxes中，用来计算layout
         if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
             all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None])
 
-    return all_bboxes
+    return all_bboxes, all_discarded_blocks
 
 
 def fix_text_overlap_title_blocks(all_bboxes):
