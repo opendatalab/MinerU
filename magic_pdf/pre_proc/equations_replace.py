@@ -107,10 +107,10 @@ def _is_in_or_part_overlap(box1, box2) -> bool:
         or y0_1 > y1_2
     )  # box1在box2的下边
 
-
 def remove_text_block_overlap_interline_equation_bbox(
     interline_eq_bboxes, pymu_block_list
 ):
+
     """消除掉行行内公式有部分重叠的文本块的内容。
     同时重新计算消除重叠之后文本块的大小"""
     deleted_block = []
@@ -191,13 +191,13 @@ def insert_interline_equations_textblock(interline_eq_bboxes, pymu_block_list):
                     "spans": [
                         {
                             "size": 9.962599754333496,
-                            "_type": TYPE_INTERLINE_EQUATION,
+                            "type": TYPE_INTERLINE_EQUATION,
                             "flags": 4,
                             "font": TYPE_INTERLINE_EQUATION,
                             "color": 0,
                             "ascender": 0.9409999847412109,
                             "descender": -0.3050000071525574,
-                            "text": f"\n$$\n{latex_content}\n$$\n",
+                            "latex": latex_content,
                             "origin": [bbox[0], bbox[1]],
                             "bbox": bbox,
                         }
@@ -258,6 +258,9 @@ def replace_line_v2(eqinfo, line):
     last_overlap_span = -1
     delete_chars = []
     for i in range(0, len(line["spans"])):
+        if "chars" not in line["spans"][i]:
+            continue
+
         if line["spans"][i].get("_type", None) is not None:
             continue  # 忽略，因为已经是插入的伪造span公式了
 
@@ -309,27 +312,22 @@ def replace_line_v2(eqinfo, line):
 
     equation_span = {
         "size": 9.962599754333496,
-        "_type": TYPE_INLINE_EQUATION,
+        "type": TYPE_INLINE_EQUATION,
         "flags": 4,
         "font": TYPE_INLINE_EQUATION,
         "color": 0,
         "ascender": 0.9409999847412109,
         "descender": -0.3050000071525574,
-        "text": "",
+        "latex": "",
         "origin": [337.1410153102337, 216.0205245153934],
-        "bbox": [
-            337.1410153102337,
-            216.0205245153934,
-            390.4496373892022,
-            228.50171037628277,
-        ],
+        "bbox": eqinfo["bbox"]
     }
     # equation_span = line['spans'][0].copy()
-    equation_span["text"] = f" ${eqinfo['latex']}$ "
+    equation_span["latex"] = eqinfo['latex']
     equation_span["bbox"] = [x0, equation_span["bbox"][1], x1, equation_span["bbox"][3]]
     equation_span["origin"] = [equation_span["bbox"][0], equation_span["bbox"][1]]
     equation_span["chars"] = delete_chars
-    equation_span["_type"] = TYPE_INLINE_EQUATION
+    equation_span["type"] = TYPE_INLINE_EQUATION
     equation_span["_eq_bbox"] = eqinfo["bbox"]
     line["spans"].insert(first_overlap_span_idx + 1, equation_span)  # 放入公式
 
@@ -363,6 +361,11 @@ def replace_line_v2(eqinfo, line):
             line["spans"].remove(first_overlap_span)
 
     if len(tail_span_chars) > 0:
+        min_of_tail_span_x0 = min([chr["bbox"][0] for chr in tail_span_chars])
+        min_of_tail_span_y0 = min([chr["bbox"][1] for chr in tail_span_chars])
+        max_of_tail_span_x1 = max([chr["bbox"][2] for chr in tail_span_chars])
+        max_of_tail_span_y1 = max([chr["bbox"][3] for chr in tail_span_chars])
+
         if last_overlap_span == first_overlap_span:  # 这个时候应该插入一个新的
             tail_span_txt = "".join([char["c"] for char in tail_span_chars])
             last_span_to_insert = last_overlap_span.copy()
@@ -370,12 +373,20 @@ def replace_line_v2(eqinfo, line):
             last_span_to_insert["text"] = "".join(
                 [char["c"] for char in tail_span_chars]
             )
-            last_span_to_insert["bbox"] = (
-                min([chr["bbox"][0] for chr in tail_span_chars]),
-                last_overlap_span["bbox"][1],
-                last_overlap_span["bbox"][2],
-                last_overlap_span["bbox"][3],
-            )
+            if equation_span["bbox"][2] >= last_overlap_span["bbox"][2]:
+                last_span_to_insert["bbox"] = (
+                    min_of_tail_span_x0,
+                    min_of_tail_span_y0,
+                    max_of_tail_span_x1,
+                    max_of_tail_span_y1
+                )
+            else:
+                last_span_to_insert["bbox"] = (
+                    min([chr["bbox"][0] for chr in tail_span_chars]),
+                    last_overlap_span["bbox"][1],
+                    last_overlap_span["bbox"][2],
+                    last_overlap_span["bbox"][3],
+                )
             # 插入到公式对象之后
             equation_idx = line["spans"].index(equation_span)
             line["spans"].insert(equation_idx + 1, last_span_to_insert)  # 放入公式
@@ -460,17 +471,16 @@ def replace_equations_in_textblock(
     """
     替换行间和和行内公式为latex
     """
-
     raw_text_blocks = remove_text_block_in_interline_equation_bbox(
         interline_equation_bboxes, raw_text_blocks
     )  # 消除重叠：第一步，在公式内部的
+
     raw_text_blocks = remove_text_block_overlap_interline_equation_bbox(
         interline_equation_bboxes, raw_text_blocks
     )  # 消重，第二步，和公式覆盖的
+
     insert_interline_equations_textblock(interline_equation_bboxes, raw_text_blocks)
-
     raw_text_blocks = replace_inline_equations(inline_equation_bboxes, raw_text_blocks)
-
     return raw_text_blocks
 
 
