@@ -20,6 +20,7 @@ from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layo
 from magic_pdf.pre_proc.ocr_dict_merge import sort_blocks_by_layout, fill_spans_in_blocks, fix_block_spans, \
     fix_discarded_block
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_overlaps_min_spans, get_qa_need_list_v2
+from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
 from magic_pdf.pre_proc.resolve_bbox_conflict import check_useful_block_horizontal_overlap
 
 
@@ -97,7 +98,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     img_blocks = magic_model.get_imgs(page_id)
     table_blocks = magic_model.get_tables(page_id)
     discarded_blocks = magic_model.get_discarded(page_id)
-    text_blocks = magic_model.get_text_blocks(page_id)
+    text_blocks = remove_overlap_between_bbox(magic_model.get_text_blocks(page_id))
     title_blocks = magic_model.get_title_blocks(page_id)
     inline_equations, interline_equations, interline_equation_blocks = magic_model.get_equations(page_id)
 
