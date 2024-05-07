@@ -72,7 +72,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     else:
         print("unknow parse method")
-        os.exit(1)
+        sys.exit(1)
 
     pipe.pipe_classify()
     pipe.pipe_parse()
@@ -114,7 +114,7 @@ def cli():
 def json_command(json, method):
     if not json.startswith("s3://"):
         print("usage: python magipdf.py --json s3://some_bucket/some_path")
-        os.exit(1)
+        sys.exit(1)
 
     def read_s3_path(s3path):
         bucket, key = parse_s3path(s3path)
