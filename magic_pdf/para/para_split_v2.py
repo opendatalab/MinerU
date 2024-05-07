@@ -489,7 +489,10 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
     connected_layout_blocks.append(blocks_group[0])
     for i in range(1, len(blocks_group)):
         try:
-            if len(blocks_group[i]) == 0 or len(blocks_group[i - 1]) == 0:  # TODO 考虑连接问题，
+            if len(blocks_group[i]) == 0:
+                continue
+            if  len(blocks_group[i - 1]) == 0:  # TODO 考虑连接问题，
+                connected_layout_blocks.append(blocks_group[i])
                 continue
             # text类型的段才需要考虑layout间的合并
             if blocks_group[i - 1][-1]["type"] != BlockType.Text or blocks_group[i][0]["type"] != BlockType.Text:
