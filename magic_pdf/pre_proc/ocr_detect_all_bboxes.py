@@ -2,6 +2,7 @@ from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio, calculate_ove
     calculate_iou
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import BlockType
+from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox_for_block
 
 
 def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_blocks, text_blocks,
@@ -35,6 +36,8 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
     '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
+    '''将剩余的bbox做分离处理，防止后面分layout时出错'''
+    all_bboxes = remove_overlap_between_bbox_for_block(all_bboxes)
 
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:

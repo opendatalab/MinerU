@@ -5,7 +5,7 @@ from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.pre_proc.ocr_span_list_modify import modify_y_axis, modify_inline_equation
-from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
+from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox_for_span
 
 
 # 将每一个line中的span从左到右排序
@@ -168,7 +168,7 @@ def fill_spans_in_blocks(blocks, spans, radio):
         block_spans = modify_inline_equation(block_spans, displayed_list, text_inline_lines)
 
         '''bbox去除粘连'''  # 去粘连会影响span的bbox，导致后续fill的时候出错
-        # block_spans = remove_overlap_between_bbox(block_spans)
+        # block_spans = remove_overlap_between_bbox_for_span(block_spans)
 
         block_dict['spans'] = block_spans
         block_with_spans.append(block_dict)

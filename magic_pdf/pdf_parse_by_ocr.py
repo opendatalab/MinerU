@@ -24,7 +24,7 @@ from magic_pdf.pre_proc.ocr_dict_merge import (
 from magic_pdf.pre_proc.ocr_span_list_modify import remove_spans_by_bboxes, remove_overlaps_min_spans, \
     adjust_bbox_for_standalone_block, modify_y_axis, modify_inline_equation, get_qa_need_list, \
     remove_spans_by_bboxes_dict
-from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox
+from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox_for_span
 
 
 def parse_pdf_by_ocr(
@@ -158,8 +158,7 @@ def parse_pdf_by_ocr(
         spans = modify_inline_equation(spans, displayed_list, text_inline_lines)
 
         '''bbox去除粘连'''
-        spans = remove_overlap_between_bbox(spans)
-
+        spans = remove_overlap_between_bbox_for_span(spans)
         '''
         对tpye=["interline_equation", "image", "table"]进行额外处理,
         如果左边有字的话,将该span的bbox中y0调整至不高于文字的y0
