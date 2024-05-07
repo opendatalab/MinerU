@@ -1,3 +1,4 @@
+from magic_pdf.libs.Constants import CROSS_PAGE
 from magic_pdf.libs.commons import fitz  # PyMuPDF
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 
@@ -148,6 +149,8 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
     image_list = []
     table_list = []
     dropped_list = []
+    next_page_text_list = []
+    next_page_inline_equation_list = []
     for page in pdf_info:
         page_text_list = []
         page_inline_equation_list = []
@@ -155,6 +158,15 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
         page_image_list = []
         page_table_list = []
         page_dropped_list = []
+
+        # 将跨页的span放到移动到下一页的列表中
+        if len(next_page_text_list) > 0:
+            page_text_list.extend(next_page_text_list)
+            next_page_text_list = []
+        if len(next_page_inline_equation_list) > 0:
+            page_inline_equation_list.extend(next_page_inline_equation_list)
+            next_page_inline_equation_list = []
+
         # 构造dropped_list
         for block in page["discarded_blocks"]:
             if block["type"] == BlockType.Discarded:
@@ -172,9 +184,15 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
                 for line in block["lines"]:
                     for span in line["spans"]:
                         if span["type"] == ContentType.Text:
-                            page_text_list.append(span["bbox"])
+                            if span.get(CROSS_PAGE, False):
+                                next_page_text_list.append(span["bbox"])
+                            else:
+                                page_text_list.append(span["bbox"])
                         elif span["type"] == ContentType.InlineEquation:
-                            page_inline_equation_list.append(span["bbox"])
+                            if span.get(CROSS_PAGE, False):
+                                next_page_inline_equation_list.append(span["bbox"])
+                            else:
+                                page_inline_equation_list.append(span["bbox"])
                         elif span["type"] == ContentType.InterlineEquation:
                             page_interline_equation_list.append(span["bbox"])
                         elif span["type"] == ContentType.Image:
