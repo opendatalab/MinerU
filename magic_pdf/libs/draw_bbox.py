@@ -151,6 +151,25 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
     dropped_list = []
     next_page_text_list = []
     next_page_inline_equation_list = []
+
+    def get_span_info(span):
+        if span["type"] == ContentType.Text:
+            if span.get(CROSS_PAGE, False):
+                next_page_text_list.append(span["bbox"])
+            else:
+                page_text_list.append(span["bbox"])
+        elif span["type"] == ContentType.InlineEquation:
+            if span.get(CROSS_PAGE, False):
+                next_page_inline_equation_list.append(span["bbox"])
+            else:
+                page_inline_equation_list.append(span["bbox"])
+        elif span["type"] == ContentType.InterlineEquation:
+            page_interline_equation_list.append(span["bbox"])
+        elif span["type"] == ContentType.Image:
+            page_image_list.append(span["bbox"])
+        elif span["type"] == ContentType.Table:
+            page_table_list.append(span["bbox"])
+
     for page in pdf_info:
         page_text_list = []
         page_inline_equation_list = []
@@ -162,10 +181,10 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
         # 将跨页的span放到移动到下一页的列表中
         if len(next_page_text_list) > 0:
             page_text_list.extend(next_page_text_list)
-            next_page_text_list = []
+            next_page_text_list.clear()
         if len(next_page_inline_equation_list) > 0:
             page_inline_equation_list.extend(next_page_inline_equation_list)
-            next_page_inline_equation_list = []
+            next_page_inline_equation_list.clear()
 
         # 构造dropped_list
         for block in page["discarded_blocks"]:
@@ -183,36 +202,12 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
             ]:
                 for line in block["lines"]:
                     for span in line["spans"]:
-                        if span["type"] == ContentType.Text:
-                            if span.get(CROSS_PAGE, False):
-                                next_page_text_list.append(span["bbox"])
-                            else:
-                                page_text_list.append(span["bbox"])
-                        elif span["type"] == ContentType.InlineEquation:
-                            if span.get(CROSS_PAGE, False):
-                                next_page_inline_equation_list.append(span["bbox"])
-                            else:
-                                page_inline_equation_list.append(span["bbox"])
-                        elif span["type"] == ContentType.InterlineEquation:
-                            page_interline_equation_list.append(span["bbox"])
-                        elif span["type"] == ContentType.Image:
-                            page_image_list.append(span["bbox"])
-                        elif span["type"] == ContentType.Table:
-                            page_table_list.append(span["bbox"])
+                        get_span_info(span)
             elif block["type"] in [BlockType.Image, BlockType.Table]:
                 for sub_block in block["blocks"]:
                     for line in sub_block["lines"]:
                         for span in line["spans"]:
-                            if span["type"] == ContentType.Text:
-                                page_text_list.append(span["bbox"])
-                            elif span["type"] == ContentType.InlineEquation:
-                                page_inline_equation_list.append(span["bbox"])
-                            elif span["type"] == ContentType.InterlineEquation:
-                                page_interline_equation_list.append(span["bbox"])
-                            elif span["type"] == ContentType.Image:
-                                page_image_list.append(span["bbox"])
-                            elif span["type"] == ContentType.Table:
-                                page_table_list.append(span["bbox"])
+                            get_span_info(span)
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
         interline_equation_list.append(page_interline_equation_list)
