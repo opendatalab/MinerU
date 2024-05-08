@@ -1,7 +1,7 @@
 from loguru import logger
 
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, get_minbox_if_overlap_by_ratio, \
-    calculate_overlap_area_in_bbox1_area_ratio
+    calculate_overlap_area_in_bbox1_area_ratio, _is_in_or_part_overlap_with_area_ratio
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.pre_proc.ocr_span_list_modify import modify_y_axis, modify_inline_equation
@@ -247,10 +247,11 @@ def fix_image_block(block, img_blocks):
     block['blocks'] = []
     # 遍历img_blocks,找到与当前block匹配的img_block
     for img_block in img_blocks:
-        if img_block['bbox'] == block['bbox']:
+        if _is_in_or_part_overlap_with_area_ratio(block['bbox'], img_block['bbox'], 0.95):
+
             # 创建img_body_block
             for span in block['spans']:
-                if span['type'] == ContentType.Image and span['bbox'] == img_block['img_body_bbox']:
+                if span['type'] == ContentType.Image and img_block['img_body_bbox'] == span['bbox']:
                     # 创建img_body_block
                     img_body_block = make_body_block(span, img_block['img_body_bbox'], BlockType.ImageBody)
                     block['blocks'].append(img_body_block)
@@ -275,11 +276,11 @@ def fix_table_block(block, table_blocks):
     block['blocks'] = []
     # 遍历table_blocks,找到与当前block匹配的table_block
     for table_block in table_blocks:
-        if table_block['bbox'] == block['bbox']:
+        if _is_in_or_part_overlap_with_area_ratio(block['bbox'], table_block['bbox'], 0.95):
 
             # 创建table_body_block
             for span in block['spans']:
-                if span['type'] == ContentType.Table and span['bbox'] == table_block['table_body_bbox']:
+                if span['type'] == ContentType.Table and table_block['table_body_bbox'] == span['bbox']:
                     # 创建table_body_block
                     table_body_block = make_body_block(span, table_block['table_body_bbox'], BlockType.TableBody)
                     block['blocks'].append(table_body_block)
