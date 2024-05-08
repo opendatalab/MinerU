@@ -29,10 +29,10 @@ def remove_horizontal_overlap_block_which_smaller(all_bboxes):
         useful_blocks.append({
             "bbox": bbox[:4]
         })
-    is_useful_block_horz_overlap, smaller_bbox = check_useful_block_horizontal_overlap(useful_blocks)
+    is_useful_block_horz_overlap, smaller_bbox, bigger_bbox = check_useful_block_horizontal_overlap(useful_blocks)
     if is_useful_block_horz_overlap:
         logger.warning(
-            f"skip this page, reason: {DropReason.USEFUL_BLOCK_HOR_OVERLAP}")
+            f"skip this page, reason: {DropReason.USEFUL_BLOCK_HOR_OVERLAP}, smaller bbox is {smaller_bbox}, bigger bbox is {bigger_bbox}")
         for bbox in all_bboxes.copy():
             if smaller_bbox == bbox[:4]:
                 all_bboxes.remove(bbox)

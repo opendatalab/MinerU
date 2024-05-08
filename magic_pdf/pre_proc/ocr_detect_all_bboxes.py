@@ -34,10 +34,6 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
     '''任何框体与舍弃框重叠，优先信任舍弃框'''
     all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
-    '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
-    all_bboxes = remove_overlaps_min_blocks(all_bboxes)
-    '''将剩余的bbox做分离处理，防止后面分layout时出错'''
-    all_bboxes = remove_overlap_between_bbox_for_block(all_bboxes)
 
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:
@@ -46,6 +42,12 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
         # 将footnote加入到all_bboxes中，用来计算layout
         if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
             all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None])
+
+    '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
+    all_bboxes = remove_overlaps_min_blocks(all_bboxes)
+    all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
+    '''将剩余的bbox做分离处理，防止后面分layout时出错'''
+    all_bboxes = remove_overlap_between_bbox_for_block(all_bboxes)
 
     return all_bboxes, all_discarded_blocks
 

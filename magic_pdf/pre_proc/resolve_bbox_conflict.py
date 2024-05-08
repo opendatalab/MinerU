@@ -184,8 +184,8 @@ def check_useful_block_horizontal_overlap(useful_blocks: list) -> bool:
             area_j = (useful_bboxes[j][2] - useful_bboxes[j][0]) * (useful_bboxes[j][3] - useful_bboxes[j][1])
             if _is_left_overlap(useful_bboxes[i], useful_bboxes[j]) or _is_left_overlap(useful_bboxes[j], useful_bboxes[i]):
                 if area_i > area_j:
-                    return True, useful_bboxes[j]
+                    return True, useful_bboxes[j], useful_bboxes[i]
                 else:
-                    return True, useful_bboxes[i]
+                    return True, useful_bboxes[i], useful_bboxes[j]
 
-    return False, None
+    return False, None, None
