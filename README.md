@@ -29,7 +29,12 @@ pip install -r requirements.txt
 3.Run the command line
 
 ```sh
+linux/osx
 export PYTHONPATH=.
+win
+$env:PYTHONPATH += ";.\Magic-PDF\magic_pdf"    
+```
+```
 python magic_pdf/cli/magicpdf.py --help
 ```
 
