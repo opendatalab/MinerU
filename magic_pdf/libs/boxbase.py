@@ -335,6 +335,19 @@ def find_right_nearest_text_bbox(pymu_blocks, obj_bbox):
 
 
 def bbox_relative_pos(bbox1, bbox2):
+    """
+    判断两个矩形框的相对位置关系
+
+    Args:
+        bbox1: 一个四元组，表示第一个矩形框的左上角和右下角的坐标，格式为(x1, y1, x1b, y1b)
+        bbox2: 一个四元组，表示第二个矩形框的左上角和右下角的坐标，格式为(x2, y2, x2b, y2b)
+
+    Returns:
+        一个四元组，表示矩形框1相对于矩形框2的位置关系，格式为(left, right, bottom, top)
+        其中，left表示矩形框1是否在矩形框2的左侧，right表示矩形框1是否在矩形框2的右侧，
+        bottom表示矩形框1是否在矩形框2的下方，top表示矩形框1是否在矩形框2的上方
+
+    """
     x1, y1, x1b, y1b = bbox1
     x2, y2, x2b, y2b = bbox2
     
@@ -345,6 +358,17 @@ def bbox_relative_pos(bbox1, bbox2):
     return left, right, bottom, top
     
 def bbox_distance(bbox1, bbox2):
+    """
+    计算两个矩形框的距离。
+
+    Args:
+        bbox1 (tuple): 第一个矩形框的坐标，格式为 (x1, y1, x2, y2)，其中 (x1, y1) 为左上角坐标，(x2, y2) 为右下角坐标。
+        bbox2 (tuple): 第二个矩形框的坐标，格式为 (x1, y1, x2, y2)，其中 (x1, y1) 为左上角坐标，(x2, y2) 为右下角坐标。
+
+    Returns:
+        float: 矩形框之间的距离。
+
+    """
     def dist(point1, point2):
             return math.sqrt((point1[0]-point2[0])**2 + (point1[1]-point2[1])**2)
     

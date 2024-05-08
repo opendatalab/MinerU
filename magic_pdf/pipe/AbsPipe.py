@@ -57,7 +57,7 @@ class AbsPipe(ABC):
     @staticmethod
     def classify(pdf_bytes: bytes) -> str:
         """
-        根据pdf的元数据，判断是否是文本pdf，还是ocr pdf
+        根据pdf的元数据，判断是文本pdf，还是ocr pdf
         """
         pdf_meta = pdf_meta_scan(pdf_bytes)
         if pdf_meta.get("_need_drop", False):  # 如果返回了需要丢弃的标志，则抛出异常

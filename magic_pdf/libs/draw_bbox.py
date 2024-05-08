@@ -61,7 +61,7 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config):
             )  # Draw the rectangle
         page.insert_text(
             (x0, y0 + 10), str(j + 1), fontsize=10, color=new_rgb
-        )  # Insert the index at the top left corner of the rectangle
+        )  # Insert the index in the top left corner of the rectangle
 
 
 def draw_layout_bbox(pdf_info, pdf_bytes, out_path):
