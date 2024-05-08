@@ -114,7 +114,8 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
             else:
                 layout_left = layout[0]
                 if l['bbox'][0] == layout_left:
-                    if first_char.isupper() or first_char.isdigit() or not first_char.isalnum():
+                    # if first_char.isupper() or first_char.isdigit() or not first_char.isalnum():
+                    if not first_char.isalnum():
                         line_fea_encode.append(1)
                     else:
                         line_fea_encode.append(4)
