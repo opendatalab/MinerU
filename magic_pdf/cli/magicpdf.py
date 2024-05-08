@@ -79,8 +79,8 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
-    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
 
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
     md_writer.write(
         content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
     )
@@ -89,10 +89,8 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         path=f"{pdf_file_name}.json",
         mode=AbsReaderWriter.MODE_TXT,
     )
-    try:
-        content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
-    except Exception as e:
-        logger.exception(e)
+
+    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
     md_writer.write(
         str(content_list), f"{pdf_file_name}.txt", AbsReaderWriter.MODE_TXT
     )
