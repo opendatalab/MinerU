@@ -19,7 +19,8 @@ from magic_pdf.pre_proc.equations_replace import remove_chars_in_text_blocks, re
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split
 from magic_pdf.pre_proc.ocr_dict_merge import sort_blocks_by_layout, fill_spans_in_blocks, fix_block_spans, \
     fix_discarded_block
-from magic_pdf.pre_proc.ocr_span_list_modify import remove_overlaps_min_spans, get_qa_need_list_v2
+from magic_pdf.pre_proc.ocr_span_list_modify import remove_overlaps_min_spans, get_qa_need_list_v2, \
+    remove_overlaps_low_confidence_spans
 from magic_pdf.pre_proc.resolve_bbox_conflict import check_useful_block_horizontal_overlap
 
 
@@ -117,6 +118,8 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     else:
         raise Exception("parse_mode must be txt or ocr")
 
+    '''删除重叠spans中置信度较低的那些'''
+    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
     '''删除重叠spans中较小的那些'''
     spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
     '''对image和table截图'''

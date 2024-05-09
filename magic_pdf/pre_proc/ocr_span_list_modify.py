@@ -1,9 +1,30 @@
 from loguru import logger
 
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, \
-    __is_overlaps_y_exceeds_threshold
+    __is_overlaps_y_exceeds_threshold, calculate_iou
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
+
+def remove_overlaps_low_confidence_spans(spans):
+    dropped_spans = []
+    #  删除重叠spans中置信度低的的那些
+    for span1 in spans:
+        for span2 in spans:
+            if span1 != span2:
+                if calculate_iou(span1['bbox'], span2['bbox']) > 0.9:
+                    if span1['score'] < span2['score']:
+                        span_need_remove = span1
+                    else:
+                        span_need_remove = span2
+                    if span_need_remove is not None and span_need_remove not in dropped_spans:
+                        dropped_spans.append(span_need_remove)
+
+    if len(dropped_spans) > 0:
+        for span_need_remove in dropped_spans:
+            spans.remove(span_need_remove)
+            span_need_remove['tag'] = DropTag.SPAN_OVERLAP
+
+    return spans, dropped_spans
 
 
 def remove_overlaps_min_spans(spans):

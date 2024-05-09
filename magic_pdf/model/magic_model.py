@@ -448,6 +448,12 @@ class MagicModel:
         return text_spans
 
     def get_all_spans(self, page_no: int) -> list:
+        def remove_duplicate_spans(spans):
+            new_spans = []
+            for span in spans:
+                if not any(span == existing_span for existing_span in new_spans):
+                    new_spans.append(span)
+            return new_spans
         all_spans = []
         model_page_info = self.__model_list[page_no]
         layout_dets = model_page_info["layout_dets"]
@@ -461,7 +467,10 @@ class MagicModel:
         for layout_det in layout_dets:
             category_id = layout_det["category_id"]
             if category_id in allow_category_id_list:
-                span = {"bbox": layout_det["bbox"]}
+                span = {
+                    "bbox": layout_det["bbox"],
+                    "score": layout_det["score"]
+                }
                 if category_id == 3:
                     span["type"] = ContentType.Image
                 elif category_id == 5:
@@ -476,7 +485,7 @@ class MagicModel:
                     span["content"] = layout_det["text"]
                     span["type"] = ContentType.Text
                 all_spans.append(span)
-        return all_spans
+        return remove_duplicate_spans(all_spans)
 
     def get_page_size(self, page_no: int):  # 获取页面宽高
         # 获取当前页的page对象
