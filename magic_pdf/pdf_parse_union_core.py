@@ -65,6 +65,7 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                             "bbox": list(span["bbox"]),
                             "content": span["latex"],
                             "type": ContentType.InlineEquation,
+                            "score": 1.0,
                         }
                     )
                 elif span.get('type') == ContentType.InterlineEquation:
@@ -73,6 +74,7 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                             "bbox": list(span["bbox"]),
                             "content": span["latex"],
                             "type": ContentType.InterlineEquation,
+                            "score": 1.0,
                         }
                     )
                 else:
@@ -81,6 +83,7 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                             "bbox": list(span["bbox"]),
                             "content": span["text"],
                             "type": ContentType.Text,
+                            "score": 1.0,
                         }
                     )
     return spans
