@@ -1,6 +1,7 @@
 import pytest
 
-from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overlap_with_area_ratio
+from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overlap_with_area_ratio, _is_in, \
+    _is_part_overlap
 from magic_pdf.libs.commons import mymax, join_path, get_top_percent_list
 from magic_pdf.libs.path_utils import parse_s3path
 
@@ -53,7 +54,7 @@ class Testpy():
         # ("s3://bucket/path/to/my/file.txt", "bucket"),
         # ("/path/to/my/file1.txt", "path"),
         ("bucket/path/to/my/file2.txt", "bucket"),
-        # ("file2.txt", "ValueError")
+        # ("file2.txt", "False")
     ])
     def test_parse_s3path(self, s3_path: str, target_data: str):
         """
@@ -82,25 +83,69 @@ class Testpy():
         # ((24, 47, 111, 115), (34, 81, 58, 106), True),  # 包含
         # ((34, 8, 105, 83), (76, 20, 116, 45), True),  # 包含
     ])
-    def test_is_in_or_part_overlap(self, box1: list, box2: list, target_bool: bool) -> None:
+    def test_is_in_or_part_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
         """
         box1: 坐标数组
         box2: 坐标数组
         """
         assert target_bool == _is_in_or_part_overlap(box1, box2)
 
+    # 如果box1在box2内部，返回True
+    #   如果是部分重合的，则重合面积占box1的比例大于阈值时候返回True
     @pytest.mark.parametrize("box1, box2, target_bool", [
         # ((35, 28, 108, 90), (47, 60, 83, 96), True),  # 包含 box1 up box2,  box2 多半,box1少半
         # ((65, 151, 92, 177), (49, 99, 105, 198), True),  # 包含 box1 in box2
         # ((80, 62, 112, 84), (74, 40, 144, 111), True),  # 包含 box1 in box2
-        # ((65, 88, 127, 144), (92, 102, 131, 139), True),  # 包含 box2 多半，box1约一半 异常
+        # ((65, 88, 127, 144), (92, 102, 131, 139), False),  # 包含 box2 多半，box1约一半
         # ((92, 102, 131, 139), (65, 88, 127, 144), True),  # 包含 box1 多半
-        # ((100, 93, 199, 168), (169, 126, 198, 165), True),  # 包含 box2 in box1  异常
-        # ((26, 75, 106, 172), (65, 108, 90, 128), True),  # 包含 box2 in box1
+        # ((100, 93, 199, 168), (169, 126, 198, 165), False),  # 包含 box2 in box1
+        # ((26, 75, 106, 172), (65, 108, 90, 128), False),  # 包含 box2 in box1
         # ((28, 90, 77, 126), (35, 84, 84, 120), True),  # 相交 box1多半，box2多半
         # ((37, 6, 69, 52), (28, 3, 60, 49), True),  # 相交 box1多半，box2多半
         ((94, 29, 133, 60), (84, 30, 123, 61), True),  # 相交 box1多半，box2多半
     ])
-    def test_is_in_or_part_overlap_with_area_ratio(self, box1: list, box2: list, target_bool: bool) -> None:
+    def test_is_in_or_part_overlap_with_area_ratio(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
         out_bool = _is_in_or_part_overlap_with_area_ratio(box1, box2)
         assert target_bool == out_bool
+
+    # box1在box2内部或者box2在box1内部返回True。如果部分边界重合也算作包含。
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # ((), (), False),
+        # ((65, 151, 92, 177), (49, 99, 105, 198), True),  # 包含 box1 in box2
+        # ((80, 62, 112, 84), (74, 40, 144, 111), True),  # 包含 box1 in box2
+        # ((76, 140, 154, 277), (121, 326, 192, 384), False),  # 分离
+        # ((65, 88, 127, 144), (92, 102, 131, 139), False),  # 包含 box2 多半，box1约一半
+        # ((92, 102, 131, 139), (65, 88, 127, 144), False),  # 包含 box1 多半
+        # ((68, 94, 118, 120), (68, 90, 118, 122), True),  # 包含，box1 in box2 两边x相切
+        # ((69, 94, 118, 120), (68, 90, 118, 122), True),  # 包含，box1 in box2 一边x相切
+        ((69, 114, 118, 122), (68, 90, 118, 122), True),  # 包含，box1 in box2 一边y相切
+        # ((100, 93, 199, 168), (169, 126, 198, 165), True),  # 包含 box2 in box1  Error
+        # ((26, 75, 106, 172), (65, 108, 90, 128), True),  # 包含 box2 in box1  Error
+        # ((38, 94, 122, 120), (68, 94, 118, 120), True),  # 包含，box2 in box1 两边y相切 Error
+        # ((68, 34, 118, 158), (68, 94, 118, 120), True),  # 包含，box2 in box1 两边x相切 Error
+        # ((68, 34, 118, 158), (68, 94, 84, 120), True),  # 包含，box2 in box1 一边x相切 Error
+        # ((27, 94, 118, 158), (68, 94, 84, 120), True),  # 包含，box2 in box1 一边y相切 Error
+    ])
+    def test_is_in(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _is_in(box1, box2)
+
+    # 仅仅是部分包含关系，返回True，如果是完全包含关系则返回False
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        ((65, 151, 92, 177), (49, 99, 105, 198), False),  # 包含 box1 in box2
+        # ((80, 62, 112, 84), (74, 40, 144, 111), False),  # 包含 box1 in box2
+        # ((76, 140, 154, 277), (121, 326, 192, 384), False),  # 分离  Error
+        # ((65, 88, 127, 144), (92, 102, 131, 139), True),  # 包含 box2 多半，box1约一半
+        # ((92, 102, 131, 139), (65, 88, 127, 144), True),  # 包含 box1 多半
+        # ((68, 94, 118, 120), (68, 90, 118, 122), False),  # 包含，box1 in box2 两边x相切
+        # ((69, 94, 118, 120), (68, 90, 118, 122), False),  # 包含，box1 in box2 一边x相切
+        # ((69, 114, 118, 122), (68, 90, 118, 122), False),  # 包含，box1 in box2 一边y相切
+        # ((26, 75, 106, 172), (65, 108, 90, 128), False),  # 包含 box2 in box1  Error
+        # ((38, 94, 122, 120), (68, 94, 118, 120), False),  # 包含，box2 in box1 两边y相切 Error
+        # ((68, 34, 118, 158), (68, 94, 84, 120), False),  # 包含，box2 in box1 一边x相切 Error
+
+    ])
+    def test_is_part_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _is_part_overlap(box1, box2)
+
+
+# python magicpdf.py --pdf  C:\Users\renpengli\Desktop\test\testpdf.pdf
