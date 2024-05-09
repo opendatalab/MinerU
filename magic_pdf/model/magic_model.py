@@ -507,8 +507,6 @@ class MagicModel:
                     blocks.append(block)
         return blocks
 
-    def get_model_list(self, page_no):
-        return self.__model_list[page_no]
 
 
 if __name__ == "__main__":
