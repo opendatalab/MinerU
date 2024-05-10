@@ -51,7 +51,7 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     '''将剩余的bbox做分离处理，防止后面分layout时出错'''
     all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
 
-    return all_bboxes, all_discarded_blocks
+    return all_bboxes, all_discarded_blocks, drop_reasons
 
 
 def fix_text_overlap_title_blocks(all_bboxes):

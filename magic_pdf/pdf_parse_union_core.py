@@ -130,13 +130,16 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
 
     '''将所有区块的bbox整理到一起'''
     if len(interline_equation_blocks) > 0:
-        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split(
+        all_bboxes, all_discarded_blocks, drop_reasons = ocr_prepare_bboxes_for_layout_split(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
             interline_equation_blocks, page_w, page_h)
     else:
-        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split(
+        all_bboxes, all_discarded_blocks, drop_reasons = ocr_prepare_bboxes_for_layout_split(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
             interline_equations, page_w, page_h)
+    if len(drop_reasons) > 0:
+        need_drop = True
+        drop_reason = DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION
 
     '''先处理不需要排版的discarded_blocks'''
     discarded_block_with_spans, spans = fill_spans_in_blocks(all_discarded_blocks, spans, 0.4)

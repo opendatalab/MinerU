@@ -23,4 +23,5 @@ class DropReason:
     PSEUDO_SINGLE_COLUMN = "pseudo_single_column" # 无法精确判断文字分栏
     CAN_NOT_DETECT_PAGE_LAYOUT="can_not_detect_page_layout" # 无法分析页面的版面
     NEGATIVE_BBOX_AREA = "negative_bbox_area" # 缩放导致 bbox 面积为负
+    OVERLAP_BLOCKS_CAN_NOT_SEPARATION = "overlap_blocks_can_t_separation" # 无法分离重叠的block
     
