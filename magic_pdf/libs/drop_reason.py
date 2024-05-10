@@ -22,4 +22,5 @@ class DropReason:
     SPECIAL_PDF = "special_pdf"
     PSEUDO_SINGLE_COLUMN = "pseudo_single_column" # 无法精确判断文字分栏
     CAN_NOT_DETECT_PAGE_LAYOUT="can_not_detect_page_layout" # 无法分析页面的版面
+    NEGATIVE_BBOX_AREA = "negative_bbox_area" # 缩放导致 bbox 面积为负
     

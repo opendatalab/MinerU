@@ -76,7 +76,7 @@ class MagicModel:
             for j in range(N):
                 if i == j:
                     continue
-                if _is_in(bboxes[i], bboxes[j]):
+                if _is_in(bboxes[i]["bbox"], bboxes[j]["bbox"]):
                     keep[i] = False
 
         return [bboxes[i] for i in range(N) if keep[i]]
@@ -104,11 +104,26 @@ class MagicModel:
         # 再求出筛选出的 subjects 和 object 的最短距离！
         def may_find_other_nearest_bbox(subject_idx, object_idx):
             ret = float("inf")
-            x0, y0, x1, y1 = expand_bbox(
-                all_bboxes[subject_idx]["bbox"], all_bboxes[object_idx]["bbox"]
+
+            x0 = min(
+                all_bboxes[subject_idx]["bbox"][0], all_bboxes[object_idx]["bbox"][0]
+            )
+            y0 = min(
+                all_bboxes[subject_idx]["bbox"][1], all_bboxes[object_idx]["bbox"][1]
+            )
+            x1 = max(
+                all_bboxes[subject_idx]["bbox"][2], all_bboxes[object_idx]["bbox"][2]
+            )
+            y1 = max(
+                all_bboxes[subject_idx]["bbox"][3], all_bboxes[object_idx]["bbox"][3]
             )
 
-            object_area = get_bbox_area(all_bboxes[object_idx]["bbox"])
+            object_area = abs(
+                all_bboxes[object_idx]["bbox"][2] - all_bboxes[object_idx]["bbox"][0]
+            ) * abs(
+                all_bboxes[object_idx]["bbox"][3] - all_bboxes[object_idx]["bbox"][1]
+            )
+
             for i in range(len(all_bboxes)):
                 if (
                     i == subject_idx
@@ -118,15 +133,19 @@ class MagicModel:
                 if _is_part_overlap([x0, y0, x1, y1], all_bboxes[i]["bbox"]) or _is_in(
                     all_bboxes[i]["bbox"], [x0, y0, x1, y1]
                 ):
-                    i_area = get_bbox_area(all_bboxes[i]["bbox"])
+
+                    i_area = abs(
+                        all_bboxes[i]["bbox"][2] - all_bboxes[i]["bbox"][0]
+                    ) * abs(all_bboxes[i]["bbox"][3] - all_bboxes[i]["bbox"][1])
                     if i_area >= object_area:
-                        ret = min(ret, dis[i][object_idx])
+                        ret = min(float("inf"), dis[i][object_idx])
+
             return ret
 
         subjects = self.__reduct_overlap(
             list(
                 map(
-                    lambda x: x["bbox"],
+                    lambda x: {"bbox": x["bbox"], "score": x["score"]},
                     filter(
                         lambda x: x["category_id"] == subject_category_id,
                         self.__model_list[page_no]["layout_dets"],
@@ -138,7 +157,7 @@ class MagicModel:
         objects = self.__reduct_overlap(
             list(
                 map(
-                    lambda x: x["bbox"],
+                    lambda x: {"bbox": x["bbox"], "score": x["score"]},
                     filter(
                         lambda x: x["category_id"] == object_category_id,
                         self.__model_list[page_no]["layout_dets"],
@@ -148,15 +167,29 @@ class MagicModel:
         )
         subject_object_relation_map = {}
 
-        subjects.sort(key=lambda x: x[0] ** 2 + x[1] ** 2)  # get the distance !
+        subjects.sort(
+            key=lambda x: x["bbox"][0] ** 2 + x["bbox"][1] ** 2
+        )  # get the distance !
 
         all_bboxes = []
 
         for v in subjects:
-            all_bboxes.append({"category_id": subject_category_id, "bbox": v})
+            all_bboxes.append(
+                {
+                    "category_id": subject_category_id,
+                    "bbox": v["bbox"],
+                    "score": v["score"],
+                }
+            )
 
         for v in objects:
-            all_bboxes.append({"category_id": object_category_id, "bbox": v})
+            all_bboxes.append(
+                {
+                    "category_id": object_category_id,
+                    "bbox": v["bbox"],
+                    "score": v["score"],
+                }
+            )
 
         N = len(all_bboxes)
         dis = [[MAX_DIS_OF_POINT] * N for _ in range(N)]
@@ -319,6 +352,7 @@ class MagicModel:
             result = {
                 "subject_body": all_bboxes[i]["bbox"],
                 "all": all_bboxes[i]["bbox"],
+                "score": all_bboxes[i]["score"],
             }
 
             if len(subject_object_relation_map[i]) > 0:
@@ -383,6 +417,7 @@ class MagicModel:
                 "bbox": record["all"],
                 "img_body_bbox": record["subject_body"],
                 "img_caption_bbox": record.get("object_body", None),
+                "score": record["score"],
             }
             for record in records
         ]
@@ -397,6 +432,7 @@ class MagicModel:
         assert N == M
         for i in range(N):
             record = {
+                "score": with_captions[i]["score"],
                 "table_caption_bbox": with_captions[i].get("object_body", None),
                 "table_body_bbox": with_captions[i]["subject_body"],
                 "table_footnote_bbox": with_footnotes[i].get("object_body", None),
@@ -515,6 +551,9 @@ class MagicModel:
                         block[col] = item.get(col, None)
                     blocks.append(block)
         return blocks
+
+    def get_model_list(self, page_no):
+        return self.__model_list[page_no]
 
 
 
