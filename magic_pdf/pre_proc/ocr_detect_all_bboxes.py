@@ -1,3 +1,5 @@
+from loguru import logger
+
 from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio, calculate_overlap_area_in_bbox1_area_ratio, \
     calculate_iou
 from magic_pdf.libs.drop_tag import DropTag
@@ -11,23 +13,23 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     all_discarded_blocks = []
     for image in img_blocks:
         x0, y0, x1, y1 = image['bbox']
-        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Image, None, None, None, None])
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Image, None, None, None, None, image["score"]])
 
     for table in table_blocks:
         x0, y0, x1, y1 = table['bbox']
-        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Table, None, None, None, None])
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Table, None, None, None, None, table["score"]])
 
     for text in text_blocks:
         x0, y0, x1, y1 = text['bbox']
-        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Text, None, None, None, None])
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Text, None, None, None, None, text["score"]])
 
     for title in title_blocks:
         x0, y0, x1, y1 = title['bbox']
-        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Title, None, None, None, None])
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Title, None, None, None, None, title["score"]])
 
     for interline_equation in interline_equation_blocks:
         x0, y0, x1, y1 = interline_equation['bbox']
-        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.InterlineEquation, None, None, None, None])
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.InterlineEquation, None, None, None, None, interline_equation["score"]])
 
     '''block嵌套问题解决'''
     '''文本框与标题框重叠，优先信任文本框'''
@@ -38,16 +40,16 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:
         x0, y0, x1, y1 = discarded['bbox']
-        all_discarded_blocks.append([x0, y0, x1, y1, None, None, None, BlockType.Discarded, None, None, None, None])
+        all_discarded_blocks.append([x0, y0, x1, y1, None, None, None, BlockType.Discarded, None, None, None, None, discarded["score"]])
         # 将footnote加入到all_bboxes中，用来计算layout
         if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
-            all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None])
+            all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None, discarded["score"]])
 
     '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
     '''将剩余的bbox做分离处理，防止后面分layout时出错'''
-    all_bboxes = remove_overlap_between_bbox_for_block(all_bboxes)
+    all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
 
     return all_bboxes, all_discarded_blocks
 
