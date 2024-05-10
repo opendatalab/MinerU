@@ -15,7 +15,7 @@ from magic_pdf.libs.boxbase import (
     bbox_relative_pos,
     bbox_distance,
     _is_part_overlap,
-    calculate_overlap_area_in_bbox1_area_ratio,
+    calculate_overlap_area_in_bbox1_area_ratio, calculate_iou,
 )
 from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
 
@@ -51,7 +51,7 @@ class MagicModel:
             for need_remove in need_remove_list:
                 layout_dets.remove(need_remove)
 
-    def __fix_by_confidence(self):
+    def __fix_by_remove_low_confidence(self):
         for model_page_info in self.__model_list:
             need_remove_list = []
             layout_dets = model_page_info["layout_dets"]
@@ -63,11 +63,36 @@ class MagicModel:
             for need_remove in need_remove_list:
                 layout_dets.remove(need_remove)
 
+    def __fix_by_remove_high_iou_and_low_confidence(self):
+        for model_page_info in self.__model_list:
+            need_remove_list = []
+            layout_dets = model_page_info["layout_dets"]
+            for layout_det1 in layout_dets:
+                for layout_det2 in layout_dets:
+                    if layout_det1 == layout_det2:
+                        continue
+                    if layout_det1["category_id"] in [0,1,2,3,4,5,6,7,8,9] and layout_det2["category_id"] in [0,1,2,3,4,5,6,7,8,9]:
+                        if calculate_iou(layout_det1['bbox'], layout_det2['bbox']) > 0.9:
+                            if layout_det1['score'] < layout_det2['score']:
+                                layout_det_need_remove = layout_det1
+                            else:
+                                layout_det_need_remove = layout_det2
+
+                            if layout_det_need_remove not in need_remove_list:
+                                need_remove_list.append(layout_det_need_remove)
+                        else:
+                            continue
+                    else:
+                        continue
+            for need_remove in need_remove_list:
+                layout_dets.remove(need_remove)
+
     def __init__(self, model_list: list, docs: fitz.Document):
         self.__model_list = model_list
         self.__docs = docs
         self.__fix_axis()
-        self.__fix_by_confidence()
+        self.__fix_by_remove_low_confidence()
+        self.__fix_by_remove_high_iou_and_low_confidence()
 
     def __reduct_overlap(self, bboxes):
         N = len(bboxes)
