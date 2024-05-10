@@ -301,8 +301,10 @@ class MagicModel:
                         or k in used
                         or k in seen
                         or dis[j][k] == MAX_DIS_OF_POINT
+                        or dis[j][k] > dis[i][j]
                     ):
                         continue
+
                     is_nearest = True
                     for l in range(i + 1, N):
                         if l in (j, k) or l in used or l in seen:
