@@ -161,6 +161,17 @@ def __is_overlaps_y_exceeds_threshold(bbox1, bbox2, overlap_ratio_threshold=0.8)
 
 
 def calculate_iou(bbox1, bbox2):
+    """
+    计算两个边界框的交并比(IOU)。
+
+    Args:
+        bbox1 (list[float]): 第一个边界框的坐标，格式为 [x1, y1, x2, y2]，其中 (x1, y1) 为左上角坐标，(x2, y2) 为右下角坐标。
+        bbox2 (list[float]): 第二个边界框的坐标，格式与 `bbox1` 相同。
+
+    Returns:
+        float: 两个边界框的交并比(IOU)，取值范围为 [0, 1]。
+
+    """
     # Determine the coordinates of the intersection rectangle
     x_left = max(bbox1[0], bbox2[0])
     y_top = max(bbox1[1], bbox2[1])
