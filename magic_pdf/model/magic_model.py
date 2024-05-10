@@ -138,10 +138,10 @@ class MagicModel:
         all_bboxes = []
 
         for v in subjects:
-            all_bboxes.append({"category_id": subject_category_id, "bbox": v})
+            all_bboxes.append({"category_id": subject_category_id, "bbox": v, "score": v["score"]})
 
         for v in objects:
-            all_bboxes.append({"category_id": object_category_id, "bbox": v})
+            all_bboxes.append({"category_id": object_category_id, "bbox": v, "score": v["score"]})
 
         N = len(all_bboxes)
         dis = [[MAX_DIS_OF_POINT] * N for _ in range(N)]
@@ -294,6 +294,7 @@ class MagicModel:
             result = {
                 "subject_body": all_bboxes[i]["bbox"],
                 "all": all_bboxes[i]["bbox"],
+                "score": all_bboxes[i]["score"],
             }
 
             if len(subject_object_relation_map[i]) > 0:
@@ -358,6 +359,7 @@ class MagicModel:
                 "bbox": record["all"],
                 "img_body_bbox": record["subject_body"],
                 "img_caption_bbox": record.get("object_body", None),
+                "score": record["score"],
             }
             for record in records
         ]
@@ -372,6 +374,7 @@ class MagicModel:
         assert N == M
         for i in range(N):
             record = {
+                "score": with_captions[i]["score"],
                 "table_caption_bbox": with_captions[i].get("object_body", None),
                 "table_body_bbox": with_captions[i]["subject_body"],
                 "table_footnote_bbox": with_footnotes[i].get("object_body", None),
@@ -481,6 +484,9 @@ class MagicModel:
                         block[col] = item.get(col, None)
                     blocks.append(block)
         return blocks
+
+    def get_model_list(self, page_no):
+        return self.__model_list[page_no]
 
 
 if __name__ == "__main__":
