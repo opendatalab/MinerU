@@ -233,12 +233,20 @@ class MagicModel:
                     or dis[i][j] == MAX_DIS_OF_POINT
                 ):
                     continue
+                left, right, _, _ = bbox_relative_pos(all_bboxes[i]["bbox"], all_bboxes[j]["bbox"]) # 由  pos_flag_count 相关逻辑保证本段逻辑准确性
+                if left or right:
+                    one_way_dis = all_bboxes[i]["bbox"][2] - all_bboxes[i]["bbox"][0]
+                else:
+                    one_way_dis = all_bboxes[i]["bbox"][3] - all_bboxes[i]["bbox"][1]
+                if dis[i][j] > one_way_dis:
+                    continue
                 arr.append((dis[i][j], j))
 
             arr.sort(key=lambda x: x[0])
             if len(arr) > 0:
                 # bug: 离该subject 最近的 object 可能跨越了其它的 subject 。比如 [this subect] [some sbuject] [the nearest objec of subject]
                 if may_find_other_nearest_bbox(i, arr[0][1]) >= arr[0][0]:
+
                     candidates.append(arr[0][1])
                     seen.add(arr[0][1])
 
