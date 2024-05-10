@@ -1,7 +1,8 @@
 import pytest
 
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overlap_with_area_ratio, _is_in, \
-    _is_part_overlap
+    _is_part_overlap, _left_intersect, _right_intersect, _is_vertical_full_overlap, _is_bottom_full_overlap, \
+    _is_left_overlap
 from magic_pdf.libs.commons import mymax, join_path, get_top_percent_list
 from magic_pdf.libs.path_utils import parse_s3path
 
@@ -134,6 +135,7 @@ class Testpy():
         ((65, 151, 92, 177), (49, 99, 105, 198), False),  # 包含 box1 in box2
         # ((80, 62, 112, 84), (74, 40, 144, 111), False),  # 包含 box1 in box2
         # ((76, 140, 154, 277), (121, 326, 192, 384), False),  # 分离  Error
+        # ((76, 140, 154, 277), (121, 277, 192, 384), True),   # 外相切
         # ((65, 88, 127, 144), (92, 102, 131, 139), True),  # 包含 box2 多半，box1约一半
         # ((92, 102, 131, 139), (65, 88, 127, 144), True),  # 包含 box1 多半
         # ((68, 94, 118, 120), (68, 90, 118, 122), False),  # 包含，box1 in box2 两边x相切
@@ -147,5 +149,83 @@ class Testpy():
     def test_is_part_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
         assert target_bool == _is_part_overlap(box1, box2)
 
+    # left_box右侧是否和right_box左侧有部分重叠
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # (None, None, False),
+        # ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
+        # ((121, 149, 184, 289), (172, 130, 230, 268), True),  # box1 left bottom box2 相交
+        # ((172, 130, 230, 268),(121, 149, 184, 289),  False),  # box2 left bottom box1 相交
+        # ((109, 68, 182, 146), (215, 188, 277, 253), False),  # box1 top left box2 分离
+        # ((117, 53, 222, 176), (174, 142, 298, 276), True),  # box1 left top box2 相交
+        # ((174, 142, 298, 276), (117, 53, 222, 176), False),  # box2 left top box1 相交
+        # ((65, 88, 127, 144), (92, 102, 131, 139), True),  # box1 left box2 y:box2 in box1
+        # ((92, 102, 131, 139), (65, 88, 127, 144), False),  # box2 left box1 y:box1 in box2
+        # ((182, 130, 230, 268), (121, 149, 174, 289), False),  # box2 left box1 分离
+        ((1, 10, 26, 45), (3, 4, 20, 39), True),  # box1 bottom box2 x:box2 in box1
+    ])
+    def test_left_intersect(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _left_intersect(box1, box2)
+
+    # left_box左侧是否和right_box右侧部分重叠
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # (None, None, False),
+        # ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
+        # ((121, 149, 184, 289), (172, 130, 230, 268), False),  # box1 left bottom box2 相交
+        # ((172, 130, 230, 268), (121, 149, 184, 289), True),  # box2 left bottom box1 相交
+        # ((109, 68, 182, 146), (215, 188, 277, 253), False),  # box1 top left box2 分离
+        # ((117, 53, 222, 176), (174, 142, 298, 276), False),  # box1 left top box2 相交
+        # ((174, 142, 298, 276), (117, 53, 222, 176), True),  # box2 left top box1 相交
+        # ((65, 88, 127, 144), (92, 102, 131, 139), False),  # box1 left box2 y:box2 in box1
+        # ((92, 102, 131, 139), (65, 88, 127, 144), True),  # box2 left box1 y:box1 in box2 Error
+        ((182, 130, 230, 268), (121, 149, 174, 289), False),  # box2 left box1 分离
+        # ((1, 10, 26, 45), (3, 4, 20, 39), False),  # box1 bottom box2 x:box2 in box1 Error
+    ])
+    def test_right_intersect(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _right_intersect(box1, box2)
+
+    # x方向上：要么box1包含box2, 要么box2包含box1。不能部分包含
+    # y方向上：box1和box2有重叠
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # (None, None, False),  # Error
+        # ((35, 28, 108, 90), (47, 60, 83, 96), True),  # box1 top box2, x:box2 in box1, y:有重叠
+        # ((35, 28, 98, 90), (27, 60, 103, 96), True),  # box1 top box2, x:box1 in box2, y:有重叠
+        # ((57, 77, 130, 210), (59, 219, 119, 293), False),  # box1 top box2, x: box2 in box1, y:无重叠
+        # ((47, 60, 83, 96),(35, 28, 108, 90),  True),  # box2 top box1, x:box1 in box2, y:有重叠
+        # ((27, 60, 103, 96), (35, 28, 98, 90), True),  # box2 top box1, x:box2 in box1, y:有重叠
+        # ((59, 219, 119, 293), (57, 77, 130, 210), False),  # box2 top box1, x: box1 in box2, y:无重叠
+        # ((35, 28, 55, 90), (57, 60, 83, 96), False),  # box1 top box2, x:无重叠, y:有重叠
+        ((47, 60, 63, 96), (65, 28, 108, 90), False),  # box2 top box1, x:无重叠, y:有重叠
+    ])
+    def test_is_vertical_full_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _is_vertical_full_overlap(box1, box2)
+
+    # 检查box1下方和box2的上方有轻微的重叠，轻微程度收到y_tolerance的限制
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # (None, None, False),
+        # ((35, 28, 108, 90), (47, 89, 83, 116), True),  # box1 top box2, y:有重叠
+        # ((35, 28, 108, 90), (47, 60, 83, 96), False),  # box1 top box2, y:有重叠且过多
+        # ((57, 77, 130, 210), (59, 219, 119, 293), False),  # box1 top box2, y:无重叠
+        # ((47, 60, 83, 96), (35, 28, 108, 90), False),  # box2 top box1, y:有重叠且过多
+        # ((27, 89, 103, 116), (35, 28, 98, 90), False),  # box2 top box1, y:有重叠
+        ((59, 219, 119, 293), (57, 77, 130, 210), False),  # box2 top box1, y:无重叠
+    ])
+    def test_is_bottom_full_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _is_bottom_full_overlap(box1, box2)
+
+    # 检查box1的左侧是否和box2有重叠
+    @pytest.mark.parametrize("box1, box2, target_bool", [
+        # (None, None, False),
+        # ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
+        # ((121, 149, 184, 289), (172, 130, 230, 268), False),  # box1 left bottom box2 相交  Error
+        # ((172, 130, 230, 268), (121, 149, 184, 289), True),  # box2 left bottom box1 相交 Error
+        # ((109, 68, 182, 146), (215, 188, 277, 253), False),  # box1 top left box2 分离
+        # ((117, 53, 222, 176), (174, 142, 298, 276), False),  # box1 left top box2 相交
+        # ((174, 142, 298, 276), (117, 53, 222, 176), True),  # box2 left top box1 相交  Error
+        # ((65, 88, 127, 144), (92, 102, 131, 139), False),  # box1 left box2 y:box2 in box1 Error
+        ((1, 10, 26, 45), (3, 4, 20, 39), True),  # box1 middle bottom box2 x:box2 in box1
+
+    ])
+    def test_is_left_overlap(self, box1: tuple, box2: tuple, target_bool: bool) -> None:
+        assert target_bool == _is_left_overlap(box1, box2)
 
 # python magicpdf.py --pdf  C:\Users\renpengli\Desktop\test\testpdf.pdf
