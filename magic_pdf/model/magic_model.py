@@ -45,8 +45,8 @@ class MagicModel:
                     int(y1 / vertical_scale_ratio),
                 ]
                 layout_det["bbox"] = bbox
-                # 删除高度或者宽度为0的spans
-                if bbox[2] - bbox[0] == 0 or bbox[3] - bbox[1] == 0:
+                # 删除高度或者宽度小于等于0的spans
+                if bbox[2] - bbox[0] <= 0 or bbox[3] - bbox[1] <= 0:
                     need_remove_list.append(layout_det)
             for need_remove in need_remove_list:
                 layout_dets.remove(need_remove)
@@ -546,7 +546,10 @@ class MagicModel:
                 bbox = item.get("bbox", None)
 
                 if category_id == type:
-                    block = {"bbox": bbox}
+                    block = {
+                        "bbox": bbox,
+                        "score": item.get("score"),
+                    }
                     for col in extra_col:
                         block[col] = item.get(col, None)
                     blocks.append(block)
