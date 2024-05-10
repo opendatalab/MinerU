@@ -90,8 +90,11 @@ class MagicModel:
     def __init__(self, model_list: list, docs: fitz.Document):
         self.__model_list = model_list
         self.__docs = docs
+        '''为所有模型数据添加bbox信息(缩放，poly->bbox)'''
         self.__fix_axis()
+        '''删除置信度特别低的模型数据(<0.05),提高质量'''
         self.__fix_by_remove_low_confidence()
+        '''删除高iou(>0.9)数据中置信度较低的那个'''
         self.__fix_by_remove_high_iou_and_low_confidence()
 
     def __reduct_overlap(self, bboxes):
