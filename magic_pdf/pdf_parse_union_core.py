@@ -95,7 +95,7 @@ def replace_text_span(pymu_spans, ocr_spans):
 
 def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode):
     need_drop = False
-    drop_reason = ""
+    drop_reason = []
 
     '''从magic_model对象中获取后面会用到的区块信息'''
     img_blocks = magic_model.get_imgs(page_id)
@@ -139,7 +139,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
             interline_equations, page_w, page_h)
     if len(drop_reasons) > 0:
         need_drop = True
-        drop_reason = DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION
+        drop_reason.append(DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION)
 
     '''先处理不需要排版的discarded_blocks'''
     discarded_block_with_spans, spans = fill_spans_in_blocks(all_discarded_blocks, spans, 0.4)
@@ -158,7 +158,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
         is_useful_block_horz_overlap, all_bboxes = remove_horizontal_overlap_block_which_smaller(all_bboxes)
         if is_useful_block_horz_overlap:
             need_drop = True
-            drop_reason = DropReason.USEFUL_BLOCK_HOR_OVERLAP
+            drop_reason.append(DropReason.USEFUL_BLOCK_HOR_OVERLAP)
         else:
             break
 
@@ -170,21 +170,21 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
         logger.warning(
             f"skip this page, page_id: {page_id}, reason: {DropReason.CAN_NOT_DETECT_PAGE_LAYOUT}")
         need_drop = True
-        drop_reason = DropReason.CAN_NOT_DETECT_PAGE_LAYOUT
+        drop_reason.append(DropReason.CAN_NOT_DETECT_PAGE_LAYOUT)
 
     """以下去掉复杂的布局和超过2列的布局"""
     if any([lay["layout_label"] == LAYOUT_UNPROC for lay in layout_bboxes]):  # 复杂的布局
         logger.warning(
             f"skip this page, page_id: {page_id}, reason: {DropReason.COMPLICATED_LAYOUT}")
         need_drop = True
-        drop_reason = DropReason.COMPLICATED_LAYOUT
+        drop_reason.append(DropReason.COMPLICATED_LAYOUT)
 
     layout_column_width = get_columns_cnt_of_layout(layout_tree)
     if layout_column_width > 2:  # 去掉超过2列的布局pdf
         logger.warning(
             f"skip this page, page_id: {page_id}, reason: {DropReason.TOO_MANY_LAYOUT_COLUMNS}")
         need_drop = True
-        drop_reason = DropReason.TOO_MANY_LAYOUT_COLUMNS
+        drop_reason.append(DropReason.TOO_MANY_LAYOUT_COLUMNS)
 
     '''根据layout顺序，对当前页面所有需要留下的block进行排序'''
     sorted_blocks = sort_blocks_by_layout(all_bboxes, layout_bboxes)
