@@ -64,7 +64,7 @@ def _remove_overlap_between_bboxes(arr):
             else:
                 if v["score"] > res[i]["score"]:
                     keeps[i] = False
-                    res[i] = False
+                    res[i] = None
                 else:
                     keeps[idx] = False
                 drop_reasons.append(drop_reasons)
