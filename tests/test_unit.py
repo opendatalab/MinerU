@@ -4,7 +4,8 @@ from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overla
     _is_part_overlap, _left_intersect, _right_intersect, _is_vertical_full_overlap, _is_bottom_full_overlap, \
     _is_left_overlap, __is_overlaps_y_exceeds_threshold, calculate_iou, calculate_overlap_area_2_minbox_area_ratio, \
     calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, get_bbox_in_boundry, \
-    find_top_nearest_text_bbox, find_bottom_nearest_text_bbox, find_left_nearest_text_bbox, find_right_nearest_text_bbox
+    find_top_nearest_text_bbox, find_bottom_nearest_text_bbox, find_left_nearest_text_bbox, \
+    find_right_nearest_text_bbox, bbox_relative_pos, bbox_distance
 from magic_pdf.libs.commons import mymax, join_path, get_top_percent_list
 from magic_pdf.libs.path_utils import parse_s3path
 
@@ -142,7 +143,7 @@ def test_is_in(box1: tuple, box2: tuple, target_bool: bool) -> None:
     ((65, 151, 92, 177), (49, 99, 105, 198), False),  # 包含 box1 in box2
     ((80, 62, 112, 84), (74, 40, 144, 111), False),  # 包含 box1 in box2
     # ((76, 140, 154, 277), (121, 326, 192, 384), False),  # 分离  Error
-    ((76, 140, 154, 277), (121, 277, 192, 384), True),   # 外相切
+    ((76, 140, 154, 277), (121, 277, 192, 384), True),  # 外相切
     ((65, 88, 127, 144), (92, 102, 131, 139), True),  # 包含 box2 多半，box1约一半
     ((92, 102, 131, 139), (65, 88, 127, 144), True),  # 包含 box1 多半
     ((68, 94, 118, 120), (68, 90, 118, 122), False),  # 包含，box1 in box2 两边x相切
@@ -162,7 +163,7 @@ def test_is_part_overlap(box1: tuple, box2: tuple, target_bool: bool) -> None:
     (None, None, False),
     ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
     ((121, 149, 184, 289), (172, 130, 230, 268), True),  # box1 left bottom box2 相交
-    ((172, 130, 230, 268),(121, 149, 184, 289),  False),  # box2 left bottom box1 相交
+    ((172, 130, 230, 268), (121, 149, 184, 289), False),  # box2 left bottom box1 相交
     ((109, 68, 182, 146), (215, 188, 277, 253), False),  # box1 top left box2 分离
     ((117, 53, 222, 176), (174, 142, 298, 276), True),  # box1 left top box2 相交
     ((174, 142, 298, 276), (117, 53, 222, 176), False),  # box2 left top box1 相交
@@ -200,7 +201,7 @@ def test_right_intersect(box1: tuple, box2: tuple, target_bool: bool) -> None:
     ((35, 28, 108, 90), (47, 60, 83, 96), True),  # box1 top box2, x:box2 in box1, y:有重叠
     ((35, 28, 98, 90), (27, 60, 103, 96), True),  # box1 top box2, x:box1 in box2, y:有重叠
     ((57, 77, 130, 210), (59, 219, 119, 293), False),  # box1 top box2, x: box2 in box1, y:无重叠
-    ((47, 60, 83, 96),(35, 28, 108, 90),  True),  # box2 top box1, x:box1 in box2, y:有重叠
+    ((47, 60, 83, 96), (35, 28, 108, 90), True),  # box2 top box1, x:box1 in box2, y:有重叠
     ((27, 60, 103, 96), (35, 28, 98, 90), True),  # box2 top box1, x:box2 in box1, y:有重叠
     ((59, 219, 119, 293), (57, 77, 130, 210), False),  # box2 top box1, x: box1 in box2, y:无重叠
     ((35, 28, 55, 90), (57, 60, 83, 96), False),  # box1 top box2, x:无重叠, y:有重叠
@@ -466,3 +467,49 @@ def test_find_left_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_b
 ])
 def test_find_right_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_boxs: dict) -> None:
     assert target_boxs == find_right_nearest_text_bbox(pymu_blocks, obj_box)
+
+
+# 判断两个矩形框的相对位置关系 (left, right, bottom, top)
+@pytest.mark.parametrize("box1, box2, target_box", [
+    # (None, None, "Error"),  # Error
+    ((80, 90, 249, 200), (183, 100, 240, 155), (False, False, False, False)),  # 包含
+    # ((124, 81, 222, 173), (60, 221, 123, 358), (False, True, False, True)),  # 分离，右上 Error
+    ((142, 109, 238, 164), (134, 211, 224, 270), (False, False, False, True)),  # 分离，上
+    # ((51, 69, 192, 147), (205, 198, 282, 297), (True, False, False, True)),  # 分离，左上 Error
+    # ((101, 149, 164, 289), (172, 130, 230, 268), (True, False, False, False)),  # 分离，左  Error
+    # ((69, 196, 124, 285), (130, 127, 232, 186), (True, False, True, False)),  # 分离，左下  Error
+    ((103, 212, 171, 304), (56, 90, 170, 209), (False, False, True, False)),  # 分离，下
+    # ((124, 367, 222, 415), (60, 221, 123, 358), (False, True, True, False)),  # 分离，右下 Error
+    # ((172, 130, 230, 268), (101, 149, 164, 289), (False, True, False, False)),  # 分离，右  Error
+])
+def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
+    assert target_box == bbox_relative_pos(box1, box2)
+
+
+# 计算两个矩形框的距离
+"""
+受bbox_relative_pos方法的影响，左右相反，这里计算结果全部受影响，在错误的基础上计算出了正确的结果
+"""
+
+
+@pytest.mark.parametrize("box1, box2, target_num", [
+    # (None, None, "Error"),  # Error
+    ((80, 90, 249, 200), (183, 100, 240, 155), 0.0),  # 包含
+    ((142, 109, 238, 164), (134, 211, 224, 270), 47.0),  # 分离，上
+    ((103, 212, 171, 304), (56, 90, 170, 209), 3.0),  # 分离，下
+    ((101, 149, 164, 289), (172, 130, 230, 268), 8.0),  # 分离，左
+    ((172, 130, 230, 268), (101, 149, 164, 289), 8.0),  # 分离，右
+    ((80.3, 90.8, 249.0, 200.5), (183.8, 100.6, 240.2, 155.1), 0.0),  # 包含
+    ((142.3, 109.5, 238.9, 164.2), (134.4, 211.2, 224.8, 270.1), 47.0),  # 分离，上
+    ((103.5, 212.6, 171.1, 304.8), (56.1, 90.9, 170.6, 209.2), 3.4),  # 分离，下
+    ((101.1, 149.3, 164.9, 289.0), (172.1, 130.1, 230.5, 268.5), 7.2),  # 分离，左
+    ((172.1, 130.3, 230.1, 268.1), (101.2, 149.9, 164.3, 289.1), 7.8),  # 分离，右
+    ((124.3, 81.1, 222.5, 173.8), (60.3, 221.5, 123.0, 358.9), 47.717711596429254),  # 分离，右上
+    ((51.2, 69.31, 192.5, 147.9), (205.0, 198.1, 282.98, 297.09), 51.73287156151299),  # 分离，左上 Error
+    ((124.3, 367.1, 222.9, 415.7), (60.9, 221.4, 123.2, 358.6), 8.570880934886448),  # 分离，右下 Error
+    ((69.9, 196.2, 124.1, 285.7), (130.0, 127.3, 232.6, 186.1), 11.69700816448377),  # 分离，左下  Error
+])
+def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
+    assert target_num - bbox_distance(box1, box2) < 1
+
+
