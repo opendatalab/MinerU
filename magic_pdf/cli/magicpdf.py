@@ -135,7 +135,9 @@ def json_command(json, method):
         )
 
     jso = json_parse.loads(read_s3_path(json).decode("utf-8"))
-    s3_file_path = jso["file_location"]
+    s3_file_path = jso.get("file_location")
+    if s3_file_path is None:
+        s3_file_path = jso.get("path")
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
