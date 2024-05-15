@@ -156,6 +156,62 @@ def json_command(json, method):
     )
 
 
+    @cli.command()
+    @click.option("--local_json", type=str, help="输入一个本地jsonl路径")
+    @click.option(
+        "--method",
+        type=parse_pdf_methods,
+        help="指定解析方法。txt: 文本型 pdf 解析方法， ocr: 光学识别解析 pdf, auto: 程序智能选择解析方法",
+        default="auto",
+    )
+    def local_json_command(local_json, method):
+        def read_s3_path(s3path):
+            bucket, key = parse_s3path(s3path)
+
+            s3_ak, s3_sk, s3_endpoint = get_s3_config(bucket)
+            s3_rw = S3ReaderWriter(
+                s3_ak, s3_sk, s3_endpoint, "auto", remove_non_official_s3_args(s3path)
+            )
+            may_range_params = parse_s3_range_params(s3path)
+            if may_range_params is None or 2 != len(may_range_params):
+                byte_start, byte_end = 0, None
+            else:
+                byte_start, byte_end = int(may_range_params[0]), int(may_range_params[1])
+                byte_end += byte_start - 1
+            return s3_rw.read_jsonl(
+                remove_non_official_s3_args(s3path),
+                byte_start,
+                byte_end,
+                AbsReaderWriter.MODE_BIN,
+            )
+
+        with open(local_json, "r", encoding="utf-8") as f:
+            for json_line in f:
+                jso = json_parse.loads(json_line)
+
+                s3_file_path = jso.get("file_location")
+                if s3_file_path is None:
+                    s3_file_path = jso.get("path")
+                pdf_file_name = Path(s3_file_path).stem
+                pdf_data = read_s3_path(s3_file_path)
+                local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
+
+                local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
+                    local_md_dir
+                )
+
+                _do_parse(
+                    pdf_file_name,
+                    pdf_data,
+                    jso["doc_layout_result"],
+                    method,
+                    local_image_rw,
+                    local_md_rw,
+                    os.path.basename(local_image_dir),
+                    local_md_dir
+                )
+
+
 @cli.command()
 @click.option(
     "--pdf", type=click.Path(exists=True), required=True, help="PDF文件的路径"
