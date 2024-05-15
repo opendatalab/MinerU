@@ -39,7 +39,7 @@ class DiskReaderWriter(AbsReaderWriter):
         if not os.path.exists(directory_path):
             os.makedirs(directory_path)
         if mode == MODE_TXT:
-            with open(abspath, "w", encoding=self.encoding) as f:
+            with open(abspath, "w", encoding=self.encoding, errors="replace") as f:
                 f.write(content)
 
         elif mode == MODE_BIN:
