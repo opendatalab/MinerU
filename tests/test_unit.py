@@ -7,6 +7,7 @@ from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overla
     find_top_nearest_text_bbox, find_bottom_nearest_text_bbox, find_left_nearest_text_bbox, \
     find_right_nearest_text_bbox, bbox_relative_pos, bbox_distance
 from magic_pdf.libs.commons import mymax, join_path, get_top_percent_list
+from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import parse_s3path
 
 
@@ -512,4 +513,11 @@ def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
 def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
     assert target_num - bbox_distance(box1, box2) < 1
 
-
+# 根据bucket_name获取s3配置ak,sk,endpoint
+def test_get_s3_config() -> None:
+    with open("./s3_config_testdata.json") as f:
+        contents = f.read()
+    for content in eval(contents):
+        bucket_name = content["bucket_name"]
+        target_data = content["target_data"]
+        assert target_data == list(get_s3_config(bucket_name))
