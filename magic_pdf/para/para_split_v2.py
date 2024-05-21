@@ -258,29 +258,19 @@ def __pre_proc_en_blocks(blocks, layout_bboxes):
     pass
 
 
-def __group_line_by_layout(blocks, layout_bboxes, lang="en"):
+def __group_line_by_layout(blocks, layout_bboxes):
     """
     每个layout内的行进行聚合
     """
     # 因为只是一个block一行目前, 一个block就是一个段落
     blocks_group = []
     for lyout in layout_bboxes:
-        #lines = [line for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lyout['layout_bbox']) for line in
-        #         block['lines']]
         blocks_in_layout = [block for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox'])]
         blocks_group.append(blocks_in_layout)
     return blocks_group
 
 
-def __split_para_in_layoutbox2(lines_group, new_layout_bbox, lang="en", char_avg_len=10):
-    """
-
-    """
-
-
-
-
-def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg_len=10):
+def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en"):
     """
     lines_group 进行行分段——layout内部进行分段。lines_group内每个元素是一个Layoutbox内的所有行。
     1. 先计算每个group的左右边界。
@@ -329,9 +319,6 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg
                     index = list_start[i] - 1
                     if "content" in lines[index]["spans"][-1]:
                         lines[index]["spans"][-1]["content"] += '\n\n'
-        # layout_right = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[2]
-        # layout_left = __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]
-        para = []  # 元素是line
         layout_list_info = [False, False]  # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
         for content_type, start, end in text_segments:
             if content_type == 'list':
@@ -340,7 +327,6 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en", char_avg
                 if end == total_lines - 1 and is_end_list is None:
                     layout_list_info[1] = True
 
-        # paras = __split_para_lines(lines, text_blocks)
         list_info.append(layout_list_info)
     return list_info
 
@@ -472,7 +458,7 @@ def __find_layout_bbox_by_line(line_bbox, layout_bboxes):
     return None
 
 
-def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
+def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
     """
     layout之间进行分段。
     主要是计算前一个layOut的最后一行和后一个layout的第一行是否可以连接。
@@ -481,7 +467,6 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang):
     2. 下一行开头不留空白。
 
     """
-    connected_layout_paras = []
     connected_layout_blocks = []
     if len(blocks_group) == 0:
         return connected_layout_blocks
@@ -689,11 +674,11 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     3. 参照上述行尾特征进行分段。
     4. 图、表，目前独占一行，不考虑分段。
     """
-    blocks_group = __group_line_by_layout(blocks, layout_bboxes, lang)  # block内分段
+    blocks_group = __group_line_by_layout(blocks, layout_bboxes)  # block内分段
     layout_list_info = __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang)  # layout内分段
     blocks_group, page_list_info = __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
                                                                 page_num, lang)  # layout之间连接列表段落
-    connected_layout_blocks = __connect_para_inter_layoutbox(blocks_group, new_layout_bbox, lang)  # layout间链接段落
+    connected_layout_blocks = __connect_para_inter_layoutbox(blocks_group, new_layout_bbox)  # layout间链接段落
 
     return connected_layout_blocks, page_list_info
 
