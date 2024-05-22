@@ -449,7 +449,7 @@ def replace_inline_equations(inline_equation_bboxes, raw_text_blocks):
         for blk in raw_text_blocks:
             if _is_xin(eqbox, blk["bbox"]):
                 if not replace_eq_blk(eqinfo, blk):
-                    logger.error(f"行内公式没有替换成功：{eqinfo} ")
+                    logger.warning(f"行内公式没有替换成功：{eqinfo} ")
                 else:
                     break
 
