@@ -48,8 +48,8 @@ jobs:
     - name: test_cli
       run: |
         echo $GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE && pytest -s -v tests/test_unit.py
         cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli.py
-
                                                                                                                             
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}

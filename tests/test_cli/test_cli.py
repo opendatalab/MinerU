@@ -21,11 +21,31 @@ class TestCli:
 
     def test_pdf_specify_jsonl(self):
         """
-        输入jsonl
+        输入jsonl, 默认方式解析
         """
-        cmd = "cd %s && export PYTHONPATH=. && python " 
+        cmd = "cd %s && export PYTHONPATH=. && python magic_pdf/cli/magicpdf.py  json-command --json 's3://llm-process-pperf/ebook_index_textbook_40k/中高考&竞赛知识点/part-663f1ef5e7c1-009416.jsonl?bytes=0,1133972'"
+        logging.info(cmd)
+        common.check_shell(cmd)
+        common.count_folders_and_check_contents(pdf_res_path)
 
+    def test_pdf_specify_jsonl_txt(self):
+        """
+        输入jsonl, txt方式解析  
+        """
+        cmd = "cd %s && export PYTHONPATH=. && python magic_pdf/cli/magicpdf.py  json-command --json 's3://llm-process-pperf/ebook_index_textbook_40k/中高考&竞赛知识点/part-663f1ef5e7c1-009416.jsonl?bytes=0,1133972' --method txt"
+        logging.info(cmd)
+        common.check_shell(cmd)
+        common.count_folders_and_check_contents(pdf_res_path)
+    
+    def test_pdf_specify_jsonl_ocr(self):
+        """
+        输入jsonl, ocr方式解析
+        """
+        cmd = "cd %s && export PYTHONPATH=. && python magic_pdf/cli/magicpdf.py  json-command --json 's3://llm-process-pperf/ebook_index_textbook_40k/中高考&竞赛知识点/part-663f1ef5e7c1-009416.jsonl?bytes=0,1133972' --method ocr"
+        logging.info(cmd)
+        common.check_shell(cmd)
+        common.count_folders_and_check_contents(pdf_res_path)
  
-
+ 
 if __name__ == "__main__":
     pytest.main() 
