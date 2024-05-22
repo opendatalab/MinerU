@@ -518,4 +518,12 @@ def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
 def test_get_s3_config() -> None:
     bucket_name = os.getenv('bucket_name')  
     target_data = os.getenv('target_data')
-    assert target_data == list(get_s3_config(bucket_name))
+    assert convert_string_to_list(target_data) == list(get_s3_config(bucket_name))
+
+
+
+def convert_string_to_list(s):  
+    cleaned_s = s.strip("'")  
+    items = cleaned_s.split(',')  
+    cleaned_items = [item.strip() for item in items]    
+    return cleaned_items  
