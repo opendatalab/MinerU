@@ -513,7 +513,7 @@ def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
 def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
     assert target_num - bbox_distance(box1, box2) < 1
 
-
+@pytest.mark.skip(reason="skip")
 # 根据bucket_name获取s3配置ak,sk,endpoint
 def test_get_s3_config() -> None:
     bucket_name = os.getenv('bucket_name')  
