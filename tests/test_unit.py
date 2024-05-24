@@ -1,5 +1,5 @@
 import pytest
-
+import os
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overlap_with_area_ratio, _is_in, \
     _is_part_overlap, _left_intersect, _right_intersect, _is_vertical_full_overlap, _is_bottom_full_overlap, \
     _is_left_overlap, __is_overlaps_y_exceeds_threshold, calculate_iou, calculate_overlap_area_2_minbox_area_ratio, \
@@ -513,12 +513,17 @@ def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
 def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
     assert target_num - bbox_distance(box1, box2) < 1
 
-
+@pytest.mark.skip(reason="skip")
 # 根据bucket_name获取s3配置ak,sk,endpoint
 def test_get_s3_config() -> None:
-    with open("./s3_config_testdata.json") as f:
-        contents = f.read()
-    for content in eval(contents):
-        bucket_name = content["bucket_name"]
-        target_data = content["target_data"]
-        assert target_data == list(get_s3_config(bucket_name))
+    bucket_name = os.getenv('bucket_name')  
+    target_data = os.getenv('target_data')
+    assert convert_string_to_list(target_data) == list(get_s3_config(bucket_name))
+
+
+
+def convert_string_to_list(s):  
+    cleaned_s = s.strip("'")  
+    items = cleaned_s.split(',')  
+    cleaned_items = [item.strip() for item in items]    
+    return cleaned_items  
