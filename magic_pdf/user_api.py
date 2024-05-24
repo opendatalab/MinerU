@@ -12,6 +12,8 @@
 其余部分至于构造s3cli, 获取ak,sk都在code-clean里写代码完成。不要反向依赖！！！
 
 """
+import re
+
 from loguru import logger
 
 from magic_pdf.rw import AbsReaderWriter
@@ -87,13 +89,17 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
                         text_all += span['content']
 
     def calculate_garbled_rate(text):
-        printable = sum(1 for c in text if c.isprintable())
+        garbage_regex = re.compile(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3000-\u303f\uff00-\uffef]')
+        # 计算乱码字符的数量
+        garbage_count = len(garbage_regex.findall(text))
         total = len(text)
         if total == 0:
             return 0  # 避免除以零的错误
-        return (total - printable) / total
+        return garbage_count / total
 
-    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or calculate_garbled_rate(text_all) < 0.5:
+    garbled_rate = calculate_garbled_rate(text_all)
+
+    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or garbled_rate > 0.8:
         logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
