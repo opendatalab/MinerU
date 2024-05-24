@@ -1,7 +1,7 @@
 from sklearn.cluster import DBSCAN
 import numpy as np
 from loguru import logger
-
+import re
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap_with_area_ratio as is_in_layout
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.model.magic_model import MagicModel
@@ -106,16 +106,18 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
         3. 如果非顶格，首字符大写，编码为2
         4. 如果非顶格，首字符非大写编码为3
         """
+        x_map_tag_dict, min_x_tag = cluster_line_x(lines)
         for l in lines:
-            first_char = __get_span_text(l['spans'][0])[0]
+            span_text = __get_span_text(l['spans'][0])
+            first_char = span_text[0]
             layout = __find_layout_bbox_by_line(l['bbox'], new_layout_bboxes)
             if not layout:
                 line_fea_encode.append(0)
             else:
-                layout_left = layout[0]
-                if l['bbox'][0] == layout_left:
+                #
+                if x_map_tag_dict[round(l['bbox'][0])] == min_x_tag:
                     # if first_char.isupper() or first_char.isdigit() or not first_char.isalnum():
-                    if not first_char.isalnum():
+                    if not first_char.isalnum() or if_match_reference_list(span_text):
                         line_fea_encode.append(1)
                     else:
                         line_fea_encode.append(4)
@@ -143,6 +145,36 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
                 logger.info(f"列表行的第{start}到第{end}行是列表")
 
         return split_indices(total_lines, list_indice), list_start_idx
+
+def cluster_line_x(lines: list) -> dict:
+    """
+    对一个block内所有lines的bbox的x0聚类
+    """
+    min_distance = 5
+    min_sample = 1
+    x0_lst = np.array([[round(line['bbox'][0]), 0] for line in lines])
+    x0_clusters = DBSCAN(eps=min_distance, min_samples=min_sample).fit(x0_lst)
+    x0_uniq_label = np.unique(x0_clusters.labels_)
+    #x1_lst = np.array([[line['bbox'][2], 0] for line in lines])
+    x0_2_new_val = {}  # 存储旧值对应的新值映射
+    min_x0 = round(lines[0]["bbox"][0])
+    for label in x0_uniq_label:
+        if label == -1:
+            continue
+        x0_index_of_label = np.where(x0_clusters.labels_ == label)
+        x0_raw_val = x0_lst[x0_index_of_label][:, 0]
+        x0_new_val = np.min(x0_lst[x0_index_of_label][:, 0])
+        x0_2_new_val.update({round(raw_val): round(x0_new_val) for raw_val in x0_raw_val})
+        if x0_new_val < min_x0:
+            min_x0 = x0_new_val
+    return x0_2_new_val, min_x0
+
+def if_match_reference_list(text: str) -> bool:
+    pattern = re.compile(r'^\d+\..*')
+    if pattern.match(text):
+        return True
+    else:
+        return False
 
 
 def __valign_lines(blocks, layout_bboxes):
@@ -315,10 +347,11 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en"):
         """
         for list_start in list_start_line:
             if len(list_start) > 1:
-                for i in range(1, len(list_start)):
+                for i in range(0, len(list_start)):
                     index = list_start[i] - 1
-                    if "content" in lines[index]["spans"][-1]:
-                        lines[index]["spans"][-1]["content"] += '\n\n'
+                    if index >= 0:
+                        if "content" in lines[index]["spans"][-1]:
+                            lines[index]["spans"][-1]["content"] += '\n\n'
         layout_list_info = [False, False]  # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
         for content_type, start, end in text_segments:
             if content_type == 'list':
@@ -388,20 +421,17 @@ def __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
             logger.info(f"连接page {page_num} 内的list")
             # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
             may_list_lines = []
-            for j in range(len(next_paras)):
-                lines = next_paras[j].get("lines", [])
-                if len(lines) == 1:  # 只可能是一行，多行情况再需要分析了
-                    if lines[0]['bbox'][0] > __find_layout_bbox_by_line(lines[0]['bbox'], new_layout_bbox)[0]:
-                        may_list_lines.append(lines[0])
-                    else:
-                        break
+            lines = next_first_para.get("lines", [])
+
+            for line in lines:
+                if line['bbox'][0] > __find_layout_bbox_by_line(line['bbox'], new_layout_bbox)[0]:
+                    may_list_lines.append(line)
                 else:
                     break
             # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
             if len(may_list_lines) > 0 and len(set([x['bbox'][0] for x in may_list_lines])) == 1:
                 pre_last_para.extend(may_list_lines)
-                blocks_group[i] = blocks_group[i][len(may_list_lines):]
-                # layout_paras[i] = layout_paras[i][len(may_list_lines):]
+                next_first_para["lines"] = next_first_para["lines"][len(may_list_lines):]
 
     return blocks_group, [layout_list_info[0][0], layout_list_info[-1][1]]  # 同时还返回了这个页面级别的开头、结尾是不是列表的信息
 
@@ -422,18 +452,14 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         logger.info(f"连接page {page_num} 内的list")
         # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
         may_list_lines = []
-        for j in range(len(next_page_paras[0])):
-            next_page_block_j = next_page_paras[0][j]
-            if next_page_block_j["type"] != BlockType.Text:
-                break
-            lines = next_page_block_j["lines"]
-            if len(lines) == 1:  # 只可能是一行，多行情况再需要分析了
-                if lines[0]['bbox'][0] > __find_layout_bbox_by_line(lines[0]['bbox'], next_page_layout_bbox)[0]:
-                    may_list_lines.append(lines[0])
+        next_page_first_para = next_page_paras[0][0]
+        if next_page_first_para["type"] == BlockType.Text:
+            lines = next_page_first_para["lines"]
+            for line in lines:
+                if line['bbox'][0] > __find_layout_bbox_by_line(line['bbox'], next_page_layout_bbox)[0]:
+                    may_list_lines.append(line)
                 else:
                     break
-            else:
-                break
         # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
         if len(may_list_lines) > 0 and len(set([x['bbox'][0] for x in may_list_lines])) == 1:
             #pre_page_paras[-1].append(may_list_lines)
@@ -442,7 +468,7 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
                 for span in line["spans"]:
                     span[CROSS_PAGE] = True
             pre_page_paras[-1][-1]["lines"].extend(may_list_lines)
-            next_page_paras[0] = next_page_paras[0][len(may_list_lines):]
+            next_page_first_para["lines"] = next_page_first_para["lines"][len(may_list_lines):]
             return True
 
     return False
@@ -471,7 +497,6 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
     if len(blocks_group) == 0:
         return connected_layout_blocks
 
-    #connected_layout_paras.append(layout_paras[0])
     connected_layout_blocks.append(blocks_group[0])
     for i in range(1, len(blocks_group)):
         try:
@@ -482,6 +507,9 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
                 continue
             # text类型的段才需要考虑layout间的合并
             if blocks_group[i - 1][-1]["type"] != BlockType.Text or blocks_group[i][0]["type"] != BlockType.Text:
+                connected_layout_blocks.append(blocks_group[i])
+                continue
+            if len(blocks_group[i - 1][-1]["lines"]) == 0 or len(blocks_group[i][0]["lines"]) == 0:
                 connected_layout_blocks.append(blocks_group[i])
                 continue
             pre_last_line = blocks_group[i - 1][-1]["lines"][-1]
