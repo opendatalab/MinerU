@@ -3,10 +3,10 @@
 https://aicarrier.feishu.cn/wiki/YLOPwo1PGiwFRdkwmyhcZmr0n3d
 """
 import re
-from magic_pdf.libs.nlp_utils import NLPModels
+# from magic_pdf.libs.nlp_utils import NLPModels
 
 
-__NLP_MODEL = NLPModels()
+# __NLP_MODEL = NLPModels()
 
 def check_1(spans, cur_span_i):
     """寻找前一个char,如果是句号，逗号，那么就是角标"""
@@ -20,68 +20,68 @@ def check_1(spans, cur_span_i):
     return False
 
 
-def check_2(spans, cur_span_i):
-    """检查前面一个span的最后一个单词，如果长度大于5，全都是字母，并且不含大写，就是角标"""
-    pattern = r'\b[A-Z]\.\s[A-Z][a-z]*\b' # 形如A. Bcde, L. Bcde, 人名的缩写
-    
-    if cur_span_i==0 and len(spans)>1:
-        next_span = spans[cur_span_i+1]
-        next_txt = "".join([c['c'] for c in next_span['chars']])
-        result = __NLP_MODEL.detect_entity_catgr_using_nlp(next_txt)
-        if result in ["PERSON", "GPE", "ORG"]:
-            return True
-
-        if re.findall(pattern, next_txt):
-            return True
-        
-        return False # 不是角标
-    elif cur_span_i==0 and len(spans)==1: # 角标占用了整行？谨慎删除
-        return False
-    
-    # 如果这个span是最后一个span,
-    if cur_span_i==len(spans)-1:
-        pre_span = spans[cur_span_i-1]
-        pre_txt = "".join([c['c'] for c in pre_span['chars']])
-        pre_word = pre_txt.split(' ')[-1]
-        result = __NLP_MODEL.detect_entity_catgr_using_nlp(pre_txt)
-        if result in ["PERSON", "GPE", "ORG"]:
-            return True
-        
-        if re.findall(pattern, pre_txt):
-            return True
-        
-        return len(pre_word) > 5 and pre_word.isalpha() and pre_word.islower()
-    else: # 既不是第一个span，也不是最后一个span，那么此时检查一下这个角标距离前后哪个单词更近就属于谁的角标
-        pre_span = spans[cur_span_i-1]
-        next_span = spans[cur_span_i+1]
-        cur_span = spans[cur_span_i]
-        # 找到前一个和后一个span里的距离最近的单词
-        pre_distance = 10000 # 一个很大的数
-        next_distance = 10000 # 一个很大的数
-        for c in pre_span['chars'][::-1]:
-            if c['c'].isalpha():
-                pre_distance = cur_span['bbox'][0] - c['bbox'][2]
-                break
-        for c in next_span['chars']:
-            if c['c'].isalpha():
-                next_distance = c['bbox'][0] - cur_span['bbox'][2]
-                break
-        
-        if pre_distance<next_distance:
-            belong_to_span = pre_span
-        else:
-            belong_to_span = next_span
-            
-        txt = "".join([c['c'] for c in belong_to_span['chars']])
-        pre_word = txt.split(' ')[-1]
-        result = __NLP_MODEL.detect_entity_catgr_using_nlp(txt)
-        if result in ["PERSON", "GPE", "ORG"]:
-            return True
-        
-        if re.findall(pattern, txt):
-            return True
-    
-        return len(pre_word) > 5 and pre_word.isalpha() and pre_word.islower()
+# def check_2(spans, cur_span_i):
+#     """检查前面一个span的最后一个单词，如果长度大于5，全都是字母，并且不含大写，就是角标"""
+#     pattern = r'\b[A-Z]\.\s[A-Z][a-z]*\b' # 形如A. Bcde, L. Bcde, 人名的缩写
+#
+#     if cur_span_i==0 and len(spans)>1:
+#         next_span = spans[cur_span_i+1]
+#         next_txt = "".join([c['c'] for c in next_span['chars']])
+#         result = __NLP_MODEL.detect_entity_catgr_using_nlp(next_txt)
+#         if result in ["PERSON", "GPE", "ORG"]:
+#             return True
+#
+#         if re.findall(pattern, next_txt):
+#             return True
+#
+#         return False # 不是角标
+#     elif cur_span_i==0 and len(spans)==1: # 角标占用了整行？谨慎删除
+#         return False
+#
+#     # 如果这个span是最后一个span,
+#     if cur_span_i==len(spans)-1:
+#         pre_span = spans[cur_span_i-1]
+#         pre_txt = "".join([c['c'] for c in pre_span['chars']])
+#         pre_word = pre_txt.split(' ')[-1]
+#         result = __NLP_MODEL.detect_entity_catgr_using_nlp(pre_txt)
+#         if result in ["PERSON", "GPE", "ORG"]:
+#             return True
+#
+#         if re.findall(pattern, pre_txt):
+#             return True
+#
+#         return len(pre_word) > 5 and pre_word.isalpha() and pre_word.islower()
+#     else: # 既不是第一个span，也不是最后一个span，那么此时检查一下这个角标距离前后哪个单词更近就属于谁的角标
+#         pre_span = spans[cur_span_i-1]
+#         next_span = spans[cur_span_i+1]
+#         cur_span = spans[cur_span_i]
+#         # 找到前一个和后一个span里的距离最近的单词
+#         pre_distance = 10000 # 一个很大的数
+#         next_distance = 10000 # 一个很大的数
+#         for c in pre_span['chars'][::-1]:
+#             if c['c'].isalpha():
+#                 pre_distance = cur_span['bbox'][0] - c['bbox'][2]
+#                 break
+#         for c in next_span['chars']:
+#             if c['c'].isalpha():
+#                 next_distance = c['bbox'][0] - cur_span['bbox'][2]
+#                 break
+#
+#         if pre_distance<next_distance:
+#             belong_to_span = pre_span
+#         else:
+#             belong_to_span = next_span
+#
+#         txt = "".join([c['c'] for c in belong_to_span['chars']])
+#         pre_word = txt.split(' ')[-1]
+#         result = __NLP_MODEL.detect_entity_catgr_using_nlp(txt)
+#         if result in ["PERSON", "GPE", "ORG"]:
+#             return True
+#
+#         if re.findall(pattern, txt):
+#             return True
+#
+#         return len(pre_word) > 5 and pre_word.isalpha() and pre_word.islower()
 
 
 def check_3(spans, cur_span_i):
@@ -143,7 +143,10 @@ def remove_citation_marker(with_char_text_blcoks):
                     3. 上标里有数字和逗号或者数字+星号的组合，方括号，一般肯定就是角标了
                     4. 这个角标属于前文还是后文要根据距离来判断，如果距离前面的文本太近，那么就是前面的角标，否则就是后面的角标
                     """
-                    if check_1(line['spans'], i) or check_2(line['spans'], i) or check_3(line['spans'], i):
+                    if (check_1(line['spans'], i) or
+                        # check_2(line['spans'], i) or
+                        check_3(line['spans'], i)
+                    ):
                         """删除掉这个角标：删除这个span, 同时还要更新line的text"""
                         span_to_del.append(span)
             if len(span_to_del)>0:
