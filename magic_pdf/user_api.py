@@ -78,9 +78,23 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
             return None
 
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
+    text_all = ""
+    for page_dict in pdf_info_dict['pdf_info']:
+        for para_block in page_dict['para_blocks']:
+            if para_block['type'] in ['title', 'text']:
+                for line in para_block['lines']:
+                    for span in line['spans']:
+                        text_all += span['content']
 
-    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
-        logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
+    def calculate_garbled_rate(text):
+        printable = sum(1 for c in text if c.isprintable())
+        total = len(text)
+        if total == 0:
+            return 0  # 避免除以零的错误
+        return (total - printable) / total
+
+    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or calculate_garbled_rate(text_all) < 0.5:
+        logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
