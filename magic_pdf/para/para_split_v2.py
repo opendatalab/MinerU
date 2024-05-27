@@ -106,7 +106,8 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
         3. 如果非顶格，首字符大写，编码为2
         4. 如果非顶格，首字符非大写编码为3
         """
-        x_map_tag_dict, min_x_tag = cluster_line_x(lines)
+        if len(lines) > 0:
+            x_map_tag_dict, min_x_tag = cluster_line_x(lines)
         for l in lines:
             span_text = __get_span_text(l['spans'][0])
             first_char = span_text[0]
