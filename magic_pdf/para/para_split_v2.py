@@ -534,7 +534,7 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
 
         pre_last_line_text = pre_last_line_text.strip()
         next_first_line_text = next_first_line_text.strip()
-        if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text[-1] not in LINE_STOP_FLAG and \
+        if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text and pre_last_line_text[-1] not in LINE_STOP_FLAG and \
                 next_first_line['bbox'][0] == next_x0_min:  # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
             #connected_layout_paras[-1][-1].extend(layout_paras[i][0])
