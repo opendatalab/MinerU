@@ -88,7 +88,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
                     for span in line['spans']:
                         text_all += span['content']
 
-    def calculate_garbled_rate(text):
+    def calculate_not_common_character_rate(text):
         garbage_regex = re.compile(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3000-\u303f\uff00-\uffef]')
         # 计算乱码字符的数量
         garbage_count = len(garbage_regex.findall(text))
@@ -97,9 +97,18 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
             return 0  # 避免除以零的错误
         return garbage_count / total
 
-    garbled_rate = calculate_garbled_rate(text_all)
+    def calculate_not_printable_rate(text):
+        printable = sum(1 for c in text if c.isprintable())
+        total = len(text)
+        if total == 0:
+            return 0  # 避免除以零的错误
+        return (total - printable) / total
 
-    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or garbled_rate > 0.8:
+    # not_common_character_rate = calculate_not_common_character_rate(text_all)
+    not_printable_rate = calculate_not_printable_rate(text_all)
+    # 测试乱码pdf，not_common_character_rate > 0.9, not_printable_rate > 0.1
+    # not_common_character_rate对小语种可能会有误伤，not_printable_rate对小语种较为友好
+    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or not_printable_rate > 0.1:
         logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
