@@ -8,8 +8,8 @@ def parse_requirements(filename):
 
     for line in lines:
         if "http" in line:
-            pkg_name_with_version = line.split('/')[-1].split('-')[0]
-            requires.append(pkg_name_with_version)
+            pkg_name_without_url = line.split('@')[0].strip()
+            requires.append(pkg_name_without_url)
         else:
             requires.append(line)
 
