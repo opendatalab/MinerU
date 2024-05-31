@@ -106,7 +106,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
 
     # not_common_character_rate = calculate_not_common_character_rate(text_all)
     not_printable_rate = calculate_not_printable_rate(text_all)
-    # 测试乱码pdf，not_common_character_rate > 0.9, not_printable_rate > 0.1
+    # 测试乱码pdf，not_common_character_rate > 0.95, not_printable_rate > 0.15
     # not_common_character_rate对小语种可能会有误伤，not_printable_rate对小语种较为友好
     if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or not_printable_rate > 0.1:
         logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
