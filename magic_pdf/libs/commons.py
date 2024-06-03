@@ -1,6 +1,7 @@
 import datetime
 import json
 import os, re, configparser
+import subprocess
 import time
 
 import boto3
@@ -10,6 +11,20 @@ from botocore.config import Config
 
 import fitz # 1.23.9中已经切换到rebase
 # import fitz_old as fitz  # 使用1.23.9之前的pymupdf库
+
+
+def get_version():
+    command = ["git", "describe", "--tags"]
+    try:
+        version = subprocess.check_output(command).decode().strip()
+        version_parts = version.split("-")
+        if len(version_parts) > 1 and version_parts[0].startswith("magic_pdf"):
+            return version_parts[1]
+        else:
+            raise ValueError(f"Invalid version tag {version}. Expected format is magic_pdf-<version>-released.")
+    except Exception as e:
+        print(e)
+        return "0.0.0"
 
 def get_delta_time(input_time):
     return round(time.time() - input_time, 2)

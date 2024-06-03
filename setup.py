@@ -1,5 +1,8 @@
 from setuptools import setup, find_packages
-import subprocess
+
+from magic_pdf.libs.commons import get_version
+
+
 def parse_requirements(filename):
     with open(filename) as f:
         lines = f.read().splitlines()
@@ -15,23 +18,10 @@ def parse_requirements(filename):
 
     return requires
 
-def get_version():
-    command = ["git", "describe", "--tags"]
-    try:
-        version = subprocess.check_output(command).decode().strip()
-        version_parts = version.split("-")
-        if len(version_parts) > 1 and version_parts[0].startswith("magic_pdf"):
-            return version_parts[1]
-        else:
-            raise ValueError(f"Invalid version tag {version}. Expected format is magic_pdf-<version>-released.")
-    except Exception as e:
-        print(e)
-        return "0.0.0"
 
 
 setup(
     name="magic_pdf",  # 项目名
-    # version="0.1.3",  # 版本号
     version=get_version(),  # 自动从tag中获取版本号
     packages=find_packages(),  # 包含所有的包
     install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库

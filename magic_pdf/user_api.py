@@ -16,10 +16,10 @@ import re
 
 from loguru import logger
 
+from magic_pdf.libs.commons import get_version
 from magic_pdf.rw import AbsReaderWriter
 from magic_pdf.pdf_parse_by_ocr_v2 import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt_v2 import parse_pdf_by_txt
-
 
 PARSE_TYPE_TXT = "txt"
 PARSE_TYPE_OCR = "ocr"
@@ -39,6 +39,8 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
     pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
 
+    pdf_info_dict["_version_name"] = get_version()
+
     return pdf_info_dict
 
 
@@ -56,6 +58,8 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
     )
 
     pdf_info_dict["_parse_type"] = PARSE_TYPE_OCR
+
+    pdf_info_dict["_version_name"] = get_version()
 
     return pdf_info_dict
 
@@ -117,5 +121,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
             pdf_info_dict["_parse_type"] = PARSE_TYPE_OCR
     else:
         pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
+
+    pdf_info_dict["_version_name"] = get_version()
 
     return pdf_info_dict
