@@ -20,3 +20,8 @@ def write_version_to_commons(version):
     commons_path = os.path.join(os.path.dirname(__file__), 'magic_pdf', 'libs', 'version.py')
     with open(commons_path, 'w') as f:
         f.write(f'__version__ = "{version}"\n')
+
+
+if __name__ == '__main__':
+    version_name = get_version()
+    write_version_to_commons(version_name)
