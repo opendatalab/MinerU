@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: master  # 确保签出 master 分支
+          fetch-depth: 0  # 确保获取完整的 git 历史记录
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,14 +45,14 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update version.py with new version"
-          fi
+        id: commit_changes
 
       - name: Push changes
-        if: always()  # 确保始终运行此步骤
+        if: steps.commit_changes.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin master
+          git push origin HEAD:master
   build:
 
     runs-on: ubuntu-latest
