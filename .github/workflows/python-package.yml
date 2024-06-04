@@ -18,6 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          refs: master
           fetch-depth: 0
 
       - name: Set up Python
@@ -51,7 +52,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          git push origin main
+          git push origin HEAD:master
 #          git remote set-url origin https://myhloli:${{ secrets.RELEASE_TOKEN }}@github.com/magicpdf/Magic-PDF.git
 #          git checkout -b update-version-branch || git checkout update-version-branch
 #          git push --set-upstream origin update-version-branch
