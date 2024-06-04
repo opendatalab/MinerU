@@ -13,8 +13,7 @@ on:
 jobs:
 
   update-version:
-    permissions:
-      contents: write
+
     runs-on: ubuntu-latest
 
     steps:
