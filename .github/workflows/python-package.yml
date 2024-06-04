@@ -18,7 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          refs: master
+          ref: master
           fetch-depth: 0
 
       - name: Set up Python
@@ -53,37 +53,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git push origin HEAD:master
-#          git remote set-url origin https://myhloli:${{ secrets.RELEASE_TOKEN }}@github.com/magicpdf/Magic-PDF.git
-#          git checkout -b update-version-branch || git checkout update-version-branch
-#          git push --set-upstream origin update-version-branch
-#        id: push_changes
-
-#      - name: Create Pull Request
-#        if: steps.push_changes.outcome == 'success'
-#        id: create_pull_request
-#        uses: peter-evans/create-pull-request@v5
-#        with:
-#          token: ${{ secrets.RELEASE_TOKEN }}
-#          commit-message: Update version.py with new version
-#          branch: update-version-branch
-#          title: 'Update version.py'
-#          body: 'This PR updates the version.py file with the latest version.'
-#          base: master
-#          labels: 'automated PR'
-#
-#      - name: Merge Pull Request
-#        if: steps.create_pull_request.outputs.pull-request-number
-#        uses: actions/github-script@v6
-#        with:
-#          github-token: ${{ secrets.RELEASE_TOKEN }}
-#          script: |
-#            const pullRequestNumber = parseInt('${{ steps.create_pull_request.outputs.pull-request-number }}');
-#            await github.pulls.merge({
-#              owner: context.repo.owner,
-#              repo: context.repo.repo,
-#              pull_number: pullRequestNumber,
-#              merge_method: 'merge'
-#            });
 
   build:
     needs: [ update-version ]
@@ -97,7 +66,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        ref: master
         fetch-depth: 0
+
+    - name: Verify version.py
+      run: |
+        ls -l magic_pdf/libs/version.py
+        cat magic_pdf/libs/version.py
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
