@@ -11,6 +11,35 @@ on:
 
 
 jobs:
+
+  update-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Update version.py
+        run: |
+          python update_version.py
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "moe@myhloli.com"
+          git config --local user.name "myhloli"
+          git add version.py
+          git commit -m "Update version.py with new version"
+
+      - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          git push
   build:
 
     runs-on: ubuntu-latest
