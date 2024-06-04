@@ -28,18 +28,28 @@ jobs:
         run: |
           python update_version.py
 
+      - name: Verify version.py
+        run: |
+          ls -l magic_pdf/libs/version.py
+          cat magic_pdf/libs/version.py
+
       - name: Commit changes
         run: |
           git config --local user.email "moe@myhloli.com"
           git config --local user.name "myhloli"
           git add magic_pdf/libs/version.py
-          git commit -m "Update version.py with new version"
+          if git diff-index --quiet HEAD; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update version.py with new version"
+          fi
 
       - name: Push changes
+        if: always()  # 确保始终运行此步骤
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push
+          git push origin main
   build:
 
     runs-on: ubuntu-latest
