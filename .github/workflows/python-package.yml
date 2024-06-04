@@ -17,9 +17,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: master  # 确保签出 master 分支
-          fetch-depth: 0  # 确保获取完整的 git 历史记录
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -52,37 +49,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          git remote set-url origin https://myhloli:${{ secrets.RELEASE_TOKEN }}@github.com/magicpdf/Magic-PDF.git
-          git checkout -b update-version-branch || git checkout update-version-branch
-          git push --set-upstream origin update-version-branch
-        id: push_changes
+          git push origin master
+#          git remote set-url origin https://myhloli:${{ secrets.RELEASE_TOKEN }}@github.com/magicpdf/Magic-PDF.git
+#          git checkout -b update-version-branch || git checkout update-version-branch
+#          git push --set-upstream origin update-version-branch
+#        id: push_changes
 
-      - name: Create Pull Request
-        if: steps.push_changes.outcome == 'success'
-        id: create_pull_request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.RELEASE_TOKEN }}
-          commit-message: Update version.py with new version
-          branch: update-version-branch
-          title: 'Update version.py'
-          body: 'This PR updates the version.py file with the latest version.'
-          base: master
-          labels: 'automated PR'
-
-      - name: Merge Pull Request
-        if: steps.create_pull_request.outputs.pull-request-number
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.RELEASE_TOKEN }}
-          script: |
-            const pullRequestNumber = parseInt('${{ steps.create_pull_request.outputs.pull-request-number }}');
-            await github.pulls.merge({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pullRequestNumber,
-              merge_method: 'merge'
-            });
+#      - name: Create Pull Request
+#        if: steps.push_changes.outcome == 'success'
+#        id: create_pull_request
+#        uses: peter-evans/create-pull-request@v5
+#        with:
+#          token: ${{ secrets.RELEASE_TOKEN }}
+#          commit-message: Update version.py with new version
+#          branch: update-version-branch
+#          title: 'Update version.py'
+#          body: 'This PR updates the version.py file with the latest version.'
+#          base: master
+#          labels: 'automated PR'
+#
+#      - name: Merge Pull Request
+#        if: steps.create_pull_request.outputs.pull-request-number
+#        uses: actions/github-script@v6
+#        with:
+#          github-token: ${{ secrets.RELEASE_TOKEN }}
+#          script: |
+#            const pullRequestNumber = parseInt('${{ steps.create_pull_request.outputs.pull-request-number }}');
+#            await github.pulls.merge({
+#              owner: context.repo.owner,
+#              repo: context.repo.repo,
+#              pull_number: pullRequestNumber,
+#              merge_method: 'merge'
+#            });
 
   build:
     needs: [ update-version ]
