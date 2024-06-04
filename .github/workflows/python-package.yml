@@ -45,6 +45,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update version.py with new version"
+          fi
         id: commit_changes
 
       - name: Push changes
