@@ -32,7 +32,7 @@ jobs:
         run: |
           git config --local user.email "moe@myhloli.com"
           git config --local user.name "myhloli"
-          git add version.py
+          git add magic_pdf/libs/version.py
           git commit -m "Update version.py with new version"
 
       - name: Push changes
