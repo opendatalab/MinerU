@@ -54,7 +54,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git remote set-url origin https://myhloli:${{ secrets.RELEASE_TOKEN }}@github.com/magicpdf/Magic-PDF.git
-          git push origin update-version-branch
+          git checkout -b update-version-branch || git checkout update-version-branch
+          git push --set-upstream origin update-version-branch
         id: push_changes
 
       - name: Create Pull Request
