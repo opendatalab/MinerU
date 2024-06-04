@@ -98,12 +98,13 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
 
 
 @click.group()
+@click.version_option(__version__, "--version", "-v", help="显示版本信息")
+@click.help_option("--help", "-h", help="显示帮助信息")
 def cli():
     pass
 
 
 @cli.command()
-@click.version_option(__version__, "--version", "-v", help="显示版本信息")
 @click.option("--json", type=str, help="输入一个S3路径")
 @click.option(
     "--method",
@@ -143,7 +144,7 @@ def json_command(json, method):
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
-    
+
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
         local_md_dir
     )
@@ -161,7 +162,6 @@ def json_command(json, method):
 
 
 @cli.command()
-@click.version_option(__version__, "--version", "-v", help="显示版本信息")
 @click.option("--local_json", type=str, help="输入一个本地jsonl路径")
 @click.option(
     "--method",
@@ -218,7 +218,6 @@ def local_json_command(local_json, method):
 
 
 @cli.command()
-@click.version_option(__version__, "--version", "-v", help="显示版本信息")
 @click.option(
     "--pdf", type=click.Path(exists=True), required=True, help="PDF文件的路径"
 )
@@ -258,7 +257,6 @@ def pdf_command(pdf, model, method):
         os.path.basename(local_image_dir),
         local_md_dir
     )
-
 
 
 if __name__ == "__main__":
