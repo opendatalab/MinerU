@@ -51,7 +51,7 @@ jobs:
       - name: Push changes
         if: steps.commit_changes.outcome == 'success'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git push origin HEAD:master
   build:
