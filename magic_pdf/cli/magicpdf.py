@@ -44,6 +44,7 @@ from magic_pdf.libs.config_reader import get_local_dir
 from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
+import csv
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
@@ -58,6 +59,15 @@ def prepare_env(pdf_file_name, method):
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
+
+
+def write_to_csv(csv_file_path, csv_data):
+    with open(csv_file_path, mode='a', newline='', encoding='utf-8') as csvfile:
+        # 创建csv writer对象
+        csv_writer = csv.writer(csvfile)
+        # 写入数据
+        csv_writer.writerow(csv_data)
+    print(f"数据已成功追加到 '{csv_file_path}'")
 
 
 def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir, local_md_dir):
@@ -80,6 +90,9 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
+
+    # write_to_csv(r"D:\project\20231108code-clean\linshixuqiu\pdf_dev\新模型\新建文件夹\luanma.csv",
+    #              [pdf_file_name, pipe.pdf_mid_data['not_common_character_rate'], pipe.pdf_mid_data['not_printable_rate']])
 
     md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
     md_writer.write(

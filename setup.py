@@ -1,6 +1,3 @@
-import os
-import subprocess
-
 from setuptools import setup, find_packages
 from magic_pdf.libs.version import __version__
 

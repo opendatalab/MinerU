@@ -1,4 +1,3 @@
-
 """
 用户输入：
     model数组，每个元素代表一个页面
@@ -23,6 +22,7 @@ from magic_pdf.pdf_parse_by_txt_v2 import parse_pdf_by_txt
 
 PARSE_TYPE_TXT = "txt"
 PARSE_TYPE_OCR = "ocr"
+
 
 def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args,
                   **kwargs):
@@ -108,11 +108,16 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
             return 0  # 避免除以零的错误
         return (total - printable) / total
 
-    # not_common_character_rate = calculate_not_common_character_rate(text_all)
+    not_common_character_rate = calculate_not_common_character_rate(text_all)
     not_printable_rate = calculate_not_printable_rate(text_all)
-    # 测试乱码pdf，not_common_character_rate > 0.95, not_printable_rate > 0.15
+    pdf_info_dict["_not_common_character_rate"] = not_common_character_rate
+    pdf_info_dict["_not_printable_rate"] = not_printable_rate
+    logger.info(f"not_common_character_rate: {not_common_character_rate}, not_printable_rate: {not_printable_rate}")
     # not_common_character_rate对小语种可能会有误伤，not_printable_rate对小语种较为友好
-    if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False) or not_printable_rate > 0.1:
+    if (pdf_info_dict is None
+        or pdf_info_dict.get("_need_drop", False)
+        or not_printable_rate > 0.02  # 参考一些正常的pdf，这个值没有超过0.01的，阈值设为0.02
+    ):
         logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
