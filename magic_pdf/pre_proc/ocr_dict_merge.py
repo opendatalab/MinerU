@@ -160,12 +160,12 @@ def fill_spans_in_blocks(blocks, spans, radio):
                 block_spans.append(span)
 
         '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
-        displayed_list = []
-        text_inline_lines = []
-        modify_y_axis(block_spans, displayed_list, text_inline_lines)
+        # displayed_list = []
+        # text_inline_lines = []
+        # modify_y_axis(block_spans, displayed_list, text_inline_lines)
 
         '''模型识别错误的行间公式, type类型转换成行内公式'''
-        block_spans = modify_inline_equation(block_spans, displayed_list, text_inline_lines)
+        # block_spans = modify_inline_equation(block_spans, displayed_list, text_inline_lines)
 
         '''bbox去除粘连'''  # 去粘连会影响span的bbox，导致后续fill的时候出错
         # block_spans = remove_overlap_between_bbox_for_span(block_spans)
@@ -196,8 +196,10 @@ def fix_block_spans(block_with_spans, img_blocks, table_blocks):
             block = fix_image_block(block, img_blocks)
         elif block_type == BlockType.Table:
             block = fix_table_block(block, table_blocks)
-        elif block_type in [BlockType.Text, BlockType.Title, BlockType.InterlineEquation]:
+        elif block_type in [BlockType.Text, BlockType.Title]:
             block = fix_text_block(block)
+        elif block_type == BlockType.InterlineEquation:
+            block = fix_interline_block(block)
         else:
             continue
         fix_blocks.append(block)
@@ -315,6 +317,18 @@ def fix_table_block(block, table_blocks):
 
 
 def fix_text_block(block):
+    # 文本block中的公式span都应该转换成行内type
+    for span in block['spans']:
+        if span['type'] == ContentType.InterlineEquation:
+            span['type'] = ContentType.InlineEquation
+    block_lines = merge_spans_to_line(block['spans'])
+    sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
+    block['lines'] = sort_block_lines
+    del block['spans']
+    return block
+
+
+def fix_interline_block(block):
     block_lines = merge_spans_to_line(block['spans'])
     sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
     block['lines'] = sort_block_lines

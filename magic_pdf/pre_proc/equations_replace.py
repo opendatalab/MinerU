@@ -107,6 +107,7 @@ def _is_in_or_part_overlap(box1, box2) -> bool:
         or y0_1 > y1_2
     )  # box1在box2的下边
 
+
 def remove_text_block_overlap_interline_equation_bbox(
     interline_eq_bboxes, pymu_block_list
 ):
@@ -122,10 +123,10 @@ def remove_text_block_overlap_interline_equation_bbox(
                 deleted_chars = []
                 for char in span["chars"]:
                     if any(
-                        [
-                            _is_in_or_part_overlap(char["bbox"], eq_bbox["bbox"])
-                            for eq_bbox in interline_eq_bboxes
-                        ]
+                            [
+                                (calculate_overlap_area_2_minbox_area_ratio(eq_bbox["bbox"], char["bbox"]) > 0.5)
+                                for eq_bbox in interline_eq_bboxes
+                            ]
                     ):
                         deleted_chars.append(char)
                 # 检查span里没有char则删除这个span
