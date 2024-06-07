@@ -36,6 +36,9 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
     '''任何框体与舍弃框重叠，优先信任舍弃框'''
     all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
+    # @todo interline_equation 与title或text框冲突的情况，分两种情况处理
+    '''interline_equation框与文本类型框iou比较接近1的时候，信任行间公式框'''
+    '''interline_equation框被包含在文本类型框内，且interline_equation比文本区块小很多时信任文本框，这时需要舍弃公式框'''
 
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:

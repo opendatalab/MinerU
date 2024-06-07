@@ -111,6 +111,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     spans = ocr_cut_image_and_table(spans, pdf_docs[page_id], page_id, pdf_bytes_md5, imageWriter)
 
     '''将所有区块的bbox整理到一起'''
+    # @todo interline_equation_blocks参数不够准，后面切换到interline_equations上
     if len(interline_equation_blocks) > 0:
         all_bboxes, all_discarded_blocks, drop_reasons = ocr_prepare_bboxes_for_layout_split(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
