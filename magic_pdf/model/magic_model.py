@@ -37,7 +37,14 @@ class MagicModel:
             )
             layout_dets = model_page_info["layout_dets"]
             for layout_det in layout_dets:
-                x0, y0, _, _, x1, y1, _, _ = layout_det["poly"]
+
+                if layout_det.get("bbox") is not None:
+                    # 兼容直接输出bbox的模型数据,如paddle
+                    x0, y0, x1, y1 = layout_det["bbox"]
+                else:
+                    # 兼容直接输出poly的模型数据，如xxx
+                    x0, y0, _, _, x1, y1, _, _ = layout_det["poly"]
+
                 bbox = [
                     int(x0 / horizontal_scale_ratio),
                     int(y0 / vertical_scale_ratio),
