@@ -331,7 +331,7 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en"):
                  block["type"] == BlockType.Text for line in
                  block['lines']]
         total_lines = len(lines)
-        if total_lines == 1:
+        if total_lines == 1 or total_lines == 0:
             list_info.append([False, False])
             continue
         """在进入到真正的分段之前，要对文字块从统计维度进行对齐方式的探测，
