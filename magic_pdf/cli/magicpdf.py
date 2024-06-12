@@ -31,6 +31,7 @@ from magic_pdf.libs.version import __version__
 
 from magic_pdf.libs.MakeContentConfig import DropMode
 from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
+from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -242,19 +243,28 @@ def local_json_command(local_json, method):
     default="auto",
 )
 def pdf_command(pdf, model, method):
-    # 这里处理pdf和模型相关的逻辑
-    if model is None:
-        model = pdf.replace(".pdf", ".json")
-        if not os.path.exists(model):
-            print(f"make sure json {model} existed and place under {os.path.dirname(pdf)}", file=sys.stderr)
-            exit(1)
-
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
         return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
     pdf_data = read_fn(pdf)
-    jso = json_parse.loads(read_fn(model).decode("utf-8"))
+
+    def get_model_json(model_path):
+        # 这里处理pdf和模型相关的逻辑
+        if model_path is None:
+            model_path = pdf.replace(".pdf", ".json")
+            if not os.path.exists(model_path):
+                logger.warning(f"not found json {model_path} existed, use paddle analyze")
+                # 本地无模型数据则调用内置paddle分析
+                model_json = json_parse.dumps(doc_analyze(pdf_data, ocr=False, show_log=True))
+            else:
+                model_json = read_fn(model_path).decode("utf-8")
+        else:
+            model_json = read_fn(model_path).decode("utf-8")
+
+        return model_json
+
+    jso = json_parse.loads(get_model_json(model))
     pdf_file_name = Path(pdf).stem
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
     local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
