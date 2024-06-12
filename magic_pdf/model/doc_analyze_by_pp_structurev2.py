@@ -56,7 +56,6 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
         page_height = img_dict['height']
         result = ocr_engine(img)
         spans = []
-        need_remove = []
         for line in result:
             line.pop('img')
             '''
