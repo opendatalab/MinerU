@@ -586,8 +586,15 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
         # 不是文本，不连接
         return False
 
-    pre_x2_max = __find_layout_bbox_by_line(pre_last_line['bbox'], pre_page_layout_bbox)[2]
-    next_x0_min = __find_layout_bbox_by_line(next_first_line['bbox'], next_page_layout_bbox)[0]
+    pre_x2_max_bbox = __find_layout_bbox_by_line(pre_last_line['bbox'], pre_page_layout_bbox)
+    if not pre_x2_max_bbox:
+        return False
+    next_x0_min_bbox = __find_layout_bbox_by_line(next_first_line['bbox'], next_page_layout_bbox)
+    if not next_x0_min_bbox:
+        return False
+
+    pre_x2_max = pre_x2_max_bbox[2]
+    next_x0_min = next_x0_min_bbox[0]
 
     pre_last_line_text = pre_last_line_text.strip()
     next_first_line_text = next_first_line_text.strip()
