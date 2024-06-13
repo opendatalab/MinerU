@@ -16,4 +16,4 @@ nltk==3.8.1
 s3pathlib>=2.1.1
 pytest
 paddlepaddle
-paddleocr>=2.6.0.3
+paddleocr @ https://github.com/myhloli/PaddleOCR/releases/download/paddleocr-2.8.2-released/paddleocr-2.8.2-py3-none-any.whl

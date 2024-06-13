@@ -90,7 +90,10 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
                 line['category_id'] = 2
             else:
                 logger.warning(f"unknown type: {line['type']}")
-            line['score'] = 0.5 + random.random() * 0.5
+
+            # 兼容不输出score的paddleocr版本
+            if line.get("score") is None:
+                line['score'] = 0.5 + random.random() * 0.5
 
             res = line.pop('res', None)
             if res is not None and len(res) > 0:
