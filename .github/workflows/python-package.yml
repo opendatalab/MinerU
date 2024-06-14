@@ -119,8 +119,8 @@ jobs:
           files: './dist/*.whl'
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-      # - name: Publish to PyPI
-      #   uses: pypa/gh-action-pypi-publish@release/v1
-      #   with:
-      #     user: __token__
-      #     password: ${{ secrets.PYPI_TOKEN }}
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
