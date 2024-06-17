@@ -1,7 +1,6 @@
-import pycld2 as cld2
 import regex
 import unicodedata
-
+from fast_langdetect import detect_langs
 
 RE_BAD_CHARS = regex.compile(r"\p{Cc}|\p{Cs}")
 
@@ -13,17 +12,13 @@ def remove_bad_chars(text):
 def detect_lang(text: str) -> str:
     if len(text) == 0:
         return ""
-
     try:
-        _, _, details = cld2.detect(text)
+        lang_upper = detect_langs(text)
     except:
-        # cld2 doesn't like control characters
-        # https://github.com/mikemccand/chromium-compact-language-detector/issues/22#issuecomment-435904616
-        html_no_ctrl_chars = ''.join([l for l in text if unicodedata.category(l)[0] not in ['C',]])
-        _, _, details = cld2.detect(html_no_ctrl_chars)
-    lang = ""
+        html_no_ctrl_chars = ''.join([l for l in text if unicodedata.category(l)[0] not in ['C', ]])
+        lang_upper = detect_langs(html_no_ctrl_chars)
     try:
-        lang = details[0][1].lower()
+        lang = lang_upper.lower()
     except:
         lang = ""
     return lang

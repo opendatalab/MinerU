@@ -7,13 +7,12 @@ loguru>=0.6.0
 matplotlib>=3.8.3
 numpy>=1.21.6
 pandas>=1.3.5
-pycld2>=0.41
+fast-langdetect>=0.1.1
 regex>=2023.12.25
 termcolor>=2.4.0
 wordninja>=2.0.0
 scikit-learn>=1.0.2
 nltk==3.8.1
 s3pathlib>=2.1.1
-pytest
 paddlepaddle
 paddleocr @ https://github.com/magicpdf/PaddleOCR/releases/download/paddleocr-2.8.2-released/paddleocr-2.8.2-py3-none-any.whl
