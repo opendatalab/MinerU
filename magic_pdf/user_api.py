@@ -16,6 +16,7 @@ import re
 from loguru import logger
 
 from magic_pdf.libs.version import __version__
+from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
 from magic_pdf.rw import AbsReaderWriter
 from magic_pdf.pdf_parse_by_ocr_v2 import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt_v2 import parse_pdf_by_txt
@@ -65,6 +66,7 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
 
 def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,
+                    input_model_is_empty: bool = False,
                     *args, **kwargs):
     """
     ocr和文本混合的pdf，全部解析出来
@@ -119,6 +121,8 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
         or not_printable_rate > 0.02  # 参考一些正常的pdf，这个值没有超过0.01的，阈值设为0.02
     ):
         logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
+        if input_model_is_empty:
+            pdf_models = doc_analyze(pdf_bytes, ocr=True)
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")

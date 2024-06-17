@@ -1,6 +1,6 @@
 from magic_pdf.libs.MakeContentConfig import DropMode
+from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.pipe.AbsPipe import AbsPipe
 from magic_pdf.user_api import parse_ocr_pdf
 
@@ -12,6 +12,9 @@ class OCRPipe(AbsPipe):
 
     def pipe_classify(self):
         pass
+
+    def pipe_analyze(self):
+        self.model_list = doc_analyze(self.pdf_bytes, ocr=True)
 
     def pipe_parse(self):
         self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)

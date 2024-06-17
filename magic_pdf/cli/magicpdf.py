@@ -87,6 +87,11 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
         sys.exit(1)
 
     pipe.pipe_classify()
+
+    '''如果没有传入有效的模型数据，则使用内置paddle解析'''
+    if len(model_list) == 0:
+        pipe.pipe_analyze()
+
     pipe.pipe_parse()
     pdf_info = pipe.pdf_mid_data['pdf_info']
     draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
@@ -255,8 +260,8 @@ def pdf_command(pdf, model, method):
             model_path = pdf.replace(".pdf", ".json")
             if not os.path.exists(model_path):
                 logger.warning(f"not found json {model_path} existed, use paddle analyze")
-                # 本地无模型数据则调用内置paddle分析
-                model_json = json_parse.dumps(doc_analyze(pdf_data, ocr=False, show_log=True))
+                # 本地无模型数据则调用内置paddle分析，先传空list，在内部识别到空list再调用paddle
+                model_json = "[]"
             else:
                 model_json = read_fn(model_path).decode("utf-8")
         else:

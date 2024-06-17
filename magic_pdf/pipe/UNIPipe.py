@@ -3,6 +3,7 @@ import json
 from loguru import logger
 
 from magic_pdf.libs.MakeContentConfig import DropMode
+from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.libs.commons import join_path
@@ -15,14 +16,24 @@ class UNIPipe(AbsPipe):
     def __init__(self, pdf_bytes: bytes, jso_useful_key: dict, image_writer: AbsReaderWriter, is_debug: bool = False):
         self.pdf_type = jso_useful_key["_pdf_type"]
         super().__init__(pdf_bytes, jso_useful_key["model_list"], image_writer, is_debug)
+        if len(self.model_list) == 0:
+            self.input_model_is_empty = True
+        else:
+            self.input_model_is_empty = False
 
     def pipe_classify(self):
         self.pdf_type = AbsPipe.classify(self.pdf_bytes)
 
+    def pipe_analyze(self):
+        if self.pdf_type == self.PIP_TXT:
+            self.model_list = doc_analyze(self.pdf_bytes, ocr=False)
+        elif self.pdf_type == self.PIP_OCR:
+            self.model_list = doc_analyze(self.pdf_bytes, ocr=True)
+
     def pipe_parse(self):
         if self.pdf_type == self.PIP_TXT:
             self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer,
-                                                is_debug=self.is_debug)
+                                                is_debug=self.is_debug, input_model_is_empty=self.input_model_is_empty)
         elif self.pdf_type == self.PIP_OCR:
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                               is_debug=self.is_debug)
