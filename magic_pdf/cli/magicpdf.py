@@ -31,7 +31,6 @@ from magic_pdf.libs.version import __version__
 
 from magic_pdf.libs.MakeContentConfig import DropMode
 from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
-from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
