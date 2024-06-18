@@ -24,6 +24,10 @@ if __name__ == '__main__':
         version=__version__,  # 自动从tag中获取版本号
         packages=find_packages(),  # 包含所有的包
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
+        extras_require={
+            "gpu": ["paddlepaddle-gpu"],
+            "cpu": ["paddlepaddle"],
+        },
         python_requires=">=3.9",  # 项目依赖的 Python 版本
         # entry_points={"console_scripts": ["my_command=my_project.main:run"]}, # 项目提供的可执行命令
         include_package_data=True,  # 是否包含非代码文件，如数据文件、配置文件等

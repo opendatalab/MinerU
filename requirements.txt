@@ -14,5 +14,4 @@ wordninja>=2.0.0
 scikit-learn>=1.0.2
 nltk==3.8.1
 s3pathlib>=2.1.1
-paddlepaddle
 paddleocr @ https://github.com/magicpdf/PaddleOCR/releases/download/paddleocr-2.8.2-released/paddleocr-2.8.2-py3-none-any.whl
