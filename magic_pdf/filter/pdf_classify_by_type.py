@@ -21,7 +21,7 @@ from magic_pdf.libs.commons import mymax, get_top_percent_list
 from magic_pdf.filter.pdf_meta_scan import scan_max_page, junk_limit_min
 
 TEXT_LEN_THRESHOLD = 100
-AVG_TEXT_LEN_THRESHOLD = 200
+AVG_TEXT_LEN_THRESHOLD = 100
 TEXT_LEN_SAMPLE_RATIO = 0.1  # 抽取0.1的页面进行文字长度统计
 
 
@@ -65,12 +65,14 @@ def merge_images(image_list, page_width, page_height, max_offset=5, max_gap=2):
             # 如果宽达标，检测是否能竖着拼
             if full_width:
                 # 竖着拼需要满足两个前提，左右边界各偏移不能超过 max_offset，第一张图的下边界和第二张图的上边界偏移不能超过 max_gap
-                close1 = (last_x0 - max_offset) <= x0 <= (last_x0 + max_offset) and (last_x1 - max_offset) <= x1 <= (last_x1 + max_offset) and (last_y1 - max_gap) <= y0 <= (last_y1 + max_gap)
+                close1 = (last_x0 - max_offset) <= x0 <= (last_x0 + max_offset) and (last_x1 - max_offset) <= x1 <= (
+                            last_x1 + max_offset) and (last_y1 - max_gap) <= y0 <= (last_y1 + max_gap)
 
             # 如果高达标，检测是否可以横着拼
             if full_height:
                 # 横着拼需要满足两个前提，上下边界各偏移不能超过 max_offset，第一张图的右边界和第二张图的左边界偏移不能超过 max_gap
-                close2 = (last_y0 - max_offset) <= y0 <= (last_y0 + max_offset) and (last_y1 - max_offset) <= y1 <= (last_y1 + max_offset) and (last_x1 - max_gap) <= x0 <= (last_x1 + max_gap)
+                close2 = (last_y0 - max_offset) <= y0 <= (last_y0 + max_offset) and (last_y1 - max_offset) <= y1 <= (
+                            last_y1 + max_offset) and (last_x1 - max_gap) <= x0 <= (last_x1 + max_gap)
 
             # Check if the image can be merged with the last image
             if (full_width and close1) or (full_height and close2):
@@ -109,9 +111,8 @@ def classify_by_area(total_page: int, page_width, page_height, img_sz_list, text
     # 先对每个id出现的次数做个统计
     objid_cnt = Counter([objid for page_img_sz in img_sz_list for _, _, _, _, objid in page_img_sz])
     # 再去掉出现次数大于10的
-    if total_page >= scan_max_page:# 新的meta_scan只扫描前 scan_max_page 页，页数大于 scan_max_page 当total_page为 scan_max_page
+    if total_page >= scan_max_page:  # 新的meta_scan只扫描前 scan_max_page 页，页数大于 scan_max_page 当total_page为 scan_max_page
         total_page = scan_max_page
-
 
     repeat_threshold = 2  # 把bad_image的阈值设为2
     # repeat_threshold = min(2, total_page)  # 当total_page为1时，repeat_threshold为1，会产生误判导致所有img变成bad_img
@@ -129,24 +130,24 @@ def classify_by_area(total_page: int, page_width, page_height, img_sz_list, text
     # if len(fake_image_ids) > 0 and any([l > TEXT_LEN_THRESHOLD for l in text_len_at_bad_image_page_idx]):  # 这些透明图片所在的页面上有文字大于阈值
     #     return True
 
-    img_sz_list = [[img_sz for img_sz in page_img_sz if img_sz[-1] not in bad_image_objid] for page_img_sz in img_sz_list]  # 过滤掉重复出现的图片
-
+    img_sz_list = [[img_sz for img_sz in page_img_sz if img_sz[-1] not in bad_image_objid] for page_img_sz in
+                   img_sz_list]  # 过滤掉重复出现的图片
 
     # 有的扫描版会把一页图片拆成很多张，需要先把图拼起来再计算
     img_sz_list = merge_images(img_sz_list, page_width, page_height)
 
     # 计算每个页面上最大的图的面积，然后计算这个面积占页面面积的比例
-    max_image_area_per_page = [mymax([(x1 - x0) * (y1 - y0) for x0, y0, x1, y1, _ in page_img_sz]) for page_img_sz in img_sz_list]
+    max_image_area_per_page = [mymax([(x1 - x0) * (y1 - y0) for x0, y0, x1, y1, _ in page_img_sz]) for page_img_sz in
+                               img_sz_list]
     page_area = page_width * page_height
     max_image_area_per_page = [area / page_area for area in max_image_area_per_page]
     max_image_area_per_page = [area for area in max_image_area_per_page if area > 0.5]
 
-    if len(max_image_area_per_page) >= 0.5 * total_page:   # 阈值从0.8改到0.5，适配3页里面有两页和两页里面有一页的情况
+    if len(max_image_area_per_page) >= 0.5 * total_page:  # 阈值从0.8改到0.5，适配3页里面有两页和两页里面有一页的情况
         # 这里条件成立的前提是把反复出现的图片去掉了。这些图片是隐藏的透明图层，其特点是id都一样
         return False
     else:
         return True
-
 
 
 def classify_by_text_len(text_len_list: list, total_page: int):
@@ -173,6 +174,7 @@ def classify_by_text_len(text_len_list: list, total_page: int):
     is_text_pdf = any([text_len > TEXT_LEN_THRESHOLD for text_len in text_len_lst])
     return is_text_pdf
 
+
 def classify_by_avg_words(text_len_list: list):
     """
     补充规则，如果平均每页字数少于 AVG_TEXT_LEN_THRESHOLD，就不是文字pdf
@@ -193,6 +195,7 @@ def classify_by_avg_words(text_len_list: list):
 
     return is_text_pdf
 
+
 def classify_by_img_num(img_sz_list: list, img_num_list: list):
     """
     补充规则，有一种扫描版本的PDF，每一页都会放所有的扫描页进去，在 metascan 时会被去重，
@@ -208,11 +211,11 @@ def classify_by_img_num(img_sz_list: list, img_num_list: list):
     # img_sz_list中非空元素的个数小于1，前80%的元素都相等，且最大值大于等于junk_limit_min
     if count_img_sz_list_not_none <= 1 and len(set(top_eighty_percent)) == 1 and max(img_num_list) >= junk_limit_min:
 
-    #拿max和min的值,用来判断list内的值是否全都相等
-    # min_imgs = min(img_num_list)
-    # max_imgs = max(img_num_list)
-    #
-    # if count_img_sz_list_not_none == 0 and max_imgs == min_imgs and max_imgs >= junk_limit_min:
+        #拿max和min的值,用来判断list内的值是否全都相等
+        # min_imgs = min(img_num_list)
+        # max_imgs = max(img_num_list)
+        #
+        # if count_img_sz_list_not_none == 0 and max_imgs == min_imgs and max_imgs >= junk_limit_min:
         return False  # 如果满足这个条件，一定不是文字版pdf
     else:
         return True  # 不满足这三个条件，可能是文字版pdf，通过其他规则判断
@@ -244,6 +247,7 @@ def classify_by_text_layout(text_layout_per_page: list):
     else:
         return False  # 文本布局未知，默认认为不是文字版pdf
 
+
 def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
     """
     判断一页是否由细长条组成，有两个条件：
@@ -258,6 +262,7 @@ def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
     Returns:
         bool: 如果满足条件的页面的比例小于0.5，返回True，否则返回False
     """
+
     def is_narrow_strip(img):
         x0, y0, x1, y1, _ = img
         width, height = x1 - x0, y1 - y0
@@ -299,7 +304,8 @@ def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
     return narrow_strip_pages_ratio < 0.5
 
 
-def classify(total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list, text_layout_list: list):
+def classify(total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list,
+             text_layout_list: list):
     """
     这里的图片和页面长度单位是pts
     :param total_page:
@@ -324,7 +330,9 @@ def classify(total_page: int, page_width, page_height, img_sz_list: list, text_l
     elif not any(results.values()):
         return False, results
     else:
-        logger.warning(f"pdf is not classified by area and text_len, by_image_area: {results['by_image_area']}, by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']}, by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']}", file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
+        logger.warning(
+            f"pdf is not classified by area and text_len, by_image_area: {results['by_image_area']}, by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']}, by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']}",
+            file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
         return False, results
 
 
