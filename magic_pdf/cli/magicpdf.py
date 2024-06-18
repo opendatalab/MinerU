@@ -119,7 +119,7 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     '''写源pdf'''
     md_writer.write(
         content=pdf_bytes,
-        path=f"{pdf_file_name}_origin.json",
+        path=f"{pdf_file_name}_origin.pdf",
         mode=AbsReaderWriter.MODE_BIN,
     )
     content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
