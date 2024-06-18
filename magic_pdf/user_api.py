@@ -16,7 +16,7 @@ import re
 from loguru import logger
 
 from magic_pdf.libs.version import __version__
-from magic_pdf.model.doc_analyze_by_pp_structurev2 import doc_analyze
+from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.rw import AbsReaderWriter
 from magic_pdf.pdf_parse_by_ocr_v2 import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt_v2 import parse_pdf_by_txt
@@ -104,11 +104,15 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
         return garbage_count / total
 
     def calculate_not_printable_rate(text):
-        printable = sum(1 for c in text if c.isprintable())
+        printable_text = ""
+        for c in text:
+            if c.isprintable():
+                printable_text += c
+        printable_total = len(printable_text)
         total = len(text)
         if total == 0:
             return 0  # 避免除以零的错误
-        return (total - printable) / total
+        return (total - printable_total) / total
 
     not_common_character_rate = calculate_not_common_character_rate(text_all)
     not_printable_rate = calculate_not_printable_rate(text_all)

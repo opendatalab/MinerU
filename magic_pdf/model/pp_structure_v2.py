@@ -1,11 +1,7 @@
 import random
 
-import fitz
-import cv2
-from paddleocr import PPStructure
-from PIL import Image
 from loguru import logger
-import numpy as np
+from paddleocr import PPStructure
 
 
 def region_to_bbox(region):
@@ -16,41 +12,8 @@ def region_to_bbox(region):
     return [x0, y0, x1, y1]
 
 
-def dict_compare(d1, d2):
-    return d1.items() == d2.items()
-
-
-def remove_duplicates_dicts(lst):
-    unique_dicts = []
-    for dict_item in lst:
-        if not any(
-            dict_compare(dict_item, existing_dict) for existing_dict in unique_dicts
-        ):
-            unique_dicts.append(dict_item)
-    return unique_dicts
-
-
-def load_imags_from_pdf(pdf_bytes: bytes, dpi=200):
-    imgs = []
-    with fitz.open("pdf", pdf_bytes) as doc:
-        for index in range(0, doc.page_count):
-            page = doc[index]
-            dpi = 200
-            mat = fitz.Matrix(dpi / 72, dpi / 72)
-            pm = page.get_pixmap(matrix=mat, alpha=False)
-
-            # if width or height > 2000 pixels, don't enlarge the image
-            # if pm.width > 2000 or pm.height > 2000:
-            #     pm = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
-
-            img = Image.frombytes("RGB", [pm.width, pm.height], pm.samples)
-            img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-            img_dict = {"img": img, "width": pm.width, "height": pm.height}
-            imgs.append(img_dict)
-
-
 class CustomPaddleModel:
-    def __init___(self, ocr: bool = False, show_log: bool = False):
+    def __init__(self, ocr: bool = False, show_log: bool = False):
         self.model = PPStructure(table=False, ocr=ocr, show_log=show_log)
 
     def __call__(self, img):
@@ -109,23 +72,4 @@ class CustomPaddleModel:
         if len(spans) > 0:
             result.extend(spans)
 
-        result = remove_duplicates_dicts(result)
         return result
-
-
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
-    imgs = load_imags_from_pdf(pdf_bytes)
-    custom_paddle =  CustomPaddleModel()
-
-    model_json = []
-    for index, img_dict in enumerate(imgs):
-        img = img_dict["img"]
-        page_width = img_dict["width"]
-        page_height = img_dict["height"]
-        result = custom_paddle(img)
-        page_info = {"page_no": index, "height": page_height, "width": page_width}
-        page_dict = {"layout_dets": result, "page_info": page_info}
-
-        model_json.append(page_dict)
-
-    return model_json
