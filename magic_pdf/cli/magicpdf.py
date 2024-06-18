@@ -100,18 +100,34 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
     #              [pdf_file_name, pipe.pdf_mid_data['not_common_character_rate'], pipe.pdf_mid_data['not_printable_rate']])
 
     md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
+    '''写markdown'''
     md_writer.write(
         content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
     )
+    '''写middle_json'''
     md_writer.write(
         content=json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
-        path=f"{pdf_file_name}.json",
+        path=f"{pdf_file_name}_middle.json",
         mode=AbsReaderWriter.MODE_TXT,
     )
-
-    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
+    '''写model_json'''
     md_writer.write(
-        str(content_list), f"{pdf_file_name}.txt", AbsReaderWriter.MODE_TXT
+        content=json_parse.dumps(pipe.model_list, ensure_ascii=False, indent=4),
+        path=f"{pdf_file_name}_model.json",
+        mode=AbsReaderWriter.MODE_TXT,
+    )
+    '''写源pdf'''
+    md_writer.write(
+        content=pdf_bytes,
+        path=f"{pdf_file_name}_origin.json",
+        mode=AbsReaderWriter.MODE_BIN,
+    )
+    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
+    '''写content_list'''
+    md_writer.write(
+        content=json_parse.dumps(content_list, ensure_ascii=False, indent=4),
+        path=f"{pdf_file_name}_content_list.json",
+        mode=AbsReaderWriter.MODE_TXT
     )
 
 
