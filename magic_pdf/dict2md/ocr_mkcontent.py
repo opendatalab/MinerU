@@ -144,10 +144,17 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
 def merge_para_with_text(para_block):
     para_text = ''
     for line in para_block['lines']:
+        line_text = ""
+        line_lang = ""
+        for span in line['spans']:
+            span_type = span['type']
+            if span_type == ContentType.Text:
+                line_text += span['content'].strip()
+        if line_text != "":
+            line_lang = detect_lang(line_text)
         for span in line['spans']:
             span_type = span['type']
             content = ''
-            language = ''
             if span_type == ContentType.Text:
                 content = span['content']
                 language = detect_lang(content)
@@ -161,7 +168,7 @@ def merge_para_with_text(para_block):
                 content = f"\n$$\n{span['content']}\n$$\n"
 
             if content != '':
-                if 'zh' in language:
+                if 'zh' in line_lang:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
                     para_text += content  # 中文语境下，content间不需要空格分隔
                 else:
                     para_text += content + ' '  # 英文语境下 content间需要空格分隔
