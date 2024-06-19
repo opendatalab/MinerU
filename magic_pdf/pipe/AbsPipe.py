@@ -83,6 +83,7 @@ class AbsPipe(ABC):
                     pdf_meta["text_len_per_page"],
                     pdf_meta["imgs_per_page"],
                     pdf_meta["text_layout_per_page"],
+                    pdf_meta["invalid_chars"],
                 )
                 if is_text_pdf:
                     return AbsPipe.PIP_TXT

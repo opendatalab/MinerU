@@ -86,45 +86,46 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
             return None
 
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
-    text_all = ""
-    for page_dict in pdf_info_dict['pdf_info']:
-        for para_block in page_dict['para_blocks']:
-            if para_block['type'] in ['title', 'text']:
-                for line in para_block['lines']:
-                    for span in line['spans']:
-                        text_all += span['content']
+    # text_all = ""
+    # for page_dict in pdf_info_dict['pdf_info']:
+    #     for para_block in page_dict['para_blocks']:
+    #         if para_block['type'] in ['title', 'text']:
+    #             for line in para_block['lines']:
+    #                 for span in line['spans']:
+    #                     text_all += span['content']
 
-    def calculate_not_common_character_rate(text):
-        garbage_regex = re.compile(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3000-\u303f\uff00-\uffef]')
-        # 计算乱码字符的数量
-        garbage_count = len(garbage_regex.findall(text))
-        total = len(text)
-        if total == 0:
-            return 0  # 避免除以零的错误
-        return garbage_count / total
-
-    def calculate_not_printable_rate(text):
-        printable_text = ""
-        for c in text:
-            if c.isprintable():
-                printable_text += c
-        printable_total = len(printable_text)
-        total = len(text)
-        if total == 0:
-            return 0  # 避免除以零的错误
-        return (total - printable_total) / total
-
-    not_common_character_rate = calculate_not_common_character_rate(text_all)
-    not_printable_rate = calculate_not_printable_rate(text_all)
-    pdf_info_dict["_not_common_character_rate"] = not_common_character_rate
-    pdf_info_dict["_not_printable_rate"] = not_printable_rate
-    logger.info(f"not_common_character_rate: {not_common_character_rate}, not_printable_rate: {not_printable_rate}")
+    # def calculate_not_common_character_rate(text):
+    #     garbage_regex = re.compile(r'[^\u4e00-\u9fa5\u0030-\u0039\u0041-\u005a\u0061-\u007a\u3000-\u303f\uff00-\uffef]')
+    #     # 计算乱码字符的数量
+    #     garbage_count = len(garbage_regex.findall(text))
+    #     total = len(text)
+    #     if total == 0:
+    #         return 0  # 避免除以零的错误
+    #     return garbage_count / total
+    #
+    # def calculate_not_printable_rate(text):
+    #     printable_text = ""
+    #     for c in text:
+    #         if c.isprintable():
+    #             printable_text += c
+    #     printable_total = len(printable_text)
+    #     total = len(text)
+    #     if total == 0:
+    #         return 0  # 避免除以零的错误
+    #     return (total - printable_total) / total
+    #
+    # not_common_character_rate = calculate_not_common_character_rate(text_all)
+    # not_printable_rate = calculate_not_printable_rate(text_all)
+    # pdf_info_dict["_not_common_character_rate"] = not_common_character_rate
+    # pdf_info_dict["_not_printable_rate"] = not_printable_rate
+    # logger.info(f"not_common_character_rate: {not_common_character_rate}, not_printable_rate: {not_printable_rate}")
+    '''新逻辑使用pdfminer识别乱码pdf,准确率高且不会误伤,已在解析流程之前进行处理'''
     # not_common_character_rate对小语种可能会有误伤，not_printable_rate对小语种较为友好
     if (pdf_info_dict is None
-        or pdf_info_dict.get("_need_drop", False)
-        or not_printable_rate > 0.02  # 参考一些正常的pdf，这个值没有超过0.01的，阈值设为0.02
+            or pdf_info_dict.get("_need_drop", False)
+            # or not_printable_rate > 0.02  # 参考一些正常的pdf，这个值没有超过0.01的，阈值设为0.02
     ):
-        logger.warning(f"parse_pdf_by_txt drop or error or garbled_rate too large, switch to parse_pdf_by_ocr")
+        logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         if input_model_is_empty:
             pdf_models = doc_analyze(pdf_bytes, ocr=True)
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
