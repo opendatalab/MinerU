@@ -41,7 +41,7 @@ def detect_invalid_chars(src_pdf_bytes: bytes) -> bool:
     """"
     检测PDF中是否包含非法字符
     """
-    '''需要使用'''
+    '''pdfminer比较慢,需要先随机抽取10页左右的sample'''
     sample_docs = extract_pages(src_pdf_bytes)
     sample_pdf_bytes = sample_docs.tobytes()
     sample_pdf_file_like_object = BytesIO(sample_pdf_bytes)
