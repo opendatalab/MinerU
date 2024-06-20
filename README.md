@@ -55,6 +55,12 @@ pip install magic-pdf[gpu] # Install the GPU version
 magic-pdf --help
 ```
 
+### All Thanks To Our Contributors
+
+<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=magicpdf/Magic-PDF" />
+</a>
+
 ## License Information
 
 See [LICENSE.md](https://github.com/magicpdf/Magic-PDF/blob/master/LICENSE.md) for details.
