@@ -206,21 +206,11 @@ def json_command(json, method):
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
 
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
-
-    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-        local_md_dir
-    )
-
     do_parse(
         pdf_file_name,
         pdf_data,
         jso["doc_layout_result"],
         method,
-        local_image_rw,
-        local_md_rw,
-        os.path.basename(local_image_dir),
-        local_md_dir,
     )
 
 
@@ -318,19 +308,11 @@ def pdf_command(pdf, model, method):
     jso = json_parse.loads(get_model_json(model))
     pdf_file_name = Path(pdf).stem
 
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
-    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-        local_md_dir
-    )
     do_parse(
         pdf_file_name,
         pdf_data,
         jso,
         method,
-        local_image_rw,
-        local_md_rw,
-        os.path.basename(local_image_dir),
-        local_md_dir,
     )
 
 
