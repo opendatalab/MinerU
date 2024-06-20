@@ -6,15 +6,11 @@ from loguru import logger
 from pdfminer.high_level import extract_text
 
 
-def calculate_sample_count(total_page: int, sample_ratio=0.1):
+def calculate_sample_count(total_page: int):
     """
     根据总页数和采样率计算采样页面的数量。
     """
-    select_page_cnt = int(total_page * sample_ratio)
-    if select_page_cnt < 5:
-        select_page_cnt = min(10, total_page)
-    elif select_page_cnt > 10:
-        select_page_cnt = 10
+    select_page_cnt = min(10, total_page)
     return select_page_cnt
 
 
@@ -46,14 +42,21 @@ def detect_invalid_chars(src_pdf_bytes: bytes) -> bool:
     sample_pdf_bytes = sample_docs.tobytes()
     sample_pdf_file_like_object = BytesIO(sample_pdf_bytes)
     text = extract_text(sample_pdf_file_like_object)
+    text = text.replace("\n", "")
     # logger.info(text)
     '''乱码文本用pdfminer提取出来的文本特征是(cid:xxx)'''
     cid_pattern = re.compile(r'\(cid:\d+\)')
     matches = cid_pattern.findall(text)
     cid_count = len(matches)
+    cid_len = sum(len(match) for match in matches)
     text_len = len(text)
-    logger.info(f"cid_count: {cid_count}, text_len: {text_len}")
-    if cid_count > 10:
+    if text_len == 0:
+        cid_chars_radio = 0
+    else:
+        cid_chars_radio = cid_count/(cid_count + text_len - cid_len)
+    logger.info(f"cid_count: {cid_count}, text_len: {text_len}, cid_chars_radio: {cid_chars_radio}")
+    '''当一篇文章存在5%以上的文本是乱码时,认为该文档为乱码文档'''
+    if cid_chars_radio > 0.05:
         return False  # 乱码文档
     else:
         return True   # 正常文档
