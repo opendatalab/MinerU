@@ -19,7 +19,7 @@
 
 ## Introduction
 
-Magic-PDF is a tool designed to convert PDF documents into markdown format, capable of processing files stored locally or on object storage supporting S3 protocol.
+Magic-PDF is a tool designed to convert PDF documents into Markdown format, capable of processing files stored locally or on object storage supporting S3 protocol.
 
 Key features include:
 
