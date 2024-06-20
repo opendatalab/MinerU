@@ -83,9 +83,7 @@ def do_parse(
 ):
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
-    image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-        local_md_dir
-    )
+    image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(local_md_dir)
     image_dir = (os.path.basename(local_image_dir),)
 
     if parse_method == "auto":
@@ -96,7 +94,7 @@ def do_parse(
     elif parse_method == "ocr":
         pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     else:
-        print("unknow parse method")
+        print("unknown parse method")
         sys.exit(1)
 
     pipe.pipe_classify()
@@ -115,8 +113,7 @@ def do_parse(
     # write_to_csv(r"D:\project\20231108code-clean\linshixuqiu\pdf_dev\新模型\新建文件夹\luanma.csv",
     #              [pdf_file_name, pipe.pdf_mid_data['not_common_character_rate'], pipe.pdf_mid_data['not_printable_rate']])
 
-    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
-
+    md_content = pipe.pipe_mk_markdown(str(image_dir), drop_mode=DropMode.NONE)
     if f_dump_md:
         """写markdown"""
         md_writer.write(
@@ -148,8 +145,8 @@ def do_parse(
             path=f"{pdf_file_name}_origin.pdf",
             mode=AbsReaderWriter.MODE_BIN,
         )
-    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
 
+    content_list = pipe.pipe_mk_uni_format(str(image_dir), drop_mode=DropMode.NONE)
     if f_dump_content_list:
         """写content_list"""
         md_writer.write(
