@@ -26,6 +26,7 @@ Key features include:
 - Support for multiple front-end model inputs
 - Removal of headers, footers, footnotes, and page numbers
 - Human-readable layout formatting
+- Retains the original document's structure and formatting, including headings, paragraphs, lists, and more
 - Extraction and display of images and tables within markdown
 - Conversion of equations into LaTeX format
 - Automatic detection and conversion of garbled PDFs
