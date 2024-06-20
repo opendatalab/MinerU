@@ -1,3 +1,4 @@
+from pathlib import Path
 from setuptools import setup, find_packages
 from magic_pdf.libs.version import __version__
 
@@ -19,6 +20,9 @@ def parse_requirements(filename):
 
 
 if __name__ == '__main__':
+    with Path(Path(__file__).parent,
+              'README.md').open(encoding='utf-8') as file:
+        long_description = file.read()
     setup(
         name="magic_pdf",  # 项目名
         version=__version__,  # 自动从tag中获取版本号
@@ -28,6 +32,10 @@ if __name__ == '__main__':
             "gpu": ["paddlepaddle-gpu"],
             "cpu": ["paddlepaddle"],
         },
+        description="A practical tool for converting PDF to Markdown",  # 简短描述
+        long_description=long_description,  # 详细描述
+        long_description_content_type="text/markdown",  # 如果README是Markdown格式
+        url="https://github.com/magicpdf/Magic-PDF",
         python_requires=">=3.9",  # 项目依赖的 Python 版本
         entry_points={
             "console_scripts": [
