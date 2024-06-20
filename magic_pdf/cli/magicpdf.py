@@ -50,9 +50,7 @@ parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
 
 def prepare_env(pdf_file_name, method):
-    local_parent_dir = os.path.join(
-        get_local_dir(), "magic-pdf", pdf_file_name, method
-    )
+    local_parent_dir = os.path.join(get_local_dir(), "magic-pdf", pdf_file_name, method)
 
     local_image_dir = os.path.join(str(local_parent_dir), "images")
     local_md_dir = local_parent_dir
@@ -62,7 +60,7 @@ def prepare_env(pdf_file_name, method):
 
 
 def write_to_csv(csv_file_path, csv_data):
-    with open(csv_file_path, mode='a', newline='', encoding='utf-8') as csvfile:
+    with open(csv_file_path, mode="a", newline="", encoding="utf-8") as csvfile:
         # 创建csv writer对象
         csv_writer = csv.writer(csvfile)
         # 写入数据
@@ -70,12 +68,28 @@ def write_to_csv(csv_file_path, csv_data):
     print(f"数据已成功追加到 '{csv_file_path}'")
 
 
-def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, md_writer, image_dir, local_md_dir):
+def do_parse(
+    pdf_file_name,
+    pdf_bytes,
+    model_list,
+    parse_method,
+    f_draw_span_bbox=True,
+    f_draw_layout_bbox=True,
+    f_dump_md=True,
+    f_dump_middle_json=True,
+    f_dump_model_json=True,
+    f_dump_orig_pdf=True,
+    f_dump_content_list=True,
+):
+
+    local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
+    image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(
+        local_md_dir
+    )
+    image_dir = (os.path.basename(local_image_dir),)
+
     if parse_method == "auto":
-        jso_useful_key = {
-            "_pdf_type": "",
-            "model_list": model_list
-        }
+        jso_useful_key = {"_pdf_type": "", "model_list": model_list}
         pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True)
     elif parse_method == "txt":
         pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True)
@@ -87,48 +101,62 @@ def _do_parse(pdf_file_name, pdf_bytes, model_list, parse_method, image_writer, 
 
     pipe.pipe_classify()
 
-    '''如果没有传入有效的模型数据，则使用内置paddle解析'''
+    """如果没有传入有效的模型数据，则使用内置paddle解析"""
     if len(model_list) == 0:
         pipe.pipe_analyze()
 
     pipe.pipe_parse()
-    pdf_info = pipe.pdf_mid_data['pdf_info']
-    draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
-    draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
+    pdf_info = pipe.pdf_mid_data["pdf_info"]
+    if f_draw_layout_bbox:
+        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
+    if f_draw_span_bbox:
+        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
 
     # write_to_csv(r"D:\project\20231108code-clean\linshixuqiu\pdf_dev\新模型\新建文件夹\luanma.csv",
     #              [pdf_file_name, pipe.pdf_mid_data['not_common_character_rate'], pipe.pdf_mid_data['not_printable_rate']])
 
     md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
-    '''写markdown'''
-    md_writer.write(
-        content=md_content, path=f"{pdf_file_name}.md", mode=AbsReaderWriter.MODE_TXT
-    )
-    '''写middle_json'''
-    md_writer.write(
-        content=json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
-        path=f"{pdf_file_name}_middle.json",
-        mode=AbsReaderWriter.MODE_TXT,
-    )
-    '''写model_json'''
-    md_writer.write(
-        content=json_parse.dumps(pipe.model_list, ensure_ascii=False, indent=4),
-        path=f"{pdf_file_name}_model.json",
-        mode=AbsReaderWriter.MODE_TXT,
-    )
-    '''写源pdf'''
-    md_writer.write(
-        content=pdf_bytes,
-        path=f"{pdf_file_name}_origin.pdf",
-        mode=AbsReaderWriter.MODE_BIN,
-    )
+
+    if f_dump_md:
+        """写markdown"""
+        md_writer.write(
+            content=md_content,
+            path=f"{pdf_file_name}.md",
+            mode=AbsReaderWriter.MODE_TXT,
+        )
+
+    if f_dump_middle_json:
+        """写middle_json"""
+        md_writer.write(
+            content=json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
+            path=f"{pdf_file_name}_middle.json",
+            mode=AbsReaderWriter.MODE_TXT,
+        )
+
+    if f_dump_model_json:
+        """写model_json"""
+        md_writer.write(
+            content=json_parse.dumps(pipe.model_list, ensure_ascii=False, indent=4),
+            path=f"{pdf_file_name}_model.json",
+            mode=AbsReaderWriter.MODE_TXT,
+        )
+
+    if f_dump_orig_pdf:
+        """写源pdf"""
+        md_writer.write(
+            content=pdf_bytes,
+            path=f"{pdf_file_name}_origin.pdf",
+            mode=AbsReaderWriter.MODE_BIN,
+        )
     content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
-    '''写content_list'''
-    md_writer.write(
-        content=json_parse.dumps(content_list, ensure_ascii=False, indent=4),
-        path=f"{pdf_file_name}_content_list.json",
-        mode=AbsReaderWriter.MODE_TXT
-    )
+
+    if f_dump_content_list:
+        """写content_list"""
+        md_writer.write(
+            content=json_parse.dumps(content_list, ensure_ascii=False, indent=4),
+            path=f"{pdf_file_name}_content_list.json",
+            mode=AbsReaderWriter.MODE_TXT,
+        )
 
 
 @click.group()
@@ -177,21 +205,12 @@ def json_command(json, method):
         s3_file_path = jso.get("path")
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
 
-    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-        local_md_dir
-    )
-
-    _do_parse(
+    do_parse(
         pdf_file_name,
         pdf_data,
         jso["doc_layout_result"],
         method,
-        local_image_rw,
-        local_md_rw,
-        os.path.basename(local_image_dir),
-        local_md_dir
     )
 
 
@@ -233,21 +252,11 @@ def local_json_command(local_json, method):
                 s3_file_path = jso.get("path")
             pdf_file_name = Path(s3_file_path).stem
             pdf_data = read_s3_path(s3_file_path)
-            local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
-
-            local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-                local_md_dir
-            )
-
-            _do_parse(
+            do_parse(
                 pdf_file_name,
                 pdf_data,
                 jso["doc_layout_result"],
                 method,
-                local_image_rw,
-                local_md_rw,
-                os.path.basename(local_image_dir),
-                local_md_dir
             )
 
 
@@ -274,7 +283,9 @@ def pdf_command(pdf, model, method):
         if model_path is None:
             model_path = pdf.replace(".pdf", ".json")
             if not os.path.exists(model_path):
-                logger.warning(f"not found json {model_path} existed, use paddle analyze")
+                logger.warning(
+                    f"not found json {model_path} existed, use paddle analyze"
+                )
                 # 本地无模型数据则调用内置paddle分析，先传空list，在内部识别到空list再调用paddle
                 model_json = "[]"
             else:
@@ -286,19 +297,12 @@ def pdf_command(pdf, model, method):
 
     jso = json_parse.loads(get_model_json(model))
     pdf_file_name = Path(pdf).stem
-    local_image_dir, local_md_dir = prepare_env(pdf_file_name, method)
-    local_image_rw, local_md_rw = DiskReaderWriter(local_image_dir), DiskReaderWriter(
-        local_md_dir
-    )
-    _do_parse(
+
+    do_parse(
         pdf_file_name,
         pdf_data,
         jso,
         method,
-        local_image_rw,
-        local_md_rw,
-        os.path.basename(local_image_dir),
-        local_md_dir
     )
 
 
