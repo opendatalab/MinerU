@@ -11,6 +11,7 @@ LINE_STOP_FLAG = ['.', '!', '?', '。', '！', '？', "：", ":", ")", "）", ";
 INLINE_EQUATION = ContentType.InlineEquation
 INTERLINE_EQUATION = ContentType.InterlineEquation
 TEXT = ContentType.Text
+debug_able = False
 
 
 def __get_span_text(span):
@@ -22,6 +23,7 @@ def __get_span_text(span):
 
 
 def __detect_list_lines(lines, new_layout_bboxes, lang):
+    global debug_able
     """
     探测是否包含了列表，并且把列表的行分开.
     这样的段落特点是，顶格字母大写/数字，紧跟着几行缩进的。缩进的行首字母含小写的。
@@ -41,12 +43,14 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
                     if lst[i] == 1:
                         ones_in_this_interval.append(i)
                     i += 1
-                if len(ones_in_this_interval) > 1 or (start < len(lst) - 1 and ones_in_this_interval and lst[start + 1] in [2, 3]):
+                if len(ones_in_this_interval) > 1 or (
+                        start < len(lst) - 1 and ones_in_this_interval and lst[start + 1] in [2, 3]):
                     indices.append((start, i - 1))
                     ones_indices.append(ones_in_this_interval)
             else:
                 i += 1
         return indices, ones_indices
+
     def find_repeating_patterns(lst):
         indices = []
         ones_indices = []
@@ -132,7 +136,8 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
 
         list_indice, list_start_idx = find_repeating_patterns2(line_fea_encode)
         if len(list_indice) > 0:
-            logger.info(f"发现了列表，列表行数：{list_indice}， {list_start_idx}")
+            if debug_able:
+                logger.info(f"发现了列表，列表行数：{list_indice}， {list_start_idx}")
 
         # TODO check一下这个特列表里缩进的行左侧是不是对齐的。
         segments = []
@@ -140,12 +145,15 @@ def __detect_list_lines(lines, new_layout_bboxes, lang):
             for i in range(start, end + 1):
                 if i > 0:
                     if line_fea_encode[i] == 4:
-                        logger.info(f"列表行的第{i}行不是顶格的")
+                        if debug_able:
+                            logger.info(f"列表行的第{i}行不是顶格的")
                         break
             else:
-                logger.info(f"列表行的第{start}到第{end}行是列表")
+                if debug_able:
+                    logger.info(f"列表行的第{start}到第{end}行是列表")
 
         return split_indices(total_lines, list_indice), list_start_idx
+
 
 def cluster_line_x(lines: list) -> dict:
     """
@@ -170,6 +178,7 @@ def cluster_line_x(lines: list) -> dict:
             min_x0 = x0_new_val
     return x0_2_new_val, min_x0
 
+
 def if_match_reference_list(text: str) -> bool:
     pattern = re.compile(r'^\d+\..*')
     if pattern.match(text):
@@ -190,7 +199,8 @@ def __valign_lines(blocks, layout_bboxes):
     new_layout_bboxes = []
 
     for layout_box in layout_bboxes:
-        blocks_in_layoutbox = [b for b in blocks if b["type"] == BlockType.Text and is_in_layout(b['bbox'], layout_box['layout_bbox'])]
+        blocks_in_layoutbox = [b for b in blocks if
+                               b["type"] == BlockType.Text and is_in_layout(b['bbox'], layout_box['layout_bbox'])]
         if len(blocks_in_layoutbox) == 0 or len(blocks_in_layoutbox[0]["lines"]) == 0:
             new_layout_bboxes.append(layout_box['layout_bbox'])
             continue
@@ -253,7 +263,8 @@ def __align_text_in_layout(blocks, layout_bboxes):
     """
     for layout in layout_bboxes:
         lb = layout['layout_bbox']
-        blocks_in_layoutbox = [block for block in blocks if block["type"] == BlockType.Text and is_in_layout(block['bbox'], lb)]
+        blocks_in_layoutbox = [block for block in blocks if
+                               block["type"] == BlockType.Text and is_in_layout(block['bbox'], lb)]
         if len(blocks_in_layoutbox) == 0:
             continue
 
@@ -383,7 +394,6 @@ def __split_para_lines(lines: list, text_blocks: list) -> list:
             continue
         text_lines.append(line)
 
-
     for block in text_blocks:
         block_bbox = block["bbox"]
         para = []
@@ -394,14 +404,12 @@ def __split_para_lines(lines: list, text_blocks: list) -> list:
         if len(para) > 0:
             text_paras.append(para)
     paras = other_paras.extend(text_paras)
-    paras_sorted = sorted(paras, key = lambda x: x[0]["bbox"][1])
+    paras_sorted = sorted(paras, key=lambda x: x[0]["bbox"][1])
     return paras_sorted
 
 
-
-
-
 def __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info, page_num, lang):
+    global debug_able
     """
     如果上个layout的最后一个段落是列表，下一个layout的第一个段落也是列表，那么将他们连接起来。 TODO 因为没有区分列表和段落，所以这个方法暂时不实现。
     根据layout_list_info判断是不是列表。，下个layout的第一个段如果不是列表，那么看他们是否有几行都有相同的缩进。
@@ -410,7 +418,7 @@ def __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
         return blocks_group, [False, False]
 
     for i in range(1, len(blocks_group)):
-        if len(blocks_group[i]) == 0 or len(blocks_group[i-1]) == 0:
+        if len(blocks_group[i]) == 0 or len(blocks_group[i - 1]) == 0:
             continue
         pre_layout_list_info = layout_list_info[i - 1]
         next_layout_list_info = layout_list_info[i]
@@ -418,8 +426,10 @@ def __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
         next_paras = blocks_group[i]
         next_first_para = next_paras[0]
 
-        if pre_layout_list_info[1] and not next_layout_list_info[0] and next_first_para["type"] == BlockType.Text:  # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
-            logger.info(f"连接page {page_num} 内的list")
+        if pre_layout_list_info[1] and not next_layout_list_info[0] and next_first_para[
+            "type"] == BlockType.Text:  # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
+            if debug_able:
+                logger.info(f"连接page {page_num} 内的list")
             # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
             may_list_lines = []
             lines = next_first_para.get("lines", [])
@@ -450,7 +460,8 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
     if pre_page_paras[-1][-1]["type"] != BlockType.Text or next_page_paras[0][0]["type"] != BlockType.Text:
         return False
     if pre_page_list_info[1] and not next_page_list_info[0]:  # 前一个是列表结尾，后一个是非列表开头，此时检测是否有相同的缩进
-        logger.info(f"连接page {page_num} 内的list")
+        if debug_able:
+            logger.info(f"连接page {page_num} 内的list")
         # 向layout_paras[i] 寻找开头具有相同缩进的连续的行
         may_list_lines = []
         next_page_first_para = next_page_paras[0][0]
@@ -503,7 +514,7 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
         try:
             if len(blocks_group[i]) == 0:
                 continue
-            if  len(blocks_group[i - 1]) == 0:  # TODO 考虑连接问题，
+            if len(blocks_group[i - 1]) == 0:  # TODO 考虑连接问题，
                 connected_layout_blocks.append(blocks_group[i])
                 continue
             # text类型的段才需要考虑layout间的合并
@@ -534,13 +545,14 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
 
         pre_last_line_text = pre_last_line_text.strip()
         next_first_line_text = next_first_line_text.strip()
-        if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text and pre_last_line_text[-1] not in LINE_STOP_FLAG and \
+        if pre_last_line['bbox'][2] == pre_x2_max and pre_last_line_text and pre_last_line_text[
+            -1] not in LINE_STOP_FLAG and \
                 next_first_line['bbox'][0] == next_x0_min:  # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
             #connected_layout_paras[-1][-1].extend(layout_paras[i][0])
             connected_layout_blocks[-1][-1]["lines"].extend(blocks_group[i][0]["lines"])
             #layout_paras[i].pop(0)  # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
-            blocks_group[i][0]["lines"] = [] #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
+            blocks_group[i][0]["lines"] = []  #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
             blocks_group[i][0][LINES_DELETED] = True
             # if len(layout_paras[i]) == 0:
             #     layout_paras.pop(i)
@@ -638,7 +650,8 @@ def find_consecutive_true_regions(input_array):
     return regions
 
 
-def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode):
+def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
+    global debug_able
     """
     找出来中间对齐的连续单行文本，如果连续行高度相同，那么合并为一个段落。
     一个line居中的条件是：
@@ -660,11 +673,12 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, deb
             for start, end in consecutive_single_line_indices:
                 #start += index_offset
                 #end += index_offset
-                line_hi = np.array([block["lines"][0]['bbox'][3] - block["lines"][0]['bbox'][1] for block in layout_para[start:end + 1]])
+                line_hi = np.array([block["lines"][0]['bbox'][3] - block["lines"][0]['bbox'][1] for block in
+                                    layout_para[start:end + 1]])
                 first_line_text = ''.join([__get_span_text(span) for span in layout_para[start]["lines"][0]['spans']])
                 if "Table" in first_line_text or "Figure" in first_line_text:
                     pass
-                if debug_mode:
+                if debug_able:
                     logger.info(line_hi.std())
 
                 if line_hi.std() < 2:
@@ -677,10 +691,10 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, deb
                             and not all([x1 == layout_box[2] for x1 in all_right_x1]):
                         merge_para = [block["lines"][0] for block in layout_para[start:end + 1]]
                         para_text = ''.join([__get_span_text(span) for line in merge_para for span in line['spans']])
-                        if debug_mode:
+                        if debug_able:
                             logger.info(para_text)
                         layout_para[start]["lines"] = merge_para
-                        for i_para in range(start+1, end+1):
+                        for i_para in range(start + 1, end + 1):
                             layout_para[i_para]["lines"] = []
                             layout_para[i_para][LINES_DELETED] = True
                         #layout_para[start:end + 1] = [merge_para]
@@ -713,14 +727,15 @@ def __do_split_page(blocks, layout_bboxes, new_layout_bbox, page_num, lang):
     blocks_group = __group_line_by_layout(blocks, layout_bboxes)  # block内分段
     layout_list_info = __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang)  # layout内分段
     blocks_group, page_list_info = __connect_list_inter_layout(blocks_group, new_layout_bbox, layout_list_info,
-                                                                page_num, lang)  # layout之间连接列表段落
+                                                               page_num, lang)  # layout之间连接列表段落
     connected_layout_blocks = __connect_para_inter_layoutbox(blocks_group, new_layout_bbox)  # layout间链接段落
 
     return connected_layout_blocks, page_list_info
 
 
-
 def para_split(pdf_info_dict, debug_mode, lang="en"):
+    global debug_able
+    debug_able = debug_mode
     new_layout_of_pages = []  # 数组的数组，每个元素是一个页面的layoutS
     all_page_list_info = []  # 保存每个页面开头和结尾是否是列表
     for page_num, page in pdf_info_dict.items():
@@ -744,14 +759,14 @@ def para_split(pdf_info_dict, debug_mode, lang="en"):
 
         is_conn = __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox,
                                             next_page_layout_bbox, page_num, lang)
-        if debug_mode:
+        if debug_able:
             if is_conn:
                 logger.info(f"连接了第{page_num - 1}页和第{page_num}页的段落")
 
         is_list_conn = __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_bbox,
                                                  next_page_layout_bbox, all_page_list_info[page_num - 1],
                                                  all_page_list_info[page_num], page_num, lang)
-        if debug_mode:
+        if debug_able:
             if is_list_conn:
                 logger.info(f"连接了第{page_num - 1}页和第{page_num}页的列表段落")
 
@@ -762,7 +777,7 @@ def para_split(pdf_info_dict, debug_mode, lang="en"):
     for page_num, page in enumerate(pdf_info_dict.values()):
         page_paras = page['para_blocks']
         new_layout_bbox = new_layout_of_pages[page_num]
-        __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang, debug_mode=debug_mode)
+        __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang)
         __merge_signle_list_text(page_paras, new_layout_bbox, page_num, lang)
 
     # layout展平

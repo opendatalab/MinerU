@@ -299,7 +299,7 @@ def replace_line_v2(eqinfo, line):
             [b["bbox"][2] for b in delete_chars]
         )
     else:
-        logger.debug(f"行内公式替换没有发生，尝试下一行匹配, eqinfo={eqinfo}")
+        # logger.debug(f"行内公式替换没有发生，尝试下一行匹配, eqinfo={eqinfo}")
         return False
 
     # 删除位于x0, x1这两个中间的span
