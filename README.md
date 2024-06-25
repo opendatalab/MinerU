@@ -41,21 +41,52 @@ Key features include:
 
 ### Usage Instructions
 
-1. **Install Magic-PDF**
-
+#### 1. Install Magic-PDF
 ```bash
-pip install magic-pdf[cpu] # Install the CPU version 
-or
-pip install magic-pdf[gpu] # Install the GPU version
+pip install magic-pdf
 ```
 
-2. **Usage via Command Line**
+#### 2. Usage via Command Line
 
+###### simple
+```bash
+cp magic-pdf.template.json to ~/magic-pdf.json
+magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
+```
+###### more 
 ```bash
 magic-pdf --help
 ```
 
-### All Thanks To Our Contributors
+#### 3. Usage via Api
+
+###### Local
+```python
+image_writer = DiskReaderWriter(local_image_dir)
+image_dir = str(os.path.basename(local_image_dir))
+jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
+pipe.pipe_classify()
+pipe.pipe_parse()
+md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
+```
+
+###### Object Storage
+```python
+s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
+image_dir = "s3://img_bucket/"
+s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
+pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
+jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
+pipe.pipe_classify()
+pipe.pipe_parse()
+md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
+```
+
+Demo can be referred to [demo.py](https://github.com/magicpdf/Magic-PDF/blob/master/demo/demo.py)
+
+## All Thanks To Our Contributors
 
 <a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=magicpdf/Magic-PDF" />
