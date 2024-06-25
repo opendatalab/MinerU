@@ -84,7 +84,7 @@ def do_parse(
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
     image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(local_md_dir)
-    image_dir = (os.path.basename(local_image_dir),)
+    image_dir = str(os.path.basename(local_image_dir))
 
     if parse_method == "auto":
         jso_useful_key = {"_pdf_type": "", "model_list": model_list}
@@ -110,10 +110,7 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
 
-    # write_to_csv(r"D:\project\20231108code-clean\linshixuqiu\pdf_dev\新模型\新建文件夹\luanma.csv",
-    #              [pdf_file_name, pipe.pdf_mid_data['not_common_character_rate'], pipe.pdf_mid_data['not_printable_rate']])
-
-    md_content = pipe.pipe_mk_markdown(str(image_dir), drop_mode=DropMode.NONE)
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
     if f_dump_md:
         """写markdown"""
         md_writer.write(
