@@ -29,8 +29,8 @@ if __name__ == '__main__':
         packages=find_packages(),  # 包含所有的包
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
-            "gpu": ["paddlepaddle-gpu"],
-            "cpu": ["paddlepaddle"],
+            "gpu": ["paddleocr", "paddlepaddle-gpu"],
+            "cpu": ["paddleocr", "paddlepaddle"],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
