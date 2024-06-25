@@ -17,8 +17,8 @@
     
 
 效果：
-python magicpdf.py --json  s3://llm-pdf-text/scihub/xxxx.json?bytes=0,81350 
-python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf --model /home/llm/Downloads/xxxx.json  或者 python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf
+python magicpdf.py json-command --json  s3://llm-pdf-text/scihub/xxxx.json?bytes=0,81350
+python magicpdf.py pdf-command --pdf  /home/llm/Downloads/xxxx.pdf --model /home/llm/Downloads/xxxx.json  或者 python magicpdf.py --pdf  /home/llm/Downloads/xxxx.pdf
 """
 
 import os
@@ -45,6 +45,7 @@ from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 import csv
+import copy
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
 
@@ -81,6 +82,7 @@ def do_parse(
     f_dump_orig_pdf=True,
     f_dump_content_list=True,
 ):
+    orig_model_list = copy.deepcopy(model_list)
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
     image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(local_md_dir)
@@ -130,7 +132,7 @@ def do_parse(
     if f_dump_model_json:
         """写model_json"""
         md_writer.write(
-            content=json_parse.dumps(pipe.model_list, ensure_ascii=False, indent=4),
+            content=json_parse.dumps(orig_model_list, ensure_ascii=False, indent=4),
             path=f"{pdf_file_name}_model.json",
             mode=AbsReaderWriter.MODE_TXT,
         )
@@ -143,7 +145,7 @@ def do_parse(
             mode=AbsReaderWriter.MODE_BIN,
         )
 
-    content_list = pipe.pipe_mk_uni_format(str(image_dir), drop_mode=DropMode.NONE)
+    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
     if f_dump_content_list:
         """写content_list"""
         md_writer.write(
@@ -278,7 +280,7 @@ def pdf_command(pdf, model, method):
             model_path = pdf.replace(".pdf", ".json")
             if not os.path.exists(model_path):
                 logger.warning(
-                    f"not found json {model_path} existed, use paddle analyze"
+                    f"not found json {model_path} existed"
                 )
                 # 本地无模型数据则调用内置paddle分析，先传空list，在内部识别到空list再调用paddle
                 model_json = "[]"
