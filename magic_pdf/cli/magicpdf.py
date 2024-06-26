@@ -174,7 +174,10 @@ def cli():
     help="指定解析方法。txt: 文本型 pdf 解析方法， ocr: 光学识别解析 pdf, auto: 程序智能选择解析方法",
     default="auto",
 )
-def json_command(json, method):
+@click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
+def json_command(json, method, inside_model):
+    model_config.__use_inside_model__ = inside_model
+
     if not json.startswith("s3://"):
         logger.error("usage: magic-pdf json-command --json s3://some_bucket/some_path")
         exit(1)
@@ -222,7 +225,10 @@ def json_command(json, method):
     help="指定解析方法。txt: 文本型 pdf 解析方法， ocr: 光学识别解析 pdf, auto: 程序智能选择解析方法",
     default="auto",
 )
-def local_json_command(local_json, method):
+@click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
+def local_json_command(local_json, method, inside_model):
+    model_config.__use_inside_model__ = inside_model
+
     def read_s3_path(s3path):
         bucket, key = parse_s3path(s3path)
 
