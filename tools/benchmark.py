@@ -14,6 +14,9 @@ def test_cli():
     magicpdf_path = os.path.join(pdf_dev_path, "output")
     cmd = 'cd %s && export PYTHONPATH=. && find %s -type f -name "*.pdf" | xargs -I{} python magic_pdf/cli/magicpdf.py  pdf-command  --pdf {}' % (code_path, magicpdf_path)
     os.system(cmd)
+    rm_cmd = "rm -rf %s" % (pdf_res_path)
+    os.system(rm_cmd)
+    os.makedirs(pdf_res_path)
     for root, dirs, files in os.walk(pdf_res_path):
          for magic_file in files:
             for file_type in file_types:
