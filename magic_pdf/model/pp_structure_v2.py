@@ -5,7 +5,7 @@ from loguru import logger
 try:
     from paddleocr import PPStructure
 except ImportError:
-    logger.warning('paddleocr not installed, please install by "pip install magic-pdf[cpu]" or "pip install magic-pdf[gpu]"')
+    logger.error('paddleocr not installed, please install by "pip install magic-pdf[cpu]" or "pip install magic-pdf[gpu]"')
     exit(1)
 
 
