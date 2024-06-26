@@ -23,7 +23,6 @@ python magicpdf.py pdf-command --pdf  /home/llm/Downloads/xxxx.pdf --model /home
 
 import os
 import json as json_parse
-import sys
 import click
 from loguru import logger
 from pathlib import Path
@@ -46,9 +45,9 @@ from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 import csv
 import copy
+import magic_pdf.model as model_config
 
 parse_pdf_methods = click.Choice(["ocr", "txt", "auto"])
-use_inside_model = False
 
 
 def prepare_env(pdf_file_name, method):
@@ -67,7 +66,7 @@ def write_to_csv(csv_file_path, csv_data):
         csv_writer = csv.writer(csvfile)
         # 写入数据
         csv_writer.writerow(csv_data)
-    print(f"数据已成功追加到 '{csv_file_path}'")
+    logger.info(f"数据已成功追加到 '{csv_file_path}'")
 
 
 def do_parse(
@@ -98,17 +97,17 @@ def do_parse(
         pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True)
     else:
         logger.error("unknown parse method")
-        sys.exit(1)
+        exit(1)
 
     pipe.pipe_classify()
 
     """如果没有传入有效的模型数据，则使用内置model解析"""
     if len(model_list) == 0:
-        if use_inside_model:
+        if model_config.__use_inside_model__:
             pipe.pipe_analyze()
         else:
             logger.error("need model list input")
-            sys.exit(1)
+            exit(1)
 
     pipe.pipe_parse()
     pdf_info = pipe.pdf_mid_data["pdf_info"]
@@ -177,8 +176,8 @@ def cli():
 )
 def json_command(json, method):
     if not json.startswith("s3://"):
-        print("usage: python magipdf.py --json s3://some_bucket/some_path")
-        sys.exit(1)
+        logger.error("usage: magic-pdf json-command --json s3://some_bucket/some_path")
+        exit(1)
 
     def read_s3_path(s3path):
         bucket, key = parse_s3path(s3path)
@@ -274,8 +273,7 @@ def local_json_command(local_json, method):
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
 def pdf_command(pdf, model, method, inside_model):
-    global use_inside_model
-    use_inside_model = inside_model
+    model_config.__use_inside_model__ = inside_model
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))

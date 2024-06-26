@@ -1,7 +1,12 @@
 import random
 
 from loguru import logger
-from paddleocr import PPStructure
+
+try:
+    from paddleocr import PPStructure
+except ImportError:
+    logger.warning('paddleocr not installed, please install by "pip install magic-pdf[cpu]" or "pip install magic-pdf[gpu]"')
+    exit(1)
 
 
 def region_to_bbox(region):

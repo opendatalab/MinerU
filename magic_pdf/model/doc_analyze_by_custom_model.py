@@ -2,9 +2,10 @@ import fitz
 import cv2
 from PIL import Image
 import numpy as np
+from loguru import logger
 
 from magic_pdf.model.model_list import MODEL
-from magic_pdf.model.pp_structure_v2 import CustomPaddleModel
+import magic_pdf.model as model_config
 
 
 def dict_compare(d1, d2):
@@ -41,6 +42,13 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
 
 
 def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False, model=MODEL.Paddle):
+
+    if model_config.__use_inside_model__:
+        from magic_pdf.model.pp_structure_v2 import CustomPaddleModel
+    else:
+        logger.error("use_inside_model is False, not allow to use inside model")
+        exit(1)
+
     images = load_images_from_pdf(pdf_bytes)
     custom_model = None
     if model == MODEL.Paddle:
