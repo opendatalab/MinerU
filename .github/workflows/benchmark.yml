@@ -19,7 +19,7 @@ on:
 jobs:
   pdf-test:
     runs-on: pdf
-    timeout-minutes: 40
+    timeout-minutes: 180
     strategy:
       fail-fast: true
 
