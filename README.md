@@ -33,6 +33,10 @@ Key features include:
 - Compatibility with CPU and GPU environments
 - Available for Windows, Linux, and macOS platforms
 
+## Project Panorama
+
+![Project Panorama](docs/images/project_panorama_en.png)
+
 ## Getting Started
 
 ### Requirements
