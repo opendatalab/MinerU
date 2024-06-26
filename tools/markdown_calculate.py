@@ -105,21 +105,18 @@ class Scoring:
         print (f"{tool_type} Average BLEU Score: {class_average_bleu_score}")
         print (f"{tool_type} Average Sim Score: {class_average_sim_score}")
         return self.score_dict
+    
     def summary_scores(self):
          # 计算整体平均值
+        over_all_dict = dict()
         average_edit_distance = sum(self.edit_distances) / len(self.edit_distances) if self.edit_distances else 0  
         average_bleu_score = sum(self.bleu_scores) / len(self.bleu_scores) if self.bleu_scores else 0  
         average_sim_score = sum(self.sim_scores) / len(self.sim_scores) if self.sim_scores else 0
-        #self.fw.write(json.dumps(self.score_dict, ensure_ascii=False) + "\n")
-        fw.write(f"Overall extract cnt: {len(self.score_dict)/self.anntion_cnt}" + "\n")
-        fw.write(f"Overall Average Levenshtein Distance: {average_edit_distance}" + "\n")
-        fw.write(f"Overall Average BLEU Score: {average_bleu_score}" + "\n")
-        fw.write(f"Overall Average Marker Score: {average_sim_score}" + "\n") 
-        print ("Overall extract ratio: ", len(self.score_dict)/self.anntion_cnt)
-        print (f"Overall Average Levenshtein Distance: {average_edit_distance}")
-        print (f"Overall Average BLEU Score: {average_bleu_score}")
-        print (f"Overall Average Marker Score: {average_sim_score}")
-        fw.close()
+        over_all_dict["average_edit_distance"] = average_edit_distance
+        over_all_dict["average_bleu_score"] = average_bleu_score
+        over_all_dict["average_sim_score"] = average_sim_score
+        self.fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
+       
 
     def calculate_similarity_total(self, tool_type, file_types, download_dir):
         for file_type in file_types:
