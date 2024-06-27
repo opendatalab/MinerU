@@ -33,7 +33,10 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 - 支持cpu和gpu环境
 - 支持windows/linux/mac平台
 
-https://github.com/magicpdf/Magic-PDF/raw/master/docs/video/pdf_zh_cn.mp4
+
+https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
+
+
 
 ## 项目全景
 
