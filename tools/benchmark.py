@@ -47,6 +47,10 @@ def extrat_zip(zip_file_path, extract_to_path):
         print(f'{zip_file_path} is not a zip file')
 
 
+def ci_ben():
+    fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r").read()
+    
+    
 if __name__ == "__main__":
     extrat_zip(os.path.join(pdf_dev_path, 'output.zip'), os.path.join(pdf_dev_path))
     test_cli()
