@@ -33,6 +33,11 @@ Key features include:
 - Compatibility with CPU and GPU environments
 - Available for Windows, Linux, and macOS platforms
 
+
+https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
+
+
+
 ## Project Panorama
 
 ![Project Panorama](docs/images/project_panorama_en.png)
