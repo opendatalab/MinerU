@@ -116,7 +116,7 @@ class Scoring:
         over_all_dict["average_bleu_score"] = average_bleu_score
         over_all_dict["average_sim_score"] = average_sim_score
         fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
-       
+        return over_all_dict
 
     def calculate_similarity_total(self, tool_type, file_types, download_dir):
         for file_type in file_types:
