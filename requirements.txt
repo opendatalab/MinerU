@@ -2,7 +2,7 @@ boto3>=1.28.43
 Brotli>=1.1.0
 click>=8.1.7
 Distance>=0.1.3
-PyMuPDF>=1.24.5
+PyMuPDF>=1.24.7
 loguru>=0.6.0
 matplotlib>=3.8.3
 numpy>=1.21.6
@@ -16,16 +16,11 @@ nltk==3.8.1
 s3pathlib>=2.1.1
 pdfminer.six>=20231228
 Levenshtein
-nltk
 rapidfuzz
 statistics
 openxlab #安装opendatalab
-pandas
-numpy
-matplotlib
 seaborn
 scipy
-scikit-learn
 tqdm
 htmltabletomd
 pypandoc
