@@ -37,6 +37,15 @@ Key features include:
 
 ![Project Panorama](docs/images/project_panorama_en.png)
 
+## Flowchart
+
+![Flowchart](docs/images/flowchart_en.png)
+
+### Submodule Repositories
+
+- [pdf-extract-kit](https://github.com/wangbinDL/pdf-extract-kit)
+- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
+
 ## Getting Started
 
 ### Requirements
