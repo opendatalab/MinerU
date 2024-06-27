@@ -56,9 +56,9 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### 子模块仓库
 
 - [pdf-extract-kit](https://github.com/wangbinDL/pdf-extract-kit)
-  
+  领先的文档分析模型
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
-  端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计。
+  端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
 
 
 ## 上手指南
@@ -114,6 +114,15 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 详细实现可参考 [demo.py](demo/demo.py)
 
+
+## 版权说明
+
+[LICENSE.md](LICENSE.md)
+
+## 鸣谢
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+
 # Magic-Doc
 
 ## 简介
@@ -139,18 +148,12 @@ https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a5
 
 
 
+https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d722a4e825b2
+
+
+
 ## 项目仓库
 
 - [Magic-Doc](https://github.com/magicpdf/Magic-Doc)
-
-
-
-# 版权说明
-
-[LICENSE.md](LICENSE.md)
-
-# 鸣谢
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
-- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
-
+  优秀的网页与电子书提取工具
 
