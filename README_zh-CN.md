@@ -46,7 +46,7 @@ graph LR
        B --> C("步骤2: 使用magic-pdf解析PDF")
        C --> D[Markdown文档]
        D --> E("步骤3: 使用Benchmark/质检工具测试转换质量")
-       click E "https://github.com/opendatalab/Miner-PDF-Benchmark" "Benchmark仓库" 
+       click E "https://github.com/opendatalab/Miner-PDF-Benchmark" "Benchmark仓库"
 ```
 
 ## 上手指南
