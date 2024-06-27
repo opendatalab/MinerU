@@ -116,6 +116,8 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 # Magic-Doc
 
+## 简介
+
 Magic-Doc 是一款支持将网页或多格式电子书转换为 markdown 格式的工具。
 
 主要功能包含
@@ -129,11 +131,19 @@ Magic-Doc 是一款支持将网页或多格式电子书转换为 markdown 格式
 - 语言类型鉴定
   - 支持176种语言的准确识别
 
+https://github.com/opendatalab/MinerU/assets/11393164/a5a650e9-f4c0-463e-acc3-960967f1a1ca
+
+
+
+https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a537749d764d
+
 
 
 ## 项目仓库
 
 - [Magic-Doc](https://github.com/magicpdf/Magic-Doc)
+
+
 
 ## 版权说明
 
