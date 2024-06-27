@@ -145,11 +145,11 @@ https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a5
 
 
 
-## 版权说明
+# 版权说明
 
 [LICENSE.md](LICENSE.md)
 
-## 鸣谢
+# 鸣谢
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 
