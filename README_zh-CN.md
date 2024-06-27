@@ -37,6 +37,18 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 
 ![项目全景图](docs/images/project_panorama_zh_cn.png)
 
+## 流程图
+
+```mermaid
+graph LR
+       A[PDF文件] --> B("步骤1: 使用模型分析PDF")
+       click B "https://github.com/wangbinDL/pdf-extract-kit" "模型仓库"
+       B --> C("步骤2: 使用magic-pdf解析PDF")
+       C --> D[Markdown文档]
+       D --> E("步骤3: 使用Benchmark/质检工具测试转换质量")
+       click E "https://github.com/opendatalab/Miner-PDF-Benchmark" "Benchmark仓库" 
+```
+
 ## 上手指南
 
 ### 配置要求
