@@ -15,6 +15,13 @@
 
 </div>
 
+# MinerU 
+
+MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
+
+- PDF文档提取  (Magic-PDF)
+- 网页与电子书提取  (Magic-Doc)
+
 # Magic-PDF
 
 ## 简介
@@ -49,7 +56,9 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### 子模块仓库
 
 - [pdf-extract-kit](https://github.com/wangbinDL/pdf-extract-kit)
-- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
+  
+- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
+  端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计。
 
 
 ## 上手指南
@@ -104,6 +113,27 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
 详细实现可参考 [demo.py](demo/demo.py)
+
+# Magic-Doc
+
+Magic-Doc 是一款支持将网页或多格式电子书转换为 markdown 格式的工具。
+
+主要功能包含
+ 
+- Web网页提取
+  - 跨模态精准解析图文、表格、公式信息
+
+- 电子书文献提取
+  - 支持 epub，mobi等多格式文献，文本图片全适配
+
+- 语言类型鉴定
+  - 支持176种语言的准确识别
+
+
+
+## 项目仓库
+
+- [Magic-Doc](https://github.com/magicpdf/Magic-Doc)
 
 ## 版权说明
 
