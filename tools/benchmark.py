@@ -12,11 +12,11 @@ file_types = ["academic_literature", "atlas", "courseware", "colorful_textbook",
 
 def test_cli():
     magicpdf_path = os.path.join(pdf_dev_path, "output")
-    cmd = 'cd %s && export PYTHONPATH=. && find %s -type f -name "*.pdf" | xargs -I{} python magic_pdf/cli/magicpdf.py  pdf-command  --pdf {}' % (code_path, magicpdf_path)
-    os.system(cmd)
     rm_cmd = "rm -rf %s" % (pdf_res_path)
     os.system(rm_cmd)
     os.makedirs(pdf_res_path)
+    cmd = 'cd %s && export PYTHONPATH=. && find %s -type f -name "*.pdf" | xargs -I{} python magic_pdf/cli/magicpdf.py  pdf-command  --pdf {}' % (code_path, magicpdf_path)
+    os.system(cmd)
     for root, dirs, files in os.walk(pdf_res_path):
          for magic_file in files:
             for file_type in file_types:
@@ -49,7 +49,7 @@ def extrat_zip(zip_file_path, extract_to_path):
 
 def ci_ben():
     fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r").read()
-    
+
     
 if __name__ == "__main__":
     extrat_zip(os.path.join(pdf_dev_path, 'output.zip'), os.path.join(pdf_dev_path))
