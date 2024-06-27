@@ -115,7 +115,7 @@ class Scoring:
         over_all_dict["average_edit_distance"] = average_edit_distance
         over_all_dict["average_bleu_score"] = average_bleu_score
         over_all_dict["average_sim_score"] = average_sim_score
-        self.fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
+        fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
        
 
     def calculate_similarity_total(self, tool_type, file_types, download_dir):
