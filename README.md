@@ -102,7 +102,7 @@ pipe.pipe_parse()
 md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
-Demo can be referred to [demo.py](https://github.com/magicpdf/Magic-PDF/blob/master/demo/demo.py)
+Demo can be referred to [demo.py](demo/demo.py)
 
 ## All Thanks To Our Contributors
 
@@ -112,7 +112,7 @@ Demo can be referred to [demo.py](https://github.com/magicpdf/Magic-PDF/blob/mas
 
 ## License Information
 
-See [LICENSE.md](https://github.com/magicpdf/Magic-PDF/blob/master/LICENSE.md) for details.
+See [LICENSE.md](LICENSE.md) for details.
 
 ## Acknowledgments
 

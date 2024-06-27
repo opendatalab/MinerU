@@ -103,11 +103,11 @@ pipe.pipe_parse()
 md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
-详细实现可参考 [demo.py](https://github.com/magicpdf/Magic-PDF/blob/master/demo/demo.py)
+详细实现可参考 [demo.py](demo/demo.py)
 
 ## 版权说明
 
-[LICENSE.md](https://github.com/magicpdf/Magic-PDF/blob/master/LICENSE.md)
+[LICENSE.md](LICENSE.md)
 
 ## 鸣谢
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
