@@ -1,11 +1,11 @@
 <div id="top"></div>
 <div align="center">
 
-[![stars](https://img.shields.io/github/stars/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF)
-[![forks](https://img.shields.io/github/forks/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF)
-[![license](https://img.shields.io/github/license/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF/tree/main/LICENSE)
-[![issue resolution](https://img.shields.io/github/issues-closed-raw/magicpdf/Magic-PDF)](https://github.com/magicpdf/Magic-PDF/issues)
-[![open issues](https://img.shields.io/github/issues-raw/magicpdf/Magic-PDF)](https://github.com/magicpdf/Magic-PDF/issues)
+[![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
+[![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
+[![license](https://img.shields.io/github/license/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU/tree/main/LICENSE)
+[![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
+[![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 
 [English](README.md) | [简体中文](README_zh-CN.md)
 
@@ -21,8 +21,8 @@
 
 MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
 
-- PDF文档提取  (Magic-PDF)
-- 网页与电子书提取  (Magic-Doc)
+- PDF文档提取  [Magic-PDF](#Magic-PDF)
+- 网页与电子书提取  [Magic-Doc](#Magic-Doc)
 
 # Magic-PDF
 
@@ -58,7 +58,7 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### 子模块仓库
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit) 
-  领先的文档分析模型
+  高质量的PDF内容提取工具包
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
   端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
 
@@ -67,11 +67,12 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 ### 配置要求
 
-python 3.9+
+python >= 3.9
 
 ### 使用说明
 
 #### 1. 安装Magic-PDF
+
 ```bash
 pip install magic-pdf
 ```
@@ -79,11 +80,14 @@ pip install magic-pdf
 #### 2. 通过命令行使用
 
 ###### 直接使用
+
 ```bash
 cp magic-pdf.template.json to ~/magic-pdf.json
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
+
 ###### 更多用法
+
 ```bash
 magic-pdf --help
 ```
@@ -121,9 +125,12 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 [LICENSE.md](LICENSE.md)
 
+本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
+
 ## 鸣谢
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+
 
 # Magic-Doc
 

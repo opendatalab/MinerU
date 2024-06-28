@@ -1,11 +1,11 @@
 <div id="top"></div>
 <div align="center">
 
-[![stars](https://img.shields.io/github/stars/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF)
-[![forks](https://img.shields.io/github/forks/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF)
-[![license](https://img.shields.io/github/license/magicpdf/Magic-PDF.svg)](https://github.com/magicpdf/Magic-PDF/tree/main/LICENSE)
-[![issue resolution](https://img.shields.io/github/issues-closed-raw/magicpdf/Magic-PDF)](https://github.com/magicpdf/Magic-PDF/issues)
-[![open issues](https://img.shields.io/github/issues-raw/magicpdf/Magic-PDF)](https://github.com/magicpdf/Magic-PDF/issues)
+[![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
+[![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
+[![license](https://img.shields.io/github/license/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU/tree/main/LICENSE)
+[![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
+[![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 
 [English](README.md) | [简体中文](README_zh-CN.md)
 
@@ -14,6 +14,15 @@
 <div align="center">
 
 </div>
+
+# MinerU 
+
+## Introduction
+
+MinerU is a one-stop, open-source data extraction tool, primarily includes the following features:
+
+- PDF Document Extraction  [Magic-PDF](#Magic-PDF)
+- Webpage & E-book Extraction  [Magic-Doc](#Magic-Doc)
 
 # Magic-PDF
 
@@ -49,17 +58,20 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### Submodule Repositories
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
+  A Comprehensive Toolkit for High-Quality PDF Content Extraction
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
+  An end-to-end PDF document comprehension evaluation suite designed for large-scale model data scenarios
 
 ## Getting Started
 
 ### Requirements
 
-- Python 3.9 or newer
+- Python >= 3.9
 
 ### Usage Instructions
 
 #### 1. Install Magic-PDF
+
 ```bash
 pip install magic-pdf
 ```
@@ -67,11 +79,14 @@ pip install magic-pdf
 #### 2. Usage via Command Line
 
 ###### simple
+
 ```bash
 cp magic-pdf.template.json to ~/magic-pdf.json
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
+
 ###### more 
+
 ```bash
 magic-pdf --help
 ```
@@ -112,9 +127,46 @@ Demo can be referred to [demo.py](demo/demo.py)
 
 ## License Information
 
-See [LICENSE.md](LICENSE.md) for details.
+[LICENSE.md](LICENSE.md)
+
+The project currently leverages PyMuPDF to deliver advanced functionalities; however, its adherence to the AGPL license may impose limitations on certain use cases. In upcoming iterations, we intend to explore and transition to a more permissively licensed PDF processing library to enhance user-friendliness and flexibility.
 
 ## Acknowledgments
 
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+
+
+# Magic-Doc
+
+## Introduction
+
+Magic-Doc is a tool designed to convert web pages or multi-format e-books into markdown format.
+
+Key Features Include:
+
+- Web Page Extraction
+  - Cross-modal precise parsing of text, images, tables, and formula information.
+
+- E-Book Document Extraction
+  - Supports various document formats including epub, mobi, with full adaptation for text and images.
+
+- Language Type Identification
+  - Accurate recognition of 176 languages.
+
+https://github.com/opendatalab/MinerU/assets/11393164/a5a650e9-f4c0-463e-acc3-960967f1a1ca
+
+
+
+https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a537749d764d
+
+
+
+https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d722a4e825b2
+
+
+
+## Project Repository
+
+- [Magic-Doc](https://github.com/magicpdf/Magic-Doc)
+  Outstanding Webpage and E-book Extraction Tool
