@@ -36,8 +36,8 @@ def calculate_score():
     os.system(cmd)
     cmd = "cd %s && export PYTHONPATH=. && python tools/clean_photo.py --tool_name magicpdf --download_dir %s" % (code_path, data_path)
     os.system(cmd)
-    score = markdown_calculate.Scoring()
-    score.calculate_similarity_total("magicpdf", file_types, os.path.join(data_path, "result.json"))
+    score = markdown_calculate.Scoring(os.path.join(data_path, "result.json"))
+    score.calculate_similarity_total("magicpdf", file_types, data_path)
     res = score.summary_scores()
     return res
 
