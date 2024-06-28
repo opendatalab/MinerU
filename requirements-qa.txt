@@ -1,0 +1,14 @@
+Levenshtein
+nltk
+rapidfuzz
+statistics
+openxlab #安装opendatalab
+pandas
+numpy
+matplotlib
+seaborn
+scipy
+scikit-learn
+tqdm
+htmltabletomd
+pypandoc
