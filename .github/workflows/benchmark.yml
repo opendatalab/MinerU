@@ -49,16 +49,3 @@ jobs:
         echo "start test"
         cd tools && python benchmark.py
   
-  notify_to_feishu:
-    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
-    needs: [pdf-test]
-    runs-on: pdf
-    steps:
-    - name: notify
-      run: |
-        curl  ${{ secrets.WEBHOOK_URL }} -H 'Content-Type: application/json'  -d '{
-        "msgtype": "text",
-        "text": {
-            "content": "'${{ github.repository }}' GitHubAction Failed!\n 细节请查看：https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"
-        } 
-        }'                                                                                                                            

@@ -7,44 +7,16 @@ import re
 import scoring
 import argparse
 
-parser = argparse.ArgumentParser(description="get directory")
-parser.add_argument('--document_types', 
-    nargs='+',
-    choices=["academic_literature", "atlas", "courseware", "colorful_textbook", "historical_documents", "notes", "ordinary_books", "ordinary_exam_paper", "ordinary_textbook", "research_report", "special_exam_paper"], 
-    help='Choose one or more document_types',
-    default=["academic_literature", "atlas", "courseware", "colorful_textbook", "historical_documents", "notes", "ordinary_books", "ordinary_exam_paper", "ordinary_textbook", "research_report", "special_exam_paper"]
-)
-
-parser.add_argument(
-    "--tool_name",
-    type=str,
-    required=True,
-    help="tool name",
-)
-parser.add_argument(
-    "--download_dir",
-    type=str,
-    required=True,
-    help="input download dir",
-)
-parser.add_argument(
-    "--results",
-    type=str,
-    required=True,
-    help="results path(end with .json)",
-)
-args = parser.parse_args()
-fw = open(args.results, 'w+', encoding='utf-8')
 # 初始化列表来存储编辑距离和BLEU分数  
 class Scoring:
-    def __init__(self):
+    def __init__(self, result_path):
         self.edit_distances = []
         self.bleu_scores = []
         self.sim_scores = []
         self.filenames = []
         self.score_dict = {}
         self.anntion_cnt = 0
-
+        self.fw = open(result_path, "w+")
     def simple_bleu_score(self, candidate, reference):  
         candidate_tokens = word_tokenize(candidate)  
         reference_tokens = word_tokenize(reference) 
@@ -93,12 +65,12 @@ class Scoring:
         class_average_edit_distance = sum(edit_distances) / len(edit_distances) if edit_distances else 0  
         class_average_bleu_score = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0  
         class_average_sim_score = sum(sim_scores) / len(sim_scores) if sim_scores else 0
-        fw.write(json.dumps(class_dict, ensure_ascii=False) + "\n")
+        self.fw.write(json.dumps(class_dict, ensure_ascii=False) + "\n")
         ratio = len(class_dict)/total_file
-        fw.write(f"{tool_type} extract ratio:  {ratio}" + "\n")
-        fw.write(f"{tool_type} Average Levenshtein Distance: {class_average_edit_distance}" + "\n")
-        fw.write(f"{tool_type} Average BLEU Score: {class_average_bleu_score}" + "\n")
-        fw.write(f"{tool_type} Average Sim Score: {class_average_sim_score}" + "\n")
+        self.fw.write(f"{tool_type} extract ratio:  {ratio}" + "\n")
+        self.fw.write(f"{tool_type} Average Levenshtein Distance: {class_average_edit_distance}" + "\n")
+        self.fw.write(f"{tool_type} Average BLEU Score: {class_average_bleu_score}" + "\n")
+        self.fw.write(f"{tool_type} Average Sim Score: {class_average_sim_score}" + "\n")
 
         print (f"{tool_type} extract ratio: {ratio}")
         print (f"{tool_type} Average Levenshtein Distance: {class_average_edit_distance}")
@@ -115,8 +87,8 @@ class Scoring:
         over_all_dict["average_edit_distance"] = average_edit_distance
         over_all_dict["average_bleu_score"] = average_bleu_score
         over_all_dict["average_sim_score"] = average_sim_score
-        fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
-       
+        self.fw.write(json.dumps(over_all_dict, ensure_ascii=False) + "\n")
+        return over_all_dict
 
     def calculate_similarity_total(self, tool_type, file_types, download_dir):
         for file_type in file_types:
@@ -124,17 +96,3 @@ class Scoring:
             actual = os.path.join(download_dir, file_type, tool_type, "cleaned")
             self.calculate_similarity(annotion, actual, file_type)
 
-if __name__ == "__main__":  
-  file_types = list()
-  tool_type =args.tool_name
-  download_dir = args.download_dir
-  if args.document_types:
-    print("Selected types:", args.document_types)
-    for type_ in args.document_types:
-        file_types.append(type_)
-  else:
-      print("No types selected")
-  print(f"Type {file_types} is selected. Executing related operations...")
-  score = Scoring()
-  score.calculate_similarity_total(tool_type, file_types, download_dir)
-  score.summary_scores()

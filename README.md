@@ -48,7 +48,7 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 ### Submodule Repositories
 
-- [pdf-extract-kit](https://github.com/wangbinDL/pdf-extract-kit)
+- [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
 
 ## Getting Started

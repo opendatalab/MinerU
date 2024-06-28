@@ -1,6 +1,8 @@
 import zipfile
 import os
 import shutil
+import json
+import markdown_calculate
 code_path = os.environ.get('GITHUB_WORKSPACE')
 #code_path = "/home/quyuan/actions-runner/_work/Magic-PDF/Magic-PDF.bk"
 #评测集存放路径
@@ -34,8 +36,10 @@ def calculate_score():
     os.system(cmd)
     cmd = "cd %s && export PYTHONPATH=. && python tools/clean_photo.py --tool_name magicpdf --download_dir %s" % (code_path, data_path)
     os.system(cmd)
-    cmd = "cd %s && export PYTHONPATH=. && python tools/markdown_calculate.py --tool_name magicpdf --download_dir %s --results %s" % (code_path, data_path, os.path.join(data_path, "result.json"))
-    os.system(cmd)
+    score = markdown_calculate.Scoring(os.path.join(data_path, "result.json"))
+    score.calculate_similarity_total("magicpdf", file_types, data_path)
+    res = score.summary_scores()
+    return res
 
 
 def extrat_zip(zip_file_path, extract_to_path):
@@ -49,9 +53,24 @@ def extrat_zip(zip_file_path, extract_to_path):
 
 def ci_ben():
     fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r").read()
-
-    
-if __name__ == "__main__":
+    lines = fr.readlines()
+    last_line = lines[-1].strip()
+    last_score = json.loads(last_line)
+    print ("last_score:", last_score)
+    last_simscore = last_score["average_sim_score"]
+    last_editdistance = last_score["average_edit_distance"]
+    last_bleu = last_score["average_bleu_score"]
     extrat_zip(os.path.join(pdf_dev_path, 'output.zip'), os.path.join(pdf_dev_path))
     test_cli()
-    calculate_score()
+    now_score = calculate_score()
+    print ("now_score:", now_score)
+    now_simscore = now_score["average_sim_score"]
+    now_editdistance = now_score["average_edit_distance"]
+    now_bleu = now_score["average_bleu_score"]
+    assert last_simscore <= now_simscore
+    assert last_editdistance <= now_editdistance
+    assert last_bleu <= now_bleu
+
+
+if __name__ == "__main__":
+    ci_ben()
