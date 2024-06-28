@@ -52,7 +52,7 @@ def extrat_zip(zip_file_path, extract_to_path):
 
 
 def ci_ben():
-    fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r").read()
+    fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r")
     lines = fr.readlines()
     last_line = lines[-1].strip()
     last_score = json.loads(last_line)
