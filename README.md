@@ -21,8 +21,8 @@
 
 MinerU is a one-stop, open-source data extraction tool, primarily includes the following features:
 
-- PDF Document Extraction  [Magic-PDF](#Magic-PDF)
-- Webpage & E-book Extraction  [Magic-Doc](#Magic-Doc)
+- [Magic-PDF](#Magic-PDF)  PDF Document Extraction  
+- [Magic-Doc](#Magic-Doc)  Webpage & E-book Extraction
 
 # Magic-PDF
 
@@ -58,9 +58,9 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### Submodule Repositories
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
-  A Comprehensive Toolkit for High-Quality PDF Content Extraction
+  - A Comprehensive Toolkit for High-Quality PDF Content Extraction
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
-  An end-to-end PDF document comprehension evaluation suite designed for large-scale model data scenarios
+  - An end-to-end PDF document comprehension evaluation suite designed for large-scale model data scenarios
 
 ## Getting Started
 

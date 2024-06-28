@@ -21,8 +21,8 @@
 
 MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
 
-- PDF文档提取  [Magic-PDF](#Magic-PDF)
-- 网页与电子书提取  [Magic-Doc](#Magic-Doc)
+- [Magic-PDF](#Magic-PDF)  PDF文档提取
+- [Magic-Doc](#Magic-Doc)  网页与电子书提取  
 
 # Magic-PDF
 
@@ -58,9 +58,9 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 ### 子模块仓库
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit) 
-  高质量的PDF内容提取工具包
+  - 高质量的PDF内容提取工具包
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
-  端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
+  - 端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
 
 
 ## 上手指南
