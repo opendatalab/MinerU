@@ -17,6 +17,7 @@
 
 # MinerU 
 
+
 ## Introduction
 
 MinerU is a one-stop, open-source data extraction tool, primarily includes the following features:
@@ -24,7 +25,9 @@ MinerU is a one-stop, open-source data extraction tool, primarily includes the f
 - [Magic-PDF](#Magic-PDF)  PDF Document Extraction  
 - [Magic-Doc](#Magic-Doc)  Webpage & E-book Extraction
 
+
 # Magic-PDF
+
 
 ## Introduction
 
@@ -51,6 +54,7 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 ![Project Panorama](docs/images/project_panorama_en.png)
 
+
 ## Flowchart
 
 ![Flowchart](docs/images/flowchart_en.png)
@@ -61,6 +65,7 @@ https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3
   - A Comprehensive Toolkit for High-Quality PDF Content Extraction
 - [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
   - An end-to-end PDF document comprehension evaluation suite designed for large-scale model data scenarios
+
 
 ## Getting Started
 
@@ -119,17 +124,20 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 Demo can be referred to [demo.py](demo/demo.py)
 
+
 ## All Thanks To Our Contributors
 
 <a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=magicpdf/Magic-PDF" />
+  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
 </a>
+
 
 ## License Information
 
 [LICENSE.md](LICENSE.md)
 
 The project currently leverages PyMuPDF to deliver advanced functionalities; however, its adherence to the AGPL license may impose limitations on certain use cases. In upcoming iterations, we intend to explore and transition to a more permissively licensed PDF processing library to enhance user-friendliness and flexibility.
+
 
 ## Acknowledgments
 
@@ -138,6 +146,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 
 
 # Magic-Doc
+
 
 ## Introduction
 
@@ -163,6 +172,7 @@ https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a5
 
 
 https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d722a4e825b2
+
 
 
 

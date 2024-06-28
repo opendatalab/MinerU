@@ -17,6 +17,7 @@
 
 # MinerU 
 
+
 ## 简介
 
 MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
@@ -25,6 +26,7 @@ MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
 - [Magic-Doc](#Magic-Doc)  网页与电子书提取  
 
 # Magic-PDF
+
 
 ## 简介
 
@@ -121,11 +123,19 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 详细实现可参考 [demo.py](demo/demo.py)
 
 
+## 感谢我们的贡献者
+
+<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
+</a>
+
+
 ## 版权说明
 
 [LICENSE.md](LICENSE.md)
 
 本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
+
 
 ## 鸣谢
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
@@ -133,6 +143,7 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 
 # Magic-Doc
+
 
 ## 简介
 
@@ -158,6 +169,7 @@ https://github.com/opendatalab/MinerU/assets/11393164/0f4a6fe9-6cca-4113-9fdc-a5
 
 
 https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d722a4e825b2
+
 
 
 

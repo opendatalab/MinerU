@@ -1,12 +1,5 @@
-import regex
 import unicodedata
 from fast_langdetect import detect_langs
-
-RE_BAD_CHARS = regex.compile(r"\p{Cc}|\p{Cs}")
-
-
-def remove_bad_chars(text):
-    return RE_BAD_CHARS.sub("", text)
 
 
 def detect_lang(text: str) -> str:
