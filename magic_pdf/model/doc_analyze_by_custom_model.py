@@ -1,9 +1,6 @@
 import fitz
-import cv2
-from PIL import Image
 import numpy as np
 from loguru import logger
-
 from magic_pdf.model.model_list import MODEL
 import magic_pdf.model as model_config
 
@@ -23,6 +20,11 @@ def remove_duplicates_dicts(lst):
 
 
 def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
+    try:
+        import cv2
+        from PIL import Image
+    except ImportError:
+        logger.error("opencv-python and Pillow are not installed, please install by pip.")
     images = []
     with fitz.open("pdf", pdf_bytes) as doc:
         for index in range(0, doc.page_count):
