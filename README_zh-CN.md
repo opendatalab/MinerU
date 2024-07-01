@@ -45,7 +45,7 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 - 支持windows/linux/mac平台
 
 
-https://github.com/magicpdf/Magic-PDF/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
+https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
 
 
 
@@ -175,6 +175,6 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 
 ## 项目仓库
 
-- [Magic-Doc](https://github.com/magicpdf/Magic-Doc)
+- [Magic-Doc](https://github.com/InternLM/magic-doc)
   优秀的网页与电子书提取工具
 
