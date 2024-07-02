@@ -180,3 +180,8 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 
 - [Magic-Doc](https://github.com/InternLM/magic-doc)
   Outstanding Webpage and E-book Extraction Tool
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=opendatalab/MinerU&type=Date)](https://star-history.com/#opendatalab/MinerU&Date)
