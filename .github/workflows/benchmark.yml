@@ -26,8 +26,7 @@ jobs:
     steps:
     - name: config-net
       run: |
-        export http_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
-        export https_proxy=http://bigdata_open_proxy:H89k5qwQRDYfz@10.140.90.20:10811
+          source activate base
     - name: PDF benchmark
       uses: actions/checkout@v3
       with:
