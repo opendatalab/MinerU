@@ -20,7 +20,7 @@
 
 ## Introduction
 
-MinerU is a one-stop, open-source data extraction tool, primarily includes the following features:
+MinerU is a one-stop, open-source, high-quality data extraction tool, includes the following primary features:
 
 - [Magic-PDF](#Magic-PDF)  PDF Document Extraction  
 - [Magic-Doc](#Magic-Doc)  Webpage & E-book Extraction
@@ -86,9 +86,10 @@ pip install magic-pdf
 ###### simple
 
 ```bash
-cp magic-pdf.template.json to ~/magic-pdf.json
+cp magic-pdf.template.json ~/magic-pdf.json
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
+After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".
 
 ###### more 
 

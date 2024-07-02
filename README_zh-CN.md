@@ -20,7 +20,7 @@
 
 ## 简介
 
-MinerU 是一款一站式开源数据提取工具，主要包含以下功能:
+MinerU 是一款一站式、开源、高质量的数据提取工具，主要包含以下功能:
 
 - [Magic-PDF](#Magic-PDF)  PDF文档提取
 - [Magic-Doc](#Magic-Doc)  网页与电子书提取  
@@ -84,9 +84,10 @@ pip install magic-pdf
 ###### 直接使用
 
 ```bash
-cp magic-pdf.template.json to ~/magic-pdf.json
+cp magic-pdf.template.json ~/magic-pdf.json
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
+程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件
 
 ###### 更多用法
 
