@@ -123,25 +123,6 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 详细实现可参考 [demo.py](demo/demo.py)
 
 
-## 感谢我们的贡献者
-
-<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
-</a>
-
-
-## 版权说明
-
-[LICENSE.md](LICENSE.md)
-
-本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
-
-
-## 鸣谢
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
-- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
-
-
 # Magic-Doc
 
 
@@ -177,6 +158,25 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 
 - [Magic-Doc](https://github.com/InternLM/magic-doc)
   优秀的网页与电子书提取工具
+
+
+## 感谢我们的贡献者
+
+<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
+</a>
+
+
+## 版权说明
+
+[LICENSE.md](LICENSE.md)
+
+本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
+
+
+## 致谢
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 
 
 # 引用

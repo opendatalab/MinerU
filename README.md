@@ -125,26 +125,6 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 Demo can be referred to [demo.py](demo/demo.py)
 
 
-## All Thanks To Our Contributors
-
-<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
-</a>
-
-
-## License Information
-
-[LICENSE.md](LICENSE.md)
-
-The project currently leverages PyMuPDF to deliver advanced functionalities; however, its adherence to the AGPL license may impose limitations on certain use cases. In upcoming iterations, we intend to explore and transition to a more permissively licensed PDF processing library to enhance user-friendliness and flexibility.
-
-
-## Acknowledgments
-
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
-- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
-
-
 # Magic-Doc
 
 
@@ -180,6 +160,26 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 
 - [Magic-Doc](https://github.com/InternLM/magic-doc)
   Outstanding Webpage and E-book Extraction Tool
+
+
+# All Thanks To Our Contributors
+
+<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
+</a>
+
+
+# License Information
+
+[LICENSE.md](LICENSE.md)
+
+The project currently leverages PyMuPDF to deliver advanced functionalities; however, its adherence to the AGPL license may impose limitations on certain use cases. In upcoming iterations, we intend to explore and transition to a more permissively licensed PDF processing library to enhance user-friendliness and flexibility.
+
+
+# Acknowledgments
+
+- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 
 
 # Citation
