@@ -182,7 +182,19 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
   Outstanding Webpage and E-book Extraction Tool
 
 
-## Star History
+# Citation
+
+```bibtex
+@misc{2024mineru,
+    title={MinerU: A One-stop, Open-source, High-quality Data Extraction Tool},
+    author={MinerU Contributors},
+    howpublished = {\url{https://github.com/opendatalab/MinerU}},
+    year={2024}
+}
+```
+
+
+# Star History
 
 <a>
  <picture>
