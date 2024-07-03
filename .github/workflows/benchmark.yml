@@ -35,7 +35,7 @@ jobs:
       run: |
         changed_files=$(git diff --name-only -r HEAD~1 HEAD)
         echo $changed_files
-        if [[ $changed_files =~ "requirements.txt" ]] or [[ $changed_files =~ "requirements-qa.txt" ]]; then
+        if [[ $changed_files =~ "requirements.txt" ]] || [[ $changed_files =~ "requirements-qa.txt" ]]; then
           pip install -r requirements.txt
           pip install -r requirements-qa.txt
         fi
