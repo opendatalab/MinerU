@@ -4,15 +4,13 @@ import shutil
 import json
 import markdown_calculate
 code_path = os.environ.get('GITHUB_WORKSPACE')
-#code_path = "/home/quyuan/actions-runner/_work/Magic-PDF/Magic-PDF.bk"
-#评测集存放路径
-pdf_dev_path = "/home/quyuan/data"
-#magicpdf跑测结果
-pdf_res_path = "/home/quyuan/code/Magic-PDF/Magic-PDF/Magic-PDF/ci/magic-pdf"
+#数据集存放路径
+pdf_dev_path = "/share/quyuan/mineru/data/"
+#magicpdf最终结果
+pdf_res_path = "/share/quyuan/mineru/data/mineru"
 file_types = ["academic_literature", "atlas", "courseware", "colorful_textbook", "historical_documents", "notes", "ordinary_books", "ordinary_exam_paper", "ordinary_textbook", "research_report", "special_exam_paper"]
-#file_types = ["academic_literature"]
-
 def test_cli():
+    #magicpdf模型输出结果
     magicpdf_path = os.path.join(pdf_dev_path, "output")
     rm_cmd = "rm -rf %s" % (pdf_res_path)
     os.system(rm_cmd)
