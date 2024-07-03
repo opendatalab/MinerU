@@ -178,6 +178,8 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 ## 致谢
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+- [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
+- [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 
 
 # 引用
