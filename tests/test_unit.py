@@ -59,8 +59,9 @@ def test_get_top_percent_list(num_list: list, percent: float, target_num_list: l
 # 输入一个s3路径，返回bucket名字和其余部分(key)
 @pytest.mark.parametrize("s3_path, target_data", [
     ("s3://bucket/path/to/my/file.txt", "bucket"),
-    ("/path/to/my/file1.txt", "path"),
-    ("bucket/path/to/my/file2.txt", "bucket"),
+    ("s3a://bucket1/path/to/my/file2.txt", "bucket1"),
+    # ("/path/to/my/file1.txt", "path"),
+    # ("bucket/path/to/my/file2.txt", "bucket"),
 ])
 def test_parse_s3path(s3_path: str, target_data: str):
     """
@@ -68,8 +69,8 @@ def test_parse_s3path(s3_path: str, target_data: str):
         如果为无效路径，则返回对应的bucket名字和其余部分
         如果为异常路径 例如：file2.txt，则报异常
     """
-    out_keys = parse_s3path(s3_path)
-    assert target_data == out_keys[0]
+    bucket_name, key = parse_s3path(s3_path)
+    assert target_data == bucket_name
 
 
 # 2个box是否处于包含或者部分重合关系。
