@@ -6,7 +6,8 @@ import json
 import re
 import scoring
 import argparse
-
+import nltk
+nltk.download('punkt')
 # 初始化列表来存储编辑距离和BLEU分数  
 class Scoring:
     def __init__(self, result_path):
