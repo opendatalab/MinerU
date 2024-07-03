@@ -37,12 +37,8 @@ jobs:
         echo $changed_files
         if [[ $changed_files =~ "requirements.txt" ]]; then
           pip install -r requirements.txt
+          pip install -r requirements-qa.txt
         fi
-
-    - name: config-net-reset
-      run: |
-        export http_proxy=""
-        export https_proxy=""
     - name: get-benchmark-result
       run: |
         echo "start test"
