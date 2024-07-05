@@ -61,9 +61,6 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit) 
   - 高质量的PDF内容提取工具包
-- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
-  - 端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
-
 
 ## 上手指南
 

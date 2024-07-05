@@ -63,9 +63,6 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
   - A Comprehensive Toolkit for High-Quality PDF Content Extraction
-- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark)
-  - An end-to-end PDF document comprehension evaluation suite designed for large-scale model data scenarios
-
 
 ## Getting Started
 
