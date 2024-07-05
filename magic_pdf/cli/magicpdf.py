@@ -290,7 +290,11 @@ def pdf_command(pdf, model, method, inside_model):
     def get_model_json(model_path):
         # 这里处理pdf和模型相关的逻辑
         if model_path is None:
-            model_path = pdf.replace(".pdf", ".json")
+            file_name_without_extension, extension = os.path.splitext(pdf)
+            if extension == ".pdf":
+                model_path = file_name_without_extension + ".json"
+            else:
+                raise Exception("pdf_path input error")
             if not os.path.exists(model_path):
                 logger.warning(
                     f"not found json {model_path} existed"
