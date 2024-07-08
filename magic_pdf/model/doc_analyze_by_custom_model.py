@@ -21,10 +21,11 @@ def remove_duplicates_dicts(lst):
 
 def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
     try:
-        import cv2
         from PIL import Image
     except ImportError:
-        logger.error("opencv-python and Pillow are not installed, please install by pip.")
+        logger.error("Pillow not installed, please install by pip.")
+        exit(1)
+
     images = []
     with fitz.open("pdf", pdf_bytes) as doc:
         for index in range(0, doc.page_count):
@@ -32,12 +33,12 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
             mat = fitz.Matrix(dpi / 72, dpi / 72)
             pm = page.get_pixmap(matrix=mat, alpha=False)
 
-            # if width or height > 2000 pixels, don't enlarge the image
-            # if pm.width > 2000 or pm.height > 2000:
-            #     pm = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
+            # if width or height > 3000 pixels, don't enlarge the image
+            if pix.width > 3000 or pix.height > 3000:
+                pix = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
 
-            img = Image.frombytes("RGB", [pm.width, pm.height], pm.samples)
-            img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            img = Image.frombytes("RGB", (pm.width, pm.height), pm.samples)
+            img = np.array(img)
             img_dict = {"img": img, "width": pm.width, "height": pm.height}
             images.append(img_dict)
     return images
@@ -67,5 +68,7 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False, mod
         page_dict = {"layout_dets": result, "page_info": page_info}
 
         model_json.append(page_dict)
+
+    # @todo 把公式识别放在后置位置,待整本全部模型结果出来之后再补公式数据
 
     return model_json

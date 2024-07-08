@@ -22,6 +22,13 @@ class CustomPaddleModel:
         self.model = PPStructure(table=False, ocr=ocr, show_log=show_log)
 
     def __call__(self, img):
+        try:
+            import cv2
+        except ImportError:
+            logger.error("opencv-python not installed, please install by pip.")
+            exit(1)
+        # 将RGB图片转换为BGR格式适配paddle
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         result = self.model(img)
         spans = []
         for line in result:
