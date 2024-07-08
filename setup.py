@@ -35,7 +35,7 @@ if __name__ == '__main__':
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
         long_description_content_type="text/markdown",  # 如果README是Markdown格式
-        url="https://github.com/magicpdf/Magic-PDF",
+        url="https://github.com/opendatalab/MinerU",
         python_requires=">=3.9",  # 项目依赖的 Python 版本
         entry_points={
             "console_scripts": [
