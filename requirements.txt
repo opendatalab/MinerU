@@ -3,10 +3,9 @@ Brotli>=1.1.0
 click>=8.1.7
 PyMuPDF>=1.24.7
 loguru>=0.6.0
-numpy>=1.21.6
+numpy>=1.21.6, <2.0.0 #2.0版本与fasttext不兼容
 fast-langdetect>=0.2.0
 wordninja>=2.0.0
 scikit-learn>=1.0.2
 pdfminer.six>=20231228
-numpy<2.0.0 #2.0版本与fasttext不兼容
 # requirements.txt 须保证只引入必需的外部依赖,如有新依赖添加请联系项目管理员
