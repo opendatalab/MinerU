@@ -85,6 +85,7 @@ def do_parse(
     orig_model_list = copy.deepcopy(model_list)
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
+    logger.info(f"local output dir is {local_md_dir}")
     image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(local_md_dir)
     image_dir = str(os.path.basename(local_image_dir))
 

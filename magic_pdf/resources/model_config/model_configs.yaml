@@ -1,0 +1,9 @@
+config:
+  device: cpu
+  layout: True
+  formula: True
+
+weights:
+  layout: resources/models/Layout/model_final.pth
+  mfd: resources/models/MFD/weights.pt
+  mfr: resources/models/MFR/UniMERNet
