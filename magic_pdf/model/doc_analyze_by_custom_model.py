@@ -44,9 +44,8 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
     return images
 
 
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False, model=MODEL.Paddle,
-                model_type=MODEL_TYPE.SINGLE_PAGE):
-    custom_model = None
+def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False, model=MODEL.PEK,
+                model_type=MODEL_TYPE.MULTI_PAGE):
     if model_config.__use_inside_model__:
         if model == MODEL.Paddle:
             from magic_pdf.model.pp_structure_v2 import CustomPaddleModel

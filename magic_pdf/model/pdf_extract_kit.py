@@ -152,8 +152,8 @@ class CustomPEKModel:
         b = time.time()
         logger.info(f"formula nums: {len(mf_image_list)}, mfr time: {round(b - a, 2)}")
 
+        # ocr识别
         if self.apply_ocr:
-            # ocr识别
             for idx, img_dict in enumerate(images):
                 image = img_dict["img"]
                 pil_img = Image.fromarray(image)
