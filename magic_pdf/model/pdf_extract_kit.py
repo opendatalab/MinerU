@@ -144,9 +144,12 @@ class CustomPEKModel:
         dataloader = DataLoader(dataset, batch_size=128, num_workers=0)
         mfr_res = []
         for imgs in dataloader:
+            start = time.time()
             imgs = imgs.to(self.device)
             output = self.mfr_model.generate({'image': imgs})
             mfr_res.extend(output['pred_str'])
+            cost = time.time() - start
+            logger.info(f"batch size: {len(imgs)}, cost time: {round(cost, 2)}")
         for res, latex in zip(latex_filling_list, mfr_res):
             res['latex'] = latex_rm_whitespace(latex)
         b = time.time()
