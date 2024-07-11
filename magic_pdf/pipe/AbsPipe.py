@@ -47,19 +47,13 @@ class AbsPipe(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def pipe_mk_uni_format(self, img_parent_path, drop_mode):
-        """
-        有状态的组装统一格式
-        """
-        raise NotImplementedError
+    def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
+        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
+        return content_list
 
-    @abstractmethod
-    def pipe_mk_markdown(self, img_parent_path, drop_mode):
-        """
-        有状态的组装markdown
-        """
-        raise NotImplementedError
+    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD):
+        md_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode, md_make_mode)
+        return md_content
 
     @staticmethod
     def classify(pdf_bytes: bytes) -> str:
@@ -101,13 +95,13 @@ class AbsPipe(ABC):
         return content_list
 
     @staticmethod
-    def mk_markdown(compressed_pdf_mid_data: str, img_buket_path: str, drop_mode=DropMode.WHOLE_PDF) -> list:
+    def mk_markdown(compressed_pdf_mid_data: str, img_buket_path: str, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD) -> list:
         """
         根据pdf类型，markdown
         """
         pdf_mid_data = JsonCompressor.decompress_json(compressed_pdf_mid_data)
         pdf_info_list = pdf_mid_data["pdf_info"]
-        md_content = union_make(pdf_info_list, MakeMode.MM_MD, drop_mode, img_buket_path)
+        md_content = union_make(pdf_info_list, md_make_mode, drop_mode, img_buket_path)
         return md_content
 
 

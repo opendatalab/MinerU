@@ -28,7 +28,7 @@ from loguru import logger
 from pathlib import Path
 from magic_pdf.libs.version import __version__
 
-from magic_pdf.libs.MakeContentConfig import DropMode
+from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
@@ -81,6 +81,7 @@ def do_parse(
         f_dump_model_json=True,
         f_dump_orig_pdf=True,
         f_dump_content_list=True,
+        f_make_md_mode=MakeMode.MM_MD,
 ):
     orig_model_list = copy.deepcopy(model_list)
 
@@ -118,7 +119,7 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
 
-    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE, md_make_mode=f_make_md_mode)
     if f_dump_md:
         """写markdown"""
         md_writer.write(
