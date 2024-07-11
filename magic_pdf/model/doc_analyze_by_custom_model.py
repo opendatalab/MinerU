@@ -46,7 +46,14 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
     return images
 
 
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False, model=MODEL.PEK):
+def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
+    model = None
+
+    if model_config.__model_mode__ == "lite":
+        model = MODEL.Paddle
+    elif model_config.__model_mode__ == "full":
+        model = MODEL.PEK
+
     if model_config.__use_inside_model__:
         model_init_start = time.time()
         if model == MODEL.Paddle:

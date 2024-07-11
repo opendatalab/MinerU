@@ -178,8 +178,10 @@ def cli():
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def json_command(json, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="lite", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def json_command(json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     if not json.startswith("s3://"):
         logger.error("usage: magic-pdf json-command --json s3://some_bucket/some_path")
@@ -229,8 +231,10 @@ def json_command(json, method, inside_model):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def local_json_command(local_json, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="lite", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def local_json_command(local_json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     def read_s3_path(s3path):
         bucket, key = parse_s3path(s3path)
@@ -281,8 +285,10 @@ def local_json_command(local_json, method, inside_model):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def pdf_command(pdf, model, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="lite", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def pdf_command(pdf, model, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))

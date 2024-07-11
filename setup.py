@@ -31,6 +31,7 @@ if __name__ == '__main__':
         extras_require={
             "gpu": ["paddleocr", "paddlepaddle-gpu"],
             "cpu": ["paddleocr", "paddlepaddle"],
+            "full-cpu": ["unimernet", "matplotlib", "ultralytics", "paddleocr", "paddlepaddle"],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
