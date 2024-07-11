@@ -8,6 +8,7 @@ from detectron2.data import MetadataCatalog, DatasetCatalog
 from detectron2.data.datasets import register_coco_instances
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch, DefaultPredictor
 
+
 def add_vit_config(cfg):
     """
     Add config for VIT.
@@ -72,14 +73,14 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     cfg.freeze()
     default_setup(cfg, args)
-    
+
     register_coco_instances(
         "scihub_train",
         {},
         cfg.SCIHUB_DATA_DIR_TRAIN + ".json",
         cfg.SCIHUB_DATA_DIR_TRAIN
     )
-    
+
     return cfg
 
 
@@ -94,10 +95,11 @@ class DotDict(dict):
         if isinstance(value, dict):
             value = DotDict(value)
         return value
-    
+
     def __setattr__(self, key, value):
         self[key] = value
-        
+
+
 class Layoutlmv3_Predictor(object):
     def __init__(self, weights, config_file):
         layout_args = {
@@ -113,14 +115,16 @@ class Layoutlmv3_Predictor(object):
         layout_args = DotDict(layout_args)
 
         cfg = setup(layout_args)
-        self.mapping = ["title", "plain text", "abandon", "figure", "figure_caption", "table", "table_caption", "table_footnote", "isolate_formula", "formula_caption"]
+        self.mapping = ["title", "plain text", "abandon", "figure", "figure_caption", "table", "table_caption",
+                        "table_footnote", "isolate_formula", "formula_caption"]
         MetadataCatalog.get(cfg.DATASETS.TRAIN[0]).thing_classes = self.mapping
         self.predictor = DefaultPredictor(cfg)
-        
+
     def __call__(self, image, ignore_catids=[]):
-        page_layout_result = {
-            "layout_dets": []
-        }
+        # page_layout_result = {
+        #     "layout_dets": []
+        # }
+        layout_dets = []
         outputs = self.predictor(image)
         boxes = outputs["instances"].to("cpu")._fields["pred_boxes"].tensor.tolist()
         labels = outputs["instances"].to("cpu")._fields["pred_classes"].tolist()
@@ -128,7 +132,7 @@ class Layoutlmv3_Predictor(object):
         for bbox_idx in range(len(boxes)):
             if labels[bbox_idx] in ignore_catids:
                 continue
-            page_layout_result["layout_dets"].append({
+            layout_dets.append({
                 "category_id": labels[bbox_idx],
                 "poly": [
                     boxes[bbox_idx][0], boxes[bbox_idx][1],
@@ -138,4 +142,4 @@ class Layoutlmv3_Predictor(object):
                 ],
                 "score": scores[bbox_idx]
             })
-        return page_layout_result
+        return layout_dets

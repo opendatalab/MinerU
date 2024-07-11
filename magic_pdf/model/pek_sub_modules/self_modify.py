@@ -136,9 +136,10 @@ class ModifiedPaddleOCR(PaddleOCR):
             logger.error('When input a list of images, det must be false')
             exit(0)
         if cls == True and self.use_angle_cls == False:
-            logger.warning(
-                'Since the angle classifier is not initialized, it will not be used during the forward process'
-            )
+            pass
+            # logger.warning(
+            #     'Since the angle classifier is not initialized, it will not be used during the forward process'
+            # )
 
         img = check_img(img)
         # for infer pdf file
