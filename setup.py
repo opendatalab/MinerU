@@ -32,9 +32,9 @@ if __name__ == '__main__':
         },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
-            "gpu": ["paddleocr", "paddlepaddle-gpu"],
-            "cpu": ["paddleocr", "paddlepaddle"],
-            "full-cpu": ["unimernet", "matplotlib", "ultralytics", "paddleocr", "paddlepaddle"],
+            "gpu": ["paddleocr==2.7.3", "paddlepaddle-gpu"],
+            "cpu": ["paddleocr==2.7.3", "paddlepaddle"],
+            "full-cpu": ["unimernet", "matplotlib", "ultralytics", "paddleocr==2.7.3", "paddlepaddle"],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
