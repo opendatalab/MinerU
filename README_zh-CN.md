@@ -118,7 +118,6 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ###### 直接使用
 
 ```bash
-# 已安装full版本可以调用内置模型进行解析
 magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
 程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件，markdown目录中可以找到对应的xxx_model.json文件

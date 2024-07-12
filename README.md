@@ -128,7 +128,6 @@ In magic-pdf.json, configure "models-dir" to point to the directory where the mo
 ###### simple
 
 ```bash
-#If the full version is installed, you can invoke the built-in models for parsing.
 magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
 After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".
