@@ -18,15 +18,12 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
-    runs-on: mineru
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: true
 
     steps:
-    - name: config-net
-      run: |
-        source activate base
     - name: PDF cli
       uses: actions/checkout@v3
       with:
@@ -34,19 +31,11 @@ jobs:
       
     - name: check-requirements
       run: |
-        changed_files=$(git diff --name-only -r HEAD~1 HEAD)
-        echo $changed_files
-        if [[ $changed_files =~ "requirements.txt" ]] || [[ $changed_files =~ "requirements-qa.txt" ]]; then
-          pip install -r requirements.txt
-          pip install -r requirements-qa.txt
-        fi
-
-    - name: config-net-reset
-      run: |
-        export http_proxy=""
-        export https_proxy=""
+        pip install -r requirements.txt
+        pip install -r requirements-qa.txt
     - name: test_cli
       run: |
+        cp magic-pdf.template.json ~/magic-pdf.json
         echo $GITHUB_WORKSPACE
         cd $GITHUB_WORKSPACE && export PYTHONPATH=. && pytest -s -v tests/test_unit.py
         cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
