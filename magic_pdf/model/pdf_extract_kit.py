@@ -19,8 +19,8 @@ from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex
 from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 
 
-def layout_model_init(weight, config_file):
-    model = Layoutlmv3_Predictor(weight, config_file)
+def layout_model_init(weight, config_file, device):
+    model = Layoutlmv3_Predictor(weight, config_file, device)
     return model
 
 
@@ -89,7 +89,8 @@ class CustomPEKModel:
         # 初始化layout模型
         self.layout_model = layout_model_init(
             os.path.join(root_dir, self.configs['weights']['layout']),
-            os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml")
+            os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml"),
+            device=self.device
         )
         # 初始化公式识别
         if self.apply_formula:
