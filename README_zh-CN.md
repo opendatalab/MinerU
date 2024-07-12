@@ -84,8 +84,8 @@ pip install magic-pdf
 # 完整解析功能(含内置高精度模型解析功能)
 pip install magic-pdf[full-cpu]
 
-# 另外需要安装依赖 detectron2
-# detectron2需要编译安装,自行编译安装可以参考https://github.com/facebookresearch/detectron2/issues/5114
+# 只有在需要高精度模型解析功能时，您需要额外安装依赖 detectron2
+# detectron2 需要编译安装,自行编译安装可以参考https://github.com/facebookresearch/detectron2/issues/5114
 # 或直接使用我们编译好的的whl包，不同系统请自行选择适配包安装
 
 # windows
@@ -125,6 +125,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ###### 直接使用
 
 ```bash
+# 已安装full版本可以调用内置模型进行解析
 magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
 程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件，markdown目录中可以找到对应的xxx_model.json文件
