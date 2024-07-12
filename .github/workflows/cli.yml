@@ -18,15 +18,12 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
-    runs-on: mineru
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: true
 
     steps:
-    - name: config-net
-      run: |
-        source activate base
     - name: PDF cli
       uses: actions/checkout@v3
       with:
@@ -40,11 +37,6 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-qa.txt
         fi
-
-    - name: config-net-reset
-      run: |
-        export http_proxy=""
-        export https_proxy=""
     - name: test_cli
       run: |
         echo $GITHUB_WORKSPACE

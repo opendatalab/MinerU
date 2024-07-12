@@ -18,15 +18,12 @@ on:
   workflow_dispatch:
 jobs:
   pdf-test:
-    runs-on: mineru
+    runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
       fail-fast: true
 
     steps:
-    - name: config-net
-      run: |
-          source activate base
     - name: PDF benchmark
       uses: actions/checkout@v3
       with:
