@@ -84,18 +84,68 @@ Development is based on Python 3.10, should you encounter problems with other Py
 #### 1. Install Magic-PDF
 
 ```bash
+# If you only need the basic features (without built-in model parsing functionality)
 pip install magic-pdf
+# or
+# For complete parsing capabilities (including high-precision model parsing)
+pip install magic-pdf[full-cpu]
+
+# Additionally, you will need to install the dependency detectron2.
+# For detectron2, compile it yourself as per https://github.com/facebookresearch/detectron2/issues/5114
+# Or use our precompiled wheel
+
+# windows
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-win_amd64.whl
+
+# linux
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-linux_x86_64.whl
+
+# macOS(Intel)
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_10_9_universal2.whl
+
+# macOS(M1/M2/M3)
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_11_0_arm64.whl
+
 ```
 
-#### 2. Usage via Command Line
+
+#### 2. Downloading model weights files
+
+For detailed references, please see below[how_to_download_models](docs/how_to_download_models.md)
+
+After downloading the model weights, move the 'models' directory to a directory on a larger disk space, preferably an SSD.
+
+
+#### 3. Copy the Configuration File and Make Configurations
+
+```bash
+# Copy the configuration file to the root directory
+cp magic-pdf.template.json ~/magic-pdf.json
+```
+In magic-pdf.json, configure "models-dir" to point to the directory where the model weights files are located.
+
+```json
+{
+  "models-dir": "/tmp/models"
+}
+```
+
+
+#### 4. Usage via Command Line
 
 ###### simple
 
 ```bash
-cp magic-pdf.template.json ~/magic-pdf.json
-magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
+magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
 After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".
+You can find the corresponding xxx_model.json file in the markdown directory. 
+If you intend to do secondary development on the post-processing pipeline, you can use the command:
+```bash
+magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
+```
+In this way, you won't need to re-run the model data, making debugging more convenient.
+
 
 ###### more 
 
@@ -103,7 +153,35 @@ After the program has finished, you can find the generated markdown files under 
 magic-pdf --help
 ```
 
-#### 3. Usage via Api
+
+#### 5. Acceleration Using CUDA or MPS
+
+##### CUDA
+
+You need to install the corresponding PyTorch version according to your CUDA version.
+```bash
+# When using the GPU solution, you need to reinstall PyTorch for the corresponding CUDA version. This example installs the CUDA 11.8 version.
+pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+```
+Also, you need to modify the value of "device-mode" in the configuration file magic-pdf.json.
+```json
+{
+  "device-mode":"cuda"
+}
+```
+
+##### MPS
+
+For macOS users with M-series chip devices, you can use MPS for inference acceleration.
+You also need to modify the value of "device-mode" in the configuration file magic-pdf.json.
+
+```json
+{
+  "device-mode":"mps"
+}
+```
+
+#### 6. Usage via Api
 
 ###### Local
 ```python
