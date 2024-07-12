@@ -1,24 +1,28 @@
-import os
-import cv2
-import yaml
-import time
-import argparse
-import numpy as np
-import torch
 from loguru import logger
+import os
+try:
+    import cv2
+    import yaml
+    import time
+    import argparse
+    import numpy as np
+    import torch
 
-from paddleocr import draw_ocr
-from PIL import Image
-from torchvision import transforms
-from torch.utils.data import Dataset, DataLoader
-from ultralytics import YOLO
-from unimernet.common.config import Config
-import unimernet.tasks as tasks
-from unimernet.processors import load_processor
+    from paddleocr import draw_ocr
+    from PIL import Image
+    from torchvision import transforms
+    from torch.utils.data import Dataset, DataLoader
+    from ultralytics import YOLO
+    from unimernet.common.config import Config
+    import unimernet.tasks as tasks
+    from unimernet.processors import load_processor
 
-from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
-from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
-from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
+    from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
+    from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
+    from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
+except ImportError:
+    logger.error('Required dependency not installed, please install by \n"pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
+    exit(1)
 
 
 def mfd_model_init(weight):
