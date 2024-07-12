@@ -35,6 +35,7 @@ jobs:
         pip install -r requirements-qa.txt
     - name: test_cli
       run: |
+        cp magic-pdf.template.json ~/magic-pdf.json
         echo $GITHUB_WORKSPACE
         cd $GITHUB_WORKSPACE && export PYTHONPATH=. && pytest -s -v tests/test_unit.py
         cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
