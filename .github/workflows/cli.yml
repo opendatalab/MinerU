@@ -31,15 +31,8 @@ jobs:
       
     - name: check-requirements
       run: |
-        changed_files=$(git diff --name-only -r HEAD~1 HEAD)
-        echo $changed_files
-        if [[ $changed_files =~ "requirements.txt" ]]; then
-          pip install -r requirements.txt
-          
-        fi
-        if [[ $changed_files =~ "requirements-qa.txt" ]]; then
-          pip install -r requirements-qa.txt
-        fi
+        pip install -r requirements.txt
+        pip install -r requirements-qa.txt
     - name: test_cli
       run: |
         echo $GITHUB_WORKSPACE
