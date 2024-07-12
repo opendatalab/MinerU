@@ -33,13 +33,15 @@ from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
-from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import (
     parse_s3path,
     parse_s3_range_params,
     remove_non_official_s3_args,
 )
-from magic_pdf.libs.config_reader import get_local_dir
+from magic_pdf.libs.config_reader import (
+    get_local_dir,
+    get_s3_config,
+)
 from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter

@@ -3,6 +3,8 @@ import time
 import fitz
 import numpy as np
 from loguru import logger
+
+from magic_pdf.libs.config_reader import get_local_models_dir, get_device
 from magic_pdf.model.model_list import MODEL
 import magic_pdf.model as model_config
 
@@ -61,7 +63,10 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
             custom_model = CustomPaddleModel(ocr=ocr, show_log=show_log)
         elif model == MODEL.PEK:
             from magic_pdf.model.pdf_extract_kit import CustomPEKModel
-            custom_model = CustomPEKModel(ocr=ocr, show_log=show_log)
+            # 从配置文件读取model-dir和device
+            local_models_dir = get_local_models_dir()
+            device = get_device()
+            custom_model = CustomPEKModel(ocr=ocr, show_log=show_log, models_dir=local_models_dir, device=device)
         else:
             logger.error("Not allow model_name!")
             exit(1)

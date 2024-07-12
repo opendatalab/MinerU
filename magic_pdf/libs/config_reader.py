@@ -59,5 +59,15 @@ def get_local_dir():
     return config.get("temp-output-dir", "/tmp")
 
 
+def get_local_models_dir():
+    config = read_config()
+    return config.get("models-dir", "/tmp/models")
+
+
+def get_device():
+    config = read_config()
+    return config.get("device-mode", "cpu")
+
+
 if __name__ == "__main__":
     ak, sk, endpoint = get_s3_config("llm-raw")
