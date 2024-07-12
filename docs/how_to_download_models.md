@@ -15,8 +15,7 @@ git lfs clone https://huggingface.co/wanderkid/PDF-Extract-Kit
 Ensure that Git LFS is enabled during the clone to properly download all large files.
 
 
-
-Put [model files]() here:
+Move the 'models' directory to a directory on a larger disk space, preferably an SSD.
 
 ```
 ./

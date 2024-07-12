@@ -75,6 +75,10 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 - Python >= 3.9
 
+It is recommended to use a virtual environment, either with venv or conda.
+Development is based on Python 3.10, should you encounter problems with other Python versions, please switch to Python 3.10.
+
+
 ### Usage Instructions
 
 #### 1. Install Magic-PDF

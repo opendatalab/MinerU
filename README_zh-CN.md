@@ -70,23 +70,69 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 python >= 3.9
 
+推荐使用虚拟环境，venv和conda皆可。
+开发基于python 3.10，如果在其他版本python出现问题请切换至3.10。
+
 ### 使用说明
 
 #### 1. 安装Magic-PDF
 
 ```bash
+# 如果只需要基础功能(不含内置模型解析功能)
 pip install magic-pdf
+# or
+# 完整解析功能(含内置高精度模型解析功能)
+pip install magic-pdf[full-cpu]
+
+# 另外需要安装依赖 detectron2
+# detectron2需要编译安装,自行编译安装可以参考https://github.com/facebookresearch/detectron2/issues/5114
+# 或直接使用我们编译好的的whl包，不同系统请自行选择适配包安装
+
+# windows
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-win_amd64.whl
+
+# linux
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-linux_x86_64.whl
+
+# macOS(Intel)
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_10_9_universal2.whl
+
+# macOS(M1/M2/M3)
+pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_11_0_arm64.whl
+
 ```
 
-#### 2. 通过命令行使用
+#### 2. 下载模型权重文件
+
+详细参考[如何下载模型文件](docs/how_to_download_models.md)
+下载后请将models目录拷贝到空间较大的ssd磁盘目录
+
+#### 3. 拷贝配置文件并进行配置
+
+```bash
+# 拷贝配置文件到根目录
+cp magic-pdf.template.json ~/magic-pdf.json
+```
+在magic-pdf.json中配置"models-dir"为模型权重文件所在目录
+```json
+{
+  "models-dir": "/tmp/models"
+}
+```
+
+#### 4. 通过命令行使用
 
 ###### 直接使用
 
 ```bash
-cp magic-pdf.template.json ~/magic-pdf.json
+magic-pdf pdf-command --pdf "pdf_path" --inside_model true
+```
+程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件，markdown目录中可以找到对应的xxx_model.json文件
+如果您有意对后处理pipeline进行二次开发，可以使用命令
+```bash
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
-程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件
+这样就不需要重跑模型数据，调试起来更方便
 
 ###### 更多用法
 
@@ -94,7 +140,36 @@ magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 magic-pdf --help
 ```
 
-#### 3. 通过接口调用
+
+#### 5. 使用CUDA或MPS进行加速
+
+###### CUDA
+
+需要根据自己的CUDA版本安装对应的pytorch版本
+```bash
+# 使用gpu方案时，需要重新安装对应cuda版本的pytorch，例子是安装CUDA 11.8版本的
+pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+```
+
+同时需要修改配置文件magic-pdf.json中"device-mode"的值
+```json
+{
+  "device-mode":"cuda"
+}
+```
+
+###### MPS
+使用macOS(M系列芯片设备)可以使用MPS进行推理加速
+
+需要修改配置文件magic-pdf.json中"device-mode"的值
+```json
+{
+  "device-mode":"mps"
+}
+```
+
+
+#### 6. 通过接口调用
 
 ###### 本地使用
 ```python
