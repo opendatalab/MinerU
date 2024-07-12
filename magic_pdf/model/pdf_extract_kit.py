@@ -88,12 +88,7 @@ class CustomPEKModel:
         self.device = kwargs.get("device", self.configs["config"]["device"])
         logger.info("using device: {}".format(self.device))
         models_dir = kwargs.get("models_dir", os.path.join(root_dir, "resources", "models"))
-        # 初始化layout模型
-        self.layout_model = layout_model_init(
-            os.path.join(models_dir, self.configs['weights']['layout']),
-            os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml"),
-            device=self.device
-        )
+
         # 初始化公式识别
         if self.apply_formula:
             # 初始化公式检测模型
@@ -106,6 +101,13 @@ class CustomPEKModel:
                 device=self.device
             )
             self.mfr_transform = transforms.Compose([mfr_vis_processors, ])
+
+        # 初始化layout模型
+        self.layout_model = layout_model_init(
+            os.path.join(models_dir, self.configs['weights']['layout']),
+            os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml"),
+            device=self.device
+        )
         # 初始化ocr
         if self.apply_ocr:
             self.ocr_model = ModifiedPaddleOCR(show_log=show_log)
