@@ -75,37 +75,30 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 - Python >= 3.9
 
-It is recommended to use a virtual environment, either with venv or conda.
-Development is based on Python 3.10, should you encounter problems with other Python versions, please switch to Python 3.10.
-
+Using a virtual environment is recommended to avoid potential dependency conflicts; both venv and conda are suitable. 
+For example:
+```bash
+conda create -n MinerU python=3.10
+conda activate MinerU
+```
 
 ### Usage Instructions
 
 #### 1. Install Magic-PDF
 
+Install using pip:
 ```bash
-# If you only need the basic features (without built-in model parsing functionality)
 pip install magic-pdf
-# or
-# For complete parsing capabilities (including high-precision model parsing)
+```
+Alternatively, for built-in high-precision model parsing capabilities, use:
+```bash
 pip install magic-pdf[full-cpu]
-
-# For high-precision model parsing, you will need to install the dependency detectron2.
-# For detectron2, compile it yourself as per https://github.com/facebookresearch/detectron2/issues/5114
-# Or use our precompiled wheel
-
-# windows
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-win_amd64.whl
-
-# linux
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-linux_x86_64.whl
-
-# macOS(Intel)
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_10_9_universal2.whl
-
-# macOS(M1/M2/M3)
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_11_0_arm64.whl
-
+```
+The high-precision models depend on detectron2, which requires a compiled installation. 
+If you need to compile it yourself, refer to https://github.com/facebookresearch/detectron2/issues/5114 
+Or directly use our pre-compiled wheel packages (limited to python 3.10):
+```bash
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
 
 

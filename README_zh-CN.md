@@ -70,36 +70,30 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 python >= 3.9
 
-推荐使用虚拟环境，venv和conda皆可。
+推荐使用虚拟环境，以避免可能发生的依赖冲突，venv和conda均可使用。
+例如：
+```bash
+conda create -n MinerU python=3.10
+conda activate MinerU
+```
 开发基于python 3.10，如果在其他版本python出现问题请切换至3.10。
 
 ### 使用说明
 
 #### 1. 安装Magic-PDF
 
+使用pip安装：
 ```bash
-# 如果只需要基础功能(不含内置模型解析功能)
 pip install magic-pdf
-# or
-# 完整解析功能(含内置高精度模型解析功能)
+```
+或者，需要内置高精度模型解析功能，使用：
+```bash
 pip install magic-pdf[full-cpu]
-
-# 只有在需要高精度模型解析功能时，您需要额外安装依赖 detectron2
-# detectron2 需要编译安装,自行编译安装可以参考https://github.com/facebookresearch/detectron2/issues/5114
-# 或直接使用我们编译好的的whl包，不同系统请自行选择适配包安装
-
-# windows
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-win_amd64.whl
-
-# linux
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-linux_x86_64.whl
-
-# macOS(Intel)
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_10_9_universal2.whl
-
-# macOS(M1/M2/M3)
-pip install https://github.com/opendatalab/MinerU/raw/master/assets/whl/detectron2-0.6-cp310-cp310-macosx_11_0_arm64.whl
-
+```
+高精度模型依赖于detectron2，该库需要编译安装，如需自行编译，请参考https://github.com/facebookresearch/detectron2/issues/5114
+或是直接使用我们预编译的whl包(仅限python 3.10)：
+```bash
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
 
 #### 2. 下载模型权重文件
