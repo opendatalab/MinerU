@@ -112,7 +112,6 @@ After downloading the model weights, move the 'models' directory to a directory 
 #### 3. Copy the Configuration File and Make Configurations
 
 ```bash
-# Copy the configuration file to the root directory
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 In magic-pdf.json, configure "models-dir" to point to the directory where the model weights files are located.
