@@ -26,7 +26,10 @@ if __name__ == '__main__':
     setup(
         name="magic_pdf",  # 项目名
         version=__version__,  # 自动从tag中获取版本号
-        packages=find_packages(),  # 包含所有的包
+        packages=find_packages() + ["magic_pdf.resources"],  # 包含所有的包
+        package_data={
+            "magic_pdf.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
+        },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
             "gpu": ["paddleocr", "paddlepaddle-gpu"],
