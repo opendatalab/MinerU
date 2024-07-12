@@ -3,9 +3,11 @@
 
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
-[![license](https://img.shields.io/github/license/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU/tree/main/LICENSE)
-[![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
+[![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
+[![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
+[![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
+[![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
 [English](README.md) | [简体中文](README_zh-CN.md)
 
@@ -61,9 +63,6 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit) 
   - 高质量的PDF内容提取工具包
-- [Miner-PDF-Benchmark](https://github.com/opendatalab/Miner-PDF-Benchmark) 
-  - 端到端的PDF文档理解评估套件,专为大规模模型数据场景而设计
-
 
 ## 上手指南
 

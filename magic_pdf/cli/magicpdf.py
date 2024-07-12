@@ -28,18 +28,20 @@ from loguru import logger
 from pathlib import Path
 from magic_pdf.libs.version import __version__
 
-from magic_pdf.libs.MakeContentConfig import DropMode
+from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
-from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import (
     parse_s3path,
     parse_s3_range_params,
     remove_non_official_s3_args,
 )
-from magic_pdf.libs.config_reader import get_local_dir
+from magic_pdf.libs.config_reader import (
+    get_local_dir,
+    get_s3_config,
+)
 from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
@@ -81,10 +83,12 @@ def do_parse(
         f_dump_model_json=True,
         f_dump_orig_pdf=True,
         f_dump_content_list=True,
+        f_make_md_mode=MakeMode.MM_MD,
 ):
     orig_model_list = copy.deepcopy(model_list)
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
+    logger.info(f"local output dir is {local_md_dir}")
     image_writer, md_writer = DiskReaderWriter(local_image_dir), DiskReaderWriter(local_md_dir)
     image_dir = str(os.path.basename(local_image_dir))
 
@@ -105,6 +109,7 @@ def do_parse(
     if len(model_list) == 0:
         if model_config.__use_inside_model__:
             pipe.pipe_analyze()
+            orig_model_list = copy.deepcopy(pipe.model_list)
         else:
             logger.error("need model list input")
             exit(1)
@@ -116,7 +121,7 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
 
-    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE)
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE, md_make_mode=f_make_md_mode)
     if f_dump_md:
         """写markdown"""
         md_writer.write(
@@ -175,8 +180,10 @@ def cli():
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def json_command(json, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def json_command(json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     if not json.startswith("s3://"):
         logger.error("usage: magic-pdf json-command --json s3://some_bucket/some_path")
@@ -226,8 +233,10 @@ def json_command(json, method, inside_model):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def local_json_command(local_json, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def local_json_command(local_json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     def read_s3_path(s3path):
         bucket, key = parse_s3path(s3path)
@@ -278,8 +287,10 @@ def local_json_command(local_json, method, inside_model):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-def pdf_command(pdf, model, method, inside_model):
+@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+def pdf_command(pdf, model, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
+    model_config.__model_mode__ = model_mode
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
@@ -290,7 +301,11 @@ def pdf_command(pdf, model, method, inside_model):
     def get_model_json(model_path):
         # 这里处理pdf和模型相关的逻辑
         if model_path is None:
-            model_path = pdf.replace(".pdf", ".json")
+            file_name_without_extension, extension = os.path.splitext(pdf)
+            if extension == ".pdf":
+                model_path = file_name_without_extension + ".json"
+            else:
+                raise Exception("pdf_path input error")
             if not os.path.exists(model_path):
                 logger.warning(
                     f"not found json {model_path} existed"

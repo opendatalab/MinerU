@@ -1,4 +1,6 @@
-from magic_pdf.libs.MakeContentConfig import DropMode
+from loguru import logger
+
+from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.libs.json_compressor import JsonCompressor
@@ -8,7 +10,7 @@ from magic_pdf.user_api import parse_txt_pdf
 
 class TXTPipe(AbsPipe):
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool=False):
+    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool = False):
         super().__init__(pdf_bytes, model_list, image_writer, is_debug)
 
     def pipe_classify(self):
@@ -21,9 +23,11 @@ class TXTPipe(AbsPipe):
         self.pdf_mid_data = parse_txt_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug)
 
     def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
-        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
-        return content_list
+        result = super().pipe_mk_uni_format(img_parent_path, drop_mode)
+        logger.info("txt_pipe mk content list finished")
+        return result
 
-    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
-        md_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
-        return md_content
+    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD):
+        result = super().pipe_mk_markdown(img_parent_path, drop_mode, md_make_mode)
+        logger.info(f"txt_pipe mk {md_make_mode} finished")
+        return result

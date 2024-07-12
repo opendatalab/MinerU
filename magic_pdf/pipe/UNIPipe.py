@@ -2,7 +2,7 @@ import json
 
 from loguru import logger
 
-from magic_pdf.libs.MakeContentConfig import DropMode
+from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
@@ -39,12 +39,14 @@ class UNIPipe(AbsPipe):
                                               is_debug=self.is_debug)
 
     def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
-        content_list = AbsPipe.mk_uni_format(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
-        return content_list
+        result = super().pipe_mk_uni_format(img_parent_path, drop_mode)
+        logger.info("uni_pipe mk content list finished")
+        return result
 
-    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
-        markdown_content = AbsPipe.mk_markdown(self.get_compress_pdf_mid_data(), img_parent_path, drop_mode)
-        return markdown_content
+    def pipe_mk_markdown(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD):
+        result = super().pipe_mk_markdown(img_parent_path, drop_mode, md_make_mode)
+        logger.info(f"uni_pipe mk {md_make_mode} finished")
+        return result
 
 
 if __name__ == '__main__':
