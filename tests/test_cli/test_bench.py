@@ -16,7 +16,7 @@ class TestBench():
     """
     test bench
     """
-    def ci_ben(self):
+    def test_ci_ben(self):
         """
         ci benchmark
         """

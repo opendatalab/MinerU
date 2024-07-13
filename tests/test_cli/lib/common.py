@@ -1,6 +1,11 @@
 import subprocess
 import os
+
+
 def check_shell(cmd):
+    """
+    shell successful
+    """
     res = os.system(cmd)
     assert res == 0
 
