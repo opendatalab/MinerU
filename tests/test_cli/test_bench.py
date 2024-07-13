@@ -11,9 +11,6 @@ from conf import conf
 code_path = os.environ.get('GITHUB_WORKSPACE')
 pdf_dev_path = conf.conf["pdf_dev_path"]
 pdf_res_path = conf.conf["pdf_res_path"]
-last_simscore = 0
-last_editdistance = 0
-last_bleu = 0
 
 class TestBench():
     """
@@ -23,16 +20,13 @@ class TestBench():
         """
         ci benchmark
         """
-        try:
-            fr = open(os.path.join(pdf_dev_path, "result.json"), "r", encoding="utf-8")
-            lines = fr.readlines()
-            last_line = lines[-1].strip()
-            last_score = json.loads(last_line)
-            last_simscore = last_score["average_sim_score"]
-            last_editdistance = last_score["average_edit_distance"]
-            last_bleu = last_score["average_bleu_score"]
-        except IOError:
-            print ("result.json not exist")
+        fr = open(os.path.join(pdf_dev_path, "result.json"), "r", encoding="utf-8")
+        lines = fr.readlines()
+        last_line = lines[-1].strip()
+        last_score = json.loads(last_line)
+        last_simscore = last_score["average_sim_score"]
+        last_editdistance = last_score["average_edit_distance"]
+        last_bleu = last_score["average_bleu_score"]
         os.system(f"python tests/test_cli/lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
         now_score = get_score()
         print ("now_score:", now_score)
