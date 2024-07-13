@@ -46,9 +46,8 @@ def get_score():
     """
     get score
     """
-    data_path = os.path.join(pdf_dev_path, "ci")
-    score = calculate_score.Scoring(os.path.join(data_path, "result.json"))
-    score.calculate_similarity_total("mineru", data_path)
+    score = calculate_score.Scoring(os.path.join(pdf_dev_path, "result.json"))
+    score.calculate_similarity_total("mineru", pdf_dev_path)
     res = score.summary_scores()
     return res
 
