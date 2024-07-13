@@ -36,6 +36,7 @@ jobs:
       run: |
         echo "start test"
         cd $GITHUB_WORKSPACE/tests/benchmark/ 
+        tree
         sh env.sh
         python benchmark.py
   
