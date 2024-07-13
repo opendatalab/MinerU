@@ -33,6 +33,7 @@ jobs:
       run: |
         pip install -r requirements.txt
         pip install -r requirements-qa.txt
+        pip install magic-pdf
     - name: test_cli
       run: |
         cp magic-pdf.template.json ~/magic-pdf.json
@@ -40,3 +41,6 @@ jobs:
         cd $GITHUB_WORKSPACE && export PYTHONPATH=. && pytest -s -v tests/test_unit.py
         cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
                                                                                                                             
+    - name: benchmark
+      run: |
+        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_bench.py
