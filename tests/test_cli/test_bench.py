@@ -16,6 +16,13 @@ class TestBench():
     """
     test bench
     """
+    def __init__(self) -> None:
+        """
+        init
+        """
+        self.last_simscore = 0
+        self.last_editdistance = 0
+        self.last_bleu = 0
     def test_ci_ben(self):
         """
         ci benchmark
@@ -25,21 +32,22 @@ class TestBench():
             lines = fr.readlines()
             last_line = lines[-1].strip()
             last_score = json.loads(last_line)
-            print ("last_score:", last_score)
-            last_simscore = last_score["average_sim_score"]
-            last_editdistance = last_score["average_edit_distance"]
-            last_bleu = last_score["average_bleu_score"]
+            self.last_simscore = last_score["average_sim_score"]
+            self.last_editdistance = last_score["average_edit_distance"]
+            self.last_bleu = last_score["average_bleu_score"]
         except IOError:
-            print ("result.json not exist")    
+            print ("result.json not exist")
         os.system(f"python lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
         now_score = get_score()
         print ("now_score:", now_score)
+        fw = open(os.path.join(pdf_dev_path, "result.json"), "a", encoding="utf-8")
+        fw.write(json.dumps(now_score) + "\n")
         now_simscore = now_score["average_sim_score"]
         now_editdistance = now_score["average_edit_distance"]
         now_bleu = now_score["average_bleu_score"]
-        assert last_simscore <= now_simscore
-        assert last_editdistance <= now_editdistance
-        assert last_bleu <= now_bleu
+        assert self.last_simscore <= now_simscore
+        assert self.last_editdistance <= now_editdistance
+        assert self.last_bleu <= now_bleu
 
 
 def get_score():
