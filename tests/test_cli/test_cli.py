@@ -6,35 +6,27 @@ from lib import common
 import logging
 import os
 import json
-
 from loguru import logger
-
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 pdf_res_path = conf.conf["pdf_res_path"]
 code_path = conf.conf["code_path"]
 pdf_dev_path = conf.conf["pdf_dev_path"]
 class TestCli:
-   
-    def test_pdf_specify_dir(self):
-        """
-        输入pdf和指定目录的模型结果
-        """
-        cmd = 'cd %s && export PYTHONPATH=. && find %s -type f -name "*.pdf" | xargs -I{} python magic_pdf/cli/magicpdf.py  pdf-command  --pdf {}' % (code_path, pdf_dev_path)
-        logging.info(cmd)
-        common.check_shell(cmd)
-        #common.count_folders_and_check_contents(pdf_res_path)      
-   
+    """
+    test cli
+    """
     def test_pdf_sdk(self):
         """
         pdf sdk 方式解析
         """
         demo_names = list()
-        for pdf_file in os.listdir(pdf_dev_path):
+        pdf_path = os.path.join(pdf_dev_path, "pdf")
+        for pdf_file in os.listdir(pdf_path):
             if pdf_file.endswith('.pdf'):
                 demo_names.append(pdf_file.split('.')[0])
         for demo_name in demo_names:
-            model_path = os.path.join(pdf_dev_path, f"{demo_name}.json")
+            model_path = os.path.join(pdf_dev_path, f"{demo_name}_model.json")
             pdf_path = os.path.join(pdf_dev_path, f"{demo_name}.pdf")
             pdf_bytes = open(pdf_path, "rb").read()
             model_json = json.loads(open(model_path, "r", encoding="utf-8").read())
@@ -45,9 +37,11 @@ class TestCli:
             pipe.pipe_classify()
             pipe.pipe_parse()
             md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-            with open(f"{demo_name}.md", "w", encoding="utf-8") as f:
+            res_path = os.path.join(pdf_dev_path, "miner", f"{demo_name}.md")
+            with open(res_path, "w", encoding="utf-8") as f:
                 f.write(md_content)
 
+        
     # def test_pdf_specify_jsonl(self):
     #     """
     #     输入jsonl, 默认方式解析
