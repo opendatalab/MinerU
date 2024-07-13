@@ -14,6 +14,7 @@ pdf_res_path = conf.conf["pdf_res_path"]
 last_simscore = 0
 last_editdistance = 0
 last_bleu = 0
+
 class TestBench():
     """
     test bench
@@ -37,8 +38,8 @@ class TestBench():
         print ("now_score:", now_score)
         if not os.path.exists(os.path.join(pdf_dev_path, "ci")):
             os.makedirs(os.path.join(pdf_dev_path, "ci"), exist_ok=True)
-        fw = open(os.path.join(pdf_dev_path, "ci", "result.json"), "a", encoding="utf-8")
-        fw.write(json.dumps(now_score) + "\n", "w+")
+        fw = open(os.path.join(pdf_dev_path, "ci", "result.json"), "w+", encoding="utf-8")
+        fw.write(json.dumps(now_score) + "\n")
         now_simscore = now_score["average_sim_score"]
         now_editdistance = now_score["average_edit_distance"]
         now_bleu = now_score["average_bleu_score"]
