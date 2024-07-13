@@ -20,7 +20,7 @@ class TestBench():
         """
         ci benchmark
         """
-        fr = open(os.path.join(pdf_dev_path, "ci", "result.json"), "r", encoding="utf-8")
+        fr = open(os.path.join(pdf_dev_path, "result.json"), "r", encoding="utf-8")
         lines = fr.readlines()
         last_line = lines[-1].strip()
         last_score = json.loads(last_line)
