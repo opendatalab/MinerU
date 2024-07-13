@@ -18,7 +18,6 @@ class TestCli:
         common.check_shell(cmd)
         #common.count_folders_and_check_contents(pdf_res_path)      
    
-
     # def test_pdf_specify_jsonl(self):
     #     """
     #     输入jsonl, 默认方式解析

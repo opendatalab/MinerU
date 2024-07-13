@@ -30,14 +30,10 @@ jobs:
         fetch-depth: 2
     - name: check-requirements
       run: |
-        changed_files=$(git diff --name-only -r HEAD~1 HEAD)
-        echo $changed_files
-        if [[ $changed_files =~ "requirements.txt" ]] || [[ $changed_files =~ "requirements-qa.txt" ]]; then
-          pip install -r requirements.txt
-          pip install -r requirements-qa.txt
-        fi
+        pip install -r requirements.txt
+        pip install -r requirements-qa.txt
     - name: get-benchmark-result
       run: |
         echo "start test"
-        cd tools && python benchmark.py
+        cd tests && python benchmark.py
   
