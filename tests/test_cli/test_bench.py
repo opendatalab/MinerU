@@ -35,8 +35,10 @@ class TestBench():
         os.system(f"python lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
         now_score = get_score()
         print ("now_score:", now_score)
+        if not os.path.exists(os.path.join(pdf_dev_path, "ci")):
+            os.makedirs(os.path.join(pdf_dev_path, "ci"), exist_ok=True)
         fw = open(os.path.join(pdf_dev_path, "ci", "result.json"), "a", encoding="utf-8")
-        fw.write(json.dumps(now_score) + "\n")
+        fw.write(json.dumps(now_score) + "\n", "w+")
         now_simscore = now_score["average_sim_score"]
         now_editdistance = now_score["average_edit_distance"]
         now_bleu = now_score["average_bleu_score"]
