@@ -1,5 +1,6 @@
 name: Bug Report
 description: Create a bug report for MinerU
+labels: bug
 
 # We omit `title: "..."` so that the field defaults to blank. If we set it to
 # empty string, Github seems to reject this .yml file.
