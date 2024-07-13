@@ -1,12 +1,8 @@
 import pytest
 import os
 from conf import conf
-import subprocess
-from lib import common
-import logging
 import os
 import json
-from loguru import logger
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 pdf_res_path = conf.conf["pdf_res_path"]
@@ -27,7 +23,7 @@ class TestCli:
                 demo_names.append(pdf_file.split('.')[0])
         for demo_name in demo_names:
             model_path = os.path.join(pdf_dev_path, f"{demo_name}_model.json")
-            pdf_path = os.path.join(pdf_dev_path, f"{demo_name}.pdf")
+            pdf_path = os.path.join(pdf_dev_path, "pdf", f"{demo_name}.pdf")
             pdf_bytes = open(pdf_path, "rb").read()
             model_json = json.loads(open(model_path, "r", encoding="utf-8").read())
             image_writer = DiskReaderWriter(pdf_dev_path)
