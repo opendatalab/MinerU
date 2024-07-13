@@ -33,7 +33,7 @@ class TestCli:
             pipe.pipe_classify()
             pipe.pipe_parse()
             md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-            res_path = os.path.join(pdf_dev_path, "miner", f"{demo_name}.md")
+            res_path = os.path.join(pdf_dev_path, "mineru", f"{demo_name}.md")
             with open(res_path, "w", encoding="utf-8") as f:
                 f.write(md_content)
 
