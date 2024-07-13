@@ -102,7 +102,7 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 下载后请将models目录拷贝到空间较大的ssd磁盘目录
 
 #### 3. 拷贝配置文件并进行配置
-
+在仓库根目录可以获得magic-pdf.template.json文件
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
