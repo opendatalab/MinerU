@@ -18,7 +18,7 @@ def test_cli():
     rm_cmd = f"rm -rf {pdf_res_path}"
     os.system(rm_cmd)
     os.makedirs(pdf_res_path)
-    cmd = f'magic-pdf pdf-command --pdf {os.path.join(pdf_dev_path, "mineru")} --inside_model true'
+    cmd = f'magic-pdf pdf-command --pdf {os.path.join(pdf_dev_path, "mineru")}'
     os.system(cmd)
     for root, dirs, files in os.walk(pdf_res_path):
          for magic_file in files:
