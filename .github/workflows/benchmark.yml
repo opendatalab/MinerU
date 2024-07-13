@@ -35,5 +35,5 @@ jobs:
     - name: get-benchmark-result
       run: |
         echo "start test"
-        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_ben.py
+        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_bench.py
   
