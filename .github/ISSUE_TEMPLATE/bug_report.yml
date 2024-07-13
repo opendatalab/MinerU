@@ -1,0 +1,84 @@
+name: Bug Report
+description: Create a bug report for MinerU
+
+# We omit `title: "..."` so that the field defaults to blank. If we set it to
+# empty string, Github seems to reject this .yml file.
+
+body:
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the bug
+      description: |
+        A clear and concise description of the bug.
+        
+    validations:
+      required: true
+  
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce the bug
+      
+      # Should not word-wrap this description here.
+      description: |
+        * Explain the steps required to reproduce the bug.
+        * Include required code snippets, example files, etc.
+        * Describe what you expected to happen (if not obvious).
+        * If applicable, add screenshots to help explain the problem.
+        * Include any other information that could be relevant, for example information about the Python environment.
+        
+        For problems when building or installing MinerU:
+        * Give the **exact** build/install commands that were run.
+        * Give the **complete** output from these commands.
+  
+    validations:
+      required: true
+
+#  - type: markdown
+#    attributes:
+#      value: |
+#        # The information below is required.
+
+
+  - type: dropdown
+    id: os_name
+    attributes:
+      label: Operating system
+      #multiple: true
+      options:
+        -
+        - Windows
+        - Linux
+        - MacOS
+    validations:
+      required: true
+
+  - type: dropdown
+    id: python_version
+    attributes:
+      label: Python version
+      #multiple: true
+      # Need quotes around `3.10` otherwise it is treated as a number and shows as `3.1`.
+      options:
+        -
+        - "3.12"
+        - "3.11"
+        - "3.10"
+        - "3.9"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device_mode
+    attributes:
+      label: Device mode
+      #multiple: true
+      options:
+        -
+        - cpu
+        - cuda
+        - mps
+    validations:
+      required: true
