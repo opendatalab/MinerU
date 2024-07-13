@@ -1,3 +1,6 @@
+"""
+Calculate simscore, refer to (https://github.com/VikParuchuri/marker?tab=readme-ov-file)
+"""
 import math
 
 from rapidfuzz import fuzz
