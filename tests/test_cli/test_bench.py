@@ -33,7 +33,7 @@ class TestBench():
             last_bleu = last_score["average_bleu_score"]
         except IOError:
             print ("result.json not exist")
-        os.system(f"python lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
+        os.system(f"python tests/test_cli/lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
         now_score = get_score()
         print ("now_score:", now_score)
         if not os.path.exists(os.path.join(pdf_dev_path, "ci")):
