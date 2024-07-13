@@ -104,13 +104,13 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 
 #### 2. Downloading model weights files
 
-For detailed references, please see below[how_to_download_models](docs/how_to_download_models.md)
+For detailed references, please see below[how_to_download_models](docs/how_to_download_models_en.md)
 
 After downloading the model weights, move the 'models' directory to a directory on a larger disk space, preferably an SSD.
 
 
 #### 3. Copy the Configuration File and Make Configurations
-You can get the magic-pdf.template.json file in the repository root directory.
+You can get the [magic-pdf.template.json](magic-pdf.template.json) file in the repository root directory.
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
