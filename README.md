@@ -94,9 +94,9 @@ Alternatively, for built-in high-precision model parsing capabilities, use:
 ```bash
 pip install magic-pdf[full-cpu]
 ```
-The high-precision models depend on detectron2, which requires a compiled installation. 
-If you need to compile it yourself, refer to https://github.com/facebookresearch/detectron2/issues/5114 
-Or directly use our pre-compiled wheel packages (limited to python 3.10):
+The high-precision models depend on detectron2, which requires a compiled installation.  
+If you need to compile it yourself, refer to https://github.com/facebookresearch/detectron2/issues/5114  
+Or directly use our pre-compiled wheel packages (limited to python 3.10):  
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
@@ -104,7 +104,7 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 
 #### 2. Downloading model weights files
 
-For detailed references, please see below[how_to_download_models](docs/how_to_download_models_en.md)
+For detailed references, please see below [how_to_download_models](docs/how_to_download_models_en.md)
 
 After downloading the model weights, move the 'models' directory to a directory on a larger disk space, preferably an SSD.
 
@@ -130,9 +130,9 @@ In magic-pdf.json, configure "models-dir" to point to the directory where the mo
 ```bash
 magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
-After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".
-You can find the corresponding xxx_model.json file in the markdown directory. 
-If you intend to do secondary development on the post-processing pipeline, you can use the command:
+After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".  
+You can find the corresponding xxx_model.json file in the markdown directory.   
+If you intend to do secondary development on the post-processing pipeline, you can use the command:  
 ```bash
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
@@ -150,12 +150,12 @@ magic-pdf --help
 
 ##### CUDA
 
-You need to install the corresponding PyTorch version according to your CUDA version.
+You need to install the corresponding PyTorch version according to your CUDA version.  
+This example installs the CUDA 11.8 version.More information https://pytorch.org/get-started/locally/  
 ```bash
-# When using the GPU solution, you need to reinstall PyTorch for the corresponding CUDA version. This example installs the CUDA 11.8 version.
 pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 ```
-Also, you need to modify the value of "device-mode" in the configuration file magic-pdf.json.
+Also, you need to modify the value of "device-mode" in the configuration file magic-pdf.json.  
 ```json
 {
   "device-mode":"cuda"
@@ -164,9 +164,8 @@ Also, you need to modify the value of "device-mode" in the configuration file ma
 
 ##### MPS
 
-For macOS users with M-series chip devices, you can use MPS for inference acceleration.
-You also need to modify the value of "device-mode" in the configuration file magic-pdf.json.
-
+For macOS users with M-series chip devices, you can use MPS for inference acceleration.  
+You also need to modify the value of "device-mode" in the configuration file magic-pdf.json.  
 ```json
 {
   "device-mode":"mps"

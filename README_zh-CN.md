@@ -70,7 +70,7 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 python >= 3.9
 
-推荐使用虚拟环境，以避免可能发生的依赖冲突，venv和conda均可使用。
+推荐使用虚拟环境，以避免可能发生的依赖冲突，venv和conda均可使用。  
 例如：
 ```bash
 conda create -n MinerU python=3.10
@@ -90,19 +90,19 @@ pip install magic-pdf
 ```bash
 pip install magic-pdf[full-cpu]
 ```
-高精度模型依赖于detectron2，该库需要编译安装，如需自行编译，请参考https://github.com/facebookresearch/detectron2/issues/5114
-或是直接使用我们预编译的whl包(仅限python 3.10)：
+高精度模型依赖于detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
+或是直接使用我们预编译的whl包(仅限python 3.10)：  
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
 
 #### 2. 下载模型权重文件
 
-详细参考[如何下载模型文件](docs/how_to_download_models_zh_cn.md)
-下载后请将models目录移动到空间较大的ssd磁盘目录
+详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)  
+下载后请将models目录移动到空间较大的ssd磁盘目录  
 
 #### 3. 拷贝配置文件并进行配置
-在仓库根目录可以获得[magic-pdf.template.json](magic-pdf.template.json)文件
+在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 文件
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
@@ -120,8 +120,8 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ```bash
 magic-pdf pdf-command --pdf "pdf_path" --inside_model true
 ```
-程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件，markdown目录中可以找到对应的xxx_model.json文件
-如果您有意对后处理pipeline进行二次开发，可以使用命令
+程序运行完成后，你可以在"/tmp/magic-pdf"目录下看到生成的markdown文件，markdown目录中可以找到对应的xxx_model.json文件  
+如果您有意对后处理pipeline进行二次开发，可以使用命令  
 ```bash
 magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
 ```
@@ -138,9 +138,9 @@ magic-pdf --help
 
 ###### CUDA
 
-需要根据自己的CUDA版本安装对应的pytorch版本
+需要根据自己的CUDA版本安装对应的pytorch版本  
+以下是对应CUDA 11.8版本的安装命令，更多信息请参考 https://pytorch.org/get-started/locally/  
 ```bash
-# 使用gpu方案时，需要重新安装对应cuda版本的pytorch，例子是安装CUDA 11.8版本的
 pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 ```
 
@@ -152,9 +152,8 @@ pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https
 ```
 
 ###### MPS
-使用macOS(M系列芯片设备)可以使用MPS进行推理加速
-
-需要修改配置文件magic-pdf.json中"device-mode"的值
+使用macOS(M系列芯片设备)可以使用MPS进行推理加速  
+需要修改配置文件magic-pdf.json中"device-mode"的值  
 ```json
 {
   "device-mode":"mps"
