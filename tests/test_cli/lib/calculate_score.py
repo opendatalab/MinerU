@@ -7,6 +7,8 @@ import json
 from lib import scoring
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk.tokenize import word_tokenize
+import nltk
+nltk.download('punkt')
 from Levenshtein import distance
 
 class Scoring:
