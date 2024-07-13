@@ -35,7 +35,7 @@ jobs:
     - name: get-benchmark-result
       run: |
         echo "start test"
-        echo $GITHUB_WORKSPACE
-        tree
-        cd $GITHUB_WORKSPACE && python tests/benchmark/benchmark.py
+        cd $GITHUB_WORKSPACE/tests/benchmark/ 
+        sh env.sh
+        python benchmark.py
   
