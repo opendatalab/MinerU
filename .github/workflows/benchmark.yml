@@ -30,8 +30,8 @@ jobs:
         fetch-depth: 2
     - name: check-requirements
       run: |
-        pip install -r requirements.txt
         pip install -r requirements-qa.txt
+        pip install magic-pdf
     - name: get-benchmark-result
       run: |
         echo "start test"
