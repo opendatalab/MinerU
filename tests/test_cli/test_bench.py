@@ -30,9 +30,7 @@ class TestBench():
             last_editdistance = last_score["average_edit_distance"]
             last_bleu = last_score["average_bleu_score"]
         except IOError:
-            print ("result.json not exist")
-        test_cli()
-    
+            print ("result.json not exist")    
         os.system(f"python lib/pre_clean.py --tool_name mineru --download_dir {pdf_dev_path}")
         now_score = get_score()
         print ("now_score:", now_score)
@@ -53,24 +51,5 @@ def get_score():
     score.calculate_similarity_total("mineru", data_path)
     res = score.summary_scores()
     return res
-
-def test_cli():
-    """
-    test pdf-command cli
-    """
-    rm_cmd = f"rm -rf {pdf_res_path}"
-    os.system(rm_cmd)
-    os.makedirs(pdf_res_path)
-    cmd = f'magic-pdf pdf-command --pdf {os.path.join(pdf_dev_path, "mineru")}'
-    os.system(cmd)
-    for root, dirs, files in os.walk(pdf_res_path):
-         for magic_file in files:
-            target_dir = os.path.join(pdf_dev_path, "mineru")
-            if magic_file.endswith(".md"):
-                source_file = os.path.join(root, magic_file)
-                target_file = os.path.join(pdf_dev_path, "mineru", magic_file)
-                if not os.path.exists(target_dir):
-                    os.makedirs(target_dir) 
-                shutil.copy(source_file, target_file)
 
 

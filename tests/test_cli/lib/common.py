@@ -5,7 +5,9 @@ def check_shell(cmd):
     assert res == 0
 
 def count_folders_and_check_contents(file_path):
-    # 获取目录下的所有文件和文件夹
+    """"
+    获取文件夹大小
+    """
     if os.path.exists(file_path):
         folder_count = os.path.getsize(file_path)
         assert folder_count > 0
