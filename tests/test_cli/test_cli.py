@@ -5,6 +5,8 @@ import os
 import json
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+from lib import common
+
 pdf_res_path = conf.conf["pdf_res_path"]
 code_path = conf.conf["code_path"]
 pdf_dev_path = conf.conf["pdf_dev_path"]
@@ -39,7 +41,7 @@ class TestCli:
             res_path = os.path.join(dir_path, f"{demo_name}.md")
             with open(res_path, "w+", encoding="utf-8") as f:
                 f.write(md_content)
-
+            common.count_folders_and_check_contents(res_path)
         
     # def test_pdf_specify_jsonl(self):
     #     """
