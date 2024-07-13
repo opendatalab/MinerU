@@ -118,9 +118,6 @@ def clean_data(prod_type, download_dir):
             with open(input_file, 'r', encoding='utf-8') as fr:
                 content = fr.read()
                 new_content = clean_markdown_images(content)
-                new_content = convert_html_table_to_md(new_content)
-                new_content = convert_latext_to_md(new_content)
-                new_content = convert_htmltale_to_md(new_content)
                 with open(output_file, 'w', encoding='utf-8') as fw:
                     fw.write(new_content)
 
