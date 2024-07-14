@@ -48,7 +48,23 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200) -> list:
     return images
 
 
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
+class ModelSingleton:
+    _instance = None
+    _models = {}
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def get_model(self, ocr: bool, show_log: bool):
+        key = (ocr, show_log)
+        if key not in self._models:
+            self._models[key] = custom_model_init(ocr=ocr, show_log=show_log)
+        return self._models[key]
+
+
+def custom_model_init(ocr: bool = False, show_log: bool = False):
     model = None
 
     if model_config.__model_mode__ == "lite":
@@ -75,6 +91,14 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
     else:
         logger.error("use_inside_model is False, not allow to use inside model")
         exit(1)
+
+    return custom_model
+
+
+def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
+
+    model_manager = ModelSingleton()
+    custom_model = model_manager.get_model(ocr, show_log)
 
     images = load_images_from_pdf(pdf_bytes)
 
