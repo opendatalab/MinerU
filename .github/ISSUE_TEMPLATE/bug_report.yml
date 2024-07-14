@@ -1,5 +1,5 @@
-name: Bug Report
-description: Create a bug report for MinerU
+name: Bug Report | 反馈 Bug
+description: Create a bug report for MinerU | MinerU 的 Bug 反馈
 labels: bug
 
 # We omit `title: "..."` so that the field defaults to blank. If we set it to
