@@ -180,7 +180,8 @@ def cli():
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+@click.option("--model_mode", type=click.STRING, default="full",
+              help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
 def json_command(json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
     model_config.__model_mode__ = model_mode
@@ -233,7 +234,8 @@ def json_command(json, method, inside_model, model_mode):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+@click.option("--model_mode", type=click.STRING, default="full",
+              help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
 def local_json_command(local_json, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
     model_config.__model_mode__ = model_mode
@@ -277,8 +279,8 @@ def local_json_command(local_json, method, inside_model, model_mode):
 
 @cli.command()
 @click.option(
-    "--pdf", type=click.Path(exists=True), required=True, help="PDF文件的路径"
-)
+    "--pdf", type=click.Path(exists=True), required=True,
+    help='pdf file path, support local/list, list file need end with ".list"')
 @click.option("--model", type=click.Path(exists=True), help="模型的路径")
 @click.option(
     "--method",
@@ -287,7 +289,8 @@ def local_json_command(local_json, method, inside_model, model_mode):
     default="auto",
 )
 @click.option("--inside_model", type=click.BOOL, default=False, help="使用内置模型测试")
-@click.option("--model_mode", type=click.STRING, default="full", help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
+@click.option("--model_mode", type=click.STRING, default="full",
+              help="内置模型选择。lite: 快速解析，精度较低，full: 高精度解析，速度较慢")
 def pdf_command(pdf, model, method, inside_model, model_mode):
     model_config.__use_inside_model__ = inside_model
     model_config.__model_mode__ = model_mode
@@ -296,12 +299,10 @@ def pdf_command(pdf, model, method, inside_model, model_mode):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
         return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
-    pdf_data = read_fn(pdf)
-
-    def get_model_json(model_path):
+    def get_model_json(model_path, doc_path):
         # 这里处理pdf和模型相关的逻辑
         if model_path is None:
-            file_name_without_extension, extension = os.path.splitext(pdf)
+            file_name_without_extension, extension = os.path.splitext(doc_path)
             if extension == ".pdf":
                 model_path = file_name_without_extension + ".json"
             else:
@@ -319,15 +320,35 @@ def pdf_command(pdf, model, method, inside_model, model_mode):
 
         return model_json
 
-    jso = json_parse.loads(get_model_json(model))
-    pdf_file_name = Path(pdf).stem
+    def parse_doc(doc_path):
+        try:
+            file_name = str(Path(doc_path).stem)
+            pdf_data = read_fn(doc_path)
+            jso = json_parse.loads(get_model_json(model, doc_path))
 
-    do_parse(
-        pdf_file_name,
-        pdf_data,
-        jso,
-        method,
-    )
+            do_parse(
+                file_name,
+                pdf_data,
+                jso,
+                method,
+            )
+
+        except Exception as e:
+            logger.exception(e)
+
+    if not pdf:
+        logger.error(f"Error: Missing argument '--pdf'.")
+        exit(f"Error: Missing argument '--pdf'.")
+    else:
+        '''适配多个文档的list文件输入'''
+        if pdf.endswith(".list"):
+            with open(pdf, "r") as f:
+                for line in f.readlines():
+                    line = line.strip()
+                    parse_doc(line)
+        else:
+            '''适配单个文档的输入'''
+            parse_doc(pdf)
 
 
 if __name__ == "__main__":
