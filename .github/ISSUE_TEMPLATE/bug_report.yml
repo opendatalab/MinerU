@@ -10,9 +10,9 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: Description of the bug
+      label: Description of the bug | 错误描述
       description: |
-        A clear and concise description of the bug.
+        A clear and concise description of the bug. | 简单描述遇到的问题  
         
     validations:
       required: true
@@ -20,19 +20,19 @@ body:
   - type: textarea
     id: reproduce
     attributes:
-      label: How to reproduce the bug
+      label: How to reproduce the bug | 如何复现
       
       # Should not word-wrap this description here.
       description: |
-        * Explain the steps required to reproduce the bug.
-        * Include required code snippets, example files, etc.
-        * Describe what you expected to happen (if not obvious).
-        * If applicable, add screenshots to help explain the problem.
-        * Include any other information that could be relevant, for example information about the Python environment.
+        * Explain the steps required to reproduce the bug. | 说明复现此错误所需的步骤。
+        * Include required code snippets, example files, etc. | 包含必要的代码片段、示例文件等。
+        * Describe what you expected to happen (if not obvious). | 描述你期望发生的情况。
+        * If applicable, add screenshots to help explain the problem. | 添加截图以帮助解释问题。
+        * Include any other information that could be relevant, for example information about the Python environment. | 包括任何其他可能相关的信息。
         
-        For problems when building or installing MinerU:
-        * Give the **exact** build/install commands that were run.
-        * Give the **complete** output from these commands.
+        For problems when building or installing MinerU: | 在构建或安装 MinerU 时遇到的问题:
+        * Give the **exact** build/install commands that were run. | 提供**确切**的构建/安装命令。
+        * Give the **complete** output from these commands. | 提供这些命令的**完整**输出。
   
     validations:
       required: true
@@ -46,7 +46,7 @@ body:
   - type: dropdown
     id: os_name
     attributes:
-      label: Operating system
+      label: Operating system | 操作系统
       #multiple: true
       options:
         -
@@ -59,7 +59,7 @@ body:
   - type: dropdown
     id: python_version
     attributes:
-      label: Python version
+      label: Python version | Python 版本
       #multiple: true
       # Need quotes around `3.10` otherwise it is treated as a number and shows as `3.1`.
       options:
@@ -74,7 +74,7 @@ body:
   - type: dropdown
     id: device_mode
     attributes:
-      label: Device mode
+      label: Device mode | 设备模式
       #multiple: true
       options:
         -
