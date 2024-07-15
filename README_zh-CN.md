@@ -78,19 +78,18 @@ conda activate MinerU
 ```
 开发基于python 3.10，如果在其他版本python出现问题请切换至3.10。
 
-### 使用说明
+### 安装配置
 
 #### 1. 安装Magic-PDF
 
-使用pip安装：
-```bash
-pip install magic-pdf
-```
-或者，需要内置高精度模型解析功能，使用：
+使用pip安装完整功能包：
+>受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
+>
+>如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
 ```bash
 pip install magic-pdf[full-cpu]
 ```
-高精度模型依赖于detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
+完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
 或是直接使用我们预编译的whl包(仅限python 3.10)：  
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
@@ -113,7 +112,36 @@ cp magic-pdf.template.json ~/magic-pdf.json
 }
 ```
 
-#### 4. 通过命令行使用
+#### 4. 使用CUDA或MPS加速推理
+如您有可用的Nvidia显卡或在使用Apple Silicon的Mac，可以使用CUDA或MPS进行加速
+##### CUDA
+
+需要根据自己的CUDA版本安装对应的pytorch版本  
+以下是对应CUDA 11.8版本的安装命令，更多信息请参考 https://pytorch.org/get-started/locally/  
+```bash
+pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+```
+
+同时需要修改配置文件magic-pdf.json中"device-mode"的值
+```json
+{
+  "device-mode":"cuda"
+}
+```
+
+##### MPS
+使用macOS(M系列芯片设备)可以使用MPS进行推理加速  
+需要修改配置文件magic-pdf.json中"device-mode"的值  
+```json
+{
+  "device-mode":"mps"
+}
+```
+
+
+### 使用说明
+
+#### 1. 通过命令行使用
 
 ###### 直接使用
 
@@ -134,40 +162,13 @@ magic-pdf --help
 ```
 
 
-#### 5. 使用CUDA或MPS进行加速
-
-###### CUDA
-
-需要根据自己的CUDA版本安装对应的pytorch版本  
-以下是对应CUDA 11.8版本的安装命令，更多信息请参考 https://pytorch.org/get-started/locally/  
-```bash
-pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
-```
-
-同时需要修改配置文件magic-pdf.json中"device-mode"的值
-```json
-{
-  "device-mode":"cuda"
-}
-```
-
-###### MPS
-使用macOS(M系列芯片设备)可以使用MPS进行推理加速  
-需要修改配置文件magic-pdf.json中"device-mode"的值  
-```json
-{
-  "device-mode":"mps"
-}
-```
-
-
-#### 6. 通过接口调用
+#### 2. 通过接口调用
 
 ###### 本地使用
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
 pipe.pipe_classify()
 pipe.pipe_parse()
@@ -180,7 +181,7 @@ s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
 s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
 pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
 pipe.pipe_classify()
 pipe.pipe_parse()

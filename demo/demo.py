@@ -12,7 +12,8 @@ try:
     pdf_path = os.path.join(current_script_dir, f"{demo_name}.pdf")
     model_path = os.path.join(current_script_dir, f"{demo_name}.json")
     pdf_bytes = open(pdf_path, "rb").read()
-    model_json = json.loads(open(model_path, "r", encoding="utf-8").read())
+    # model_json = json.loads(open(model_path, "r", encoding="utf-8").read())
+    model_json = []  # model_json传空list使用内置模型解析
     jso_useful_key = {"_pdf_type": "", "model_list": model_json}
     local_image_dir = os.path.join(current_script_dir, 'images')
     image_dir = str(os.path.basename(local_image_dir))

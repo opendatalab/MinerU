@@ -82,21 +82,22 @@ conda create -n MinerU python=3.10
 conda activate MinerU
 ```
 
-### Usage Instructions
+### Installation and Configuration
 
 #### 1. Install Magic-PDF
 
-Install using pip:
-```bash
-pip install magic-pdf
-```
-Alternatively, for built-in high-precision model parsing capabilities, use:
+Install the full-feature package with pip:
+>Note: The pip-installed package supports CPU-only and is ideal for quick tests.
+>
+>For CUDA/MPS acceleration in production, see [Acceleration Using CUDA or MPS](#4-Acceleration-Using-CUDA-or-MPS).
+
 ```bash
 pip install magic-pdf[full-cpu]
 ```
-The high-precision models depend on detectron2, which requires a compiled installation.  
-If you need to compile it yourself, refer to https://github.com/facebookresearch/detectron2/issues/5114  
-Or directly use our pre-compiled wheel packages (limited to python 3.10):  
+The full-feature package depends on detectron2, which requires a compilation installation.   
+If you need to compile it yourself, please refer to https://github.com/facebookresearch/detectron2/issues/5114  
+Alternatively, you can directly use our precompiled whl package (limited to Python 3.10):
+
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
@@ -123,31 +124,8 @@ In magic-pdf.json, configure "models-dir" to point to the directory where the mo
 ```
 
 
-#### 4. Usage via Command Line
-
-###### simple
-
-```bash
-magic-pdf pdf-command --pdf "pdf_path" --inside_model true
-```
-After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".  
-You can find the corresponding xxx_model.json file in the markdown directory.   
-If you intend to do secondary development on the post-processing pipeline, you can use the command:  
-```bash
-magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
-```
-In this way, you won't need to re-run the model data, making debugging more convenient.
-
-
-###### more 
-
-```bash
-magic-pdf --help
-```
-
-
-#### 5. Acceleration Using CUDA or MPS
-
+#### 4. Acceleration Using CUDA or MPS
+If you have an available Nvidia GPU or are using a Mac with Apple Silicon, you can leverage acceleration with CUDA or MPS respectively.
 ##### CUDA
 
 You need to install the corresponding PyTorch version according to your CUDA version.  
@@ -172,13 +150,39 @@ You also need to modify the value of "device-mode" in the configuration file mag
 }
 ```
 
-#### 6. Usage via Api
+
+### Usage
+
+#### 1.Usage via Command Line
+
+###### simple
+
+```bash
+magic-pdf pdf-command --pdf "pdf_path" --inside_model true
+```
+After the program has finished, you can find the generated markdown files under the directory "/tmp/magic-pdf".  
+You can find the corresponding xxx_model.json file in the markdown directory.   
+If you intend to do secondary development on the post-processing pipeline, you can use the command:  
+```bash
+magic-pdf pdf-command --pdf "pdf_path" --model "model_json_path"
+```
+In this way, you won't need to re-run the model data, making debugging more convenient.
+
+
+###### more 
+
+```bash
+magic-pdf --help
+```
+
+
+#### 2. Usage via Api
 
 ###### Local
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
 pipe.pipe_classify()
 pipe.pipe_parse()
@@ -191,7 +195,7 @@ s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
 s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
 pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
 pipe.pipe_classify()
 pipe.pipe_parse()
