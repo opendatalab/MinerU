@@ -79,12 +79,13 @@ def setup(args, device):
     cfg.freeze()
     default_setup(cfg, args)
 
-    register_coco_instances(
-        "scihub_train",
-        {},
-        cfg.SCIHUB_DATA_DIR_TRAIN + ".json",
-        cfg.SCIHUB_DATA_DIR_TRAIN
-    )
+    #@todo 可以删掉这块？
+    # register_coco_instances(
+    #     "scihub_train",
+    #     {},
+    #     cfg.SCIHUB_DATA_DIR_TRAIN + ".json",
+    #     cfg.SCIHUB_DATA_DIR_TRAIN
+    # )
 
     return cfg
 
