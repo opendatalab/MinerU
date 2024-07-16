@@ -7,7 +7,7 @@ from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 
 import magic_pdf.model as model_config 
-model_config.use_inside_model = True
+model_config.__use_inside_model__ = True
 
 try:
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
