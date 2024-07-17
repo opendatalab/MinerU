@@ -168,7 +168,7 @@ magic-pdf --help
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": []}
+jso_useful_key = {"_pdf_type": "", "model_list": model_json}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
 pipe.pipe_classify()
 pipe.pipe_parse()
@@ -181,7 +181,7 @@ s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
 s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
 pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": []}
+jso_useful_key = {"_pdf_type": "", "model_list": model_json}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
 pipe.pipe_classify()
 pipe.pipe_parse()
@@ -189,6 +189,11 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
 详细实现可参考 [demo.py](demo/demo.py)
+
+
+### 常见问题处理解答
+
+参考 [FAQ](docs/FAQ_zh_cn.md) 
 
 
 # Magic-Doc
