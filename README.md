@@ -64,10 +64,9 @@ https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3
 
 ![Flowchart](docs/images/flowchart_en.png)
 
-### Submodule Repositories
+### Dependency repositorys
 
-- [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
-  - A Comprehensive Toolkit for High-Quality PDF Content Extraction
+- [PDF-Extract-Kit : A Comprehensive Toolkit for High-Quality PDF Content Extraction](https://github.com/opendatalab/PDF-Extract-Kit) 🚀🚀🚀
 
 ## Getting Started
 
