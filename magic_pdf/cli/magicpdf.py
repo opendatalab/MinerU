@@ -85,6 +85,7 @@ def do_parse(
         f_dump_content_list=True,
         f_make_md_mode=MakeMode.MM_MD,
 ):
+
     orig_model_list = copy.deepcopy(model_list)
 
     local_image_dir, local_md_dir = prepare_env(pdf_file_name, parse_method)
@@ -280,7 +281,7 @@ def local_json_command(local_json, method, inside_model, model_mode):
 @cli.command()
 @click.option(
     "--pdf", type=click.Path(exists=True), required=True,
-    help='pdf file path, support local/list, list file need end with ".list"')
+    help='pdf 文件路径, 支持单个文件或文件列表, 文件列表需要以".list"结尾, 一行一个pdf文件路径')
 @click.option("--model", type=click.Path(exists=True), help="模型的路径")
 @click.option(
     "--method",
