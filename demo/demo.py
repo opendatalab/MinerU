@@ -23,6 +23,13 @@ try:
     image_writer = DiskReaderWriter(local_image_dir)
     pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
     pipe.pipe_classify()
+    """如果没有传入有效的模型数据，则使用内置model解析"""
+    if len(model_json) == 0:
+        if model_config.__use_inside_model__:
+            pipe.pipe_analyze()
+        else:
+            logger.error("need model list input")
+            exit(1)
     pipe.pipe_parse()
     md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
     with open(f"{demo_name}.md", "w", encoding="utf-8") as f:
