@@ -31,6 +31,7 @@ jobs:
       
     - name: check-requirements
       run: |
+        conda init
         conda activate QA
         pip install magic-pdf[full-cpu]==0.6.1 -i https://pypi.tuna.tsinghua.edu.cn/simple
         pip install https://raw.githubusercontent.com/myhloli/wheels/main/assets/whl/detectron2/detectron2-0.6-cp310-cp310-linux_x86_64.whl
