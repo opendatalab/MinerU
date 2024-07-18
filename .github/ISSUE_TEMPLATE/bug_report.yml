@@ -72,6 +72,18 @@ body:
       required: true
 
   - type: dropdown
+    id: software_version
+    attributes:
+      label: Software version | 软件版本 (magic-pdf --version)
+      #multiple: false
+      options:
+        -
+        - "0.5.x"
+        - "0.6.x"
+    validations:
+      required: true
+
+  - type: dropdown
     id: device_mode
     attributes:
       label: Device mode | 设备模式
