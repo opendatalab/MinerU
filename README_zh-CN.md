@@ -83,12 +83,18 @@ conda activate MinerU
 #### 1. 安装Magic-PDF
 
 使用pip安装完整功能包：
->受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
+> 受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
 >
->如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
+> 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
 ```bash
 pip install magic-pdf[full-cpu]
 ```
+> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
+> ```bash
+> magic-pdf --version
+> ```
+> 如版本低于0.6.x，请提交issue进行反馈。
+
 完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
 或是直接使用我们预编译的whl包(仅限python 3.10)：  
 ```bash
