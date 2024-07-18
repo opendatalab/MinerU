@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
-    runs-on: pdf-base
+    runs-on: pdf
     timeout-minutes: 180
     strategy:
       fail-fast: true
