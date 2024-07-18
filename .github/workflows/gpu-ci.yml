@@ -1,0 +1,46 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: mineru
+on:
+  push:
+    branches:
+      - "master"
+    paths-ignore:
+      - "cmds/**"
+      - "**.md"
+  pull_request:
+    branches:
+      - "master"
+    paths-ignore:
+      - "cmds/**"
+      - "**.md"
+  workflow_dispatch:
+jobs:
+  cli-test:
+    runs-on: pdf
+    timeout-minutes: 180
+    strategy:
+      fail-fast: true
+
+    steps:
+    - name: PDF cli
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+      
+    - name: check-requirements
+      run: |
+        source ~/.bashrc
+        conda init
+        conda activate QA
+        pip install magic-pdf[full-cpu]==0.6.1 -i https://pypi.tuna.tsinghua.edu.cn/simple
+        pip install https://raw.githubusercontent.com/myhloli/wheels/main/assets/whl/detectron2/detectron2-0.6-cp310-cp310-linux_x86_64.whl
+
+    - name: gpu-bench
+      run: |
+        echo $GITHUB_WORKSPACE
+        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_bench_gpu.py
+
+                                                                                                               
+ 
