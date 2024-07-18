@@ -31,6 +31,7 @@ jobs:
       
     - name: check-requirements
       run: |
+        source ~/.bashrc
         conda init
         conda activate QA
         pip install magic-pdf[full-cpu]==0.6.1 -i https://pypi.tuna.tsinghua.edu.cn/simple
