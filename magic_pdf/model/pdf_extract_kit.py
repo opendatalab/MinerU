@@ -1,9 +1,9 @@
 from loguru import logger
 import os
+import time
 try:
     import cv2
     import yaml
-    import time
     import argparse
     import numpy as np
     import torch
@@ -20,7 +20,8 @@ try:
     from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
     from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
     from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
-except ImportError:
+except ImportError as e:
+    logger.exception(e)
     logger.error('Required dependency not installed, please install by \n"pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
     exit(1)
 
