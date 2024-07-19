@@ -1,4 +1,9 @@
-<div id="top"></div>
+<div id="top">
+<p align="center">
+  <img src="docs/images/datalab_logo.png" width="160px" style="vertical-align:middle;">
+  <span style="font-size: 28px; vertical-align: middle;">MinerU</span>
+</p>
+</div>
 <div align="center">
 
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
@@ -14,7 +19,14 @@
 </div>
 
 <div align="center">
+<p align="center">
+<a href="https://github.com/opendatalab/MinerU">MinerU: 端到端的PDF解析工具（基于PDF-Extract-Kit）支持PDF转Markdown</a>🚀🚀🚀<br>
+<a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
+</p>
 
+<p align="center">
+    👋 join us on <a href="https://discord.gg/AsQMhuMN" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+</p>
 </div>
 
 # MinerU 
