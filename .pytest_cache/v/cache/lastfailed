@@ -1,6 +1,0 @@
-{
-  "tests/test_cli/test_cli.py": true,
-  "tests/test_cli/test_bench.py::TestBench": true,
-  "tests/test_cli/test_bench.py::test_cli": true,
-  "tests/test_cli/test_bench.py": true
-}
