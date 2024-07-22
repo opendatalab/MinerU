@@ -215,7 +215,8 @@ class CustomPEKModel:
                         })
 
                 # OCR识别
-                ocr_res = self.ocr_model.ocr(np.array(new_image), mfd_res=adjusted_mfdetrec_res)[0]
+                new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
 
                 # 整合结果
                 if ocr_res:
