@@ -168,33 +168,74 @@ class CustomPEKModel:
         if self.apply_ocr:
             ocr_start = time.time()
             pil_img = Image.fromarray(image)
+
+            # 筛选出需要OCR的区域和公式区域
+            ocr_res_list = []
             single_page_mfdetrec_res = []
             for res in layout_res:
                 if int(res['category_id']) in [13, 14]:
-                    xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
-                    xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
                     single_page_mfdetrec_res.append({
-                        "bbox": [xmin, ymin, xmax, ymax],
+                        "bbox": [int(res['poly'][0]), int(res['poly'][1]),
+                                 int(res['poly'][4]), int(res['poly'][5])],
                     })
-            for res in layout_res:
-                if int(res['category_id']) in [0, 1, 2, 4, 6, 7]:  # 需要进行ocr的类别
-                    xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
-                    xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
-                    crop_box = (xmin, ymin, xmax, ymax)
-                    cropped_img = Image.new('RGB', pil_img.size, 'white')
-                    cropped_img.paste(pil_img.crop(crop_box), crop_box)
-                    cropped_img = cv2.cvtColor(np.asarray(cropped_img), cv2.COLOR_RGB2BGR)
-                    ocr_res = self.ocr_model.ocr(cropped_img, mfd_res=single_page_mfdetrec_res)[0]
-                    if ocr_res:
-                        for box_ocr_res in ocr_res:
-                            p1, p2, p3, p4 = box_ocr_res[0]
-                            text, score = box_ocr_res[1]
-                            layout_res.append({
-                                'category_id': 15,
-                                'poly': p1 + p2 + p3 + p4,
-                                'score': round(score, 2),
-                                'text': text,
-                            })
+                elif int(res['category_id']) in [0, 1, 2, 4, 6, 7]:
+                    ocr_res_list.append(res)
+
+            # 对每一个需OCR处理的区域进行处理
+            for res in ocr_res_list:
+                xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
+                xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
+
+                paste_x = 50
+                paste_y = 50
+                # 创建一个宽高各多50的白色背景
+                new_width = xmax - xmin + paste_x*2
+                new_height = ymax - ymin + paste_y*2
+                new_image = Image.new('RGB', (new_width, new_height), 'white')
+
+                # 裁剪图像
+                crop_box = (xmin, ymin, xmax, ymax)
+                cropped_img = pil_img.crop(crop_box)
+                new_image.paste(cropped_img, (paste_x, paste_y))
+
+                # 调整公式区域坐标
+                adjusted_mfdetrec_res = []
+                for mf_res in single_page_mfdetrec_res:
+                    mf_xmin, mf_ymin, mf_xmax, mf_ymax = mf_res["bbox"]
+                    # 将公式区域坐标调整为相对于裁剪区域的坐标
+                    x0 = mf_xmin - xmin + paste_x
+                    y0 = mf_ymin - ymin + paste_y
+                    x1 = mf_xmax - xmin + paste_x
+                    y1 = mf_ymax - ymin + paste_y
+                    if any([x0 < 0, y0 < 0, x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height, x1 > new_width, y1 > new_height]):
+                        continue
+                    else:
+                        adjusted_mfdetrec_res.append({
+                            "bbox": [x0, y0, x1, y1],
+                        })
+
+                # OCR识别
+                ocr_res = self.ocr_model.ocr(np.array(new_image), mfd_res=adjusted_mfdetrec_res)[0]
+
+                # 整合结果
+                if ocr_res:
+                    for box_ocr_res in ocr_res:
+                        p1, p2, p3, p4 = box_ocr_res[0]
+                        text, score = box_ocr_res[1]
+
+                        # 将坐标转换回原图坐标系
+                        p1 = [p1[0] - paste_x + xmin, p1[1] - paste_y + ymin]
+                        p2 = [p2[0] - paste_x + xmin, p2[1] - paste_y + ymin]
+                        p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
+                        p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
+
+                        layout_res.append({
+                            'category_id': 15,
+                            'poly': p1 + p2 + p3 + p4,
+                            'score': round(score, 2),
+                            'text': text,
+                        })
+
             ocr_cost = round(time.time() - ocr_start, 2)
             logger.info(f"ocr cost: {ocr_cost}")
 
