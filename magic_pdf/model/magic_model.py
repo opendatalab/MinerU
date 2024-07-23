@@ -9,7 +9,7 @@ from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.libs.math import float_gt
+from magic_pdf.libs.local_math import float_gt
 from magic_pdf.libs.boxbase import (
     _is_in,
     bbox_relative_pos,

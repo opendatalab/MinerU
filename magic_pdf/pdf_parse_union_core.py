@@ -7,7 +7,7 @@ from magic_pdf.layout.layout_sort import get_bboxes_layout, LAYOUT_UNPROC, get_c
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.hash_utils import compute_md5
-from magic_pdf.libs.math import float_equal
+from magic_pdf.libs.local_math import float_equal
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.model.magic_model import MagicModel
 from magic_pdf.para.para_split_v2 import para_split
