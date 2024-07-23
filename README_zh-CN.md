@@ -60,7 +60,7 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 - 支持windows/linux/mac平台
 
 
-https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
+https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 
 
