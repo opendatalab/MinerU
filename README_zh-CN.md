@@ -294,3 +294,8 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=opendatalab/MinerU&type=Date" />
  </picture>
 </a>
+
+## 友情链接
+- [LabelU (轻量级多模态标注工具)](https://github.com/opendatalab/labelU)
+- [LabelLLM (开源LLM对话标注平台)](https://github.com/opendatalab/LabelLLM)
+- [PDF-Extract-Kit (用于高质量PDF内容提取的综合工具包)](https://github.com/opendatalab/PDF-Extract-Kit))
