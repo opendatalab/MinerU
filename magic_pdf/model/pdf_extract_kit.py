@@ -22,7 +22,7 @@ try:
     from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 except ImportError as e:
     logger.exception(e)
-    logger.error('Required dependency not installed, please install by \n"pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
+    logger.error('Required dependency not installed, please install by \n"pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
     exit(1)
 
 
