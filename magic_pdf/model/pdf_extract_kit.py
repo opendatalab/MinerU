@@ -207,7 +207,8 @@ class CustomPEKModel:
                     y0 = mf_ymin - ymin + paste_y
                     x1 = mf_xmax - xmin + paste_x
                     y1 = mf_ymax - ymin + paste_y
-                    if any([x0 < 0, y0 < 0, x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height, x1 > new_width, y1 > new_height]):
+                    # 过滤在图外的公式块
+                    if any([x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height]):
                         continue
                     else:
                         adjusted_mfdetrec_res.append({
