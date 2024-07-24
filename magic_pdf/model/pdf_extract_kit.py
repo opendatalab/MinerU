@@ -1,6 +1,8 @@
 from loguru import logger
 import os
 import time
+
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 try:
     import cv2
     import yaml
@@ -17,13 +19,16 @@ try:
     import unimernet.tasks as tasks
     from unimernet.processors import load_processor
 
-    from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
-    from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
-    from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 except ImportError as e:
     logger.exception(e)
-    logger.error('Required dependency not installed, please install by \n"pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
+    logger.error(
+        'Required dependency not installed, please install by \n'
+        '"pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.io/wheels/"')
     exit(1)
+
+from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
+from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
+from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 
 
 def mfd_model_init(weight):
@@ -189,8 +194,8 @@ class CustomPEKModel:
                 paste_x = 50
                 paste_y = 50
                 # 创建一个宽高各多50的白色背景
-                new_width = xmax - xmin + paste_x*2
-                new_height = ymax - ymin + paste_y*2
+                new_width = xmax - xmin + paste_x * 2
+                new_height = ymax - ymin + paste_y * 2
                 new_image = Image.new('RGB', (new_width, new_height), 'white')
 
                 # 裁剪图像
