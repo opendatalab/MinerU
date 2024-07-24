@@ -22,6 +22,7 @@ pip install magic-pdf[full-cpu]
 pip install magic-pdf
 pip install unimernet==0.1.0
 pip install matplotlib ultralytics paddleocr==2.7.3 paddlepaddle
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ 
 ```
 
 ### 4.在部分较新的M芯片macOS设备上，MPS加速开启失败
