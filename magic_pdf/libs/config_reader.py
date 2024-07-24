@@ -56,17 +56,32 @@ def get_bucket_name(path):
 
 def get_local_dir():
     config = read_config()
-    return config.get("temp-output-dir", "/tmp")
+    local_dir = config.get("temp-output-dir")
+    if local_dir is None:
+        logger.warning("'temp-output-dir' not found in magic-pdf.json, use '/tmp' as default")
+        return "/tmp"
+    else:
+        return local_dir
 
 
 def get_local_models_dir():
     config = read_config()
-    return config.get("models-dir", "/tmp/models")
+    models_dir = config.get("models-dir")
+    if models_dir is None:
+        logger.warning("'models-dir' not found in magic-pdf.json, use '/tmp/models' as default")
+        return "/tmp/models"
+    else:
+        return models_dir
 
 
 def get_device():
     config = read_config()
-    return config.get("device-mode", "cpu")
+    device = config.get("device-mode")
+    if device is None:
+        logger.warning("'device-mode' not found in magic-pdf.json, use 'cpu' as default")
+        return "cpu"
+    else:
+        return device
 
 
 if __name__ == "__main__":

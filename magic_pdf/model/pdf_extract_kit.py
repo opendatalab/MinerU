@@ -105,6 +105,7 @@ class CustomPEKModel:
         self.device = kwargs.get("device", self.configs["config"]["device"])
         logger.info("using device: {}".format(self.device))
         models_dir = kwargs.get("models_dir", os.path.join(root_dir, "resources", "models"))
+        logger.info("using models_dir: {}".format(models_dir))
 
         # 初始化公式识别
         if self.apply_formula:
