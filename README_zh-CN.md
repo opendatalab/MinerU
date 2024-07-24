@@ -109,7 +109,8 @@ pip install magic-pdf[full-cpu]
 > 如版本低于0.6.x，请提交issue进行反馈。
 
 完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
-或是直接使用我们预编译的whl包(仅限python 3.10)：  
+或是直接使用我们预编译的whl包：
+> ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
