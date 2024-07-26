@@ -1,8 +1,7 @@
 <div id="top">
 
 <p align="center">
-  <img src="docs/images/datalab_logo.png" width="160px" style="vertical-align:middle;">
-  <span style="font-size: 28px; vertical-align: middle;">MinerU</span>
+  <img src="docs/images/MinerU-logo.png" width="160px" style="vertical-align:middle;">
 </p>
 
 </div>
