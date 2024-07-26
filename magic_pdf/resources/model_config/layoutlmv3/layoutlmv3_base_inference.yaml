@@ -1,6 +1,6 @@
 AUG:
   DETR: true
-CACHE_DIR: /mnt/localdata/users/yupanhuang/cache/huggingface
+CACHE_DIR: ~/cache/huggingface
 CUDNN_BENCHMARK: false
 DATALOADER:
   ASPECT_RATIO_GROUPING: true
@@ -294,7 +294,7 @@ MODEL:
     POS_TYPE: abs
   WEIGHTS: 
 OUTPUT_DIR: 
-SCIHUB_DATA_DIR_TRAIN: /mnt/petrelfs/share_data/zhaozhiyuan/publaynet/layout_scihub/train
+SCIHUB_DATA_DIR_TRAIN: ~/publaynet/layout_scihub/train
 SEED: 42
 SOLVER:
   AMP:

@@ -6,7 +6,7 @@ import json
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from lib import calculate_score
-
+import shutil
 pdf_res_path = conf.conf["pdf_res_path"]
 code_path = conf.conf["code_path"]
 pdf_dev_path = conf.conf["pdf_dev_path"]
@@ -58,8 +58,8 @@ def pdf_to_markdown():
         if not os.path.exists(dir_path):
             os.makedirs(dir_path, exist_ok=True)
         res_path = os.path.join(dir_path, f"{demo_name}.md")
-        #src_path = os.path.join(pdf_res_path, "pdf", f"{demo_name}.pdf") 
-        #shutil.copy(src_path, res_path)
+        src_path = os.path.join(pdf_res_path, demo_name, "auto", f"{demo_name}.md")
+        shutil.copy(src_path, res_path)
 
 
 

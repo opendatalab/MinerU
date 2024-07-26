@@ -5,19 +5,24 @@ from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, g
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 
+
 def remove_overlaps_low_confidence_spans(spans):
     dropped_spans = []
     #  删除重叠spans中置信度低的的那些
     for span1 in spans:
         for span2 in spans:
             if span1 != span2:
-                if calculate_iou(span1['bbox'], span2['bbox']) > 0.9:
-                    if span1['score'] < span2['score']:
-                        span_need_remove = span1
-                    else:
-                        span_need_remove = span2
-                    if span_need_remove is not None and span_need_remove not in dropped_spans:
-                        dropped_spans.append(span_need_remove)
+                # span1 或 span2 任何一个都不应该在 dropped_spans 中
+                if span1 in dropped_spans or span2 in dropped_spans:
+                    continue
+                else:
+                    if calculate_iou(span1['bbox'], span2['bbox']) > 0.9:
+                        if span1['score'] < span2['score']:
+                            span_need_remove = span1
+                        else:
+                            span_need_remove = span2
+                        if span_need_remove is not None and span_need_remove not in dropped_spans:
+                            dropped_spans.append(span_need_remove)
 
     if len(dropped_spans) > 0:
         for span_need_remove in dropped_spans:

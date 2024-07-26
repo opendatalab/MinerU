@@ -12,6 +12,7 @@
 [![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
+<a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 [English](README.md) | [简体中文](README_zh-CN.md)
 
@@ -58,7 +59,7 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 - 支持windows/linux/mac平台
 
 
-https://github.com/opendatalab/MinerU/assets/11393164/618937cb-dc6a-4646-b433-e3131a5f4070
+https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 
 
@@ -107,7 +108,8 @@ pip install magic-pdf[full-cpu]
 > 如版本低于0.6.x，请提交issue进行反馈。
 
 完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
-或是直接使用我们预编译的whl包(仅限python 3.10)：  
+或是直接使用我们预编译的whl包：
+> ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
@@ -118,11 +120,14 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 下载后请将models目录移动到空间较大的ssd磁盘目录  
 
 #### 3. 拷贝配置文件并进行配置
-在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 文件
+在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
+> ❗️务必执行以下命令将配置文件拷贝到用户目录下，否则程序将无法运行
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
-在magic-pdf.json中配置"models-dir"为模型权重文件所在目录
+
+在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
+> ❗️务必正确配置模型权重文件所在目录，否则会因为找不到模型文件而导致程序无法运行
 ```json
 {
   "models-dir": "/tmp/models"
@@ -292,3 +297,8 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=opendatalab/MinerU&type=Date" />
  </picture>
 </a>
+
+## 友情链接
+- [LabelU (轻量级多模态标注工具)](https://github.com/opendatalab/labelU)
+- [LabelLLM (开源LLM对话标注平台)](https://github.com/opendatalab/LabelLLM)
+- [PDF-Extract-Kit (用于高质量PDF内容提取的综合工具包)](https://github.com/opendatalab/PDF-Extract-Kit))

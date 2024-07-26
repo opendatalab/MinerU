@@ -48,11 +48,11 @@ jobs:
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
     needs: [cli-test]
-    runs-on: mineru
+    runs-on: ubuntu-latest
     steps:
     - name: get_actor
       run: |
-          metion_list="quyuan"
+          metion_list="dt-yy"
           echo $GITHUB_ACTOR
           if [[ $GITHUB_ACTOR == "drunkpig" ]]; then
             metion_list="xuchao"
