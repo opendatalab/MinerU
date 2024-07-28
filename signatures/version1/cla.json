@@ -1,4 +1,12 @@
 {
-   "signedContributors": [
-   ]
+  "signedContributors": [
+    {
+      "name": "eltociear",
+      "id": 22633385,
+      "comment_id": 2254564260,
+      "created_at": "2024-07-28T15:55:21Z",
+      "repoId": 765083837,
+      "pullRequestNo": 231
+    }
+  ]
 }
