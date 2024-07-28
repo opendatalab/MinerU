@@ -32,8 +32,18 @@ if __name__ == '__main__':
         },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
-            "lite": ["paddleocr==2.7.3", "paddlepaddle", "paddlepaddle-gpu"],
-            "full": ["unimernet", "matplotlib", "ultralytics", "paddleocr==2.7.3", "paddlepaddle", "paddlepaddle-gpu"],
+            "lite": ["paddleocr==2.7.3",
+                     "paddlepaddle==3.0.0b1;platform_system=='Linux'",
+                     "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
+                     ],
+            "full": ["unimernet",
+                     "matplotlib",
+                     "ultralytics",
+                     "paddleocr==2.7.3",
+                     "paddlepaddle==3.0.0b1;platform_system=='Linux'",
+                     "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
+                     "detectron2"
+                     ],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
