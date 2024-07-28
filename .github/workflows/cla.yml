@@ -1,4 +1,4 @@
-name: "CLA Assistant"
+name: "MinerU CLA Assistant"
 on:
   issue_comment:
     types: [created]
@@ -28,7 +28,7 @@ jobs:
           path-to-signatures: 'signatures/version1/cla.json'
           path-to-document: 'https://github.com/opendatalab/MinerU/blob/master/MinerU_CLA.md' # e.g. a CLA or a DCO document
           # branch should not be protected
-          branch: 'main'
+          branch: 'master'
           allowlist: user1,bot*
 
          # the followings are the optional inputs - If the optional inputs are not given, then default values will be taken
