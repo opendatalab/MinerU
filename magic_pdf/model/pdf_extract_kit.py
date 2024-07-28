@@ -9,8 +9,7 @@ try:
     import argparse
     import numpy as np
     import torch
-
-    from paddleocr import draw_ocr
+    import torchtext;torchtext.disable_torchtext_deprecation_warning()
     from PIL import Image
     from torchvision import transforms
     from torch.utils.data import Dataset, DataLoader
