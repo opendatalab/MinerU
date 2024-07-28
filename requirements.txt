@@ -3,8 +3,8 @@ Brotli>=1.1.0
 click>=8.1.7
 PyMuPDF>=1.24.7
 loguru>=0.6.0
-numpy>=1.21.6
-fast-langdetect>=0.2.1
+numpy>=1.21.6,<2.0.0
+fast-langdetect==0.2.0
 wordninja>=2.0.0
 scikit-learn>=1.0.2
 pdfminer.six==20231228
