@@ -281,6 +281,13 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 # Citation
 
 ```bibtex
+@article{he2024opendatalab,
+  title={Opendatalab: Empowering general artificial intelligence with open datasets},
+  author={He, Conghui and Li, Wei and Jin, Zhenjiang and Xu, Chao and Wang, Bin and Lin, Dahua},
+  journal={arXiv preprint arXiv:2407.13773},
+  year={2024}
+}
+
 @misc{2024mineru,
     title={MinerU: A One-stop, Open-source, High-quality Data Extraction Tool},
     author={MinerU Contributors},
