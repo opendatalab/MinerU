@@ -37,16 +37,13 @@ pip install --pre torch torchvision --index-url https://download.pytorch.org/whl
 ### 5.使用过程中遇到paddle相关的报错FatalError: Illegal instruction is detected by the operating system.
 
 paddlepaddle 2.6.1与部分linux系统环境存在兼容性问题。
-可尝试降级到2.5.2使用，
+可尝试~~降级到2.5.2~~升级到3.0.0b1使用，
 ```bash
-pip install paddlepaddle==2.5.2
+pip install paddlepaddle==3.0.0b1
 ```
-或卸载paddlepaddle，重新安装paddlepaddle-gpu
-```bash
-pip uninstall paddlepaddle
-pip install paddlepaddle-gpu
-```
-参考：https://github.com/opendatalab/MinerU/issues/146
+~~或卸载paddlepaddle，重新安装paddlepaddle-gpu~~
+
+参考：https://github.com/opendatalab/MinerU/issues/224
 
 ### 6.使用过程中遇到_pickle.UnpicklingError: invalid load key, 'v'.错误
 
