@@ -257,7 +257,7 @@ https://github.com/opendatalab/MinerU/assets/11393164/20438a02-ce6c-4af8-9dde-d7
 
 ## 感谢我们的贡献者
 
-<a href="https://github.com/magicpdf/Magic-PDF/graphs/contributors">
+<a href="https://github.com/opendatalab/MinerU/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=opendatalab/MinerU" />
 </a>
 
