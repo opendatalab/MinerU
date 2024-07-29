@@ -9,7 +9,9 @@ try:
     import argparse
     import numpy as np
     import torch
-    import torchtext;torchtext.disable_torchtext_deprecation_warning()
+    import torchtext
+    if torchtext.__version__ >= "0.18.0":
+        torchtext.disable_torchtext_deprecation_warning()
     from PIL import Image
     from torchvision import transforms
     from torch.utils.data import Dataset, DataLoader
