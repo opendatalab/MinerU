@@ -82,7 +82,7 @@
 # MinerU
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
-MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代推动人类科技的发展。
+MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为推动科技的发展做出一点贡献。
 
 ## 主要功能
 
@@ -98,8 +98,8 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 ## 快速开始
 
-如果遇到任何问题，请先查询<a href="#faq">FAQ</a>
-如果遇到效果不及预期，查询<a href="#known-issue">Known Issue</a>
+如果遇到任何问题，请先查询<a href="#faq">FAQ</a> </br>
+如果遇到效果不及预期，查询<a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
 - 在线体验
 - 使用CPU快速体验（Windows，Linux，Mac）
