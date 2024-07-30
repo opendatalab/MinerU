@@ -1,4 +1,4 @@
-<div align="center">
+<div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
   <img src="docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
@@ -97,16 +97,81 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 
 [在线体验点击这里](TODO)
 
+### 主线支持
+为了确保项目的稳定性和可靠性，我们特别强调对主线系统的支持。主线支持意味着我们在开发过程中，针对特定的操作系统、软件环境及版本进行了详尽的测试与优化。这一策略的核心目的在于，当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
+
+主线支持的重要性在于，它为用户提供了一个明确的基准，使得项目能够在最广泛的范围内满足核心用户群体的需求。通过集中资源和精力于主线环境，我们能够更高效地识别并解决潜在的bug，同时提供及时的技术支持和更新，确保用户能够享受到无缝的体验。
+
+尽管我们致力于提供广泛的支持，但在非主线系统或环境中，由于硬件、软件配置的差异，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于那些希望在非推荐环境中使用本项目的用户，我们建议进行充分的测试，并在遇到问题时，参照文档或联系技术支持获取帮助。我们鼓励社区反馈，以便我们能够逐步扩大支持范围，提升跨平台的稳定性。
+<table>
+ <style>    td, th {
+      text-align: center;
+    }
+  </style>
+    <tr>
+        <td colspan="3" rowspan="2">操作系统</td>
+    </tr>
+    <tr>
+        <td>Ubuntu 22.04 LTS</td>
+        <td>Windows 10 / 11</td>
+        <td>macOS 11+</td>
+    </tr>
+    <tr>
+        <td colspan="3">CPU</td>
+        <td>x86_64</td>
+        <td>x86_64</td>
+        <td>x86_64 / arm64</td>
+    </tr>
+    <tr>
+        <td colspan="3">内存</td>
+        <td colspan="3">大于等于16GB，推荐32G以上</td>
+    </tr>
+    <tr>
+        <td colspan="3">python版本</td>
+        <td colspan="3">3.10</td>
+    </tr>
+    <tr>
+        <td colspan="3">Nvidia Driver 版本</td>
+        <td>latest(专有驱动)</td>
+        <td>latest</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CUDA环境</td>
+        <td>自动安装[12.1(pytorch)+11.8(paddle)]</td>
+        <td>11.8(手动安装)+cuDNN v8.7.0(手动安装)</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td rowspan="2">GPU硬件支持列表</td>
+        <td colspan="2">最低要求 8G+显存</td>
+        <td colspan="2">3060ti/3070/3080/3080ti/4060/4070/4070ti<br>
+        8G显存仅可开启lavout和公式识别加速</td>
+        <td rowspan="2">None</td>
+    </tr>
+    <tr>
+        <td colspan="2">推荐配置 16G+显存</td>
+        <td colspan="2">3090/3090ti/4070tisuper/4080/4090<br>
+        16G及以上可以同时开启layout，公式识别和ocr加速</td>
+    </tr>
+</table>
+
 ### 使用CPU快速体验
 
+
 ```bash
- command to install magic-pdf[full]
+pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
 
+> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
+> ```bash
+> magic-pdf --version
+> ```
+> 如版本低于0.6.x，请提交issue进行反馈。
 
 ### 使用GPU
-- [ubuntu22.04 + GPU]()
-- [windows10/11 + GPU]()
+- [Ubuntu22.04LTS + GPU]()
+- [Windows10/11 + GPU]()
 
 
 ## Usage
@@ -121,9 +186,10 @@ TODO
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
 pipe.pipe_classify()
+pipe.pipe_analyze()
 pipe.pipe_parse()
 md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
@@ -134,9 +200,10 @@ s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
 s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
 pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": model_json}
+jso_useful_key = {"_pdf_type": "", "model_list": []}
 pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
 pipe.pipe_classify()
+pipe.pipe_analyze()
 pipe.pipe_parse()
 md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
