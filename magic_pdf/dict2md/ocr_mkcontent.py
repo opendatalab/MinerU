@@ -210,28 +210,32 @@ def para_to_standard_format(para, img_buket_path):
     return para_content
 
 
-def para_to_standard_format_v2(para_block, img_buket_path):
+def para_to_standard_format_v2(para_block, img_buket_path, page_idx):
     para_type = para_block['type']
     if para_type == BlockType.Text:
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block),
+            'page_idx': page_idx
         }
     elif para_type == BlockType.Title:
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block),
-            'text_level': 1
+            'text_level': 1,
+            'page_idx': page_idx
         }
     elif para_type == BlockType.InterlineEquation:
         para_content = {
             'type': 'equation',
             'text': merge_para_with_text(para_block),
-            'text_format': "latex"
+            'text_format': "latex",
+            'page_idx': page_idx
         }
     elif para_type == BlockType.Image:
         para_content = {
             'type': 'image',
+            'page_idx': page_idx
         }
         for block in para_block['blocks']:
             if block['type'] == BlockType.ImageBody:
@@ -241,6 +245,7 @@ def para_to_standard_format_v2(para_block, img_buket_path):
     elif para_type == BlockType.Table:
         para_content = {
             'type': 'table',
+            'page_idx': page_idx
         }
         for block in para_block['blocks']:
             if block['type'] == BlockType.TableBody:
@@ -345,6 +350,7 @@ def union_make(pdf_info_dict: list, make_mode: str, drop_mode: str, img_buket_pa
                 raise Exception(f"drop_mode can not be null")
 
         paras_of_layout = page_info.get("para_blocks")
+        page_idx = page_info.get("page_idx")
         if not paras_of_layout:
             continue
         if make_mode == MakeMode.MM_MD:
@@ -355,7 +361,7 @@ def union_make(pdf_info_dict: list, make_mode: str, drop_mode: str, img_buket_pa
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.STANDARD_FORMAT:
             for para_block in paras_of_layout:
-                para_content = para_to_standard_format_v2(para_block, img_buket_path)
+                para_content = para_to_standard_format_v2(para_block, img_buket_path, page_idx)
                 output_content.append(para_content)
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
