@@ -175,11 +175,11 @@ pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.
 > ```bash
 > magic-pdf --version
 > ```
-> 如版本低于0.6.x，请提交issue进行反馈。
+> 如版本低于0.6.2，请提交issue进行反馈。
 
 ### 使用GPU
-- [Ubuntu22.04LTS + GPU]()
-- [Windows10/11 + GPU]()
+- [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
+- [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 
 
 ## 使用
