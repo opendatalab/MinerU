@@ -99,7 +99,7 @@ conda activate MinerU
 >
 > 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
 ```bash
-pip install magic-pdf[full-cpu]
+pip install magic-pdf[full-cpu] -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
 > ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
 > ```bash
@@ -111,7 +111,7 @@ pip install magic-pdf[full-cpu]
 或是直接使用我们预编译的whl包：
 > ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
 ```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
 
 #### 2. 下载模型权重文件
