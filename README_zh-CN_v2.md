@@ -45,14 +45,25 @@
     <li>
       <a href="#mineru">MinerU</a>
       <ul>
-        <li><a href="#introduction">MinerU简介</a></li>
-        <li><a href="#key-features">主要功能</a></li>
-        <li><a href="#getting-started">快速开始</a></li>
-        <li><a href="#usage">使用</a></li>
-        <li><a href="#使用GPU">使用</a></li>
+        <li><a href="#项目简介">项目简介</a></li>
+        <li><a href="#主要功能">主要功能</a></li>
+        <li><a href="#快速开始">快速开始</a>
+            <ul>
+            <li><a href="#在线体验">在线体验</a></li>
+            <li><a href="#使用cpu快速体验">使用CPU快速体验</a></li>
+            <li><a href="#使用gpu">使用GPU</a></li>
+            </ul>
+        </li>
+        <li><a href="#使用">使用</a>
+            <ul>
+            <li><a href="#命令行">命令行</a></li>
+            <li><a href="#api">API</a></li>
+            <li><a href="#二次开发">二次开发指南</a></li>
+            </ul>
+        </li>
       </ul>
     </li>
-    <li><a href="#todo">TODO</a></li>
+    <li><a href="#todo">TODO List</a></li>
     <li><a href="#known-issue">Known Issue</a></li>
     <li><a href="#faq">FAQ</a></li>
     <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
@@ -69,10 +80,11 @@
 
 
 # MinerU
-## Introduction
-Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本地文档或者位于支持S3协议对象存储上的文件。
+## 项目简介
+MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
+MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为推动科技的发展做出一点贡献。
 
-## Key Features
+## 主要功能
 
 - 删除页眉、页脚、脚注、页码等元素，保持语义连贯
 - 符合人类阅读顺序的排版格式
@@ -84,16 +96,16 @@ Magic-PDF 是一款将 PDF 转化为 markdown 格式的工具。支持转换本�
 - 支持windows/linux/mac平台
 
 
-## Getting Started
+## 快速开始
 
-如果遇到任何问题，请先查询<a href="#faq">FAQ</a>
-如果遇到效果不及预期，查询<a href="#known-issue">Known Issue</a>
+如果遇到任何问题，请先查询<a href="#faq">FAQ</a> </br>
+如果遇到效果不及预期，查询<a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
 - 在线体验
 - 使用CPU快速体验（Windows，Linux，Mac）
 - Linux/Windows + GPU
 
-### Online Demo
+### 在线体验
 
 [在线体验点击这里](TODO)
 
@@ -174,7 +186,7 @@ pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.
 - [Windows10/11 + GPU]()
 
 
-## Usage
+## 使用
 
 ### 命令行
 
@@ -218,6 +230,14 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 TODO
 
 # TODO
+
+- [ ] 基于语义的阅读顺序
+- [ ] 正文中列表识别
+- [ ] 正文中代码块识别
+- [ ] 目录识别
+- [ ] 表格识别
+- [ ] 化学式识别
+- [ ] 几何图形识别
 
 
 # Known Issue
