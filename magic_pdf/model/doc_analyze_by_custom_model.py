@@ -68,6 +68,8 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
     model = None
 
     if model_config.__model_mode__ == "lite":
+        logger.warning("The Lite mode is provided for developers to conduct testing only, and the output quality is "
+                       "not guaranteed to be reliable.")
         model = MODEL.Paddle
     elif model_config.__model_mode__ == "full":
         model = MODEL.PEK
