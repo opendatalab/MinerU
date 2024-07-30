@@ -68,23 +68,29 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
     model = None
 
     if model_config.__model_mode__ == "lite":
-        logger.warning("The Lite mode is provided for developers to conduct testing only, and the output quality is "
-                       "not guaranteed to be reliable.")
         model = MODEL.Paddle
     elif model_config.__model_mode__ == "full":
         model = MODEL.PEK
+    elif model_config.__model_mode__ == "torrone":
+        model = MODEL.Torrone
 
     if model_config.__use_inside_model__:
         model_init_start = time.time()
         if model == MODEL.Paddle:
             from magic_pdf.model.pp_structure_v2 import CustomPaddleModel
             custom_model = CustomPaddleModel(ocr=ocr, show_log=show_log)
-        elif model == MODEL.PEK:
+        elif model == MODEL.Torrone:
             from magic_pdf.model.pdf_extract_kit import CustomPEKModel
             # 从配置文件读取model-dir和device
             local_models_dir = get_local_models_dir()
             device = get_device()
             custom_model = CustomPEKModel(ocr=ocr, show_log=show_log, models_dir=local_models_dir, device=device)
+        elif model == MODEL.PEK:
+            from magic_pdf.model.torrone_custom import CustomTorroneModel
+            # 从配置文件读取model-dir和device
+            local_models_dir = get_local_models_dir()
+            device = get_device()
+            custom_model = CustomTorroneModel(ocr=ocr, show_log=show_log, models_dir=local_models_dir, device=device)
         else:
             logger.error("Not allow model_name!")
             exit(1)
