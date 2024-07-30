@@ -101,15 +101,13 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
 如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
-- 在线体验
+- 在线体验(无需任何安装)
 - 使用CPU快速体验（Windows，Linux，Mac）
 - Linux/Windows + GPU
 
-### 在线体验
-
-[在线体验点击这里](TODO)
 
 **软硬件环境支持说明**
+
 为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
 
 通过集中资源和精力于主线环境，我们团队能够更高效地解决潜在的BUG，及时开发新功能。
@@ -164,6 +162,11 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
         16G及以上可以同时开启layout，公式识别和ocr加速</td>
     </tr>
 </table>
+
+### 在线体验
+
+[在线体验点击这里](TODO)
+
 
 ### 使用CPU快速体验
 
