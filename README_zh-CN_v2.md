@@ -54,7 +54,7 @@
             <li><a href="#使用gpu">使用GPU</a></li>
             </ul>
         </li>
-        <li><a href="#使用">使用</a>
+        <li><a href="#使用">使用方式</a>
             <ul>
             <li><a href="#命令行">命令行</a></li>
             <li><a href="#api">API</a></li>
@@ -82,13 +82,13 @@
 # MinerU
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
-MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为推动科技的发展做出一点贡献。
+MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为科技发展做出一点贡献。
 
 ## 主要功能
 
 - 删除页眉、页脚、脚注、页码等元素，保持语义连贯
-- 符合人类阅读顺序的排版格式
-- 保留原文档的结构和格式，包括标题、段落、列表等
+- 对多栏输出符合人类阅读顺序的文本
+- 保留原文档的结构，包括标题、段落、列表等
 - 提取图像、图片标题、表格、表格标题
 - 自动识别文档中的公式并将公式转换成latex
 - 乱码PDF自动检测并启用OCR
@@ -98,8 +98,8 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 ## 快速开始
 
-如果遇到任何问题，请先查询<a href="#faq">FAQ</a> </br>
-如果遇到效果不及预期，查询<a href="#known-issue">Known Issue</a></br>
+如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
+如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
 - 在线体验
 - 使用CPU快速体验（Windows，Linux，Mac）
