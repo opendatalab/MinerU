@@ -106,8 +106,15 @@ Install the full-feature package with pip:
 >For CUDA/MPS acceleration in production, see [Acceleration Using CUDA or MPS](#4-Acceleration-Using-CUDA-or-MPS).
 
 ```bash
-pip install magic-pdf[full-cpu]
+pip install magic-pdf[full]==0.6.2b1
 ```
+> ❗️❗️❗️
+> We have pre-released the 0.6.2 beta version, addressing numerous issues mentioned in our logs. However, this build has not undergone full QA testing and does not represent the final release quality. Should you encounter any problems, please promptly report them to us via issues or revert to using version 0.6.1.
+> ```bash
+> pip install magic-pdf[full-cpu]==0.6.1
+> ```
+
+ 
 The full-feature package depends on detectron2, which requires a compilation installation.   
 If you need to compile it yourself, please refer to https://github.com/facebookresearch/detectron2/issues/5114  
 Alternatively, you can directly use our precompiled whl package (limited to Python 3.10):
