@@ -34,7 +34,7 @@ model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
 也可以使用git clone从 ModelScope 下载模型:
 
 ```bash
-git clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
+git lfs clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
 ```
 
 
