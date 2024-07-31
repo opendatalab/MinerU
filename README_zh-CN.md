@@ -140,6 +140,12 @@ cp magic-pdf.template.json ~/magic-pdf.json
 
 需要根据自己的CUDA版本安装对应的pytorch版本  
 以下是对应CUDA 11.8版本的安装命令，更多信息请参考 https://pytorch.org/get-started/locally/  
+> ❗️务必在命令中指定以下版本
+> ```bash
+> torch==2.3.1 torchvision==0.18.1 
+> ```
+> 这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
+ 
 ```bash
 pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 ```
