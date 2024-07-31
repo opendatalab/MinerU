@@ -121,13 +121,17 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i ht
 
 #### 3. 拷贝配置文件并进行配置
 在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
-> ❗️务必执行以下命令将配置文件拷贝到用户目录下，否则程序将无法运行
+> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
+> 
+>  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
 > ❗️务必正确配置模型权重文件所在目录，否则会因为找不到模型文件而导致程序无法运行
+> 
+> windows系统中应把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
 ```json
 {
   "models-dir": "/tmp/models"
@@ -140,17 +144,17 @@ cp magic-pdf.template.json ~/magic-pdf.json
 
 需要根据自己的CUDA版本安装对应的pytorch版本  
 以下是对应CUDA 11.8版本的安装命令，更多信息请参考 https://pytorch.org/get-started/locally/  
+```bash
+pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+```
 > ❗️务必在命令中指定以下版本
 > ```bash
 > torch==2.3.1 torchvision==0.18.1 
 > ```
 > 这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
  
-```bash
-pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
-```
 
-同时需要修改配置文件magic-pdf.json中"device-mode"的值
+同时需要修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值
 ```json
 {
   "device-mode":"cuda"
