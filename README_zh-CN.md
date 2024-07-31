@@ -99,13 +99,13 @@ conda activate MinerU
 >
 > 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
 ```bash
-pip install magic-pdf[full-cpu] -i https://pypi.tuna.tsinghua.edu.cn/simple 
+pip install magic-pdf[full]==0.6.2b1 -i https://mirrors.aliyun.com/pypi/simple/
 ```
-> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
+> ❗️❗️❗️
+> 我们预发布了0.6.2beta版本，该版本解决了很多issue中提出的问题，同时提高了安装成功率。但是该版本未经过完整的QA测试，不代表最终正式发布的质量水平。如果你遇到任何问题，请通过提交issue的方式及时向我们反馈，或者回退到使用0.6.1版本。
 > ```bash
-> magic-pdf --version
+> pip install magic-pdf[full-cpu]==0.6.1
 > ```
-> 如版本低于0.6.x，请提交issue进行反馈。
 
 完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
 或是直接使用我们预编译的whl包：
