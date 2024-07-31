@@ -36,7 +36,7 @@ if __name__ == '__main__':
                      "paddlepaddle==3.0.0b1;platform_system=='Linux'",
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
                      ],
-            "full": ["unimernet",
+            "full": ["unimernet==0.1.6",
                      "matplotlib",
                      "ultralytics",
                      "paddleocr==2.7.3",
