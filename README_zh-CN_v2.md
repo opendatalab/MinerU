@@ -172,7 +172,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 
 ```bash
-pip install magic-pdf[full] detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
+pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
 
 > ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
