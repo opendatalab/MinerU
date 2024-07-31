@@ -33,6 +33,22 @@ model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
 #### Git下载
 也可以使用git clone从 ModelScope 下载模型:
 
+需要先安装git lfs
+
+>##### On Linux
+>
+>Debian and RPM packages are available from packagecloud, see the [Linux installation instructions](INSTALLING.md).
+>
+>##### On macOS
+>
+>[Homebrew](https://brew.sh) bottles are distributed and can be installed via `brew install git-lfs`.
+>
+>##### On Windows
+>
+>Git LFS is included in the distribution of [Git for Windows](https://gitforwindows.org/).
+>Alternatively, you can install a recent version of Git LFS from the [Chocolatey](https://chocolatey.org/) package manager.
+
+然后通过git clone下载模型:
 ```bash
 git clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
 ```
