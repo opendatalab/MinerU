@@ -52,7 +52,8 @@ if __name__ == '__main__':
         python_requires=">=3.9",  # 项目依赖的 Python 版本
         entry_points={
             "console_scripts": [
-                "magic-pdf = magic_pdf.cli.magicpdf:cli"
+                "magic-pdf = magic_pdf.tools.cli:cli",
+                "magic-pdf-dev = magic_pdf.tools.cli_dev:cli" 
             ],
         },  # 项目提供的可执行命令
         include_package_data=True,  # 是否包含非代码文件，如数据文件、配置文件等
