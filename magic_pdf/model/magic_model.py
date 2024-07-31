@@ -561,13 +561,9 @@ class MagicModel:
                     span["type"] = ContentType.Image
                 elif category_id == 5:
                     # 获取table模型结果
-                    html = layout_det.get("html", None)
                     latex = layout_det.get("latex", None)
-                    if html:
-                        span["content"] = html
-                    elif latex:
+                    if latex:
                         span["content"] = latex
-
                     span["type"] = ContentType.Table
                 elif category_id == 13:
                     span["content"] = layout_det["latex"]

@@ -287,13 +287,7 @@ class CustomPEKModel:
                     end_time = time.time()
                     run_time = end_time - start_time
                     print(f"------------table recognition processing ends within {run_time}s-----")
+                    layout["latex"] = latex_code
 
-                    # try to convert latex to html
-                    try:
-                        html_code = convert_text(latex_code, 'html', format='latex')
-                        layout["html"] = html_code
-                    except Exception as e:
-                        layout["latex"] = latex_code
-                        logger.error(f"[pdf_extract_kit][CustomPEKModel]: converting latex to html failed: {e}")
 
         return layout_res

@@ -130,7 +130,7 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout, mode, img_buket_path=""):
                                 if span['type'] == ContentType.Table:
                                     # if processed by table model
                                     if span.get('content', ''):
-                                        para_text += f"\n {span['content']}  \n"
+                                        para_text += f"\n\n$\n {span['content']}\n$\n\n"
                                     else:
                                         para_text += f"\n![]({join_path(img_buket_path, span['image_path'])})  \n"
                 for block in para_block['blocks']:  # 3rd.拼table_footnote
