@@ -131,7 +131,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
 > ❗️务必正确配置模型权重文件所在目录，否则会因为找不到模型文件而导致程序无法运行
 > 
-> windows系统中应把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
+> windows系统中应把路径中所有的"\\"替换为"/",否则会因为转义原因导致json文件语法错误。
 ```json
 {
   "models-dir": "/tmp/models"
