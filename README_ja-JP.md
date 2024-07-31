@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-    👋 <a href="https://discord.gg/AsQMhuMN" target="_blank">Discord</a>と<a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>で参加してください
+    👋 <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a>と<a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>で参加してください
 </p>
 </div>
 
