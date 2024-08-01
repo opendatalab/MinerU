@@ -104,7 +104,7 @@ magic-pdf pdf-command --pdf small_ocr.pdf
 ```bash
 python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 ```
-** 2.运行以下命令测试ocr加速效果**
+**2.运行以下命令测试ocr加速效果**
 ```bash
 magic-pdf pdf-command --pdf small_ocr.pdf
 ```
