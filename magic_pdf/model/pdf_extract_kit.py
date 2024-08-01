@@ -104,6 +104,7 @@ class CustomPEKModel:
         self.apply_layout = kwargs.get("apply_layout", self.configs["config"]["layout"])
         self.apply_formula = kwargs.get("apply_formula", self.configs["config"]["formula"])
         self.table_config = kwargs.get("table_config", self.configs["config"]["table_config"])
+        self.apply_table = self.table_config.get("is_table_recog_enable", False)
         self.apply_ocr = ocr
         logger.info(
             "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}".format(
@@ -139,7 +140,7 @@ class CustomPEKModel:
             self.ocr_model = ModifiedPaddleOCR(show_log=show_log)
 
         # init structeqtable
-        if self.table_config.get("is_table_recog_enable", False):
+        if self.apply_table:
             max_time = self.table_config.get("max_time", 400)
             self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])),
                                                 max_time=max_time, _device_=self.device)
