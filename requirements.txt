@@ -8,4 +8,6 @@ fast-langdetect==0.2.0
 wordninja>=2.0.0
 scikit-learn>=1.0.2
 pdfminer.six==20231228
+pypandoc
+struct-eqtable==0.1.0
 # The requirements.txt must ensure that only necessary external dependencies are introduced. If there are new dependencies to add, please contact the project administrator.

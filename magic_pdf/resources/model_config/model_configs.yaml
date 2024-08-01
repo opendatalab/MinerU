@@ -8,4 +8,4 @@ weights:
   layout: Layout/model_final.pth
   mfd: MFD/weights.pt
   mfr: MFR/UniMERNet
-  table: Table/
+  table: TabRec/StructEqTable

@@ -91,6 +91,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 - 保留原文档的结构，包括标题、段落、列表等
 - 提取图像、图片标题、表格、表格标题
 - 自动识别文档中的公式并将公式转换成latex
+- 自动识别文档中的表格并将表格转换成latex
 - 乱码PDF自动检测并启用OCR
 - 支持CPU和GPU环境
 - 支持windows/linux/mac平台
@@ -235,7 +236,7 @@ TODO
 - [ ] 正文中列表识别
 - [ ] 正文中代码块识别
 - [ ] 目录识别
-- [ ] 表格识别
+- [x] 表格识别
 - [ ] 化学式识别
 - [ ] 几何图形识别
 
@@ -270,6 +271,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
+- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 
 # Citation
 
