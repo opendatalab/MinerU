@@ -100,7 +100,7 @@ conda activate MinerU
 或是直接使用我们预编译的whl包：
 > ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
 ```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
+pip install detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
 
 **2.使用pip安装完整功能包**
@@ -108,7 +108,7 @@ pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i ht
 >
 > 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
 ```bash
-pip install magic-pdf[full]==0.6.2b1 -i https://mirrors.aliyun.com/pypi/simple/
+pip install magic-pdf[full]==0.6.2b1 -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 > ❗️❗️❗️
 > 我们预发布了0.6.2beta版本，该版本解决了很多issue中提出的问题，同时提高了安装成功率。但是该版本未经过完整的QA测试，不代表最终正式发布的质量水平。如果你遇到任何问题，请通过提交issue的方式及时向我们反馈，或者回退到使用0.6.1版本。
