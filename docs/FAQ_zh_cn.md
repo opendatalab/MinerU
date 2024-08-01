@@ -50,20 +50,7 @@ pip install paddlepaddle==3.0.0b1
 可能是由于模型文件未下载完整导致，可尝试重现下载模型文件后再试  
 参考：https://github.com/opendatalab/MinerU/issues/143
 
-### 7.程序运行完成后，找不到tmp目录
-
-程序输出目录是在"magic-pdf.json"中通过
-```json
-{
-  "temp-output-dir": "/tmp"
-}
-```
-进行配置的。  
-如果没有更改这个参数，使用默认的配置执行程序，在linux/macOS会在绝对路径"/tmp"下创建一个"magic-pdf"文件夹作为输出路径。
-而在windows下，默认的输出路径与执行命令时，命令行所在的盘符相关，如果命令行在C盘，则默认输出路径为"C://tmp/magic-pdf"。  
-参考：https://github.com/opendatalab/MinerU/issues/149
-
-### 8.模型文件应该下载到哪里/models-dir的配置应该怎么填
+### 7.模型文件应该下载到哪里/models-dir的配置应该怎么填
 
 模型文件的路径输入是在"magic-pdf.json"中通过
 ```json
@@ -75,14 +62,14 @@ pip install paddlepaddle==3.0.0b1
 这个路径是绝对路径而不是相对路径，绝对路径的获取可在models目录中通过命令 "pwd" 获取。  
 参考：https://github.com/opendatalab/MinerU/issues/155#issuecomment-2230216874
 
-### 9.命令行中 --model "model_json_path" 指的是什么？
+### 8.命令行中 --model "model_json_path" 指的是什么？
 
 model_json 指的是通过模型分析后生成的一种有特定格式的json文件。  
 如果使用 https://github.com/opendatalab/PDF-Extract-Kit 项目生成，该文件一般在项目的output目录下。  
 如果使用 MinerU 的命令行调用内置的模型分析，该文件一般在输出路径"/tmp/magic-pdf/pdf-name"下。  
 参考：https://github.com/opendatalab/MinerU/issues/128
 
-### 10.Linux下报错：Required dependency not installed, please install by "pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
+### 9.Linux下报错：Required dependency not installed, please install by "pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
 
 这种情况可以先使用pip list 检查一下自己的依赖库列表，重点确认下以下几个库有没有安装（版本不一定完全一致，有就可以）
 ```bash

@@ -21,7 +21,6 @@
 
 <!-- hot link -->
 <p align="center">
-<a href="https://github.com/opendatalab/MinerU">MinerU: 端到端的PDF解析工具（基于PDF-Extract-Kit）支持PDF转Markdown</a>🚀🚀🚀<br>
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
 </p>
 
@@ -82,7 +81,9 @@
 # MinerU
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
-MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为科技发展做出一点贡献。
+MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
+
+https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
@@ -190,7 +191,24 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 
 ### 命令行
 
-TODO
+```bash
+magic-pdf -p {some_pdf} -o {some_output_dir}
+```
+
+运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
+
+```text
+├── some_pdf.md                 # markdown 文件
+├── images                      # 存放图片目录
+├── layout.pdf                  # layout 绘图
+├── middle.json                 # minerU 中间处理结果
+├── model.json                  # 模型推理结果
+├── origin.pdf                  # 原 pdf 文件
+└── spans.pdf                   # 最小粒度的bbox位置信息绘图
+```
+
+更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
+
 
 ### API
 
@@ -266,6 +284,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 
 # Acknowledgments
 
+- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy) 🔥🔥🔥
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
