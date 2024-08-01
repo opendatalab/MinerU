@@ -50,7 +50,7 @@ model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
 
 然后通过git clone下载模型:
 ```bash
-git clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
+git lfs clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
 ```
 
 
