@@ -86,22 +86,10 @@ def get_device():
     else:
         return device
 
-def get_table_mode():
+def get_table_recog_config():
     config = read_config()
-    table_mode = config.get("table-mode")
-    if table_mode is None:
-        logger.warning(f"'table-mode' not found in {CONFIG_FILE_NAME}, use 'False' as default")
-        return False
-    else:
-        table_mode = table_mode.lower()
-        if table_mode == "true":
-            boolean_value = True
-        elif table_mode == "False":
-            boolean_value = False
-        else:
-            logger.warning(f"invalid 'table-mode' value in {CONFIG_FILE_NAME}, use 'False' as default")
-            boolean_value = False
-        return boolean_value
+    table_config = config.get("table-config")
+    return table_config
 
 
 if __name__ == "__main__":

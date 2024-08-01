@@ -4,7 +4,7 @@ import fitz
 import numpy as np
 from loguru import logger
 
-from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_mode
+from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_recog_config
 from magic_pdf.model.model_list import MODEL
 import magic_pdf.model as model_config
 
@@ -84,12 +84,12 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
             # 从配置文件读取model-dir和device
             local_models_dir = get_local_models_dir()
             device = get_device()
-            table_mode = get_table_mode()
+            table_config = get_table_recog_config()
             model_input = {"ocr": ocr,
                            "show_log": show_log,
                            "models_dir": local_models_dir,
                            "device": device,
-                           "table_mode": table_mode}
+                           "table_config": table_config}
             custom_model = CustomPEKModel(**model_input)
         else:
             logger.error("Not allow model_name!")

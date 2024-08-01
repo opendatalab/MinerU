@@ -2,7 +2,9 @@ config:
   device: cpu
   layout: True
   formula: True
-  table: False
+  table_config:
+    is_table_recog_enable: False
+    max_time: 400
 
 weights:
   layout: Layout/model_final.pth

@@ -35,8 +35,8 @@ from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
 
 
-def table_model_init(model_path, _device_ = 'cpu'):
-    table_model = StructTableModel(model_path, device = _device_)
+def table_model_init(model_path, max_time=400, _device_='cpu'):
+    table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
     return table_model
 
 
@@ -103,7 +103,7 @@ class CustomPEKModel:
         # 初始化解析配置
         self.apply_layout = kwargs.get("apply_layout", self.configs["config"]["layout"])
         self.apply_formula = kwargs.get("apply_formula", self.configs["config"]["formula"])
-        self.apply_table = kwargs.get("table_mode", self.configs["config"]["table"])
+        self.table_config = kwargs.get("table_config", self.configs["config"]["table_config"])
         self.apply_ocr = ocr
         logger.info(
             "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}".format(
@@ -139,8 +139,10 @@ class CustomPEKModel:
             self.ocr_model = ModifiedPaddleOCR(show_log=show_log)
 
         # init structeqtable
-        if self.apply_table:
-            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])), _device_=self.device)
+        if self.table_config.get("is_table_recog_enable", False):
+            max_time = self.table_config.get("max_time", 400)
+            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])),
+                                                max_time=max_time, _device_=self.device)
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -282,12 +284,11 @@ class CustomPEKModel:
                     cropped_img = pil_img.crop(crop_box)
                     new_image.paste(cropped_img, (paste_x, paste_y))
                     start_time = time.time()
-                    print("------------------table recognition processing begins-----------------")
+                    logger.info("------------------table recognition processing begins-----------------")
                     latex_code = self.table_model.image2latex(new_image)[0]
                     end_time = time.time()
                     run_time = end_time - start_time
-                    print(f"------------table recognition processing ends within {run_time}s-----")
+                    logger.info(f"------------table recognition processing ends within {run_time}s-----")
                     layout["latex"] = latex_code
-
 
         return layout_res

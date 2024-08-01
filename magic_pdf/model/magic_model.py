@@ -563,7 +563,7 @@ class MagicModel:
                     # 获取table模型结果
                     latex = layout_det.get("latex", None)
                     if latex:
-                        span["content"] = latex
+                        span["latex"] = latex
                     span["type"] = ContentType.Table
                 elif category_id == 13:
                     span["content"] = layout_det["latex"]
