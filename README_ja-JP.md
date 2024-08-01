@@ -107,7 +107,7 @@ conda activate MinerU
 または、私たちの事前コンパイルされたwhlパッケージを直接使用できます（Python 3.10に限定）：
 
 ```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
+pip install detectron2 --extra-index-url https://wheels.myhloli.com
 ```
 
 **2.pipを使用してフル機能パッケージをインストールします**

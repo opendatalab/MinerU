@@ -107,7 +107,7 @@ If you need to compile it yourself, please refer to https://github.com/facebookr
 Alternatively, you can directly use our precompiled whl package (limited to Python 3.10):
 
 ```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
+pip install detectron2 --extra-index-url https://wheels.myhloli.com
 ```
 
 **2.Install the full-feature package with pip**
