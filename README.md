@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-    👋 join us on <a href="https://discord.gg/AsQMhuMN" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 </div>
 
@@ -150,10 +150,16 @@ If you have an available Nvidia GPU or are using a Mac with Apple Silicon, you c
 ##### CUDA
 
 You need to install the corresponding PyTorch version according to your CUDA version.  
-This example installs the CUDA 11.8 version.More information https://pytorch.org/get-started/locally/  
+This example installs the CUDA 11.8 version.More information https://pytorch.org/get-started/locally/
 ```bash
 pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 ```
+> ❗ ️Make sure to specify version
+> ```bash
+> torch==2.3.1 torchvision==0.18.1
+> ```
+>  in the command, as these are the highest versions we support. Failing to specify the versions may result in automatically installing higher versions which can cause the program to fail.
+
 Also, you need to modify the value of "device-mode" in the configuration file magic-pdf.json.  
 ```json
 {
