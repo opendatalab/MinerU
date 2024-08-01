@@ -2,13 +2,16 @@ import os
 import click
 from loguru import logger
 from pathlib import Path
+
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 import magic_pdf.model as model_config
 from magic_pdf.tools.common import parse_pdf_methods, do_parse
+from magic_pdf.libs.version import __version__
 
 
 @click.command()
+@click.version_option(__version__, "--version", "-v", help="display the version and exit")
 @click.option(
     "-p",
     "--path",

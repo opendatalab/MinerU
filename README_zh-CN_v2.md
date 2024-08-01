@@ -196,6 +196,7 @@ magic-pdf --help
 Usage: magic-pdf [OPTIONS]
 
 Options:
+  -v, --version                display the version and exit
   -p, --path PATH              local pdf filepath or directory  [required]
   -o, --output-dir TEXT        output local directory
   -m, --method [ocr|txt|auto]  the method for parsing pdf.  
@@ -206,6 +207,9 @@ Options:
                                without method specified, auto will be used by default. 
   --help                       Show this message and exit.
 
+
+## show version
+magic-pdf -v
 
 ## command line example
 magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
