@@ -62,6 +62,10 @@ inference_result: list[PageInferenceResults] = []
 
 ```
 
+poly 坐标的格式 [x0, y0, x1, y1, x2, y2, x3, y3], 分别表示左上、右上、右下、左小四点的坐标
+![poly 坐标示意图](images/poly.png)
+
+
 #### 示例数据
 
 ```json
@@ -123,6 +127,10 @@ inference_result: list[PageInferenceResults] = []
 ```python
 from pydantic import BaseModel, Field
 from enum import StrEnum
+
+class PdfParseType(StrEnum):
+    txt = "txt"
+    ocr = "ocr"
 
 
 class SpanType(StrEnum):
@@ -196,6 +204,114 @@ class PdfInfo(BaseModel):
     _layout_tree: dict = Field(desciption="内部使用，请忽略")
     page_size: list[float] = Field(desciption="页面的宽度和高度")
     page_idx: int = Field(desciption="页码，从 0 开始")
+
+
+class MiddleResult(BaseModel):
+    pdf_info: list[PdfInfo] = Field(description="解析结果")
+    _parse_type: PdfParseType = Field(description="解析类型")
+    _version_name: str = Field(description="版本名称")
 ```
 
 
+#### 示例数据
+
+```json
+{
+    "pdf_info": [
+        {
+            "preproc_blocks": [
+                {
+                    "type": "text",
+                    "bbox": [
+                        52,
+                        61.956024169921875,
+                        294,
+                        82.99800872802734
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                52,
+                                61.956024169921875,
+                                294,
+                                72.0000228881836
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        54.0,
+                                        61.956024169921875,
+                                        296.2261657714844,
+                                        72.0000228881836
+                                    ],
+                                    "content": "dependent on the service headway and the reliability of the departure ",
+                                    "type": "text",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "layout_bboxes": [
+                {
+                    "layout_bbox": [
+                        52,
+                        61,
+                        294,
+                        731
+                    ],
+                    "layout_label": "V",
+                    "sub_layout": []
+                }
+            ],
+            "page_idx": 0,
+            "page_size": [
+                612.0,
+                792.0
+            ],
+            "_layout_tree": [],
+            "images": [],
+            "tables": [],
+            "interline_equations": [],
+            "discarded_blocks": [],
+            "para_blocks": [
+                {
+                    "type": "text",
+                    "bbox": [
+                        52,
+                        61.956024169921875,
+                        294,
+                        82.99800872802734
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                52,
+                                61.956024169921875,
+                                294,
+                                72.0000228881836
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        54.0,
+                                        61.956024169921875,
+                                        296.2261657714844,
+                                        72.0000228881836
+                                    ],
+                                    "content": "dependent on the service headway and the reliability of the departure ",
+                                    "type": "text",
+                                    "score": 1.0
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "_parse_type": "txt",
+    "_version_name": "0.6.1"
+}
+```

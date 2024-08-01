@@ -203,7 +203,7 @@ magic-pdf -p {some_pdf} -o {some_output_dir}
 ├── middle.json                 # minerU 中间处理结果
 ├── model.json                  # 模型推理结果
 ├── origin.pdf                  # 原 pdf 文件
-└── spans.pdf                   # spans 绘图
+└── spans.pdf                   # 最小粒度的bbox位置信息绘图
 ```
 
 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
