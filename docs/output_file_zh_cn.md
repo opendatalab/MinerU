@@ -122,95 +122,105 @@ poly 坐标的格式 [x0, y0, x1, y1, x2, y2, x3, y3], 分别表示左上、右�
 
 ### middle.json
 
-#### 结构说明
+| 字段名 | 解释 | 
+| :-----| :---- |
+|pdf_info |list，每个元素都是一个dict,这个dict是每一页pdf的解析结果，详见下表 |
+|_parse_type | ocr \| txt，用来标识本次解析的中间态使用的模式 |
 
-```python
-from pydantic import BaseModel, Field
-from enum import StrEnum
+<br>
 
-class PdfParseType(StrEnum):
-    txt = "txt"
-    ocr = "ocr"
+**pdf_info**
+字段结构说明
 
+| 字段名 | 解释 | 
+| :-----| :---- |
+| preproc_blocks | pdf预处理后，未分段的中间结果 |
+| layout_bboxes | 布局分割的结果，含有布局的方向（垂直、水平），和bbox，按阅读顺序排序 |
+| page_idx | 页码，从0开始 |
+| page_size | 页面的宽度和高度 | 
+| _layout_tree | 布局树状结构 |
+| images | list，每个元素是一个dict，每个dict表示一个img_block |
+| tables | list，每个元素是一个dict，每个dict表示一个table_block |
+| interline_equations | list，每个元素是一个dict，每个dict表示一个interline_equation_block |
+| discarded_blocks | List, 模型返回的需要drop的block信息 |
+| para_blocks | 将preproc_blocks进行分段之后的结果 |
 
-class SpanType(StrEnum):
-    image = "image"
-    table = "table"
-    text = "text"
-    inline_equation = "inline_equation"
-    interline_equation = "interline_equation"
+上表中 `para_blocks` 是个dict的数组，每个dict是一个block结构，block最多支持一次嵌套
 
+<br>
 
-class Span(BaseModel):
-    bbox: list[float] = Field(description="四边形坐标, 分别是 左上，右下坐标")
-    type: SpanType = Field(description="span 类型")
-    content: str | None = Field(description="span 内容", default=None)
-    img_path: str | None = Field(description="截图路径", default=None)
-    score: float = Field(description="推理结果的置信度")
+**block**
 
+外层block被称为一级block，一级block中的字段包括
 
-class Line(BaseModel):
-    bbox: list[float] = Field(description="四边形坐标, 分别是 左上，右下坐标")
-    spans: list[Span] = Field(description="该行所有的 spans")
+| type | block类型（table\|image）|
+| :-----| :---- |
+|bbox | block矩形框坐标 |
+|blocks |list，里面的每个元素都是一个dict格式的二级block |
 
+<br>
+一级block只有"table"和"image"两种类型，其余block均为二级block
 
-class Lv2BlockType(StrEnum):
-    discarded = "discarded"
-    image_body = "image_body"
-    image_caption = "image_caption"
-    table_body = "table_body"
-    table_caption = "table_caption"
-    table_footnote = "table_footnote"
-    text = "text"
-    title = "title"
-    interline_equation = "interline_equation"
+二级block中的字段包括
 
+| type | desc | 
+| :-----| :---- |
+| bbox | block矩形框坐标 |
+| lines | list，每个元素都是一个dict表示的line，用来描述一行信息的构成| 
 
-class Lv2Block(BaseModel):
-    type: Lv2BlockType = Field(description="block 类型")
-    bbox: list[float] = Field(description="四边形坐标, 分别是 左上，右下坐标")
-    lines: list[Line] = Field(description="该 block 所有的 lines")
+二级block的类型详解
+| type | desc | 
+| :-----| :---- |
+| image_body | 图像的本体 |
+| image_caption | 图像的描述文本 |
+| table_body | 表格本体 |
+| table_caption | 表格的描述文本 |
+| table_footnote | 表格的脚注 |
+| text | 文本块 |
+| title | 标题块 |
+| interline_equation | 行间公式块| 
 
+<br>
 
-class Lv1BlockType(StrEnum):
-    image = "image"
-    table = "table"
+**line**
 
-
-class Lv1Block(BaseModel):
-    type: Lv1BlockType = Field(description="block 类型")
-    bbox: list[float] = Field(description="四边形坐标, 分别是 左上，右下坐标")
-    blocks: list[Lv2Block] = Field(description="该 block 所有的次级 blocks")
-
-
-class LayoutBoxType(Str):
-    v = "V"  # 垂直
-    h = "H"  # 水平
-
-
-class LayoutBox(BaseModel):
-    layout_bbox: list[float] = Field(description="四边形坐标, 分别是 左上，右下坐标")
-    layout_label: LayoutBoxtype = Field(description="layout 标签")
+line 的 字段格式如下
+| 字段名 | 解释 | 
+| :-----| :---- |
+| bbox | line的矩形框坐标 |
+| spans | list，每个元素都是一个dict表示的span，用来描述一个最小组成单元的构成 |
 
 
-class PdfInfo(BaseModel):
-    preproc_blocks: list[Lv2Block] = Field(description="pdf预处理后，未分段的中间结果")
-    layout_bboxes: list[LayoutBox] = Field(description="布局分割的结果，含有布局的方向（垂直、水平），和bbox，按阅读顺序排序")
-    para_blocks: list[Lv1Block] = Field(description="将preproc_blocks进行分段之后的结果")
-    discarded_blocks: list[Lv2Block] = Field(description="弃用 blocks")
-    interline_equations: list[Lv2Block] = Field(description="行间公式 blocks")
-    tables: list[Lv2Block] = Field(description="表格 blocks")
-    images: list[Lv2Block] = Field(description="图片 blocks")
-    _layout_tree: dict = Field(desciption="内部使用，请忽略")
-    page_size: list[float] = Field(desciption="页面的宽度和高度")
-    page_idx: int = Field(desciption="页码，从 0 开始")
+<br>
+
+**span**
+
+| 字段名 | 解释 | 
+| :-----| :---- |
+| bbox | span的矩形框坐标 |
+| type | span的类型 |
+| content \| img_path | 文本类型的span使用content，图表类使用img_path 用来存储实际的文本或者截图路径信息 |
+
+span 的类型有如下几种
+
+| type | desc | 
+| :-----| :---- |
+| image | 图片 | 
+| table | 表格 |
+| text | 文本 |
+| inline_equation | 行内公式 |
+| interline_equation | 行间公式 |
 
 
-class MiddleResult(BaseModel):
-    pdf_info: list[PdfInfo] = Field(description="解析结果")
-    _parse_type: PdfParseType = Field(description="解析类型")
-    _version_name: str = Field(description="版本名称")
-```
+**总结**
+
+span是所有元素的最小存储单元
+
+para_blocks内存储的元素为区块信息
+
+区块结构为
+
+一级block(如有)->二级block->line->span
 
 
 #### 示例数据
