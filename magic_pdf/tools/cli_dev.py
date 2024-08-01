@@ -15,6 +15,7 @@ from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 import magic_pdf.model as model_config
 from magic_pdf.tools.common import parse_pdf_methods, do_parse
+from magic_pdf.libs.version import __version__
 
 
 def read_s3_path(s3path):
@@ -39,6 +40,7 @@ def read_s3_path(s3path):
 
 
 @click.group()
+@click.version_option(__version__, "--version", "-v", help="显示版本信息")
 def cli():
     pass
 

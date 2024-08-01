@@ -192,9 +192,30 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 ### 命令行
 
 ```bash
-magic-pdf -p {some_pdf} -o {some_output_dir}
+magic-pdf --help
+Usage: magic-pdf [OPTIONS]
+
+Options:
+  -v, --version                display the version and exit
+  -p, --path PATH              local pdf filepath or directory  [required]
+  -o, --output-dir TEXT        output local directory
+  -m, --method [ocr|txt|auto]  the method for parsing pdf.  
+                               ocr: using ocr technique to extract information from pdf,
+                               txt: suitable for the text-based pdf only and outperform ocr,
+                               auto: automatically choose the best method for parsing pdf
+                                  from ocr and txt.
+                               without method specified, auto will be used by default. 
+  --help                       Show this message and exit.
+
+
+## show version
+magic-pdf -v
+
+## command line example
+magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 ```
-其中 `{some_pdf}` 可以使单个pdf文件，也可以是一个包含多个pdf文件的目录。
+
+其中 `{some_pdf}` 可以是单个pdf文件，也可以是一个包含多个pdf文件的目录。
 运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
 
 ```text
