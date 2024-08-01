@@ -194,7 +194,7 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 ```bash
 magic-pdf -p {some_pdf} -o {some_output_dir}
 ```
-
+其中 `{some_pdf}` 可以使单个pdf文件，也可以是一个包含多个pdf文件的目录。
 运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
 
 ```text
@@ -262,6 +262,7 @@ TODO
 - 阅读顺序基于规则的分割，在一些情况下会乱序
 - 列表、代码块、目录在layout模型里还没有支持
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
+- 在一些公式密集的PDF上强制启用OCR效果会更好
 
 好消息是，这些我们正在努力实现！
 
