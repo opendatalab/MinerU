@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-    👋 <a href="https://discord.gg/AsQMhuMN" target="_blank">Discord</a>と<a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>で参加してください
+    👋 <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a>と<a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>で参加してください
 </p>
 </div>
 
@@ -100,14 +100,8 @@ conda activate MinerU
 
 #### 1. Magic-PDFのインストール
 
-pipを使用してフル機能パッケージをインストールします：
->注意：pipでインストールされたパッケージはCPUのみをサポートし、クイックテストに最適です。
->
->CUDA/MPSによる加速については、[CUDAまたはMPSによる加速](#4-CUDAまたはMPSによる加速)を参照してください。
+**1.依存パッケージのインストール**
 
-```bash
-pip install magic-pdf[full-cpu]
-```
 フル機能パッケージはdetectron2に依存しており、コンパイルインストールが必要です。   
 自分でコンパイルする必要がある場合は、https://github.com/facebookresearch/detectron2/issues/5114 を参照してください。  
 または、私たちの事前コンパイルされたwhlパッケージを直接使用できます（Python 3.10に限定）：
@@ -115,6 +109,21 @@ pip install magic-pdf[full-cpu]
 ```bash
 pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
 ```
+
+**2.pipを使用してフル機能パッケージをインストールします**
+>注意：pipでインストールされたパッケージはCPUのみをサポートし、クイックテストに最適です。
+>
+>CUDA/MPSによる加速については、[CUDAまたはMPSによる加速](#4-CUDAまたはMPSによる加速)を参照してください。
+
+```bash
+pip install magic-pdf[full]==0.6.2b1
+```
+
+> ❗️❗️❗️
+> 私たちは0.6.2 ベータ版を事前にリリースし、私たちのログに記載されている多くの問題に対処しました。しかし、このビルドはまだ完全なQAテストを経ておらず、最終的なリリース品質を表していません。問題に遭遇した場合は、問題を通じて速やかに報告するか、0.6.1バージョンに戻ることをお願いします。
+> ```bash
+> pip install magic-pdf[full-cpu]==0.6.1
+> ```
 
 
 #### 2. モデルの重みファイルのダウンロード
