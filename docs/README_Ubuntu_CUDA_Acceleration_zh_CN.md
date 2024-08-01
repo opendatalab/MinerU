@@ -60,7 +60,7 @@ pip install magic-pdf[full] detectron2 --extra-index-url https://wheels.myhloli.
 下载后请将models目录移动到空间较大的ssd磁盘目录  
 
 ## 8. 第一次运行前的配置
-在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
+在仓库根目录可以获得 [magic-pdf.template.json](../magic-pdf.template.json) 配置模版文件
 > ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
 > 
 >  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
