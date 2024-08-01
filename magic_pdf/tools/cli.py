@@ -32,8 +32,9 @@ from magic_pdf.tools.common import parse_pdf_methods, do_parse
     type=parse_pdf_methods,
     help="""the method for parsing pdf. 
 ocr: using ocr technique to extract information from pdf.
-txt: suitable for the text-based pdf only and outperform ocr. 
-auto: automatically choose the best method for parsing pdf from ocr and txt""",
+txt: suitable for the text-based pdf only and outperform ocr.
+auto: automatically choose the best method for parsing pdf from ocr and txt.
+without method specified, auto will be used by default.""",
     default="auto",
 )
 def cli(path, output_dir, method):
