@@ -35,8 +35,8 @@ from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
 
 
-def table_model_init(model_path):
-    table_model = StructTableModel(model_path)
+def table_model_init(model_path, _device_ = 'cpu'):
+    table_model = StructTableModel(model_path, device = _device_)
     return table_model
 
 
@@ -140,7 +140,7 @@ class CustomPEKModel:
 
         # init structeqtable
         if self.apply_table:
-            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])))
+            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])), _device_=self.device)
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
