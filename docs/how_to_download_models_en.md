@@ -35,7 +35,7 @@ model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
 Alternatively, you can use Git to clone the model repository from ModelScope:
 
 ```bash
-git clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
+git lfs clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
 ```
 
 
