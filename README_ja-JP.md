@@ -100,7 +100,17 @@ conda activate MinerU
 
 #### 1. Magic-PDFのインストール
 
-pipを使用してフル機能パッケージをインストールします：
+**1.依存パッケージのインストール**
+
+フル機能パッケージはdetectron2に依存しており、コンパイルインストールが必要です。   
+自分でコンパイルする必要がある場合は、https://github.com/facebookresearch/detectron2/issues/5114 を参照してください。  
+または、私たちの事前コンパイルされたwhlパッケージを直接使用できます（Python 3.10に限定）：
+
+```bash
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
+```
+
+**2.pipを使用してフル機能パッケージをインストールします**
 >注意：pipでインストールされたパッケージはCPUのみをサポートし、クイックテストに最適です。
 >
 >CUDA/MPSによる加速については、[CUDAまたはMPSによる加速](#4-CUDAまたはMPSによる加速)を参照してください。
@@ -114,14 +124,6 @@ pip install magic-pdf[full]==0.6.2b1
 > ```bash
 > pip install magic-pdf[full-cpu]==0.6.1
 > ```
-
-フル機能パッケージはdetectron2に依存しており、コンパイルインストールが必要です。   
-自分でコンパイルする必要がある場合は、https://github.com/facebookresearch/detectron2/issues/5114 を参照してください。  
-または、私たちの事前コンパイルされたwhlパッケージを直接使用できます（Python 3.10に限定）：
-
-```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/
-```
 
 
 #### 2. モデルの重みファイルのダウンロード

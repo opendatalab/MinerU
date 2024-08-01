@@ -94,7 +94,16 @@ conda activate MinerU
 
 #### 1. 安装Magic-PDF
 
-使用pip安装完整功能包：
+**1.安装依赖**
+
+完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
+或是直接使用我们预编译的whl包：
+> ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
+```bash
+pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
+```
+
+**2.使用pip安装完整功能包**
 > 受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
 >
 > 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
@@ -107,12 +116,7 @@ pip install magic-pdf[full]==0.6.2b1 -i https://mirrors.aliyun.com/pypi/simple/
 > pip install magic-pdf[full-cpu]==0.6.1
 > ```
 
-完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
-或是直接使用我们预编译的whl包：
-> ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
-```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
-```
+
 
 #### 2. 下载模型权重文件
 
