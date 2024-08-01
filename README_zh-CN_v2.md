@@ -191,7 +191,24 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 
 ### 命令行
 
-TODO
+```bash
+magic-pdf -p {some_pdf} -o {some_output_dir}
+```
+
+运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
+
+```text
+├── some_pdf.md                 # markdown 文件
+├── images                      # 存放图片目录
+├── layout.pdf                  # layout 绘图
+├── middle.json                 # minerU 中间处理结果
+├── model.json                  # 模型推理结果
+├── origin.pdf                  # 原 pdf 文件
+└── spans.pdf                   # 最小粒度的bbox位置信息绘图
+```
+
+更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
+
 
 ### API
 
