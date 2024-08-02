@@ -16,7 +16,7 @@
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
-[English](README.md) | [简体中文](README_zh-CN.md) | [日本語](README_ja-JP.md)
+[English](README.md) | [简体中文](README_zh-CN.md)
 
 
 <!-- hot link -->
@@ -305,7 +305,6 @@ TODO
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
 - 在一些公式密集的PDF上强制启用OCR效果会更好
 - 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
-- 
 
 好消息是，这些我们正在努力实现！
 
