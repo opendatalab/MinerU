@@ -82,6 +82,16 @@ git lfs clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
 │       ├── README.md
 │       ├── tokenizer_config.json
 │       └── tokenizer.json
+│── TabRec
+│   └─StructEqTable
+│       ├── config.json
+│       ├── generation_config.json
+│       ├── model.safetensors
+│       ├── preprocessor_config.json
+│       ├── special_tokens_map.json
+│       ├── spiece.model
+│       ├── tokenizer.json
+│       └── tokenizer_config.json 
 └── README.md
 ```
 

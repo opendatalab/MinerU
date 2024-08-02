@@ -76,6 +76,11 @@ def get_device():
     else:
         return device
 
+def get_table_recog_config():
+    config = read_config()
+    table_config = config.get("table-config")
+    return table_config
+
 
 if __name__ == "__main__":
     ak, sk, endpoint = get_s3_config("llm-raw")
