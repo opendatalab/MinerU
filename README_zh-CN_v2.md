@@ -180,6 +180,9 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 #### 2. 下载模型权重文件
 
 详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
+> ❗️模型下载后请务必检查模型文件是否下载完整
+> 
+> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
 
 #### 3. 拷贝配置文件并进行配置
 在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件

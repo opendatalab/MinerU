@@ -45,7 +45,7 @@ Put [model files]() here:
 ./
 ├── Layout
 │   ├── config.json
-│   └── weights.pth
+│   └── model_final.pth
 ├── MFD
 │   └── weights.pt
 ├── MFR
