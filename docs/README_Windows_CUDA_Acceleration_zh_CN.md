@@ -20,7 +20,7 @@ conda activate MinerU
 ```
 ## 4. 安装应用
 ```bash
-pip install magic-pdf[full] detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 > ❗️下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
 > 
