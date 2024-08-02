@@ -3,9 +3,9 @@
 模型文件可以从Hugging Face 或 Model Scope 下载，由于网络原因，国内用户访问HF 可能会失败，请使用 ModelScope。
 
 
-[Hugging Face](#从-Hugging-Face-下载模型)
+方法一：[从 Hugging Face 下载模型](#方法一从-hugging-face-下载模型)
 
-[ModelScope](#从-ModelScope-下载模型)
+方法二：[从 ModelScope 下载模型](#方法二从-modelscope-下载模型)
 
 ## 方法一：从 Hugging Face 下载模型
 
@@ -20,8 +20,9 @@ git lfs clone https://huggingface.co/wanderkid/PDF-Extract-Kit # 从 Hugging Fac
 ## 方法二：从 ModelScope 下载模型
 ModelScope 支持SDK或模型下载，任选一个即可。
 
-[Git lsf下载](#git下载)
-[SDK下载](#sdk下载)
+[Git lsf下载](#1利用git-lsf下载)
+
+[SDK下载](#2利用sdk下载)
 
 ### 1）利用Git lsf下载
 
