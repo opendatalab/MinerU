@@ -68,6 +68,7 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 >  
 > linux用户目录为 "/home/用户名"
 ```bash
+wget https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 

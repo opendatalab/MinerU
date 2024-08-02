@@ -41,7 +41,8 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 > ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
 >  
 > windows用户目录为 "C:\Users\用户名"
-```bash
+```powershell
+(New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
