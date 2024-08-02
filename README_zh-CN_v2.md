@@ -169,7 +169,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ### 在线体验
 
-[在线体验点击这里](TODO)
+[在线体验点击这里](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
 
 
 ### 使用CPU快速体验
