@@ -327,7 +327,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 
 # Acknowledgments
 
-- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy) 🔥🔥🔥
+- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
