@@ -103,9 +103,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
 如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
-- 在线体验(无需任何安装)
-- 使用CPU快速体验（Windows，Linux，Mac）
-- Linux/Windows + CUDA
+- [在线体验(无需任何安装)](#在线体验)
+- [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
+- [Linux/Windows + CUDA](#使用gpu)
 
 
 **⚠️安装前必看——软硬件环境支持说明**
@@ -172,16 +172,33 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ### 使用CPU快速体验
 
+#### 1. 安装magic-pdf
 
 ```bash
 pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+#### 2. 下载模型权重文件
 
-> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
-> ```bash
-> magic-pdf --version
-> ```
-> 如版本低于0.6.2b1，请提交issue进行反馈。
+详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
+
+#### 3. 拷贝配置文件并进行配置
+在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
+> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
+> 
+>  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
+```bash
+cp magic-pdf.template.json ~/magic-pdf.json
+```
+
+在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
+> ❗️务必正确配置模型权重文件所在目录，否则会因为找不到模型文件而导致程序无法运行
+> 
+> windows系统中应把路径中所有的"\\"替换为"/",否则会因为转义原因导致json文件语法错误。
+```json
+{
+  "models-dir": "/tmp/models"
+}
+```
 
 ### 使用GPU
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
