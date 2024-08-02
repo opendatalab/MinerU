@@ -69,17 +69,9 @@ model_json 指的是通过模型分析后生成的一种有特定格式的json�
 如果使用 MinerU 的命令行调用内置的模型分析，该文件一般在输出路径"/tmp/magic-pdf/pdf-name"下。  
 参考：https://github.com/opendatalab/MinerU/issues/128
 
-### 9.Linux下报错：Required dependency not installed, please install by "pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
+### 9.报错：Required dependency not installed, please install by "pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
 
-这种情况可以先使用pip list 检查一下自己的依赖库列表，重点确认下以下几个库有没有安装（版本不一定完全一致，有就可以）
+通过更新0.6.2b1来解决
 ```bash
-opencv-contrib-python     4.6.0.66
-opencv-python             4.6.0.66
-opencv-python-headless    4.10.0.84
-paddleocr                 2.7.3
-paddlepaddle              2.6.1
-torch                     2.2.2
-torchtext                 0.17.2
-torchvision               0.17.2
+pip install magic-pdf[full]==0.6.2b1 -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
-如果都有的话，可能是libgl库没有安装，参考 https://github.com/opendatalab/MinerU/issues/165#issuecomment-2245202282 安装libgl库后再试试能不能正常使用。
