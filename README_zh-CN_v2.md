@@ -16,7 +16,7 @@
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
-[English](README.md) | [简体中文](README_zh-CN.md) | [日本語](README_ja-JP.md)
+[English](README.md) | [简体中文](README_zh-CN.md)
 
 
 <!-- hot link -->
@@ -34,7 +34,8 @@
 
 # 更新记录
 
-- 2024/07/08 首次开源
+- 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
+- 2024/07/05 首次开源
 
 
 <!-- TABLE OF CONTENT -->
@@ -82,6 +83,7 @@
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
+相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到issue提交问题，同时附上相关PDF。
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
@@ -305,6 +307,7 @@ TODO
 - 列表、代码块、目录在layout模型里还没有支持
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
 - 在一些公式密集的PDF上强制启用OCR效果会更好
+- 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
 
 好消息是，这些我们正在努力实现！
 
@@ -327,7 +330,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 
 # Acknowledgments
 
-- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy) 🔥🔥🔥
+- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
