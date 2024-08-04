@@ -168,7 +168,7 @@ def merge_para_with_text(para_block):
                 else:
                     content = ocr_escape_special_markdown_char(content)
             elif span_type == ContentType.InlineEquation:
-                content = f"${span['content']}$"
+                content = f" ${span['content']}$ "
             elif span_type == ContentType.InterlineEquation:
                 content = f"\n$$\n{span['content']}\n$$\n"
 
