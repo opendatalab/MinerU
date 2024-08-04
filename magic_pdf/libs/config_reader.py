@@ -76,10 +76,15 @@ def get_device():
     else:
         return device
 
+
 def get_table_recog_config():
     config = read_config()
     table_config = config.get("table-config")
-    return table_config
+    if table_config is None:
+        logger.warning(f"'table-config' not found in {CONFIG_FILE_NAME}, use 'False' as default")
+        return json.loads('{"is_table_recog_enable": false, "max_time": 400}')
+    else:
+        return table_config
 
 
 if __name__ == "__main__":

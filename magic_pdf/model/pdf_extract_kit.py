@@ -1,7 +1,7 @@
 from loguru import logger
 import os
 import time
-from pypandoc import convert_text
+
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 try:
@@ -107,8 +107,8 @@ class CustomPEKModel:
         self.apply_table = self.table_config.get("is_table_recog_enable", False)
         self.apply_ocr = ocr
         logger.info(
-            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}".format(
-                self.apply_layout, self.apply_formula, self.apply_ocr
+            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}".format(
+                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table
             )
         )
         assert self.apply_layout, "DocAnalysis must contain layout model."
