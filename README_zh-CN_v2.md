@@ -16,12 +16,11 @@
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
-[English](README.md) | [简体中文](README_zh-CN.md) | [日本語](README_ja-JP.md)
+[English](README.md) | [简体中文](README_zh-CN.md)
 
 
 <!-- hot link -->
 <p align="center">
-<a href="https://github.com/opendatalab/MinerU">MinerU: 端到端的PDF解析工具（基于PDF-Extract-Kit）支持PDF转Markdown</a>🚀🚀🚀<br>
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
 </p>
 
@@ -35,7 +34,8 @@
 
 # 更新记录
 
-- 2024/07/18 首次开源
+- 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
+- 2024/07/05 首次开源
 
 
 <!-- TABLE OF CONTENT -->
@@ -82,7 +82,10 @@
 # MinerU
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
-MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，以此在大模型时代为科技发展做出一点贡献。
+MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
+相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到issue提交问题，同时附上相关PDF。
+
+https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
@@ -102,12 +105,12 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
 如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issue</a></br>
 有3种不同方式可以体验MinerU的效果：
-- 在线体验(无需任何安装)
-- 使用CPU快速体验（Windows，Linux，Mac）
-- Linux/Windows + CUDA
+- [在线体验(无需任何安装)](#在线体验)
+- [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
+- [Linux/Windows + CUDA](#使用gpu)
 
 
-**软硬件环境支持说明**
+**⚠️安装前必看——软硬件环境支持说明**
 
 为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
 
@@ -166,23 +169,47 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 ### 在线体验
 
-[在线体验点击这里](TODO)
+[在线体验点击这里](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
 
 
 ### 使用CPU快速体验
 
+#### 1. 安装magic-pdf
 
 ```bash
 pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+#### 2. 下载模型权重文件
 
-> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
-> ```bash
-> magic-pdf --version
-> ```
-> 如版本低于0.6.2b1，请提交issue进行反馈。
+详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
+> ❗️模型下载后请务必检查模型文件是否下载完整
+> 
+> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
+
+#### 3. 拷贝配置文件并进行配置
+在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
+> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
+> 
+>  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
+```bash
+cp magic-pdf.template.json ~/magic-pdf.json
+```
+
+在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
+> ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
+>
+> windows系统中此路径应包含盘符，且需把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
+> 
+> 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
+```json
+{
+  "models-dir": "/tmp/models"
+}
+```
 
 ### 使用GPU
+如果您的设备支持CUDA，且满足主线环境中的显卡要求，则可以使用GPU加速，请根据自己的系统选择适合的教程：
+
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 
@@ -191,7 +218,45 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 
 ### 命令行
 
-TODO
+```bash
+magic-pdf --help
+Usage: magic-pdf [OPTIONS]
+
+Options:
+  -v, --version                display the version and exit
+  -p, --path PATH              local pdf filepath or directory  [required]
+  -o, --output-dir TEXT        output local directory
+  -m, --method [ocr|txt|auto]  the method for parsing pdf.  
+                               ocr: using ocr technique to extract information from pdf,
+                               txt: suitable for the text-based pdf only and outperform ocr,
+                               auto: automatically choose the best method for parsing pdf
+                                  from ocr and txt.
+                               without method specified, auto will be used by default. 
+  --help                       Show this message and exit.
+
+
+## show version
+magic-pdf -v
+
+## command line example
+magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
+```
+
+其中 `{some_pdf}` 可以是单个pdf文件，也可以是一个包含多个pdf文件的目录。
+运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
+
+```text
+├── some_pdf.md                 # markdown 文件
+├── images                      # 存放图片目录
+├── layout.pdf                  # layout 绘图
+├── middle.json                 # minerU 中间处理结果
+├── model.json                  # 模型推理结果
+├── origin.pdf                  # 原 pdf 文件
+└── spans.pdf                   # 最小粒度的bbox位置信息绘图
+```
+
+更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
+
 
 ### API
 
@@ -245,6 +310,8 @@ TODO
 - 阅读顺序基于规则的分割，在一些情况下会乱序
 - 列表、代码块、目录在layout模型里还没有支持
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
+- 在一些公式密集的PDF上强制启用OCR效果会更好
+- 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
 
 好消息是，这些我们正在努力实现！
 
@@ -267,6 +334,7 @@ The project currently leverages PyMuPDF to deliver advanced functionalities; how
 
 # Acknowledgments
 
+- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)

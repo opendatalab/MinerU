@@ -57,16 +57,6 @@ def get_bucket_name(path):
     return bucket
 
 
-def get_local_dir():
-    config = read_config()
-    local_dir = config.get("temp-output-dir")
-    if local_dir is None:
-        logger.warning(f"'temp-output-dir' not found in {CONFIG_FILE_NAME}, use '/tmp' as default")
-        return "/tmp"
-    else:
-        return local_dir
-
-
 def get_local_models_dir():
     config = read_config()
     models_dir = config.get("models-dir")
@@ -90,6 +80,16 @@ def get_table_recog_config():
     config = read_config()
     table_config = config.get("table-config")
     return table_config
+
+
+def get_table_recog_config():
+    config = read_config()
+    table_config = config.get("table-config")
+    if table_config is None:
+        logger.warning(f"'table-config' not found in {CONFIG_FILE_NAME}, use 'False' as default")
+        return json.loads('{"is_table_recog_enable": false, "max_time": 400}')
+    else:
+        return table_config
 
 
 if __name__ == "__main__":
