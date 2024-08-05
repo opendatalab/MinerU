@@ -26,7 +26,6 @@ try:
     from torrone.utils.device import move_to_device
     import re
     from huggingface_hub import login
-    from torch.utils.data import ConcatDataset
     #albumentations 1.4.11
     #pip install timm==0.5.4 transformers==4.38.2
 
@@ -185,7 +184,6 @@ class CustomTorroneModel:
             ocr_start = time.time()
             pil_img = Image.fromarray(image)
             single_page_mfdetrec_res = []
-            
             for res in layout_res:
                 if int(res['category_id']) in [13, 14]:
                     xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
@@ -193,10 +191,6 @@ class CustomTorroneModel:
                     single_page_mfdetrec_res.append({
                         "bbox": [xmin, ymin, xmax, ymax],
                     })
-                    
-            torrone_samples = []
-            counter = 0
-            box_list = []
             for res in layout_res: #could use torrone in batch
                 if int(res['category_id']) in [0, 1, 2, 4, 6, 7]:  # 需要进行ocr的类别
                     xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
@@ -219,67 +213,51 @@ class CustomTorroneModel:
                     # masked_img = cv2.cvtColor(np.asarray(masked_img), cv2.COLOR_RGB2BGR)
                     # logger.info(f"shape of masked_img {masked_img.shape}")
                     
-                    data = Image.fromarray(cropped_img) #test if i can pass the cropped or if I should mask the input
+                    data = Image.fromarray(masked_img) #test if i can pass the cropped or if I should mask the input
                     # logger.info('Image masked')
                     sample = self.torrone_model.encoder.prepare_input(data)
-                    # logger.info(f"sample shape {sample.shape}")
-                    counter+=1
+                    # logger.info(f"shape of sample {sample.shape}")
+
+                    # logger.info(f"shape of sample {sample[None, ...].shape}")
+
+                    # logger.info('Image processed')
+                    model_output = self.torrone_model.inference(
+                        image_tensors=sample[None, ...], early_stopping=False #skipping
+                    )
+                    # logger.info('Model output')
+
+                    # check if model output is faulty
+                    for j, output in enumerate(model_output["predictions"]):
+                        if output.strip() == "[MISSING_PAGE_POST]":
+                            # uncaught repetitions -- most likely empty page
+                            output_torrone = f"\n\n[MISSING_PAGE_EMPTY]\n\n"
+                        # elif skipping and model_output["repeats"][j] is not None:
+                        elif False and model_output["repeats"][j] is not None:
+                            if model_output["repeats"][j] > 0:
+                                # If we end up here, it means the output is most likely not complete and was truncated.
+                                output_torrone = f"\n\n[MISSING_PAGE_FAIL]\n\n"
+                            else:
+                                # If we end up here, it means the document page is too different from the training domain.
+                                # This can happen e.g. for cover pages.
+                                output_torrone = f"\n\n[MISSING_PAGE_EMPTY]\n\n"
+                        else:
+                            # if markdown:
+                            if True:
+                                output = markdown_compatible(output)
+                            output_torrone = output
+
+                        output_torrone = re.sub(r"\n{3,}", "\n\n", output_torrone).strip()
 
                     if ocr_res:
-                        torrone_samples.append(torch.utils.data.TensorDataset(sample[None,...]))
-                        box_list.append(ocr_res[0])
-
-                        
-
-            dataloader = torch.utils.data.DataLoader(
-                ConcatDataset(torrone_samples),
-                batch_size=10,
-                shuffle=False,
-            )
-
-            predictions = []
-            for i, sample in enumerate((dataloader)):
-                # print(sample)
-                # logger.info(f"sample shape {sample[0].shape}")
-                model_output = self.torrone_model.inference(
-                    image_tensors=sample[0], early_stopping=False
-                )
-                predictions+=(model_output["predictions"])
-
-
-            for j, box_ocr_res in enumerate(ocr_res):
-                output = predictions[j]
-                if output.strip() == "[MISSING_PAGE_POST]":
-                    # uncaught repetitions -- most likely empty page
-                    output_torrone = f"\n\n[MISSING_PAGE_EMPTY]\n\n"
-                # elif skipping and model_output["repeats"][j] is not None:
-                # elif False and model_output["repeats"][j] is not None:
-                #     if model_output["repeats"][j] > 0:
-                #         # If we end up here, it means the output is most likely not complete and was truncated.
-                #         output_torrone = f"\n\n[MISSING_PAGE_FAIL]\n\n"
-                #     else:
-                #         # If we end up here, it means the document page is too different from the training domain.
-                #         # This can happen e.g. for cover pages.
-                #         output_torrone = f"\n\n[MISSING_PAGE_EMPTY]\n\n"
-                else:
-                    # if markdown:
-                    if True:
-                        output = markdown_compatible(output)
-                    output_torrone = output
-
-                
-                output_torrone = re.sub(r"\n{3,}", "\n\n", output_torrone).strip()
-                print(output_torrone)
-                
-                p1, p2, p3, p4 = box_ocr_res
-                # text, score = box_ocr_res[1]
-                layout_res.append({
-                    'category_id': 15,
-                    'poly': p1 + p2 + p3 + p4,
-                    'score': round(1, 2),
-                    'text': output_torrone,
-                })
-            
+                        for box_ocr_res in ocr_res:
+                            p1, p2, p3, p4 = box_ocr_res
+                            # text, score = box_ocr_res[1]
+                            layout_res.append({
+                                'category_id': 15,
+                                'poly': p1 + p2 + p3 + p4,
+                                'score': round(1, 2),
+                                'text': output_torrone,
+                            })
             ocr_cost = round(time.time() - ocr_start, 2)
             logger.info(f"ocr cost: {ocr_cost}")
 
