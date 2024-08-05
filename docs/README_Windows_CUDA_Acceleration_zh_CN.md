@@ -10,7 +10,7 @@
 如果已安装conda，可以跳过本步骤
 
 下载链接：
-https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86_64.exe
+https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-2024.06-1-Windows-x86_64.exe
 
 ## 3. 使用conda 创建环境
 需指定python版本为3.10

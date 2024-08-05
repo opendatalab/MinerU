@@ -34,7 +34,7 @@ reboot
 ## 4. 安装anacoda
 如果已安装conda，可以跳过本步骤
 ```bash
-wget https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Linux-x86_64.sh
+wget -U NoSuchBrowser/1.0 https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-2024.06-1-Linux-x86_64.sh
 bash Anaconda3-2024.06-1-Linux-x86_64.sh
 ```
 最后一步输入yes，关闭终端重新打开
