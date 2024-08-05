@@ -76,11 +76,6 @@ def get_device():
     else:
         return device
 
-def get_table_recog_config():
-    config = read_config()
-    table_config = config.get("table-config")
-    return table_config
-
 
 def get_table_recog_config():
     config = read_config()

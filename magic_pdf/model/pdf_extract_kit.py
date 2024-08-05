@@ -1,7 +1,6 @@
 from loguru import logger
 import os
 import time
-from pypandoc import convert_text
 
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
