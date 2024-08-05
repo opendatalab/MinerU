@@ -1,3 +1,6 @@
+- Precisa ter o tesseract instalado
+- Precisa ter o torrone instalado (opcional)
+##########################################################################################
 <div id="top">
 
 <p align="center">
