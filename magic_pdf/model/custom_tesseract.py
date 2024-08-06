@@ -87,15 +87,17 @@ class CustomTesseractModel:
         model_config_dir = os.path.join(root_dir, 'resources', 'model_config')
         # 构建 model_configs.yaml 文件的完整路径
         config_path = os.path.join(model_config_dir, 'model_configs.yaml')
-        with open(config_path, "r") as f:
+        with open(config_path, "r", encoding='utf-8') as f:
             self.configs = yaml.load(f, Loader=yaml.FullLoader)
         # 初始化解析配置
         self.apply_layout = kwargs.get("apply_layout", self.configs["config"]["layout"])
         self.apply_formula = kwargs.get("apply_formula", self.configs["config"]["formula"])
+        self.table_config = kwargs.get("table_config", self.configs["config"]["table_config"])
+        self.apply_table = self.table_config.get("is_table_recog_enable", False)
         self.apply_ocr = ocr
         logger.info(
-            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}".format(
-                self.apply_layout, self.apply_formula, self.apply_ocr
+            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}".format(
+                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table
             )
         )
         assert self.apply_layout, "DocAnalysis must contain layout model."
@@ -103,6 +105,7 @@ class CustomTesseractModel:
         self.device = kwargs.get("device", self.configs["config"]["device"])
         logger.info("using device: {}".format(self.device))
         models_dir = kwargs.get("models_dir", os.path.join(root_dir, "resources", "models"))
+        logger.info("using models_dir: {}".format(models_dir))
 
         # 初始化公式识别
         if self.apply_formula:
@@ -123,14 +126,13 @@ class CustomTesseractModel:
         )
         # 初始化ocr
         if self.apply_ocr:
-            self.ocr_model = ModifiedPaddleOCR(show_log=show_log,lang="pt") #MODIFIED still calling but could be removed with right modifications to code bellow
+            self.ocr_model = ModifiedPaddleOCR(show_log=show_log)
 
-            # login("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")
-            # model = TorroneModel.from_pretrained("/workspace/data_pipelines/0xCarbon/torrone2-base-10ep", ignore_mismatched_sizes=True)
-            # self.torrone_model = move_to_device(model, bf16=True, cuda=(self.device=="cuda"))
-            # self.torrone_model.eval()
-            # logger.info('TORRONE LOADED')
-
+        # init structeqtable
+        if self.apply_table:
+            max_time = self.table_config.get("max_time", 400)
+            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])),
+                                                max_time=max_time, _device_=self.device)
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -144,96 +146,157 @@ class CustomTesseractModel:
         layout_cost = round(time.time() - layout_start, 2)
         logger.info(f"layout detection cost: {layout_cost}")
 
-        # 公式检测
-        mfd_res = self.mfd_model.predict(image, imgsz=1888, conf=0.25, iou=0.45, verbose=True)[0]
-        for xyxy, conf, cla in zip(mfd_res.boxes.xyxy.cpu(), mfd_res.boxes.conf.cpu(), mfd_res.boxes.cls.cpu()):
-            xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
-            new_item = {
-                'category_id': 13 + int(cla.item()),
-                'poly': [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-                'score': round(float(conf.item()), 2),
-                'latex': '',
-            }
-            layout_res.append(new_item)
-            latex_filling_list.append(new_item)
-            bbox_img = get_croped_image(Image.fromarray(image), [xmin, ymin, xmax, ymax])
-            mf_image_list.append(bbox_img)
+        if self.apply_formula:
+            # 公式检测
+            mfd_res = self.mfd_model.predict(image, imgsz=1888, conf=0.25, iou=0.45, verbose=True)[0]
+            for xyxy, conf, cla in zip(mfd_res.boxes.xyxy.cpu(), mfd_res.boxes.conf.cpu(), mfd_res.boxes.cls.cpu()):
+                xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
+                new_item = {
+                    'category_id': 13 + int(cla.item()),
+                    'poly': [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
+                    'score': round(float(conf.item()), 2),
+                    'latex': '',
+                }
+                layout_res.append(new_item)
+                latex_filling_list.append(new_item)
+                bbox_img = get_croped_image(Image.fromarray(image), [xmin, ymin, xmax, ymax])
+                mf_image_list.append(bbox_img)
 
-        # 公式识别
-        mfr_start = time.time()
-        dataset = MathDataset(mf_image_list, transform=self.mfr_transform)
-        dataloader = DataLoader(dataset, batch_size=64, num_workers=0)
-        mfr_res = []
-        for mf_img in dataloader:
-            mf_img = mf_img.to(self.device)
-            output = self.mfr_model.generate({'image': mf_img})
-            mfr_res.extend(output['pred_str'])
-        for res, latex in zip(latex_filling_list, mfr_res):
-            res['latex'] = latex_rm_whitespace(latex)
-        mfr_cost = round(time.time() - mfr_start, 2)
-        logger.info(f"formula nums: {len(mf_image_list)}, mfr time: {mfr_cost}")
+            # 公式识别
+            mfr_start = time.time()
+            dataset = MathDataset(mf_image_list, transform=self.mfr_transform)
+            dataloader = DataLoader(dataset, batch_size=64, num_workers=0)
+            mfr_res = []
+            for mf_img in dataloader:
+                mf_img = mf_img.to(self.device)
+                output = self.mfr_model.generate({'image': mf_img})
+                mfr_res.extend(output['pred_str'])
+            for res, latex in zip(latex_filling_list, mfr_res):
+                res['latex'] = latex_rm_whitespace(latex)
+            mfr_cost = round(time.time() - mfr_start, 2)
+            logger.info(f"formula nums: {len(mf_image_list)}, mfr time: {mfr_cost}")
 
         # ocr识别
         if self.apply_ocr:
             ocr_start = time.time()
             pil_img = Image.fromarray(image)
+
+            # 筛选出需要OCR的区域和公式区域
+            ocr_res_list = []
             single_page_mfdetrec_res = []
             for res in layout_res:
                 if int(res['category_id']) in [13, 14]:
-                    xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
-                    xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
                     single_page_mfdetrec_res.append({
-                        "bbox": [xmin, ymin, xmax, ymax],
+                        "bbox": [int(res['poly'][0]), int(res['poly'][1]),
+                                 int(res['poly'][4]), int(res['poly'][5])],
                     })
-            for res in layout_res: #could use torrone in batch
-                if int(res['category_id']) in [0, 1, 2, 4, 6, 7]:  # 需要进行ocr的类别
-                    xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
-                    xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
-                    crop_box = (xmin, ymin, xmax, ymax)
-                    cropped_img = Image.new('RGB', pil_img.size, 'white')
-                    cropped_img.paste(pil_img.crop(crop_box), crop_box)
-                    cropped_img = cv2.cvtColor(np.asarray(cropped_img), cv2.COLOR_RGB2BGR)
-                    ocr_res = self.ocr_model.ocr(cropped_img, mfd_res=single_page_mfdetrec_res,rec=False)[0]
-                    # ocr_res = pytesseract.image_to_data(cropped_img,lang="por",output_type="dict")
-                    # if ocr_res:
-                    #     for i in range(len(ocr_res["text"])):
-                    #         if ocr_res["conf"][i] == -1 or len(ocr_res["text"][i])==0:
-                    #             continue
+                elif int(res['category_id']) in [0, 1, 2, 4, 6, 7]:
+                    ocr_res_list.append(res)
 
-                    #         top = ocr_res["top"][i]
-                    #         left = ocr_res["left"][i]
-                    #         width = ocr_res["width"][i]
-                    #         height = ocr_res["height"][i]
+            # 对每一个需OCR处理的区域进行处理
+            for res in ocr_res_list:
+                xmin, ymin = int(res['poly'][0]), int(res['poly'][1])
+                xmax, ymax = int(res['poly'][4]), int(res['poly'][5])
 
-                    #         p1 = [left,top]
-                    #         p2 = [left+width,top]
-                    #         p3 = [left+width,top+height]
-                    #         p4 = [left,top+height]
-                            
+                paste_x = 50
+                paste_y = 50
+                # 创建一个宽高各多50的白色背景
+                new_width = xmax - xmin + paste_x * 2
+                new_height = ymax - ymin + paste_y * 2
+                new_image = Image.new('RGB', (new_width, new_height), 'white')
 
-                    #         layout_res.append({
-                    #             'category_id': 15,
-                    #             'poly': p1 + p2 + p3 + p4,
-                    #             'score': round(ocr_res["conf"][i]/100, 2),
-                    #             'text': ocr_res["text"][i],
-                    #         })
-                    ocr_res = pytesseract.image_to_string(cropped_img,lang="por")
-                    if ocr_res:
-                        if ocr_res=="":
-                            continue
-                        p1 = [xmin,ymin]
-                        p2 = [xmax,ymin]
-                        p3 = [xmax,ymax]
-                        p4 = [xmin,ymax]
+                # 裁剪图像
+                crop_box = (xmin, ymin, xmax, ymax)
+                cropped_img = pil_img.crop(crop_box)
+                new_image.paste(cropped_img, (paste_x, paste_y))
+
+                # 调整公式区域坐标
+                adjusted_mfdetrec_res = []
+                for mf_res in single_page_mfdetrec_res:
+                    mf_xmin, mf_ymin, mf_xmax, mf_ymax = mf_res["bbox"]
+                    # 将公式区域坐标调整为相对于裁剪区域的坐标
+                    x0 = mf_xmin - xmin + paste_x
+                    y0 = mf_ymin - ymin + paste_y
+                    x1 = mf_xmax - xmin + paste_x
+                    y1 = mf_ymax - ymin + paste_y
+                    # 过滤在图外的公式块
+                    if any([x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height]):
+                        continue
+                    else:
+                        adjusted_mfdetrec_res.append({
+                            "bbox": [x0, y0, x1, y1],
+                        })
+
+                # OCR识别
+                new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+                # ocr_res = pytesseract.image_to_data(cropped_img,lang="por",output_type="dict")
+                # if ocr_res:
+                #     for i in range(len(ocr_res["text"])):
+                #         if ocr_res["conf"][i] == -1 or len(ocr_res["text"][i])==0:
+                #             continue
+
+                #         top = ocr_res["top"][i]
+                #         left = ocr_res["left"][i]
+                #         width = ocr_res["width"][i]
+                #         height = ocr_res["height"][i]
+
+                #         p1 = [left,top]
+                #         p2 = [left+width,top]
+                #         p3 = [left+width,top+height]
+                #         p4 = [left,top+height]
                         
 
-                        layout_res.append({
-                            'category_id': 15,
-                            'poly': p1 + p2 + p3 + p4,
-                            'score': round(1, 2),
-                            'text': ocr_res,
-                        })
+                #         layout_res.append({
+                #             'category_id': 15,
+                #             'poly': p1 + p2 + p3 + p4,
+                #             'score': round(ocr_res["conf"][i]/100, 2),
+                #             'text': ocr_res["text"][i],
+                #         })
+                ocr_res = pytesseract.image_to_string(cropped_img,lang="por")
+                if ocr_res:
+                    if ocr_res=="":
+                        continue
+                    p1 = [xmin,ymin]
+                    p2 = [xmax,ymin]
+                    p3 = [xmax,ymax]
+                    p4 = [xmin,ymax]
+                    
+
+                    layout_res.append({
+                        'category_id': 15,
+                        'poly': p1 + p2 + p3 + p4,
+                        'score': round(1, 2),
+                        'text': ocr_res,
+                    })
             ocr_cost = round(time.time() - ocr_start, 2)
             logger.info(f"ocr cost: {ocr_cost}")
+            
+        # 表格识别 table recognition
+        if self.apply_table:
+            pil_img = Image.fromarray(image)
+            for layout in layout_res:
+                if layout.get("category_id", -1) == 5:
+                    poly = layout["poly"]
+                    xmin, ymin = int(poly[0]), int(poly[1])
+                    xmax, ymax = int(poly[4]), int(poly[5])
+
+                    paste_x = 50
+                    paste_y = 50
+                    # 创建一个宽高各多50的白色背景 create a whiteboard with 50 larger width and length
+                    new_width = xmax - xmin + paste_x * 2
+                    new_height = ymax - ymin + paste_y * 2
+                    new_image = Image.new('RGB', (new_width, new_height), 'white')
+
+                    # 裁剪图像 crop image
+                    crop_box = (xmin, ymin, xmax, ymax)
+                    cropped_img = pil_img.crop(crop_box)
+                    new_image.paste(cropped_img, (paste_x, paste_y))
+                    start_time = time.time()
+                    logger.info("------------------table recognition processing begins-----------------")
+                    latex_code = self.table_model.image2latex(new_image)[0]
+                    end_time = time.time()
+                    run_time = end_time - start_time
+                    logger.info(f"------------table recognition processing ends within {run_time}s-----")
+                    layout["latex"] = latex_code
 
         return layout_res

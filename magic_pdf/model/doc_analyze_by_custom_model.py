@@ -110,13 +110,25 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
             # 从配置文件读取model-dir和device
             local_models_dir = get_local_models_dir()
             device = get_device()
-            custom_model = CustomTorroneModel(ocr=ocr, show_log=show_log, models_dir=local_models_dir, device=device)
+            table_config = get_table_recog_config()
+            model_input = {"ocr": ocr,
+                           "show_log": show_log,
+                           "models_dir": local_models_dir,
+                           "device": device,
+                           "table_config": table_config}
+            custom_model = CustomTorroneModel(**model_input)
         elif model == MODEL.Tesseract:
             from magic_pdf.model.custom_tesseract import CustomTesseractModel
             # 从配置文件读取model-dir和device
             local_models_dir = get_local_models_dir()
             device = get_device()
-            custom_model = CustomTesseractModel(ocr=ocr, show_log=show_log, models_dir=local_models_dir, device=device)
+            table_config = get_table_recog_config()
+            model_input = {"ocr": ocr,
+                           "show_log": show_log,
+                           "models_dir": local_models_dir,
+                           "device": device,
+                           "table_config": table_config}
+            custom_model = CustomTesseractModel(**model_input)
         else:
             logger.error("Not allow model_name!")
             exit(1)
