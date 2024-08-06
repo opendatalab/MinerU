@@ -42,14 +42,14 @@ pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels
 >  
 > windows用户目录为 "C:\Users\用户名"
 ```powershell
-(New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
+(New-Object System.Net.WebClient).DownloadFile('https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[5. 下载模型](#5-下载模型)中下载的模型权重文件所在目录
 > ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
 > 
-> windows系统中此路径应包含盘符，且需把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
+> windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
 > 
 > 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
 ```json
@@ -61,7 +61,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ## 7. 第一次运行
 从仓库中下载样本文件，并测试
 ```powershell
-(New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
+(New-Object System.Net.WebClient).DownloadFile('https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
 magic-pdf pdf-command --pdf small_ocr.pdf
 ```
 

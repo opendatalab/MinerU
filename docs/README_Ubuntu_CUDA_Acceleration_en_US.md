@@ -57,7 +57,7 @@
    If the version number is less than 0.6.2, please report the issue.
 
 ### 6. Download Models
-   Refer to detailed instructions on how to download model files.
+   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
    After downloading, move the `models` directory to an SSD with more space.
    
 ❗ After downloading the models, ensure they are complete:
