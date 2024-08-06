@@ -5,6 +5,7 @@ import numpy as np
 from loguru import logger
 
 from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_recog_config
+from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_recog_config
 from magic_pdf.model.model_list import MODEL
 import magic_pdf.model as model_config
 
