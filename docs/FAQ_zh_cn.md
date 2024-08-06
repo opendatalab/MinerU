@@ -1,9 +1,10 @@
 # 常见问题解答
 
 ### 1.离线部署首次运行，报错urllib.error.URLError: <urlopen error [Errno 101] Network is unreachable>
-    
-首次运行需要在线下载一个小的语言检测模型，如果是离线部署需要手动下载该模型并放到指定目录。  
-参考：https://github.com/opendatalab/MinerU/issues/121
+
+Fixed in 0.6.2b1
+
+
 
 ### 2.在较新版本的mac上使用命令安装pip install magic-pdf[full-cpu] zsh: no matches found: magic-pdf[full-cpu]
 
@@ -16,34 +17,17 @@ pip install magic-pdf[full-cpu]
 
 ### 3.在intel cpu 的mac上 安装最新版的完整功能包 magic-pdf[full-cpu] (0.6.x) 不成功
 
-完整功能包依赖的公式解析库unimernet限制了pytorch的最低版本为2.3.0，而pytorch官方没有为intel cpu的macOS 提供2.3.0版本的预编译包，所以会产生依赖不兼容的问题。
-可以先尝试安装unimernet的老版本之后再尝试安装完整功能包的其他依赖。（为避免依赖冲突，请激活一个全新的虚拟环境）
-```bash
-pip install magic-pdf
-pip install unimernet==0.1.0
-pip install matplotlib ultralytics paddleocr==2.7.3 paddlepaddle
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ 
-```
+Fixed in 0.6.2b1
+
 
 ### 4.在部分较新的M芯片macOS设备上，MPS加速开启失败
 
-卸载torch和torchvision，重新安装nightly构建版torch和torchvision
-```bash
-pip uninstall torch torchvision
-pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
-```
-参考: https://github.com/opendatalab/PDF-Extract-Kit/issues/23
+Not support over 0.7.x
 
 ### 5.使用过程中遇到paddle相关的报错FatalError: Illegal instruction is detected by the operating system.
 
-paddlepaddle 2.6.1与部分linux系统环境存在兼容性问题。
-可尝试~~降级到2.5.2~~升级到3.0.0b1使用，
-```bash
-pip install paddlepaddle==3.0.0b1
-```
-~~或卸载paddlepaddle，重新安装paddlepaddle-gpu~~
+Fixed in 0.6.2b1
 
-参考：https://github.com/opendatalab/MinerU/issues/224
 
 ### 6.使用过程中遇到_pickle.UnpicklingError: invalid load key, 'v'.错误
 
