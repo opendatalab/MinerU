@@ -7,7 +7,8 @@ Required versions: CUDA 11.8 + cuDNN 8.7.0
    
 ### 2. Install Anaconda
    If Anaconda is already installed, you can skip this step.
-   Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86_64.exe
+   
+Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86_64.exe
 
 ### 3. Create an Environment Using Conda
    Python version must be 3.10.
@@ -41,7 +42,7 @@ Required versions: CUDA 11.8 + cuDNN 8.7.0
    >   
    > In Windows, user directory is "C:\Users\username"
    
-   ```
+   ```powershell
      (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
      cp magic-pdf.template.json ~/magic-pdf.json
    ```
@@ -54,7 +55,7 @@ Required versions: CUDA 11.8 + cuDNN 8.7.0
    >   
    > Example: If the models are placed in the root directory of drive D, the value for `model-dir` should be `"D:/models"`.
    
-   ```
+   ```json
    {
      "models-dir": "/tmp/models"
    }
@@ -62,7 +63,7 @@ Required versions: CUDA 11.8 + cuDNN 8.7.0
 
 ### 7. First Run
    Download a sample file from the repository and test it.
-   ```
+   ```powershell
      (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
      magic-pdf pdf-command --pdf small_ocr.pdf
    ```
