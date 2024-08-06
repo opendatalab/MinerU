@@ -51,7 +51,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
    
    > ❗️Ensure the absolute path of the model weights directory is correctly configured, or the program will fail to run due to not finding the model files.
    >    
-   > In Windows, this path should include the drive letter and replace all double quotes (`"\"`) with forward slashes (`"/"`).
+   > In Windows, this path should include the drive letter and replace all `"\"` to `"/"`.
    >   
    > Example: If the models are placed in the root directory of drive D, the value for `model-dir` should be `"D:/models"`.
    
