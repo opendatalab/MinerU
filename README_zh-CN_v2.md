@@ -177,6 +177,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 #### 1. 安装magic-pdf
 
 ```bash
+conda create -n MinerU python=3.10
+conda activate MinerU
 pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 #### 2. 下载模型权重文件
