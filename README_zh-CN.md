@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-    👋 join us on <a href="https://discord.gg/AsQMhuMN" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 </div>
 
@@ -94,40 +94,52 @@ conda activate MinerU
 
 #### 1. 安装Magic-PDF
 
-使用pip安装完整功能包：
-> 受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
->
-> 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
-```bash
-pip install magic-pdf[full-cpu] -i https://pypi.tuna.tsinghua.edu.cn/simple 
-```
-> ❗️已收到多起由于镜像源和依赖冲突问题导致安装了错误版本软件包的反馈，请务必安装完成后通过以下命令验证版本是否正确
-> ```bash
-> magic-pdf --version
-> ```
-> 如版本低于0.6.x，请提交issue进行反馈。
+**1.安装依赖**
 
 完整功能包依赖detectron2，该库需要编译安装，如需自行编译，请参考 https://github.com/facebookresearch/detectron2/issues/5114  
 或是直接使用我们预编译的whl包：
 > ❗️预编译版本仅支持64位系统(windows/linux/macOS)+pyton 3.10平台；不支持任何32位系统和非mac的arm平台，如系统不支持请自行编译安装。
 ```bash
-pip install detectron2 --extra-index-url https://myhloli.github.io/wheels/ -i https://pypi.tuna.tsinghua.edu.cn/simple 
+pip install detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple 
 ```
+
+**2.使用pip安装完整功能包**
+> 受pypi限制，pip安装的完整功能包仅支持cpu推理，建议只用于快速测试解析能力。
+>
+> 如需在生产环境使用CUDA/MPS加速请参考[使用CUDA或MPS加速推理](#4-使用CUDA或MPS加速推理)
+```bash
+pip install magic-pdf[full]==0.6.2b1 -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+> ❗️❗️❗️
+> 我们预发布了0.6.2beta版本，该版本解决了很多issue中提出的问题，同时提高了安装成功率。但是该版本未经过完整的QA测试，不代表最终正式发布的质量水平。如果你遇到任何问题，请通过提交issue的方式及时向我们反馈，或者回退到使用0.6.1版本。
+> ```bash
+> pip install magic-pdf[full-cpu]==0.6.1
+> ```
+
+
 
 #### 2. 下载模型权重文件
 
 详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)  
-下载后请将models目录移动到空间较大的ssd磁盘目录  
+> ❗️模型下载后请务必检查模型文件是否下载完整
+> 
+> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
 
 #### 3. 拷贝配置文件并进行配置
 在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
-> ❗️务必执行以下命令将配置文件拷贝到用户目录下，否则程序将无法运行
+> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
+> 
+>  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
-> ❗️务必正确配置模型权重文件所在目录，否则会因为找不到模型文件而导致程序无法运行
+> ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
+> 
+> windows系统中此路径应包含盘符，且需把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
+> 
+> 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
 ```json
 {
   "models-dir": "/tmp/models"
@@ -143,8 +155,14 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ```bash
 pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 ```
+> ❗️务必在命令中指定以下版本
+> ```bash
+> torch==2.3.1 torchvision==0.18.1 
+> ```
+> 这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
+ 
 
-同时需要修改配置文件magic-pdf.json中"device-mode"的值
+同时需要修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值
 ```json
 {
   "device-mode":"cuda"
