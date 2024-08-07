@@ -34,3 +34,6 @@ if __name__ == '__main__':
     print(detect_lang("<html>This is a test</html>"))
     print(detect_lang("这个是中文测试。"))
     print(detect_lang("<html>这个是中文测试。</html>"))
+    print(detect_lang("Đây là tiếng việt"))
+    print(detect_lang("<html>Đây là tiếng việt</html>"))
+

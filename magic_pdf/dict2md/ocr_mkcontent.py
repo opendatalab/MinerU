@@ -67,7 +67,7 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path=""):
                     if span_type == ContentType.Text:
                         content = span['content']
                         language = detect_lang(content)
-                        if language == 'en':  # 只对英文长词进行分词处理，中文分词会丢失文本
+                        if language == 'en' or language == 'vi':  # 只对英文长词进行分词处理，中文分词会丢失文本
                             content = ocr_escape_special_markdown_char(split_long_words(content))
                         else:
                             content = ocr_escape_special_markdown_char(content)
@@ -81,7 +81,7 @@ def ocr_mk_markdown_with_para_core(paras_of_layout, mode, img_buket_path=""):
                         elif mode == 'nlp':
                             pass
                     if content != '':
-                        if language == 'en':  # 英文语境下 content间需要空格分隔
+                        if language == 'en' or language == 'vi':  # 英文语境下 content间需要空格分隔
                             para_text += content + ' '
                         else:  # 中文语境下，content间不需要空格分隔
                             para_text += content
@@ -163,7 +163,7 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.Text:
                 content = span['content']
                 language = detect_lang(content)
-                if language == 'en':  # 只对英文长词进行分词处理，中文分词会丢失文本
+                if language == 'en' or language == 'vi':  # 只对英文长词进行分词处理，中文分词会丢失文本
                     content = ocr_escape_special_markdown_char(split_long_words(content))
                 else:
                     content = ocr_escape_special_markdown_char(content)
@@ -195,7 +195,7 @@ def para_to_standard_format(para, img_buket_path):
                 if span_type == ContentType.Text:
                     content = span['content']
                     language = detect_lang(content)
-                    if language == 'en':  # 只对英文长词进行分词处理，中文分词会丢失文本
+                    if language == 'en' or language == 'vi':  # 只对英文长词进行分词处理，中文分词会丢失文本
                         content = ocr_escape_special_markdown_char(split_long_words(content))
                     else:
                         content = ocr_escape_special_markdown_char(content)
@@ -203,7 +203,7 @@ def para_to_standard_format(para, img_buket_path):
                     content = f"${span['content']}$"
                     inline_equation_num += 1
 
-                if language == 'en':  # 英文语境下 content间需要空格分隔
+                if language == 'en' or language == 'vi':  # 英文语境下 content间需要空格分隔
                     para_text += content + ' '
                 else:  # 中文语境下，content间不需要空格分隔
                     para_text += content
