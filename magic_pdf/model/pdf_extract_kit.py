@@ -36,7 +36,7 @@ from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
 
 
-def table_model_init(model_path, max_time=400, _device_='cpu'):
+def table_model_init(model_path, max_time, _device_='cpu'):
     table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
     return table_model
 
@@ -297,6 +297,5 @@ class CustomPEKModel:
                     if latex_code and latex_code.strip().endswith('end{tabular}'):
                         layout["latex"] = latex_code
                     else:
-                        print(latex_code)
                         logger.warning(f"------------table recognition processing fails----------")
         return layout_res
