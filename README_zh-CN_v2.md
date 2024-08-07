@@ -177,6 +177,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 #### 1. 安装magic-pdf
 
 ```bash
+conda create -n MinerU python=3.10
+conda activate MinerU
 pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 #### 2. 下载模型权重文件
@@ -330,16 +332,15 @@ TODO
 
 [LICENSE.md](LICENSE.md)
 
-The project currently leverages PyMuPDF to deliver advanced functionalities; however, its adherence to the AGPL license may impose limitations on certain use cases. In upcoming iterations, we intend to explore and transition to a more permissively licensed PDF processing library to enhance user-friendliness and flexibility.
+本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
 
 # Acknowledgments
-
+- [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
-- [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 
 # Citation
 
