@@ -42,7 +42,7 @@ pip install modelscope
 # 使用modelscope sdk下载模型
 from modelscope import snapshot_download
 model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
-print(f"模型文件下载路径为：{model_dir}")
+print(f"模型文件下载路径为：{model_dir}/models")
 ```
 
 ## 额外步骤
