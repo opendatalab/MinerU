@@ -45,7 +45,7 @@ model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
 print(f"模型文件下载路径为：{model_dir}/models")
 ```
 
-## 额外步骤
+## 【❗️必须要做❗️】的额外步骤（模型下载完成后请务必完成以下操作）
 
 ### 1.检查模型目录是否下载完整
 模型文件夹的结构如下，包含了不同组件的配置文件和权重文件：
