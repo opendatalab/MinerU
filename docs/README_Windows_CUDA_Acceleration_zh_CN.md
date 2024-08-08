@@ -88,6 +88,7 @@ pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https
 ```bash
 magic-pdf pdf-command --pdf small_ocr.pdf
 ```
+> 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
 
 ## 9. 为ocr开启cuda加速
 > ❗️以下操作需显卡显存大于等于16G才可进行，否则会因为显存不足导致程序崩溃或运行速度下降
@@ -100,4 +101,5 @@ pip install paddlepaddle-gpu==2.6.1
 ```bash
 magic-pdf pdf-command --pdf small_ocr.pdf
 ```
+> 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
 
