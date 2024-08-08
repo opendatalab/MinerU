@@ -63,7 +63,7 @@ Key features include:
 - Conversion of equations into LaTeX format
 - Automatic detection and conversion of garbled PDFs
 - Compatibility with CPU and GPU environments
-- Available for Windows, Linux, and macOS platforms
+- Available for Windows, Linux and macOS platforms
 
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
