@@ -33,7 +33,7 @@
 
 
 # 更新记录
-
+- 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能
 - 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
 - 2024/07/05 首次开源
 
@@ -83,7 +83,7 @@
 ## 项目简介
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
-相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到issue提交问题，同时附上相关PDF。
+相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关PDF**。
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
@@ -205,9 +205,11 @@ cp magic-pdf.template.json ~/magic-pdf.json
 > 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
 ```json
 {
+  // other config
   "models-dir": "/tmp/models"
 }
 ```
+
 
 ### 使用GPU
 如果您的设备支持CUDA，且满足主线环境中的显卡要求，则可以使用GPU加速，请根据自己的系统选择适合的教程：
@@ -310,12 +312,13 @@ TODO
 
 # Known Issue
 - 阅读顺序基于规则的分割，在一些情况下会乱序
+- 不支持竖排文字
 - 列表、代码块、目录在layout模型里还没有支持
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
 - 在一些公式密集的PDF上强制启用OCR效果会更好
 - 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
+- 表格识别目前处于测试阶段识别速度较慢，识别准确度有待提升
 
-好消息是，这些我们正在努力实现！
 
 # FAQ
 [常见问题](docs/FAQ_zh_cn.md)
