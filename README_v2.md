@@ -60,7 +60,7 @@
       </ul>
     </li>
     <li><a href="#todo">TODO List</a></li>
-    <li><a href="#known-issue">Known Issue</a></li>
+    <li><a href="#known-issues">Known Issues</a></li>
     <li><a href="#faq">FAQ</a></li>
     <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
     <li><a href="#license-information">License Information</a></li>
@@ -72,6 +72,7 @@
     <li><a href="#links">Links</a></li>
   </ol>
 </details>
+
 
 # MinerU
 ## Project Introduction
@@ -100,7 +101,7 @@ If the parsing results are not as expected, refer to the <a href="#known-issues"
 There are three different ways to experience MinerU:
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
-- [Linux/Windows + CUDA](#Using GPU)
+- [Linux/Windows + CUDA](#Using-GPU)
 
 **⚠️ Pre-installation Notice—Hardware and Software Environment Support**
 
