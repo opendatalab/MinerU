@@ -285,7 +285,8 @@ class CustomPEKModel:
                 if run_time > self.table_max_time:
                     logger.warning(f"------------table recognition processing exceeds max time {self.table_max_time}s----------")
                 # 判断是否返回正常
-                if latex_code and latex_code.strip().endswith('end{tabular}'):
+                expected_ending = latex_code.strip().endswith('end{tabular}') or latex_code.strip().endswith('end{table}')
+                if latex_code and expected_ending:
                     res["latex"] = latex_code
                 else:
                     logger.warning(f"------------table recognition processing fails----------")
