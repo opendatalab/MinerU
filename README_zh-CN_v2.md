@@ -103,7 +103,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ## 快速开始
 
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
-如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issue</a></br>
+如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issues</a></br>
 有3种不同方式可以体验MinerU的效果：
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
@@ -314,7 +314,7 @@ TODO
 - [ ] 几何图形识别
 
 
-# Known Issue
+# Known Issues
 - 阅读顺序基于规则的分割，在一些情况下会乱序
 - 不支持竖排文字
 - 列表、代码块、目录在layout模型里还没有支持
