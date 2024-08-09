@@ -94,6 +94,7 @@ def jsonl(jsonl, method, output_dir):
         jso["doc_layout_result"],
         method,
         f_dump_content_list=True,
+        f_draw_model_bbox=True,
     )
 
 
@@ -146,6 +147,7 @@ def pdf(pdf, json_data, output_dir, method):
         model_json_list,
         method,
         f_dump_content_list=True,
+        f_draw_model_bbox=True,
     )
 
 
