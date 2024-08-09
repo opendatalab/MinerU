@@ -24,7 +24,7 @@
 
 <!-- join us -->
 <p align="center">
-    👋 join us on <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 
 </div>
@@ -47,31 +47,32 @@
             <ul>
             <li><a href="#online-demo">Online Demo</a></li>
             <li><a href="#quick-cpu-demo">Quick CPU Demo</a></li>
-            <li><a href="#gpu-usage">GPU Usage</a></li>
+            <li><a href="#using-gpu">Using GPU</a></li>
             </ul>
         </li>
         <li><a href="#usage">Usage</a>
             <ul>
             <li><a href="#command-line">Command Line</a></li>
             <li><a href="#api">API</a></li>
-            <li><a href="#advanced-development">Advanced Development</a></li>
+            <li><a href="#development-guide">Development Guide</a></li>
             </ul>
         </li>
       </ul>
     </li>
-    <li><a href="#todo">TODO List</a></li>
+    <li><a href="#todo">TODO</a></li>
     <li><a href="#known-issues">Known Issues</a></li>
     <li><a href="#faq">FAQ</a></li>
-    <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
+    <li><a href="#all-thanks-to-our-contributors">All Thanks To Our Contributors</a></li>
     <li><a href="#license-information">License Information</a></li>
-    <li><a href="#acknowledgments">Acknowledgements</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
     <li><a href="#citation">Citation</a></li>
     <li><a href="#star-history">Star History</a></li>
-    <li><a href="#magic-doc">Magic-doc: Fast Extraction from PPT/DOC/PDF</a></li>
-    <li><a href="#magic-html">Magic-html: Mixed Web Page Extraction</a></li>
+    <li><a href="#magic-doc">Magic-doc</a></li>
+    <li><a href="#magic-html">Magic-html</a></li>
     <li><a href="#links">Links</a></li>
   </ol>
 </details>
+
 
 
 # MinerU
@@ -170,11 +171,11 @@ In non-mainline environments, due to the diversity of hardware and software conf
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install magic-pdf[full]==0.7.0b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
 ```
 #### 2. Download model weight files
 
-Refer to [How to Download Model Files](docs/how_to_download_models_zh_cn.md) for detailed instructions.
+Refer to [How to Download Model Files](docs/how_to_download_models_en.md) for detailed instructions.
 > ❗️After downloading the models, please make sure to verify the completeness of the model files.
 > 
 > Check if the model file sizes match the description on the webpage. If possible, use sha256 to verify the integrity of the files.
@@ -254,7 +255,7 @@ The results will be saved in the `{some_output_dir}` directory. The output file 
 └── spans.pdf                   # smallest granularity bbox position information diagram
 ```
 
-For more information about the output files, please refer to the [Output File Description](docs/output_file_zh_cn.md).
+For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
 
 ### API
 
@@ -320,7 +321,8 @@ TODO
 
 # FAQ
 [FAQ in Chinese](docs/FAQ_zh_cn.md)
-[FAQ in English](docs/FAQ.md)
+
+[FAQ in English](docs/FAQ_en_us.md)
 
 
 # All Thanks To Our Contributors
