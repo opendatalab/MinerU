@@ -100,7 +100,7 @@ If the parsing results are not as expected, refer to the <a href="#known-issues"
 There are three different ways to experience MinerU:
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
-- [Linux/Windows + CUDA](#gpu-usage)
+- [Linux/Windows + CUDA](#Using GPU)
 
 **⚠️ Pre-installation Notice—Hardware and Software Environment Support**
 
