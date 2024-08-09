@@ -26,7 +26,7 @@
 
 <!-- join us -->
 <p align="center">
-    👋 join us on <a href="https://discord.gg/gPxmVeGC" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 
 </div>
@@ -64,7 +64,7 @@
       </ul>
     </li>
     <li><a href="#todo">TODO</a></li>
-    <li><a href="#known-issue">Known Issue</a></li>
+    <li><a href="#known-issues">Known Issues</a></li>
     <li><a href="#faq">FAQ</a></li>
     <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
     <li><a href="#license-information">License Information</a></li>
@@ -103,7 +103,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ## 快速开始
 
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
-如果遇到解析效果不及预期，参考 <a href="#known-issue">Known Issues</a></br>
+如果遇到解析效果不及预期，参考 <a href="#known-issues">Known Issues</a></br>
 有3种不同方式可以体验MinerU的效果：
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
