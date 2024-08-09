@@ -206,7 +206,11 @@ cp magic-pdf.template.json ~/magic-pdf.json
 ```json
 {
   // other config
-  "models-dir": "/tmp/models"
+  "models-dir": "D:/models",
+  "table-config": {
+        "is_table_recog_enable": false, // 表格识别功能默认是关闭的，如果需要修改此处的值
+        "max_time": 400
+    }
 }
 ```
 
