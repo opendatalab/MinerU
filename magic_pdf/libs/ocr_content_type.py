@@ -19,3 +19,17 @@ class BlockType:
     Footnote = "footnote"
     Discarded = "discarded"
 
+
+class CategoryId:
+    Title = 0
+    Text = 1
+    Abandon = 2
+    ImageBody = 3
+    ImageCaption = 4
+    TableBody = 5
+    TableCaption = 6
+    TableFootnote = 7
+    InterlineEquation_Layout = 8
+    InlineEquation = 13
+    InterlineEquation_YOLO = 14
+    OcrText = 15

@@ -1,6 +1,7 @@
 from magic_pdf.libs.Constants import CROSS_PAGE
 from magic_pdf.libs.commons import fitz  # PyMuPDF
-from magic_pdf.libs.ocr_content_type import ContentType, BlockType
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType, CategoryId
+from magic_pdf.model.magic_model import MagicModel
 
 
 def draw_bbox_without_number(i, bbox_list, page, rgb_config, fill_config):
@@ -225,3 +226,67 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path):
 
     # Save the PDF
     pdf_docs.save(f"{out_path}/spans.pdf")
+
+
+def drow_model_bbox(model_list: list, pdf_bytes, out_path):
+    dropped_bbox_list = []
+    tables_body_list, tables_caption_list, tables_footnote_list = [], [], []
+    imgs_body_list, imgs_caption_list = [], []
+    titles_list = []
+    texts_list = []
+    interequations_list = []
+    pdf_docs = fitz.open("pdf", pdf_bytes)
+    magic_model = MagicModel(model_list, pdf_docs)
+    for i in range(len(model_list)):
+        page_dropped_list = []
+        tables_body, tables_caption, tables_footnote = [], [], []
+        imgs_body, imgs_caption = [], []
+        titles = []
+        texts = []
+        interequations = []
+        page_info = magic_model.get_model_list(i)
+        layout_dets = page_info["layout_dets"]
+        for layout_det in layout_dets:
+            bbox = layout_det["bbox"]
+            if layout_det["category_id"] == CategoryId.Text:
+                texts.append(bbox)
+            elif layout_det["category_id"] == CategoryId.Title:
+                titles.append(bbox)
+            elif layout_det["category_id"] == CategoryId.TableBody:
+                tables_body.append(bbox)
+            elif layout_det["category_id"] == CategoryId.TableCaption:
+                tables_caption.append(bbox)
+            elif layout_det["category_id"] == CategoryId.TableFootnote:
+                tables_footnote.append(bbox)
+            elif layout_det["category_id"] == CategoryId.ImageBody:
+                imgs_body.append(bbox)
+            elif layout_det["category_id"] == CategoryId.ImageCaption:
+                imgs_caption.append(bbox)
+            elif layout_det["category_id"] == CategoryId.InterlineEquation_YOLO:
+                interequations.append(bbox)
+            elif layout_det["category_id"] == CategoryId.Abandon:
+                page_dropped_list.append(bbox)
+
+        tables_body_list.append(tables_body)
+        tables_caption_list.append(tables_caption)
+        tables_footnote_list.append(tables_footnote)
+        imgs_body_list.append(imgs_body)
+        imgs_caption_list.append(imgs_caption)
+        titles_list.append(titles)
+        texts_list.append(texts)
+        interequations_list.append(interequations)
+        dropped_bbox_list.append(page_dropped_list)
+
+    for i, page in enumerate(pdf_docs):
+        draw_bbox_with_number(i, dropped_bbox_list, page, [158, 158, 158], True) # color !
+        draw_bbox_with_number(i, tables_body_list, page, [204, 204, 0], True)
+        draw_bbox_with_number(i, tables_caption_list, page, [255, 255, 102], True)
+        draw_bbox_with_number(i, tables_footnote_list, page, [229, 255, 204], True)
+        draw_bbox_with_number(i, imgs_body_list, page, [153, 255, 51], True)
+        draw_bbox_with_number(i, imgs_caption_list, page, [102, 178, 255], True)
+        draw_bbox_with_number(i, titles_list, page, [102, 102, 255], True)
+        draw_bbox_with_number(i, texts_list, page, [153, 0, 76], True)
+        draw_bbox_with_number(i, interequations_list, page, [0, 255, 0], True)
+
+    # Save the PDF
+    pdf_docs.save(f"{out_path}/model.pdf")

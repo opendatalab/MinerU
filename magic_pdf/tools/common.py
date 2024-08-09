@@ -4,7 +4,7 @@ import copy
 import click
 from loguru import logger
 from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
-from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
+from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox, drow_model_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -37,6 +37,7 @@ def do_parse(
     f_dump_orig_pdf=True,
     f_dump_content_list=False,
     f_make_md_mode=MakeMode.MM_MD,
+    f_draw_model_bbox=False,
 ):
     orig_model_list = copy.deepcopy(model_list)
     local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
@@ -73,6 +74,8 @@ def do_parse(
         draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
+    if f_draw_model_bbox:
+        drow_model_bbox(orig_model_list, pdf_bytes, local_md_dir)
 
     md_content = pipe.pipe_mk_markdown(
         image_dir, drop_mode=DropMode.NONE, md_make_mode=f_make_md_mode
