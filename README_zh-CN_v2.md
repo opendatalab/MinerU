@@ -58,12 +58,12 @@
             <ul>
             <li><a href="#命令行">命令行</a></li>
             <li><a href="#api">API</a></li>
-            <li><a href="#二次开发">二次开发指南</a></li>
+            <li><a href="#二次开发">二次开发</a></li>
             </ul>
         </li>
       </ul>
     </li>
-    <li><a href="#todo">TODO List</a></li>
+    <li><a href="#todo">TODO</a></li>
     <li><a href="#known-issue">Known Issue</a></li>
     <li><a href="#faq">FAQ</a></li>
     <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
@@ -180,9 +180,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 conda create -n MinerU python=3.10
 conda activate MinerU
 pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
-pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
-pip install -U magic-pdf[full]==0.7.0b1 -i https://pypi.tuna.tsinghua.edu.cn/simple
-pip install -U magic-pdf[full]==0.7.0b1
 ```
 #### 2. 下载模型权重文件
 
