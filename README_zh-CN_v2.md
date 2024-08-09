@@ -50,8 +50,8 @@
         <li><a href="#快速开始">快速开始</a>
             <ul>
             <li><a href="#在线体验">在线体验</a></li>
-            <li><a href="#使用cpu快速体验">使用CPU快速体验</a></li>
-            <li><a href="#使用gpu">使用GPU</a></li>
+            <li><a href="#使用CPU快速体验">使用CPU快速体验</a></li>
+            <li><a href="#使用GPU">使用GPU</a></li>
             </ul>
         </li>
         <li><a href="#使用">使用方式</a>
@@ -179,7 +179,10 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
+pip install -U magic-pdf[full]==0.7.0b1 -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -U magic-pdf[full]==0.7.0b1
 ```
 #### 2. 下载模型权重文件
 
