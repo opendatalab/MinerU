@@ -30,12 +30,10 @@ def read_s3_path(s3path):
         byte_start, byte_end = 0, None
     else:
         byte_start, byte_end = int(may_range_params[0]), int(may_range_params[1])
-        byte_end += byte_start - 1
-    return s3_rw.read_jsonl(
+    return s3_rw.read_offset(
         remove_non_official_s3_args(s3path),
         byte_start,
         byte_end,
-        AbsReaderWriter.MODE_BIN,
     )
 
 
@@ -71,23 +69,22 @@ def cli():
     default="",
 )
 def jsonl(jsonl, method, output_dir):
-    print("haha")
     model_config.__use_inside_model__ = False
-    full_jsonl_path = os.path.realpath(jsonl)
-    if output_dir == "":
-        output_dir = os.path.join(os.path.dirname(full_jsonl_path), "output")
-
     if jsonl.startswith("s3://"):
         jso = json_parse.loads(read_s3_path(jsonl).decode("utf-8"))
+        full_jsonl_path = "."
     else:
+        full_jsonl_path = os.path.realpath(jsonl)
         with open(jsonl) as f:
             jso = json_parse.loads(f.readline())
+
+    if output_dir == "":
+        output_dir = os.path.join(os.path.dirname(full_jsonl_path), "output")
     s3_file_path = jso.get("file_location")
     if s3_file_path is None:
         s3_file_path = jso.get("path")
     pdf_file_name = Path(s3_file_path).stem
     pdf_data = read_s3_path(s3_file_path)
-
 
     print(pdf_file_name, jso, method)
     do_parse(
