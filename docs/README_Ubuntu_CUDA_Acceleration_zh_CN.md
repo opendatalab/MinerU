@@ -43,14 +43,14 @@ conda activate MinerU
 ```
 ## 5. 安装应用
 ```bash
-pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 > ❗️下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
 > 
 > ```bash
 > magic-pdf --version
 >```
-> 如果版本号小于0.6.2，请到issue中向我们反馈
+> 如果版本号小于0.7.0，请到issue中向我们反馈
 
 ## 6. 下载模型
 详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)  
@@ -82,7 +82,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 从仓库中下载样本文件，并测试
 ```bash
 wget https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 ## 9. 测试CUDA加速
 如果您的显卡显存大于等于8G，可以进行以下流程，测试CUDA解析加速效果
@@ -95,7 +95,7 @@ magic-pdf pdf-command --pdf small_ocr.pdf
 ```
 **2.运行以下命令测试cuda加速效果**
 ```bash
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
 
@@ -108,6 +108,6 @@ python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.
 ```
 **2.运行以下命令测试ocr加速效果**
 ```bash
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
