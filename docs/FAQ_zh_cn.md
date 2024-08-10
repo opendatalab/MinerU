@@ -25,3 +25,11 @@ pip install magic-pdf[full]
 进行配置的。
 这个路径是绝对路径而不是相对路径，绝对路径的获取可在models目录中通过命令 "pwd" 获取。  
 参考：https://github.com/opendatalab/MinerU/issues/155#issuecomment-2230216874
+
+### 4.在WSL2的Ubuntu22.04中遇到报错`ImportError: libGL.so.1: cannot open shared object file: No such file or directory`
+
+WSL2的Ubuntu22.04中缺少`libgl`库，可通过以下命令安装`libgl`库解决：
+```bash
+sudo apt-get install libgl1-mesa-glx
+```
+参考：https://github.com/opendatalab/MinerU/issues/388
