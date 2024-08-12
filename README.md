@@ -262,11 +262,11 @@ The results will be saved in the `{some_output_dir}` directory. The output file 
 ```text
 ├── some_pdf.md                          # markdown file
 ├── images                               # directory for storing images
-├── layout.pdf                           # layout diagram
+├── some_pdf_layout.pdf                  # layout diagram
 ├── some_pdf_middle.json                 # MinerU intermediate processing result
 ├── some_pdf_model.json                  # model inference result
 ├── some_pdf_origin.pdf                  # original PDF file
-└── spans.pdf                            # smallest granularity bbox position information diagram
+└── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
 ```
 
 For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).

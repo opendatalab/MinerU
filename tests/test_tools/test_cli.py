@@ -44,10 +44,10 @@ def test_cli_pdf():
     r = os.stat(os.path.join(base_output_dir, f'{filename}_origin.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'layout.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_layout.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'spans.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_spans.pdf'))
     assert r.st_size > 500000
 
     assert os.path.exists(os.path.join(base_output_dir, 'images')) is True
@@ -90,10 +90,10 @@ def test_cli_path():
     r = os.stat(os.path.join(base_output_dir, f'{filename}_origin.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'layout.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_layout.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'spans.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_spans.pdf'))
     assert r.st_size > 500000
 
     assert os.path.exists(os.path.join(base_output_dir, 'images')) is True
@@ -117,10 +117,10 @@ def test_cli_path():
     r = os.stat(os.path.join(base_output_dir, f'{filename}_origin.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'layout.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_layout.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'spans.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_spans.pdf'))
     assert r.st_size > 500000
 
     assert os.path.exists(os.path.join(base_output_dir, 'images')) is True

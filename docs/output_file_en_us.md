@@ -2,13 +2,13 @@
 
 After executing the `magic-pdf` command, in addition to outputting files related to markdown, several other files unrelated to markdown will also be generated. These files will be introduced one by one.
 
-### layout.pdf
+### some_pdf_layout.pdf
 
 Each page layout consists of one or more boxes. The number at the top left of each box indicates its sequence number. Additionally, in `layout.pdf`, different content blocks are highlighted with different background colors.
 
 ![layout example](images/layout_example.png)
 
-### spans.pdf
+### some_pdf_spans.pdf
 
 All spans on the page are drawn with different colored line frames according to the span type. This file can be used for quality control, allowing for quick identification of issues such as missing text or unrecognized inline formulas.
 

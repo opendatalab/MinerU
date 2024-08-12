@@ -45,10 +45,10 @@ def test_common_do_parse(method):
     r = os.stat(os.path.join(base_output_dir, f'{filename}_origin.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'layout.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_layout.pdf'))
     assert r.st_size > 500000
 
-    r = os.stat(os.path.join(base_output_dir, 'spans.pdf'))
+    r = os.stat(os.path.join(base_output_dir, f'{filename}_spans.pdf'))
     assert r.st_size > 500000
 
     os.path.exists(os.path.join(base_output_dir, 'images'))

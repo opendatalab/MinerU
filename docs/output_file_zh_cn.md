@@ -2,13 +2,13 @@
 
 `magic-pdf` 命令执行后除了输出和 markdown 有关的文件以外，还会生成若干个和 markdown 无关的文件。现在将一一介绍这些文件
 
-### layout.pdf
+### some_pdf_layout.pdf
 
 每一页的 layout 均由一个或多个框组成。 每个框左上脚的数字表明它们的序号。此外 layout.pdf 框内用不同的背景色块圈定不同的内容块。
 
 ![layout 页面示例](images/layout_example.png)
 
-### spans.pdf
+### some_pdf_spans.pdf
 
 根据 span 类型的不同，采用不同颜色线框绘制页面上所有 span。该文件可以用于质检，可以快速排查出文本丢失、行间公式未识别等问题。
 

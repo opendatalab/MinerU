@@ -264,11 +264,11 @@ magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 ```text
 ├── some_pdf.md                          # markdown 文件
 ├── images                               # 存放图片目录
-├── layout.pdf                           # layout 绘图
+├── some_pdf_layout.pdf                  # layout 绘图
 ├── some_pdf_middle.json                 # minerU 中间处理结果
 ├── some_pdf_model.json                  # 模型推理结果
 ├── some_pdf_origin.pdf                  # 原 pdf 文件
-└── spans.pdf                            # 最小粒度的bbox位置信息绘图
+└── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
 ```
 
 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)

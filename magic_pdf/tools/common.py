@@ -74,11 +74,12 @@ def do_parse(
     pipe.pipe_parse()
     pdf_info = pipe.pdf_mid_data['pdf_info']
     if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir)
+        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
     if f_draw_span_bbox:
-        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
+        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
     if f_draw_model_bbox:
-        drow_model_bbox(orig_model_list, pdf_bytes, local_md_dir)
+        drow_model_bbox(orig_model_list, pdf_bytes, local_md_dir,
+                        pdf_file_name)
 
     md_content = pipe.pipe_mk_markdown(image_dir,
                                        drop_mode=DropMode.NONE,
