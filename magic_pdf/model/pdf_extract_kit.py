@@ -226,7 +226,7 @@ class CustomPEKModel:
             ocr_start = time.time()
             # Process each area that requires OCR processing
             for res in ocr_res_list:
-                new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
+                new_image, useful_list = crop_img(res, pil_img, crop_paste_x=25, crop_paste_y=25)
                 paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
                 # Adjust the coordinates of the formula area
                 adjusted_mfdetrec_res = []
