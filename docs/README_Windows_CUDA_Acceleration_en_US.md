@@ -19,13 +19,13 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
 ### 4. Install Applications
    ```
-   pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com
+   pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
    ```
    >❗️After installation, verify the version of `magic-pdf`:
    >  ```bash
    >  magic-pdf --version
    >  ```
-   > If the version number is less than 0.6.2, please report it in the issues section.
+   > If the version number is less than 0.7.0, please report it in the issues section.
    
 ### 5. Download Models
    Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
@@ -65,7 +65,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
    Download a sample file from the repository and test it.
    ```powershell
      (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
-     magic-pdf pdf-command --pdf small_ocr.pdf
+     magic-pdf -p small_ocr.pdf
    ```
 
 ### 8. Test CUDA Acceleration
@@ -89,7 +89,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
    3. **Run the following command to test CUDA acceleration**:
 
       ```
-      magic-pdf pdf-command --pdf small_ocr.pdf
+      magic-pdf -p small_ocr.pdf
       ```
 
 ### 9. Enable CUDA Acceleration for OCR
@@ -100,5 +100,5 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
       ```
    2. **Run the following command to test OCR acceleration**:
       ```
-      magic-pdf pdf-command --pdf small_ocr.pdf
+      magic-pdf -p small_ocr.pdf
       ```

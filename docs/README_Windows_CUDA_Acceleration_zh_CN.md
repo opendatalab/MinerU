@@ -20,7 +20,7 @@ conda activate MinerU
 ```
 ## 4. 安装应用
 ```bash
-pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 > ❗️下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
 > 
@@ -62,7 +62,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 从仓库中下载样本文件，并测试
 ```powershell
 (New-Object System.Net.WebClient).DownloadFile('https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 
 ## 8. 测试CUDA加速
@@ -86,7 +86,7 @@ pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https
 ```
 **3.运行以下命令测试cuda加速效果**
 ```bash
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
 
@@ -99,7 +99,7 @@ pip install paddlepaddle-gpu==2.6.1
 ```
 **2.运行以下命令测试ocr加速效果**
 ```bash
-magic-pdf pdf-command --pdf small_ocr.pdf
+magic-pdf -p small_ocr.pdf
 ```
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
 

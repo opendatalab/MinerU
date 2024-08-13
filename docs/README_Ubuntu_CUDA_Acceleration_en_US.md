@@ -48,13 +48,13 @@
 
 ### 5. Install Applications
    ```sh
-   pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com
+   pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
    ```
 ❗ After installation, make sure to check the version of `magic-pdf` using the following command:
    ```sh
    magic-pdf --version
    ```
-   If the version number is less than 0.6.2, please report the issue.
+   If the version number is less than 0.7.0, please report the issue.
 
 ### 6. Download Models
    Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
@@ -85,7 +85,7 @@
    Download a sample file from the repository and test it.
    ```sh
    wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```
 
 ### 9. Test CUDA Acceleration
@@ -100,7 +100,7 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA 
    ```
 2. Test CUDA acceleration with the following command:
    ```sh
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```
 
 ### 10. Enable CUDA Acceleration for OCR
@@ -113,5 +113,5 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA 
    ```
 2. Test OCR acceleration with the following command:
    ```sh
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```
