@@ -36,9 +36,12 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
     '''任何框体与舍弃框重叠，优先信任舍弃框'''
     all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
-    # @todo interline_equation 与title或text框冲突的情况，分两种情况处理
+
+    # interline_equation 与title或text框冲突的情况，分两种情况处理
     '''interline_equation框与文本类型框iou比较接近1的时候，信任行间公式框'''
+    all_bboxes = fix_interline_equation_overlap_text_blocks_with_hi_iou(all_bboxes)
     '''interline_equation框被包含在文本类型框内，且interline_equation比文本区块小很多时信任文本框，这时需要舍弃公式框'''
+    # 通过后续大框套小框逻辑删除
 
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
     for discarded in discarded_blocks:
@@ -57,6 +60,34 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     return all_bboxes, all_discarded_blocks, drop_reasons
 
 
+def fix_interline_equation_overlap_text_blocks_with_hi_iou(all_bboxes):
+    # 先提取所有text和interline block
+    text_blocks = []
+    for block in all_bboxes:
+        if block[7] == BlockType.Text:
+            text_blocks.append(block)
+    interline_equation_blocks = []
+    for block in all_bboxes:
+        if block[7] == BlockType.InterlineEquation:
+            interline_equation_blocks.append(block)
+
+    need_remove = []
+
+    for interline_equation_block in interline_equation_blocks:
+        for text_block in text_blocks:
+            interline_equation_block_bbox = interline_equation_block[:4]
+            text_block_bbox = text_block[:4]
+            if calculate_iou(interline_equation_block_bbox, text_block_bbox) > 0.8:
+                if text_block not in need_remove:
+                    need_remove.append(text_block)
+
+    if len(need_remove) > 0:
+        for block in need_remove:
+            all_bboxes.remove(block)
+
+    return all_bboxes
+
+
 def fix_text_overlap_title_blocks(all_bboxes):
     # 先提取所有text和title block
     text_blocks = []
@@ -68,12 +99,19 @@ def fix_text_overlap_title_blocks(all_bboxes):
         if block[7] == BlockType.Title:
             title_blocks.append(block)
 
+    need_remove = []
+
     for text_block in text_blocks:
         for title_block in title_blocks:
             text_block_bbox = text_block[:4]
             title_block_bbox = title_block[:4]
             if calculate_iou(text_block_bbox, title_block_bbox) > 0.8:
-                all_bboxes.remove(title_block)
+                if title_block not in need_remove:
+                    need_remove.append(title_block)
+
+    if len(need_remove) > 0:
+        for block in need_remove:
+            all_bboxes.remove(block)
 
     return all_bboxes
 

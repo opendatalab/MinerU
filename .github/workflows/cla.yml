@@ -1,4 +1,4 @@
-name: "CLA Assistant"
+name: "MinerU CLA Assistant"
 on:
   issue_comment:
     types: [created]
@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: "CLA Assistant"
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.4.0
+        uses: contributor-assistant/github-action@v2.3.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # the below token should have repo scope and must be manually added by you in the repository's secret
@@ -26,9 +26,9 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/cla-assistant/github-action/blob/master/SAPCLA.md' # e.g. a CLA or a DCO document
+          path-to-document: 'https://github.com/opendatalab/MinerU/blob/master/MinerU_CLA.md' # e.g. a CLA or a DCO document
           # branch should not be protected
-          branch: 'main'
+          branch: 'master'
           allowlist: user1,bot*
 
          # the followings are the optional inputs - If the optional inputs are not given, then default values will be taken

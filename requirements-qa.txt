@@ -14,3 +14,4 @@ tqdm
 htmltabletomd
 pypandoc
 pyopenssl==24.0.0
+struct-eqtable==0.1.0

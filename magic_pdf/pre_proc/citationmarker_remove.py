@@ -135,7 +135,11 @@ def remove_citation_marker(with_char_text_blcoks):
                 
                 if max_font_sz-span_font_sz<1: # 先以字体过滤正文，如果是正文就不再继续判断了
                     continue
-                
+
+                # 对被除数为0的情况进行过滤
+                if span_hi==0 or min_font_sz==0:
+                    continue
+
                 if (base_span_mid_y-span_mid_y)/span_hi>0.2 or (base_span_mid_y-span_mid_y>0 and abs(span_font_sz-min_font_sz)/min_font_sz<0.1):
                     """
                     1. 它的前一个char如果是句号或者逗号的话，那么肯定是角标而不是公式

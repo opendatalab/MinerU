@@ -1,5 +1,12 @@
 {
-    "temp-output-dir":"/output",
-    "models-dir":"/opt/models",
-    "device-mode":"cuda"
+    "bucket_info":{
+        "bucket-name-1":["ak", "sk", "endpoint"],
+        "bucket-name-2":["ak", "sk", "endpoint"]
+    },
+    "models-dir":"/tmp/models",
+    "device-mode":"cpu",
+    "table-config": {
+        "is_table_recog_enable": false,
+        "max_time": 400
+    }
 }
