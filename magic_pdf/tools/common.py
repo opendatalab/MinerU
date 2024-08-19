@@ -81,7 +81,7 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir)
     if f_draw_model_bbox:
-        drow_model_bbox(orig_model_list, pdf_bytes, local_md_dir)
+        drow_model_bbox(copy.deepcopy(orig_model_list), pdf_bytes, local_md_dir)
 
     md_content = pipe.pipe_mk_markdown(
         image_dir, drop_mode=DropMode.NONE, md_make_mode=f_make_md_mode
