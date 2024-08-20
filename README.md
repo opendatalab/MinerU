@@ -5,6 +5,7 @@
 </p>
 
 <!-- icon -->
+
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
@@ -15,14 +16,17 @@
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
+
 [English](README.md) | [简体中文](README_zh-CN.md)
 
 <!-- hot link -->
+
 <p align="center">
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: High-Quality PDF Extraction Toolkit</a>🔥🔥🔥
 </p>
 
 <!-- join us -->
+
 <p align="center">
     👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
@@ -30,11 +34,13 @@
 </div>
 
 # Changelog
+
 - 2024/08/09: Version 0.7.0b1 released, simplified installation process, added table recognition functionality
 - 2024/08/01: Version 0.6.2b1 released, optimized dependency conflict issues and installation documentation
 - 2024/07/05: Initial open-source release
 
 <!-- TABLE OF CONTENT -->
+
 <details open="open">
   <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
   <ol>
@@ -73,10 +79,10 @@
   </ol>
 </details>
 
-
-
 # MinerU
+
 ## Project Introduction
+
 MinerU is a tool that converts PDFs into machine-readable formats (e.g., markdown, JSON), allowing for easy extraction into any format.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant PDF**.
@@ -100,6 +106,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
 If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
 There are three different ways to experience MinerU:
+
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
 - [Linux/Windows + CUDA](#Using-GPU)
@@ -168,33 +175,41 @@ In non-mainline environments, due to the diversity of hardware and software conf
 ### Quick CPU Demo
 
 #### 1. Install magic-pdf
+
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
 pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
 ```
+
 #### 2. Download model weight files
 
 Refer to [How to Download Model Files](docs/how_to_download_models_en.md) for detailed instructions.
+
 > ❗️After downloading the models, please make sure to verify the completeness of the model files.
-> 
+>
 > Check if the model file sizes match the description on the webpage. If possible, use sha256 to verify the integrity of the files.
 
 #### 3. Copy and configure the template file
+
 You can find the `magic-pdf.template.json` template configuration file in the root directory of the repository.
+
 > ❗️Make sure to execute the following command to copy the configuration file to your **user directory**; otherwise, the program will not run.
-> 
+>
 > The user directory for Windows is `C:\Users\YourUsername`, for Linux it is `/home/YourUsername`, and for macOS it is `/Users/YourUsername`.
+
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
 Find the `magic-pdf.json` file in your user directory and configure the "models-dir" path to point to the directory where the model weight files were downloaded in [Step 2](#2-download-model-weight-files).
+
 > ❗️Make sure to correctly configure the **absolute path** to the model weight files directory, otherwise the program will not run because it can't find the model files.
 >
 > On Windows, this path should include the drive letter and all backslashes (`\`) in the path should be replaced with forward slashes (`/`) to avoid syntax errors in the JSON file due to escape sequences.
-> 
+>
 > For example: If the models are stored in the "models" directory at the root of the D drive, the "model-dir" value should be `D:/models`.
+
 ```json
 {
   // other config
@@ -206,13 +221,12 @@ Find the `magic-pdf.json` file in your user directory and configure the "models-
 }
 ```
 
-
 ### Using GPU
+
 If your device supports CUDA and meets the GPU requirements of the mainline environment, you can use GPU acceleration. Please select the appropriate guide based on your system:
 
 - [Ubuntu 22.04 LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_en_US.md)
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
-
 
 ## Usage
 
@@ -226,12 +240,12 @@ Options:
   -v, --version                display the version and exit
   -p, --path PATH              local pdf filepath or directory  [required]
   -o, --output-dir TEXT        output local directory
-  -m, --method [ocr|txt|auto]  the method for parsing pdf.  
+  -m, --method [ocr|txt|auto]  the method for parsing pdf.
                                ocr: using ocr technique to extract information from pdf,
                                txt: suitable for the text-based pdf only and outperform ocr,
                                auto: automatically choose the best method for parsing pdf
                                   from ocr and txt.
-                               without method specified, auto will be used by default. 
+                               without method specified, auto will be used by default.
   --help                       Show this message and exit.
 
 
@@ -246,13 +260,13 @@ magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 The results will be saved in the `{some_output_dir}` directory. The output file list is as follows:
 
 ```text
-├── some_pdf.md                 # markdown file
-├── images                      # directory for storing images
-├── layout.pdf                  # layout diagram
-├── middle.json                 # MinerU intermediate processing result
-├── model.json                  # model inference result
-├── origin.pdf                  # original PDF file
-└── spans.pdf                   # smallest granularity bbox position information diagram
+├── some_pdf.md                          # markdown file
+├── images                               # directory for storing images
+├── some_pdf_layout.pdf                  # layout diagram
+├── some_pdf_middle.json                 # MinerU intermediate processing result
+├── some_pdf_model.json                  # model inference result
+├── some_pdf_origin.pdf                  # original PDF file
+└── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
 ```
 
 For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
@@ -260,6 +274,7 @@ For more information about the output files, please refer to the [Output File De
 ### API
 
 Processing files from local disk
+
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
@@ -272,6 +287,7 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
 Processing files from object storage
+
 ```python
 s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
@@ -286,9 +302,9 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
 For detailed implementation, refer to:
+
 - [demo.py Simplest Processing Method](demo/demo.py)
 - [magic_pdf_parse_main.py More Detailed Processing Workflow](demo/magic_pdf_parse_main.py)
-
 
 ### Development Guide
 
@@ -305,6 +321,7 @@ TODO
 - [ ] Geometric shape recognition
 
 # Known Issues
+
 - Reading order is segmented based on rules, which can cause disordered sequences in some cases
 - Vertical text is not supported
 - Lists, code blocks, and table of contents are not yet supported in the layout model
@@ -313,17 +330,17 @@ TODO
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
 - **Table Recognition** is currently in the testing phase; recognition speed is slow, and accuracy needs improvement. Below are some performance test results in an Ubuntu 22.04 LTS + Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz + NVIDIA GeForce RTX 4090 environment for reference.
 
-| Table Size     | Parsing Time        | 
-|---------------|----------------------------| 
-| 6\*5 55kb     | 37s                   | 
-| 16\*12 284kb  | 3m18s                 | 
-| 44\*7 559kb   | 4m12s                 | 
+| Table Size   | Parsing Time |
+| ------------ | ------------ |
+| 6\*5 55kb    | 37s          |
+| 16\*12 284kb | 3m18s        |
+| 44\*7 559kb  | 4m12s        |
 
 # FAQ
+
 [FAQ in Chinese](docs/FAQ_zh_cn.md)
 
 [FAQ in English](docs/FAQ_en_us.md)
-
 
 # All Thanks To Our Contributors
 
@@ -337,8 +354,8 @@ TODO
 
 This project currently uses PyMuPDF to achieve advanced functionality. However, since it adheres to the AGPL license, it may impose restrictions on certain usage scenarios. In future iterations, we plan to explore and replace it with a more permissive PDF processing library to enhance user-friendliness and flexibility.
 
-
 # Acknowledgments
+
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
@@ -375,9 +392,11 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 </a>
 
 # Magic-doc
+
 [Magic-Doc](https://github.com/InternLM/magic-doc) Fast speed ppt/pptx/doc/docx/pdf extraction tool
 
 # Magic-html
+
 [Magic-HTML](https://github.com/opendatalab/magic-html) Mixed web page extraction tool
 
 # Links
