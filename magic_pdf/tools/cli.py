@@ -45,7 +45,15 @@ auto: automatically choose the best method for parsing pdf from ocr and txt.
 without method specified, auto will be used by default.""",
     default='auto',
 )
-def cli(path, output_dir, method):
+@click.option(
+    "-d",
+    "--debug",
+    "debug_able",
+    type=bool,
+    help="Enables detailed debugging information during the execution of the CLI commands.",
+    default=False,
+)
+def cli(path, output_dir, method, debug_able):
     model_config.__use_inside_model__ = True
     model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
@@ -64,6 +72,7 @@ def cli(path, output_dir, method):
                 pdf_data,
                 [],
                 method,
+                debug_able,
             )
 
         except Exception as e:

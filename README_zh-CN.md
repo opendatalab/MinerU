@@ -208,8 +208,9 @@ cp magic-pdf.template.json ~/magic-pdf.json
 
 > ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
 >
-> windows系统中此路径应包含盘符，且需把路径中所有的""替换为"/",否则会因为转义原因导致json文件语法错误。
->
+> windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
+> 
+
 > 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
 
 ```json
@@ -340,7 +341,9 @@ TODO
 
 # FAQ
 
+
 [常见问题](docs/FAQ_zh_cn.md)
+
 
 [FAQ](docs/FAQ_en_us.md)
 

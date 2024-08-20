@@ -27,7 +27,7 @@ pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.co
 > ```bash
 > magic-pdf --version
 >```
-> 如果版本号小于0.6.2，请到issue中向我们反馈
+> 如果版本号小于0.7.0，请到issue中向我们反馈
 
 ## 5. 下载模型
 详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)  

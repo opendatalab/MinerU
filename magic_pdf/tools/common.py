@@ -32,6 +32,7 @@ def do_parse(
     pdf_bytes,
     model_list,
     parse_method,
+    debug_able,
     f_draw_span_bbox=True,
     f_draw_layout_bbox=True,
     f_dump_md=True,
@@ -42,6 +43,11 @@ def do_parse(
     f_make_md_mode=MakeMode.MM_MD,
     f_draw_model_bbox=False,
 ):
+    if debug_able:
+        logger.warning("debug mode is on")
+        f_dump_content_list = True
+        f_draw_model_bbox = True
+
     orig_model_list = copy.deepcopy(model_list)
     local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name,
                                                 parse_method)
@@ -78,8 +84,7 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
     if f_draw_model_bbox:
-        drow_model_bbox(orig_model_list, pdf_bytes, local_md_dir,
-                        pdf_file_name)
+        drow_model_bbox(copy.deepcopy(orig_model_list), pdf_bytes, local_md_dir, pdf_file_name)
 
     md_content = pipe.pipe_mk_markdown(image_dir,
                                        drop_mode=DropMode.NONE,

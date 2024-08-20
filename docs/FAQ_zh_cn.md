@@ -33,3 +33,11 @@ WSL2的Ubuntu22.04中缺少`libgl`库，可通过以下命令安装`libgl`库解
 sudo apt-get install libgl1-mesa-glx
 ```
 参考：https://github.com/opendatalab/MinerU/issues/388
+
+### 5.遇到报错 `ModuleNotFoundError : Nomodulenamed 'fairscale'`
+需要卸载该模块并重新安装
+```bash
+pip uninstall fairscale
+pip install fairscale
+```
+参考：https://github.com/opendatalab/MinerU/issues/411

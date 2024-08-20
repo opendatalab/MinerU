@@ -78,8 +78,8 @@ body:
       #multiple: false
       options:
         -
-        - "0.5.x"
         - "0.6.x"
+        - "0.7.x"
     validations:
       required: true
 
@@ -92,6 +92,5 @@ body:
         -
         - cpu
         - cuda
-        - mps
     validations:
       required: true
