@@ -1,0 +1,12 @@
+services:
+  mineru:
+    build: .
+    container_name: mineru
+    volumes:
+      # Replace first path with the path on the local file system where the models are stored
+      - ./models:/opt/models
+      # Replace first path with the path where to get the input pdf's from
+      - ./input:/input
+      # Replace the first path with the path where the output is saved to on the local file path
+      - ./output:/output
+    command: magic-pdf -p /input -o /output -m auto
