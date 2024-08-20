@@ -36,3 +36,11 @@ sudo apt-get install libgl1-mesa-glx
 ```
 
 Reference: https://github.com/opendatalab/MinerU/issues/388
+
+### 5. Encountered error `ModuleNotFoundError: No module named 'fairscale'`
+You need to uninstall the module and reinstall it:
+```bash
+pip uninstall fairscale
+pip install fairscale
+```
+Reference: https://github.com/opendatalab/MinerU/issues/411
