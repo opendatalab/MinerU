@@ -1,5 +1,5 @@
 # Use the official Ubuntu base image
-FROM ubuntu:latest
+FROM ubuntu:22.04
 
 # Set environment variables to non-interactive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,8 +29,9 @@ RUN python3 -m venv /opt/mineru_venv
 
 # Activate the virtual environment and install necessary Python packages
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
+    pip3 install --upgrade pip && \
+    pip3 install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
 
 # Copy the configuration file template and set up the model directory
 COPY magic-pdf.template.json /root/magic-pdf.json
