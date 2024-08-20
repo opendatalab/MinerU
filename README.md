@@ -165,6 +165,27 @@ In non-mainline environments, due to the diversity of hardware and software conf
 
 [Click here for the online demo](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
 
+### Docker demo
+#### Install docker and docker compose
+[https://docs.docker.com/engine/install/](https://docs.docker.com/engine/install/)
+
+#### 2. Download model weight files
+
+Refer to [How to Download Model Files](docs/how_to_download_models_en.md) for detailed instructions.
+> ❗️After downloading the models, please make sure to verify the completeness of the model files.
+> 
+> Check if the model file sizes match the description on the webpage. If possible, use sha256 to verify the integrity of the files.
+
+#### Edit docker-compose.yaml
+In the docker compose you need to change a few thing:
+Under the volumes you can set the input and output folder
+And the path where the dowloaded models are stored
+
+### Run the docker-compose file
+Make sure you have a pdf file in the input folder
+Then in the same folder as the docker-compose.yaml run:
+``docker compose up``
+
 ### Quick CPU Demo
 
 #### 1. Install magic-pdf
