@@ -36,7 +36,7 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
 
 # Copy the configuration file template and install magic-pdf latest
 RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
-    cp magic-pdf.template.json /root/magic-pdf.json
+    cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
     pip3 install magic-pdf==0.7.0b1"
 
