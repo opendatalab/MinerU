@@ -139,7 +139,7 @@ class CustomPEKModel:
         )
         # 初始化ocr
         if self.apply_ocr:
-            self.ocr_model = ModifiedPaddleOCR(show_log=show_log)
+            self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
 
         # init structeqtable
         if self.apply_table:
