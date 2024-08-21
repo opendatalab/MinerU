@@ -21,16 +21,27 @@ RUN apt-get update && \
         libglib2.0-0 \
         && rm -rf /var/lib/apt/lists/*
 
+# Set Python 3.10 as the default python3
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+# Create a virtual environment for MinerU
+RUN python3 -m venv /opt/mineru_venv
+
 # Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
-    python3 -m venv /opt/mineru_venv && \
-    source /opt/mineru_venv/bin/activate && \
+RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip && \
-    pip3 install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ && \
-    wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
-    cp magic-pdf.template.json /root/magic-pdf.json && \
-    pip3 install modelscope && \
+    wget https://gitee.com/myhloli/MinerU/raw/master/requirements-docker.txt && \
+    pip3 install -r requirements-docker.txt --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+
+# Copy the configuration file template and install magic-pdf latest
+RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
+    cp magic-pdf.template.json /root/magic-pdf.json
+    source /opt/mineru_venv/bin/activate && \
+    pip3 install magic-pdf==0.7.0b1"
+
+# Download models and update the configuration file
+RUN /bin/bash -c "pip3 install modelscope && \
     wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py && \
     python3 download_models.py && \
     sed -i 's|/tmp/models|/root/.cache/modelscope/hub/wanderkid/PDF-Extract-Kit/models|g' /root/magic-pdf.json && \
