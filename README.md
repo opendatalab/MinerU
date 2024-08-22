@@ -227,6 +227,14 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 
 - [Ubuntu 22.04 LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_en_US.md)
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
+- Quick Deployment with Docker
+    > Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
+  ```bash
+  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  docker build -t mineru:0.7.0b1 .
+  docker run --rm -it --gpus=all mineru:0.7.0b1 /bin/bash
+  magic-pdf --help
+  ```
 
 ## Usage
 

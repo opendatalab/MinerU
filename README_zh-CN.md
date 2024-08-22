@@ -230,6 +230,15 @@ cp magic-pdf.template.json ~/magic-pdf.json
 
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
+- 使用Docker快速部署
+    > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
+  ```bash
+  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  docker build -t mineru:0.7.0b1 .
+  docker run --rm -it --gpus=all mineru:0.7.0b1 /bin/bash
+  magic-pdf --help
+  ```
+    
 
 ## 使用
 
