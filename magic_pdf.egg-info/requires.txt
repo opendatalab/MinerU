@@ -1,0 +1,39 @@
+boto3>=1.28.43
+Brotli>=1.1.0
+click>=8.1.7
+PyMuPDF>=1.24.9
+loguru>=0.6.0
+numpy<2.0.0,>=1.21.6
+fast-langdetect==0.2.0
+wordninja>=2.0.0
+scikit-learn>=1.0.2
+pdfminer.six==20231228
+
+[full]
+unimernet==0.1.6
+ultralytics
+paddleocr==2.7.3
+pypandoc
+struct-eqtable==0.1.0
+detectron2
+
+[full:platform_system == "Linux"]
+paddlepaddle==3.0.0b1
+
+[full:platform_system == "Linux" or platform_system == "Darwin"]
+matplotlib
+
+[full:platform_system == "Windows"]
+matplotlib<=3.9.0
+
+[full:platform_system == "Windows" or platform_system == "Darwin"]
+paddlepaddle==2.6.1
+
+[lite]
+paddleocr==2.7.3
+
+[lite:platform_system == "Linux"]
+paddlepaddle==3.0.0b1
+
+[lite:platform_system == "Windows" or platform_system == "Darwin"]
+paddlepaddle==2.6.1
