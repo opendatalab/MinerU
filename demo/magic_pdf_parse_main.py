@@ -68,9 +68,9 @@ def pdf_parse_main(
         pdf_path_parent = os.path.dirname(pdf_path)
 
         if output_dir:
-            output_path = os.path.join(output_dir, pdf_name)
+            output_path = os.path.join(output_dir, pdf_name.strip())
         else:
-            output_path = os.path.join(pdf_path_parent, pdf_name)
+            output_path = os.path.join(pdf_path_parent, pdf_name.strip())
 
         output_image_path = os.path.join(output_path, 'images')
 
