@@ -325,7 +325,7 @@ TODO
 - [ ] Code block recognition within the text
 - [ ] Table of contents recognition
 - [x] Table recognition
-- [ ] Chemical formula recognition
+- [ ] Chemical formula recognition()
 - [ ] Geometric shape recognition
 
 # Known Issues
