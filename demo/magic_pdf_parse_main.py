@@ -67,6 +67,7 @@ def pdf_parse_main(
         pdf_name = os.path.basename(pdf_path).split(".")[0]
         pdf_path_parent = os.path.dirname(pdf_path)
 
+        # 文件名称去除空值
         if output_dir:
             output_path = os.path.join(output_dir, pdf_name.strip())
         else:
