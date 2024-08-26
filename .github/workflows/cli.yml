@@ -31,10 +31,7 @@ jobs:
       
     - name: install magic-pdf
       run: |
-        pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
-    - name: install dependencies
-      run: |
-        pip install pytest pytest-cov
+        echo $GITHUB_WORKSPACE && sh retry_env.sh
     - name: unit test
       run: |
         cp magic-pdf.template.json ~/magic-pdf.json
@@ -43,7 +40,7 @@ jobs:
         pytest --cov
     - name: cli test
       run: |
-        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
+        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli_sdk.py
 
 
   notify_to_feishu:
