@@ -325,7 +325,7 @@ TODO
 - [ ] Code block recognition within the text
 - [ ] Table of contents recognition
 - [x] Table recognition
-- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction)
+- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] Geometric shape recognition
 
 # Known Issues
