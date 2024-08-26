@@ -329,7 +329,7 @@ TODO
 - [ ] 正文中代码块识别
 - [ ] 目录识别
 - [x] 表格识别
-- [ ] 化学式识别
+- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] 几何图形识别
 
 # Known Issues
