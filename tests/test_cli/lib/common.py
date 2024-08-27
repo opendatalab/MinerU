@@ -11,10 +11,9 @@ def check_shell(cmd):
 
 def cli_count_folders_and_check_contents(file_path, mode):
     """" count cli files."""
-    check_path = os.path.join(file_path, mode)
     if os.path.exists(file_path):
-        for files in os.listdir(check_path):
-            folder_count = os.path.getsize(os.path.join(check_path, files))
+        for files in os.listdir(file_path):
+            folder_count = os.path.getsize(os.path.join(file_path, files))
             assert folder_count > 0
 
 
