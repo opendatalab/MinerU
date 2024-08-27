@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 def get_covrage():
     """get covrage"""
     # 发送请求获取网页内容
-    html_content = open("html_cov/index.html", "r", encoding="utf-8").read()
+    html_content = open("htmlcov/index.html", "r", encoding="utf-8").read()
     soup = BeautifulSoup(html_content, 'html.parser')
 
     # 查找包含"pc_cov"的span标签
