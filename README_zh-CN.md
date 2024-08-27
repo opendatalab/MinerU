@@ -208,6 +208,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
   // other config
   "models-dir": "D:/models",
   "table-config": {
+        "model": "TableMaster", // 使用structEqTable请修改为'struct_eqtable'
         "is_table_recog_enable": false, // 表格识别功能默认是关闭的，如果需要修改此处的值
         "max_time": 400
     }

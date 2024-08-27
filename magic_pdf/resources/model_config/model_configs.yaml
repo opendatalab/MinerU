@@ -12,4 +12,4 @@ weights:
   mfd: MFD/weights.pt
   mfr: MFR/UniMERNet
   eqtable: TabRec/StructEqTable
-  tablemaster: TableMaster
+  tablemaster: TabRec/TableMaster
