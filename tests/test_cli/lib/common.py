@@ -1,5 +1,6 @@
 """common definitions."""
 import os
+import shutil
 
 
 def check_shell(cmd):
@@ -26,7 +27,18 @@ def sdk_count_folders_and_check_contents(file_path):
         exit(1)
 
 
-def delete_file(file_path):
-    """删除文件."""
-    if os.path.exists(file_path):
-        os.remove(file_path)
+def delete_file(path):
+    """delete file."""
+    if not os.path.exists(path):
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                print(f"File '{path}' deleted.")
+            except TypeError as e:
+                print(f"Error deleting file '{path}': {e}")
+    elif os.path.isdir(path):
+        try:
+            shutil.rmtree(path)
+            print(f"Directory '{path}' and its contents deleted.")
+        except TypeError as e:
+            print(f"Error deleting directory '{path}': {e}")
