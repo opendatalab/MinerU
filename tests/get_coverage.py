@@ -15,4 +15,5 @@ def get_covrage():
     # 提取百分比值
     percentage_value = pc_cov_span.text.strip()
     percentage_float = float(percentage_value.rstrip('%'))
+    print ("percentage_float:", percentage_float)
     assert percentage_float > 0.2
