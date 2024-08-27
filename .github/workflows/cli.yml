@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
-    runs-on: pjoffice-H3CDesk-X500t
+    runs-on: pdf
     timeout-minutes: 40
     strategy:
       fail-fast: true
@@ -47,7 +47,7 @@ jobs:
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
     needs: cli-test
-    runs-on: pjoffice-H3CDesk-X500t
+    runs-on: pdf
     steps:
     - name: get_actor
       run: |
