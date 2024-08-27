@@ -11,5 +11,5 @@ weights:
   layout: Layout/model_final.pth
   mfd: MFD/weights.pt
   mfr: MFR/UniMERNet
-  eqtable: TabRec/StructEqTable
-  tablemaster: TabRec/TableMaster
+  struct_eqtable: TabRec/StructEqTable
+  TableMaster: TabRec/TableMaster

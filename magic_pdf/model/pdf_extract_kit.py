@@ -153,10 +153,7 @@ class CustomPEKModel:
 
         # init table model
         if self.apply_table:
-            if self.table_model_type == STRUCT_EQTABLE:
-                table_model_dir = self.configs["weights"]["eqtable"]
-            else:
-                table_model_dir = self.configs["weights"]["tablemaster"]
+            table_model_dir = self.configs["weights"][self.table_model_type]
             self.table_model = table_model_init(self.table_model_type, str(os.path.join(models_dir, table_model_dir)),
                                                 max_time=self.table_max_time, _device_=self.device)
         logger.info('DocAnalysis init done!')
