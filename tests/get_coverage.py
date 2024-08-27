@@ -1,7 +1,7 @@
 """
 get cov
 """
-import BeautifulSoup
+from bs4 import BeautifulSoup
 
 def get_covrage():
     """get covrage"""
