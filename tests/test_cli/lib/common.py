@@ -9,13 +9,13 @@ def check_shell(cmd):
     assert res == 0
 
 
-def cli_count_folders_and_check_contents(file_path, mode):
+def cli_count_folders_and_check_contents(file_path):
     """" count cli files."""
     if os.path.exists(file_path):
         for files in os.listdir(file_path):
             folder_count = os.path.getsize(os.path.join(file_path, files))
             assert folder_count > 0
-
+    assert len(os.listdir(file_path)) > 5
 
 def sdk_count_folders_and_check_contents(file_path):
     """count folders."""

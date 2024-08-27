@@ -140,7 +140,7 @@ class TestCli:
             logging.info(cmd)
             os.system(cmd)
             common.cli_count_folders_and_check_contents(
-                os.path.join(res_path, demo_name, 'auto'), 'auto')
+                os.path.join(res_path, demo_name, 'auto'))
 
     @pytest.mark.P0
     def test_pdf_clit_txt(self):
@@ -158,7 +158,7 @@ class TestCli:
             logging.info(cmd)
             os.system(cmd)
             common.cli_count_folders_and_check_contents(
-                os.path.join(res_path, demo_name, 'txt'), 'txt')
+                os.path.join(res_path, demo_name, 'txt'))
 
     @pytest.mark.P0
     def test_pdf_clit_ocr(self):
@@ -176,7 +176,7 @@ class TestCli:
             logging.info(cmd)
             os.system(cmd)
             common.cli_count_folders_and_check_contents(
-                os.path.join(res_path, demo_name, 'ocr'), 'ocr')
+                os.path.join(res_path, demo_name, 'ocr'))
 
 
 if __name__ == '__main__':
