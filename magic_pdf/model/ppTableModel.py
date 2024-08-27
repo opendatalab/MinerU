@@ -7,6 +7,8 @@ from paddleocr.ppstructure.utility import init_args
 from magic_pdf.libs.Constants import *
 from paddleocr.ppocr.utils.utility import check_and_read
 import os
+from PIL import Image
+import numpy as np
 
 
 class ppTableModel(object):
@@ -15,10 +17,13 @@ class ppTableModel(object):
         args = self.parse_args(**config)
         self.table_sys = TableSystem(args)
     def img2html(self, image):
+        if isinstance(image, Image.Image):
+            image = np.array(image)
         pred_res, _ = self.table_sys(image)
         pred_html = pred_res["html"]
         res = '<td><table  border="1">' + pred_html.replace("<html><body><table>", "").replace("</table></body></html>",
                                                                                                "") + "</table></td>\n"
+        print(res)
         return res
 
     def parse_args(self, **kwargs):
@@ -43,21 +48,7 @@ class ppTableModel(object):
         }
         print(config)
         parser.set_defaults(**config)
-        return parser.parse_args()
+        return parser.parse_args([])
 
 
-if __name__ == '__main__':
-    config = {"device": "cuda",
-             "model_dir": "D:/models/paddle/"}
-    pp_table_model = ppTableModel(config)
-    # print(os.path.exists("E:/test_data/表格/test.jpg"))
-    image_file = "D:/test_data/table/test.PNG"
-    img, flag, _ = check_and_read(image_file)
-    if not flag:
-        img = cv2.imread(image_file)
-
-    # print(img)
-
-    res = pp_table_model.img2html(img)
-    print(res)
 
