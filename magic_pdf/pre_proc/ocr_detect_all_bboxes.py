@@ -133,6 +133,7 @@ def remove_need_drop_blocks(all_bboxes, discarded_blocks):
 
 
 def remove_overlaps_min_blocks(all_bboxes):
+    #  重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
     #  删除重叠blocks中较小的那些
     need_remove = []
     for block1 in all_bboxes:
@@ -142,9 +143,17 @@ def remove_overlaps_min_blocks(all_bboxes):
                 block2_bbox = block2[:4]
                 overlap_box = get_minbox_if_overlap_by_ratio(block1_bbox, block2_bbox, 0.8)
                 if overlap_box is not None:
-                    bbox_to_remove = next((block for block in all_bboxes if block[:4] == overlap_box), None)
-                    if bbox_to_remove is not None and bbox_to_remove not in need_remove:
-                        need_remove.append(bbox_to_remove)
+                    block_to_remove = next((block for block in all_bboxes if block[:4] == overlap_box), None)
+                    if block_to_remove is not None and block_to_remove not in need_remove:
+                        large_block = block1 if block1 != block_to_remove else block2
+                        x1, y1, x2, y2 = large_block[:4]
+                        sx1, sy1, sx2, sy2 = block_to_remove[:4]
+                        x1 = min(x1, sx1)
+                        y1 = min(y1, sy1)
+                        x2 = max(x2, sx2)
+                        y2 = max(y2, sy2)
+                        large_block[:4] = [x1, y1, x2, y2]
+                        need_remove.append(block_to_remove)
 
     if len(need_remove) > 0:
         for block in need_remove:
