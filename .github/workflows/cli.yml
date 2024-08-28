@@ -10,6 +10,7 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
+      - "**.yml"
   pull_request:
     branches:
       - "master"
@@ -17,6 +18,7 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
+      - "**.yml"
   workflow_dispatch:
 jobs:
   cli-test:
