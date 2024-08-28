@@ -64,7 +64,6 @@ def cli():
     type=click.Path(),
     required=True,
     help='输出到本地目录',
-    default='',
 )
 def jsonl(jsonl, method, output_dir):
     model_config.__use_inside_model__ = False
@@ -114,8 +113,7 @@ def jsonl(jsonl, method, output_dir):
               'output_dir',
               type=click.Path(),
               required=True,
-              help='本地输出目录',
-              default='')
+              help='本地输出目录')
 @click.option(
     '-m',
     '--method',

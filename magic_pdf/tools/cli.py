@@ -31,7 +31,6 @@ from magic_pdf.tools.common import do_parse, parse_pdf_methods
     type=click.Path(),
     required=True,
     help='output local directory',
-    default='',
 )
 @click.option(
     '-m',
@@ -46,11 +45,12 @@ without method specified, auto will be used by default.""",
     default='auto',
 )
 @click.option(
-    "-d",
-    "--debug",
-    "debug_able",
+    '-d',
+    '--debug',
+    'debug_able',
     type=bool,
-    help="Enables detailed debugging information during the execution of the CLI commands.",
+    help=('Enables detailed debugging information during'
+          'the execution of the CLI commands.', ),
     default=False,
 )
 def cli(path, output_dir, method, debug_able):
