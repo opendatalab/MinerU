@@ -175,7 +175,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     sorted_blocks = sort_blocks_by_layout(all_bboxes, layout_bboxes)
 
     '''将span填入排好序的blocks中'''
-    block_with_spans, spans = fill_spans_in_blocks(sorted_blocks, spans, 0.6)
+    block_with_spans, spans = fill_spans_in_blocks(sorted_blocks, spans, 0.3)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
