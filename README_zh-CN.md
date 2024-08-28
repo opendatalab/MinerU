@@ -200,7 +200,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
 > ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
 >
-> windows系统中此路径应包含盘符，且需把路径中所有的"\"替换为"/",否则会因为转义原因导致json文件语法错误。
+> windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
 > 
 > 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
 ```json
@@ -208,6 +208,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
   // other config
   "models-dir": "D:/models",
   "table-config": {
+        "model": "TableMaster", // 使用structEqTable请修改为'struct_eqtable'
         "is_table_recog_enable": false, // 表格识别功能默认是关闭的，如果需要修改此处的值
         "max_time": 400
     }

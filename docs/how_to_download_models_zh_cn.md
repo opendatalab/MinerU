@@ -74,6 +74,21 @@ print(f"模型文件下载路径为：{model_dir}/models")
 │       ├── spiece.model
 │       ├── tokenizer.json
 │       └── tokenizer_config.json 
+│   └─ TableMaster 
+│       └─ ch_PP-OCRv3_det_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       └─ ch_PP-OCRv3_rec_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       └─ table_structure_tablemaster_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       ├── ppocr_keys_v1.txt
+│       └── table_master_structure_dict.txt
 └── README.md
 ```
 

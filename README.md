@@ -200,6 +200,7 @@ Find the `magic-pdf.json` file in your user directory and configure the "models-
   // other config
   "models-dir": "D:/models",
   "table-config": {
+        "model": "TableMaster", // Another option of this value is 'struct_eqtable'
         "is_table_recog_enable": false, // Table recognition is disabled by default, modify this value to enable it
         "max_time": 400
     }
