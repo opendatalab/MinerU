@@ -210,6 +210,10 @@ def pdf_parse_union(pdf_bytes,
     '''根据输入的起始范围解析pdf'''
     end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
 
+    if end_page_id > len(pdf_docs) - 1:
+        logger.warning("end_page_id is out of range, use pdf_docs length")
+        end_page_id = len(pdf_docs) - 1
+
     '''初始化启动时间'''
     start_time = time.time()
 
