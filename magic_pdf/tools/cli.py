@@ -49,8 +49,7 @@ without method specified, auto will be used by default.""",
     '--debug',
     'debug_able',
     type=bool,
-    help=('Enables detailed debugging information during'
-          'the execution of the CLI commands.', ),
+    help='Enables detailed debugging information during the execution of the CLI commands.',
     default=False,
 )
 @click.option(
@@ -58,7 +57,7 @@ without method specified, auto will be used by default.""",
     '--start',
     'start_page_id',
     type=int,
-    help=('The starting page for PDF parsing, beginning from 0.', ),
+    help='The starting page for PDF parsing, beginning from 0.',
     default=0,
 )
 @click.option(
@@ -66,7 +65,7 @@ without method specified, auto will be used by default.""",
     '--end',
     'end_page_id',
     type=int,
-    help=('The ending page for PDF parsing, beginning from 0.', ),
+    help='The ending page for PDF parsing, beginning from 0.',
     default=None,
 )
 def cli(path, output_dir, method, debug_able, start_page_id, end_page_id):
