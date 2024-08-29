@@ -217,8 +217,7 @@ def pdf_parse_union(pdf_bytes,
     '''初始化启动时间'''
     start_time = time.time()
 
-    for page_id in range(start_page_id, end_page_id + 1):
-
+    for page_id, page in enumerate(pdf_docs):
         '''debug时输出每页解析的耗时'''
         if debug_mode:
             time_now = time.time()
@@ -228,7 +227,14 @@ def pdf_parse_union(pdf_bytes,
             start_time = time_now
 
         '''解析pdf中的每一页'''
-        page_info = parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode)
+        if start_page_id <= page_id <= end_page_id:
+            page_info = parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode)
+        else:
+            page_w = page.rect.width
+            page_h = page.rect.height
+            page_info = ocr_construct_page_component_v2([], [], page_id, page_w, page_h, [],
+                                                [], [], [], [],
+                                                True, "skip page")
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""

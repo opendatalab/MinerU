@@ -120,13 +120,15 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
     model_json = []
     doc_analyze_start = time.time()
 
-    for page_id in range(start_page_id, end_page_id + 1):
-        img_dict = images[page_id]
+    for index, img_dict in enumerate(images):
         img = img_dict["img"]
         page_width = img_dict["width"]
         page_height = img_dict["height"]
-        result = custom_model(img)
-        page_info = {"page_no": page_id, "height": page_height, "width": page_width}
+        if start_page_id <= index <= end_page_id:
+            result = custom_model(img)
+        else:
+            result = []
+        page_info = {"page_no": index, "height": page_height, "width": page_width}
         page_dict = {"layout_dets": result, "page_info": page_info}
         model_json.append(page_dict)
     doc_analyze_cost = time.time() - doc_analyze_start
