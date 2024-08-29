@@ -1,0 +1,2302 @@
+{
+    "pdf_info": [
+        {
+            "preproc_blocks": [
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        57,
+                        299,
+                        93
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                47,
+                                57,
+                                299,
+                                68
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        57,
+                                        298,
+                                        68
+                                    ],
+                                    "score": 0.98,
+                                    "content": "of the synthetic stereo scene from a single camera perspective",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                71,
+                                299,
+                                80
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        71,
+                                        299,
+                                        80
+                                    ],
+                                    "score": 0.96,
+                                    "content": "along with the ground truth disparity,occlusion map,and",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                82,
+                                123,
+                                93
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        82,
+                                        123,
+                                        93
+                                    ],
+                                    "score": 0.99,
+                                    "content": "discontinuitymap.",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        47,
+                        100,
+                        301,
+                        535
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                51,
+                                100,
+                                292,
+                                484
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        51,
+                                        100,
+                                        292,
+                                        484
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                51,
+                                                100,
+                                                292,
+                                                484
+                                            ],
+                                            "score": 0.9999815225601196,
+                                            "type": "image",
+                                            "image_path": "b07d74524eac6f46b5505b48b1e10db23f2b45cb2d21d5fec72e967e61255811.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                488,
+                                301,
+                                535
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        490,
+                                        299,
+                                        499
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                49,
+                                                490,
+                                                299,
+                                                499
+                                            ],
+                                            "score": 1.0,
+                                            "content": "Figure2:Twosampleframesfromthesyntheticvideose-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        501,
+                                        300,
+                                        512
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                501,
+                                                300,
+                                                512
+                                            ],
+                                            "score": 1.0,
+                                            "content": "quence (1st row), along with their corresponding ground truth",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        513,
+                                        299,
+                                        523
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                513,
+                                                299,
+                                                523
+                                            ],
+                                            "score": 0.98,
+                                            "content": "disparity (2nd row), occlusion map (3rd row), and discontinuity",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        525,
+                                        110,
+                                        535
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                525,
+                                                110,
+                                                535
+                                            ],
+                                            "score": 0.99,
+                                            "content": "map (4th row).",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        549,
+                        299,
+                        678
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                58,
+                                549,
+                                299,
+                                558
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        58,
+                                        549,
+                                        298,
+                                        558
+                                    ],
+                                    "score": 0.98,
+                                    "content": "Theresultsof temporalstereomatching aregiveninFigure",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                561,
+                                299,
+                                570
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        561,
+                                        298,
+                                        570
+                                    ],
+                                    "score": 0.98,
+                                    "content": "3foruniformadditivenoiseconfinedtotherangesof±O",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                573,
+                                299,
+                                582
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        573,
+                                        299,
+                                        582
+                                    ],
+                                    "score": 0.96,
+                                    "content": "±20, and ±40. Each performance plot is given as a function",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                585,
+                                299,
+                                594
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        585,
+                                        299,
+                                        594
+                                    ],
+                                    "score": 0.95,
+                                    "content": "of the feedback coefficient X. As with the majority of temporal",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                597,
+                                299,
+                                606
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        597,
+                                        299,
+                                        606
+                                    ],
+                                    "score": 0.99,
+                                    "content": "stereomatching methods,improvements are negligible when",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                609,
+                                299,
+                                618
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        609,
+                                        299,
+                                        618
+                                    ],
+                                    "score": 0.97,
+                                    "content": "no noise is added to the images [1o], [19]. This is largely due",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                621,
+                                299,
+                                629
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        621,
+                                        299,
+                                        629
+                                    ],
+                                    "score": 1.0,
+                                    "content": "tothefactthatthevideousedtoevaluatethesemethodsis",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                633,
+                                299,
+                                641
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        633,
+                                        299,
+                                        641
+                                    ],
+                                    "score": 1.0,
+                                    "content": "computergeneratedwithverylittlenoisetostartwith,thus",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                644,
+                                299,
+                                654
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        644,
+                                        299,
+                                        654
+                                    ],
+                                    "score": 0.98,
+                                    "content": "the noise suppression achieved with temporal stereo matching",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                657,
+                                299,
+                                666
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        657,
+                                        299,
+                                        666
+                                    ],
+                                    "score": 0.98,
+                                    "content": "showslittletonoimprovementovermethodsthatoperate on",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                669,
+                                113,
+                                678
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        669,
+                                        113,
+                                        678
+                                    ],
+                                    "score": 1.0,
+                                    "content": "pairsofimages.",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        680,
+                        299,
+                        725
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                58,
+                                680,
+                                299,
+                                690
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        59,
+                                        680,
+                                        298,
+                                        690
+                                    ],
+                                    "score": 0.97,
+                                    "content": "Significantimprovementsin accuracy canbeseenin Figure",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                692,
+                                299,
+                                701
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        692,
+                                        298,
+                                        701
+                                    ],
+                                    "score": 0.97,
+                                    "content": "3 when the noise has ranges of ±20, and ±40.In this scenario",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                703,
+                                299,
+                                714
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        703,
+                                        299,
+                                        714
+                                    ],
+                                    "score": 0.98,
+                                    "content": "the effect of noise in the current frame is reduced by increasing",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                716,
+                                299,
+                                725
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        716,
+                                        299,
+                                        725
+                                    ],
+                                    "score": 0.96,
+                                    "content": "thefeedbackcoefficientX.Thisincreasing ofXhas theeffect",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        55,
+                        564,
+                        371
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                55,
+                                538,
+                                305
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        55,
+                                        538,
+                                        305
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                55,
+                                                538,
+                                                305
+                                            ],
+                                            "score": 0.9999905824661255,
+                                            "type": "image",
+                                            "image_path": "c7539af438972442d0f86aa46409e6684338ddfd1fbfd6bdacf02220853ccb55.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                311,
+                                564,
+                                371
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        313,
+                                        562,
+                                        322
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                313,
+                                                562,
+                                                322
+                                            ],
+                                            "score": 0.97,
+                                            "content": "Figure 3: Performance of temporal matching at different levels",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        325,
+                                        561,
+                                        334
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                325,
+                                                561,
+                                                334
+                                            ],
+                                            "score": 0.98,
+                                            "content": "of uniformly distributed image noise{±0,±20,±40}.Mean",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        336,
+                                        563,
+                                        347
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                336,
+                                                563,
+                                                347
+                                            ],
+                                            "score": 0.99,
+                                            "content": "squared error (MSE) of disparities is plotted versus the values",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        348,
+                                        561,
+                                        358
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                348,
+                                                561,
+                                                358
+                                            ],
+                                            "score": 0.96,
+                                            "content": "of the feedback coefficient X. Dashed lines correspond to the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        360,
+                                        535,
+                                        371
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                360,
+                                                535,
+                                                371
+                                            ],
+                                            "score": 0.96,
+                                            "content": "values of MSE obtained without temporal aggregation.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        418,
+                        563,
+                        666
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                418,
+                                549,
+                                623
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        418,
+                                        549,
+                                        623
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                418,
+                                                549,
+                                                623
+                                            ],
+                                            "score": 0.9999067783355713,
+                                            "type": "image",
+                                            "image_path": "9ac4db9197801de4a20dbc9ea17bc0c53afb7290dc8b5b45d9e92e830566cb14.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                630,
+                                563,
+                                666
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        631,
+                                        562,
+                                        641
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                631,
+                                                562,
+                                                641
+                                            ],
+                                            "score": 0.94,
+                                            "content": "Figure 4:Optimal values of the feedback coefficient \\ cor-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        644,
+                                        561,
+                                        652
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                644,
+                                                561,
+                                                652
+                                            ],
+                                            "score": 0.97,
+                                            "content": "responding to the smallest mean squared error (MSE)of the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        655,
+                                        513,
+                                        665
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                655,
+                                                513,
+                                                665
+                                            ],
+                                            "score": 0.97,
+                                            "content": "disparity estimates for a range of noise strengths.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        311,
+                        692,
+                        563,
+                        725
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                311,
+                                692,
+                                563,
+                                702
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        692,
+                                        562,
+                                        702
+                                    ],
+                                    "score": 0.95,
+                                    "content": "of averaging out noise in the per-pixel costs by selecting",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                311,
+                                704,
+                                563,
+                                713
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        704,
+                                        562,
+                                        713
+                                    ],
+                                    "score": 0.98,
+                                    "content": "matches based more heavily upon the auxiliary cost, which",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                311,
+                                716,
+                                563,
+                                725
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        716,
+                                        563,
+                                        725
+                                    ],
+                                    "score": 0.97,
+                                    "content": "is essentially a much more stable running average of the cost",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "layout_bboxes": [
+                {
+                    "layout_bbox": [
+                        47,
+                        55,
+                        301,
+                        726
+                    ],
+                    "layout_label": "V",
+                    "sub_layout": []
+                },
+                {
+                    "layout_bbox": [
+                        310,
+                        55,
+                        564,
+                        726
+                    ],
+                    "layout_label": "V",
+                    "sub_layout": []
+                }
+            ],
+            "page_idx": 0,
+            "page_size": [
+                612.0,
+                792.0
+            ],
+            "_layout_tree": [
+                {
+                    "layout_bbox": [
+                        0,
+                        55,
+                        612.0,
+                        726
+                    ],
+                    "layout_label": "V",
+                    "sub_layout": [
+                        {
+                            "layout_bbox": [
+                                47,
+                                55,
+                                564,
+                                726
+                            ],
+                            "layout_label": "H",
+                            "sub_layout": [
+                                {
+                                    "layout_bbox": [
+                                        47,
+                                        55,
+                                        301,
+                                        726
+                                    ],
+                                    "layout_label": "V",
+                                    "sub_layout": []
+                                },
+                                {
+                                    "layout_bbox": [
+                                        310,
+                                        55,
+                                        564,
+                                        726
+                                    ],
+                                    "layout_label": "V",
+                                    "sub_layout": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "images": [
+                {
+                    "type": "image",
+                    "bbox": [
+                        47,
+                        100,
+                        301,
+                        535
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                51,
+                                100,
+                                292,
+                                484
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        51,
+                                        100,
+                                        292,
+                                        484
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                51,
+                                                100,
+                                                292,
+                                                484
+                                            ],
+                                            "score": 0.9999815225601196,
+                                            "type": "image",
+                                            "image_path": "b07d74524eac6f46b5505b48b1e10db23f2b45cb2d21d5fec72e967e61255811.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                488,
+                                301,
+                                535
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        490,
+                                        299,
+                                        499
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                49,
+                                                490,
+                                                299,
+                                                499
+                                            ],
+                                            "score": 1.0,
+                                            "content": "Figure2:Twosampleframesfromthesyntheticvideose-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        501,
+                                        300,
+                                        512
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                501,
+                                                300,
+                                                512
+                                            ],
+                                            "score": 1.0,
+                                            "content": "quence (1st row), along with their corresponding ground truth",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        513,
+                                        299,
+                                        523
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                513,
+                                                299,
+                                                523
+                                            ],
+                                            "score": 0.98,
+                                            "content": "disparity (2nd row), occlusion map (3rd row), and discontinuity",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        525,
+                                        110,
+                                        535
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                525,
+                                                110,
+                                                535
+                                            ],
+                                            "score": 0.99,
+                                            "content": "map (4th row).",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        55,
+                        564,
+                        371
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                55,
+                                538,
+                                305
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        55,
+                                        538,
+                                        305
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                55,
+                                                538,
+                                                305
+                                            ],
+                                            "score": 0.9999905824661255,
+                                            "type": "image",
+                                            "image_path": "c7539af438972442d0f86aa46409e6684338ddfd1fbfd6bdacf02220853ccb55.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                311,
+                                564,
+                                371
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        313,
+                                        562,
+                                        322
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                313,
+                                                562,
+                                                322
+                                            ],
+                                            "score": 0.97,
+                                            "content": "Figure 3: Performance of temporal matching at different levels",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        325,
+                                        561,
+                                        334
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                325,
+                                                561,
+                                                334
+                                            ],
+                                            "score": 0.98,
+                                            "content": "of uniformly distributed image noise{±0,±20,±40}.Mean",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        336,
+                                        563,
+                                        347
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                336,
+                                                563,
+                                                347
+                                            ],
+                                            "score": 0.99,
+                                            "content": "squared error (MSE) of disparities is plotted versus the values",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        348,
+                                        561,
+                                        358
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                348,
+                                                561,
+                                                358
+                                            ],
+                                            "score": 0.96,
+                                            "content": "of the feedback coefficient X. Dashed lines correspond to the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        360,
+                                        535,
+                                        371
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                360,
+                                                535,
+                                                371
+                                            ],
+                                            "score": 0.96,
+                                            "content": "values of MSE obtained without temporal aggregation.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        418,
+                        563,
+                        666
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                418,
+                                549,
+                                623
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        418,
+                                        549,
+                                        623
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                418,
+                                                549,
+                                                623
+                                            ],
+                                            "score": 0.9999067783355713,
+                                            "type": "image",
+                                            "image_path": "9ac4db9197801de4a20dbc9ea17bc0c53afb7290dc8b5b45d9e92e830566cb14.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                630,
+                                563,
+                                666
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        631,
+                                        562,
+                                        641
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                631,
+                                                562,
+                                                641
+                                            ],
+                                            "score": 0.94,
+                                            "content": "Figure 4:Optimal values of the feedback coefficient \\ cor-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        644,
+                                        561,
+                                        652
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                644,
+                                                561,
+                                                652
+                                            ],
+                                            "score": 0.97,
+                                            "content": "responding to the smallest mean squared error (MSE)of the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        655,
+                                        513,
+                                        665
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                655,
+                                                513,
+                                                665
+                                            ],
+                                            "score": 0.97,
+                                            "content": "disparity estimates for a range of noise strengths.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "tables": [],
+            "interline_equations": [],
+            "discarded_blocks": [],
+            "need_drop": false,
+            "drop_reason": [],
+            "para_blocks": [
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        57,
+                        299,
+                        93
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                47,
+                                57,
+                                299,
+                                68
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        57,
+                                        298,
+                                        68
+                                    ],
+                                    "score": 0.98,
+                                    "content": "of the synthetic stereo scene from a single camera perspective",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                71,
+                                299,
+                                80
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        71,
+                                        299,
+                                        80
+                                    ],
+                                    "score": 0.96,
+                                    "content": "along with the ground truth disparity,occlusion map,and",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                82,
+                                123,
+                                93
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        82,
+                                        123,
+                                        93
+                                    ],
+                                    "score": 0.99,
+                                    "content": "discontinuitymap.",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        47,
+                        100,
+                        301,
+                        535
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                51,
+                                100,
+                                292,
+                                484
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        51,
+                                        100,
+                                        292,
+                                        484
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                51,
+                                                100,
+                                                292,
+                                                484
+                                            ],
+                                            "score": 0.9999815225601196,
+                                            "type": "image",
+                                            "image_path": "b07d74524eac6f46b5505b48b1e10db23f2b45cb2d21d5fec72e967e61255811.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                488,
+                                301,
+                                535
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        490,
+                                        299,
+                                        499
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                49,
+                                                490,
+                                                299,
+                                                499
+                                            ],
+                                            "score": 1.0,
+                                            "content": "Figure2:Twosampleframesfromthesyntheticvideose-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        501,
+                                        300,
+                                        512
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                501,
+                                                300,
+                                                512
+                                            ],
+                                            "score": 1.0,
+                                            "content": "quence (1st row), along with their corresponding ground truth",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        513,
+                                        299,
+                                        523
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                513,
+                                                299,
+                                                523
+                                            ],
+                                            "score": 0.98,
+                                            "content": "disparity (2nd row), occlusion map (3rd row), and discontinuity",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        48,
+                                        525,
+                                        110,
+                                        535
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                48,
+                                                525,
+                                                110,
+                                                535
+                                            ],
+                                            "score": 0.99,
+                                            "content": "map (4th row).",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        549,
+                        299,
+                        678
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                58,
+                                549,
+                                299,
+                                558
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        58,
+                                        549,
+                                        298,
+                                        558
+                                    ],
+                                    "score": 0.98,
+                                    "content": "Theresultsof temporalstereomatching aregiveninFigure",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                561,
+                                299,
+                                570
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        47,
+                                        561,
+                                        298,
+                                        570
+                                    ],
+                                    "score": 0.98,
+                                    "content": "3foruniformadditivenoiseconfinedtotherangesof±O",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                573,
+                                299,
+                                582
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        573,
+                                        299,
+                                        582
+                                    ],
+                                    "score": 0.96,
+                                    "content": "±20, and ±40. Each performance plot is given as a function",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                585,
+                                299,
+                                594
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        585,
+                                        299,
+                                        594
+                                    ],
+                                    "score": 0.95,
+                                    "content": "of the feedback coefficient X. As with the majority of temporal",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                597,
+                                299,
+                                606
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        49,
+                                        597,
+                                        299,
+                                        606
+                                    ],
+                                    "score": 0.99,
+                                    "content": "stereomatching methods,improvements are negligible when",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                609,
+                                299,
+                                618
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        609,
+                                        299,
+                                        618
+                                    ],
+                                    "score": 0.97,
+                                    "content": "no noise is added to the images [1o], [19]. This is largely due",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                621,
+                                299,
+                                629
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        621,
+                                        299,
+                                        629
+                                    ],
+                                    "score": 1.0,
+                                    "content": "tothefactthatthevideousedtoevaluatethesemethodsis",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                633,
+                                299,
+                                641
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        633,
+                                        299,
+                                        641
+                                    ],
+                                    "score": 1.0,
+                                    "content": "computergeneratedwithverylittlenoisetostartwith,thus",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                644,
+                                299,
+                                654
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        644,
+                                        299,
+                                        654
+                                    ],
+                                    "score": 0.98,
+                                    "content": "the noise suppression achieved with temporal stereo matching",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                657,
+                                299,
+                                666
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        657,
+                                        299,
+                                        666
+                                    ],
+                                    "score": 0.98,
+                                    "content": "showslittletonoimprovementovermethodsthatoperate on",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                669,
+                                113,
+                                678
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        669,
+                                        113,
+                                        678
+                                    ],
+                                    "score": 1.0,
+                                    "content": "pairsofimages.",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        47,
+                        680,
+                        299,
+                        725
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                58,
+                                680,
+                                299,
+                                690
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        59,
+                                        680,
+                                        298,
+                                        690
+                                    ],
+                                    "score": 0.97,
+                                    "content": "Significantimprovementsin accuracy canbeseenin Figure",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                692,
+                                299,
+                                701
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        692,
+                                        298,
+                                        701
+                                    ],
+                                    "score": 0.97,
+                                    "content": "3 when the noise has ranges of ±20, and ±40.In this scenario",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                703,
+                                299,
+                                714
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        703,
+                                        299,
+                                        714
+                                    ],
+                                    "score": 0.98,
+                                    "content": "the effect of noise in the current frame is reduced by increasing",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                47,
+                                716,
+                                299,
+                                725
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        48,
+                                        716,
+                                        299,
+                                        725
+                                    ],
+                                    "score": 0.96,
+                                    "content": "thefeedbackcoefficientX.Thisincreasing ofXhas theeffect",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        55,
+                        564,
+                        371
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                55,
+                                538,
+                                305
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        55,
+                                        538,
+                                        305
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                55,
+                                                538,
+                                                305
+                                            ],
+                                            "score": 0.9999905824661255,
+                                            "type": "image",
+                                            "image_path": "c7539af438972442d0f86aa46409e6684338ddfd1fbfd6bdacf02220853ccb55.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                311,
+                                564,
+                                371
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        313,
+                                        562,
+                                        322
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                313,
+                                                562,
+                                                322
+                                            ],
+                                            "score": 0.97,
+                                            "content": "Figure 3: Performance of temporal matching at different levels",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        325,
+                                        561,
+                                        334
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                325,
+                                                561,
+                                                334
+                                            ],
+                                            "score": 0.98,
+                                            "content": "of uniformly distributed image noise{±0,±20,±40}.Mean",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        336,
+                                        563,
+                                        347
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                336,
+                                                563,
+                                                347
+                                            ],
+                                            "score": 0.99,
+                                            "content": "squared error (MSE) of disparities is plotted versus the values",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        348,
+                                        561,
+                                        358
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                348,
+                                                561,
+                                                358
+                                            ],
+                                            "score": 0.96,
+                                            "content": "of the feedback coefficient X. Dashed lines correspond to the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        311,
+                                        360,
+                                        535,
+                                        371
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                311,
+                                                360,
+                                                535,
+                                                371
+                                            ],
+                                            "score": 0.96,
+                                            "content": "values of MSE obtained without temporal aggregation.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "image",
+                    "bbox": [
+                        310,
+                        418,
+                        563,
+                        666
+                    ],
+                    "blocks": [
+                        {
+                            "bbox": [
+                                314,
+                                418,
+                                549,
+                                623
+                            ],
+                            "type": "image_body",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        314,
+                                        418,
+                                        549,
+                                        623
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                314,
+                                                418,
+                                                549,
+                                                623
+                                            ],
+                                            "score": 0.9999067783355713,
+                                            "type": "image",
+                                            "image_path": "9ac4db9197801de4a20dbc9ea17bc0c53afb7290dc8b5b45d9e92e830566cb14.jpg"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                310,
+                                630,
+                                563,
+                                666
+                            ],
+                            "type": "image_caption",
+                            "lines": [
+                                {
+                                    "bbox": [
+                                        312,
+                                        631,
+                                        562,
+                                        641
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                631,
+                                                562,
+                                                641
+                                            ],
+                                            "score": 0.94,
+                                            "content": "Figure 4:Optimal values of the feedback coefficient \\ cor-",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        644,
+                                        561,
+                                        652
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                644,
+                                                561,
+                                                652
+                                            ],
+                                            "score": 0.97,
+                                            "content": "responding to the smallest mean squared error (MSE)of the",
+                                            "type": "text"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "bbox": [
+                                        312,
+                                        655,
+                                        513,
+                                        665
+                                    ],
+                                    "spans": [
+                                        {
+                                            "bbox": [
+                                                312,
+                                                655,
+                                                513,
+                                                665
+                                            ],
+                                            "score": 0.97,
+                                            "content": "disparity estimates for a range of noise strengths.",
+                                            "type": "text"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "bbox": [
+                        311,
+                        692,
+                        563,
+                        725
+                    ],
+                    "lines": [
+                        {
+                            "bbox": [
+                                311,
+                                692,
+                                563,
+                                702
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        692,
+                                        562,
+                                        702
+                                    ],
+                                    "score": 0.95,
+                                    "content": "of averaging out noise in the per-pixel costs by selecting",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                311,
+                                704,
+                                563,
+                                713
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        704,
+                                        562,
+                                        713
+                                    ],
+                                    "score": 0.98,
+                                    "content": "matches based more heavily upon the auxiliary cost, which",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        {
+                            "bbox": [
+                                311,
+                                716,
+                                563,
+                                725
+                            ],
+                            "spans": [
+                                {
+                                    "bbox": [
+                                        311,
+                                        716,
+                                        563,
+                                        725
+                                    ],
+                                    "score": 0.97,
+                                    "content": "is essentially a much more stable running average of the cost",
+                                    "type": "text"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "_parse_type": "ocr",
+    "_version_name": "0.7.0b1"
+}
