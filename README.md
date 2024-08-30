@@ -172,7 +172,7 @@ In non-mainline environments, due to the diversity of hardware and software conf
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install -U magic-pdf[full]==0.7.1 --extra-index-url https://wheels.myhloli.com
+pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 ```
 #### 2. Download model weight files
 
@@ -313,7 +313,6 @@ TODO
 - Comic books, art books, elementary school textbooks, and exercise books are not well-parsed yet
 - Enabling OCR may produce better results in PDFs with a high density of formulas
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
-- **Table Recognition** is currently in the testing phase; recognition speed is slow, and accuracy needs improvement. Below are some performance test results in an Ubuntu 22.04 LTS + Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz + NVIDIA GeForce RTX 4090 environment for reference.
 
 
 # FAQ
