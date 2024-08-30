@@ -1,11 +1,12 @@
 boto3>=1.28.43
 Brotli>=1.1.0
 click>=8.1.7
-PyMuPDF>=1.24.9
+fast-langdetect==0.2.0
 loguru>=0.6.0
 numpy>=1.21.6,<2.0.0
-fast-langdetect==0.2.0
-wordninja>=2.0.0
-scikit-learn>=1.0.2
 pdfminer.six==20231228
+pydantic>=2.7.2,<2.8.0
+PyMuPDF>=1.24.9
+scikit-learn>=1.0.2
+wordninja>=2.0.0
 # The requirements.txt must ensure that only necessary external dependencies are introduced. If there are new dependencies to add, please contact the project administrator.
