@@ -33,6 +33,7 @@
 
 
 # 更新记录
+- 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
 - 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能
 - 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
 - 2024/07/05 首次开源
@@ -179,7 +180,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -U magic-pdf[full]==0.7.1 --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 #### 2. 下载模型权重文件
 
@@ -323,13 +324,6 @@ TODO
 - 在一些公式密集的PDF上强制启用OCR效果会更好
 - 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
 - **表格识别**目前处于测试阶段，识别速度较慢，识别准确度有待提升。以下是我们在Ubuntu 22.04 LTS + Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz + NVIDIA GeForce RTX 4090环境下的一些性能测试结果，可供参考。
-
-| 表格大小     | 解析耗时        | 
-|---------------|----------------------------| 
-| 6\*5 55kb     | 37s                   | 
-| 16\*12 284kb  | 3m18s                 | 
-| 44\*7 559kb   | 4m12s                 | 
- 
 
 
 # FAQ
