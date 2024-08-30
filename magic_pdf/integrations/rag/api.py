@@ -76,3 +76,7 @@ class DataReader:
             logger.warning(f'failed to inference pdf {self.pdfs[idx]}')
             return None
         return RagDocumentReader(res)
+
+    def get_document_filename(self, idx: int) -> Path:
+        """get the filename of the document."""
+        return self.pdfs[idx]
