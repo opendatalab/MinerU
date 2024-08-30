@@ -49,11 +49,26 @@ without method specified, auto will be used by default.""",
     '--debug',
     'debug_able',
     type=bool,
-    help=('Enables detailed debugging information during'
-          'the execution of the CLI commands.', ),
+    help='Enables detailed debugging information during the execution of the CLI commands.',
     default=False,
 )
-def cli(path, output_dir, method, debug_able):
+@click.option(
+    '-s',
+    '--start',
+    'start_page_id',
+    type=int,
+    help='The starting page for PDF parsing, beginning from 0.',
+    default=0,
+)
+@click.option(
+    '-e',
+    '--end',
+    'end_page_id',
+    type=int,
+    help='The ending page for PDF parsing, beginning from 0.',
+    default=None,
+)
+def cli(path, output_dir, method, debug_able, start_page_id, end_page_id):
     model_config.__use_inside_model__ = True
     model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
@@ -73,6 +88,8 @@ def cli(path, output_dir, method, debug_able):
                 [],
                 method,
                 debug_able,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
             )
 
         except Exception as e:
