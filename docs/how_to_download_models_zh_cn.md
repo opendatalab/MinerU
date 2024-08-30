@@ -13,7 +13,7 @@
 
 ```bash
 git lfs install # 安装 Git 大文件存储插件 (Git LFS) 
-git lfs clone https://huggingface.co/wanderkid/PDF-Extract-Kit # 从 Hugging Face 下载 PDF-Extract-Kit 模型
+git lfs clone https://huggingface.co/opendatalab/PDF-Extract-Kit # 从 Hugging Face 下载 PDF-Extract-Kit 模型
 ```
 
 
@@ -28,7 +28,7 @@ ModelScope 支持SDK或模型下载，任选一个即可。
 
 ```bash
 git lfs install
-git lfs clone https://www.modelscope.cn/wanderkid/PDF-Extract-Kit.git
+git lfs clone https://www.modelscope.cn/opendatalab/PDF-Extract-Kit.git
 ```
 
 ### 2）利用SDK下载
@@ -41,7 +41,7 @@ pip install modelscope
 ```python
 # 使用modelscope sdk下载模型
 from modelscope import snapshot_download
-model_dir = snapshot_download('wanderkid/PDF-Extract-Kit')
+model_dir = snapshot_download('opendatalab/PDF-Extract-Kit')
 print(f"模型文件下载路径为：{model_dir}/models")
 ```
 

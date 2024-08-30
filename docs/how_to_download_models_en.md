@@ -9,7 +9,7 @@ git lfs install
 To download the `PDF-Extract-Kit` model from Hugging Face, use the following command:
 
 ```bash
-git lfs clone https://huggingface.co/wanderkid/PDF-Extract-Kit
+git lfs clone https://huggingface.co/opendatalab/PDF-Extract-Kit
 ```
 
 Ensure that Git LFS is enabled during the clone to properly download all large files.
