@@ -116,13 +116,13 @@ pip install detectron2 --extra-index-url https://wheels.myhloli.com
 >CUDA/MPSによる加速については、[CUDAまたはMPSによる加速](#4-CUDAまたはMPSによる加速)を参照してください。
 
 ```bash
-pip install magic-pdf[full]==0.6.2b1
+pip install -U magic-pdf[full]
 ```
 
 > ❗️❗️❗️
 > 私たちは0.6.2 ベータ版を事前にリリースし、私たちのログに記載されている多くの問題に対処しました。しかし、このビルドはまだ完全なQAテストを経ておらず、最終的なリリース品質を表していません。問題に遭遇した場合は、問題を通じて速やかに報告するか、0.6.1バージョンに戻ることをお願いします。
 > ```bash
-> pip install magic-pdf[full-cpu]==0.6.1
+> pip install -U magic-pdf[full]
 > ```
 
 
