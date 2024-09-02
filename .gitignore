@@ -30,7 +30,6 @@ tmp/
 tmp
 .vscode
 .vscode/
-/tests/
 ocr_demo
 
 /app/common/__init__.py
