@@ -158,7 +158,9 @@ In non-mainline environments, due to the diversity of hardware and software conf
     <tr>
         <td colspan="2">Recommended Configuration 16G+ VRAM</td>
         <td colspan="2">3090/3090ti/4070ti super/4080/4090<br>
-        16G or more can enable layout, formula recognition, and OCR acceleration simultaneously</td>
+        16G or more can enable layout, formula recognition, and OCR acceleration simultaneously<br>
+        24G or more can enable layout, formula recognition, OCR acceleration and table recognition simultaneously
+        </td>
     </tr>
 </table>
 
