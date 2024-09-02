@@ -111,7 +111,8 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
 
     images = load_images_from_pdf(pdf_bytes)
 
-    end_page_id = end_page_id if end_page_id else len(images) - 1
+    # end_page_id = end_page_id if end_page_id else len(images) - 1
+    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(images) - 1
 
     if end_page_id > len(images) - 1:
         logger.warning("end_page_id is out of range, use images length")
