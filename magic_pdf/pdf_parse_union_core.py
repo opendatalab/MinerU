@@ -41,6 +41,23 @@ def remove_horizontal_overlap_block_which_smaller(all_bboxes):
     return is_useful_block_horz_overlap, all_bboxes
 
 
+def __replace_STX_ETX(text_str:str):
+    """ Replace \u0002 and \u0003, as these characters become garbled when extracted using pymupdf. In fact, they were originally quotation marks.
+Drawback: This issue is only observed in English text; it has not been found in Chinese text so far.
+
+    Args:
+        text_str (str): raw text
+
+    Returns:
+        _type_: replaced text
+    """
+    if text_str:
+        s = text_str.replace('\u0002', "'")
+        s = s.replace("\u0003", "'")
+        return s
+    return text_str
+
+
 def txt_spans_extract(pdf_page, inline_equations, interline_equations):
     text_raw_blocks = pdf_page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
     char_level_text_blocks = pdf_page.get_text("rawdict", flags=fitz.TEXTFLAGS_TEXT)[
@@ -63,7 +80,7 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                     spans.append(
                         {
                             "bbox": list(span["bbox"]),
-                            "content": span["text"],
+                            "content": __replace_STX_ETX(span["text"]),
                             "type": ContentType.Text,
                             "score": 1.0,
                         }
