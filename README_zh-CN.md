@@ -164,7 +164,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
         <td colspan="2">推荐配置 16G+显存</td>
         <td colspan="2">3090/3090ti/4070tisuper/4080/4090<br>
-        16G及以上可以同时开启layout，公式识别和ocr加速</td>
+        16G及以上可以同时开启layout，公式识别和ocr加速<br>
+        24G及以上可以同时开启layout，公式识别，ocr加速和表格识别
+        </td>
     </tr>
 </table>
 
