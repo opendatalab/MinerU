@@ -103,20 +103,32 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
     return custom_model
 
 
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
+def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
+                start_page_id=0, end_page_id=None):
 
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(ocr, show_log)
 
     images = load_images_from_pdf(pdf_bytes)
 
+    # end_page_id = end_page_id if end_page_id else len(images) - 1
+    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(images) - 1
+
+    if end_page_id > len(images) - 1:
+        logger.warning("end_page_id is out of range, use images length")
+        end_page_id = len(images) - 1
+
     model_json = []
     doc_analyze_start = time.time()
+
     for index, img_dict in enumerate(images):
         img = img_dict["img"]
         page_width = img_dict["width"]
         page_height = img_dict["height"]
-        result = custom_model(img)
+        if start_page_id <= index <= end_page_id:
+            result = custom_model(img)
+        else:
+            result = []
         page_info = {"page_no": index, "height": page_height, "width": page_width}
         page_dict = {"layout_dets": result, "page_info": page_info}
         model_json.append(page_dict)
