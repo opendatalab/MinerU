@@ -205,8 +205,8 @@ def merge_para_with_text(para_block):
                     para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
                 elif line_lang == 'en':
                     # 如果是前一行带有-连字符，那么末尾不应该加空格
-                    if __is_hyphen_at_line_end(para_text):
-                        para_text += content
+                    if __is_hyphen_at_line_end(content):
+                        para_text += content[:-1]
                     else:
                         para_text += content + ' '
                 else:
