@@ -9,6 +9,20 @@ import wordninja
 import re
 
 
+def __is_hyphen_at_line_end(line):
+    """
+    Check if a line ends with one or more letters followed by a hyphen.
+    
+    Args:
+    line (str): The line of text to check.
+    
+    Returns:
+    bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
+    """
+    # Use regex to check if the line ends with one or more letters followed by a hyphen
+    return bool(re.search(r'[A-Za-z]+-\s*$', line))
+
+
 def split_long_words(text):
     segments = text.split(' ')
     for i in range(len(segments)):
@@ -184,10 +198,17 @@ def merge_para_with_text(para_block):
                 content = f" ${span['content']}$ "
             elif span_type == ContentType.InterlineEquation:
                 content = f"\n$$\n{span['content']}\n$$\n"
+
             if content != '':
                 langs = ['zh', 'ja', 'ko']
                 if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
                     para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
+                elif line_lang == 'en':
+                    # 如果是前一行带有-连字符，那么末尾不应该加空格
+                    if __is_hyphen_at_line_end(para_text):
+                        para_text += content
+                    else:
+                        para_text += content + ' '
                 else:
                     para_text += content + ' '  # 西方文本语境下 content间需要空格分隔
     return para_text
