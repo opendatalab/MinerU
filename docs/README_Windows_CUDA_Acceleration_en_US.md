@@ -19,7 +19,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
 ### 4. Install Applications
    ```
-   pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
+   pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
    ```
    >❗️After installation, verify the version of `magic-pdf`:
    >  ```bash

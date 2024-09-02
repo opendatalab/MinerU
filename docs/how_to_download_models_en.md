@@ -44,6 +44,21 @@ The structure of the model folder is as follows, including configuration files a
 │       ├── spiece.model
 │       ├── tokenizer.json
 │       └── tokenizer_config.json 
+│   └─ TableMaster 
+│       └─ ch_PP-OCRv3_det_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       └─ ch_PP-OCRv3_rec_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       └─ table_structure_tablemaster_infer
+│           ├── inference.pdiparams
+│           ├── inference.pdiparams.info
+│           └── inference.pdmodel
+│       ├── ppocr_keys_v1.txt
+│       └── table_master_structure_dict.txt
 └── README.md
 ```
 #### 2. Check whether the model file is fully downloaded.
