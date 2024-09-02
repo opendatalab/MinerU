@@ -164,7 +164,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
         <td colspan="2">推荐配置 16G+显存</td>
         <td colspan="2">3090/3090ti/4070tisuper/4080/4090<br>
-        16G及以上可以同时开启layout，公式识别和ocr加速</td>
+        16G及以上可以同时开启layout，公式识别和ocr加速<br>
+        24G及以上可以同时开启layout，公式识别，ocr加速和表格识别
+        </td>
     </tr>
 </table>
 
@@ -341,9 +343,7 @@ TODO
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
 - 在一些公式密集的PDF上强制启用OCR效果会更好
 - 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
-
 - **表格识别**目前处于测试阶段，识别速度较慢，识别准确度有待提升。
-
 
 
 # FAQ
