@@ -37,9 +37,9 @@ class TestBench():
         now_simscore = now_score["average_sim_score"]
         now_editdistance = now_score["average_edit_distance"]
         now_bleu = now_score["average_bleu_score"]
-        #assert last_simscore <= now_simscore
-        #assert last_editdistance <= now_editdistance
-        #assert last_bleu <= now_bleu
+        assert last_simscore <= now_simscore
+        assert last_editdistance <= now_editdistance
+        assert last_bleu <= now_bleu
 
 
 def get_score():

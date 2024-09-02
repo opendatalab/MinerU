@@ -19,7 +19,12 @@ def test_common_do_parse(method):
     # run
     with open("tests/test_tools/assets/common/cli_test_01.pdf", "rb") as f:
         bits = f.read()
-    do_parse(temp_output_dir, filename, bits, [], method, f_dump_content_list=True)
+    do_parse(temp_output_dir,
+             filename,
+             bits, [],
+             method,
+             False,
+             f_dump_content_list=True)
 
     # check
     base_output_dir = os.path.join(temp_output_dir, f"fake/{method}")
