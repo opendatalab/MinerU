@@ -7,13 +7,17 @@ import zipfile
 from pathlib import Path
 import re
 
-import gradio as gr
 from loguru import logger
 
 from magic_pdf.libs.hash_utils import compute_sha256
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.tools.common import do_parse, prepare_env
+
+os.system("pip install gradio")
+os.system("pip install gradio-pdf")
+import gradio as gr
+from gradio_pdf import PDF
 
 
 def read_fn(path):
@@ -104,42 +108,60 @@ def to_markdown(file_path, end_pages):
     # 返回转换后的PDF路径
     new_pdf_path = os.path.join(local_md_dir, file_name + "_layout.pdf")
 
-    return md_content, txt_content, archive_zip_path, show_pdf(new_pdf_path)
+    return md_content, txt_content, archive_zip_path, new_pdf_path
 
 
-def show_pdf(file_path):
-    with open(file_path, "rb") as f:
-        base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-    pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" ' \
-                  f'width="100%" height="1000" type="application/pdf">'
-    return pdf_display
+# def show_pdf(file_path):
+#     with open(file_path, "rb") as f:
+#         base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+#     pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" ' \
+#                   f'width="100%" height="1000" type="application/pdf">'
+#     return pdf_display
 
 
 latex_delimiters = [{"left": "$$", "right": "$$", "display": True},
                     {"left": '$', "right": '$', "display": False}]
 
+
+def init_model():
+    from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
+    try:
+        model_manager = ModelSingleton()
+        txt_model = model_manager.get_model(False, False)
+        logger.info(f"txt_model init final")
+        ocr_model = model_manager.get_model(True, False)
+        logger.info(f"ocr_model init final")
+        return 0
+    except Exception as e:
+        logger.exception(e)
+        return -1
+
+
+model_init = init_model()
+logger.info(f"model_init: {model_init}")
+
+
 if __name__ == "__main__":
     with gr.Blocks() as demo:
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
-                file = gr.File(label="请上传pdf", file_types=[".pdf"])
-                max_pages = gr.Slider(1, 10, 5, step=1, label="最大转换页数")
+                pdf_show = gr.Markdown()
+                max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
                 with gr.Row() as bu_flow:
-                    change_bu = gr.Button("转换")
-                    clear_bu = gr.ClearButton([file, max_pages], value="清除")
-                gr.Markdown(value="### PDF预览")
-                pdf_show = gr.HTML(label="PDF预览")
+                    change_bu = gr.Button("Convert")
+                    clear_bu = gr.ClearButton([pdf_show], value="Clear")
+                pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
 
             with gr.Column(variant='panel', scale=5):
-                output_file = gr.File(label="Markdown识别结果文件", interactive=False)
+                output_file = gr.File(label="convert result", interactive=False)
                 with gr.Tabs():
-                    with gr.Tab("Markdown渲染"):
-                        md = gr.Markdown(label="Markdown渲染", height=1100, show_copy_button=True,
+                    with gr.Tab("Markdown rendering"):
+                        md = gr.Markdown(label="Markdown rendering", height=900, show_copy_button=True,
                                          latex_delimiters=latex_delimiters, line_breaks=True)
-                    with gr.Tab("Markdown文本"):
-                        md_text = gr.TextArea(lines=55, show_copy_button=True)
-        file.upload(fn=show_pdf, inputs=file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[file, max_pages], outputs=[md, md_text, output_file, pdf_show])
+                    with gr.Tab("Markdown text"):
+                        md_text = gr.TextArea(lines=45, show_copy_button=True)
+        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages], outputs=[md, md_text, output_file, pdf_show])
         clear_bu.add([md, pdf_show, md_text, output_file])
 
     demo.launch()
+
