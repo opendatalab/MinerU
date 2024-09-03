@@ -169,7 +169,7 @@ def cluster_line_x(lines: list) -> dict:
     x0_lst = np.array([[round(line['bbox'][0]), 0] for line in lines])
     x0_clusters = DBSCAN(eps=min_distance, min_samples=min_sample).fit(x0_lst)
     x0_uniq_label = np.unique(x0_clusters.labels_)
-    #x1_lst = np.array([[line['bbox'][2], 0] for line in lines])
+    # x1_lst = np.array([[line['bbox'][2], 0] for line in lines])
     x0_2_new_val = {}  # 存储旧值对应的新值映射
     min_x0 = round(lines[0]["bbox"][0])
     for label in x0_uniq_label:
@@ -248,9 +248,9 @@ def __valign_lines(blocks, layout_bboxes):
         for block in blocks_in_layoutbox:
             if len(block["lines"]) > 0:
                 block['bbox_fs'] = [min([line['bbox'][0] for line in block['lines']]),
-                                 min([line['bbox'][1] for line in block['lines']]),
-                                 max([line['bbox'][2] for line in block['lines']]),
-                                 max([line['bbox'][3] for line in block['lines']])]
+                                    min([line['bbox'][1] for line in block['lines']]),
+                                    max([line['bbox'][2] for line in block['lines']]),
+                                    max([line['bbox'][3] for line in block['lines']])]
             else:
                 block['bbox_fs'] = copy.deepcopy(block['bbox'])
         """新计算layout的bbox，因为block的bbox变了。"""
@@ -368,7 +368,8 @@ def __split_para_in_layoutbox(blocks_group, new_layout_bbox, lang="en"):
                 for i in range(0, len(list_start)):
                     index = list_start[i] - 1
                     if index >= 0:
-                        if "content" in lines[index]["spans"][-1]:
+                        if "content" in lines[index]["spans"][-1] and lines[index]["spans"][-1].get('type', '') not in [
+                            ContentType.InlineEquation, ContentType.InterlineEquation]:
                             lines[index]["spans"][-1]["content"] += '\n\n'
         layout_list_info = [False, False]  # 这个layout最后是不是列表,记录每一个layout里是不是列表开头，列表结尾
         for content_type, start, end in text_segments:
@@ -480,7 +481,7 @@ def __connect_list_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
                     break
         # 如果这些行的缩进是相等的，那么连到上一个layout的最后一个段落上。
         if len(may_list_lines) > 0 and len(set([x['bbox'][0] for x in may_list_lines])) == 1:
-            #pre_page_paras[-1].append(may_list_lines)
+            # pre_page_paras[-1].append(may_list_lines)
             # 下一页合并到上一页最后一段，打一个cross_page的标签
             for line in may_list_lines:
                 for span in line["spans"]:
@@ -555,7 +556,7 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
                 next_first_line['bbox'][0] == next_x0_min:  # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
             connected_layout_blocks[-1][-1]["lines"].extend(blocks_group[i][0]["lines"])
-            blocks_group[i][0]["lines"] = []  #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
+            blocks_group[i][0]["lines"] = []  # 删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
             blocks_group[i][0][LINES_DELETED] = True
             # if len(layout_paras[i]) == 0:
             #     layout_paras.pop(i)
@@ -621,7 +622,7 @@ def __connect_para_inter_page(pre_page_paras, next_page_paras, pre_page_layout_b
                 span[CROSS_PAGE] = True
         pre_last_para.extend(next_first_para)
 
-        #next_page_paras[0].pop(0)  # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
+        # next_page_paras[0].pop(0)  # 删除后一个页面的第一个段落， 因为他已经被合并到前一个页面的最后一个段落了。
         next_page_paras[0][0]["lines"] = []
         next_page_paras[0][0][LINES_DELETED] = True
         return True
@@ -665,15 +666,15 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
         layout_box = new_layout_bbox[layout_i]
         single_line_paras_tag = []
         for i in range(len(layout_para)):
-            #single_line_paras_tag.append(len(layout_para[i]) == 1 and layout_para[i][0]['spans'][0]['type'] == TEXT)
+            # single_line_paras_tag.append(len(layout_para[i]) == 1 and layout_para[i][0]['spans'][0]['type'] == TEXT)
             single_line_paras_tag.append(layout_para[i]['type'] == BlockType.Text and len(layout_para[i]["lines"]) == 1)
         """找出来连续的单行文本，如果连续行高度相同，那么合并为一个段落。"""
         consecutive_single_line_indices = find_consecutive_true_regions(single_line_paras_tag)
         if len(consecutive_single_line_indices) > 0:
             """检查这些行是否是高度相同的，居中的"""
             for start, end in consecutive_single_line_indices:
-                #start += index_offset
-                #end += index_offset
+                # start += index_offset
+                # end += index_offset
                 line_hi = np.array([block["lines"][0]['bbox'][3] - block["lines"][0]['bbox'][1] for block in
                                     layout_para[start:end + 1]])
                 first_line_text = ''.join([__get_span_text(span) for span in layout_para[start]["lines"][0]['spans']])
@@ -698,9 +699,9 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
                         for i_para in range(start + 1, end + 1):
                             layout_para[i_para]["lines"] = []
                             layout_para[i_para][LINES_DELETED] = True
-                        #layout_para[start:end + 1] = [merge_para]
+                        # layout_para[start:end + 1] = [merge_para]
 
-                        #index_offset -= end - start
+                        # index_offset -= end - start
 
     return
 
