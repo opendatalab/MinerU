@@ -7,12 +7,11 @@ from magic_pdf.libs.commons import fitz, join_path
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.local_math import float_gt
 from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
-from magic_pdf.libs.ocr_content_type import ContentType
+from magic_pdf.libs.ocr_content_type import CategoryId, ContentType
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 
 CAPATION_OVERLAP_AREA_RATIO = 0.6
-FAKE_FIGURE_FOOTNOTE_CATEGORY = 101  # fake category for figure footnote
 
 
 class MagicModel:
@@ -23,7 +22,8 @@ class MagicModel:
             need_remove_list = []
             page_no = model_page_info['page_info']['page_no']
             horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(
-                model_page_info, self.__docs[page_no])
+                model_page_info, self.__docs[page_no]
+            )
             layout_dets = model_page_info['layout_dets']
             for layout_det in layout_dets:
 
@@ -68,21 +68,21 @@ class MagicModel:
                     if layout_det1 == layout_det2:
                         continue
                     if layout_det1['category_id'] in [
-                            0,
-                            1,
-                            2,
-                            3,
-                            4,
-                            5,
-                            6,
-                            7,
-                            8,
-                            9,
-                    ] and layout_det2['category_id'] in [
-                            0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-                    ]:
-                        if (calculate_iou(layout_det1['bbox'],
-                                          layout_det2['bbox']) > 0.9):
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                    ] and layout_det2['category_id'] in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
+                        if (
+                            calculate_iou(layout_det1['bbox'], layout_det2['bbox'])
+                            > 0.9
+                        ):
                             if layout_det1['score'] < layout_det2['score']:
                                 layout_det_need_remove = layout_det1
                             else:
@@ -129,23 +129,44 @@ class MagicModel:
 
                 for i in range(len(footnotes)):
                     for j in range(len(figures)):
+                        pos_flag_count = sum(
+                            list(
+                                map(
+                                    lambda x: 1 if x else 0,
+                                    bbox_relative_pos(
+                                        footnotes[i]['bbox'], figures[j]['bbox']
+                                    ),
+                                )
+                            )
+                        )
+                        if pos_flag_count > 1:
+                            continue
                         dis_figure_footnote[i] = min(
-                            bbox_distance(figures[j]['bbox'],
-                                          footnotes[i]['bbox']),
+                            bbox_distance(figures[j]['bbox'], footnotes[i]['bbox']),
                             dis_figure_footnote.get(i, float('inf')),
                         )
                 for i in range(len(footnotes)):
                     for j in range(len(tables)):
+                        pos_flag_count = sum(
+                            list(
+                                map(
+                                    lambda x: 1 if x else 0,
+                                    bbox_relative_pos(
+                                        footnotes[i]['bbox'], tables[j]['bbox']
+                                    ),
+                                )
+                            )
+                        )
+                        if pos_flag_count > 1:
+                            continue
+
                         dis_table_footnote[i] = min(
-                            bbox_distance(tables[j]['bbox'],
-                                          footnotes[i]['bbox']),
+                            bbox_distance(tables[j]['bbox'], footnotes[i]['bbox']),
                             dis_table_footnote.get(i, float('inf')),
                         )
                 for i in range(len(footnotes)):
-                    if dis_table_footnote.get(
-                            i, float('inf')) > dis_figure_footnote[i]:
-                        footnotes[i][
-                            'category_id'] = FAKE_FIGURE_FOOTNOTE_CATEGORY
+                    if dis_table_footnote.get(i, float('inf')) > dis_figure_footnote[i]:
+                        footnotes[i]['category_id'] = CategoryId.ImageFootnote
 
     def __reduct_overlap(self, bboxes):
         N = len(bboxes)
@@ -158,8 +179,9 @@ class MagicModel:
                     keep[i] = False
         return [bboxes[i] for i in range(N) if keep[i]]
 
-    def __tie_up_category_by_distance(self, page_no, subject_category_id,
-                                      object_category_id):
+    def __tie_up_category_by_distance(
+        self, page_no, subject_category_id, object_category_id
+    ):
         """假定每个 subject 最多有一个 object (可以有多个相邻的 object 合并为单个 object)，每个 object
         只能属于一个 subject."""
         ret = []
@@ -173,31 +195,38 @@ class MagicModel:
         def may_find_other_nearest_bbox(subject_idx, object_idx):
             ret = float('inf')
 
-            x0 = min(all_bboxes[subject_idx]['bbox'][0],
-                     all_bboxes[object_idx]['bbox'][0])
-            y0 = min(all_bboxes[subject_idx]['bbox'][1],
-                     all_bboxes[object_idx]['bbox'][1])
-            x1 = max(all_bboxes[subject_idx]['bbox'][2],
-                     all_bboxes[object_idx]['bbox'][2])
-            y1 = max(all_bboxes[subject_idx]['bbox'][3],
-                     all_bboxes[object_idx]['bbox'][3])
+            x0 = min(
+                all_bboxes[subject_idx]['bbox'][0], all_bboxes[object_idx]['bbox'][0]
+            )
+            y0 = min(
+                all_bboxes[subject_idx]['bbox'][1], all_bboxes[object_idx]['bbox'][1]
+            )
+            x1 = max(
+                all_bboxes[subject_idx]['bbox'][2], all_bboxes[object_idx]['bbox'][2]
+            )
+            y1 = max(
+                all_bboxes[subject_idx]['bbox'][3], all_bboxes[object_idx]['bbox'][3]
+            )
 
-            object_area = abs(all_bboxes[object_idx]['bbox'][2] -
-                              all_bboxes[object_idx]['bbox'][0]) * abs(
-                                  all_bboxes[object_idx]['bbox'][3] -
-                                  all_bboxes[object_idx]['bbox'][1])
+            object_area = abs(
+                all_bboxes[object_idx]['bbox'][2] - all_bboxes[object_idx]['bbox'][0]
+            ) * abs(
+                all_bboxes[object_idx]['bbox'][3] - all_bboxes[object_idx]['bbox'][1]
+            )
 
             for i in range(len(all_bboxes)):
-                if (i == subject_idx or
-                        all_bboxes[i]['category_id'] != subject_category_id):
+                if (
+                    i == subject_idx
+                    or all_bboxes[i]['category_id'] != subject_category_id
+                ):
                     continue
-                if _is_part_overlap(
-                    [x0, y0, x1, y1], all_bboxes[i]['bbox']) or _is_in(
-                        all_bboxes[i]['bbox'], [x0, y0, x1, y1]):
+                if _is_part_overlap([x0, y0, x1, y1], all_bboxes[i]['bbox']) or _is_in(
+                    all_bboxes[i]['bbox'], [x0, y0, x1, y1]
+                ):
 
-                    i_area = abs(all_bboxes[i]['bbox'][2] - all_bboxes[i]
-                                 ['bbox'][0]) * abs(all_bboxes[i]['bbox'][3] -
-                                                    all_bboxes[i]['bbox'][1])
+                    i_area = abs(
+                        all_bboxes[i]['bbox'][2] - all_bboxes[i]['bbox'][0]
+                    ) * abs(all_bboxes[i]['bbox'][3] - all_bboxes[i]['bbox'][1])
                     if i_area >= object_area:
                         ret = min(float('inf'), dis[i][object_idx])
 
@@ -213,60 +242,64 @@ class MagicModel:
         subjects = self.__reduct_overlap(
             list(
                 map(
-                    lambda x: {
-                        'bbox': x['bbox'],
-                        'score': x['score']
-                    },
+                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
                     filter(
                         lambda x: x['category_id'] == subject_category_id,
                         self.__model_list[page_no]['layout_dets'],
                     ),
-                )))
+                )
+            )
+        )
 
         objects = self.__reduct_overlap(
             list(
                 map(
-                    lambda x: {
-                        'bbox': x['bbox'],
-                        'score': x['score']
-                    },
+                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
                     filter(
                         lambda x: x['category_id'] == object_category_id,
                         self.__model_list[page_no]['layout_dets'],
                     ),
-                )))
+                )
+            )
+        )
         subject_object_relation_map = {}
 
-        subjects.sort(key=lambda x: x['bbox'][0]**2 + x['bbox'][1]**2
-                      )  # get the distance !
+        subjects.sort(
+            key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2
+        )  # get the distance !
 
         all_bboxes = []
 
         for v in subjects:
-            all_bboxes.append({
-                'category_id': subject_category_id,
-                'bbox': v['bbox'],
-                'score': v['score'],
-            })
+            all_bboxes.append(
+                {
+                    'category_id': subject_category_id,
+                    'bbox': v['bbox'],
+                    'score': v['score'],
+                }
+            )
 
         for v in objects:
-            all_bboxes.append({
-                'category_id': object_category_id,
-                'bbox': v['bbox'],
-                'score': v['score'],
-            })
+            all_bboxes.append(
+                {
+                    'category_id': object_category_id,
+                    'bbox': v['bbox'],
+                    'score': v['score'],
+                }
+            )
 
         N = len(all_bboxes)
         dis = [[MAX_DIS_OF_POINT] * N for _ in range(N)]
 
         for i in range(N):
             for j in range(i):
-                if (all_bboxes[i]['category_id'] == subject_category_id and
-                        all_bboxes[j]['category_id'] == subject_category_id):
+                if (
+                    all_bboxes[i]['category_id'] == subject_category_id
+                    and all_bboxes[j]['category_id'] == subject_category_id
+                ):
                     continue
 
-                dis[i][j] = bbox_distance(all_bboxes[i]['bbox'],
-                                          all_bboxes[j]['bbox'])
+                dis[i][j] = bbox_distance(all_bboxes[i]['bbox'], all_bboxes[j]['bbox'])
                 dis[j][i] = dis[i][j]
 
         used = set()
@@ -283,23 +316,27 @@ class MagicModel:
                     list(
                         map(
                             lambda x: 1 if x else 0,
-                            bbox_relative_pos(all_bboxes[i]['bbox'],
-                                              all_bboxes[j]['bbox']),
-                        )))
+                            bbox_relative_pos(
+                                all_bboxes[i]['bbox'], all_bboxes[j]['bbox']
+                            ),
+                        )
+                    )
+                )
                 if pos_flag_count > 1:
                     continue
-                if (all_bboxes[j]['category_id'] != object_category_id
-                        or j in used or dis[i][j] == MAX_DIS_OF_POINT):
+                if (
+                    all_bboxes[j]['category_id'] != object_category_id
+                    or j in used
+                    or dis[i][j] == MAX_DIS_OF_POINT
+                ):
                     continue
                 left, right, _, _ = bbox_relative_pos(
-                    all_bboxes[i]['bbox'],
-                    all_bboxes[j]['bbox'])  # 由  pos_flag_count 相关逻辑保证本段逻辑准确性
+                    all_bboxes[i]['bbox'], all_bboxes[j]['bbox']
+                )  # 由  pos_flag_count 相关逻辑保证本段逻辑准确性
                 if left or right:
-                    one_way_dis = all_bboxes[i]['bbox'][2] - all_bboxes[i][
-                        'bbox'][0]
+                    one_way_dis = all_bboxes[i]['bbox'][2] - all_bboxes[i]['bbox'][0]
                 else:
-                    one_way_dis = all_bboxes[i]['bbox'][3] - all_bboxes[i][
-                        'bbox'][1]
+                    one_way_dis = all_bboxes[i]['bbox'][3] - all_bboxes[i]['bbox'][1]
                 if dis[i][j] > one_way_dis:
                     continue
                 arr.append((dis[i][j], j))
@@ -323,17 +360,23 @@ class MagicModel:
                         list(
                             map(
                                 lambda x: 1 if x else 0,
-                                bbox_relative_pos(all_bboxes[j]['bbox'],
-                                                  all_bboxes[k]['bbox']),
-                            )))
+                                bbox_relative_pos(
+                                    all_bboxes[j]['bbox'], all_bboxes[k]['bbox']
+                                ),
+                            )
+                        )
+                    )
 
                     if pos_flag_count > 1:
                         continue
 
-                    if (all_bboxes[k]['category_id'] != object_category_id
-                            or k in used or k in seen
-                            or dis[j][k] == MAX_DIS_OF_POINT
-                            or dis[j][k] > dis[i][j]):
+                    if (
+                        all_bboxes[k]['category_id'] != object_category_id
+                        or k in used
+                        or k in seen
+                        or dis[j][k] == MAX_DIS_OF_POINT
+                        or dis[j][k] > dis[i][j]
+                    ):
                         continue
 
                     is_nearest = True
@@ -347,8 +390,9 @@ class MagicModel:
 
                     if is_nearest:
                         nx0, ny0, nx1, ny1 = expand_bbbox(list(seen) + [k])
-                        n_dis = bbox_distance(all_bboxes[i]['bbox'],
-                                              [nx0, ny0, nx1, ny1])
+                        n_dis = bbox_distance(
+                            all_bboxes[i]['bbox'], [nx0, ny0, nx1, ny1]
+                        )
                         if float_gt(dis[i][j], n_dis):
                             continue
                         tmp.append(k)
@@ -375,24 +419,22 @@ class MagicModel:
             for bbox in caption_poses:
                 embed_arr = []
                 for idx in seen:
-                    if (calculate_overlap_area_in_bbox1_area_ratio(
-                            all_bboxes[idx]['bbox'], bbox) >
-                            CAPATION_OVERLAP_AREA_RATIO):
+                    if (
+                        calculate_overlap_area_in_bbox1_area_ratio(
+                            all_bboxes[idx]['bbox'], bbox
+                        )
+                        > CAPATION_OVERLAP_AREA_RATIO
+                    ):
                         embed_arr.append(idx)
 
                 if len(embed_arr) > 0:
-                    embed_x0 = min(
-                        [all_bboxes[idx]['bbox'][0] for idx in embed_arr])
-                    embed_y0 = min(
-                        [all_bboxes[idx]['bbox'][1] for idx in embed_arr])
-                    embed_x1 = max(
-                        [all_bboxes[idx]['bbox'][2] for idx in embed_arr])
-                    embed_y1 = max(
-                        [all_bboxes[idx]['bbox'][3] for idx in embed_arr])
+                    embed_x0 = min([all_bboxes[idx]['bbox'][0] for idx in embed_arr])
+                    embed_y0 = min([all_bboxes[idx]['bbox'][1] for idx in embed_arr])
+                    embed_x1 = max([all_bboxes[idx]['bbox'][2] for idx in embed_arr])
+                    embed_y1 = max([all_bboxes[idx]['bbox'][3] for idx in embed_arr])
                     caption_areas.append(
-                        int(
-                            abs(embed_x1 - embed_x0) *
-                            abs(embed_y1 - embed_y0)))
+                        int(abs(embed_x1 - embed_x0) * abs(embed_y1 - embed_y0))
+                    )
                 else:
                     caption_areas.append(0)
 
@@ -402,9 +444,12 @@ class MagicModel:
                 caption_bbox = caption_poses[max_area_idx]
 
                 for j in seen:
-                    if (calculate_overlap_area_in_bbox1_area_ratio(
-                            all_bboxes[j]['bbox'], caption_bbox) >
-                            CAPATION_OVERLAP_AREA_RATIO):
+                    if (
+                        calculate_overlap_area_in_bbox1_area_ratio(
+                            all_bboxes[j]['bbox'], caption_bbox
+                        )
+                        > CAPATION_OVERLAP_AREA_RATIO
+                    ):
                         used.add(j)
                         subject_object_relation_map[i].append(j)
 
@@ -416,22 +461,18 @@ class MagicModel:
             }
 
             if len(subject_object_relation_map[i]) > 0:
-                x0 = min([
-                    all_bboxes[j]['bbox'][0]
-                    for j in subject_object_relation_map[i]
-                ])
-                y0 = min([
-                    all_bboxes[j]['bbox'][1]
-                    for j in subject_object_relation_map[i]
-                ])
-                x1 = max([
-                    all_bboxes[j]['bbox'][2]
-                    for j in subject_object_relation_map[i]
-                ])
-                y1 = max([
-                    all_bboxes[j]['bbox'][3]
-                    for j in subject_object_relation_map[i]
-                ])
+                x0 = min(
+                    [all_bboxes[j]['bbox'][0] for j in subject_object_relation_map[i]]
+                )
+                y0 = min(
+                    [all_bboxes[j]['bbox'][1] for j in subject_object_relation_map[i]]
+                )
+                x1 = max(
+                    [all_bboxes[j]['bbox'][2] for j in subject_object_relation_map[i]]
+                )
+                y1 = max(
+                    [all_bboxes[j]['bbox'][3] for j in subject_object_relation_map[i]]
+                )
                 result['object_body'] = [x0, y0, x1, y1]
                 result['all'] = [
                     min(x0, all_bboxes[i]['bbox'][0]),
@@ -446,20 +487,26 @@ class MagicModel:
         for i in subject_object_relation_map.keys():
             for j in subject_object_relation_map[i]:
                 total_subject_object_dis += bbox_distance(
-                    all_bboxes[i]['bbox'], all_bboxes[j]['bbox'])
+                    all_bboxes[i]['bbox'], all_bboxes[j]['bbox']
+                )
 
         # 计算未匹配的 subject 和 object 的距离（非精确版）
-        with_caption_subject = set([
-            key for key in subject_object_relation_map.keys()
-            if len(subject_object_relation_map[i]) > 0
-        ])
+        with_caption_subject = set(
+            [
+                key
+                for key in subject_object_relation_map.keys()
+                if len(subject_object_relation_map[i]) > 0
+            ]
+        )
         for i in range(N):
             if all_bboxes[i]['category_id'] != object_category_id or i in used:
                 continue
             candidates = []
             for j in range(N):
-                if (all_bboxes[j]['category_id'] != subject_category_id
-                        or j in with_caption_subject):
+                if (
+                    all_bboxes[j]['category_id'] != subject_category_id
+                    or j in with_caption_subject
+                ):
                     continue
                 candidates.append((dis[i][j], j))
             if len(candidates) > 0:
@@ -471,7 +518,8 @@ class MagicModel:
     def get_imgs(self, page_no: int):
         with_captions, _ = self.__tie_up_category_by_distance(page_no, 3, 4)
         with_footnotes, _ = self.__tie_up_category_by_distance(
-            page_no, 3, FAKE_FIGURE_FOOTNOTE_CATEGORY)
+            page_no, 3, CategoryId.ImageFootnote
+        )
         ret = []
         N, M = len(with_captions), len(with_footnotes)
         assert N == M
@@ -480,8 +528,7 @@ class MagicModel:
                 'score': with_captions[i]['score'],
                 'img_caption_bbox': with_captions[i].get('object_body', None),
                 'img_body_bbox': with_captions[i]['subject_body'],
-                'img_footnote_bbox':
-                with_footnotes[i].get('object_body', None),
+                'img_footnote_bbox': with_footnotes[i].get('object_body', None),
             }
 
             x0 = min(with_captions[i]['all'][0], with_footnotes[i]['all'][0])
@@ -492,8 +539,9 @@ class MagicModel:
             ret.append(record)
         return ret
 
-    def get_tables(self,
-                   page_no: int) -> list:  # 3个坐标， caption, table主体，table-note
+    def get_tables(
+        self, page_no: int
+    ) -> list:  # 3个坐标， caption, table主体，table-note
         with_captions, _ = self.__tie_up_category_by_distance(page_no, 5, 6)
         with_footnotes, _ = self.__tie_up_category_by_distance(page_no, 5, 7)
         ret = []
@@ -502,11 +550,9 @@ class MagicModel:
         for i in range(N):
             record = {
                 'score': with_captions[i]['score'],
-                'table_caption_bbox':
-                with_captions[i].get('object_body', None),
+                'table_caption_bbox': with_captions[i].get('object_body', None),
                 'table_body_bbox': with_captions[i]['subject_body'],
-                'table_footnote_bbox':
-                with_footnotes[i].get('object_body', None),
+                'table_footnote_bbox': with_footnotes[i].get('object_body', None),
             }
 
             x0 = min(with_captions[i]['all'][0], with_footnotes[i]['all'][0])
@@ -519,26 +565,26 @@ class MagicModel:
 
     def get_equations(self, page_no: int) -> list:  # 有坐标，也有字
         inline_equations = self.__get_blocks_by_type(
-            ModelBlockTypeEnum.EMBEDDING.value, page_no, ['latex'])
+            ModelBlockTypeEnum.EMBEDDING.value, page_no, ['latex']
+        )
         interline_equations = self.__get_blocks_by_type(
-            ModelBlockTypeEnum.ISOLATED.value, page_no, ['latex'])
+            ModelBlockTypeEnum.ISOLATED.value, page_no, ['latex']
+        )
         interline_equations_blocks = self.__get_blocks_by_type(
-            ModelBlockTypeEnum.ISOLATE_FORMULA.value, page_no)
+            ModelBlockTypeEnum.ISOLATE_FORMULA.value, page_no
+        )
         return inline_equations, interline_equations, interline_equations_blocks
 
     def get_discarded(self, page_no: int) -> list:  # 自研模型，只有坐标
-        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.ABANDON.value,
-                                           page_no)
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.ABANDON.value, page_no)
         return blocks
 
     def get_text_blocks(self, page_no: int) -> list:  # 自研模型搞的，只有坐标，没有字
-        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.PLAIN_TEXT.value,
-                                           page_no)
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.PLAIN_TEXT.value, page_no)
         return blocks
 
     def get_title_blocks(self, page_no: int) -> list:  # 自研模型，只有坐标，没字
-        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.TITLE.value,
-                                           page_no)
+        blocks = self.__get_blocks_by_type(ModelBlockTypeEnum.TITLE.value, page_no)
         return blocks
 
     def get_ocr_text(self, page_no: int) -> list:  # paddle 搞的，有字也有坐标
@@ -559,8 +605,7 @@ class MagicModel:
         def remove_duplicate_spans(spans):
             new_spans = []
             for span in spans:
-                if not any(span == existing_span
-                           for existing_span in new_spans):
+                if not any(span == existing_span for existing_span in new_spans):
                     new_spans.append(span)
             return new_spans
 
@@ -577,10 +622,7 @@ class MagicModel:
         for layout_det in layout_dets:
             category_id = layout_det['category_id']
             if category_id in allow_category_id_list:
-                span = {
-                    'bbox': layout_det['bbox'],
-                    'score': layout_det['score']
-                }
+                span = {'bbox': layout_det['bbox'], 'score': layout_det['score']}
                 if category_id == 3:
                     span['type'] = ContentType.Image
                 elif category_id == 5:
@@ -612,10 +654,9 @@ class MagicModel:
         page_h = page.rect.height
         return page_w, page_h
 
-    def __get_blocks_by_type(self,
-                             type: int,
-                             page_no: int,
-                             extra_col: list[str] = []) -> list:
+    def __get_blocks_by_type(
+        self, type: int, page_no: int, extra_col: list[str] = []
+    ) -> list:
         blocks = []
         for page_dict in self.__model_list:
             layout_dets = page_dict.get('layout_dets', [])
@@ -657,9 +698,11 @@ if __name__ == '__main__':
 
     if 1:
         model_list = json.loads(
-            drw.read('/opt/data/pdf/20240418/j.chroma.2009.03.042.json'))
-        pdf_bytes = drw.read('/opt/data/pdf/20240418/j.chroma.2009.03.042.pdf',
-                             AbsReaderWriter.MODE_BIN)
+            drw.read('/opt/data/pdf/20240418/j.chroma.2009.03.042.json')
+        )
+        pdf_bytes = drw.read(
+            '/opt/data/pdf/20240418/j.chroma.2009.03.042.pdf', AbsReaderWriter.MODE_BIN
+        )
         pdf_docs = fitz.open('pdf', pdf_bytes)
         magic_model = MagicModel(model_list, pdf_docs)
         for i in range(7):
