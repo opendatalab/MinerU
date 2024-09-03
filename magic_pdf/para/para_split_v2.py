@@ -670,7 +670,6 @@ def __connect_middle_align_text(page_paras, new_layout_bbox, page_num, lang):
         """找出来连续的单行文本，如果连续行高度相同，那么合并为一个段落。"""
         consecutive_single_line_indices = find_consecutive_true_regions(single_line_paras_tag)
         if len(consecutive_single_line_indices) > 0:
-            #index_offset = 0
             """检查这些行是否是高度相同的，居中的"""
             for start, end in consecutive_single_line_indices:
                 #start += index_offset
