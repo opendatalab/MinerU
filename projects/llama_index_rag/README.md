@@ -35,7 +35,7 @@ export ES_PASSWORD={some_es_password}
 export ES_URL=http://{es_url}:9200
 ```
 
-DASHSCOPE_API_KEY 的开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
+DASHSCOPE_API_KEY 开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
 
 ## 使用
 
@@ -70,6 +70,7 @@ docker-compose up -d
 export ES_USER=elastic
 export ES_PASSWORD=llama_index
 export ES_URL=http://127.0.0.1:9200
+export DASHSCOPE_API_KEY={some_key}
 
 
 # 导入数据
@@ -102,7 +103,7 @@ from magic_pdf.integrations.rag.type import Node
 
 class RagPageReader:
     def get_rel_map(self) -> list[ElementRelation]:
-        # 获取节点的间的关系
+        # 获取节点间的关系
         pass
     ...
 
@@ -123,7 +124,7 @@ class DataReader:
 
 
     def get_document_filename(self, idx: int) -> Path:
-        """获取某个 pdf 的具体的路径"""
+        """获取某个 pdf 的具体路径"""
         pass
 
 
