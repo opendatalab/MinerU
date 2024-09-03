@@ -740,7 +740,7 @@ def para_split(pdf_info_dict, debug_mode, lang="en"):
     new_layout_of_pages = []  # 数组的数组，每个元素是一个页面的layoutS
     all_page_list_info = []  # 保存每个页面开头和结尾是否是列表
     for page_num, page in pdf_info_dict.items():
-        blocks = page['preproc_blocks']
+        blocks = copy.deepcopy(page['preproc_blocks'])
         layout_bboxes = page['layout_bboxes']
         new_layout_bbox = __common_pre_proc(blocks, layout_bboxes)
         new_layout_of_pages.append(new_layout_bbox)
