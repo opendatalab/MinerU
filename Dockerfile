@@ -38,7 +38,7 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
 RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
-    pip3 install magic-pdf==0.7.0b1"
+    pip3 install -U magic-pdf"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
