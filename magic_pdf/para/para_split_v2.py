@@ -1,3 +1,5 @@
+import copy
+
 from sklearn.cluster import DBSCAN
 import numpy as np
 from loguru import logger
@@ -245,16 +247,17 @@ def __valign_lines(blocks, layout_bboxes):
         # 由于修改了block里的line长度，现在需要重新计算block的bbox
         for block in blocks_in_layoutbox:
             if len(block["lines"]) > 0:
-                block['bbox'] = [min([line['bbox'][0] for line in block['lines']]),
+                block['bbox_fs'] = [min([line['bbox'][0] for line in block['lines']]),
                                  min([line['bbox'][1] for line in block['lines']]),
                                  max([line['bbox'][2] for line in block['lines']]),
                                  max([line['bbox'][3] for line in block['lines']])]
-
+            else:
+                block['bbox_fs'] = copy.deepcopy(block['bbox'])
         """新计算layout的bbox，因为block的bbox变了。"""
-        layout_x0 = min([block['bbox'][0] for block in blocks_in_layoutbox])
-        layout_y0 = min([block['bbox'][1] for block in blocks_in_layoutbox])
-        layout_x1 = max([block['bbox'][2] for block in blocks_in_layoutbox])
-        layout_y1 = max([block['bbox'][3] for block in blocks_in_layoutbox])
+        layout_x0 = min([block['bbox_fs'][0] for block in blocks_in_layoutbox])
+        layout_y0 = min([block['bbox_fs'][1] for block in blocks_in_layoutbox])
+        layout_x1 = max([block['bbox_fs'][2] for block in blocks_in_layoutbox])
+        layout_y1 = max([block['bbox_fs'][3] for block in blocks_in_layoutbox])
         new_layout_bboxes.append([layout_x0, layout_y0, layout_x1, layout_y1])
 
     return new_layout_bboxes
@@ -312,7 +315,7 @@ def __group_line_by_layout(blocks, layout_bboxes):
     # 因为只是一个block一行目前, 一个block就是一个段落
     blocks_group = []
     for lyout in layout_bboxes:
-        blocks_in_layout = [block for block in blocks if is_in_layout(block['bbox'], lyout['layout_bbox'])]
+        blocks_in_layout = [block for block in blocks if is_in_layout(block.get('bbox_fs', None), lyout['layout_bbox'])]
         blocks_group.append(blocks_in_layout)
     return blocks_group
 
@@ -537,7 +540,6 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
         next_first_line_text = ''.join([__get_span_text(span) for span in next_first_line['spans']])
         next_first_line_type = next_first_line['spans'][0]['type']
         if pre_last_line_type not in [TEXT, INLINE_EQUATION] or next_first_line_type not in [TEXT, INLINE_EQUATION]:
-            #connected_layout_paras.append(layout_paras[i])
             connected_layout_blocks.append(blocks_group[i])
             continue
         pre_layout = __find_layout_bbox_by_line(pre_last_line['bbox'], new_layout_bbox)
@@ -552,9 +554,7 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
             -1] not in LINE_STOP_FLAG and \
                 next_first_line['bbox'][0] == next_x0_min:  # 前面一行沾满了整个行，并且没有结尾符号.下一行没有空白开头。
             """连接段落条件成立，将前一个layout的段落和后一个layout的段落连接。"""
-            #connected_layout_paras[-1][-1].extend(layout_paras[i][0])
             connected_layout_blocks[-1][-1]["lines"].extend(blocks_group[i][0]["lines"])
-            #layout_paras[i].pop(0)  # 删除后一个layout的第一个段落， 因为他已经被合并到前一个layout的最后一个段落了。
             blocks_group[i][0]["lines"] = []  #删除后一个layout第一个段落中的lines，因为他已经被合并到前一个layout的最后一个段落了
             blocks_group[i][0][LINES_DELETED] = True
             # if len(layout_paras[i]) == 0:
@@ -564,7 +564,6 @@ def __connect_para_inter_layoutbox(blocks_group, new_layout_bbox):
             connected_layout_blocks.append(blocks_group[i])
         else:
             """连接段落条件不成立，将前一个layout的段落加入到结果中。"""
-            #connected_layout_paras.append(layout_paras[i])
             connected_layout_blocks.append(blocks_group[i])
     return connected_layout_blocks
 
