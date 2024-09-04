@@ -237,8 +237,8 @@ cp magic-pdf.template.json ~/magic-pdf.json
     > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-  docker build -t mineru:0.7.0b1 .
-  docker run --rm -it --gpus=all mineru:0.7.0b1 /bin/bash
+  docker build -t mineru:latest .
+  docker run --rm -it --gpus=all mineru:latest /bin/bash
   magic-pdf --help
   ```
     
