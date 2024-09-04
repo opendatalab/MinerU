@@ -234,8 +234,8 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
     > Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-  docker build -t mineru:0.7.0b1 .
-  docker run --rm -it --gpus=all mineru:0.7.0b1 /bin/bash
+  docker build -t mineru:latest .
+  docker run --rm -it --gpus=all mineru:latest /bin/bash
   magic-pdf --help
   ```
 
