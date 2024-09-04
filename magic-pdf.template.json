@@ -6,6 +6,7 @@
     "models-dir":"/tmp/models",
     "device-mode":"cpu",
     "table-config": {
+        "model": "TableMaster",
         "is_table_recog_enable": false,
         "max_time": 400
     }

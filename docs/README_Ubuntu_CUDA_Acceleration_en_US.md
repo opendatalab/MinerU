@@ -48,7 +48,7 @@
 
 ### 5. Install Applications
    ```sh
-   pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
+   pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
    ```
 ❗ After installation, make sure to check the version of `magic-pdf` using the following command:
    ```sh

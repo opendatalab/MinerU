@@ -30,6 +30,7 @@
 </div>
 
 # Changelog
+- 2024/08/30: Version 0.7.1 released, add paddle tablemaster table recognition option
 - 2024/08/09: Version 0.7.0b1 released, simplified installation process, added table recognition functionality
 - 2024/08/01: Version 0.6.2b1 released, optimized dependency conflict issues and installation documentation
 - 2024/07/05: Initial open-source release
@@ -157,7 +158,9 @@ In non-mainline environments, due to the diversity of hardware and software conf
     <tr>
         <td colspan="2">Recommended Configuration 16G+ VRAM</td>
         <td colspan="2">3090/3090ti/4070ti super/4080/4090<br>
-        16G or more can enable layout, formula recognition, and OCR acceleration simultaneously</td>
+        16G or more can enable layout, formula recognition, and OCR acceleration simultaneously<br>
+        24G or more can enable layout, formula recognition, OCR acceleration and table recognition simultaneously
+        </td>
     </tr>
 </table>
 
@@ -171,7 +174,7 @@ In non-mainline environments, due to the diversity of hardware and software conf
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install magic-pdf[full]==0.7.0b1 --extra-index-url https://wheels.myhloli.com
+pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 ```
 #### 2. Download model weight files
 
@@ -200,6 +203,7 @@ Find the `magic-pdf.json` file in your user directory and configure the "models-
   // other config
   "models-dir": "D:/models",
   "table-config": {
+        "model": "TableMaster", // Another option of this value is 'struct_eqtable'
         "is_table_recog_enable": false, // Table recognition is disabled by default, modify this value to enable it
         "max_time": 400
     }
@@ -311,13 +315,7 @@ TODO
 - Comic books, art books, elementary school textbooks, and exercise books are not well-parsed yet
 - Enabling OCR may produce better results in PDFs with a high density of formulas
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
-- **Table Recognition** is currently in the testing phase; recognition speed is slow, and accuracy needs improvement. Below are some performance test results in an Ubuntu 22.04 LTS + Intel(R) Xeon(R) Platinum 8352V CPU @ 2.10GHz + NVIDIA GeForce RTX 4090 environment for reference.
 
-| Table Size     | Parsing Time        | 
-|---------------|----------------------------| 
-| 6\*5 55kb     | 37s                   | 
-| 16\*12 284kb  | 3m18s                 | 
-| 44\*7 559kb   | 4m12s                 | 
 
 # FAQ
 [FAQ in Chinese](docs/FAQ_zh_cn.md)
