@@ -93,7 +93,8 @@ answer: The statement implies that men are born free and equal in terms of their
 
 ## Development
 
-`MinerU` 提供了 `RAG` 集成接口，用户可以通过指定输入单个 `pdf` 文件或者某个目录。`MinerU` 会自动解析输入文件并返回可以迭代的接口用于获取数据
+`MinerU` provides a `RAG` integration interface, allowing users to specify a single input `pdf` file or a directory. `MinerU` will automatically parse the input files and return an iterable interface for retrieving the data.
+
 
 ### API Interface
 
