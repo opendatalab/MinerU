@@ -13,6 +13,12 @@
 [![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
+
+[![HuggingFace](https://img.shields.io/badge/HuggingFace-Demo-yellow)](https://huggingface.co/spaces/opendatalab/MinerU)
+[![ModelScope](https://img.shields.io/badge/ModelScope-Demo-purple)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/papayalove/8dfe38c801c34c197f32c736544b11ea)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-green)](#)
+
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
