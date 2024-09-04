@@ -34,8 +34,7 @@ export ES_USER={some_es_user}
 export ES_PASSWORD={some_es_password}
 export ES_URL=http://{es_url}:9200
 ```
-
-DASHSCOPE_API_KEY 开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
+For instructions on obtaining a DASHSCOPE_API_KEY, refer to [documentation](https://help.aliyun.com/zh/dashscope/opening-service)
 
 ## Usage
 
