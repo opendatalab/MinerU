@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "web-api"
+version = "0.1.0"
+description = ""
+authors = ["houlinfeng <m15237195947@163.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+flask = "^3.0.3"
+flask-restful = "^0.3.10"
+flask-cors = "^5.0.0"
+flask-sqlalchemy = "^3.1.1"
+flask-migrate = "^4.0.7"
+flask-jwt-extended = "^4.6.0"
+flask-marshmallow = "^1.2.1"
+pyyaml = "^6.0.2"
+loguru = "^0.7.2"
+marshmallow-sqlalchemy = "^1.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
