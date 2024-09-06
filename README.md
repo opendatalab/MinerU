@@ -238,6 +238,12 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
     > Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
+    >
+    > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
+    > 
+    > ```bash
+    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+    > ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
