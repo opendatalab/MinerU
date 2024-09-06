@@ -11,7 +11,7 @@ model_config.__use_inside_model__ = True
 
 try:
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
-    demo_name = "demovie4"
+    demo_name = "demovie5"
     pdf_path = os.path.join(current_script_dir, f"{demo_name}.pdf")
     model_path = os.path.join(current_script_dir, f"{demo_name}.json")
     pdf_bytes = open(pdf_path, "rb").read()
