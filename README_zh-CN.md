@@ -245,7 +245,7 @@ cp magic-pdf.template.json ~/magic-pdf.json
     > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
     > 
     > ```bash
-    > docker run --rm -it --gpus=all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
     > ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
