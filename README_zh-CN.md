@@ -241,6 +241,12 @@ cp magic-pdf.template.json ~/magic-pdf.json
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
     > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
+    > 
+    > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
+    > 
+    > ```bash
+    > docker run --rm -it --gpus=all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+    > ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
