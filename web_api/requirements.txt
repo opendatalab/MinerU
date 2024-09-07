@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+python-multipart
+magic-pdf[full]
+paddlepaddle-gpu==3.0.0b1
