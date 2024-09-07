@@ -49,16 +49,13 @@ def json_md_dump(
         path=f"{pdf_name}.md"
     )
 
-    data = {"layout": orig_model_list, "info": pipe.pdf_mid_data, "content": content_list}
-    return data
-
 @app.post("/pdf_parse", tags=["projects"], summary="Parse PDF file")
 async def pdf_parse_main(
         pdf_file: UploadFile = File(...),
         parse_method: str = 'auto',
         model_json_path: str = None,
         is_json_md_dump: bool = True,
-        output_dir: str = None
+        output_dir: str = "output"
 ):
     """
     Execute the process of converting PDF to JSON and MD, outputting MD and JSON files to the specified directory
@@ -128,10 +125,9 @@ async def pdf_parse_main(
         md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode="none")
 
         if is_json_md_dump:
-            data = json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
-            return JSONResponse(content=data, status_code=200)
-        else:
-            return JSONResponse(content={"content": content_list, "markdown": md_content}, status_code=200)
+            json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
+        data = {"layout": copy.deepcopy(pipe.model_list), "info": pipe.pdf_mid_data, "content_list": content_list,'md_content':md_content}
+        return JSONResponse(data, status_code=200)
 
     except Exception as e:
         logger.exception(e)
