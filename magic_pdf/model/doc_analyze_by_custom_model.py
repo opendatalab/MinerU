@@ -57,7 +57,7 @@ class ModelSingleton:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def get_model(self, ocr: bool, show_log: bool, lang):
+    def get_model(self, ocr: bool, show_log: bool, lang=None):
         key = (ocr, show_log, lang)
         if key not in self._models:
             self._models[key] = custom_model_init(ocr=ocr, show_log=show_log, lang=lang)
