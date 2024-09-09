@@ -12,7 +12,7 @@
 `MinerU` 提供数据 `API接口` 以支持用户导入数据到 `RAG` 系统。本项目将基于`通义千问`展示如何构建一个轻量级的 `RAG` 系统。
 
 <p align="center">
-  <img src="assets/rag_data_api.png" width="300px" style="vertical-align:middle;">
+  <img src="rag_data_api.png" width="300px" style="vertical-align:middle;">
 </p>
 
 ## 安装
