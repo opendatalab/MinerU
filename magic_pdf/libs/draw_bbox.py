@@ -71,6 +71,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     tables_list, tables_body_list = [], []
     tables_caption_list, tables_footnote_list = [], []
     imgs_list, imgs_body_list, imgs_caption_list = [], [], []
+    imgs_footnote_list = []
     titles_list = []
     texts_list = []
     interequations_list = []
@@ -78,7 +79,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         page_layout_list = []
         page_dropped_list = []
         tables, tables_body, tables_caption, tables_footnote = [], [], [], []
-        imgs, imgs_body, imgs_caption = [], [], []
+        imgs, imgs_body, imgs_caption, imgs_footnote = [], [], [], []
         titles = []
         texts = []
         interequations = []
@@ -108,6 +109,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                         imgs_body.append(bbox)
                     elif nested_block['type'] == BlockType.ImageCaption:
                         imgs_caption.append(bbox)
+                    elif nested_block['type'] == BlockType.ImageFootnote:
+                        imgs_footnote.append(bbox)
             elif block['type'] == BlockType.Title:
                 titles.append(bbox)
             elif block['type'] == BlockType.Text:
@@ -121,6 +124,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         imgs_list.append(imgs)
         imgs_body_list.append(imgs_body)
         imgs_caption_list.append(imgs_caption)
+        imgs_footnote_list.append(imgs_footnote)
         titles_list.append(titles)
         texts_list.append(texts)
         interequations_list.append(interequations)
@@ -142,6 +146,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, imgs_body_list, page, [153, 255, 51], True)
         draw_bbox_without_number(i, imgs_caption_list, page, [102, 178, 255],
                                  True)
+        draw_bbox_with_number(i, imgs_footnote_list, page, [255, 178, 102],
+                              True),
         draw_bbox_without_number(i, titles_list, page, [102, 102, 255], True)
         draw_bbox_without_number(i, texts_list, page, [153, 0, 76], True)
         draw_bbox_without_number(i, interequations_list, page, [0, 255, 0],
@@ -241,7 +247,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
 def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
     dropped_bbox_list = []
     tables_body_list, tables_caption_list, tables_footnote_list = [], [], []
-    imgs_body_list, imgs_caption_list = [], []
+    imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], []
     titles_list = []
     texts_list = []
     interequations_list = []
@@ -250,7 +256,7 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
     for i in range(len(model_list)):
         page_dropped_list = []
         tables_body, tables_caption, tables_footnote = [], [], []
-        imgs_body, imgs_caption = [], []
+        imgs_body, imgs_caption, imgs_footnote = [], [], []
         titles = []
         texts = []
         interequations = []
@@ -277,6 +283,8 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
                 interequations.append(bbox)
             elif layout_det['category_id'] == CategoryId.Abandon:
                 page_dropped_list.append(bbox)
+            elif layout_det['category_id'] == CategoryId.ImageFootnote:
+                imgs_footnote.append(bbox)
 
         tables_body_list.append(tables_body)
         tables_caption_list.append(tables_caption)
@@ -287,6 +295,7 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
         texts_list.append(texts)
         interequations_list.append(interequations)
         dropped_bbox_list.append(page_dropped_list)
+        imgs_footnote_list.append(imgs_footnote)
 
     for i, page in enumerate(pdf_docs):
         draw_bbox_with_number(i, dropped_bbox_list, page, [158, 158, 158],
@@ -298,6 +307,8 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
                               True)
         draw_bbox_with_number(i, imgs_body_list, page, [153, 255, 51], True)
         draw_bbox_with_number(i, imgs_caption_list, page, [102, 178, 255],
+                              True)
+        draw_bbox_with_number(i, imgs_footnote_list, page, [255, 178, 102],
                               True)
         draw_bbox_with_number(i, titles_list, page, [102, 102, 255], True)
         draw_bbox_with_number(i, texts_list, page, [153, 0, 76], True)
