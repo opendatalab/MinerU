@@ -58,6 +58,7 @@ Server: Docker Engine - Community
 
 ```bash
 # install
+pip install modelscope==1.14.0
 pip install llama-index-vector-stores-elasticsearch==0.2.0
 pip install llama-index-embeddings-dashscope==0.2.0
 pip install llama-index-core==0.10.68
