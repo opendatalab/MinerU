@@ -39,7 +39,8 @@ class UNIPipe(AbsPipe):
         if self.pdf_type == self.PIP_TXT:
             self.pdf_mid_data = parse_union_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                                 is_debug=self.is_debug, input_model_is_empty=self.input_model_is_empty,
-                                                start_page_id=self.start_page_id, end_page_id=self.end_page_id)
+                                                start_page_id=self.start_page_id, end_page_id=self.end_page_id,
+                                                lang=self.lang)
         elif self.pdf_type == self.PIP_OCR:
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                               is_debug=self.is_debug,
