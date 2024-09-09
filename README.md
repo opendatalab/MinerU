@@ -40,6 +40,8 @@
 </div>
 
 # Changelog
+- 2024/09/09 0.8.0 released, supporting fast deployment with Dockerfile, providing [RAG](https://github.com/opendatalab/MinerU/blob/realese-0.8.0/projects/llama_index_rag/README.md) project example, and launching demos on Huggingface and Modelscope.
+
 - 2024/08/30: Version 0.7.1 released, add paddle tablemaster table recognition option
 - 2024/08/09: Version 0.7.0b1 released, simplified installation process, added table recognition functionality
 - 2024/08/01: Version 0.6.2b1 released, optimized dependency conflict issues and installation documentation
