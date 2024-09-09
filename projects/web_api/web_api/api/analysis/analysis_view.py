@@ -49,7 +49,7 @@ class AnalysisTaskProgressView(Resource):
                         md_link_list = json.loads(analysis_pdf.md_link_list)
                         full_md_link = analysis_pdf.full_md_link
                         data = {
-                            "state": "failed",
+                            "state": task_state_map.get(analysis_task.status),
                             "status": analysis_pdf.status,
                             "url": file_url,
                             "fileName": file_name,
@@ -61,7 +61,7 @@ class AnalysisTaskProgressView(Resource):
                         return generate_response(data=data)
                     else:  # 任务异常结束
                         data = {
-                            "state": task_state_map.get(analysis_task.status),
+                            "state": "failed",
                             "status": analysis_pdf.status,
                             "url": file_url,
                             "fileName": file_name,
