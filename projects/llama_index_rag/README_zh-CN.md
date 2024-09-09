@@ -1,15 +1,58 @@
+<details open="open">
+  <summary><h2 style="display: inline-block">目录</h2></summary>
+    <li><a href="#介绍">介绍</a></li>
+    <li><a href="#安装">安装</a></li>
+    <li><a href="#示例">示例</a></li>
+    <li><a href="#开发">开发</a></li>
+  </ol>
+</details>
+
+## 介绍
+
+`MinerU` 提供数据 `API接口` 以支持用户导入数据到 `RAG` 系统。本项目将基于`通义千问`展示如何构建一个轻量级的 `RAG` 系统。
+
+<p align="center">
+  <img src="assets/rag_data_api.png" width="300px" style="vertical-align:middle;">
+</p>
+
 ## 安装
 
-MinerU
+环境要求
 
-```bash
-git clone https://github.com/opendatalab/MinerU.git
-cd MinerU
+```text
+NVIDIA A100 80GB,
+Centos 7 3.10.0-957.el7.x86_64
 
-conda create -n MinerU python=3.10
-conda activate MinerU
-pip install .[full] --extra-index-url https://wheels.myhloli.com
+Client: Docker Engine - Community
+ Version:           24.0.5
+ API version:       1.43
+ Go version:        go1.20.6
+ Git commit:        ced0996
+ Built:             Fri Jul 21 20:39:02 2023
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          24.0.5
+  API version:      1.43 (minimum version 1.12)
+  Go version:       go1.20.6
+  Git commit:       a61e2b4
+  Built:            Fri Jul 21 20:38:05 2023
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          1.6.25
+  GitCommit:        d8f198a4ed8892c764191ef7b3b06d8a2eeb5c7f
+ runc:
+  Version:          1.1.10
+  GitCommit:        v1.1.10-0-g18a0cb0
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
 ```
+
+请参考[文档](../../README_zh-CN.md) 安装 MinerU
 
 第三方软件
 
@@ -26,39 +69,11 @@ pip install accelerate==0.33.0
 pip uninstall transformer-engine
 ```
 
-## 环境配置
-
-```
-export DASHSCOPE_API_KEY={some_key}
-export ES_USER={some_es_user}
-export ES_PASSWORD={some_es_password}
-export ES_URL=http://{es_url}:9200
-```
-
-DASHSCOPE_API_KEY 开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
-
-## 使用
-
-### 导入数据
-
-```bash
-python data_ingestion.py -p some.pdf  # load data from pdf
-
-    or
-
-python data_ingestion.py -p /opt/data/some_pdf_directory/ # load data from multiples pdf which under the directory of {some_pdf_directory}
-```
-
-### 查询
-
-```bash
-python query.py --question '{the_question_you_want_to_ask}'
-```
-
 ## 示例
 
 ````bash
-# 启动 es 服务
+cd  projects/llama_index_rag
+
 docker compose up -d
 
 or
@@ -66,18 +81,38 @@ or
 docker-compose up -d
 
 
-# 配置环境变量
 export ES_USER=elastic
 export ES_PASSWORD=llama_index
 export ES_URL=http://127.0.0.1:9200
 export DASHSCOPE_API_KEY={some_key}
 
+DASHSCOPE_API_KEY 开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
+
+# 未导入数据，查询问题。返回通义千问默认答案
+python query.py -q 'how about the rights of men'
+
+## outputs
+question: how about the rights of men
+answer: The topic of men's rights often refers to discussions around legal, social, and political issues that affect men specifically or differently from women. Movements related to men's rights advocate for addressing areas where men face discrimination or unique challenges, such as:
+
+    Child Custody: Ensuring that men have equal opportunities for custody of their children following divorce or separation.
+    Domestic Violence: Recognizing that men can also be victims of domestic abuse and ensuring they have access to support services.
+    Mental Health and Suicide Rates: Addressing the higher rates of suicide among men and providing mental health resources.
+    Military Conscription: In some countries, only men are required to register for military service, which is seen as a gender-based obligation.
+    Workplace Safety: Historically, more men than women have been employed in high-risk occupations, leading to higher workplace injury and death rates.
+    Parental Leave: Advocating for paternity leave policies that allow men to take time off work for family care.
+    Men's rights activism often intersects with broader discussions on gender equality and aims to promote fairness and equity across genders. It's important to note that while advocating for these issues, it should be done in a way that does not detract from or oppose the goals of gender equality and the rights of other groups. The focus should be on creating a fair society where everyone has equal opportunities and protections under the law.
+
 
 # 导入数据
-python data_ingestion.py example/data/declaration_of_the_rights_of_man_1789.pdf
+python data_ingestion.py -p example/data/
+
+or
+
+python data_ingestion.py -p example/data/declaration_of_the_rights_of_man_1789.pdf
 
 
-# 查询问题
+# 导入数据后，查询问题。通义千问模型会根据 RAG 系统的检索结果，结合上下文，给出答案。
 python query.py -q 'how about the rights of men'
 
 ## outputs
