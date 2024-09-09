@@ -25,13 +25,16 @@ def read_fn(path):
     return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
 
-def parse_pdf(doc_path, output_dir, end_page_id):
+def parse_pdf(doc_path, output_dir, end_page_id, is_ocr):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
         file_name = f"{str(Path(doc_path).stem)}_{time.time()}"
         pdf_data = read_fn(doc_path)
-        parse_method = "auto"
+        if is_ocr:
+            parse_method = "ocr"
+        else:
+            parse_method = "auto"
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         do_parse(
             output_dir,
@@ -92,9 +95,9 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages):
+def to_markdown(file_path, end_pages, is_ocr):
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1)
+    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr)
     archive_zip_path = os.path.join("./output", compute_sha256(local_md_dir) + ".zip")
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -109,14 +112,6 @@ def to_markdown(file_path, end_pages):
     new_pdf_path = os.path.join(local_md_dir, file_name + "_layout.pdf")
 
     return md_content, txt_content, archive_zip_path, new_pdf_path
-
-
-# def show_pdf(file_path):
-#     with open(file_path, "rb") as f:
-#         base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-#     pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" ' \
-#                   f'width="100%" height="1000" type="application/pdf">'
-#     return pdf_display
 
 
 latex_delimiters = [{"left": "$$", "right": "$$", "display": True},
@@ -141,13 +136,131 @@ model_init = init_model()
 logger.info(f"model_init: {model_init}")
 
 
+# with open("header.html", "r") as file:
+#     header = file.read()
+header = """
+<html><head>
+  <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"> -->
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css">
+<style>
+  .link-block {
+    border: 1px solid transparent;
+    border-radius: 24px;
+    background-color: rgba(54, 54, 54, 1);
+    cursor: pointer !important;
+  }
+  .link-block:hover {
+    background-color: rgba(54, 54, 54, 0.75) !important;
+    cursor: pointer !important;
+  }
+  .external-link {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    line-height: 36px;
+    padding: 0 16px;
+    cursor: pointer !important;
+  }
+  .external-link,
+  .external-link:hover {
+    cursor: pointer !important;
+  }
+  a {
+    text-decoration: none;
+  }
+</style></head>
+
+<body>
+  <div style="
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      background: linear-gradient(45deg, #007bff 0%, #0056b3 100%);
+      padding: 24px;
+      gap: 24px;
+      border-radius: 8px;
+    ">
+    <div style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      ">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h1 style="
+            font-size: 48px;
+            color: #fafafa;
+            margin: 0;
+            font-family: 'Trebuchet MS', 'Lucida Sans Unicode',
+              'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+          ">
+          MinerU: PDF Extraction Demo
+        </h1>
+      </div>
+    </div>
+
+    <p style="
+        margin: 0;
+        line-height: 1.6rem;
+        font-size: 16px;
+        color: #fafafa;
+        opacity: 0.8;
+      ">
+      A one-stop, open-source, high-quality data extraction tool, supports
+      PDF/webpage/e-book extraction.<br>
+    </p>
+    <style>
+      .link-block {
+        display: inline-block;
+      }
+      .link-block + .link-block {
+        margin-left: 20px;
+      }
+    </style>
+
+    <div class="column has-text-centered">
+      <div class="publication-links">
+        <!-- Code Link. -->
+        <span class="link-block">
+          <a href="https://github.com/opendatalab/MinerU" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
+            <span class="icon" style="margin-right: 4px">
+              <i class="fab fa-github" style="color: white; margin-right: 4px"></i>
+            </span>
+            <span style="color: white">Code</span>
+          </a>
+        </span>
+
+        <!-- Homepage Link. -->
+        <span class="link-block">
+          <a href="https://opendatalab.com/" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
+            <span class="icon" style="margin-right: 8px">
+              <i class="fas fa-globe" style="color: white"></i>
+            </span>
+            <span style="color: white">Homepage</span>
+          </a>
+        </span>
+      </div>
+    </div>
+
+    <!-- New Demo Links -->
+  </div>
+
+
+</body></html>
+"""
+
+
 if __name__ == "__main__":
     with gr.Blocks() as demo:
+        gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 pdf_show = gr.Markdown()
                 max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
                 with gr.Row() as bu_flow:
+                    is_ocr = gr.Checkbox(label="Force enable OCR")
                     change_bu = gr.Button("Convert")
                     clear_bu = gr.ClearButton([pdf_show], value="Clear")
                 pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
@@ -160,8 +273,8 @@ if __name__ == "__main__":
                                          latex_delimiters=latex_delimiters, line_breaks=True)
                     with gr.Tab("Markdown text"):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
-        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages], outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([md, pdf_show, md_text, output_file])
+        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr], outputs=[md, md_text, output_file, pdf_show])
+        clear_bu.add([md, pdf_show, md_text, output_file, is_ocr])
 
     demo.launch()
 
