@@ -40,7 +40,7 @@
 </div>
 
 # 更新记录
-- 2024/09/09 0.8.0发布，支持Dockerfile快速部署，提供[RAG](https://github.com/opendatalab/MinerU/blob/realese-0.8.0/projects/llama_index_rag/README_zh-CN.md)项目示例，上线huggingface、modelscope demo
+- 2024/09/09 0.8.0发布，支持Dockerfile快速部署，上线huggingface、modelscope demo
 - 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
 - 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能
 - 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
