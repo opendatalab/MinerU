@@ -1,4 +1,5 @@
 import json
+import time
 import traceback
 import requests
 from flask import request, current_app, url_for, send_from_directory
@@ -67,8 +68,7 @@ class UploadPdfView(Resource):
         upload_dir = f"{current_app.static_folder}/{pdf_upload_folder}"
         if not Path(upload_dir).exists():
             Path(upload_dir).mkdir(parents=True, exist_ok=True)
-        file_key = calculate_file_hash(file)
-        # new_filename = f"{int(time.time())}_{filename}"
+        file_key = f"{calculate_file_hash(file)}{int(time.time())}"
         new_filename = f"{file_key}_{filename}"
         file_path = f"{upload_dir}/{new_filename}"
         # file.save(file_path)

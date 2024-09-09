@@ -29,12 +29,14 @@ class AnalysisTaskProgressView(Resource):
             case 'pdf':
                 analysis_pdf = AnalysisPdf.query.filter(AnalysisPdf.id == analysis_task.analysis_pdf_id).first()
                 file_url = url_for('analysis.uploadpdfview', filename=analysis_task.file_name, as_attachment=False)
+                file_name_split = analysis_task.file_name.split("_")
+                file_name = file_name_split[-1] if file_name_split else analysis_task.file_name
                 if analysis_task.status == 0:
                     data = {
                         "state": task_state_map.get(analysis_task.status),
                         "status": analysis_pdf.status,
                         "url": file_url,
-                        "fileName": analysis_task.file_name,
+                        "fileName": file_name,
                         "content": [],
                         "markdownUrl": [],
                         "fullMdLink": "",
@@ -47,10 +49,10 @@ class AnalysisTaskProgressView(Resource):
                         md_link_list = json.loads(analysis_pdf.md_link_list)
                         full_md_link = analysis_pdf.full_md_link
                         data = {
-                            "state": task_state_map.get(analysis_task.status),
+                            "state": "failed",
                             "status": analysis_pdf.status,
                             "url": file_url,
-                            "fileName": analysis_task.file_name,
+                            "fileName": file_name,
                             "content": bbox_info,
                             "markdownUrl": md_link_list,
                             "fullMdLink": full_md_link,
@@ -62,7 +64,7 @@ class AnalysisTaskProgressView(Resource):
                             "state": task_state_map.get(analysis_task.status),
                             "status": analysis_pdf.status,
                             "url": file_url,
-                            "fileName": analysis_task.file_name,
+                            "fileName": file_name,
                             "content": [],
                             "markdownUrl": [],
                             "fullMdLink": "",
@@ -75,7 +77,7 @@ class AnalysisTaskProgressView(Resource):
                         "state": task_state_map.get(analysis_task.status),
                         "status": analysis_pdf.status,
                         "url": file_url,
-                        "fileName": analysis_task.file_name,
+                        "fileName": file_name,
                         "content": [],
                         "markdownUrl": [],
                         "fullMdLink": "",
@@ -83,13 +85,13 @@ class AnalysisTaskProgressView(Resource):
                     }
                     return generate_response(data=data)
             case 'formula-detect':
-                pass
+                return generate_response(code=400, msg="Not yet supported", msgZH="功能待开发")
             case 'formula-extract':
-                pass
+                return generate_response(code=400, msg="Not yet supported", msgZH="功能待开发")
             case 'table-recogn':
-                return generate_response(code=400, msg="Not yet supported", msgZH="尚不支持")
+                return generate_response(code=400, msg="Not yet supported", msgZH="功能待开发")
             case _:
-                return generate_response()
+                return generate_response(code=400, msg="Not yet supported", msgZH="参数不支持")
 
 
 class AnalysisTaskView(Resource):
@@ -181,6 +183,8 @@ class AnalysisTaskView(Resource):
         params = json.loads(request.data)
         id = params.get('id')
         analysis_task = AnalysisTask.query.filter(AnalysisTask.id == id).first()
+        if not analysis_task:
+            return generate_response(code=400, msg="Invalid ID", msgZH="无效id")
         match analysis_task.task_type:
             case 'pdf':
                 task_r_p = AnalysisTask.query.filter(AnalysisTask.status.in_([0, 2])).first()
@@ -215,9 +219,11 @@ class AnalysisTaskView(Resource):
 
                 # 生成文件的URL路径
                 file_url = url_for('analysis.uploadpdfview', filename=analysis_task.file_name, as_attachment=False)
+                file_name_split = analysis_task.file_name.split("_")
+                new_file_name = file_name_split[-1] if file_name_split else analysis_task.file_name
                 data = {
                     "url": file_url,
-                    "fileName": analysis_task.file_name,
+                    "fileName": new_file_name,
                     "id": analysis_task.id
                 }
                 return generate_response(data=data)

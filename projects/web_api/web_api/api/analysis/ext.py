@@ -2,8 +2,8 @@ import os
 
 task_state_map = {
     0: "running",
-    1: "finished",
-    2: "pending",
+    1: "done",
+    2: "pending"
 }
 
 
