@@ -10,6 +10,6 @@ config:
 weights:
   layout: Layout/model_final.pth
   mfd: MFD/weights.pt
-  mfr: MFR/UniMERNet
+  mfr: MFR/unimernet_base
   struct_eqtable: TabRec/StructEqTable
   TableMaster: TabRec/TableMaster
