@@ -354,7 +354,6 @@ TODO
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
 
 
-
 # FAQ
 
 [FAQ in Chinese](docs/FAQ_zh_cn.md)
