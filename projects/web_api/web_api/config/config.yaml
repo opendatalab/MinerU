@@ -1,0 +1,31 @@
+﻿# 基本配置
+BaseConfig: &base
+  DEBUG: false
+  PORT: 5559
+  LOG_LEVEL: "DEBUG"
+  SQLALCHEMY_TRACK_MODIFICATIONS: true
+  SQLALCHEMY_DATABASE_URI: ""
+  PROPAGATE_EXCEPTIONS: true
+  SECRET_KEY: "#$%^&**$##*(*^%%$**((&"
+  JWT_SECRET_KEY: "#$%^&**$##*(*^%%$**((&"
+  JWT_ACCESS_TOKEN_EXPIRES: 3600
+  PDF_UPLOAD_FOLDER: "upload_pdf"
+  PDF_ANALYSIS_FOLDER: "analysis_pdf"
+
+# 开发配置
+DevelopmentConfig:
+  <<: *base
+  database:
+    type: sqlite
+    path: config/mineru_web.db
+
+# 生产配置
+ProductionConfig:
+  <<: *base
+
+# 测试配置
+TestingConfig:
+  <<: *base
+
+# 当前使用配置
+CurrentConfig: "DevelopmentConfig"

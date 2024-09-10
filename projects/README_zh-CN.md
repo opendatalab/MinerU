@@ -3,3 +3,5 @@
 ## 项目列表
 
 - [llama_index_rag](./llama_index_rag/README_zh-CN.md): 基于 llama_index 构建轻量级 RAG 系统
+- [gradio_app](./gradio_app/README_zh-CN.md): 基于 Gradio 的 Web 应用
+
