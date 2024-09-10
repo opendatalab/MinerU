@@ -3,6 +3,7 @@ repos:
     rev: 5.0.4
     hooks:
       - id: flake8
+        args: ["--max-line-length=120", "--ignore=E131,E125,W503,W504,E203"]
   - repo: https://github.com/PyCQA/isort
     rev: 5.11.5
     hooks:
@@ -11,6 +12,7 @@ repos:
     rev: v0.32.0
     hooks:
       - id: yapf
+        args: ["--style={based_on_style: google, column_limit: 120, indent_width: 4}"]
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.1
     hooks:
@@ -41,4 +43,4 @@ repos:
     rev: v1.3.1
     hooks:
       - id: docformatter
-        args: ["--in-place", "--wrap-descriptions", "79"]
+        args: ["--in-place", "--wrap-descriptions", "119"]

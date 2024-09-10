@@ -4,8 +4,8 @@
   <img src="docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 
-
 <!-- icon -->
+
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
@@ -13,33 +13,41 @@
 [![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
+
+[![HuggingFace](https://img.shields.io/badge/HuggingFace-Demo-yellow.svg?logo=data:image/png;base64,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)](https://huggingface.co/spaces/opendatalab/MinerU)
+[![ModelScope](https://img.shields.io/badge/ModelScope-Demo-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+[![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/papayalove/b5f4913389e7ff9883c6b687de156e78/mineru_demo.ipynb)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-green)](#)
+
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
+
 [English](README.md) | [简体中文](README_zh-CN.md)
 
-
 <!-- hot link -->
+
 <p align="center">
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
 </p>
 
 <!-- join us -->
+
 <p align="center">
     👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 
 </div>
 
-
 # 更新记录
+- 2024/09/09 0.8.0发布，支持Dockerfile快速部署，同时上线了huggingface、modelscope demo
 - 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
 - 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能
 - 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
 - 2024/07/05 首次开源
 
-
 <!-- TABLE OF CONTENT -->
+
 <details open="open">
   <summary><h2 style="display: inline-block">文档目录</h2></summary>
   <ol>
@@ -78,10 +86,10 @@
   </ol>
 </details>
 
-
-
 # MinerU
+
 ## 项目简介
+
 MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
 相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关PDF**。
@@ -100,16 +108,15 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 支持CPU和GPU环境
 - 支持windows/linux/mac平台
 
-
 ## 快速开始
 
 如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
 如果遇到解析效果不及预期，参考 <a href="#known-issues">Known Issues</a></br>
 有3种不同方式可以体验MinerU的效果：
+
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
 - [Linux/Windows + CUDA](#使用gpu)
-
 
 **⚠️安装前必看——软硬件环境支持说明**
 
@@ -174,38 +181,47 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 [在线体验点击这里](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
 
-
 ### 使用CPU快速体验
 
 #### 1. 安装magic-pdf
+
 最新版本国内镜像源同步可能会有延迟，请耐心等待
+
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
 pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+
 #### 2. 下载模型权重文件
 
 详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
+
 > ❗️模型下载后请务必检查模型文件是否下载完整
-> 
+>
 > 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
 
 #### 3. 拷贝配置文件并进行配置
+
 在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
+
 > ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
-> 
->  windows的用户目录为 "C:\Users\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
+>
+> windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
+
 ```bash
 cp magic-pdf.template.json ~/magic-pdf.json
 ```
 
 在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
+
 > ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
 >
 > windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
 > 
+
 > 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
+
 ```json
 {
   // other config
@@ -218,13 +234,27 @@ cp magic-pdf.template.json ~/magic-pdf.json
 }
 ```
 
-
 ### 使用GPU
+
 如果您的设备支持CUDA，且满足主线环境中的显卡要求，则可以使用GPU加速，请根据自己的系统选择适合的教程：
 
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
-
+- 使用Docker快速部署
+    > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
+    > 
+    > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
+    > 
+    > ```bash
+    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+    > ```
+  ```bash
+  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  docker build -t mineru:latest .
+  docker run --rm -it --gpus=all mineru:latest /bin/bash
+  magic-pdf --help
+  ```
+    
 
 ## 使用
 
@@ -238,12 +268,12 @@ Options:
   -v, --version                display the version and exit
   -p, --path PATH              local pdf filepath or directory  [required]
   -o, --output-dir TEXT        output local directory
-  -m, --method [ocr|txt|auto]  the method for parsing pdf.  
+  -m, --method [ocr|txt|auto]  the method for parsing pdf.
                                ocr: using ocr technique to extract information from pdf,
                                txt: suitable for the text-based pdf only and outperform ocr,
                                auto: automatically choose the best method for parsing pdf
                                   from ocr and txt.
-                               without method specified, auto will be used by default. 
+                               without method specified, auto will be used by default.
   --help                       Show this message and exit.
 
 
@@ -258,21 +288,21 @@ magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
 
 ```text
-├── some_pdf.md                 # markdown 文件
-├── images                      # 存放图片目录
-├── layout.pdf                  # layout 绘图
-├── middle.json                 # minerU 中间处理结果
-├── model.json                  # 模型推理结果
-├── origin.pdf                  # 原 pdf 文件
-└── spans.pdf                   # 最小粒度的bbox位置信息绘图
+├── some_pdf.md                          # markdown 文件
+├── images                               # 存放图片目录
+├── some_pdf_layout.pdf                  # layout 绘图
+├── some_pdf_middle.json                 # minerU 中间处理结果
+├── some_pdf_model.json                  # 模型推理结果
+├── some_pdf_origin.pdf                  # 原 pdf 文件
+└── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
 ```
 
 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
-
 ### API
 
 处理本地磁盘上的文件
+
 ```python
 image_writer = DiskReaderWriter(local_image_dir)
 image_dir = str(os.path.basename(local_image_dir))
@@ -285,6 +315,7 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
 处理对象存储上的文件
+
 ```python
 s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
 image_dir = "s3://img_bucket/"
@@ -298,10 +329,10 @@ pipe.pipe_parse()
 md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 ```
 
-详细实现可参考 
+详细实现可参考
+
 - [demo.py 最简单的处理方式](demo/demo.py)
 - [magic_pdf_parse_main.py 能够更清晰看到处理流程](demo/magic_pdf_parse_main.py)
-
 
 ### 二次开发
 
@@ -314,11 +345,11 @@ TODO
 - [ ] 正文中代码块识别
 - [ ] 目录识别
 - [x] 表格识别
-- [ ] 化学式识别
+- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] 几何图形识别
 
-
 # Known Issues
+
 - 阅读顺序基于规则的分割，在一些情况下会乱序
 - 不支持竖排文字
 - 列表、代码块、目录在layout模型里还没有支持
@@ -328,10 +359,11 @@ TODO
 
 
 # FAQ
+
 [常见问题](docs/FAQ_zh_cn.md)
 
-[FAQ](docs/FAQ_en_us.md)
 
+[FAQ](docs/FAQ_en_us.md)
 
 # All Thanks To Our Contributors
 
@@ -346,6 +378,7 @@ TODO
 本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
 
 # Acknowledgments
+
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
@@ -382,9 +415,11 @@ TODO
 </a>
 
 # Magic-doc
+
 [Magic-Doc](https://github.com/InternLM/magic-doc) Fast speed ppt/pptx/doc/docx/pdf extraction tool
 
 # Magic-html
+
 [Magic-HTML](https://github.com/opendatalab/magic-html) Mixed web page extraction tool
 
 # Links
