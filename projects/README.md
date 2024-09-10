@@ -1,7 +1,6 @@
-# 欢迎来到 MinerU 项目列表
+# Welcome to the MinerU Project List
 
-## 项目列表
+## Project List
 
-- [llama_index_rag](./llama_index_rag/README.md): 基于 llama_index 构建轻量级 RAG 系统
+- [llama_index_rag](./llama_index_rag/README.md): Build a lightweight RAG system based on llama_index
 
-- [web_api](./web_api/README.md): PDF解析的restful api服务

@@ -202,7 +202,9 @@ def __valign_lines(blocks, layout_bboxes):
     min_distance = 3
     min_sample = 2
     new_layout_bboxes = []
-
+    # add bbox_fs for para split calculation
+    for block in blocks:
+        block["bbox_fs"] = copy.deepcopy(block["bbox"])
     for layout_box in layout_bboxes:
         blocks_in_layoutbox = [b for b in blocks if
                                b["type"] == BlockType.Text and is_in_layout(b['bbox'], layout_box['layout_bbox'])]
@@ -251,8 +253,6 @@ def __valign_lines(blocks, layout_bboxes):
                                     min([line['bbox'][1] for line in block['lines']]),
                                     max([line['bbox'][2] for line in block['lines']]),
                                     max([line['bbox'][3] for line in block['lines']])]
-            else:
-                block['bbox_fs'] = copy.deepcopy(block['bbox'])
         """新计算layout的bbox，因为block的bbox变了。"""
         layout_x0 = min([block['bbox_fs'][0] for block in blocks_in_layoutbox])
         layout_y0 = min([block['bbox_fs'][1] for block in blocks_in_layoutbox])
