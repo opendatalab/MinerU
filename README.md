@@ -40,6 +40,7 @@
 </div>
 
 # Changelog
+- 2024/09/09: Version 0.8.0 released, supporting fast deployment with Dockerfile, and launching demos on Huggingface and Modelscope.
 - 2024/08/30: Version 0.7.1 released, add paddle tablemaster table recognition option
 - 2024/08/09: Version 0.7.0b1 released, simplified installation process, added table recognition functionality
 - 2024/08/01: Version 0.6.2b1 released, optimized dependency conflict issues and installation documentation
@@ -351,7 +352,6 @@ TODO
 - Comic books, art books, elementary school textbooks, and exercise books are not well-parsed yet
 - Enabling OCR may produce better results in PDFs with a high density of formulas
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
-
 
 
 # FAQ

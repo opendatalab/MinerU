@@ -230,6 +230,7 @@ class CustomPEKModel:
         )
         # 初始化ocr
         if self.apply_ocr:
+
             # self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
             self.ocr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
@@ -249,6 +250,7 @@ class CustomPEKModel:
                 table_max_time=self.table_max_time,
                 device=self.device
             )
+
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -389,6 +391,7 @@ class CustomPEKModel:
                         latex_code = self.table_model.image2latex(new_image)[0]
                 else:
                     html_code = self.table_model.img2html(new_image)
+
                 run_time = time.time() - single_table_start_time
                 logger.info(f"------------table recognition processing ends within {run_time}s-----")
                 if run_time > self.table_max_time:
