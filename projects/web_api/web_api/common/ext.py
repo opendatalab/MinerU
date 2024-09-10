@@ -11,8 +11,8 @@ def is_pdf(filename, file):
     :return: 如果文件是PDF格式，则返回True，否则返回False
     """
     # 检查文件扩展名  https://arxiv.org/pdf/2405.08702 pdf链接可能存在不带扩展名的情况，先注释
-    if not filename.endswith('.pdf'):
-        return False
+    # if not filename.endswith('.pdf'):
+    #     return False
 
     # 检查MIME类型
     mime_type, _ = mimetypes.guess_type(filename)

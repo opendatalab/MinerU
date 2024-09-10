@@ -88,8 +88,9 @@ def analysis_pdf_task(pdf_dir, image_dir, pdf_path, is_ocr, analysis_pdf_id):
                 img_name = Path(img).name
                 regex = re.compile(fr'.*\((.*?{img_name})')
                 regex_result = regex.search(md_content)
-                img_url = url_for('analysis.imgview', filename=img_name, as_attachment=False)
-                md_content = md_content.replace(regex_result.group(1), f"{img_url}&pdf={pdf_name}")
+                if regex_result:
+                    img_url = url_for('analysis.imgview', filename=img_name, as_attachment=False)
+                    md_content = md_content.replace(regex_result.group(1), f"{img_url}&pdf={pdf_name}")
 
         full_md_content = ""
         for item in json.loads(md_content):

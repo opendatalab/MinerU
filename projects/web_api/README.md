@@ -21,6 +21,13 @@ pip install poetry
 portey install
 ```
 
+启动服务
+
+```bash
+cd web_api
+python app.py
+```
+
 接口文档
 ```
 在浏览器打开 mineru-web接口文档.html

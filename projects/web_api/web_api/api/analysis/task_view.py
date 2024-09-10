@@ -18,25 +18,33 @@ class TaskView(Resource):
         analysis_task_pending = AnalysisTask.query.filter(AnalysisTask.status == 2).order_by(
             AnalysisTask.create_date.asc()).all()
         pending_total = db.session.query(func.count(AnalysisTask.id)).filter(AnalysisTask.status == 2).scalar()
-        task_nums = pending_total + 1
-        data = [
-            {
-                "queues": task_nums,  # 正在排队的任务总数
-                "rank": 1,
-                "id": analysis_task_running.id,
-                "url": url_for('analysis.uploadpdfview', filename=analysis_task_running.file_name, as_attachment=False),
-                "fileName": analysis_task_running.file_name,
-                "type": analysis_task_running.task_type,
-                "state": task_state_map.get(analysis_task_running.status),
-            }
-        ]
+        if analysis_task_running:
+            task_nums = pending_total + 1
+            file_name_split = analysis_task_running.file_name.split("_")
+            new_file_name = file_name_split[-1] if file_name_split else analysis_task_running.file_name
+            data = [
+                {
+                    "queues": task_nums,  # 正在排队的任务总数
+                    "rank": 1,
+                    "id": analysis_task_running.id,
+                    "url": url_for('analysis.uploadpdfview', filename=analysis_task_running.file_name, as_attachment=False),
+                    "fileName": new_file_name,
+                    "type": analysis_task_running.task_type,
+                    "state": task_state_map.get(analysis_task_running.status),
+                }
+            ]
+        else:
+            task_nums = pending_total
+            data = []
         for n, task in enumerate(analysis_task_pending):
+            file_name_split = task.file_name.split("_")
+            new_file_name = file_name_split[-1] if file_name_split else task.file_name
             data.append({
                 "queues": task_nums,  # 正在排队的任务总数
                 "rank": n + 2,
                 "id": task.id,
                 "url": url_for('analysis.uploadpdfview', filename=task.file_name, as_attachment=False),
-                "fileName": task.file_name,
+                "fileName": new_file_name,
                 "type": task.task_type,
                 "state": task_state_map.get(task.status),
             })
@@ -59,8 +67,10 @@ class HistoricalTasksView(Resource):
                                                                                               error_out=False)
         data = []
         for n, task in enumerate(analysis_task):
+            file_name_split = task.file_name.split("_")
+            new_file_name = file_name_split[-1] if file_name_split else task.file_name
             data.append({
-                "fileName": task.file_name,
+                "fileName": new_file_name,
                 "id": task.id,
                 "type": task.task_type,
                 "state": task_state_map.get(task.status),
@@ -75,14 +85,11 @@ class HistoricalTasksView(Resource):
 
 
 class DeleteTaskView(Resource):
-    def delete(self):
+    def delete(self, id):
         """
         删除任务历史记录
         :return:
         """
-        params = json.loads(request.data)
-        id = params.get('id')
-
         analysis_task = AnalysisTask.query.filter(AnalysisTask.id == id, AnalysisTask.status != 0).first()
         if analysis_task:
             analysis_pdf = AnalysisPdf.query.filter(AnalysisPdf.id == AnalysisTask.analysis_pdf_id).first()

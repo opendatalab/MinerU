@@ -9,7 +9,7 @@ class AnalysisTask(db.Model):
     file_name = db.Column(db.Text, comment="文件名称")
     task_type = db.Column(db.String(128), comment="任务类型")
     is_ocr = db.Column(db.Boolean, default=False, comment="是否ocr")
-    status = db.Column(db.Integer, default=0, comment="状态")  # 0 running  1 finished  2 pending
+    status = db.Column(db.Integer, default=0, comment="状态")  # 0 running  1 done  2 pending
     analysis_pdf_id = db.Column(db.Integer, comment="analysis_pdf的id")
     create_date = db.Column(db.DateTime(), nullable=False, default=datetime.now)
     update_date = db.Column(db.DateTime(), nullable=False, default=datetime.now, onupdate=datetime.now)
