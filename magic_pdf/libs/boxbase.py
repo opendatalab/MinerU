@@ -426,3 +426,22 @@ def bbox_distance(bbox1, bbox2):
     elif top:
         return y2 - y1b
     return 0.0
+
+
+def box_area(bbox):
+    return (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+
+
+def get_overlap_area(bbox1, bbox2):
+    """计算box1和box2的重叠面积占bbox1的比例."""
+    # Determine the coordinates of the intersection rectangle
+    x_left = max(bbox1[0], bbox2[0])
+    y_top = max(bbox1[1], bbox2[1])
+    x_right = min(bbox1[2], bbox2[2])
+    y_bottom = min(bbox1[3], bbox2[3])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # The area of overlap area
+    return (x_right - x_left) * (y_bottom - y_top)
