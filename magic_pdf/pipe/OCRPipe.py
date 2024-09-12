@@ -10,16 +10,25 @@ from magic_pdf.user_api import parse_ocr_pdf
 class OCRPipe(AbsPipe):
 
     def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool = False,
+<<<<<<< HEAD
                  start_page_id=0, end_page_id=None, lang=None):
         super().__init__(pdf_bytes, model_list, image_writer, is_debug, start_page_id, end_page_id, lang)
+=======
+                 start_page_id=0, end_page_id=None):
+        super().__init__(pdf_bytes, model_list, image_writer, is_debug, start_page_id, end_page_id)
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 
     def pipe_classify(self):
         pass
 
     def pipe_analyze(self):
         self.model_list = doc_analyze(self.pdf_bytes, ocr=True,
+<<<<<<< HEAD
                                       start_page_id=self.start_page_id, end_page_id=self.end_page_id,
                                       lang=self.lang)
+=======
+                                      start_page_id=self.start_page_id, end_page_id=self.end_page_id)
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 
     def pipe_parse(self):
         self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug,

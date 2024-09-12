@@ -71,7 +71,11 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
 def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
                     input_model_is_empty: bool = False,
+<<<<<<< HEAD
                     start_page_id=0, end_page_id=None, lang=None,
+=======
+                    start_page_id=0, end_page_id=None,
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
                     *args, **kwargs):
     """
     ocr和文本混合的pdf，全部解析出来
@@ -95,11 +99,17 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
     if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         if input_model_is_empty:
+<<<<<<< HEAD
             pdf_models = doc_analyze(pdf_bytes,
                                      ocr=True,
                                      start_page_id=start_page_id,
                                      end_page_id=end_page_id,
                                      lang=lang)
+=======
+            pdf_models = doc_analyze(pdf_bytes, ocr=True,
+                                     start_page_id=start_page_id,
+                                     end_page_id=end_page_id)
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")

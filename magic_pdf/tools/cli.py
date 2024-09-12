@@ -45,6 +45,7 @@ without method specified, auto will be used by default.""",
     default='auto',
 )
 @click.option(
+<<<<<<< HEAD
     '-l',
     '--lang',
     'lang',
@@ -57,6 +58,8 @@ without method specified, auto will be used by default.""",
     default=None,
 )
 @click.option(
+=======
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
     '-d',
     '--debug',
     'debug_able',
@@ -80,7 +83,11 @@ without method specified, auto will be used by default.""",
     help='The ending page for PDF parsing, beginning from 0.',
     default=None,
 )
+<<<<<<< HEAD
 def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
+=======
+def cli(path, output_dir, method, debug_able, start_page_id, end_page_id):
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
     model_config.__use_inside_model__ = True
     model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
@@ -102,7 +109,10 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
                 debug_able,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
+<<<<<<< HEAD
                 lang=lang
+=======
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
             )
 
         except Exception as e:

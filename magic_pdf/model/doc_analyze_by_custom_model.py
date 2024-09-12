@@ -106,7 +106,11 @@ def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None):
 
 
 def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
+<<<<<<< HEAD
                 start_page_id=0, end_page_id=None, lang=None):
+=======
+                start_page_id=0, end_page_id=None):
+>>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(ocr, show_log, lang)
