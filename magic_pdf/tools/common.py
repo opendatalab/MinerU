@@ -50,7 +50,7 @@ def do_parse(
 >>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 ):
     if debug_able:
-        logger.warning("debug mode is on")
+        logger.warning('debug mode is on')
         f_dump_content_list = True
         f_draw_model_bbox = True
 
