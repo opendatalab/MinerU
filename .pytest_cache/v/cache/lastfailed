@@ -1,4 +1,0 @@
-{
-  "tests/unittest/test_unit.py": true,
-  "tests/unittest/test_table/test_tablemaster.py": true
-}
