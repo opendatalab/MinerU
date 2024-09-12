@@ -178,6 +178,56 @@ class TestCli:
             common.cli_count_folders_and_check_contents(
                 os.path.join(res_path, demo_name, 'ocr'))
 
+    @pytest.mark.P1
+    def test_pdf_dev_cli_local_jsonl_txt(self):
+        """magic_pdf_dev cli local txt."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s -m %s' % (jsonl_path, "txt")
+        logging.info(cmd)
+        os.system(cmd)
+
+
+    @pytest.mark.P1
+    def test_pdf_dev_cli_local_jsonl_ocr(self):
+        """magic_pdf_dev cli local ocr."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s -m %s' % (jsonl_path, 'ocr')
+        logging.info(cmd)
+        os.system(cmd)
+
+    @pytest.mark.P1
+    def test_pdf_dev_cli_local_jsonl_auto(self):
+        """magic_pdf_dev cli local auto."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s -m %s' % (jsonl_path, 'auto')
+        logging.info(cmd)
+        os.system(cmd)
+
+    @pytest.mark.P1
+    def test_pdf_dev_cli_s3_jsonl_txt(self):
+        """magic_pdf_dev cli s3 txt."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s -m %s' % (jsonl_path, "txt")
+        logging.info(cmd)
+        os.system(cmd)
+
+
+    @pytest.mark.P1
+    def test_pdf_dev_cli_s3_jsonl_ocr(self):
+        """magic_pdf_dev cli s3 ocr."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s -m %s' % (jsonl_path, 'ocr')
+        logging.info(cmd)
+        os.system(cmd)
+
+    @pytest.mark.P1
+    def test_pdf_dev_cli_s3_jsonl_auto(self):
+        """magic_pdf_dev cli s3 auto."""
+        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
+        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'auto')
+        logging.info(cmd)
+        os.system(cmd)
+
 
 if __name__ == '__main__':
     pytest.main()
