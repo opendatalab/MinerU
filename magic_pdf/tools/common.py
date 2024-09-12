@@ -46,7 +46,7 @@ def do_parse(
     end_page_id=None,
 ):
     if debug_able:
-        logger.warning("debug mode is on")
+        logger.warning('debug mode is on')
         f_dump_content_list = True
         f_draw_model_bbox = True
 
