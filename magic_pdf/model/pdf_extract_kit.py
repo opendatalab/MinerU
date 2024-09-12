@@ -74,16 +74,11 @@ def layout_model_init(weight, config_file, device):
     return model
 
 
-<<<<<<< HEAD
 def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3, lang=None):
     if lang is not None:
         model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh, lang=lang)
     else:
         model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh)
-=======
-def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3):
-    model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh)
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
     return model
 
 
@@ -142,12 +137,8 @@ def atom_model_init(model_name: str, **kwargs):
     elif model_name == AtomicModel.OCR:
         atom_model = ocr_model_init(
             kwargs.get("ocr_show_log"),
-<<<<<<< HEAD
             kwargs.get("det_db_box_thresh"),
             kwargs.get("lang")
-=======
-            kwargs.get("det_db_box_thresh")
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
         )
     elif model_name == AtomicModel.Table:
         atom_model = table_model_init(
@@ -244,12 +235,8 @@ class CustomPEKModel:
             self.ocr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
                 ocr_show_log=show_log,
-<<<<<<< HEAD
                 det_db_box_thresh=0.3,
                 lang=self.lang
-=======
-                det_db_box_thresh=0.3
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
             )
         # init table model
         if self.apply_table:

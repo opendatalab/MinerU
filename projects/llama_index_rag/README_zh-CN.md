@@ -59,10 +59,6 @@ Server: Docker Engine - Community
 ```bash
 # install
 pip install modelscope==1.14.0
-<<<<<<< HEAD
-
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 pip install llama-index-vector-stores-elasticsearch==0.2.0
 pip install llama-index-embeddings-dashscope==0.2.0
 pip install llama-index-core==0.10.68
@@ -74,19 +70,12 @@ pip install accelerate==0.33.0
 pip uninstall transformer-engine
 ```
 
-<<<<<<< HEAD
 
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 ## 示例
 
 ````bash
 cd  projects/llama_index_rag
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 docker compose up -d
 
 or
@@ -94,20 +83,14 @@ or
 docker-compose up -d
 
 
-<<<<<<< HEAD
 # 配置环境变量
 
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 export ES_USER=elastic
 export ES_PASSWORD=llama_index
 export ES_URL=http://127.0.0.1:9200
 export DASHSCOPE_API_KEY={some_key}
 
-<<<<<<< HEAD
 
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 DASHSCOPE_API_KEY 开通参考[文档](https://help.aliyun.com/zh/dashscope/opening-service)
 
 # 未导入数据，查询问题。返回通义千问默认答案
@@ -135,10 +118,7 @@ python data_ingestion.py -p example/data/declaration_of_the_rights_of_man_1789.p
 
 
 # 导入数据后，查询问题。通义千问模型会根据 RAG 系统的检索结果，结合上下文，给出答案。
-<<<<<<< HEAD
 
-=======
->>>>>>> 0140d7d271ac3b1561ca2272030e9e038b469999
 python query.py -q 'how about the rights of men'
 
 ## outputs
