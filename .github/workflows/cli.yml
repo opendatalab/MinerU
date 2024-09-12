@@ -39,7 +39,7 @@ jobs:
     - name: unit test
       run: | 
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py
-        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m  pytest  tests/test_unit.py --cov=magic_pdf/ --cov-report term-missing --cov-report html
+        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m  pytest  tests/unittest --cov=magic_pdf/ --cov-report term-missing --cov-report html
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
     - name: cli test
       run: |
