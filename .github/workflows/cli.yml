@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
-    runs-on: pdf
+    runs-on: qa
     timeout-minutes: 120
     strategy:
       fail-fast: true
