@@ -33,6 +33,7 @@ jobs:
 
     - name: install
       run: |
+        git checkout dev
         echo $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
       run: |  

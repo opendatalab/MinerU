@@ -313,7 +313,7 @@ class TestCli:
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
-        res = common.check_close_tables(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
         assert res is True
 
 if __name__ == '__main__':
