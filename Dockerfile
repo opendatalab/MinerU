@@ -1,5 +1,5 @@
 # Use the official Ubuntu base image
-FROM ubuntu:latest
+FROM ubuntu:22.04
 
 # Set environment variables to non-interactive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,17 +29,23 @@ RUN python3 -m venv /opt/mineru_venv
 
 # Activate the virtual environment and install necessary Python packages
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install magic-pdf[full-cpu] detectron2 --extra-index-url https://myhloli.github.io/wheels/"
+    pip3 install --upgrade pip && \
+    wget https://gitee.com/myhloli/MinerU/raw/master/requirements-docker.txt && \
+    pip3 install -r requirements-docker.txt --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
 
-# Copy the configuration file template and set up the model directory
-COPY magic-pdf.template.json /root/magic-pdf.json
+# Copy the configuration file template and install magic-pdf latest
+RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
+    cp magic-pdf.template.json /root/magic-pdf.json && \
+    source /opt/mineru_venv/bin/activate && \
+    pip3 install -U magic-pdf"
 
-# Set the models directory in the configuration file (adjust the path as needed)
-RUN sed -i 's|/tmp/models|/opt/models|g' /root/magic-pdf.json
-
-# Create the models directory
-RUN mkdir -p /opt/models
+# Download models and update the configuration file
+RUN /bin/bash -c "pip3 install modelscope && \
+    wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py && \
+    python3 download_models.py && \
+    sed -i 's|/tmp/models|/root/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models|g' /root/magic-pdf.json && \
+    sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]

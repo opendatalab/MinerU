@@ -80,6 +80,7 @@ body:
         -
         - "0.6.x"
         - "0.7.x"
+        - "0.8.x"
     validations:
       required: true
 

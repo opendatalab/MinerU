@@ -41,6 +41,23 @@ def remove_horizontal_overlap_block_which_smaller(all_bboxes):
     return is_useful_block_horz_overlap, all_bboxes
 
 
+def __replace_STX_ETX(text_str:str):
+    """ Replace \u0002 and \u0003, as these characters become garbled when extracted using pymupdf. In fact, they were originally quotation marks.
+Drawback: This issue is only observed in English text; it has not been found in Chinese text so far.
+
+    Args:
+        text_str (str): raw text
+
+    Returns:
+        _type_: replaced text
+    """
+    if text_str:
+        s = text_str.replace('\u0002', "'")
+        s = s.replace("\u0003", "'")
+        return s
+    return text_str
+
+
 def txt_spans_extract(pdf_page, inline_equations, interline_equations):
     text_raw_blocks = pdf_page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
     char_level_text_blocks = pdf_page.get_text("rawdict", flags=fitz.TEXTFLAGS_TEXT)[
@@ -63,7 +80,7 @@ def txt_spans_extract(pdf_page, inline_equations, interline_equations):
                     spans.append(
                         {
                             "bbox": list(span["bbox"]),
-                            "content": span["text"],
+                            "content": __replace_STX_ETX(span["text"]),
                             "type": ContentType.Text,
                             "score": 1.0,
                         }
@@ -175,7 +192,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     sorted_blocks = sort_blocks_by_layout(all_bboxes, layout_bboxes)
 
     '''将span填入排好序的blocks中'''
-    block_with_spans, spans = fill_spans_in_blocks(sorted_blocks, spans, 0.6)
+    block_with_spans, spans = fill_spans_in_blocks(sorted_blocks, spans, 0.3)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
@@ -208,13 +225,17 @@ def pdf_parse_union(pdf_bytes,
     magic_model = MagicModel(model_list, pdf_docs)
 
     '''根据输入的起始范围解析pdf'''
-    end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
+    # end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
+    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf_docs) - 1
+
+    if end_page_id > len(pdf_docs) - 1:
+        logger.warning("end_page_id is out of range, use pdf_docs length")
+        end_page_id = len(pdf_docs) - 1
 
     '''初始化启动时间'''
     start_time = time.time()
 
-    for page_id in range(start_page_id, end_page_id + 1):
-
+    for page_id, page in enumerate(pdf_docs):
         '''debug时输出每页解析的耗时'''
         if debug_mode:
             time_now = time.time()
@@ -224,7 +245,14 @@ def pdf_parse_union(pdf_bytes,
             start_time = time_now
 
         '''解析pdf中的每一页'''
-        page_info = parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode)
+        if start_page_id <= page_id <= end_page_id:
+            page_info = parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode)
+        else:
+            page_w = page.rect.width
+            page_h = page.rect.height
+            page_info = ocr_construct_page_component_v2([], [], page_id, page_w, page_h, [],
+                                                [], [], [], [],
+                                                True, "skip page")
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""

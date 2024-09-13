@@ -57,14 +57,14 @@ class ModelSingleton:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def get_model(self, ocr: bool, show_log: bool):
-        key = (ocr, show_log)
+    def get_model(self, ocr: bool, show_log: bool, lang=None):
+        key = (ocr, show_log, lang)
         if key not in self._models:
-            self._models[key] = custom_model_init(ocr=ocr, show_log=show_log)
+            self._models[key] = custom_model_init(ocr=ocr, show_log=show_log, lang=lang)
         return self._models[key]
 
 
-def custom_model_init(ocr: bool = False, show_log: bool = False):
+def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None):
     model = None
 
     if model_config.__model_mode__ == "lite":
@@ -78,7 +78,7 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
         model_init_start = time.time()
         if model == MODEL.Paddle:
             from magic_pdf.model.pp_structure_v2 import CustomPaddleModel
-            custom_model = CustomPaddleModel(ocr=ocr, show_log=show_log)
+            custom_model = CustomPaddleModel(ocr=ocr, show_log=show_log, lang=lang)
         elif model == MODEL.PEK:
             from magic_pdf.model.pdf_extract_kit import CustomPEKModel
             # 从配置文件读取model-dir和device
@@ -89,7 +89,9 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
                            "show_log": show_log,
                            "models_dir": local_models_dir,
                            "device": device,
-                           "table_config": table_config}
+                           "table_config": table_config,
+                           "lang": lang,
+                           }
             custom_model = CustomPEKModel(**model_input)
         else:
             logger.error("Not allow model_name!")
@@ -103,20 +105,32 @@ def custom_model_init(ocr: bool = False, show_log: bool = False):
     return custom_model
 
 
-def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False):
+def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
+                start_page_id=0, end_page_id=None, lang=None):
 
     model_manager = ModelSingleton()
-    custom_model = model_manager.get_model(ocr, show_log)
+    custom_model = model_manager.get_model(ocr, show_log, lang)
 
     images = load_images_from_pdf(pdf_bytes)
 
+    # end_page_id = end_page_id if end_page_id else len(images) - 1
+    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(images) - 1
+
+    if end_page_id > len(images) - 1:
+        logger.warning("end_page_id is out of range, use images length")
+        end_page_id = len(images) - 1
+
     model_json = []
     doc_analyze_start = time.time()
+
     for index, img_dict in enumerate(images):
         img = img_dict["img"]
         page_width = img_dict["width"]
         page_height = img_dict["height"]
-        result = custom_model(img)
+        if start_page_id <= index <= end_page_id:
+            result = custom_model(img)
+        else:
+            result = []
         page_info = {"page_no": index, "height": page_height, "width": page_width}
         page_dict = {"layout_dets": result, "page_info": page_info}
         model_json.append(page_dict)

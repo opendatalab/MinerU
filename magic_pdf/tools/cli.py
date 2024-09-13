@@ -1,53 +1,89 @@
 import os
-import click
-from loguru import logger
 from pathlib import Path
 
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
+import click
+from loguru import logger
+
 import magic_pdf.model as model_config
-from magic_pdf.tools.common import parse_pdf_methods, do_parse
 from magic_pdf.libs.version import __version__
+from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
+from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+from magic_pdf.tools.common import do_parse, parse_pdf_methods
 
 
 @click.command()
-@click.version_option(__version__, "--version", "-v", help="display the version and exit")
+@click.version_option(__version__,
+                      '--version',
+                      '-v',
+                      help='display the version and exit')
 @click.option(
-    "-p",
-    "--path",
-    "path",
+    '-p',
+    '--path',
+    'path',
     type=click.Path(exists=True),
     required=True,
-    help="local pdf filepath or directory",
+    help='local pdf filepath or directory',
 )
 @click.option(
-    "-o",
-    "--output-dir",
-    "output_dir",
-    type=str,
-    help="output local directory",
-    default="",
+    '-o',
+    '--output-dir',
+    'output_dir',
+    type=click.Path(),
+    required=True,
+    help='output local directory',
 )
 @click.option(
-    "-m",
-    "--method",
-    "method",
+    '-m',
+    '--method',
+    'method',
     type=parse_pdf_methods,
-    help="""the method for parsing pdf. 
+    help="""the method for parsing pdf.
 ocr: using ocr technique to extract information from pdf.
 txt: suitable for the text-based pdf only and outperform ocr.
 auto: automatically choose the best method for parsing pdf from ocr and txt.
 without method specified, auto will be used by default.""",
-    default="auto",
+    default='auto',
 )
-def cli(path, output_dir, method):
+@click.option(
+    '-l',
+    '--lang',
+    'lang',
+    type=str,
+    help="""
+    Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
+    You should input "Abbreviation" with language form url:
+    https://paddlepaddle.github.io/PaddleOCR/en/ppocr/blog/multi_languages.html#5-support-languages-and-abbreviations
+    """,
+    default=None,
+)
+@click.option(
+    '-d',
+    '--debug',
+    'debug_able',
+    type=bool,
+    help='Enables detailed debugging information during the execution of the CLI commands.',
+    default=False,
+)
+@click.option(
+    '-s',
+    '--start',
+    'start_page_id',
+    type=int,
+    help='The starting page for PDF parsing, beginning from 0.',
+    default=0,
+)
+@click.option(
+    '-e',
+    '--end',
+    'end_page_id',
+    type=int,
+    help='The ending page for PDF parsing, beginning from 0.',
+    default=None,
+)
+def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
     model_config.__use_inside_model__ = True
-    model_config.__model_mode__ = "full"
-    if output_dir == "":
-        if os.path.isdir(path):
-            output_dir = os.path.join(path, "output")
-        else:
-            output_dir = os.path.join(os.path.dirname(path), "output")
+    model_config.__model_mode__ = 'full'
+    os.makedirs(output_dir, exist_ok=True)
 
     def read_fn(path):
         disk_rw = DiskReaderWriter(os.path.dirname(path))
@@ -63,17 +99,21 @@ def cli(path, output_dir, method):
                 pdf_data,
                 [],
                 method,
+                debug_able,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                lang=lang
             )
 
         except Exception as e:
             logger.exception(e)
 
     if os.path.isdir(path):
-        for doc_path in Path(path).glob("*.pdf"):
+        for doc_path in Path(path).glob('*.pdf'):
             parse_doc(doc_path)
     else:
         parse_doc(path)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     cli()
