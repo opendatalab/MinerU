@@ -2,7 +2,7 @@
 get cov
 """
 from bs4 import BeautifulSoup
-
+import shutil
 def get_covrage():
     """get covrage"""
     # 发送请求获取网页内容

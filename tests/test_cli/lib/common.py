@@ -1,7 +1,7 @@
 """common definitions."""
 import os
 import shutil
-
+import re
 
 def check_shell(cmd):
     """shell successful."""
@@ -41,3 +41,30 @@ def delete_file(path):
             print(f"Directory '{path}' and its contents deleted.")
         except TypeError as e:
             print(f"Error deleting directory '{path}': {e}")
+
+def check_latex_table_exists(file_path):
+    """check latex table exists."""
+    pattern = r'\\begin\{tabular\}.*?\\end\{tabular\}'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    matches = re.findall(pattern, content, re.DOTALL)
+    return len(matches) > 0
+
+def check_html_table_exists(file_path):
+    """check html table exists."""
+    pattern = r'<table.*?>.*?</table>'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    matches = re.findall(pattern, content, re.DOTALL)
+    return len(matches) > 0
+
+def check_close_tables(file_path):
+    """delete no tables."""
+    latex_pattern = r'\\begin\{tabular\}.*?\\end\{tabular\}'
+    html_pattern = r'<table.*?>.*?</table>'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    latex_matches = re.findall(latex_pattern, content, re.DOTALL)
+    html_matches = re.findall(html_pattern, content, re.DOTALL)
+    if len(latex_matches) == 0 and len(html_matches) == 0:
+        return True
