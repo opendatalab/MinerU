@@ -18,8 +18,11 @@ def region_to_bbox(region):
 
 
 class CustomPaddleModel:
-    def __init__(self, ocr: bool = False, show_log: bool = False):
-        self.model = PPStructure(table=False, ocr=ocr, show_log=show_log)
+    def __init__(self, ocr: bool = False, show_log: bool = False, lang=None):
+        if lang is not None:
+            self.model = PPStructure(table=False, ocr=ocr, show_log=show_log, lang=lang)
+        else:
+            self.model = PPStructure(table=False, ocr=ocr, show_log=show_log)
 
     def __call__(self, img):
         try:

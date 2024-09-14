@@ -2,7 +2,8 @@ from loguru import logger
 import os
 import time
 
-from magic_pdf.libs.Constants import TABLE_MAX_TIME_VALUE
+from magic_pdf.libs.Constants import *
+from magic_pdf.model.model_list import AtomicModel
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 try:
@@ -34,10 +35,18 @@ from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Pre
 from magic_pdf.model.pek_sub_modules.post_process import get_croped_image, latex_rm_whitespace
 from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
 from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
+from magic_pdf.model.ppTableModel import ppTableModel
 
 
-def table_model_init(model_path, max_time, _device_='cpu'):
-    table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
+def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
+    if table_model_type == STRUCT_EQTABLE:
+        table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
+    else:
+        config = {
+            "model_dir": model_path,
+            "device": _device_
+        }
+        table_model = ppTableModel(config)
     return table_model
 
 
@@ -49,18 +58,27 @@ def mfd_model_init(weight):
 def mfr_model_init(weight_dir, cfg_path, _device_='cpu'):
     args = argparse.Namespace(cfg_path=cfg_path, options=None)
     cfg = Config(args)
-    cfg.config.model.pretrained = os.path.join(weight_dir, "pytorch_model.bin")
+    cfg.config.model.pretrained = os.path.join(weight_dir, "pytorch_model.pth")
     cfg.config.model.model_config.model_name = weight_dir
     cfg.config.model.tokenizer_config.path = weight_dir
     task = tasks.setup_task(cfg)
     model = task.build_model(cfg)
     model = model.to(_device_)
     vis_processor = load_processor('formula_image_eval', cfg.config.datasets.formula_rec_eval.vis_processor.eval)
-    return model, vis_processor
+    mfr_transform = transforms.Compose([vis_processor, ])
+    return [model, mfr_transform]
 
 
 def layout_model_init(weight, config_file, device):
     model = Layoutlmv3_Predictor(weight, config_file, device)
+    return model
+
+
+def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3, lang=None):
+    if lang is not None:
+        model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh, lang=lang)
+    else:
+        model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh)
     return model
 
 
@@ -81,6 +99,59 @@ class MathDataset(Dataset):
         if self.transform:
             image = self.transform(raw_image)
             return image
+
+
+class AtomModelSingleton:
+    _instance = None
+    _models = {}
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def get_atom_model(self, atom_model_name: str, **kwargs):
+        if atom_model_name not in self._models:
+            self._models[atom_model_name] = atom_model_init(model_name=atom_model_name, **kwargs)
+        return self._models[atom_model_name]
+
+
+def atom_model_init(model_name: str, **kwargs):
+
+    if model_name == AtomicModel.Layout:
+        atom_model = layout_model_init(
+            kwargs.get("layout_weights"),
+            kwargs.get("layout_config_file"),
+            kwargs.get("device")
+        )
+    elif model_name == AtomicModel.MFD:
+        atom_model = mfd_model_init(
+            kwargs.get("mfd_weights")
+        )
+    elif model_name == AtomicModel.MFR:
+        atom_model = mfr_model_init(
+            kwargs.get("mfr_weight_dir"),
+            kwargs.get("mfr_cfg_path"),
+            kwargs.get("device")
+        )
+    elif model_name == AtomicModel.OCR:
+        atom_model = ocr_model_init(
+            kwargs.get("ocr_show_log"),
+            kwargs.get("det_db_box_thresh"),
+            kwargs.get("lang")
+        )
+    elif model_name == AtomicModel.Table:
+        atom_model = table_model_init(
+            kwargs.get("table_model_type"),
+            kwargs.get("table_model_path"),
+            kwargs.get("table_max_time"),
+            kwargs.get("device")
+        )
+    else:
+        logger.error("model name not allow")
+        exit(1)
+
+    return atom_model
 
 
 class CustomPEKModel:
@@ -104,13 +175,16 @@ class CustomPEKModel:
         # 初始化解析配置
         self.apply_layout = kwargs.get("apply_layout", self.configs["config"]["layout"])
         self.apply_formula = kwargs.get("apply_formula", self.configs["config"]["formula"])
+        # table config
         self.table_config = kwargs.get("table_config", self.configs["config"]["table_config"])
         self.apply_table = self.table_config.get("is_table_recog_enable", False)
         self.table_max_time = self.table_config.get("max_time", TABLE_MAX_TIME_VALUE)
+        self.table_model_type = self.table_config.get("model", TABLE_MASTER)
         self.apply_ocr = ocr
+        self.lang = kwargs.get("lang", None)
         logger.info(
-            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}".format(
-                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table
+            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}, lang: {}".format(
+                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table, self.lang
             )
         )
         assert self.apply_layout, "DocAnalysis must contain layout model."
@@ -120,31 +194,63 @@ class CustomPEKModel:
         models_dir = kwargs.get("models_dir", os.path.join(root_dir, "resources", "models"))
         logger.info("using models_dir: {}".format(models_dir))
 
+        atom_model_manager = AtomModelSingleton()
+
         # 初始化公式识别
         if self.apply_formula:
             # 初始化公式检测模型
-            self.mfd_model = mfd_model_init(str(os.path.join(models_dir, self.configs["weights"]["mfd"])))
-
+            # self.mfd_model = mfd_model_init(str(os.path.join(models_dir, self.configs["weights"]["mfd"])))
+            self.mfd_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.MFD,
+                mfd_weights=str(os.path.join(models_dir, self.configs["weights"]["mfd"]))
+            )
             # 初始化公式解析模型
             mfr_weight_dir = str(os.path.join(models_dir, self.configs["weights"]["mfr"]))
             mfr_cfg_path = str(os.path.join(model_config_dir, "UniMERNet", "demo.yaml"))
-            self.mfr_model, mfr_vis_processors = mfr_model_init(mfr_weight_dir, mfr_cfg_path, _device_=self.device)
-            self.mfr_transform = transforms.Compose([mfr_vis_processors, ])
+            # self.mfr_model, mfr_vis_processors = mfr_model_init(mfr_weight_dir, mfr_cfg_path, _device_=self.device)
+            # self.mfr_transform = transforms.Compose([mfr_vis_processors, ])
+            self.mfr_model, self.mfr_transform = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.MFR,
+                mfr_weight_dir=mfr_weight_dir,
+                mfr_cfg_path=mfr_cfg_path,
+                device=self.device
+            )
 
         # 初始化layout模型
-        self.layout_model = Layoutlmv3_Predictor(
-            str(os.path.join(models_dir, self.configs['weights']['layout'])),
-            str(os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml")),
+        # self.layout_model = Layoutlmv3_Predictor(
+        #     str(os.path.join(models_dir, self.configs['weights']['layout'])),
+        #     str(os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml")),
+        #     device=self.device
+        # )
+        self.layout_model = atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.Layout,
+            layout_weights=str(os.path.join(models_dir, self.configs['weights']['layout'])),
+            layout_config_file=str(os.path.join(model_config_dir, "layoutlmv3", "layoutlmv3_base_inference.yaml")),
             device=self.device
         )
         # 初始化ocr
         if self.apply_ocr:
-            self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
 
-        # init structeqtable
+            # self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
+            self.ocr_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.OCR,
+                ocr_show_log=show_log,
+                det_db_box_thresh=0.3,
+                lang=self.lang
+            )
+        # init table model
         if self.apply_table:
-            self.table_model = table_model_init(str(os.path.join(models_dir, self.configs["weights"]["table"])),
-                                                max_time = self.table_max_time, _device_=self.device)
+            table_model_dir = self.configs["weights"][self.table_model_type]
+            # self.table_model = table_model_init(self.table_model_type, str(os.path.join(models_dir, table_model_dir)),
+            #                                     max_time=self.table_max_time, _device_=self.device)
+            self.table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.Table,
+                table_model_type=self.table_model_type,
+                table_model_path=str(os.path.join(models_dir, table_model_dir)),
+                table_max_time=self.table_max_time,
+                device=self.device
+            )
+
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -278,16 +384,29 @@ class CustomPEKModel:
                 new_image, _ = crop_img(res, pil_img)
                 single_table_start_time = time.time()
                 logger.info("------------------table recognition processing begins-----------------")
-                with torch.no_grad():
-                    latex_code = self.table_model.image2latex(new_image)[0]
+                latex_code = None
+                html_code = None
+                if self.table_model_type == STRUCT_EQTABLE:
+                    with torch.no_grad():
+                        latex_code = self.table_model.image2latex(new_image)[0]
+                else:
+                    html_code = self.table_model.img2html(new_image)
+
                 run_time = time.time() - single_table_start_time
                 logger.info(f"------------table recognition processing ends within {run_time}s-----")
                 if run_time > self.table_max_time:
                     logger.warning(f"------------table recognition processing exceeds max time {self.table_max_time}s----------")
                 # 判断是否返回正常
-                expected_ending = latex_code.strip().endswith('end{tabular}') or latex_code.strip().endswith('end{table}')
-                if latex_code and expected_ending:
-                    res["latex"] = latex_code
+
+                if latex_code:
+                    expected_ending = latex_code.strip().endswith('end{tabular}') or latex_code.strip().endswith(
+                        'end{table}')
+                    if expected_ending:
+                        res["latex"] = latex_code
+                    else:
+                        logger.warning(f"------------table recognition processing fails----------")
+                elif html_code:
+                    res["html"] = html_code
                 else:
                     logger.warning(f"------------table recognition processing fails----------")
             table_cost = round(time.time() - table_start, 2)

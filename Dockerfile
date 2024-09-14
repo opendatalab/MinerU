@@ -38,13 +38,13 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
 RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
-    pip3 install magic-pdf==0.7.0b1"
+    pip3 install -U magic-pdf"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
     wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py && \
     python3 download_models.py && \
-    sed -i 's|/tmp/models|/root/.cache/modelscope/hub/wanderkid/PDF-Extract-Kit/models|g' /root/magic-pdf.json && \
+    sed -i 's|/tmp/models|/root/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models|g' /root/magic-pdf.json && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
 # Set the entry point to activate the virtual environment and run the command line tool

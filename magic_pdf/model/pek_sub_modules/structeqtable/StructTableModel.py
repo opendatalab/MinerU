@@ -12,7 +12,6 @@ class StructTableModel:
             self.model = StructTable(self.model_path, self.max_new_tokens, self.max_time)
 
     def image2latex(self, image) -> str:
-        #
         table_latex = self.model.forward(image)
         return table_latex
 

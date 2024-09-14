@@ -25,8 +25,9 @@ PARSE_TYPE_TXT = "txt"
 PARSE_TYPE_OCR = "ocr"
 
 
-def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args,
-                  **kwargs):
+def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
+                  start_page_id=0, end_page_id=None,
+                  *args, **kwargs):
     """
     解析文本类pdf
     """
@@ -34,7 +35,8 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
         pdf_bytes,
         pdf_models,
         imageWriter,
-        start_page_id=start_page,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
         debug_mode=is_debug,
     )
 
@@ -45,8 +47,9 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
     return pdf_info_dict
 
 
-def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0, *args,
-                  **kwargs):
+def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
+                  start_page_id=0, end_page_id=None,
+                  *args, **kwargs):
     """
     解析ocr类pdf
     """
@@ -54,7 +57,8 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
         pdf_bytes,
         pdf_models,
         imageWriter,
-        start_page_id=start_page,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
         debug_mode=is_debug,
     )
 
@@ -65,8 +69,9 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
     return pdf_info_dict
 
 
-def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False, start_page=0,
+def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
                     input_model_is_empty: bool = False,
+                    start_page_id=0, end_page_id=None, lang=None,
                     *args, **kwargs):
     """
     ocr和文本混合的pdf，全部解析出来
@@ -78,7 +83,8 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
                 pdf_bytes,
                 pdf_models,
                 imageWriter,
-                start_page_id=start_page,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
                 debug_mode=is_debug,
             )
         except Exception as e:
@@ -89,7 +95,11 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
     if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         if input_model_is_empty:
-            pdf_models = doc_analyze(pdf_bytes, ocr=True)
+            pdf_models = doc_analyze(pdf_bytes,
+                                     ocr=True,
+                                     start_page_id=start_page_id,
+                                     end_page_id=end_page_id,
+                                     lang=lang)
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
