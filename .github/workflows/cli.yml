@@ -35,11 +35,12 @@ jobs:
       run: |
         source activate qa
         git checkout dev
-        echo $GITHUB_WORKSPACE && sh tests/retry_env.sh
+        echo ${{ GITHUB_WORKSPACE }}
+        cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
       run: |  
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
-        cd $GITHUB_WORKSPACE && export PYTHONPATH="${PYTHONPATH}:/home/quyuan/Magic-PDF" && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
+        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
     - name: cli test
       run: |
