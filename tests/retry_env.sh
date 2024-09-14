@@ -6,9 +6,8 @@ retry_count=0
 
 while true; do
     # prepare env
-    source activate MinerU
     pip install -r requirements-qa.txt
-    pip uninstall magic-pdf
+    #pip uninstall magic-pdf
     pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
     pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
     exit_code=$?
