@@ -35,7 +35,6 @@ jobs:
       run: |
         source activate qa
         git checkout dev
-        echo ${{ GITHUB_WORKSPACE }}
         cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
       run: |  
