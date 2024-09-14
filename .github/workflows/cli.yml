@@ -36,7 +36,7 @@ jobs:
         source activate mineru
         conda env list
         pip show coverage
-        cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
+        # cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
       run: |  
         pip show coverage
