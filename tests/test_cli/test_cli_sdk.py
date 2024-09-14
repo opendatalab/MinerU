@@ -315,6 +315,6 @@ class TestCli:
         os.system(cli_cmd)
         res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
         assert res is True
-
+ 
 if __name__ == '__main__':
     pytest.main()

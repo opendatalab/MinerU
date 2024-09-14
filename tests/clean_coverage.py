@@ -22,3 +22,4 @@ def delete_file(path):
 
 if __name__ == "__main__":
     delete_file("htmlcov")
+    delete_file(".coverage")
