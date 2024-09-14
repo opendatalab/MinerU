@@ -248,7 +248,9 @@ class TestCli:
 
     @pytest.mark.P1
     def test_s3_sdk_suto(self):
-        "test s3 sdk auto."
+        """
+        test s3 sdk auto.
+        """
         pdf_ak = os.environ.get('pdf_ak', "")
         pdf_sk = os.environ.get('pdf_sk', "")
         pdf_bucket = os.environ.get('bucket', "")
