@@ -31,20 +31,15 @@ jobs:
       with:
         fetch-depth: 2
 
-    - name: install
+    - name: install&test
       run: |
         source activate mineru
         conda env list
         pip show coverage
         # cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
-    - name: unit test
-      run: |  
-        pip show coverage
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
         cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
-    - name: cli test
-      run: |
         cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
