@@ -33,7 +33,7 @@ jobs:
 
     - name: install
       run: |
-        source activate MinerU
+        source activate qa
         git checkout dev
         echo $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
