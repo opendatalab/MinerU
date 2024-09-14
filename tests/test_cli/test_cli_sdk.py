@@ -4,7 +4,7 @@ import os
 import pytest
 from conf import conf
 from lib import common
-
+import time
 import magic_pdf.model as model_config
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
@@ -21,9 +21,6 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_auto_sdk(self):
         """pdf sdk auto test."""
-        current_working_directory = os.getcwd()
-        os.system('conda env list')
-        print("current_working_directory", current_working_directory)
         demo_names = list()
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -59,6 +56,7 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_ocr_sdk(self):
         """pdf sdk ocr test."""
+        time.sleep(2)
         demo_names = list()
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -94,6 +92,7 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_txt_sdk(self):
         """pdf sdk txt test."""
+        time.sleep(2)
         demo_names = list()
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -128,6 +127,7 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_cli_auto(self):
         """magic_pdf cli test auto."""
+        time.sleep(2)
         demo_names = []
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -146,6 +146,7 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_clit_txt(self):
         """magic_pdf cli test txt."""
+        time.sleep(2)
         demo_names = []
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -164,6 +165,7 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_clit_ocr(self):
         """magic_pdf cli test ocr."""
+        time.sleep(2)
         demo_names = []
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
@@ -182,6 +184,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_local_jsonl_txt(self):
         """magic_pdf_dev cli local txt."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, "txt")
         logging.info(cmd)
@@ -190,6 +193,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_local_jsonl_ocr(self):
         """magic_pdf_dev cli local ocr."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'ocr')
         logging.info(cmd)
@@ -198,6 +202,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_local_jsonl_auto(self):
         """magic_pdf_dev cli local auto."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'auto')
         logging.info(cmd)
@@ -206,6 +211,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_s3_jsonl_txt(self):
         """magic_pdf_dev cli s3 txt."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, "txt")
         logging.info(cmd)
@@ -215,6 +221,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_s3_jsonl_ocr(self):
         """magic_pdf_dev cli s3 ocr."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'ocr')
         logging.info(cmd)
@@ -223,6 +230,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_s3_jsonl_auto(self):
         """magic_pdf_dev cli s3 auto."""
+        time.sleep(2)
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'auto')
         logging.info(cmd)
@@ -231,6 +239,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_pdf_json_auto(self):
         """magic_pdf_dev cli pdf+json auto."""
+        time.sleep(2)
         json_path = os.path.join(pdf_dev_path, 'test_model.json')
         pdf_path = os.path.join(pdf_dev_path, 'pdf', 'research_report_1f978cd81fb7260c8f7644039ec2c054.pdf')
         cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
@@ -240,6 +249,7 @@ class TestCli:
     @pytest.mark.P1
     def test_pdf_dev_cli_pdf_json_ocr(self):
         """magic_pdf_dev cli pdf+json ocr."""
+        time.sleep(2)
         json_path = os.path.join(pdf_dev_path, 'test_model.json')
         pdf_path = os.path.join(pdf_dev_path, 'pdf', 'research_report_1f978cd81fb7260c8f7644039ec2c054.pdf')
         cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
@@ -251,6 +261,7 @@ class TestCli:
         """
         test s3 sdk auto.
         """
+        time.sleep(2)
         pdf_ak = os.environ.get('pdf_ak', "")
         pdf_sk = os.environ.get('pdf_sk', "")
         pdf_bucket = os.environ.get('bucket', "")
@@ -271,6 +282,7 @@ class TestCli:
     @pytest.mark.P1
     def test_local_magic_pdf_open_st_table(self):
         """magic pdf cli open st table."""
+        time.sleep(2)
         pre_cmd = "cp ~/magic_pdf_st.json ~/magic_pdf.json"
         os.system(pre_cmd)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
@@ -283,6 +295,7 @@ class TestCli:
     @pytest.mark.P1
     def test_local_magic_pdf_open_html_table(self):
         """magic pdf cli open html table."""
+        time.sleep(2)
         pre_cmd = "cp ~/magic_pdf_html.json ~/magic_pdf.json"
         os.system(pre_cmd)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
@@ -295,6 +308,7 @@ class TestCli:
     @pytest.mark.P1
     def test_local_magic_pdf_close_html_table(self):
         """magic pdf cli close table."""
+        time.sleep(2)
         pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic_pdf.json"
         os.system(pre_cmd)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
@@ -307,6 +321,7 @@ class TestCli:
     @pytest.mark.P1
     def test_magic_pdf_close_html_table_cpu(self):
         """magic pdf cli close html table cpu mode."""
+        time.sleep(2)
         pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic_pdf.json"
         os.system(pre_cmd)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
