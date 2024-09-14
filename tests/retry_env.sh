@@ -19,6 +19,6 @@ while true; do
             exit 1
         fi
         echo "test.sh 执行失败 (退出码: $exit_code)。尝试第 $retry_count 次重试..."
-        sleep 5  # 等待 5 秒后重试
+        sleep 5
     fi
 done
