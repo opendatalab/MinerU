@@ -98,7 +98,6 @@ class TestCli:
                 demo_names.append(pdf_file.split('.')[0])
         for demo_name in demo_names:
             pdf_path = os.path.join(pdf_dev_path, 'pdf', f'{demo_name}.pdf')
-            print(pdf_path)
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
