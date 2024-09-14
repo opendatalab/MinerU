@@ -21,6 +21,8 @@ class TestCli:
     @pytest.mark.P0
     def test_pdf_auto_sdk(self):
         """pdf sdk auto test."""
+        current_working_directory = os.getcwd()
+        print("current_working_directory", current_working_directory)
         demo_names = list()
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
         for pdf_file in os.listdir(pdf_path):
