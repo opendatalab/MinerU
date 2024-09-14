@@ -248,71 +248,7 @@ class TestCli:
 
     @pytest.mark.P1
     def test_s3_sdk_suto(self):
-        pdf_ak = os.environ.get('pdf_ak', "")
-        pdf_sk = os.environ.get('pdf_sk', "")
-        pdf_bucket = os.environ.get('bucket', "")
-        pdf_endpoint = os.environ.get('pdf_endpoint', "")
-        s3_pdf_path = conf.conf["s3_pdf_path"]
-        image_dir = "s3://" + pdf_bucket + "/mineru/test/test.md"
-        s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-        s3image_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint, parent_path=image_dir)
-        pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-        jso_useful_key = {"_pdf_type": "", "model_list": []}
-        pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
-        pipe.pipe_classify()
-        pipe.pipe_analyze()
-        pipe.pipe_parse()
-        md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-        assert len(md_content) > 0
-
-    @pytest.mark.P1
-    def test_pdf_dev_cli_local_jsonl_ocr(self):
-        """magic_pdf_dev cli local ocr."""
-        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
-        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'ocr')
-        logging.info(cmd)
-        os.system(cmd)
-
-    @pytest.mark.P1
-    def test_pdf_dev_cli_s3_jsonl_txt(self):
-        """magic_pdf_dev cli s3 txt."""
-        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
-        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, "txt")
-        logging.info(cmd)
-        os.system(cmd)
-
-
-    @pytest.mark.P1
-    def test_pdf_dev_cli_s3_jsonl_auto(self):
-        """magic_pdf_dev cli s3 auto."""
-        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
-        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'auto')
-        logging.info(cmd)
-        os.system(cmd)
-
-
-    @pytest.mark.P1
-    def test_pdf_dev_cli_pdf_json_auto(self):
-        """magic_pdf_dev cli pdf+json auto."""
-        json_path = os.path.join(pdf_dev_path, 'test_model.json')
-        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'test_rearch_report.pdf')
-        cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
-        logging.info(cmd)
-        os.system(cmd)
-    
-    @pytest.mark.P1
-    def test_pdf_dev_cli_pdf_json_ocr(self):
-        """magic_pdf_dev cli pdf+json ocr."""
-        json_path = os.path.join(pdf_dev_path, 'test_model.json')
-        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'test_rearch_report.pdf')
-        cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
-        logging.info(cmd)
-        os.system(cmd)
-
-
-    @pytest.mark.P1
-    def test_s3_sdk_auto(self):
-        """s3 sdk auto."""
+        "test s3 sdk auto."
         pdf_ak = os.environ.get('pdf_ak', "")
         pdf_sk = os.environ.get('pdf_sk', "")
         pdf_bucket = os.environ.get('bucket', "")
