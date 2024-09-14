@@ -185,9 +185,6 @@ class TestCli:
         cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, "txt")
         logging.info(cmd)
         os.system(cmd)
-<<<<<<< HEAD
-=======
-
 
     @pytest.mark.P1
     def test_pdf_dev_cli_local_jsonl_ocr(self):
@@ -268,9 +265,6 @@ class TestCli:
         pipe.pipe_parse()
         md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
         assert len(md_content) > 0
-
->>>>>>> dbdf27dcf3d9d14048b53a11ae97c5d35353220a
-
 
     @pytest.mark.P1
     def test_pdf_dev_cli_local_jsonl_ocr(self):
