@@ -5,7 +5,6 @@ retry_count=0
 
 while true; do
     # prepare env
-    conda env list
     pip install -r requirements-qa.txt
     pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
     python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
