@@ -44,7 +44,6 @@ jobs:
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
     - name: cli test
       run: |
-        echo ${{ env.bucket }}
         cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:

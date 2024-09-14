@@ -22,6 +22,7 @@ class TestCli:
     def test_pdf_auto_sdk(self):
         """pdf sdk auto test."""
         current_working_directory = os.getcwd()
+        os.system('conda env list')
         print("current_working_directory", current_working_directory)
         demo_names = list()
         pdf_path = os.path.join(pdf_dev_path, 'pdf')
