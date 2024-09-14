@@ -45,7 +45,7 @@ jobs:
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
     - name: cli test
       run: |
-        source ~/.bashrc && cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
+        source ~/.bashrc && cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
