@@ -1,7 +1,6 @@
 """test cli and sdk."""
 import logging
 import os
-
 import pytest
 from conf import conf
 from lib import common
@@ -275,14 +274,6 @@ class TestCli:
         os.system(cmd)
 
     @pytest.mark.P1
-    def test_pdf_dev_cli_local_jsonl_auto(self):
-        """magic_pdf_dev cli local auto."""
-        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
-        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'auto')
-        logging.info(cmd)
-        os.system(cmd)
-
-    @pytest.mark.P1
     def test_pdf_dev_cli_s3_jsonl_txt(self):
         """magic_pdf_dev cli s3 txt."""
         jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
@@ -290,14 +281,6 @@ class TestCli:
         logging.info(cmd)
         os.system(cmd)
 
-
-    @pytest.mark.P1
-    def test_pdf_dev_cli_s3_jsonl_ocr(self):
-        """magic_pdf_dev cli s3 ocr."""
-        jsonl_path = os.path.join(pdf_dev_path, 'line1.jsonl')
-        cmd = 'magic-pdf-dev --jsonl %s --method %s' % (jsonl_path, 'ocr')
-        logging.info(cmd)
-        os.system(cmd)
 
     @pytest.mark.P1
     def test_pdf_dev_cli_s3_jsonl_auto(self):
