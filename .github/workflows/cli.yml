@@ -36,7 +36,6 @@ jobs:
     - name: install
       run: |
         source activate mineru
-        git checkout dev
         cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
       run: |  
