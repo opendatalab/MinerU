@@ -246,7 +246,7 @@ class TestCli:
         """magic_pdf_dev cli pdf+json auto."""
         time.sleep(2)
         json_path = os.path.join(pdf_dev_path, 'test_model.json')
-        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'research_report_1f978cd81fb7260c8f7644039ec2c054.pdf')
+        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'test_rearch_report.pdf')
         cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
         logging.info(cmd)
         os.system(cmd)
@@ -257,7 +257,7 @@ class TestCli:
         """magic_pdf_dev cli pdf+json ocr."""
         time.sleep(2)
         json_path = os.path.join(pdf_dev_path, 'test_model.json')
-        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'research_report_1f978cd81fb7260c8f7644039ec2c054.pdf')
+        pdf_path = os.path.join(pdf_dev_path, 'pdf', 'test_rearch_report.pdf')
         cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
         logging.info(cmd)
         os.system(cmd)
