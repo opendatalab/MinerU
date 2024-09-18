@@ -272,30 +272,28 @@ def para_to_standard_format(para, img_buket_path):
     return para_content
 
 
-def para_to_standard_format_v2(para_block, img_buket_path, page_idx, parse_type="auto", lang=None):
+def para_to_standard_format_v2(para_block, img_buket_path, page_idx, parse_type="auto", lang=None, drop_reason=None):
     para_type = para_block['type']
+    para_content = {}
     if para_type == BlockType.Text:
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block, parse_type=parse_type, lang=lang),
-            'page_idx': page_idx,
         }
     elif para_type == BlockType.Title:
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block, parse_type=parse_type, lang=lang),
             'text_level': 1,
-            'page_idx': page_idx,
         }
     elif para_type == BlockType.InterlineEquation:
         para_content = {
             'type': 'equation',
             'text': merge_para_with_text(para_block, parse_type=parse_type, lang=lang),
             'text_format': 'latex',
-            'page_idx': page_idx,
         }
     elif para_type == BlockType.Image:
-        para_content = {'type': 'image', 'page_idx': page_idx}
+        para_content = {'type': 'image'}
         for block in para_block['blocks']:
             if block['type'] == BlockType.ImageBody:
                 para_content['img_path'] = join_path(
@@ -306,7 +304,7 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, parse_type=
             if block['type'] == BlockType.ImageFootnote:
                 para_content['img_footnote'] = merge_para_with_text(block, parse_type=parse_type, lang=lang)
     elif para_type == BlockType.Table:
-        para_content = {'type': 'table', 'page_idx': page_idx}
+        para_content = {'type': 'table'}
         for block in para_block['blocks']:
             if block['type'] == BlockType.TableBody:
                 if block["lines"][0]["spans"][0].get('latex', ''):
@@ -318,6 +316,11 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, parse_type=
                 para_content['table_caption'] = merge_para_with_text(block, parse_type=parse_type, lang=lang)
             if block['type'] == BlockType.TableFootnote:
                 para_content['table_footnote'] = merge_para_with_text(block, parse_type=parse_type, lang=lang)
+
+    para_content['page_idx'] = page_idx
+
+    if drop_reason is not None:
+        para_content['drop_reason'] = drop_reason
 
     return para_content
 
@@ -406,10 +409,14 @@ def union_make(pdf_info_dict: list,
                lang=None):
     output_content = []
     for page_info in pdf_info_dict:
+        drop_reason_flag = False
+        drop_reason = None
         if page_info.get('need_drop', False):
             drop_reason = page_info.get('drop_reason')
             if drop_mode == DropMode.NONE:
                 pass
+            elif drop_mode == DropMode.NONE_WITH_REASON:
+                drop_reason_flag = True
             elif drop_mode == DropMode.WHOLE_PDF:
                 raise Exception((f'drop_mode is {DropMode.WHOLE_PDF} ,'
                                  f'drop_reason is {drop_reason}'))
@@ -434,8 +441,12 @@ def union_make(pdf_info_dict: list,
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.STANDARD_FORMAT:
             for para_block in paras_of_layout:
-                para_content = para_to_standard_format_v2(
-                    para_block, img_buket_path, page_idx, parse_type=parse_type, lang=lang)
+                if drop_reason_flag:
+                    para_content = para_to_standard_format_v2(
+                        para_block, img_buket_path, page_idx, parse_type=parse_type, lang=lang, drop_reason=drop_reason)
+                else:
+                    para_content = para_to_standard_format_v2(
+                        para_block, img_buket_path, page_idx, parse_type=parse_type, lang=lang)
                 output_content.append(para_content)
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
