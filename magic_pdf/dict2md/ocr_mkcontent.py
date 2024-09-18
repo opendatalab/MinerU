@@ -400,11 +400,14 @@ def union_make(pdf_info_dict: list,
                img_buket_path: str = ''):
     output_content = []
     for page_info in pdf_info_dict:
-        drop_reason = page_info.get('drop_reason', None)
+        drop_reason_flag = False
+        drop_reason = None
         if page_info.get('need_drop', False):
-            # drop_reason = page_info.get('drop_reason')
-            if drop_mode == DropMode.NONE or drop_mode == DropMode.NONE_WITH_REASON:
+            drop_reason = page_info.get('drop_reason')
+            if drop_mode == DropMode.NONE:
                 pass
+            elif drop_mode == DropMode.NONE_WITH_REASON:
+                drop_reason_flag = True
             elif drop_mode == DropMode.WHOLE_PDF:
                 raise Exception((f'drop_mode is {DropMode.WHOLE_PDF} ,'
                                  f'drop_reason is {drop_reason}'))
@@ -429,7 +432,7 @@ def union_make(pdf_info_dict: list,
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.STANDARD_FORMAT:
             for para_block in paras_of_layout:
-                if drop_mode == DropMode.NONE_WITH_REASON:
+                if drop_reason_flag:
                     para_content = para_to_standard_format_v2(
                         para_block, img_buket_path, page_idx, drop_reason)
                 else:
