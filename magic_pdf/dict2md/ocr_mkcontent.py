@@ -403,7 +403,7 @@ def union_make(pdf_info_dict: list,
         drop_reason = page_info.get('drop_reason', None)
         if page_info.get('need_drop', False):
             # drop_reason = page_info.get('drop_reason')
-            if drop_mode == DropMode.NONE:
+            if drop_mode == DropMode.NONE or drop_mode == DropMode.NONE_WITH_REASON:
                 pass
             elif drop_mode == DropMode.WHOLE_PDF:
                 raise Exception((f'drop_mode is {DropMode.WHOLE_PDF} ,'
