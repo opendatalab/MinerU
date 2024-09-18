@@ -68,3 +68,5 @@ def check_close_tables(file_path):
     html_matches = re.findall(html_pattern, content, re.DOTALL)
     if len(latex_matches) == 0 and len(html_matches) == 0:
         return True
+    else:
+        return False
