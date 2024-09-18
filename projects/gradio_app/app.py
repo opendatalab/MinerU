@@ -150,6 +150,13 @@ if __name__ == "__main__":
                     change_bu = gr.Button("Convert")
                     clear_bu = gr.ClearButton([pdf_show], value="Clear")
                 pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
+                with gr.Accordion("Examples:"):
+                    example_root = os.path.join(os.path.dirname(__file__), "examples")
+                    gr.Examples(
+                        examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
+                                  _.endswith("pdf")],
+                        inputs=pdf_show,
+                    )
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label="convert result", interactive=False)
