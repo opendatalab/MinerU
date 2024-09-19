@@ -21,7 +21,7 @@ on:
 jobs:
   cli-test:
     runs-on: qa
-    timeout-minutes: 120
+    timeout-minutes: 240
     strategy:
       fail-fast: true
 
