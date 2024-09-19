@@ -64,6 +64,7 @@ def mfr_model_init(weight_dir, cfg_path, _device_='cpu'):
     task = tasks.setup_task(cfg)
     model = task.build_model(cfg)
     model = model.to(_device_)
+    model.eval()
     vis_processor = load_processor('formula_image_eval', cfg.config.datasets.formula_rec_eval.vis_processor.eval)
     mfr_transform = transforms.Compose([vis_processor, ])
     return [model, mfr_transform]
