@@ -70,8 +70,6 @@ const processResponse = <T>(
 
 instance.interceptors.request.use(
   (config) => {
-    // TODO： 开源的的时候要去掉
-    config.headers.Authorization = `Bearer ${Cookies.get("uaa-token")}`;
     return config;
   },
   (error) => {

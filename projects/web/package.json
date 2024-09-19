@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host ",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@ant-design/icons": "^5.4.0",
     "@codemirror/view": "^6.33.0",
+    "@tanstack/react-query": "^5.56.2",
     "@types/lodash": "^4.17.7",
     "@types/qs": "^6.9.15",
     "@types/react-copy-to-clipboard": "^5.0.7",
@@ -30,6 +31,7 @@
     "react-dom": "^18.3.1",
     "react-intl": "^6.6.8",
     "react-markdown": "^9.0.1",
+    "react-query": "^3.39.3",
     "react-router-dom": "^6.26.1",
     "react-syntax-highlighter": "^15.5.0",
     "rehype-katex": "^7.0.1",
