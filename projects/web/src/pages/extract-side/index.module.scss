@@ -1,0 +1,38 @@
+@import '@/styles/variable.scss';
+
+.gradientBtn {
+    width: 179px;
+    height: 37px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.95);
+    // background: linear-gradient(110deg, #38A0FF -33.56%, #0D53DE 32.84%, #5246FF 102.05%);
+    background: #3477EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    &:hover {
+        background: #3477EB;
+    }
+  }
+  
+  .linearBlue {
+    // TIP： 这里为啥用bg呢，因为ui稿给的参数是假的
+    background: url('@/assets/pdf/pdf-upload.png');
+    background-size: cover;
+  }
+  
+  .tryText {
+      font-size: 13px;
+      line-height: 20px;
+      background: linear-gradient(107deg, #38A0FF -24.14%, #0D53DE 30.09%, #5246FF 86.61%);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+  }
+  
+  .extractorContainer {
+    min-width: $page-min-witch;
+  }
+  

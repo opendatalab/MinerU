@@ -1,0 +1,11 @@
+.code-mirror {
+  :global {
+    .ͼ1 .cm-scroller  {
+        overflow-x: visible !important;
+        border: none !important;
+    }
+    .cm-editor.cm-focused {
+        outline: none !important;
+      }
+  }
+}

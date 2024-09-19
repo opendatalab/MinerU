@@ -1,0 +1,53 @@
+.gradientBtn {
+  width: 188px;
+  height: 37px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(110deg, #38A0FF -33.56%, #0D53DE 32.84%, #5246FF 102.05%);
+  // background: #3477EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  &:hover {
+      background: #3477EB;
+  }
+  :global {
+    .ant-upload-list-item-container {
+      // display: none !important;
+    }
+    .ant-upload {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100% !important;
+      height: 100% !important;
+      line-height: 100% !important;
+    }
+    .ant-upload-drag {
+      border: none !important;
+    }
+  }
+}
+
+.linearBtn {
+  width: 188px;
+  height: 37px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(110deg, #38A0FF -33.56%, #0D53DE 32.84%, #5246FF 102.05%);
+  // background: #3477EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  &:hover {
+    color: rgba(255, 255, 255, 0.95) !important;
+    background: linear-gradient(110deg, #38A0FF -33.56%, #38A0FF 32.84%, #38A0FF 102.05%) !important;
+  }
+  &:active {
+    
+  }
+}
