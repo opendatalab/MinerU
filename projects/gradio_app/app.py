@@ -14,8 +14,6 @@ from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.tools.common import do_parse, prepare_env
 
-os.system("pip install gradio")
-os.system("pip install gradio-pdf")
 import gradio as gr
 from gradio_pdf import PDF
 
@@ -25,13 +23,16 @@ def read_fn(path):
     return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
 
-def parse_pdf(doc_path, output_dir, end_page_id):
+def parse_pdf(doc_path, output_dir, end_page_id, is_ocr):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
         file_name = f"{str(Path(doc_path).stem)}_{time.time()}"
         pdf_data = read_fn(doc_path)
-        parse_method = "auto"
+        if is_ocr:
+            parse_method = "ocr"
+        else:
+            parse_method = "auto"
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         do_parse(
             output_dir,
@@ -92,9 +93,9 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages):
+def to_markdown(file_path, end_pages, is_ocr):
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1)
+    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr)
     archive_zip_path = os.path.join("./output", compute_sha256(local_md_dir) + ".zip")
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -109,14 +110,6 @@ def to_markdown(file_path, end_pages):
     new_pdf_path = os.path.join(local_md_dir, file_name + "_layout.pdf")
 
     return md_content, txt_content, archive_zip_path, new_pdf_path
-
-
-# def show_pdf(file_path):
-#     with open(file_path, "rb") as f:
-#         base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-#     pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" ' \
-#                   f'width="100%" height="1000" type="application/pdf">'
-#     return pdf_display
 
 
 latex_delimiters = [{"left": "$$", "right": "$$", "display": True},
@@ -141,16 +134,29 @@ model_init = init_model()
 logger.info(f"model_init: {model_init}")
 
 
+with open("header.html", "r") as file:
+    header = file.read()
+
+
 if __name__ == "__main__":
     with gr.Blocks() as demo:
+        gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 pdf_show = gr.Markdown()
                 max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
                 with gr.Row() as bu_flow:
+                    is_ocr = gr.Checkbox(label="Force enable OCR")
                     change_bu = gr.Button("Convert")
                     clear_bu = gr.ClearButton([pdf_show], value="Clear")
                 pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
+                with gr.Accordion("Examples:"):
+                    example_root = os.path.join(os.path.dirname(__file__), "examples")
+                    gr.Examples(
+                        examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
+                                  _.endswith("pdf")],
+                        inputs=pdf_show,
+                    )
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label="convert result", interactive=False)
@@ -160,8 +166,7 @@ if __name__ == "__main__":
                                          latex_delimiters=latex_delimiters, line_breaks=True)
                     with gr.Tab("Markdown text"):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
-        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages], outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([md, pdf_show, md_text, output_file])
+        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr], outputs=[md, md_text, output_file, pdf_show])
+        clear_bu.add([md, pdf_show, md_text, output_file, is_ocr])
 
     demo.launch()
-

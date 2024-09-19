@@ -37,12 +37,13 @@ jobs:
       run: |
         echo $GITHUB_WORKSPACE && sh tests/retry_env.sh
     - name: unit test
-      run: |        
-        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m  pytest  tests/test_unit.py --cov=magic_pdf/ --cov-report term-missing --cov-report html
+      run: | 
+        cd $GITHUB_WORKSPACE && python tests/clean_coverage.py
+        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m  pytest  tests/unittest --cov=magic_pdf/ --cov-report term-missing --cov-report html
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
     - name: cli test
       run: |
-        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli_sdk.py
+        source ~/.bashrc && cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli.py
 
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}

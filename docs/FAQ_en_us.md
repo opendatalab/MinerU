@@ -44,3 +44,11 @@ pip uninstall fairscale
 pip install fairscale
 ```
 Reference: https://github.com/opendatalab/MinerU/issues/411
+
+### 6. On some newer devices like the H100, the text parsed during OCR using CUDA acceleration is garbled.
+
+The compatibility of cuda11 with new graphics cards is poor, and the CUDA version used by Paddle needs to be upgraded.
+```bash
+pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/
+```
+Reference: https://github.com/opendatalab/MinerU/issues/558

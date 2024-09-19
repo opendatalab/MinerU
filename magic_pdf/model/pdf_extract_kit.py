@@ -58,7 +58,7 @@ def mfd_model_init(weight):
 def mfr_model_init(weight_dir, cfg_path, _device_='cpu'):
     args = argparse.Namespace(cfg_path=cfg_path, options=None)
     cfg = Config(args)
-    cfg.config.model.pretrained = os.path.join(weight_dir, "pytorch_model.bin")
+    cfg.config.model.pretrained = os.path.join(weight_dir, "pytorch_model.pth")
     cfg.config.model.model_config.model_name = weight_dir
     cfg.config.model.tokenizer_config.path = weight_dir
     task = tasks.setup_task(cfg)
@@ -74,8 +74,11 @@ def layout_model_init(weight, config_file, device):
     return model
 
 
-def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3):
-    model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh)
+def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3, lang=None):
+    if lang is not None:
+        model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh, lang=lang)
+    else:
+        model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh)
     return model
 
 
@@ -134,7 +137,8 @@ def atom_model_init(model_name: str, **kwargs):
     elif model_name == AtomicModel.OCR:
         atom_model = ocr_model_init(
             kwargs.get("ocr_show_log"),
-            kwargs.get("det_db_box_thresh")
+            kwargs.get("det_db_box_thresh"),
+            kwargs.get("lang")
         )
     elif model_name == AtomicModel.Table:
         atom_model = table_model_init(
@@ -177,9 +181,10 @@ class CustomPEKModel:
         self.table_max_time = self.table_config.get("max_time", TABLE_MAX_TIME_VALUE)
         self.table_model_type = self.table_config.get("model", TABLE_MASTER)
         self.apply_ocr = ocr
+        self.lang = kwargs.get("lang", None)
         logger.info(
-            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}".format(
-                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table
+            "DocAnalysis init, this may take some times. apply_layout: {}, apply_formula: {}, apply_ocr: {}, apply_table: {}, lang: {}".format(
+                self.apply_layout, self.apply_formula, self.apply_ocr, self.apply_table, self.lang
             )
         )
         assert self.apply_layout, "DocAnalysis must contain layout model."
@@ -225,11 +230,13 @@ class CustomPEKModel:
         )
         # 初始化ocr
         if self.apply_ocr:
+
             # self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
             self.ocr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
                 ocr_show_log=show_log,
-                det_db_box_thresh=0.3
+                det_db_box_thresh=0.3,
+                lang=self.lang
             )
         # init table model
         if self.apply_table:
@@ -243,6 +250,7 @@ class CustomPEKModel:
                 table_max_time=self.table_max_time,
                 device=self.device
             )
+
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -383,6 +391,7 @@ class CustomPEKModel:
                         latex_code = self.table_model.image2latex(new_image)[0]
                 else:
                     html_code = self.table_model.img2html(new_image)
+
                 run_time = time.time() - single_table_start_time
                 logger.info(f"------------table recognition processing ends within {run_time}s-----")
                 if run_time > self.table_max_time:

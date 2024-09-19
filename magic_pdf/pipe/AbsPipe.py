@@ -17,7 +17,7 @@ class AbsPipe(ABC):
     PIP_TXT = "txt"
 
     def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool = False,
-                 start_page_id=0, end_page_id=None):
+                 start_page_id=0, end_page_id=None, lang=None):
         self.pdf_bytes = pdf_bytes
         self.model_list = model_list
         self.image_writer = image_writer
@@ -25,6 +25,7 @@ class AbsPipe(ABC):
         self.is_debug = is_debug
         self.start_page_id = start_page_id
         self.end_page_id = end_page_id
+        self.lang = lang
     
     def get_compress_pdf_mid_data(self):
         return JsonCompressor.compress_json(self.pdf_mid_data)
@@ -94,7 +95,9 @@ class AbsPipe(ABC):
         """
         pdf_mid_data = JsonCompressor.decompress_json(compressed_pdf_mid_data)
         pdf_info_list = pdf_mid_data["pdf_info"]
-        content_list = union_make(pdf_info_list, MakeMode.STANDARD_FORMAT, drop_mode, img_buket_path)
+        parse_type = pdf_mid_data["_parse_type"]
+        lang = pdf_mid_data.get("_lang", None)
+        content_list = union_make(pdf_info_list, MakeMode.STANDARD_FORMAT, drop_mode, img_buket_path, parse_type, lang)
         return content_list
 
     @staticmethod
@@ -104,7 +107,9 @@ class AbsPipe(ABC):
         """
         pdf_mid_data = JsonCompressor.decompress_json(compressed_pdf_mid_data)
         pdf_info_list = pdf_mid_data["pdf_info"]
-        md_content = union_make(pdf_info_list, md_make_mode, drop_mode, img_buket_path)
+        parse_type = pdf_mid_data["_parse_type"]
+        lang = pdf_mid_data.get("_lang", None)
+        md_content = union_make(pdf_info_list, md_make_mode, drop_mode, img_buket_path, parse_type, lang)
         return md_content
 
 

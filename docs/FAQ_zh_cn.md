@@ -41,3 +41,11 @@ pip uninstall fairscale
 pip install fairscale
 ```
 参考：https://github.com/opendatalab/MinerU/issues/411
+
+### 6.在部分较新的设备如H100上，使用CUDA加速OCR时解析出的文字乱码。
+
+cuda11对新显卡的兼容性不好，需要升级paddle使用的cuda版本
+```bash
+pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/
+```
+参考：https://github.com/opendatalab/MinerU/issues/558

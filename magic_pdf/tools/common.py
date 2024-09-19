@@ -44,9 +44,10 @@ def do_parse(
     f_draw_model_bbox=False,
     start_page_id=0,
     end_page_id=None,
+    lang=None,
 ):
     if debug_able:
-        logger.warning("debug mode is on")
+        logger.warning('debug mode is on')
         f_dump_content_list = True
         f_draw_model_bbox = True
 
@@ -61,13 +62,13 @@ def do_parse(
     if parse_method == 'auto':
         jso_useful_key = {'_pdf_type': '', 'model_list': model_list}
         pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
     elif parse_method == 'txt':
         pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
     elif parse_method == 'ocr':
         pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
     else:
         logger.error('unknown parse method')
         exit(1)
