@@ -1,0 +1,84 @@
+.item {
+  border-radius: 12px;
+  border: 1px solid rgba(198, 217, 255, 0.20);
+  background: linear-gradient(155deg, rgba(92, 147, 255, 0.10) -130.23%, rgba(255, 255, 255, 0.00) 83.57%);
+  filter: blur(0px);
+  padding: 42px 20px;
+  cursor: pointer;
+  position: relative;
+
+  &:hover {
+    border-radius: 12px;
+    border: 1px solid rgba(198, 217, 255, 0.20);
+    background: linear-gradient(155deg, rgba(92, 147, 255, 0.20) -83.23%, rgba(255, 255, 255, 0.00) 83.57%);
+    box-shadow: 0px 8px 26px 0px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.itemComingSoon_zh-CN {
+  &:hover {
+
+    backdrop-filter: blur(-100px);
+    & > .itemContent {
+      opacity: 0;
+      z-index: 0;
+    }
+    &::before {
+      display: inline-block;
+      content: '敬请期待';
+      width: 100%;
+      height: 100%;
+      line-height: 184px;
+      position: absolute;
+      background-image: url('@/assets/pdf/comingSoonLayer.svg');
+      background-color: rgba(255, 255, 255, 0.8);
+      background-size: contain;
+      top: 0;
+      left: 0;
+      border-radius: 12px;
+      // background:white;
+      -webkit-backdrop-filter:  blur(2030px) brightness(110%);
+      backdrop-filter: blur(2030px) brightness(110%);
+
+      color: var(--60-text-3, rgba(18, 19, 22, 0.60));
+      text-align: center;
+      font-feature-settings: 'liga' off, 'clig' off;
+      z-index: 1;
+    }
+
+  }
+}
+
+.itemComingSoon_en-US {
+  &:hover {
+
+    backdrop-filter: blur(-100px);
+    & > .itemContent {
+      opacity: 0;
+      z-index: 0;
+    }
+    &::before {
+      display: inline-block;
+      content: 'Stay Tuned';
+      width: 100%;
+      height: 100%;
+      line-height: 224px;
+      position: absolute;
+      background-image: url('@/assets/pdf/comingSoonLayer.svg');
+      background-color: rgba(255, 255, 255, 0.8);
+      background-size: contain;
+      top: 0;
+      left: 0;
+      border-radius: 12px;
+      // background:white;
+      -webkit-backdrop-filter:  blur(2030px) brightness(110%);
+      backdrop-filter: blur(2030px) brightness(110%);
+
+      color: var(--60-text-3, rgba(18, 19, 22, 0.60));
+      text-align: center;
+      font-feature-settings: 'liga' off, 'clig' off;
+      z-index: 1;
+    }
+
+  }
+}

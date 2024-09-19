@@ -1,0 +1,12 @@
+.textTooltip {
+  :global {
+    .ant-tooltip-arrow {
+      // display: none !important;
+    }
+    .ant-tooltip-inner, .ant-tooltip-content, .ant-tooltip-inner-content {
+      padding: 0px !important;
+      border-radius: 4px !important;
+      overflow: hidden;
+    }
+  }
+}

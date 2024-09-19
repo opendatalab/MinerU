@@ -1,0 +1,18 @@
+.formulaPopover {
+  :global {
+
+    .ant-popover-content, .ant-popover-inner {
+      border-radius: 12px !important;
+      overflow: hidden;
+      box-shadow: 0px 8px 26px 0px rgba(0, 0, 0, 0.12);
+    }
+
+    .ant-popover-inner-content {
+      padding: 24px !important;
+    }
+
+    .ant-popover-arrow {
+      display: none !important;
+    }
+  }
+}

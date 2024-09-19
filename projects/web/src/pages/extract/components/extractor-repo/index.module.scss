@@ -1,0 +1,62 @@
+.githubBtn {
+  position: relative;
+  width: 100%;
+  cursor: pointer;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+  border-radius: 8px;
+  cursor: pointer;
+
+
+  filter: blur(0px);
+
+  z-index: 0;
+  &::before {
+    width: 100%;
+    height: 100%;
+    display: block;
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    background:  linear-gradient(to bottom, rgba(185,214,246,1) -100%, rgba(244,247,254,) 100%);
+    z-index: 0;
+  }
+
+
+  & > span {
+      border-radius: 7px;
+      display:inline-flex;
+      width: calc(100% - 2px);
+      height: calc(100% - 2px);
+      background: linear-gradient(180deg, #5C93FF1F -160.94%, rgba(255, 255, 255, 1) 80%);
+      z-index: 1;
+      filter: blur(0px);
+      justify-content: center;
+      align-items: center;
+      font-size: 16px;
+      &:hover {
+        background: linear-gradient(180deg, #5C93FF1F -60.94%, rgba(255, 255, 255, 1) 80%);
+        filter: blur(0px);
+      }
+      span:nth-child(3){
+          color: var(--80-text-4, rgba(18, 19, 22, 0.80));
+          -webkit-background-clip: text;
+          background-clip: text;
+      }
+  }
+}
+
+.githubText {
+  /* 正文/加粗text-1-semibold */
+  font-family: "PingFang SC";
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 21px; /* 150% */
+  color: #121316;
+}
