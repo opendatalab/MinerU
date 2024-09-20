@@ -21,13 +21,12 @@ interface IPdfExtractionProps {
 }
 
 const PdfExtraction = ({ className = "" }: IPdfExtractionProps) => {
-  const newData = useJobExtraction();
   const {
     refreshQueue,
     taskInfo,
     isLoading: queueLoading,
     isError: compileError,
-  } = newData;
+  } = useJobExtraction();
 
   const [pdfState, setPdfState] = useState({
     page: 1,
