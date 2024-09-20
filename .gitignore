@@ -37,3 +37,5 @@ ocr_demo
 source.dev.env
 
 tmp
+
+projects/web/node_modules
