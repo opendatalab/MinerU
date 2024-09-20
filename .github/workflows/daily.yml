@@ -3,21 +3,8 @@
 
 name: mineru
 on:
-  push:
-    branches:
-      - "master"
-      - "dev"
-    paths-ignore:
-      - "cmds/**"
-      - "**.md"
-  pull_request:
-    branches:
-      - "master"
-      - "dev"
-    paths-ignore:
-      - "cmds/**"
-      - "**.md"
-  workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *'  # 每天晚上 10 点执行
 jobs:
   cli-test:
     runs-on: qa
@@ -40,7 +27,7 @@ jobs:
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
         cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
-        cd $GITHUB_WORKSPACE && pytest -m P0 -s -v tests/test_cli/test_cli_sdk.py
+        cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}

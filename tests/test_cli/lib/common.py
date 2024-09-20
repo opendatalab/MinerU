@@ -2,12 +2,19 @@
 import os
 import shutil
 import re
-
+import json
 def check_shell(cmd):
     """shell successful."""
     res = os.system(cmd)
     assert res == 0
 
+def update_config_file(file_path, key, value):
+    """update config file."""
+    with open(file_path, 'r', encoding="utf-8") as f:
+        config  = json.loads(f.read())
+    config[key] = value
+    with open(file_path, 'w', encoding="utf-8") as f:
+        f.write(json.dumps(config))
 
 def cli_count_folders_and_check_contents(file_path):
     """" count cli files."""

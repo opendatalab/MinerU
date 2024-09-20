@@ -315,6 +315,19 @@ class TestCli:
         assert res is True
     
     @pytest.mark.P1
+    def test_magic_pdf_close_html_table_cpu(self):
+        """magic pdf cli close html table cpu mode."""
+        time.sleep(2)
+        pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
+        os.system(pre_cmd)
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+        assert res is  True
+
+    @pytest.mark.P1
     def test_local_magic_pdf_close_html_table(self):
         """magic pdf cli close table."""
         time.sleep(2)
@@ -327,18 +340,7 @@ class TestCli:
         res = common.check_close_tables(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
         assert res is True
     
-    @pytest.mark.P1
-    def test_magic_pdf_close_html_table_cpu(self):
-        """magic pdf cli close html table cpu mode."""
-        time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
-        os.system(pre_cmd)
-        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
-        common.delete_file(pdf_res_path)
-        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
-        os.system(cli_cmd)
-        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
-        assert res is  True
+
  
 if __name__ == '__main__':
     pytest.main()
