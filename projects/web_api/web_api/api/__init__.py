@@ -4,7 +4,7 @@ from common.web_hook import before_request
 from common.logger import setup_log
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-print("root_dir", root_dir)
+
 
 def _register_db(flask_app):
     from common import import_models
@@ -30,6 +30,8 @@ def create_app(config):
     ma.init_app(app=app)
     from .analysis import analysis_blue
     app.register_blueprint(analysis_blue)
+    from .react_app import react_app_blue
+    app.register_blueprint(react_app_blue)
 
     app.before_request(before_request)
 

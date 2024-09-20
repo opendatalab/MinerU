@@ -4,6 +4,7 @@ from .upload_view import UploadPdfView
 from .analysis_view import AnalysisTaskView, AnalysisTaskProgressView
 from .img_md_view import ImgView, MdView
 from .task_view import TaskView, HistoricalTasksView, DeleteTaskView
+from .markdown_view import MarkdownView
 
 analysis_blue = Blueprint('analysis', __name__)
 
@@ -16,3 +17,4 @@ api_v2.add_resource(MdView, '/analysis/pdf_md')
 api_v2.add_resource(TaskView, '/extract/taskQueue')
 api_v2.add_resource(HistoricalTasksView, '/extract/list')
 api_v2.add_resource(DeleteTaskView, '/extract/task/<int:id>')
+api_v2.add_resource(MarkdownView, '/extract/markdown')

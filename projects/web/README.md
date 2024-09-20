@@ -8,5 +8,5 @@ npm install -g pnpm
 3. build
 ```
 1.pnpm run build
-2.npm run buil
+2.npm run build
 ```

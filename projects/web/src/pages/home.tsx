@@ -3,7 +3,7 @@
 import ErrorBoundary from "@/components/error-boundary";
 import styles from "./home.module.scss";
 import { SlotID, Path } from "@/constant/route";
-import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
+import { HashRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ExtractorSide } from "./extract-side";
 import { LanguageProvider } from "@/context/language-provider";
 import PDFUpload from "@/pages/extract/components/pdf-upload";
@@ -70,9 +70,9 @@ export function Home() {
   return (
     <ErrorBoundary>
       <LanguageProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Screen />
-        </BrowserRouter>
+        </HashRouter>
       </LanguageProvider>
     </ErrorBoundary>
   );

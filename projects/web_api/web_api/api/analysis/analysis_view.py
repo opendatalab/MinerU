@@ -1,5 +1,6 @@
 import json
 import threading
+from multiprocessing import Process
 from pathlib import Path
 from flask import request, current_app, url_for
 from flask_restful import Resource
@@ -212,10 +213,10 @@ class AnalysisTaskView(Resource):
                     pdf_analysis_folder = current_app.config['PDF_ANALYSIS_FOLDER']
                     pdf_dir = f"{current_app.static_folder}/{pdf_analysis_folder}/{file_stem}"
                     image_dir = f"{pdf_dir}/images"
-                    t = threading.Thread(target=analysis_pdf_task,
-                                         args=(pdf_dir, image_dir, file_path, analysis_task.is_ocr,
-                                               analysis_task.analysis_pdf_id))
-                    t.start()
+                    process = Process(target=analysis_pdf_task,
+                                      args=(pdf_dir, image_dir, file_path, analysis_task.is_ocr,
+                                            analysis_task.analysis_pdf_id))
+                    process.start()
 
                 # 生成文件的URL路径
                 file_url = url_for('analysis.uploadpdfview', filename=analysis_task.file_name, as_attachment=False)

@@ -1,34 +1,43 @@
-## 安装
+## Mineru 本地API服务
 
 MinerU
 
-```bash
-# mineru已安装则跳过此步骤
-
-git clone https://github.com/opendatalab/MinerU.git
-cd MinerU
-
-conda create -n MinerU python=3.10
-conda activate MinerU
-pip install .[full] --extra-index-url https://wheels.myhloli.com
+```
+# 服务依赖mineru，请先确保mineru已安装
 ```
 
-第三方软件
+1. 打包前端界面
 
 ```bash
+# 先进入前端目录
+cd projects/web
+# 打包前端项目
+npm install -g yarn
+yarn install
+yarn build
+```
+
+2. 安装服务依赖
+
+```bash
+# 先进入后端目录
 cd projects/web_api
-pip install poetry
-portey install
+# 安装依赖
+pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-启动服务
+3. 启动服务
 
 ```bash
-cd web_api
-python app.py
+# 进入程序目录
+cd projects/web_api/web_api
+# 启动服务
+python3 app.py
+# 在浏览器访问启动的地址即可访问界面
 ```
 
-接口文档
+ps：接口文档
+
 ```
 在浏览器打开 mineru-web接口文档.html
 ```

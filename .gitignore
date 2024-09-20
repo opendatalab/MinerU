@@ -39,3 +39,4 @@ source.dev.env
 tmp
 
 projects/web/node_modules
+projects/web/dist
