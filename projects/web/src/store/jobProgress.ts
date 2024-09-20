@@ -103,6 +103,9 @@ export const useJobExtraction = () => {
           } else {
             setIsPolling(false);
             setQueueLoading(false);
+            getExtractTaskIdProgress(jobID!).then((res) => {
+              setTaskInfo(res as any);
+            });
           }
         }
 
