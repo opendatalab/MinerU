@@ -1,9 +1,0 @@
-[run]
-branch = True
-source = magic_pdf
-omit =
-    tests/*
-
-[report]
-fail_under = 0
-show_missing = True
