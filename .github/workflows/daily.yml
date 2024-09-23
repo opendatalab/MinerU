@@ -7,7 +7,7 @@ on:
     - cron: '0 22 * * *'  # 每天晚上 10 点执行
 jobs:
   cli-test:
-    runs-on: qa
+    runs-on: pdf
     timeout-minutes: 240
     strategy:
       fail-fast: true
