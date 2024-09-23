@@ -21,4 +21,5 @@ def delete_file(path):
             print(f"Error deleting directory '{path}': {e}")
 
 if __name__ == "__main__":
-    delete_file("htmlcov")
+    delete_file("htmlcov/")
+    #delete_file(".coverage")
