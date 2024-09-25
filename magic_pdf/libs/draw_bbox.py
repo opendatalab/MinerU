@@ -1,3 +1,5 @@
+import time
+
 from magic_pdf.libs.commons import fitz  # PyMuPDF
 from magic_pdf.libs.Constants import CROSS_PAGE
 from magic_pdf.libs.ocr_content_type import BlockType, CategoryId, ContentType
@@ -211,9 +213,9 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         # 构造其余useful_list
         for block in page['para_blocks']:
             if block['type'] in [
-                    BlockType.Text,
-                    BlockType.Title,
-                    BlockType.InterlineEquation,
+                BlockType.Text,
+                BlockType.Title,
+                BlockType.InterlineEquation,
             ]:
                 for line in block['lines']:
                     for span in line['spans']:
@@ -244,7 +246,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     pdf_docs.save(f'{out_path}/{filename}_spans.pdf')
 
 
-def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
+def draw_model_bbox(model_list: list, pdf_bytes, out_path, filename):
     dropped_bbox_list = []
     tables_body_list, tables_caption_list, tables_footnote_list = [], [], []
     imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], []
@@ -279,7 +281,7 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
             elif layout_det['category_id'] == CategoryId.ImageCaption:
                 imgs_caption.append(bbox)
             elif layout_det[
-                    'category_id'] == CategoryId.InterlineEquation_YOLO:
+                'category_id'] == CategoryId.InterlineEquation_YOLO:
                 interequations.append(bbox)
             elif layout_det['category_id'] == CategoryId.Abandon:
                 page_dropped_list.append(bbox)
@@ -316,3 +318,55 @@ def drow_model_bbox(model_list: list, pdf_bytes, out_path, filename):
 
     # Save the PDF
     pdf_docs.save(f'{out_path}/{filename}_model.pdf')
+
+
+from typing import List
+
+
+def do_predict(boxes: List[List[int]]) -> List[int]:
+    from transformers import LayoutLMv3ForTokenClassification
+    from magic_pdf.v3.helpers import prepare_inputs, boxes2inputs, parse_logits
+    model = LayoutLMv3ForTokenClassification.from_pretrained("hantian/layoutreader")
+    inputs = boxes2inputs(boxes)
+    inputs = prepare_inputs(inputs, model)
+    logits = model(**inputs).logits.cpu().squeeze(0)
+    return parse_logits(logits, len(boxes))
+
+
+def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
+    layout_bbox_list = []
+
+    from loguru import logger
+    for page in pdf_info:
+        page_layout_list = []
+        for block in page['para_blocks']:
+            bbox = block['bbox']
+            page_layout_list.append(bbox)
+
+        # 使用layoutreader排序
+        page_size = page['page_size']
+        x_scale = 1000.0 / page_size[0]
+        y_scale = 1000.0 / page_size[1]
+        boxes = []
+        logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_layout_list)}")
+        for left, top, right, bottom in page_layout_list:
+            left = round(left * x_scale)
+            top = round(top * y_scale)
+            right = round(right * x_scale)
+            bottom = round(bottom * y_scale)
+            assert (
+                    1000 >= right >= left >= 0 and 1000 >= bottom >= top >= 0
+            ), f"Invalid box. right: {right}, left: {left}, bottom: {bottom}, top: {top}"
+            boxes.append([left, top, right, bottom])
+        logger.info("layoutreader start")
+        start = time.time()
+        orders = do_predict(boxes)
+        print(orders)
+        logger.info(f"layoutreader end, cos time{time.time() - start}")
+        sorted_bboxes = [page_layout_list[i] for i in orders]
+        layout_bbox_list.append(sorted_bboxes)
+    pdf_docs = fitz.open('pdf', pdf_bytes)
+    for i, page in enumerate(pdf_docs):
+        draw_bbox_with_number(i, layout_bbox_list, page, [102, 102, 255], False)
+
+    pdf_docs.save(f'{out_path}/{filename}_layout_sort.pdf')

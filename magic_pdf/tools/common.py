@@ -7,7 +7,7 @@ from loguru import logger
 
 import magic_pdf.model as model_config
 from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_span_bbox,
-                                      drow_model_bbox)
+                                      draw_model_bbox, draw_layout_sort_bbox)
 from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -90,7 +90,9 @@ def do_parse(
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
     if f_draw_model_bbox:
-        drow_model_bbox(copy.deepcopy(orig_model_list), pdf_bytes, local_md_dir, pdf_file_name)
+        draw_model_bbox(copy.deepcopy(orig_model_list), pdf_bytes, local_md_dir, pdf_file_name)
+
+    draw_layout_sort_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
 
     md_content = pipe.pipe_mk_markdown(image_dir,
                                        drop_mode=DropMode.NONE,
