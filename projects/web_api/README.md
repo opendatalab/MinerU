@@ -11,6 +11,10 @@ MinerU
 ```bash
 # 先进入前端目录
 cd projects/web
+
+# 修改配置
+# 将文件vite.config.ts中的target中的IP更改为自己电脑IP
+
 # 打包前端项目
 npm install -g yarn
 yarn install
