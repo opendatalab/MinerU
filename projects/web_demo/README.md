@@ -25,7 +25,7 @@ yarn build
 
 ```bash
 # 先进入后端目录
-cd projects/web_api
+cd projects/web_demo
 # 安装依赖
 pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
@@ -34,7 +34,7 @@ pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 ```bash
 # 进入程序目录
-cd projects/web_api/web_api
+cd projects/web_demo/web_demo
 # 启动服务
 python3 app.py
 # 在浏览器访问启动的地址即可访问界面
