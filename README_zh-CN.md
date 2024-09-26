@@ -41,6 +41,7 @@
 </div>
 
 # 更新记录
+- 2024/09/27 0.8.2发布，提供了[在线demo](https://opendatalab.com/OpenSourceTools/Extractor/PDF/)的[本地化部署版本](https://github.com/opendatalab/MinerU/tree/master/projects/web_demo/README_zh-CN.md)和[前端界面](https://github.com/opendatalab/MinerU/tree/master/projects/web/README_zh-CN.md)
 - 2024/09/09 0.8.0发布，支持Dockerfile快速部署，同时上线了huggingface、modelscope demo
 - 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
 - 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能

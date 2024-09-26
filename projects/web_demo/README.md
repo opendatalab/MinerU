@@ -1,47 +1,60 @@
-## Mineru 本地API服务
+# MinerU Local web_demo
+## Feature Overview
+<p align="center">
+  <img src="images/web_demo_1.png" width="600px" style="vertical-align:middle;">
+</p>
 
-MinerU
+- Supports uploading PDFs and calling MinerU for processing
+
+- Supports online editing of the Markdown results parsed by MinerU
+
+- Supports viewing of historical tasks
+
+## Installation and Deployment
+
+0. MinerU Installation and Deployment
+
 
 ```
-# 服务依赖mineru，请先确保mineru已安装
+# The service depends on mineru, please ensure mineru is installed first
 ```
 
-1. 打包前端界面
+1. Package the front-end interface
 
 ```bash
-# 先进入前端目录
+# First, navigate to the front-end directory
 cd projects/web
 
-# 修改配置
-# 将文件vite.config.ts中的target中的IP更改为自己电脑IP
+# Modify the configuration
+# Change the IP in the target field of the file vite.config.ts to your own computer's IP
 
-# 打包前端项目
+# Build the front-end project
 npm install -g yarn
 yarn install
 yarn build
 ```
 
-2. 安装服务依赖
+2. Install service dependencies
 
 ```bash
-# 先进入后端目录
+# First, navigate to the back-end directory
 cd projects/web_demo
-# 安装依赖
+# Install dependencies
 pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-3. 启动服务
+3. Start the service
 
 ```bash
-# 进入程序目录
+# Navigate to the program directory
 cd projects/web_demo/web_demo
-# 启动服务
-python3 app.py 或者 python app.py
-# 在浏览器访问启动的地址即可访问界面
+# Start the service
+python3 app.py or python app.py
+# Access the interface by visiting the started address in the browser
 ```
 
-ps：接口文档
+ps：API documentation
 
 ```
-在浏览器打开 mineru-web接口文档.html
+Open the mineru-web API mineru-web接口文档.html in the browser
 ```

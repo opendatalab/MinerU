@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       "/api": {
         // target: "https://staging.openxlab.org.cn/datasets",
-        target: "http://10.6.16.161:5559",
+        target: "http://10.6.16.169:5559",
         changeOrigin: true,
       },
     },
