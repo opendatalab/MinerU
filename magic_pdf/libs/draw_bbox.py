@@ -63,7 +63,7 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config):
                 overlay=True,
             )  # Draw the rectangle
         page.insert_text(
-            (x0, y0 + 10), str(j + 1), fontsize=10, color=new_rgb
+            (x1+2, y0 + 10), str(j + 1), fontsize=10, color=new_rgb
         )  # Insert the index in the top left corner of the rectangle
 
 
@@ -338,18 +338,20 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
 
     from loguru import logger
     for page in pdf_info:
-        page_layout_list = []
-        for block in page['para_blocks']:
-            bbox = block['bbox']
-            page_layout_list.append(bbox)
+        page_line_list = []
+        for block in page['preproc_blocks']:
+            if block['type'] == 'text' or block['type'] == 'title':
+                for line in block:
+                    bbox = line['bbox']
+                    page_line_list.append(bbox)
 
         # 使用layoutreader排序
         page_size = page['page_size']
         x_scale = 1000.0 / page_size[0]
         y_scale = 1000.0 / page_size[1]
         boxes = []
-        logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_layout_list)}")
-        for left, top, right, bottom in page_layout_list:
+        logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_line_list)}")
+        for left, top, right, bottom in page_line_list:
             left = round(left * x_scale)
             top = round(top * y_scale)
             right = round(right * x_scale)
@@ -363,7 +365,7 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
         orders = do_predict(boxes)
         print(orders)
         logger.info(f"layoutreader end, cos time{time.time() - start}")
-        sorted_bboxes = [page_layout_list[i] for i in orders]
+        sorted_bboxes = [page_line_list[i] for i in orders]
         layout_bbox_list.append(sorted_bboxes)
     pdf_docs = fitz.open('pdf', pdf_bytes)
     for i, page in enumerate(pdf_docs):
