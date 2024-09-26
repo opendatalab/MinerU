@@ -1,5 +1,7 @@
 import time
 
+import torch
+
 from magic_pdf.libs.commons import fitz  # PyMuPDF
 from magic_pdf.libs.Constants import CROSS_PAGE
 from magic_pdf.libs.ocr_content_type import BlockType, CategoryId, ContentType
@@ -234,10 +236,8 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     for i, page in enumerate(pdf_docs):
         # 获取当前页面的数据
         draw_bbox_without_number(i, text_list, page, [255, 0, 0], False)
-        draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0],
-                                 False)
-        draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255],
-                                 False)
+        draw_bbox_without_number(i, inline_equation_list, page, [0, 255, 0], False)
+        draw_bbox_without_number(i, interline_equation_list, page, [0, 0, 255], False)
         draw_bbox_without_number(i, image_list, page, [255, 204, 0], False)
         draw_bbox_without_number(i, table_list, page, [204, 0, 255], False)
         draw_bbox_without_number(i, dropped_list, page, [158, 158, 158], False)
@@ -327,6 +327,7 @@ def do_predict(boxes: List[List[int]]) -> List[int]:
     from transformers import LayoutLMv3ForTokenClassification
     from magic_pdf.v3.helpers import prepare_inputs, boxes2inputs, parse_logits
     model = LayoutLMv3ForTokenClassification.from_pretrained("hantian/layoutreader")
+    model.to("cuda")
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
     logits = model(**inputs).logits.cpu().squeeze(0)
@@ -341,7 +342,7 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
         page_line_list = []
         for block in page['preproc_blocks']:
             if block['type'] == 'text' or block['type'] == 'title':
-                for line in block:
+                for line in block['lines']:
                     bbox = line['bbox']
                     page_line_list.append(bbox)
 
@@ -363,12 +364,14 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
         logger.info("layoutreader start")
         start = time.time()
         orders = do_predict(boxes)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         print(orders)
         logger.info(f"layoutreader end, cos time{time.time() - start}")
         sorted_bboxes = [page_line_list[i] for i in orders]
         layout_bbox_list.append(sorted_bboxes)
     pdf_docs = fitz.open('pdf', pdf_bytes)
     for i, page in enumerate(pdf_docs):
-        draw_bbox_with_number(i, layout_bbox_list, page, [102, 102, 255], False)
+        draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
 
     pdf_docs.save(f'{out_path}/{filename}_layout_sort.pdf')
