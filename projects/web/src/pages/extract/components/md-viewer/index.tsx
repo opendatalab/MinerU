@@ -17,6 +17,7 @@ import { TaskIdResItem } from "@/api/extract";
 import useMdStore from "@/store/mdStore";
 import CodeMirror from "@/components/code-mirror";
 import { useParams } from "react-router-dom";
+import SaveStatus, { SaveStatusRef } from "@/components/SaveStatus";
 
 interface IMdViewerProps {
   md?: string;
@@ -48,10 +49,12 @@ const MdViewer: React.FC<IMdViewerProps> = ({
     allMdContentWithAnchor,
     setMdUrlArr,
     mdContents,
+    updateMdContent,
   } = useMdStore();
   const [lineWrap, setLineWrap] = useState(false);
 
   const threshold = 562 - 427;
+  const statusRef = useRef<SaveStatusRef>(null);
 
   const menuList = [
     {
@@ -137,8 +140,12 @@ const MdViewer: React.FC<IMdViewerProps> = ({
     }
   }, [taskInfo?.markdownUrl, params?.jobID]);
 
-  const handleContentChange = (val: string) => {
+  const handleContentChange = (val: string, index: number) => {
     setAllMdContentWithAnchor(val);
+    statusRef?.current?.triggerSave();
+    if (taskInfo?.file_key) {
+      updateMdContent(taskInfo.file_key!, index, val);
+    }
   };
 
   return (
@@ -161,12 +168,13 @@ const MdViewer: React.FC<IMdViewerProps> = ({
             </li>
           ))}
         </ul>
+        <SaveStatus ref={statusRef} />
         {displayType === "code" && (
           <>
             <Tooltip
               title={
                 fullScreen
-                  ? formatMessage({ id: "extractor.button.exitFullScreen" })
+                  ? formatMessage({ id: "extractor.button.lineWrap" })
                   : formatMessage({
                       id: "extractor.button.lineWrap",
                     })
@@ -253,7 +261,7 @@ const MdViewer: React.FC<IMdViewerProps> = ({
                 <CodeMirror
                   value={md}
                   lineWrapping={lineWrap}
-                  onChange={handleContentChange}
+                  onChange={(val) => handleContentChange(val, index)}
                   editable
                   className="w-full h-full"
                 />

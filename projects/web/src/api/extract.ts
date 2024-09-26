@@ -95,6 +95,7 @@ export interface TaskIdResItem {
   type: ExtractTaskType | "unknown";
   state: "running" | "done" | "pending" | "failed" | "unknown";
   markdownUrl: string[];
+  file_key?: string;
 }
 
 export type TaskIdRes = TaskIdResItem[];
@@ -165,4 +166,31 @@ export const localUpload = (file: File) => {
       "Content-Type": "multipart/form-data",
     },
   });
+};
+
+export interface UpdateMarkdownRequest {
+  file_key: string;
+  data: {
+    [pageNumber: string]: string;
+  };
+}
+
+export interface UpdateMarkdownResponse {
+  success: boolean;
+  message?: string;
+}
+
+export const updateMarkdownContent = async (
+  params: UpdateMarkdownRequest
+): Promise<UpdateMarkdownResponse | null> => {
+  return axios
+    .put<UpdateMarkdownResponse>("/api/v2/extract/markdown", params)
+    .then((res) => {
+      if (!res?.data?.error) {
+        return res.data.data;
+      } else {
+        handleErrorMsg(res);
+        return null;
+      }
+    });
 };
