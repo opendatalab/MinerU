@@ -44,9 +44,10 @@ class UNIPipe(AbsPipe):
         elif self.pdf_type == self.PIP_OCR:
             self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer,
                                               is_debug=self.is_debug,
-                                              start_page_id=self.start_page_id, end_page_id=self.end_page_id)
+                                              start_page_id=self.start_page_id, end_page_id=self.end_page_id,
+                                              lang=self.lang)
 
-    def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
+    def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.NONE_WITH_REASON):
         result = super().pipe_mk_uni_format(img_parent_path, drop_mode)
         logger.info("uni_pipe mk content list finished")
         return result

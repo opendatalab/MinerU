@@ -8,3 +8,4 @@ class DropMode:
     WHOLE_PDF = "whole_pdf"
     SINGLE_PAGE = "single_page"
     NONE = "none"
+    NONE_WITH_REASON = "none_with_reason"

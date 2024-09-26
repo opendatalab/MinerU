@@ -26,7 +26,7 @@ PARSE_TYPE_OCR = "ocr"
 
 
 def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None,
+                  start_page_id=0, end_page_id=None, lang=None,
                   *args, **kwargs):
     """
     解析文本类pdf
@@ -44,11 +44,14 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
     pdf_info_dict["_version_name"] = __version__
 
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
+
     return pdf_info_dict
 
 
 def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None,
+                  start_page_id=0, end_page_id=None, lang=None,
                   *args, **kwargs):
     """
     解析ocr类pdf
@@ -65,6 +68,9 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
     pdf_info_dict["_parse_type"] = PARSE_TYPE_OCR
 
     pdf_info_dict["_version_name"] = __version__
+
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
 
     return pdf_info_dict
 
@@ -109,5 +115,8 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
         pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
 
     pdf_info_dict["_version_name"] = __version__
+
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
 
     return pdf_info_dict
