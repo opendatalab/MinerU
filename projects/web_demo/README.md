@@ -36,7 +36,7 @@ pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
 # 进入程序目录
 cd projects/web_demo/web_demo
 # 启动服务
-python3 app.py
+python3 app.py 或者 python app.py
 # 在浏览器访问启动的地址即可访问界面
 ```
 

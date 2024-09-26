@@ -97,7 +97,7 @@ def analysis_pdf_task(pdf_dir, image_dir, pdf_path, is_ocr, analysis_pdf_id):
             full_md_content += item["md_content"] + "\n"
 
         full_md_name = "full.md"
-        with open(f"{pdf_dir}/{full_md_name}", "w") as file:
+        with open(f"{pdf_dir}/{full_md_name}", "w", encoding="utf-8") as file:
             file.write(full_md_content)
         with app.app_context():
             full_md_link = url_for('analysis.mdview', filename=full_md_name, as_attachment=False)
@@ -108,7 +108,7 @@ def analysis_pdf_task(pdf_dir, image_dir, pdf_path, is_ocr, analysis_pdf_id):
             for n, md in enumerate(json.loads(md_content)):
                 md_content = md["md_content"]
                 md_name = f"{md.get('page_no', n)}.md"
-                with open(f"{pdf_dir}/{md_name}", "w") as file:
+                with open(f"{pdf_dir}/{md_name}", "w", encoding="utf-8") as file:
                     file.write(md_content)
                 md_url = url_for('analysis.mdview', filename=md_name, as_attachment=False)
                 md_link_list.append(f"{md_url}&pdf={pdf_name}")
