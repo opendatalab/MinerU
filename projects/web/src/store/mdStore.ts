@@ -1,6 +1,7 @@
 // mdStore.ts
 import { create } from "zustand";
 import axios from "axios";
+import { updateMarkdownContent, UpdateMarkdownRequest } from "@/api/extract"; // 确保路径正确
 
 interface MdContent {
   content: string;
@@ -48,6 +49,11 @@ interface MdState {
   ) => string;
   jumpToAnchor: (anchorId: string) => number;
   reset: () => void;
+  updateMdContent: (
+    fileKey: string,
+    pageNumber: string | number,
+    newContent: string
+  ) => Promise<void>;
 }
 
 const MAX_CONCURRENT_REQUESTS = 2;
@@ -122,7 +128,6 @@ const useMdStore = create<MdState>((set, get) => ({
 
     const results = await fetchWithConcurrency(urls);
 
-    // 只有当这是最新的请求时，才更新状态
     if (get().currentRequestId === requestId) {
       const newMdContents: Record<string, MdContent> = {};
       results.forEach(([url, content]) => {
@@ -190,6 +195,55 @@ const useMdStore = create<MdState>((set, get) => ({
       totalLength += contentArray[i].length + 2; // +2 for "\n\n"
     }
     return -1; // Anchor not found
+  },
+
+  updateMdContent: async (
+    fileKey: string,
+    pageNumber: string,
+    newContent: string
+  ) => {
+    try {
+      const params: UpdateMarkdownRequest = {
+        file_key: fileKey,
+        data: {
+          [pageNumber]: newContent,
+        },
+      };
+
+      const result = await updateMarkdownContent(params);
+
+      if (result && result.success) {
+        // 更新本地状态
+        set((state) => {
+          const updatedMdContents = { ...state.mdContents };
+          if (updatedMdContents[fileKey]) {
+            updatedMdContents[fileKey] = {
+              ...updatedMdContents[fileKey],
+              content: newContent,
+            };
+          }
+
+          // 重新计算 allMdContent 和 allMdContentWithAnchor
+          const contentArray = Object.values(updatedMdContents).map(
+            (content) => content.content
+          );
+          const newAllMdContent = state.getAllMdContent(contentArray);
+          const newAllMdContentWithAnchor =
+            state.getContentWithAnchors(contentArray);
+
+          return {
+            mdContents: updatedMdContents,
+            allMdContent: newAllMdContent,
+            allMdContentWithAnchor: newAllMdContentWithAnchor,
+          };
+        });
+      } else {
+        throw new Error("Failed to update Markdown content");
+      }
+    } catch (error) {
+      set({ error: error as Error });
+      throw error;
+    }
   },
 }));
 
