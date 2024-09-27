@@ -4,6 +4,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
+import cls from "classnames";
 
 interface SaveStatusProps {
   className?: string;
@@ -18,7 +19,7 @@ const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
   ({ className }, ref) => {
     const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
     const [showSaved, setShowSaved] = useState(false);
-    const [timeSinceLastSave, setTimeSinceLastSave] = useState("");
+    const [timeSinceLastSave, setTimeSinceLastSave] = useState(0);
 
     useImperativeHandle(ref, () => ({
       triggerSave: () => {
@@ -29,7 +30,7 @@ const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
         // 新增的重置方法
         setLastSaveTime(null);
         setShowSaved(false);
-        setTimeSinceLastSave("");
+        setTimeSinceLastSave(0);
       },
     }));
 
@@ -50,7 +51,7 @@ const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
             (now.getTime() - lastSaveTime.getTime()) / 60000
           );
           if (diffInMinutes > 0) {
-            setTimeSinceLastSave(`${diffInMinutes} 分钟前`);
+            setTimeSinceLastSave(diffInMinutes);
           }
         }
       };
@@ -61,10 +62,20 @@ const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
     }, [lastSaveTime]);
 
     return (
-      <div className={className}>
-        {showSaved && <span>已保存</span>}
-        {!showSaved && lastSaveTime && (
-          <span>最近修改：{timeSinceLastSave}</span>
+      <div className={cls("flex items-center", className)}>
+        {showSaved && (
+          <span className="text-[#121316]/[0.6] text-[13px] leading-[24px]">
+            已保存
+          </span>
+        )}
+        {timeSinceLastSave > 0 && !showSaved && lastSaveTime && (
+          <span className="text-[#121316]/[0.6] text-[13px] leading-[24px]">
+            最近修改：{timeSinceLastSave} 分钟前
+          </span>
+        )}
+        {(showSaved ||
+          (timeSinceLastSave > 0 && !showSaved && lastSaveTime)) && (
+          <span className="w-[1px] h-[0.75rem] bg-[#D7D8DD] ml-[1rem] block"></span>
         )}
       </div>
     );

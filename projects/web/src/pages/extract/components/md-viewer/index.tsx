@@ -170,6 +170,7 @@ const MdViewer: React.FC<IMdViewerProps> = ({
           ))}
         </ul>
         <SaveStatus ref={statusRef} />
+
         {displayType === "code" && (
           <>
             <Tooltip

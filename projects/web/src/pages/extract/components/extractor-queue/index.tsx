@@ -69,7 +69,11 @@ const ExtractorQueue: React.FC<ExtractorQueueProps> = ({ className }) => {
       clearTimeout(timeout);
     }
     timeout = setTimeout(() => {
-      handleExtractor(nextJob?.type, nextJob?.id);
+      if (nextJob?.id) {
+        handleExtractor(nextJob?.type as any, nextJob?.id);
+      } else {
+        navigate("/OpenSourceTools/Extractor");
+      }
     }, 10);
   };
   const taskListRef = useLatest(taskList);
@@ -82,7 +86,7 @@ const ExtractorQueue: React.FC<ExtractorQueueProps> = ({ className }) => {
           id: taskData?.id,
           type: taskData?.type,
           state: taskData?.state, // 提取状态
-        },
+        } as any,
       ].concat(taskListRef?.current)
     );
   };
