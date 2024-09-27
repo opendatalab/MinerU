@@ -37,7 +37,7 @@ def draw_bbox_without_number(i, bbox_list, page, rgb_config, fill_config):
             )  # Draw the rectangle
 
 
-def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config):
+def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config, draw_bbox=True):
     new_rgb = []
     for item in rgb_config:
         item = float(item) / 255
@@ -46,31 +46,32 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config):
     for j, bbox in enumerate(page_data):
         x0, y0, x1, y1 = bbox
         rect_coords = fitz.Rect(x0, y0, x1, y1)  # Define the rectangle
-        if fill_config:
-            page.draw_rect(
-                rect_coords,
-                color=None,
-                fill=new_rgb,
-                fill_opacity=0.3,
-                width=0.5,
-                overlay=True,
-            )  # Draw the rectangle
-        else:
-            page.draw_rect(
-                rect_coords,
-                color=new_rgb,
-                fill=None,
-                fill_opacity=1,
-                width=0.5,
-                overlay=True,
-            )  # Draw the rectangle
+        if draw_bbox:
+            if fill_config:
+                page.draw_rect(
+                    rect_coords,
+                    color=None,
+                    fill=new_rgb,
+                    fill_opacity=0.3,
+                    width=0.5,
+                    overlay=True,
+                )  # Draw the rectangle
+            else:
+                page.draw_rect(
+                    rect_coords,
+                    color=new_rgb,
+                    fill=None,
+                    fill_opacity=1,
+                    width=0.5,
+                    overlay=True,
+                )  # Draw the rectangle
         page.insert_text(
             (x1+2, y0 + 10), str(j + 1), fontsize=10, color=new_rgb
         )  # Insert the index in the top left corner of the rectangle
 
 
 def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
-    layout_bbox_list = []
+    # layout_bbox_list = []
     dropped_bbox_list = []
     tables_list, tables_body_list = [], []
     tables_caption_list, tables_footnote_list = [], []
@@ -80,16 +81,16 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     texts_list = []
     interequations_list = []
     for page in pdf_info:
-        page_layout_list = []
+        # page_layout_list = []
         page_dropped_list = []
         tables, tables_body, tables_caption, tables_footnote = [], [], [], []
         imgs, imgs_body, imgs_caption, imgs_footnote = [], [], [], []
         titles = []
         texts = []
         interequations = []
-        for layout in page['layout_bboxes']:
-            page_layout_list.append(layout['layout_bbox'])
-        layout_bbox_list.append(page_layout_list)
+        # for layout in page['layout_bboxes']:
+        #     page_layout_list.append(layout['layout_bbox'])
+        # layout_bbox_list.append(page_layout_list)
         for dropped_bbox in page['discarded_blocks']:
             page_dropped_list.append(dropped_bbox['bbox'])
         dropped_bbox_list.append(page_dropped_list)
@@ -133,9 +134,18 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         texts_list.append(texts)
         interequations_list.append(interequations)
 
+    layout_bbox_list = []
+
+    for page in pdf_info:
+        page_block_list = []
+        for block in page['para_blocks']:
+            bbox = block['bbox']
+            page_block_list.append(bbox)
+        layout_bbox_list.append(page_block_list)
+
     pdf_docs = fitz.open('pdf', pdf_bytes)
     for i, page in enumerate(pdf_docs):
-        draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
+        # draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
         draw_bbox_without_number(i, dropped_bbox_list, page, [158, 158, 158],
                                  True)
         draw_bbox_without_number(i, tables_list, page, [153, 153, 0],
@@ -150,12 +160,14 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, imgs_body_list, page, [153, 255, 51], True)
         draw_bbox_without_number(i, imgs_caption_list, page, [102, 178, 255],
                                  True)
-        draw_bbox_with_number(i, imgs_footnote_list, page, [255, 178, 102],
+        draw_bbox_without_number(i, imgs_footnote_list, page, [255, 178, 102],
                               True),
         draw_bbox_without_number(i, titles_list, page, [102, 102, 255], True)
         draw_bbox_without_number(i, texts_list, page, [153, 0, 76], True)
         draw_bbox_without_number(i, interequations_list, page, [0, 255, 0],
                                  True)
+    for i, page in enumerate(pdf_docs):
+        draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False, draw_bbox=False)
 
     # Save the PDF
     pdf_docs.save(f'{out_path}/{filename}_layout.pdf')
@@ -318,20 +330,6 @@ def draw_model_bbox(model_list: list, pdf_bytes, out_path, filename):
 
     # Save the PDF
     pdf_docs.save(f'{out_path}/{filename}_model.pdf')
-
-
-from typing import List
-
-
-def do_predict(boxes: List[List[int]]) -> List[int]:
-    from transformers import LayoutLMv3ForTokenClassification
-    from magic_pdf.v3.helpers import prepare_inputs, boxes2inputs, parse_logits
-    model = LayoutLMv3ForTokenClassification.from_pretrained("hantian/layoutreader")
-    model.to("cuda")
-    inputs = boxes2inputs(boxes)
-    inputs = prepare_inputs(inputs, model)
-    logits = model(**inputs).logits.cpu().squeeze(0)
-    return parse_logits(logits, len(boxes))
 
 
 def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
