@@ -71,7 +71,6 @@ export const ExtractorUploadButton = ({
   };
   const onChange = async (pdfFile: any) => {
     if (pdfFile?.file?.status === "done") {
-      console.log("test-pdf", pdfFile);
       const res =
         submitType === "reUpload"
           ? await postReUploadExtractTask(String(urlParams?.jobID))

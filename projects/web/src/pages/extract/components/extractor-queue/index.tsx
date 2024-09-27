@@ -24,7 +24,7 @@ const ExtractorQueue: React.FC<ExtractorQueueProps> = ({ className }) => {
   const navigate = useNavigate();
 
   const params = useParams();
-  console.log("test-params", params);
+
   const { data: taskList, mutate } = useRequest(() => {
     return getExtractorHistory({
       pageNo: 1,
@@ -62,9 +62,7 @@ const ExtractorQueue: React.FC<ExtractorQueueProps> = ({ className }) => {
       ? taskList?.[deleteIndex + 1]
       : taskList?.[deleteIndex - 1];
     mutate(taskList?.filter((i) => i.id !== id));
-    console.log("test-next-job", nextJob);
     deleteExtractJob(id).then(() => {
-      console.log("test-delete-job", id);
       message.success(formatMessage({ id: "extractor.queue.delete.success" }));
     });
     if (timeout) {
@@ -120,7 +118,7 @@ const ExtractorQueue: React.FC<ExtractorQueueProps> = ({ className }) => {
   useEffect(() => {
     mutate(taskListRef?.current);
   }, [locale]);
-  console.log("test-dd", params);
+
   return (
     <div className={cls("w-full flex flex-col mb-3", className)}>
       <header className="flex items-center px-2 py-[0.625rem] text-[#121316]/[0.8] text-[0.875rem] font-semibold">

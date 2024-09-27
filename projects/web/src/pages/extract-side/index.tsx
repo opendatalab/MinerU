@@ -29,7 +29,7 @@ export const ExtractorSide = ({ className = "" }: IExtractorSideProps) => {
   const params = useParams();
   const location = useLocation();
   const { messages } = useIntl();
-  console.log("test-params-jobID", params.jobID);
+
   const menuClass =
     "px-2 py-2.5 mb-1 text-[0.875rem] text-[#121316]/[0.8] font-semibold rounded h-10 flex items-center cursor-pointer hover:bg-[#0d53de]/[0.05]";
 
