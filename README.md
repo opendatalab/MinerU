@@ -267,13 +267,26 @@ Usage: magic-pdf [OPTIONS]
 Options:
   -v, --version                display the version and exit
   -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir TEXT        output local directory
-  -m, --method [ocr|txt|auto]  the method for parsing pdf.
-                               ocr: using ocr technique to extract information from pdf,
-                               txt: suitable for the text-based pdf only and outperform ocr,
-                               auto: automatically choose the best method for parsing pdf
-                                  from ocr and txt.
-                               without method specified, auto will be used by default.
+  -o, --output-dir PATH        output local directory  [required]
+  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
+                               technique to extract information from pdf. txt:
+                               suitable for the text-based pdf only and
+                               outperform ocr. auto: automatically choose the
+                               best method for parsing pdf from ocr and txt.
+                               without method specified, auto will be used by
+                               default.
+  -l, --lang TEXT              Input the languages in the pdf (if known) to
+                               improve OCR accuracy.  Optional. You should
+                               input "Abbreviation" with language form url: ht
+                               tps://paddlepaddle.github.io/PaddleOCR/en/ppocr
+                               /blog/multi_languages.html#5-support-languages-
+                               and-abbreviations
+  -d, --debug BOOLEAN          Enables detailed debugging information during
+                               the execution of the CLI commands.
+  -s, --start INTEGER          The starting page for PDF parsing, beginning
+                               from 0.
+  -e, --end INTEGER            The ending page for PDF parsing, beginning from
+                               0.
   --help                       Show this message and exit.
 
 
