@@ -334,7 +334,7 @@ def do_predict(boxes: List[List[int]]) -> List[int]:
     return parse_logits(logits, len(boxes))
 
 
-def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
+def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
     layout_bbox_list = []
 
     from loguru import logger
@@ -344,35 +344,30 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
             if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
                 for line in block['lines']:
                     bbox = line['bbox']
-                    page_line_list.append(bbox)
+                    index = line['index']
+                    page_line_list.append({'index': index, 'bbox': bbox})
             if block['type'] == 'table' or block['type'] == 'image':
                 bbox = block['bbox']
-                page_line_list.append(bbox)
+                index = block['index']
+                page_line_list.append({'index': index, 'bbox': bbox})
+        sorted_bboxes = sorted(page_line_list, key=lambda x: x['index'])
+        layout_bbox_list.append(sorted_bbox['bbox'] for sorted_bbox in sorted_bboxes)
+    pdf_docs = fitz.open('pdf', pdf_bytes)
+    for i, page in enumerate(pdf_docs):
+        draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
 
-        # 使用layoutreader排序
-        page_size = page['page_size']
-        x_scale = 1000.0 / page_size[0]
-        y_scale = 1000.0 / page_size[1]
-        boxes = []
-        logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_line_list)}")
-        for left, top, right, bottom in page_line_list:
-            left = round(left * x_scale)
-            top = round(top * y_scale)
-            right = round(right * x_scale)
-            bottom = round(bottom * y_scale)
-            assert (
-                    1000 >= right >= left >= 0 and 1000 >= bottom >= top >= 0
-            ), f"Invalid box. right: {right}, left: {left}, bottom: {bottom}, top: {top}"
-            boxes.append([left, top, right, bottom])
-        logger.info("layoutreader start")
-        start = time.time()
-        orders = do_predict(boxes)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        print(orders)
-        logger.info(f"layoutreader end, cos time{time.time() - start}")
-        sorted_bboxes = [page_line_list[i] for i in orders]
-        layout_bbox_list.append(sorted_bboxes)
+    pdf_docs.save(f'{out_path}/{filename}_line_sort.pdf')
+
+
+def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
+    layout_bbox_list = []
+
+    for page in pdf_info:
+        page_block_list = []
+        for block in page['para_blocks']:
+            bbox = block['bbox']
+            page_block_list.append(bbox)
+        layout_bbox_list.append(page_block_list)
     pdf_docs = fitz.open('pdf', pdf_bytes)
     for i, page in enumerate(pdf_docs):
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)

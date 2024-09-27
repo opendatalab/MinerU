@@ -99,7 +99,7 @@ def do_predict(boxes: List[List[int]]) -> List[int]:
     from transformers import LayoutLMv3ForTokenClassification
     from magic_pdf.v3.helpers import prepare_inputs, boxes2inputs, parse_logits
     model = LayoutLMv3ForTokenClassification.from_pretrained("hantian/layoutreader")
-    model.to("cuda")
+    # model.to("cuda")
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
     logits = model(**inputs).logits.cpu().squeeze(0)
@@ -145,17 +145,17 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     # interline_equation_blocks参数不够准，后面切换到interline_equations上
     interline_equation_blocks = []
     if len(interline_equation_blocks) > 0:
-        all_bboxes, all_discarded_blocks, drop_reasons = ocr_prepare_bboxes_for_layout_split_v2(
+        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
             interline_equation_blocks, page_w, page_h)
     else:
-        all_bboxes, all_discarded_blocks, drop_reasons = ocr_prepare_bboxes_for_layout_split_v2(
+        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
             interline_equations, page_w, page_h)
 
-    if len(drop_reasons) > 0:
-        need_drop = True
-        drop_reason.append(DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION)
+    # if len(drop_reasons) > 0:
+    #     need_drop = True
+    #     drop_reason.append(DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION)
 
     '''先处理不需要排版的discarded_blocks'''
     discarded_block_with_spans, spans = fill_spans_in_blocks(all_discarded_blocks, spans, 0.4)
@@ -208,20 +208,31 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     sorted_bboxes = [page_line_list[i] for i in orders]
 
     '''根据line的中位数算block的序列关系'''
-    for line_index, bbox in enumerate(sorted_bboxes):
-        for block in fix_blocks:
-            if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
-                line_index_list = []
+    block_without_lines = []
+    for block in fix_blocks:
+        if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
+            line_index_list = []
+            if len(block['lines']) == 0:
+                block_without_lines.append(block)
+                continue
+            else:
                 for line in block['lines']:
-                    if line['bbox'] == bbox:
-                        line['index'] = line_index
-                        line_index_list.append(line_index)
+                    # for line_bbox in sorted_bboxes:
+                    #     if line['bbox'] == line_bbox:
+                    line['index'] = sorted_bboxes.index(line['bbox'])
+                    line_index_list.append(line['index'])
                 median_value = statistics.median(line_index_list)
                 block['index'] = median_value
 
-            elif block['type'] == 'table' or block['type'] == 'image':
-                if block['bbox'] == bbox:
-                    block['index'] = line_index
+        elif block['type'] == 'table' or block['type'] == 'image':
+            # for line_bbox in sorted_bboxes:
+            #     if block['bbox'] == line_bbox:
+            block['index'] = sorted_bboxes.index(block['bbox'])
+
+    '''移除没有line的block'''
+    for block in block_without_lines:
+        fix_blocks.remove(block)
+
     '''重排block'''
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
 
@@ -292,7 +303,9 @@ def pdf_parse_union(pdf_bytes,
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    para_split(pdf_info_dict, debug_mode=debug_mode)
+    # para_split(pdf_info_dict, debug_mode=debug_mode)
+    for page_num, page in pdf_info_dict.items():
+        page['para_blocks'] = page['preproc_blocks']
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
