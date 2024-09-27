@@ -1,4 +1,4 @@
-from magic_pdf.pdf_parse_union_core import pdf_parse_union
+from magic_pdf.pdf_parse_union_core_v2 import pdf_parse_union
 
 
 def parse_pdf_by_ocr(pdf_bytes,
