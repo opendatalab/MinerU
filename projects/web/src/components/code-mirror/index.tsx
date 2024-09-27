@@ -54,11 +54,7 @@ const CodeMirror: React.FC<PropsWithChildren<IProps>> = ({
       editable={editable}
       extensions={extensions}
       onChange={(v) => {
-        console.log("test-rest-change", v);
         onChange?.(v);
-      }}
-      onBeforeInput={(v) => {
-        console.log("test-onBeforeInput", v);
       }}
     />
   );

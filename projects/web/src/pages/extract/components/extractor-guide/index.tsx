@@ -20,7 +20,7 @@ const ExtractorGuide = () => {
 
   const EXTRACTOR_GUIDE_ITEM_LIST = (messages?.["extractor.side.guide_list"] ||
     []) as unknown as GuideItem[];
-  console.log("test-EXTRACTOR_GUIDE_ITEM_LIST", EXTRACTOR_GUIDE_ITEM_LIST);
+
   const content = (
     <div>
       <div className="text-[1.25rem] font-semibold mt-3 mb-2  ml-4">

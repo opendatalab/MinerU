@@ -68,7 +68,6 @@ export const customUploadToOss = async (
   otherUploadOptions: IUploadOptions
 ) => {
   const { openRead, fileType, uploadType = "local" } = otherUploadOptions;
-  console.log("test-options", options.file);
   const uploadFile = async () => {
     switch (uploadType) {
       case "oss":

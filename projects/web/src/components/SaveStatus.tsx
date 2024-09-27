@@ -11,6 +11,7 @@ interface SaveStatusProps {
 
 export interface SaveStatusRef {
   triggerSave: () => void;
+  reset: () => void; // 新增的重置方法
 }
 
 const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
@@ -23,6 +24,12 @@ const SaveStatus = forwardRef<SaveStatusRef, SaveStatusProps>(
       triggerSave: () => {
         setLastSaveTime(new Date());
         setShowSaved(true);
+      },
+      reset: () => {
+        // 新增的重置方法
+        setLastSaveTime(null);
+        setShowSaved(false);
+        setTimeSinceLastSave("");
       },
     }));
 

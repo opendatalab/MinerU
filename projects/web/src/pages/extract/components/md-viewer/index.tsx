@@ -138,6 +138,7 @@ const MdViewer: React.FC<IMdViewerProps> = ({
     if (taskInfo?.markdownUrl) {
       setMdUrlArr(taskInfo?.markdownUrl);
     }
+    statusRef?.current?.reset();
   }, [taskInfo?.markdownUrl, params?.jobID]);
 
   const handleContentChange = (val: string, index: number) => {

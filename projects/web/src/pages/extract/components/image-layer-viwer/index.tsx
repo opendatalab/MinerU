@@ -1,7 +1,15 @@
-import React, { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle, useCallback } from 'react';
-import cls from 'classnames';
-import { isObjEqual } from '@/utils/render';
-import { useSize } from 'ahooks';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  forwardRef,
+  useImperativeHandle,
+  useCallback,
+} from "react";
+import cls from "classnames";
+import { isObjEqual } from "@/utils/render";
+import { useSize } from "ahooks";
 
 interface IImageLayersViewerProps {
   imageUrl: string;
@@ -27,8 +35,23 @@ export interface ImageLayerViewerRef {
   updateScaleAndPosition: () => void;
 }
 
-const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps>(
-  ({ imageUrl, imageHeight, imageWidth, onChange, layout, disableZoom, className = '', layerVisible = true }, ref) => {
+const ImageLayerViewer = forwardRef<
+  ImageLayerViewerRef,
+  IImageLayersViewerProps
+>(
+  (
+    {
+      imageUrl,
+      imageHeight,
+      imageWidth,
+      onChange,
+      layout,
+      disableZoom,
+      className = "",
+      layerVisible = true,
+    },
+    ref
+  ) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const imageCanvasRef = useRef<HTMLCanvasElement>(null);
     const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -53,7 +76,8 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
     }, [imageUrl]);
 
     const calculateInitialScaleAndPosition = useCallback(() => {
-      if (!containerRef.current) return { initialScale: 1, initialPosition: { x: 0, y: 0 } };
+      if (!containerRef.current)
+        return { initialScale: 1, initialPosition: { x: 0, y: 0 } };
       const containerWidth = containerRef.current.clientWidth;
       const containerHeight = containerRef.current.clientHeight;
 
@@ -66,14 +90,15 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
 
       const initialPosition = {
         x: (containerWidth - scaledWidth) / 2,
-        y: (containerHeight - scaledHeight) / 2
+        y: (containerHeight - scaledHeight) / 2,
       };
 
       return { initialScale, initialPosition };
     }, [imageWidth, imageHeight]);
 
     const updateScaleAndPosition = useCallback(() => {
-      const { initialScale, initialPosition } = calculateInitialScaleAndPosition();
+      const { initialScale, initialPosition } =
+        calculateInitialScaleAndPosition();
       setScale(initialScale);
       setPosition(initialPosition);
       setPadding({ left: 0, top: 0 });
@@ -84,7 +109,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
     }, [imageWidth, imageHeight]);
 
     const drawImage = useCallback(() => {
-      const ctx = imageCanvasRef.current?.getContext('2d');
+      const ctx = imageCanvasRef.current?.getContext("2d");
       if (!ctx || !image.complete) return;
 
       const scaledWidth = imageWidth * scale;
@@ -102,7 +127,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
     }, [image, imageWidth, imageHeight, scale, dpr]);
 
     const drawLayout = useCallback(() => {
-      const ctx = overlayCanvasRef.current?.getContext('2d');
+      const ctx = overlayCanvasRef.current?.getContext("2d");
       if (!ctx) return;
 
       const scaledWidth = imageWidth * scale;
@@ -118,28 +143,30 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
       ctx.clearRect(0, 0, scaledWidth, scaledHeight);
 
       layout?.forEach((item) => {
-        const [x1, y1, x2, y2, x3, y3, x4, y4] = item.poly.map((coord) => coord * scale);
+        const [x1, y1, x2, y2, x3, y3, x4, y4] = item.poly.map(
+          (coord) => coord * scale
+        );
 
         switch (item.category_id) {
           case 9:
-            ctx.fillStyle = 'rgba(230, 113, 230, 0.4)';
-            ctx.strokeStyle = 'rgba(230, 113, 230, 1)';
+            ctx.fillStyle = "rgba(230, 113, 230, 0.4)";
+            ctx.strokeStyle = "rgba(230, 113, 230, 1)";
             break;
           case 8:
-            ctx.fillStyle = 'rgba(240, 240, 124, 0.4)';
-            ctx.strokeStyle = 'rgba(240, 240, 124, 1)';
+            ctx.fillStyle = "rgba(240, 240, 124, 0.4)";
+            ctx.strokeStyle = "rgba(240, 240, 124, 1)";
             break;
           case 13:
-            ctx.fillStyle = 'rgba(150, 232, 172, 0.4)';
-            ctx.strokeStyle = 'rgba(150, 232, 172, 1)';
+            ctx.fillStyle = "rgba(150, 232, 172, 0.4)";
+            ctx.strokeStyle = "rgba(150, 232, 172, 1)";
             break;
           case 14:
-            ctx.fillStyle = 'rgba(230, 122, 171, 0.4)';
-            ctx.strokeStyle = 'rgba(230, 122, 171, 1)';
+            ctx.fillStyle = "rgba(230, 122, 171, 0.4)";
+            ctx.strokeStyle = "rgba(230, 122, 171, 1)";
             break;
           default:
-            ctx.fillStyle = 'transparent';
-            ctx.strokeStyle = 'transparent';
+            ctx.fillStyle = "transparent";
+            ctx.strokeStyle = "transparent";
         }
 
         ctx.beginPath();
@@ -168,8 +195,14 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
           const newScaledHeight = imageHeight * newScale;
 
           let newPosition = {
-            x: position.x - ((x - position.x) * (newScaledWidth - prevScaledWidth)) / prevScaledWidth,
-            y: position.y - ((y - position.y) * (newScaledHeight - prevScaledHeight)) / prevScaledHeight
+            x:
+              position.x -
+              ((x - position.x) * (newScaledWidth - prevScaledWidth)) /
+                prevScaledWidth,
+            y:
+              position.y -
+              ((y - position.y) * (newScaledHeight - prevScaledHeight)) /
+                prevScaledHeight,
           };
 
           // Center the image if it's smaller than the container
@@ -186,7 +219,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
           // Calculate new padding
           const newPadding = {
             left: Math.max(0, -newPosition.x),
-            top: Math.max(0, -newPosition.y)
+            top: Math.max(0, -newPosition.y),
           };
           setPadding(newPadding);
         }
@@ -212,7 +245,9 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
 
     const handleCenterZoom = useCallback(
       (zoomIn: boolean) => {
-        const newScale = zoomIn ? scale * (1 + zoomStep) : scale / (1 + zoomStep);
+        const newScale = zoomIn
+          ? scale * (1 + zoomStep)
+          : scale / (1 + zoomStep);
         const boundedNewScale = Math.max(minZoom, Math.min(newScale, maxZoom));
 
         if (containerRef.current) {
@@ -241,7 +276,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
         zoomIn,
         zoomOut,
         scale,
-        updateScaleAndPosition
+        updateScaleAndPosition,
       }),
       [zoomIn, zoomOut, scale]
     );
@@ -257,10 +292,10 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
         }
       };
 
-      container.addEventListener('wheel', handleWheel, { passive: false });
+      container.addEventListener("wheel", handleWheel, { passive: false });
 
       return () => {
-        container.removeEventListener('wheel', handleWheel);
+        container.removeEventListener("wheel", handleWheel);
       };
     }, [handleZoom]);
 
@@ -268,7 +303,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
       if (containerRef?.current) {
         containerRef.current?.scrollTo({
           left: padding.left,
-          top: padding.top
+          top: padding.top,
         });
       }
     }, [padding]);
@@ -288,7 +323,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
 
     useEffect(() => {
       if (overlayCanvasRef.current) {
-        overlayCanvasRef.current.style.opacity = layerVisible ? '1' : '0';
+        overlayCanvasRef.current.style.opacity = layerVisible ? "1" : "0";
       }
     }, [layerVisible]);
 
@@ -296,13 +331,18 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
       onChange?.({ scale });
     }, [scale]);
 
-    console.log('test-render');
     return (
-      <div className={cls(className, 'w-full h-full overflow-auto scrollbar-thin relative')} ref={containerRef}>
+      <div
+        className={cls(
+          className,
+          "w-full h-full overflow-auto scrollbar-thin relative"
+        )}
+        ref={containerRef}
+      >
         <div
           style={{
             paddingLeft: `${padding.left}px`,
-            paddingTop: `${padding.top}px`
+            paddingTop: `${padding.top}px`,
           }}
         >
           <div
@@ -310,14 +350,14 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
             style={{
               width: `${imageWidth * scale}px`,
               height: `${imageHeight * scale}px`,
-              transform: `translate(${position.x}px, ${position.y}px)`
+              transform: `translate(${position.x}px, ${position.y}px)`,
             }}
           >
             <canvas
               ref={imageCanvasRef}
               style={{
                 width: `${imageWidth * scale}px`,
-                height: `${imageHeight * scale}px`
+                height: `${imageHeight * scale}px`,
               }}
             />
             <canvas
@@ -325,7 +365,7 @@ const ImageLayerViewer = forwardRef<ImageLayerViewerRef, IImageLayersViewerProps
               className="absolute top-0 left-0"
               style={{
                 width: `${imageWidth * scale}px`,
-                height: `${imageHeight * scale}px`
+                height: `${imageHeight * scale}px`,
               }}
             />
           </div>
