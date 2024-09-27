@@ -67,7 +67,6 @@ def draw_bbox_with_number(i, bbox_list, page, rgb_config, fill_config, draw_bbox
 
 
 def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
-    # layout_bbox_list = []
     dropped_bbox_list = []
     tables_list, tables_body_list = [], []
     tables_caption_list, tables_footnote_list = [], []
@@ -77,16 +76,14 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     texts_list = []
     interequations_list = []
     for page in pdf_info:
-        # page_layout_list = []
+
         page_dropped_list = []
         tables, tables_body, tables_caption, tables_footnote = [], [], [], []
         imgs, imgs_body, imgs_caption, imgs_footnote = [], [], [], []
         titles = []
         texts = []
         interequations = []
-        # for layout in page['layout_bboxes']:
-        #     page_layout_list.append(layout['layout_bbox'])
-        # layout_bbox_list.append(page_layout_list)
+
         for dropped_bbox in page['discarded_blocks']:
             page_dropped_list.append(dropped_bbox['bbox'])
         dropped_bbox_list.append(page_dropped_list)
@@ -140,8 +137,9 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         layout_bbox_list.append(page_block_list)
 
     pdf_docs = fitz.open('pdf', pdf_bytes)
+
     for i, page in enumerate(pdf_docs):
-        # draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
+
         draw_bbox_without_number(i, dropped_bbox_list, page, [158, 158, 158],
                                  True)
         draw_bbox_without_number(i, tables_list, page, [153, 153, 0],
@@ -162,7 +160,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, texts_list, page, [153, 0, 76], True)
         draw_bbox_without_number(i, interequations_list, page, [0, 255, 0],
                                  True)
-    for i, page in enumerate(pdf_docs):
+
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False, draw_bbox=False)
 
     # Save the PDF
