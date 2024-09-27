@@ -14,7 +14,6 @@ from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.local_math import float_equal
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.model.magic_model import MagicModel
-from magic_pdf.para.para_split_v2 import para_split
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
@@ -153,10 +152,6 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
             img_blocks, table_blocks, discarded_blocks, text_blocks, title_blocks,
             interline_equations, page_w, page_h)
 
-    # if len(drop_reasons) > 0:
-    #     need_drop = True
-    #     drop_reason.append(DropReason.OVERLAP_BLOCKS_CAN_NOT_SEPARATION)
-
     '''先处理不需要排版的discarded_blocks'''
     discarded_block_with_spans, spans = fill_spans_in_blocks(all_discarded_blocks, spans, 0.4)
     fix_discarded_blocks = fix_discarded_block(discarded_block_with_spans)
@@ -177,11 +172,11 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     '''获取所有line并对line排序'''
     page_line_list = []
     for block in fix_blocks:
-        if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
+        if block['type'] in ['text', 'title', 'interline_equation']:
             for line in block['lines']:
                 bbox = line['bbox']
                 page_line_list.append(bbox)
-        elif block['type'] == 'table' or block['type'] == 'image':  # 简单的把表和图都当成一个line处理
+        elif block['type'] in ['table', 'image']:  # 简单的把表和图都当成一个line处理
             bbox = block['bbox']
             page_line_list.append(bbox)
 
@@ -201,32 +196,25 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
         boxes.append([left, top, right, bottom])
     layoutreader_start = time.time()
     orders = do_predict(boxes)
-    # if torch.cuda.is_available():
-    #     torch.cuda.empty_cache()
-    # print(orders)
     logger.info(f"layoutreader cost time{time.time() - layoutreader_start}")
     sorted_bboxes = [page_line_list[i] for i in orders]
 
     '''根据line的中位数算block的序列关系'''
     block_without_lines = []
     for block in fix_blocks:
-        if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
+        if block['type'] in ['text', 'title', 'interline_equation']:
             line_index_list = []
             if len(block['lines']) == 0:
                 block_without_lines.append(block)
                 continue
             else:
                 for line in block['lines']:
-                    # for line_bbox in sorted_bboxes:
-                    #     if line['bbox'] == line_bbox:
                     line['index'] = sorted_bboxes.index(line['bbox'])
                     line_index_list.append(line['index'])
                 median_value = statistics.median(line_index_list)
                 block['index'] = median_value
 
-        elif block['type'] == 'table' or block['type'] == 'image':
-            # for line_bbox in sorted_bboxes:
-            #     if block['bbox'] == line_bbox:
+        elif block['type'] in ['table', 'image']:
             block['index'] = sorted_bboxes.index(block['bbox'])
 
     '''移除没有line的block'''

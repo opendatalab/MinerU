@@ -7,7 +7,7 @@ from loguru import logger
 
 import magic_pdf.model as model_config
 from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_span_bbox,
-                                      draw_model_bbox, draw_layout_sort_bbox, draw_line_sort_bbox)
+                                      draw_model_bbox, draw_line_sort_bbox)
 from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -39,7 +39,7 @@ def do_parse(
     f_dump_middle_json=True,
     f_dump_model_json=True,
     f_dump_orig_pdf=True,
-    f_dump_content_list=False,
+    f_dump_content_list=True,
     f_make_md_mode=MakeMode.MM_MD,
     f_draw_model_bbox=False,
     f_draw_line_sort_bbox=False,
@@ -49,7 +49,7 @@ def do_parse(
 ):
     if debug_able:
         logger.warning('debug mode is on')
-        f_dump_content_list = True
+        # f_dump_content_list = True
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
 

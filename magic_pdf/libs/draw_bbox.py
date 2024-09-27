@@ -1,7 +1,3 @@
-import time
-
-import torch
-
 from magic_pdf.libs.commons import fitz  # PyMuPDF
 from magic_pdf.libs.Constants import CROSS_PAGE
 from magic_pdf.libs.ocr_content_type import BlockType, CategoryId, ContentType
@@ -335,16 +331,15 @@ def draw_model_bbox(model_list: list, pdf_bytes, out_path, filename):
 def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
     layout_bbox_list = []
 
-    from loguru import logger
     for page in pdf_info:
         page_line_list = []
         for block in page['preproc_blocks']:
-            if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
+            if block['type'] in ['text', 'title', 'interline_equation']:
                 for line in block['lines']:
                     bbox = line['bbox']
                     index = line['index']
                     page_line_list.append({'index': index, 'bbox': bbox})
-            if block['type'] == 'table' or block['type'] == 'image':
+            if block['type'] in ['table', 'image']:
                 bbox = block['bbox']
                 index = block['index']
                 page_line_list.append({'index': index, 'bbox': bbox})
