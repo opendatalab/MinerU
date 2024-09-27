@@ -1,4 +1,4 @@
-# Mineru本地web_demo
+# MinerU本地web_demo
 ## 功能简介
 <p align="center">
   <img src="images/web_demo_1.png" width="600px" style="vertical-align:middle;">
