@@ -1,0 +1,15 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Frame" clip-path="url(#clip0_4039_8343)">
+<path id="Vector" fill-rule="evenodd" clip-rule="evenodd" d="M8.00065 1.33325C4.31875 1.33325 1.33398 4.31802 1.33398 7.99992C1.33398 11.6818 4.31875 14.6666 8.00065 14.6666V1.33325Z" stroke="#464A53" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_2" d="M8 1.33325C11.6819 1.33325 14.6667 4.31802 14.6667 7.99992C14.6667 11.6818 11.6819 14.6666 8 14.6666V1.33325Z" stroke="#464A53" stroke-width="1.33333" stroke-linejoin="round"/>
+<path id="Vector_3" d="M8 12H3" stroke="#464A53" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_4" d="M7.99935 9.33325H1.66602" stroke="#464A53" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_5" d="M7.99935 6.66675H1.66602" stroke="#464A53" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_6" d="M8 4H3" stroke="#464A53" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<clipPath id="clip0_4039_8343">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
+</svg>

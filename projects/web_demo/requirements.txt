@@ -1,0 +1,13 @@
+flask-cors
+flask-jwt-extended
+flask-marshmallow
+flask-migrate
+flask-restful
+flask-sqlalchemy
+flask
+greenlet
+loguru
+marshmallow-sqlalchemy
+marshmallow
+pyjwt
+pyyaml
