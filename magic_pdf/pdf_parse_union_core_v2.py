@@ -133,6 +133,65 @@ def do_predict(boxes: List[List[int]], model) -> List[int]:
     return parse_logits(logits, len(boxes))
 
 
+def cal_block_index(fix_blocks, sorted_bboxes):
+    block_without_lines = []
+    for block in fix_blocks:
+        if block['type'] in ['text', 'title', 'interline_equation']:
+            line_index_list = []
+            if len(block['lines']) == 0:
+                block_without_lines.append(block)
+                continue
+            else:
+                for line in block['lines']:
+                    line['index'] = sorted_bboxes.index(line['bbox'])
+                    line_index_list.append(line['index'])
+                median_value = statistics.median(line_index_list)
+                block['index'] = median_value
+
+        elif block['type'] in ['table', 'image']:
+            block['index'] = sorted_bboxes.index(block['bbox'])
+
+    '''移除没有line的block'''
+    for block in block_without_lines:
+        fix_blocks.remove(block)
+
+    return fix_blocks
+
+
+def sort_lines_by_model(fix_blocks, page_w, page_h):
+    page_line_list = []
+    for block in fix_blocks:
+        if block['type'] in ['text', 'title', 'interline_equation']:
+            for line in block['lines']:
+                bbox = line['bbox']
+                page_line_list.append(bbox)
+        elif block['type'] in ['table', 'image']:  # 简单的把表和图都当成一个line处理
+            bbox = block['bbox']
+            page_line_list.append(bbox)
+
+    # 使用layoutreader排序
+    x_scale = 1000.0 / page_w
+    y_scale = 1000.0 / page_h
+    boxes = []
+    # logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_line_list)}")
+    for left, top, right, bottom in page_line_list:
+        left = round(left * x_scale)
+        top = round(top * y_scale)
+        right = round(right * x_scale)
+        bottom = round(bottom * y_scale)
+        assert (
+                1000 >= right >= left >= 0 and 1000 >= bottom >= top >= 0
+        ), f"Invalid box. right: {right}, left: {left}, bottom: {bottom}, top: {top}"
+        boxes.append([left, top, right, bottom])
+    model_manager = ModelSingleton()
+    model = model_manager.get_model("layoutreader")
+    with torch.no_grad():
+        orders = do_predict(boxes, model)
+    sorted_bboxes = [page_line_list[i] for i in orders]
+
+    return sorted_bboxes
+
+
 def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode):
     need_drop = False
     drop_reason = []
@@ -191,66 +250,17 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
                                                [], [], interline_equations, fix_discarded_blocks,
                                                need_drop, drop_reason)
 
-    '''将span填入排好序的blocks中'''
+    '''将span填入blocks中'''
     block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.3)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
 
     '''获取所有line并对line排序'''
-    page_line_list = []
-    for block in fix_blocks:
-        if block['type'] in ['text', 'title', 'interline_equation']:
-            for line in block['lines']:
-                bbox = line['bbox']
-                page_line_list.append(bbox)
-        elif block['type'] in ['table', 'image']:  # 简单的把表和图都当成一个line处理
-            bbox = block['bbox']
-            page_line_list.append(bbox)
-
-    # 使用layoutreader排序
-    x_scale = 1000.0 / page_w
-    y_scale = 1000.0 / page_h
-    boxes = []
-    # logger.info(f"Scale: {x_scale}, {y_scale}, Boxes len: {len(page_line_list)}")
-    for left, top, right, bottom in page_line_list:
-        left = round(left * x_scale)
-        top = round(top * y_scale)
-        right = round(right * x_scale)
-        bottom = round(bottom * y_scale)
-        assert (
-                1000 >= right >= left >= 0 and 1000 >= bottom >= top >= 0
-        ), f"Invalid box. right: {right}, left: {left}, bottom: {bottom}, top: {top}"
-        boxes.append([left, top, right, bottom])
-    model_manager = ModelSingleton()
-    model = model_manager.get_model("layoutreader")
-    layoutreader_start = time.time()
-    with torch.no_grad():
-        orders = do_predict(boxes, model)
-    # logger.info(f"layoutreader cost time{time.time() - layoutreader_start}")
-    sorted_bboxes = [page_line_list[i] for i in orders]
+    sorted_bboxes = sort_lines_by_model(fix_blocks, page_w, page_h)
 
     '''根据line的中位数算block的序列关系'''
-    block_without_lines = []
-    for block in fix_blocks:
-        if block['type'] in ['text', 'title', 'interline_equation']:
-            line_index_list = []
-            if len(block['lines']) == 0:
-                block_without_lines.append(block)
-                continue
-            else:
-                for line in block['lines']:
-                    line['index'] = sorted_bboxes.index(line['bbox'])
-                    line_index_list.append(line['index'])
-                median_value = statistics.median(line_index_list)
-                block['index'] = median_value
-
-        elif block['type'] in ['table', 'image']:
-            block['index'] = sorted_bboxes.index(block['bbox'])
-
-    '''移除没有line的block'''
-    for block in block_without_lines:
-        fix_blocks.remove(block)
+    fix_blocks = cal_block_index(fix_blocks, sorted_bboxes)
 
     '''重排block'''
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
