@@ -341,10 +341,13 @@ def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
     for page in pdf_info:
         page_line_list = []
         for block in page['preproc_blocks']:
-            if block['type'] == 'text' or block['type'] == 'title':
+            if block['type'] == 'text' or block['type'] == 'title' or block['type'] == 'interline_equation':
                 for line in block['lines']:
                     bbox = line['bbox']
                     page_line_list.append(bbox)
+            if block['type'] == 'table' or block['type'] == 'image':
+                bbox = block['bbox']
+                page_line_list.append(bbox)
 
         # 使用layoutreader排序
         page_size = page['page_size']
