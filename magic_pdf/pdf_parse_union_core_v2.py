@@ -140,7 +140,7 @@ class ModelSingleton:
 
 
 def do_predict(boxes: List[List[int]], model) -> List[int]:
-    from magic_pdf.model.v3 import prepare_inputs, boxes2inputs, parse_logits
+    from magic_pdf.model.v3.helpers import prepare_inputs, boxes2inputs, parse_logits
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
     logits = model(**inputs).logits.cpu().squeeze(0)
