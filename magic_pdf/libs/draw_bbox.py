@@ -341,6 +341,10 @@ def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
                 bbox = block['bbox']
                 index = block['index']
                 page_line_list.append({'index': index, 'bbox': bbox})
+            # for line in block['lines']:
+            #     bbox = line['bbox']
+            #     index = line['index']
+            #     page_line_list.append({'index': index, 'bbox': bbox})
         sorted_bboxes = sorted(page_line_list, key=lambda x: x['index'])
         layout_bbox_list.append(sorted_bbox['bbox'] for sorted_bbox in sorted_bboxes)
     pdf_docs = fitz.open('pdf', pdf_bytes)

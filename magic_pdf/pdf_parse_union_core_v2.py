@@ -150,37 +150,99 @@ def do_predict(boxes: List[List[int]], model) -> List[int]:
 
 def cal_block_index(fix_blocks, sorted_bboxes):
     for block in fix_blocks:
-        if block['type'] in ['text', 'title', 'interline_equation']:
-            line_index_list = []
-            if len(block['lines']) == 0:
-                block['index'] = sorted_bboxes.index(block['bbox'])
-            else:
-                for line in block['lines']:
-                    line['index'] = sorted_bboxes.index(line['bbox'])
-                    line_index_list.append(line['index'])
-                median_value = statistics.median(line_index_list)
-                block['index'] = median_value
+        # if block['type'] in ['text', 'title', 'interline_equation']:
+        #     line_index_list = []
+        #     if len(block['lines']) == 0:
+        #         block['index'] = sorted_bboxes.index(block['bbox'])
+        #     else:
+        #         for line in block['lines']:
+        #             line['index'] = sorted_bboxes.index(line['bbox'])
+        #             line_index_list.append(line['index'])
+        #         median_value = statistics.median(line_index_list)
+        #         block['index'] = median_value
+        #
+        # elif block['type'] in ['table', 'image']:
+        #     block['index'] = sorted_bboxes.index(block['bbox'])
 
-        elif block['type'] in ['table', 'image']:
+        line_index_list = []
+        if len(block['lines']) == 0:
             block['index'] = sorted_bboxes.index(block['bbox'])
+        else:
+            for line in block['lines']:
+                line['index'] = sorted_bboxes.index(line['bbox'])
+                line_index_list.append(line['index'])
+            median_value = statistics.median(line_index_list)
+            block['index'] = median_value
+
+        # 删除图表block中的虚拟line信息
+        if block['type'] in ['table', 'image']:
+            del block['lines']
 
     return fix_blocks
 
 
-def sort_lines_by_model(fix_blocks, page_w, page_h):
+def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
+    # block_bbox是一个元组(x0, y0, x1, y1)，其中(x0, y0)是左下角坐标，(x1, y1)是右上角坐标
+    x0, y0, x1, y1 = block_bbox
+
+    block_height = y1 - y0
+    block_weight = x1 - x0
+
+    # 如果block高度小于n行正文，则直接返回block的bbox
+    if line_height*3 < block_height:
+        if block_height > page_h*0.25 and page_w*0.5 > block_weight > page_w*0.25:  # 可能是双列结构，可以切细点
+            lines = int(block_height/line_height)
+        else:
+            # 如果block的宽度超过0.4页面宽度，则将block分成3行
+            if block_weight > page_w*0.4:
+                line_height = (y1 - y0) / 3
+                lines = 3
+            elif block_weight > page_w*0.25: # 否则将block分成两行
+                line_height = (y1 - y0) / 2
+                lines = 2
+            else: # 判断长宽比
+                if block_height/block_weight > 1.2:  # 细长的不分
+                    return [[x0, y0, x1, y1]]
+                else: # 不细长的还是分成两行
+                    line_height = (y1 - y0) / 2
+                    lines = 2
+
+        # 确定从哪个y位置开始绘制线条
+        current_y = y0
+
+        # 用于存储线条的位置信息[(x0, y), ...]
+        lines_positions = []
+
+        for i in range(lines):
+            lines_positions.append([x0, current_y, x1, current_y + line_height])
+            current_y += line_height
+        return lines_positions
+
+    else:
+        return [[x0, y0, x1, y1]]
+
+
+def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
     for block in fix_blocks:
         if block['type'] in ['text', 'title', 'interline_equation']:
-            if len(block['lines']) == 0:  # 没有line的block(一般是图片形式的文本块)，就直接用block的bbox来排序
+            if len(block['lines']) == 0:
                 bbox = block['bbox']
-                page_line_list.append(bbox)
+                lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
+                for line in lines:
+                    block['lines'].append({'bbox': line, 'spans': []})
+                page_line_list.extend(lines)
             else:
                 for line in block['lines']:
                     bbox = line['bbox']
                     page_line_list.append(bbox)
-        elif block['type'] in ['table', 'image']:  # 简单的把表和图都当成一个line处理
+        elif block['type'] in ['table', 'image']:
             bbox = block['bbox']
-            page_line_list.append(bbox)
+            lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
+            block['lines'] = []
+            for line in lines:
+                block['lines'].append({'bbox': line, 'spans': []})
+            page_line_list.extend(lines)
 
     # 使用layoutreader排序
     x_scale = 1000.0 / page_w
@@ -220,6 +282,19 @@ def sort_lines_by_model(fix_blocks, page_w, page_h):
     sorted_bboxes = [page_line_list[i] for i in orders]
 
     return sorted_bboxes
+
+
+def get_line_height(blocks):
+    page_line_height_list = []
+    for block in blocks:
+        if block['type'] in ['text', 'title', 'interline_equation']:
+            for line in block['lines']:
+                bbox = line['bbox']
+                page_line_height_list.append(int(bbox[3]-bbox[1]))
+    if len(page_line_height_list) > 0:
+        return statistics.median(page_line_height_list)
+    else:
+        return 10
 
 
 def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode):
@@ -286,8 +361,11 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
 
+    '''获取所有line并计算正文line的高度'''
+    line_height = get_line_height(fix_blocks)
+
     '''获取所有line并对line排序'''
-    sorted_bboxes = sort_lines_by_model(fix_blocks, page_w, page_h)
+    sorted_bboxes = sort_lines_by_model(fix_blocks, page_w, page_h, line_height)
 
     '''根据line的中位数算block的序列关系'''
     fix_blocks = cal_block_index(fix_blocks, sorted_bboxes)
