@@ -7,6 +7,7 @@ from typing import List
 
 import torch
 
+from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.commons import fitz, get_delta_time
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.drop_reason import DropReason
@@ -302,14 +303,6 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
                                                 images, tables, interline_equations, fix_discarded_blocks,
                                                 need_drop, drop_reason)
     return page_info
-
-
-def clean_memory():
-    import gc
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    gc.collect()
 
 
 def pdf_parse_union(pdf_bytes,
