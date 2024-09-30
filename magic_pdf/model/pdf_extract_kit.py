@@ -3,6 +3,7 @@ import os
 import time
 
 from magic_pdf.libs.Constants import *
+from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.model.model_list import AtomicModel
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
@@ -329,6 +330,8 @@ class CustomPEKModel:
                 ocr_res_list.append(res)
             elif int(res['category_id']) in [5]:
                 table_res_list.append(res)
+
+        clean_memory()
 
         # ocr识别
         if self.apply_ocr:
