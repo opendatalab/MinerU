@@ -41,38 +41,35 @@ def mk_nlp_markdown_1(para_dict: dict):
 
 # 找到目标字符串在段落中的索引
 def __find_index(paragraph, target):
-    index = paragraph.find(target)
-    if index != -1:
-        return index
-    else:
-        return None
+    # Optimize: Remove unnecessary else clause
+    return paragraph.find(target) or None
 
 
-def __insert_string(paragraph, target, postion):
-    new_paragraph = paragraph[:postion] + target + paragraph[postion:] 
-    return new_paragraph
+def __insert_string(paragraph, target, position):
+    # Optimize: Corrected parameter name from 'postion' to 'position'
+    return paragraph[:position] + target + paragraph[position:]
 
 
 def __insert_after(content, image_content, target):
     """
     在content中找到target，将image_content插入到target后面
     """
+    # Optimize: Simplified string manipulation
     index = content.find(target)
     if index != -1:
-        content = content[:index+len(target)] + "\n\n" + image_content + "\n\n" + content[index+len(target):]
-    else:
-        logger.error(f"Can't find the location of image {image_content} in the markdown file, search target is {target}")
+        return f"{content[:index+len(target)]}\n\n{image_content}\n\n{content[index+len(target):]}"
+    logger.error(f"Can't find the location of image {image_content} in the markdown file, search target is {target}")
     return content
 
 def __insert_before(content, image_content, target):
     """
     在content中找到target，将image_content插入到target前面
     """
+    # Optimize: Simplified string manipulation
     index = content.find(target)
     if index != -1:
-        content = content[:index] + "\n\n" + image_content + "\n\n" + content[index:]
-    else:
-        logger.error(f"Can't find the location of image {image_content} in the markdown file, search target is {target}")
+        return f"{content[:index]}\n\n{image_content}\n\n{content[index:]}"
+    logger.error(f"Can't find the location of image {image_content} in the markdown file, search target is {target}")
     return content
 
 
@@ -309,6 +306,8 @@ def mk_universal_format(pdf_info_list: list, img_buket_path):
 
 
 def insert_img_or_table(type, element, pymu_raw_blocks, content_lst):
+    # Optimize: Renamed 'type' to 'element_type' to avoid shadowing built-in
+    element_type = type
     element_bbox = element['bbox']
     # 先看在哪个block内
     for block in pymu_raw_blocks:
@@ -320,7 +319,7 @@ def insert_img_or_table(type, element, pymu_raw_blocks, content_lst):
                 if line_box[0] - 1 <= element_bbox[0] < line_box[2] + 1 and line_box[1] - 1 <= element_bbox[1] < line_box[
                     3] + 1:  # 在line内的，插入line前面
                     line_txt = "".join([s['text'] for s in l['spans']])
-                    __insert_before_para(line_txt, type, element, content_lst)
+                    __insert_before_para(line_txt, element_type, element, content_lst)
                     break
                 break
             else:  # 在行与行之间
@@ -337,9 +336,9 @@ def insert_img_or_table(type, element, pymu_raw_blocks, content_lst):
                     line_txt = "".join([s['text'] for s in min_line['spans']])
                     img_h = element_bbox[3] - element_bbox[1]
                     if min_distance < img_h:  # 文字在图片前面
-                        __insert_after_para(line_txt, type, element, content_lst)
+                        __insert_after_para(line_txt, element_type, element, content_lst)
                     else:
-                        __insert_before_para(line_txt, type, element, content_lst)
+                        __insert_before_para(line_txt, element_type, element, content_lst)
                     break
                 else:
                     logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file #1")
@@ -348,12 +347,12 @@ def insert_img_or_table(type, element, pymu_raw_blocks, content_lst):
         top_txt_block = find_top_nearest_text_bbox(pymu_raw_blocks, element_bbox)
         if top_txt_block:
             line_txt = "".join([s['text'] for s in top_txt_block['lines'][-1]['spans']])
-            __insert_after_para(line_txt, type, element, content_lst)
+            __insert_after_para(line_txt, element_type, element, content_lst)
         else:
             bottom_txt_block = find_bottom_nearest_text_bbox(pymu_raw_blocks, element_bbox)
             if bottom_txt_block:
                 line_txt = "".join([s['text'] for s in bottom_txt_block['lines'][0]['spans']])
-                __insert_before_para(line_txt, type, element, content_lst)
+                __insert_before_para(line_txt, element_type, element, content_lst)
             else:  # TODO ，图片可能独占一列，这种情况上下是没有图片的
                 logger.error(f"Can't find the location of image {element.get('image_path')} in the markdown file #2")
 

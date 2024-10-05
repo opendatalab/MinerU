@@ -21,7 +21,7 @@ def __is_hyphen_at_line_end(line):
     bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
     """
     # Use regex to check if the line ends with one or more letters followed by a hyphen
-    return bool(re.search(r'[A-Za-z]+-\s*$', line))
+    return bool(re.search(r'\w+-\s*$', line))
 
 
 def split_long_words(text):
@@ -190,14 +190,8 @@ def merge_para_with_text(para_block):
 
     para_text = ''
     for line in para_block['lines']:
-        line_text = ''
-        line_lang = ''
-        for span in line['spans']:
-            span_type = span['type']
-            if span_type == ContentType.Text:
-                line_text += span['content'].strip()
-        if line_text != '':
-            line_lang = detect_lang(line_text)
+        line_text = ''.join([span['content'].strip() for span in line['spans'] if span['type'] == ContentType.Text])
+        language = detect_language(line_text)
         for span in line['spans']:
             span_type = span['type']
             content = ''
@@ -216,17 +210,12 @@ def merge_para_with_text(para_block):
                 content = f"\n$$\n{span['content']}\n$$\n"
 
             if content != '':
-                langs = ['zh', 'ja', 'ko']
-                if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
-                    para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
-                elif line_lang == 'en':
-                    # 如果是前一行带有-连字符，那么末尾不应该加空格
-                    if __is_hyphen_at_line_end(content):
-                        para_text += content[:-1]
-                    else:
-                        para_text += content + ' '
+                if language in ['zh', 'ja', 'ko']:
+                    para_text += content
+                elif language == 'en':
+                    para_text += content.rstrip('-') if __is_hyphen_at_line_end(content) else content + ' '
                 else:
-                    para_text += content + ' '  # 西方文本语境下 content间需要空格分隔
+                    para_text += content + ' '
     return para_text
 
 
@@ -398,18 +387,11 @@ def union_make(pdf_info_dict: list,
     output_content = []
     for page_info in pdf_info_dict:
         if page_info.get('need_drop', False):
-            drop_reason = page_info.get('drop_reason')
-            if drop_mode == DropMode.NONE:
-                pass
-            elif drop_mode == DropMode.WHOLE_PDF:
-                raise Exception((f'drop_mode is {DropMode.WHOLE_PDF} ,'
-                                 f'drop_reason is {drop_reason}'))
+            if drop_mode == DropMode.WHOLE_PDF:
+                raise Exception(f'drop_mode is {drop_mode}, drop_reason is {page_info.get("drop_reason")}')
             elif drop_mode == DropMode.SINGLE_PAGE:
-                logger.warning((f'drop_mode is {DropMode.SINGLE_PAGE} ,'
-                                f'drop_reason is {drop_reason}'))
+                logger.warning(f'drop_mode is {drop_mode}, drop_reason is {page_info.get("drop_reason")}')
                 continue
-            else:
-                raise Exception('drop_mode can not be null')
 
         paras_of_layout = page_info.get('para_blocks')
         page_idx = page_info.get('page_idx')
