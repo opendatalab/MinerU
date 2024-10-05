@@ -5,18 +5,16 @@ name: update-base
 on:
   push:
     tags:
-      - '*released'
+      - "*released"
   workflow_dispatch:
 jobs:
   pdf-test:
     runs-on: pdf
     timeout-minutes: 40
 
-
     steps:
-    - name: update-base
-      uses: actions/checkout@v3
-    - name: start-update
-      run: |
-        echo "start test"
-  
+      - name: update-base
+        uses: actions/checkout@v3
+      - name: start-update
+        run: |
+          echo "start test"
