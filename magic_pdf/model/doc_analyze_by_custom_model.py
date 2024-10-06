@@ -134,7 +134,10 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
         page_info = {"page_no": index, "height": page_height, "width": page_width}
         page_dict = {"layout_dets": result, "page_info": page_info}
         model_json.append(page_dict)
-    doc_analyze_cost = time.time() - doc_analyze_start
-    logger.info(f"doc analyze cost: {doc_analyze_cost}")
+
+    doc_analyze_time = round(time.time() - doc_analyze_start, 2)
+    doc_analyze_speed = round( (end_page_id + 1 - start_page_id) / doc_analyze_time, 2)
+    logger.info(f"doc analyze time: {round(time.time() - doc_analyze_start, 2)},"
+                f" speed: {doc_analyze_speed} pages/second")
 
     return model_json
