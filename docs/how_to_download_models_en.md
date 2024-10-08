@@ -12,7 +12,7 @@ python download_models_hf.py
 ```
 The Python script will automatically download the model files and configure the model directory in the configuration file.
 
-
+The configuration file can be found in the user directory, with the filename `magic-pdf.json`.
 
 # How to update models previously downloaded
 
