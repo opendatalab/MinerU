@@ -167,13 +167,13 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">最低要求 8G+显存</td>
         <td colspan="2">3060ti/3070/3080/3080ti/4060/4070/4070ti<br>
-        8G显存可开启lavout和公式识别和ocr加速</td>
+        8G显存可开启layout、公式识别和ocr加速</td>
         <td rowspan="2">None</td>
     </tr>
     <tr>
         <td colspan="2">推荐配置 16G+显存</td>
         <td colspan="2">3090/3090ti/4070tisuper/4080/4090<br>
-        16G显存及以上可以同时开启layout，公式识别和ocr加速和表格识别加速<br>
+        16G显存及以上可以同时开启layout、公式识别和ocr加速和表格识别加速<br>
         </td>
     </tr>
 </table>
