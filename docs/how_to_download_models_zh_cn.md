@@ -38,6 +38,13 @@ python脚本执行完毕后，会输出模型下载目录
 
 如此前通过 git lfs 下载过模型文件，可以进入到之前的下载目录中，通过`git pull`命令更新模型。
 
+> 0.9.x及以后版本由于新增layout排序模型，且该模型和此前的模型不在同一仓库，不能通过`git pull`命令更新，需要单独下载。
+> 
+>``` 
+>from modelscope import snapshot_download
+>snapshot_download('ppaanngggg/layoutreader')
+>```
+
 ## 2. 通过 Hugging Face 或 Model Scope 下载过模型
 
 如此前通过 HuggingFace 或 Model Scope 下载过模型，可以重复执行此前的模型下载python脚本，将会自动将模型目录更新到最新版本。
