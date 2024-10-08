@@ -191,7 +191,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
     # 如果block高度小于n行正文，则直接返回block的bbox
     if line_height*3 < block_height:
         if block_height > page_h*0.25 and page_w*0.5 > block_weight > page_w*0.25:  # 可能是双列结构，可以切细点
-            lines = int(block_height/line_height)
+            lines = int(block_height/line_height)+1
         else:
             # 如果block的宽度超过0.4页面宽度，则将block分成3行
             if block_weight > page_w*0.4:
