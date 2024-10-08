@@ -400,6 +400,7 @@ TODO
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+- [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 
