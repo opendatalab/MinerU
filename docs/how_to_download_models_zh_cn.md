@@ -22,12 +22,10 @@ pip install modelscope
 wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py
 python download_models.py
 ```
-python脚本执行完毕后，会输出模型下载目录
+python脚本会自动下载模型文件并配置好配置文件中的模型目录
 
-
-## 下载完成后的操作：修改magic-pdf.json中的模型路径
-在`~/magic-pdf.json`里修改模型的目录指向上一步脚本输出的models目录的绝对路径，否则会报模型无法加载的错误。
-
+配置文件可以在用户目录中找到，文件名为`magic-pdf.json`
+> windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
 
 # 此前下载过模型，如何更新
