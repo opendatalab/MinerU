@@ -57,29 +57,13 @@
    If the version number is less than 0.7.0, please report the issue.
 
 ### 6. Download Models
-   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
-   After downloading, move the `models` directory to an SSD with more space.
-   
-❗ After downloading the models, ensure they are complete:
-   - Check that the file sizes match the description on the website.
-   - If possible, verify the integrity using SHA256.
+   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
 
-### 7. Configuration Before First Run
-   Obtain the configuration template file `magic-pdf.template.json` from the root directory of the repository.
-   
-❗ Execute the following command to copy the configuration file to your home directory, otherwise the program will not run:
-   ```sh
-   wget https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json
-   cp magic-pdf.template.json ~/magic-pdf.json
-   ```
-   Find the `magic-pdf.json` file in your home directory and configure `"models-dir"` to be the directory where the model weights from Step 6 were downloaded.
-   
-❗ Correctly specify the absolute path of the directory containing the model weights; otherwise, the program will fail due to missing model files.
-   ```json
-   {
-     "models-dir": "/tmp/models"
-   }
-   ```
+## 7. Understand the Location of the Configuration File
+
+After completing the [6. Download Models](#6-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
+You can find the `magic-pdf.json` file in your user directory.
+> The user directory for Linux is "/home/username".
 
 ### 8. First Run
    Download a sample file from the repository and test it.
@@ -90,7 +74,9 @@
 
 ### 9. Test CUDA Acceleration
 
-If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA acceleration:
+If your graphics card has at least **8GB** of VRAM, follow these steps to test CUDA acceleration:
+
+> ❗ Due to the extremely limited nature of 8GB VRAM for running this application, you need to close all other programs using VRAM to ensure that 8GB of VRAM is available when running this application.
 
 1. Modify the value of `"device-mode"` in the `magic-pdf.json` configuration file located in your home directory.
    ```json
@@ -104,9 +90,7 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA 
    ```
 
 ### 10. Enable CUDA Acceleration for OCR
-
-❗ The following operations require a graphics card with at least 16GB of VRAM; otherwise, the program may crash or experience reduced performance.
-    
+ 
 1. Download `paddlepaddle-gpu`. Installation will automatically enable OCR acceleration.
    ```sh
    python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/

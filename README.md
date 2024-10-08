@@ -167,14 +167,13 @@ In non-mainline environments, due to the diversity of hardware and software conf
         <td rowspan="2">GPU Hardware Support List</td>
         <td colspan="2">Minimum Requirement 8G+ VRAM</td>
         <td colspan="2">3060ti/3070/3080/3080ti/4060/4070/4070ti<br>
-        8G VRAM only enables layout and formula recognition acceleration</td>
+        8G VRAM enables layout, formula recognition acceleration and OCR acceleration</td>
         <td rowspan="2">None</td>
     </tr>
     <tr>
         <td colspan="2">Recommended Configuration 16G+ VRAM</td>
         <td colspan="2">3090/3090ti/4070ti super/4080/4090<br>
-        16G or more can enable layout, formula recognition, and OCR acceleration simultaneously<br>
-        24G or more can enable layout, formula recognition, OCR acceleration and table recognition simultaneously
+        16G VRAM or more can enable layout, formula recognition, OCR acceleration and table recognition acceleration simultaneously
         </td>
     </tr>
 </table>
@@ -199,34 +198,20 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
 Refer to [How to Download Model Files](docs/how_to_download_models_en.md) for detailed instructions.
 
-> ❗️After downloading the models, please make sure to verify the completeness of the model files.
->
-> Check if the model file sizes match the description on the webpage. If possible, use sha256 to verify the integrity of the files.
+#### 3. Modify the Configuration File for Additional Configuration
 
-#### 3. Copy and configure the template file
+After completing the [2. Download model weight files](#2-download-model-weight-files) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
+You can find the `magic-pdf.json` file in your 【user directory】.
 
-You can find the `magic-pdf.template.json` template configuration file in the root directory of the repository.
+> The user directory for Windows is "C:\\Users\\username", for Linux it is "/home/username", and for macOS it is "/Users/username".
 
-> ❗️Make sure to execute the following command to copy the configuration file to your **user directory**; otherwise, the program will not run.
->
-> The user directory for Windows is `C:\Users\YourUsername`, for Linux it is `/home/YourUsername`, and for macOS it is `/Users/YourUsername`.
+You can modify certain configurations in this file to enable or disable features, such as table recognition:
 
-```bash
-cp magic-pdf.template.json ~/magic-pdf.json
-```
-
-Find the `magic-pdf.json` file in your user directory and configure the "models-dir" path to point to the directory where the model weight files were downloaded in [Step 2](#2-download-model-weight-files).
-
-> ❗️Make sure to correctly configure the **absolute path** to the model weight files directory, otherwise the program will not run because it can't find the model files.
->
-> On Windows, this path should include the drive letter and all backslashes (`\`) in the path should be replaced with forward slashes (`/`) to avoid syntax errors in the JSON file due to escape sequences.
->
-> For example: If the models are stored in the "models" directory at the root of the D drive, the "model-dir" value should be `D:/models`.
+> If the following items are not present in the JSON, please manually add the required items and remove the comment content (standard JSON does not support comments).
 
 ```json
 {
   // other config
-  "models-dir": "D:/models",
   "table-config": {
         "model": "TableMaster", // Another option of this value is 'struct_eqtable'
         "is_table_recog_enable": false, // Table recognition is disabled by default, modify this value to enable it
@@ -307,7 +292,8 @@ The results will be saved in the `{some_output_dir}` directory. The output file 
 ├── some_pdf_middle.json                 # MinerU intermediate processing result
 ├── some_pdf_model.json                  # model inference result
 ├── some_pdf_origin.pdf                  # original PDF file
-└── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
+├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
+└── some_pdf_content_list.json           # Rich text JSON arranged in reading order
 ```
 
 For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
@@ -353,7 +339,7 @@ TODO
 
 # TODO
 
-- [ ] Semantic-based reading order
+- [x] Semantic-based reading order
 - [ ] List recognition within the text
 - [ ] Code block recognition within the text
 - [ ] Table of contents recognition

@@ -28,48 +28,26 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
    > If the version number is less than 0.7.0, please report it in the issues section.
    
 ### 5. Download Models
-   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
-   After downloading, move the `models` directory to an SSD with more space.
-   
-   >❗ After downloading the models, ensure they are complete:
-   >- Check that the file sizes match the description on the website.
-   >- If possible, verify the integrity using SHA256.
+   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
 
-### 6. Configuration Before the First Run
-   Obtain the configuration template file `magic-pdf.template.json` from the repository root directory.
-    
-   >❗️Execute the following command to copy the configuration file to your user directory, or the program will not run.
-   >   
-   > In Windows, user directory is "C:\Users\username"
-   
-   ```powershell
-     (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
-     cp magic-pdf.template.json ~/magic-pdf.json
-   ```
+## 7. Understand the Location of the Configuration File
 
-   Find the `magic-pdf.json` file in your user directory and configure `"models-dir"` to point to the directory where the model weights from step 5 were downloaded.
-   
-   > ❗️Ensure the absolute path of the model weights directory is correctly configured, or the program will fail to run due to not finding the model files.
-   >    
-   > In Windows, this path should include the drive letter and replace all `"\"` to `"/"`.
-   >   
-   > Example: If the models are placed in the root directory of drive D, the value for `model-dir` should be `"D:/models"`.
-   
-   ```json
-   {
-     "models-dir": "/tmp/models"
-   }
-   ```
+After completing the [5. Download Models](#5-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
+You can find the `magic-pdf.json` file in your 【user directory】 .
+> The user directory for Windows is "C:/Users/username".
 
 ### 7. First Run
    Download a sample file from the repository and test it.
    ```powershell
-     (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf', 'small_ocr.pdf')
+     wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
      magic-pdf -p small_ocr.pdf
    ```
 
 ### 8. Test CUDA Acceleration
    If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-accelerated parsing performance.
+    
+> ❗ Due to the extremely limited nature of 8GB VRAM for running this application, you need to close all other programs using VRAM to ensure that 8GB of VRAM is available when running this application.
+
    1. **Overwrite the installation of torch and torchvision** supporting CUDA.
       ```
       pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
@@ -93,12 +71,12 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
       ```
 
 ### 9. Enable CUDA Acceleration for OCR
-   >❗️This operation requires at least 16GB of VRAM on your graphics card, otherwise it will cause the program to crash or slow down.
-   1. **Download paddlepaddle-gpu**, which will automatically enable OCR acceleration upon installation.
+
+1. **Download paddlepaddle-gpu**, which will automatically enable OCR acceleration upon installation.
       ```
       pip install paddlepaddle-gpu==2.6.1
       ```
-   2. **Run the following command to test OCR acceleration**:
-      ```
-      magic-pdf -p small_ocr.pdf
-      ```
+2. **Run the following command to test OCR acceleration**:
+   ```
+   magic-pdf -p small_ocr.pdf
+   ```
