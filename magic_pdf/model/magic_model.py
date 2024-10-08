@@ -119,15 +119,13 @@ class MagicModel:
         if left or right:
             l1 = bbox1[3] - bbox1[1]
             l2 = bbox2[3] - bbox2[1]
-            minL, maxL = min(l1, l2), max(l1, l2)
-            if (maxL - minL) / minL > 0.5:
-                return float('inf')
-        if bottom or top:
+        else:
             l1 = bbox1[2] - bbox1[0]
             l2 = bbox2[2] - bbox2[0]
-            minL, maxL = min(l1, l2), max(l1, l2)
-            if (maxL - minL) / minL > 0.5:
-                return float('inf')
+
+        if l2 > l1 and (l2 - l1) / l1 > 0.5:
+            return float('inf')
+
         return bbox_distance(bbox1, bbox2)
 
     def __fix_footnote(self):
@@ -370,7 +368,7 @@ class MagicModel:
                     dis[j][i] = dis[i][j]
                     continue
 
-                dis[i][j] = self._bbox_distance(all_bboxes[i]['bbox'], all_bboxes[j]['bbox'])
+                dis[i][j] = self._bbox_distance(all_bboxes[subject_idx]['bbox'], all_bboxes[object_idx]['bbox'])
                 dis[j][i] = dis[i][j]
 
         used = set()
@@ -461,7 +459,7 @@ class MagicModel:
 
                     if is_nearest:
                         nx0, ny0, nx1, ny1 = expand_bbbox(list(seen) + [k])
-                        n_dis = self._bbox_distance(
+                        n_dis = bbox_distance(
                             all_bboxes[i]['bbox'], [nx0, ny0, nx1, ny1]
                         )
                         if float_gt(dis[i][j], n_dis):
@@ -557,7 +555,7 @@ class MagicModel:
         # 计算已经配对的 distance 距离
         for i in subject_object_relation_map.keys():
             for j in subject_object_relation_map[i]:
-                total_subject_object_dis += self._bbox_distance(
+                total_subject_object_dis += bbox_distance(
                     all_bboxes[i]['bbox'], all_bboxes[j]['bbox']
                 )
 
