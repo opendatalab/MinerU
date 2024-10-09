@@ -28,38 +28,13 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
    > If the version number is less than 0.7.0, please report it in the issues section.
    
 ### 5. Download Models
-   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
-   After downloading, move the `models` directory to an SSD with more space.
-   
-   >❗ After downloading the models, ensure they are complete:
-   >- Check that the file sizes match the description on the website.
-   >- If possible, verify the integrity using SHA256.
+   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
 
-### 6. Configuration Before the First Run
-   Obtain the configuration template file `magic-pdf.template.json` from the repository root directory.
-    
-   >❗️Execute the following command to copy the configuration file to your user directory, or the program will not run.
-   >   
-   > In Windows, user directory is "C:\Users\username"
-   
-   ```powershell
-     (New-Object System.Net.WebClient).DownloadFile('https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json', 'magic-pdf.template.json')
-     cp magic-pdf.template.json ~/magic-pdf.json
-   ```
+### 6. Understand the Location of the Configuration File
 
-   Find the `magic-pdf.json` file in your user directory and configure `"models-dir"` to point to the directory where the model weights from step 5 were downloaded.
-   
-   > ❗️Ensure the absolute path of the model weights directory is correctly configured, or the program will fail to run due to not finding the model files.
-   >    
-   > In Windows, this path should include the drive letter and replace all `"\"` to `"/"`.
-   >   
-   > Example: If the models are placed in the root directory of drive D, the value for `model-dir` should be `"D:/models"`.
-   
-   ```json
-   {
-     "models-dir": "/tmp/models"
-   }
-   ```
+After completing the [5. Download Models](#5-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
+You can find the `magic-pdf.json` file in your 【user directory】 .
+> The user directory for Windows is "C:/Users/username".
 
 ### 7. First Run
    Download a sample file from the repository and test it.
