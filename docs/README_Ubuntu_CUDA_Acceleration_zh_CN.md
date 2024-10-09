@@ -53,30 +53,12 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > 如果版本号小于0.7.0，请到issue中向我们反馈
 
 ## 6. 下载模型
-详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)  
-下载后请将models目录移动到空间较大的ssd磁盘目录  
-> ❗️模型下载后请务必检查模型文件是否下载完整
-> 
-> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
-> 
-## 7. 第一次运行前的配置
-在仓库根目录可以获得 [magic-pdf.template.json](../magic-pdf.template.json) 配置模版文件
-> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
->  
-> linux用户目录为 "/home/用户名"
-```bash
-wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json
-cp magic-pdf.template.json ~/magic-pdf.json
-```
+详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)
 
-在用户目录中找到magic-pdf.json文件并配置"models-dir"为[6. 下载模型](#6-下载模型)中下载的模型权重文件所在目录
-> ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
-> 
-```json
-{
-  "models-dir": "/tmp/models"
-}
-```
+## 7. 了解配置文件存放的位置
+完成[6.下载模型](#6-下载模型)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
+您可在【用户目录】下找到magic-pdf.json文件。 
+> linux用户目录为 "/home/用户名"
 
 ## 8. 第一次运行
 从仓库中下载样本文件，并测试

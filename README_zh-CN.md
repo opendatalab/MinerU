@@ -200,35 +200,19 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
 
-> ❗️模型下载后请务必检查模型文件是否下载完整
->
-> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
+#### 3. 修改配置文件以进行额外配置
 
-#### 3. 拷贝配置文件并进行配置
-
-在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
-
-> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
->
+完成[2. 下载模型权重文件](#2-下载模型权重文件)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
+您可在【用户目录】下找到magic-pdf.json文件。
 > windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
-```bash
-cp magic-pdf.template.json ~/magic-pdf.json
-```
+您可修改该文件中的部分配置实现功能的开关，如表格识别功能：
 
-在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
-
-> ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
->
-> windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
-> 
-
-> 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
+>如json内没有如下项目，请手动添加需要的项目，并删除注释内容（标准json不支持注释）
 
 ```json
 {
   // other config
-  "models-dir": "D:/models",
   "table-config": {
         "model": "TableMaster", // 使用structEqTable请修改为'struct_eqtable'
         "is_table_recog_enable": false, // 表格识别功能默认是关闭的，如果需要修改此处的值

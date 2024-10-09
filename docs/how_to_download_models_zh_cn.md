@@ -1,100 +1,48 @@
-# 如何下载模型文件
+模型下载分为首次下载和更新模型目录，请参考对应的文档内容进行操作
 
-模型文件可以从Hugging Face 或 Model Scope 下载，由于网络原因，国内用户访问HF 可能会失败，请使用 ModelScope。
+# 首次下载模型文件
 
+模型文件可以从 Hugging Face 或 Model Scope 下载，由于网络原因，国内用户访问HF可能会失败，请使用 ModelScope。
 
-方法一：[从 Hugging Face 下载模型](#方法一从-hugging-face-下载模型)
-
-方法二：[从 ModelScope 下载模型](#方法二从-modelscope-下载模型)
-
-## 方法一：从 Hugging Face 下载模型
-
-使用Git LFS 从Hugging Face下载模型文件
-
-```bash
-git lfs install # 安装 Git 大文件存储插件 (Git LFS) 
-git lfs clone https://huggingface.co/opendatalab/PDF-Extract-Kit # 从 Hugging Face 下载 PDF-Extract-Kit 模型
-```
-
+<details>
+  <summary>方法一：从 Hugging Face 下载模型</summary>
+  <p>使用python脚本 从Hugging Face下载模型文件</p>
+  <pre><code>pip install huggingface_hub
+wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models_hf.py -O download_models_hf.py
+python download_models_hf.py</code></pre>
+  <p>python脚本执行完毕后，会输出模型下载目录</p>
+</details>
 
 ## 方法二：从 ModelScope 下载模型
-ModelScope 支持SDK或模型下载，任选一个即可。
 
-[Git lsf下载](#1利用git-lsf下载)
-
-[SDK下载](#2利用sdk下载)
-
-### 1）利用Git lsf下载
+### 使用python脚本 从ModelScope下载模型文件
 
 ```bash
-git lfs install
-git lfs clone https://www.modelscope.cn/opendatalab/PDF-Extract-Kit.git
-```
-
-### 2）利用SDK下载
-
-```bash
-# 首先安装modelscope
 pip install modelscope
+wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py -O download_models.py
+python download_models.py
 ```
+python脚本会自动下载模型文件并配置好配置文件中的模型目录
 
-```python
-# 使用modelscope sdk下载模型
-from modelscope import snapshot_download
-model_dir = snapshot_download('opendatalab/PDF-Extract-Kit')
-print(f"模型文件下载路径为：{model_dir}/models")
-```
+配置文件可以在用户目录中找到，文件名为`magic-pdf.json`
+> windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
-## 【❗️必须要做❗️】的额外步骤（模型下载完成后请务必完成以下操作）
 
-### 1.检查模型目录是否下载完整
-模型文件夹的结构如下，包含了不同组件的配置文件和权重文件：
-```
-./
-├── Layout  # 布局检测模型
-│   ├── config.json
-│   └── model_final.pth
-├── MFD  # 公式检测
-│   └── weights.pt
-├── MFR  # 公式识别模型
-│   └── UniMERNet
-│       ├── config.json
-│       ├── preprocessor_config.json
-│       ├── pytorch_model.bin
-│       ├── README.md
-│       ├── tokenizer_config.json
-│       └── tokenizer.json
-│── TabRec # 表格识别模型
-│   └─StructEqTable
-│       ├── config.json
-│       ├── generation_config.json
-│       ├── model.safetensors
-│       ├── preprocessor_config.json
-│       ├── special_tokens_map.json
-│       ├── spiece.model
-│       ├── tokenizer.json
-│       └── tokenizer_config.json 
-│   └─ TableMaster 
-│       └─ ch_PP-OCRv3_det_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       └─ ch_PP-OCRv3_rec_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       └─ table_structure_tablemaster_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       ├── ppocr_keys_v1.txt
-│       └── table_master_structure_dict.txt
-└── README.md
-```
+# 此前下载过模型，如何更新
 
-### 2.检查模型文件是否下载完整
-请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
+## 1. 通过git lfs下载过模型
 
-### 3.移动模型到固态硬盘
-将 'models' 目录移动到具有较大磁盘空间的目录中，最好是在固态硬盘(SSD)上。
-此外在 `~/magic-pdf.json`里修改模型的目录指向最终的模型存放位置，否则会报模型无法加载的错误。
+>由于部分用户反馈通过git lfs下载模型文件遇到下载不全和模型文件损坏情况，现已不推荐使用该方式下载。
+
+如此前通过 git lfs 下载过模型文件，可以进入到之前的下载目录中，通过`git pull`命令更新模型。
+
+> 0.9.x及以后版本由于新增layout排序模型，且该模型和此前的模型不在同一仓库，不能通过`git pull`命令更新，需要单独下载。
+> 
+>``` 
+>from modelscope import snapshot_download
+>snapshot_download('ppaanngggg/layoutreader')
+>```
+
+## 2. 通过 Hugging Face 或 Model Scope 下载过模型
+
+如此前通过 HuggingFace 或 Model Scope 下载过模型，可以重复执行此前的模型下载python脚本，将会自动将模型目录更新到最新版本。

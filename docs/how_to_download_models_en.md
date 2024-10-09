@@ -1,70 +1,27 @@
-### 1. Install Git LFS
-Before you begin, make sure Git Large File Storage (Git LFS) is installed on your system. Install it using the following command:
+Model downloads are divided into initial downloads and updates to the model directory. Please refer to the corresponding documentation for instructions on how to proceed.
 
+
+# Initial download of model files
+
+### 1. Download the Model from Hugging Face
+Use a Python Script to Download Model Files from Hugging Face
 ```bash
-git lfs install
+pip install huggingface_hub
+wget https://github.com/opendatalab/MinerU/raw/master/docs/download_models_hf.py -O download_models_hf.py
+python download_models_hf.py
 ```
+The Python script will automatically download the model files and configure the model directory in the configuration file.
 
-### 2. Download the Model from Hugging Face
-To download the `PDF-Extract-Kit` model from Hugging Face, use the following command:
+The configuration file can be found in the user directory, with the filename `magic-pdf.json`.
 
-```bash
-git lfs clone https://huggingface.co/opendatalab/PDF-Extract-Kit
-```
+# How to update models previously downloaded
 
-Ensure that Git LFS is enabled during the clone to properly download all large files.
+## 1. Models downloaded via Git LFS
 
-### 3. Additional steps
+>Due to feedback from some users that downloading model files using git lfs was incomplete or resulted in corrupted model files, this method is no longer recommended.
 
-#### 1. Check whether the model directory is downloaded completely.
+If you previously downloaded model files via git lfs, you can navigate to the previous download directory and use the `git pull` command to update the model.
 
-The structure of the model folder is as follows, including configuration files and weight files of different components:
-```
-../
-├── Layout
-│   ├── config.json
-│   └── model_final.pth
-├── MFD
-│   └── weights.pt
-├── MFR
-│   └── UniMERNet
-│       ├── config.json
-│       ├── preprocessor_config.json
-│       ├── pytorch_model.bin
-│       ├── README.md
-│       ├── tokenizer_config.json
-│       └── tokenizer.json
-│── TabRec
-│   └─StructEqTable
-│       ├── config.json
-│       ├── generation_config.json
-│       ├── model.safetensors
-│       ├── preprocessor_config.json
-│       ├── special_tokens_map.json
-│       ├── spiece.model
-│       ├── tokenizer.json
-│       └── tokenizer_config.json 
-│   └─ TableMaster 
-│       └─ ch_PP-OCRv3_det_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       └─ ch_PP-OCRv3_rec_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       └─ table_structure_tablemaster_infer
-│           ├── inference.pdiparams
-│           ├── inference.pdiparams.info
-│           └── inference.pdmodel
-│       ├── ppocr_keys_v1.txt
-│       └── table_master_structure_dict.txt
-└── README.md
-```
-#### 2. Check whether the model file is fully downloaded.
+## 2. Models downloaded via Hugging Face or Model Scope
 
-Please check whether the size of the model file in the directory is consistent with the description on the web page. If possible, it is best to check whether the model is downloaded completely through sha256.
-
-#### 3. Move the model to the solid-state drive
-
-Move the 'models' directory to a directory with large disk space, preferably on a solid-state drive (SSD). In addition, modify the model directory in `~/magic-pdf.json` to point to the final model storage location, otherwise the model cannot be loaded.
+If you previously downloaded models via Hugging Face or Model Scope, you can rerun the Python script used for the initial download. This will automatically update the model directory to the latest version.
