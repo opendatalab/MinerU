@@ -30,7 +30,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 ### 5. Download Models
    Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
 
-## 7. Understand the Location of the Configuration File
+### 6. Understand the Location of the Configuration File
 
 After completing the [5. Download Models](#5-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
 You can find the `magic-pdf.json` file in your 【user directory】 .
