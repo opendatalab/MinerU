@@ -166,7 +166,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">最低要求 8G+显存</td>
         <td colspan="2">3060ti/3070/3080/3080ti/4060/4070/4070ti<br>
-        8G显存仅可开启lavout和公式识别加速</td>
+        8G显存仅可开启layout和公式识别加速</td>
         <td rowspan="2">None</td>
     </tr>
     <tr>
