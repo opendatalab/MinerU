@@ -1,0 +1,16 @@
+version: 2
+
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.10"
+
+formats:
+  - epub
+
+python:
+  install:
+    - requirements: requirements/docs.txt
+
+sphinx:
+  configuration: docs/zh_cn/conf.py
