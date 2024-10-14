@@ -1,8 +1,17 @@
 import copy
 
+from loguru import logger
+
 from magic_pdf.libs.Constants import LINES_DELETED, CROSS_PAGE
+from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；')
+LIST_END_FLAG = ('.', '。', ';', '；')
+
+
+class ListLineTag:
+    IS_LIST_START_LINE = "is_list_start_line"
+    IS_LIST_END_LINE = "is_list_end_line"
 
 
 def __process_blocks(blocks):
@@ -38,7 +47,127 @@ def __process_blocks(blocks):
     return result
 
 
-def __merge_2_blocks(block1, block2):
+def __is_list_block(block):
+    # 一个block如果是list block 应该同时满足以下特征
+    # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.block内有多个line 右侧不顶格（狗牙状）
+    # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.多个line以endflag结尾
+    # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.block内有多个line 左侧不顶格
+    if len(block['lines']) >= 3:
+        first_line = block['lines'][0]
+        line_height = first_line['bbox'][3] - first_line['bbox'][1]
+        block_weight = block['bbox_fs'][2] - block['bbox_fs'][0]
+
+        left_close_num = 0
+        left_not_close_num = 0
+        right_not_close_num = 0
+        lines_text_list = []
+        for line in block['lines']:
+
+            line_text = ""
+
+            for span in line['spans']:
+                span_type = span['type']
+                if span_type == ContentType.Text:
+                    line_text += span['content'].strip()
+
+            lines_text_list.append(line_text)
+
+            # 计算line左侧顶格数量是否大于2，是否顶格用abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height/2 来判断
+            if abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height/2:
+                left_close_num += 1
+            elif line['bbox'][0] - block['bbox_fs'][0] > line_height:
+                # logger.info(f"{line_text}, {block['bbox_fs']}, {line['bbox']}")
+                left_not_close_num += 1
+
+            # 计算右侧是否不顶格，拍脑袋用0.3block宽度做阈值
+            closed_area = 0.3 * block_weight
+            # closed_area = 5 * line_height
+            if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
+                right_not_close_num += 1
+
+        # 判断lines_text_list中的元素是否有超过80%都以LIST_END_FLAG结尾
+        line_end_flag = False
+        if len(lines_text_list) > 0:
+            num_end_count = 0
+            for line_text in lines_text_list:
+                if len(line_text) > 0:
+                    if line_text[-1] in LIST_END_FLAG:
+                        num_end_count += 1
+
+            if num_end_count / len(lines_text_list) >= 0.8:
+                line_end_flag = True
+
+        if left_close_num >= 2 and (right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2):
+            for line in block['lines']:
+                if abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height / 2:
+                    line[ListLineTag.IS_LIST_START_LINE] = True
+                if abs(block['bbox_fs'][2] - line['bbox'][2]) > line_height:
+                    line[ListLineTag.IS_LIST_END_LINE] = True
+
+            return True
+        else:
+            return False
+    else:
+        return False
+
+
+def __is_index_block(block):
+    # 一个block如果是index block 应该同时满足以下特征
+    # 1.block内有多个line 2.block 内有多个line两侧均顶格写 3.line的开头或者结尾均为数字
+    if len(block['lines']) >= 3:
+        first_line = block['lines'][0]
+        line_height = first_line['bbox'][3] - first_line['bbox'][1]
+
+        left_close_num = 0
+        right_close_num = 0
+
+        lines_text_list = []
+        for line in block['lines']:
+
+            # 计算line左侧顶格数量是否大于2，是否顶格用abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height/2 来判断
+            if abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height / 2:
+                left_close_num += 1
+
+            # 计算右侧是否不顶格
+            if abs(block['bbox_fs'][2] - line['bbox'][2]) < line_height / 2:
+                right_close_num += 1
+
+            line_text = ""
+
+            for span in line['spans']:
+                span_type = span['type']
+                if span_type == ContentType.Text:
+                    line_text += span['content'].strip()
+
+            lines_text_list.append(line_text)
+
+        # 判断lines_text_list中的元素是否有超过80%都以数字开头或都以数字结尾
+        line_num_flag = False
+        if len(lines_text_list) > 0:
+            num_start_count = 0
+            num_end_count = 0
+            for line_text in lines_text_list:
+                if len(line_text) > 0:
+                    if line_text[0].isdigit():
+                        num_start_count += 1
+                    if line_text[-1].isdigit():
+                        num_end_count += 1
+
+            if num_start_count / len(lines_text_list) >= 0.8 or num_end_count / len(lines_text_list) >= 0.8:
+                line_num_flag = True
+
+        if left_close_num >= 2 and right_close_num >= 2 and line_num_flag:
+            for line in block['lines']:
+                line[ListLineTag.IS_LIST_START_LINE] = True
+
+            return True
+        else:
+            return False
+    else:
+        return False
+
+
+def __merge_2_text_blocks(block1, block2):
     if len(block1['lines']) > 0:
         first_line = block1['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
@@ -59,17 +188,46 @@ def __merge_2_blocks(block1, block2):
     return block1, block2
 
 
+def __merge_2_list_blocks(block1, block2):
+
+    if block1['page_num'] != block2['page_num']:
+        for line in block1['lines']:
+            for span in line['spans']:
+                span[CROSS_PAGE] = True
+    block2['lines'].extend(block1['lines'])
+    block1['lines'] = []
+    block1[LINES_DELETED] = True
+
+    return block1, block2
+
+
 def __para_merge_page(blocks):
     page_text_blocks_groups = __process_blocks(blocks)
     for text_blocks_group in page_text_blocks_groups:
+
+        if len(text_blocks_group) > 0:
+            # 需要先在合并前对所有block判断是否为list block
+            for block in text_blocks_group:
+                if __is_list_block(block):
+                    block['type'] = BlockType.List
+                elif __is_index_block(block):
+                    block['type'] = BlockType.Index
+
         if len(text_blocks_group) > 1:
             # 倒序遍历
             for i in range(len(text_blocks_group)-1, -1, -1):
                 current_block = text_blocks_group[i]
+
                 # 检查是否有前一个块
                 if i - 1 >= 0:
                     prev_block = text_blocks_group[i - 1]
-                    __merge_2_blocks(current_block, prev_block)
+
+                    if current_block['type'] == 'text' and prev_block['type'] == 'text':
+                        __merge_2_text_blocks(current_block, prev_block)
+                    if current_block['type'] == BlockType.List and prev_block['type'] == BlockType.List:
+                        __merge_2_list_blocks(current_block, prev_block)
+                    if current_block['type'] == BlockType.Index and prev_block['type'] == BlockType.Index:
+                        __merge_2_list_blocks(current_block, prev_block)
         else:
             continue
 

@@ -75,6 +75,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     titles_list = []
     texts_list = []
     interequations_list = []
+    lists_list = []
+    indexs_list = []
     for page in pdf_info:
 
         page_dropped_list = []
@@ -83,6 +85,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         titles = []
         texts = []
         interequations = []
+        lists = []
+        indexs = []
 
         for dropped_bbox in page['discarded_blocks']:
             page_dropped_list.append(dropped_bbox['bbox'])
@@ -115,6 +119,11 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                 texts.append(bbox)
             elif block['type'] == BlockType.InterlineEquation:
                 interequations.append(bbox)
+            elif block['type'] == BlockType.List:
+                lists.append(bbox)
+            elif block['type'] == BlockType.Index:
+                indexs.append(bbox)
+
         tables_list.append(tables)
         tables_body_list.append(tables_body)
         tables_caption_list.append(tables_caption)
@@ -126,6 +135,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         titles_list.append(titles)
         texts_list.append(texts)
         interequations_list.append(interequations)
+        lists_list.append(lists)
+        indexs_list.append(indexs)
 
     layout_bbox_list = []
 
@@ -160,6 +171,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, texts_list, page, [153, 0, 76], True)
         draw_bbox_without_number(i, interequations_list, page, [0, 255, 0],
                                  True)
+        draw_bbox_without_number(i, lists_list, page, [40, 169, 92], True)
+        draw_bbox_without_number(i, indexs_list, page, [40, 169, 92], True)
 
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False, draw_bbox=False)
 

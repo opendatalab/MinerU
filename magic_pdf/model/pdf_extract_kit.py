@@ -340,7 +340,7 @@ class CustomPEKModel:
         if torch.cuda.is_available():
             properties = torch.cuda.get_device_properties(self.device)
             total_memory = properties.total_memory / (1024 ** 3)  # 将字节转换为 GB
-            if total_memory <= 8:
+            if total_memory <= 10:
                 gc_start = time.time()
                 clean_memory()
                 gc_time = round(time.time() - gc_start, 2)

@@ -49,8 +49,7 @@ def merge_spans_to_line(spans):
                 continue
 
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'],
-                                                 current_line[-1]['bbox']):
+            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], 0.6):
                 current_line.append(span)
             else:
                 # 否则，开始新行

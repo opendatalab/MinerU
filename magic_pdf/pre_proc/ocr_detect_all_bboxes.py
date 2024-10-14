@@ -108,7 +108,7 @@ def ocr_prepare_bboxes_for_layout_split_v2(img_blocks, table_blocks, discarded_b
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
     '''将剩余的bbox做分离处理，防止后面分layout时出错'''
-    # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
+    all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
 
     return all_bboxes, all_discarded_blocks
 
