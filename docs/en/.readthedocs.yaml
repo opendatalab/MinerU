@@ -10,7 +10,7 @@ formats:
 
 python:
   install:
-    - requirements: requirements/docs.txt
+    - requirements: docs/en/requirements.txt
 
 sphinx:
   configuration: docs/en/conf.py
