@@ -20,6 +20,8 @@ class BlockType:
     InterlineEquation = 'interline_equation'
     Footnote = 'footnote'
     Discarded = 'discarded'
+    List = 'list'
+    Index = 'index'
 
 
 class CategoryId:
