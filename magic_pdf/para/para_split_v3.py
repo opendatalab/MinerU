@@ -166,7 +166,7 @@ def __is_list_or_index_block(block):
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             line_start_flag = True
             # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_LINE 结尾且数量和start line 一致
-            elif num_start_count == flag_end_count:  # 简单一点先不考虑左侧不贴边的情况
+            elif num_start_count >= 2 and num_start_count == flag_end_count:  # 简单一点先不考虑左侧不贴边的情况
                 for i, line in enumerate(block['lines']):
                     if lines_text_list[i][0].isdigit():
                         line[ListLineTag.IS_LIST_START_LINE] = True
