@@ -4,6 +4,7 @@
         "bucket-name-2":["ak", "sk", "endpoint"]
     },
     "models-dir":"/tmp/models",
+    "layoutreader-model-dir":"/tmp/layoutreader",
     "device-mode":"cpu",
     "table-config": {
         "model": "TableMaster",

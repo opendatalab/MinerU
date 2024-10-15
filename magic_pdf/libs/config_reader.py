@@ -67,6 +67,18 @@ def get_local_models_dir():
         return models_dir
 
 
+def get_local_layoutreader_model_dir():
+    config = read_config()
+    layoutreader_model_dir = config.get("layoutreader-model-dir")
+    if layoutreader_model_dir is None or not os.path.exists(layoutreader_model_dir):
+        home_dir = os.path.expanduser("~")
+        layoutreader_at_modelscope_dir_path = os.path.join(home_dir, ".cache/modelscope/hub/ppaanngggg/layoutreader")
+        logger.warning(f"'layoutreader-model-dir' not exists, use {layoutreader_at_modelscope_dir_path} as default")
+        return layoutreader_at_modelscope_dir_path
+    else:
+        return layoutreader_model_dir
+
+
 def get_device():
     config = read_config()
     device = config.get("device-mode")

@@ -1,0 +1,115 @@
+.textBtn {
+  background-image: none !important;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(111deg, #0D53DE -21.44%, #5246FF 102%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  height: 1.5rem !important;
+  font-weight: 600;
+  height: 280px !important;
+  width: 600px !important;
+  overflow: hidden;
+}
+
+.uploadText {
+  font-feature-settings: 'liga' off, 'clig' off;
+  font-family: "PingFang SC";
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 24px; /* 133.333% */
+  background: linear-gradient(107deg, #38A0FF -24.14%, #0D53DE 30.09%, #5246FF 86.61%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.uploadDescText {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  background: linear-gradient(107deg, rgba(18,19,22,0.6) -24.14%, rgba(18,19,22,0.6) 100.09% );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 1rem;
+  margin-top: 0.5rem;
+}
+
+.linearText {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  background: linear-gradient(107deg, rgba(18,19,22,0.6) -24.14%, rgba(18,19,22,0.6) 100.09% );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+
+  &-item {
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 20px;
+    margin-right: 1rem;
+    background: linear-gradient(107deg, #38A0FF -24.14%, #0D53DE 30.09%, #5246FF 86.61%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    &:hover {
+      background: #3477EB;
+      background: linear-gradient(107deg, #3477EB -24.14%, #3477EB 100.09% );
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  }
+}
+
+.uploadSection {
+  border-radius: 12px;
+  border: 1px dashed var(---Brand1-6, #0D53DE);
+  background: linear-gradient(180deg, rgba(92, 147, 255, 0.10) -130.23%, rgba(255, 255, 255, 1) 83.57%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  filter: blur(0px);
+  height: 280px !important;
+  width: 600px !important;
+
+  &:hover {
+    background: linear-gradient(180deg, rgb(245, 248, 255) -130.23%, rgb(245, 248, 255) 83.57%);
+  }
+
+
+}
+
+.item {
+  border-radius: 12px;
+  border: 1px solid rgba(198, 217, 255, 0.20);
+  background: linear-gradient(155deg, rgba(92, 147, 255, 0.10) -13.23%, rgba(255, 255, 255, 0.00) 83.57%);
+  filter: blur(0px);
+  padding: 42px 20px;
+}
+
+.customPopover {
+  :global {
+
+    .ant-popover-content, .ant-popover-inner {
+      border-radius: 12px !important;
+      overflow: hidden;
+      box-shadow: 0px 8px 26px 0px rgba(0, 0, 0, 0.12);
+    }
+
+    .ant-popover-inner-content {
+      padding: 12px !important;
+    }
+
+    .ant-popover-arrow {
+      display: none !important;
+    }
+  }
+}

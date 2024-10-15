@@ -1,13 +1,20 @@
 """common definitions."""
 import os
 import shutil
-
-
+import re
+import json
 def check_shell(cmd):
     """shell successful."""
     res = os.system(cmd)
     assert res == 0
 
+def update_config_file(file_path, key, value):
+    """update config file."""
+    with open(file_path, 'r', encoding="utf-8") as f:
+        config  = json.loads(f.read())
+    config[key] = value
+    with open(file_path, 'w', encoding="utf-8") as f:
+        f.write(json.dumps(config))
 
 def cli_count_folders_and_check_contents(file_path):
     """" count cli files."""
@@ -41,3 +48,32 @@ def delete_file(path):
             print(f"Directory '{path}' and its contents deleted.")
         except TypeError as e:
             print(f"Error deleting directory '{path}': {e}")
+
+def check_latex_table_exists(file_path):
+    """check latex table exists."""
+    pattern = r'\\begin\{tabular\}.*?\\end\{tabular\}'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    matches = re.findall(pattern, content, re.DOTALL)
+    return len(matches) > 0
+
+def check_html_table_exists(file_path):
+    """check html table exists."""
+    pattern = r'<table.*?>.*?</table>'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    matches = re.findall(pattern, content, re.DOTALL)
+    return len(matches) > 0
+
+def check_close_tables(file_path):
+    """delete no tables."""
+    latex_pattern = r'\\begin\{tabular\}.*?\\end\{tabular\}'
+    html_pattern = r'<table.*?>.*?</table>'
+    with open(file_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    latex_matches = re.findall(latex_pattern, content, re.DOTALL)
+    html_matches = re.findall(html_pattern, content, re.DOTALL)
+    if len(latex_matches) == 0 and len(html_matches) == 0:
+        return True
+    else:
+        return False

@@ -60,6 +60,59 @@ def ocr_prepare_bboxes_for_layout_split(img_blocks, table_blocks, discarded_bloc
     return all_bboxes, all_discarded_blocks, drop_reasons
 
 
+def ocr_prepare_bboxes_for_layout_split_v2(img_blocks, table_blocks, discarded_blocks, text_blocks,
+                                        title_blocks, interline_equation_blocks, page_w, page_h):
+    all_bboxes = []
+    all_discarded_blocks = []
+    for image in img_blocks:
+        x0, y0, x1, y1 = image['bbox']
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Image, None, None, None, None, image["score"]])
+
+    for table in table_blocks:
+        x0, y0, x1, y1 = table['bbox']
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Table, None, None, None, None, table["score"]])
+
+    for text in text_blocks:
+        x0, y0, x1, y1 = text['bbox']
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Text, None, None, None, None, text["score"]])
+
+    for title in title_blocks:
+        x0, y0, x1, y1 = title['bbox']
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Title, None, None, None, None, title["score"]])
+
+    for interline_equation in interline_equation_blocks:
+        x0, y0, x1, y1 = interline_equation['bbox']
+        all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.InterlineEquation, None, None, None, None, interline_equation["score"]])
+
+    '''block嵌套问题解决'''
+    '''文本框与标题框重叠，优先信任文本框'''
+    all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
+    '''任何框体与舍弃框重叠，优先信任舍弃框'''
+    all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
+
+    # interline_equation 与title或text框冲突的情况，分两种情况处理
+    '''interline_equation框与文本类型框iou比较接近1的时候，信任行间公式框'''
+    all_bboxes = fix_interline_equation_overlap_text_blocks_with_hi_iou(all_bboxes)
+    '''interline_equation框被包含在文本类型框内，且interline_equation比文本区块小很多时信任文本框，这时需要舍弃公式框'''
+    # 通过后续大框套小框逻辑删除
+
+    '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
+    for discarded in discarded_blocks:
+        x0, y0, x1, y1 = discarded['bbox']
+        all_discarded_blocks.append([x0, y0, x1, y1, None, None, None, BlockType.Discarded, None, None, None, None, discarded["score"]])
+        # 将footnote加入到all_bboxes中，用来计算layout
+        # if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
+        #     all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None, discarded["score"]])
+
+    '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
+    all_bboxes = remove_overlaps_min_blocks(all_bboxes)
+    all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
+    '''将剩余的bbox做分离处理，防止后面分layout时出错'''
+    all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
+
+    return all_bboxes, all_discarded_blocks
+
+
 def fix_interline_equation_overlap_text_blocks_with_hi_iou(all_bboxes):
     # 先提取所有text和interline block
     text_blocks = []

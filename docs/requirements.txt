@@ -1,0 +1,6 @@
+myst-parser
+sphinx
+sphinx-argparse
+sphinx-book-theme
+sphinx-copybutton
+sphinx_rtd_theme

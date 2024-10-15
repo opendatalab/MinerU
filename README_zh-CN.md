@@ -14,10 +14,11 @@
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
-[![HuggingFace](https://img.shields.io/badge/HuggingFace-Demo-yellow.svg?logo=data:image/png;base64,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)](https://huggingface.co/spaces/opendatalab/MinerU)
-[![ModelScope](https://img.shields.io/badge/ModelScope-Demo-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+[![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/papayalove/b5f4913389e7ff9883c6b687de156e78/mineru_demo.ipynb)
-[![Paper](https://img.shields.io/badge/Paper-arXiv-green)](#)
+[![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/pdf/2409.18839?)
 
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
@@ -40,6 +41,8 @@
 </div>
 
 # 更新记录
+- 2024/09/27 0.8.1发布，修复了一些bug，同时提供了[在线demo](https://opendatalab.com/OpenSourceTools/Extractor/PDF/)的[本地化部署版本](projects/web_demo/README_zh-CN.md)和[前端界面](projects/web/README_zh-CN.md)
+- 2024/09/09 0.8.0发布，支持Dockerfile快速部署，同时上线了huggingface、modelscope demo
 - 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
 - 2024/08/09 0.7.0b1发布，简化安装步骤提升易用性，加入表格识别功能
 - 2024/08/01 0.6.2b1发布，优化了依赖冲突问题和安装文档
@@ -164,21 +167,22 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">最低要求 8G+显存</td>
         <td colspan="2">3060ti/3070/3080/3080ti/4060/4070/4070ti<br>
-        8G显存仅可开启lavout和公式识别加速</td>
+        8G显存可开启layout、公式识别和ocr加速</td>
         <td rowspan="2">None</td>
     </tr>
     <tr>
         <td colspan="2">推荐配置 16G+显存</td>
         <td colspan="2">3090/3090ti/4070tisuper/4080/4090<br>
-        16G及以上可以同时开启layout，公式识别和ocr加速<br>
-        24G及以上可以同时开启layout，公式识别，ocr加速和表格识别
+        16G显存及以上可以同时开启layout、公式识别和ocr加速和表格识别加速<br>
         </td>
     </tr>
 </table>
 
 ### 在线体验
 
-[在线体验点击这里](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
+[![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 
 ### 使用CPU快速体验
 
@@ -196,35 +200,19 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 详细参考 [如何下载模型文件](docs/how_to_download_models_zh_cn.md)
 
-> ❗️模型下载后请务必检查模型文件是否下载完整
->
-> 请检查目录下的模型文件大小与网页上描述是否一致，如果可以的话，最好通过sha256校验模型是否下载完整
+#### 3. 修改配置文件以进行额外配置
 
-#### 3. 拷贝配置文件并进行配置
-
-在仓库根目录可以获得 [magic-pdf.template.json](magic-pdf.template.json) 配置模版文件
-
-> ❗️务必执行以下命令将配置文件拷贝到【用户目录】下，否则程序将无法运行
->
+完成[2. 下载模型权重文件](#2-下载模型权重文件)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
+您可在【用户目录】下找到magic-pdf.json文件。
 > windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
-```bash
-cp magic-pdf.template.json ~/magic-pdf.json
-```
+您可修改该文件中的部分配置实现功能的开关，如表格识别功能：
 
-在用户目录中找到magic-pdf.json文件并配置"models-dir"为[2. 下载模型权重文件](#2-下载模型权重文件)中下载的模型权重文件所在目录
-
-> ❗️务必正确配置模型权重文件所在目录的【绝对路径】，否则会因为找不到模型文件而导致程序无法运行
->
-> windows系统中此路径应包含盘符，且需把路径中所有的`"\"`替换为`"/"`,否则会因为转义原因导致json文件语法错误。
-> 
-
-> 例如：模型放在D盘根目录的models目录，则model-dir的值应为"D:/models"
+>如json内没有如下项目，请手动添加需要的项目，并删除注释内容（标准json不支持注释）
 
 ```json
 {
   // other config
-  "models-dir": "D:/models",
   "table-config": {
         "model": "TableMaster", // 使用structEqTable请修改为'struct_eqtable'
         "is_table_recog_enable": false, // 表格识别功能默认是关闭的，如果需要修改此处的值
@@ -266,13 +254,26 @@ Usage: magic-pdf [OPTIONS]
 Options:
   -v, --version                display the version and exit
   -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir TEXT        output local directory
-  -m, --method [ocr|txt|auto]  the method for parsing pdf.
-                               ocr: using ocr technique to extract information from pdf,
-                               txt: suitable for the text-based pdf only and outperform ocr,
-                               auto: automatically choose the best method for parsing pdf
-                                  from ocr and txt.
-                               without method specified, auto will be used by default.
+  -o, --output-dir PATH        output local directory  [required]
+  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
+                               technique to extract information from pdf. txt:
+                               suitable for the text-based pdf only and
+                               outperform ocr. auto: automatically choose the
+                               best method for parsing pdf from ocr and txt.
+                               without method specified, auto will be used by
+                               default.
+  -l, --lang TEXT              Input the languages in the pdf (if known) to
+                               improve OCR accuracy.  Optional. You should
+                               input "Abbreviation" with language form url: ht
+                               tps://paddlepaddle.github.io/PaddleOCR/en/ppocr
+                               /blog/multi_languages.html#5-support-languages-
+                               and-abbreviations
+  -d, --debug BOOLEAN          Enables detailed debugging information during
+                               the execution of the CLI commands.
+  -s, --start INTEGER          The starting page for PDF parsing, beginning
+                               from 0.
+  -e, --end INTEGER            The ending page for PDF parsing, beginning from
+                               0.
   --help                       Show this message and exit.
 
 
@@ -293,7 +294,8 @@ magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 ├── some_pdf_middle.json                 # minerU 中间处理结果
 ├── some_pdf_model.json                  # 模型推理结果
 ├── some_pdf_origin.pdf                  # 原 pdf 文件
-└── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
+├── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
+└── some_pdf_content_list.json           # 按阅读顺序排列的富文本json
 ```
 
 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
@@ -339,7 +341,7 @@ TODO
 
 # TODO
 
-- [ ] 基于语义的阅读顺序
+- [x] 基于语义的阅读顺序
 - [ ] 正文中列表识别
 - [ ] 正文中代码块识别
 - [ ] 目录识别
@@ -356,8 +358,8 @@ TODO
 - 在一些公式密集的PDF上强制启用OCR效果会更好
 - 如果您要处理包含大量公式的pdf,强烈建议开启OCR功能。使用pymuPDF提取文字的时候会出现文本行互相重叠的情况导致公式插入位置不准确。
 
-# FAQ
 
+# FAQ
 
 [常见问题](docs/FAQ_zh_cn.md)
 
@@ -382,24 +384,28 @@ TODO
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
+- [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 
 # Citation
 
 ```bibtex
+@misc{wang2024mineruopensourcesolutionprecise,
+      title={MinerU: An Open-Source Solution for Precise Document Content Extraction}, 
+      author={Bin Wang and Chao Xu and Xiaomeng Zhao and Linke Ouyang and Fan Wu and Zhiyuan Zhao and Rui Xu and Kaiwen Liu and Yuan Qu and Fukai Shang and Bo Zhang and Liqun Wei and Zhihao Sui and Wei Li and Botian Shi and Yu Qiao and Dahua Lin and Conghui He},
+      year={2024},
+      eprint={2409.18839},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2409.18839}, 
+}
+
 @article{he2024opendatalab,
   title={Opendatalab: Empowering general artificial intelligence with open datasets},
   author={He, Conghui and Li, Wei and Jin, Zhenjiang and Xu, Chao and Wang, Bin and Lin, Dahua},
   journal={arXiv preprint arXiv:2407.13773},
   year={2024}
-}
-
-@misc{2024mineru,
-    title={MinerU: A One-stop, Open-source, High-quality Data Extraction Tool},
-    author={MinerU Contributors},
-    howpublished = {\url{https://github.com/opendatalab/MinerU}},
-    year={2024}
 }
 ```
 
