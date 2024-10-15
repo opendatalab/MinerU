@@ -360,7 +360,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
                                                need_drop, drop_reason)
 
     '''将span填入blocks中'''
-    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.3)
+    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.5)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)

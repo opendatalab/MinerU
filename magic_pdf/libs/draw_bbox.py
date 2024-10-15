@@ -237,6 +237,8 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
                 BlockType.Text,
                 BlockType.Title,
                 BlockType.InterlineEquation,
+                BlockType.List,
+                BlockType.Index,
             ]:
                 for line in block['lines']:
                     for span in line['spans']:
