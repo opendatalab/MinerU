@@ -8,6 +8,7 @@ from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.libs.ocr_content_type import BlockType, ContentType
+from magic_pdf.para.para_split_v3 import ListLineTag
 
 
 def __is_hyphen_at_line_end(line):
@@ -124,7 +125,7 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
     for para_block in paras_of_layout:
         para_text = ''
         para_type = para_block['type']
-        if para_type == BlockType.Text:
+        if para_type in [BlockType.Text, BlockType.List, BlockType.Index]:
             para_text = merge_para_with_text(para_block, parse_type=parse_type, lang=lang)
         elif para_type == BlockType.Title:
             para_text = f'# {merge_para_with_text(para_block, parse_type=parse_type, lang=lang)}'
@@ -177,22 +178,26 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
     return page_markdown
 
 
-def merge_para_with_text(para_block, parse_type="auto", lang=None):
-
-    def detect_language(text):
-        en_pattern = r'[a-zA-Z]+'
-        en_matches = re.findall(en_pattern, text)
-        en_length = sum(len(match) for match in en_matches)
-        if len(text) > 0:
-            if en_length / len(text) >= 0.5:
-                return 'en'
-            else:
-                return 'unknown'
+def detect_language(text):
+    en_pattern = r'[a-zA-Z]+'
+    en_matches = re.findall(en_pattern, text)
+    en_length = sum(len(match) for match in en_matches)
+    if len(text) > 0:
+        if en_length / len(text) >= 0.5:
+            return 'en'
         else:
-            return 'empty'
+            return 'unknown'
+    else:
+        return 'empty'
 
+
+def merge_para_with_text(para_block, parse_type="auto", lang=None):
     para_text = ''
-    for line in para_block['lines']:
+    for i, line in enumerate(para_block['lines']):
+
+        if i >= 1 and line.get(ListLineTag.IS_LIST_START_LINE, False):
+            para_text += '  \n'
+
         line_text = ''
         line_lang = ''
         for span in line['spans']:

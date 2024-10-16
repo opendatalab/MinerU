@@ -17,6 +17,7 @@ from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.local_math import float_equal
 from magic_pdf.libs.ocr_content_type import ContentType
 from magic_pdf.model.magic_model import MagicModel
+from magic_pdf.para.para_split_v3 import para_split
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
@@ -359,7 +360,7 @@ def parse_page_core(pdf_docs, magic_model, page_id, pdf_bytes_md5, imageWriter, 
                                                need_drop, drop_reason)
 
     '''将span填入blocks中'''
-    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.3)
+    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.5)
 
     '''对block进行fix操作'''
     fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
@@ -435,9 +436,7 @@ def pdf_parse_union(pdf_bytes,
         pdf_info_dict[f"page_{page_id}"] = page_info
 
     """分段"""
-    # para_split(pdf_info_dict, debug_mode=debug_mode)
-    for page_num, page in pdf_info_dict.items():
-        page['para_blocks'] = page['preproc_blocks']
+    para_split(pdf_info_dict, debug_mode=debug_mode)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
