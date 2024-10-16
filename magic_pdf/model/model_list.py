@@ -3,3 +3,11 @@ class MODEL:
     PEK = "pdf_extract_kit"
     Torrone = "torrone"
     Tesseract = "tesseract"
+
+
+class AtomicModel:
+    Layout = "layout"
+    MFD = "mfd"
+    MFR = "mfr"
+    OCR = "ocr"
+    Table = "table"

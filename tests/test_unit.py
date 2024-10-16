@@ -1,18 +1,30 @@
-import pytest
 import os
-from magic_pdf.libs.boxbase import _is_in_or_part_overlap, _is_in_or_part_overlap_with_area_ratio, _is_in, \
-    _is_part_overlap, _left_intersect, _right_intersect, _is_vertical_full_overlap, _is_bottom_full_overlap, \
-    _is_left_overlap, __is_overlaps_y_exceeds_threshold, calculate_iou, calculate_overlap_area_2_minbox_area_ratio, \
-    calculate_overlap_area_in_bbox1_area_ratio, get_minbox_if_overlap_by_ratio, get_bbox_in_boundry, \
-    find_top_nearest_text_bbox, find_bottom_nearest_text_bbox, find_left_nearest_text_bbox, \
-    find_right_nearest_text_bbox, bbox_relative_pos, bbox_distance
-from magic_pdf.libs.commons import mymax, join_path, get_top_percent_list
+
+import pytest
+
+from magic_pdf.libs.boxbase import (__is_overlaps_y_exceeds_threshold,
+                                    _is_bottom_full_overlap, _is_in,
+                                    _is_in_or_part_overlap,
+                                    _is_in_or_part_overlap_with_area_ratio,
+                                    _is_left_overlap, _is_part_overlap,
+                                    _is_vertical_full_overlap, _left_intersect,
+                                    _right_intersect, bbox_distance,
+                                    bbox_relative_pos, calculate_iou,
+                                    calculate_overlap_area_2_minbox_area_ratio,
+                                    calculate_overlap_area_in_bbox1_area_ratio,
+                                    find_bottom_nearest_text_bbox,
+                                    find_left_nearest_text_bbox,
+                                    find_right_nearest_text_bbox,
+                                    find_top_nearest_text_bbox,
+                                    get_bbox_in_boundary,
+                                    get_minbox_if_overlap_by_ratio)
+from magic_pdf.libs.commons import get_top_percent_list, join_path, mymax
 from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import parse_s3path
 
 
 # 输入一个列表，如果列表空返回0，否则返回最大元素
-@pytest.mark.parametrize("list_input, target_num",
+@pytest.mark.parametrize('list_input, target_num',
                          [
                              ([0, 0, 0, 0], 0),
                              ([0], 0),
@@ -29,7 +41,7 @@ def test_list_max(list_input: list, target_num) -> None:
 
 
 # 连接多个参数生成路径信息，使用"/"作为连接符，生成的结果需要是一个合法路径
-@pytest.mark.parametrize("path_input, target_path", [
+@pytest.mark.parametrize('path_input, target_path', [
     (['https:', '', 'www.baidu.com'], 'https://www.baidu.com'),
     (['https:', 'www.baidu.com'], 'https:/www.baidu.com'),
     (['D:', 'file', 'pythonProject', 'demo' + '.py'], 'D:/file/pythonProject/demo.py'),
@@ -42,7 +54,7 @@ def test_join_path(path_input: list, target_path: str) -> None:
 
 
 # 获取列表中前百分之多少的元素
-@pytest.mark.parametrize("num_list, percent, target_num_list", [
+@pytest.mark.parametrize('num_list, percent, target_num_list', [
     ([], 0.75, []),
     ([-5, -10, 9, 3, 7, -7, 0, 23, -1, -11], 0.8, [23, 9, 7, 3, 0, -1, -5, -7]),
     ([-5, -10, 9, 3, 7, -7, 0, 23, -1, -11], 0, []),
@@ -57,9 +69,9 @@ def test_get_top_percent_list(num_list: list, percent: float, target_num_list: l
 
 
 # 输入一个s3路径，返回bucket名字和其余部分(key)
-@pytest.mark.parametrize("s3_path, target_data", [
-    ("s3://bucket/path/to/my/file.txt", "bucket"),
-    ("s3a://bucket1/path/to/my/file2.txt", "bucket1"),
+@pytest.mark.parametrize('s3_path, target_data', [
+    ('s3://bucket/path/to/my/file.txt', 'bucket'),
+    ('s3a://bucket1/path/to/my/file2.txt', 'bucket1'),
     # ("/path/to/my/file1.txt", "path"),
     # ("bucket/path/to/my/file2.txt", "bucket"),
 ])
@@ -76,7 +88,7 @@ def test_parse_s3path(s3_path: str, target_data: str):
 # 2个box是否处于包含或者部分重合关系。
 # 如果某边界重合算重合。
 # 部分边界重合，其他在内部也算包含
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     ((120, 133, 223, 248), (128, 168, 269, 295), True),
     ((137, 53, 245, 157), (134, 11, 200, 147), True),  # 部分重合
     ((137, 56, 211, 116), (140, 66, 202, 199), True),  # 部分重合
@@ -101,7 +113,7 @@ def test_is_in_or_part_overlap(box1: tuple, box2: tuple, target_bool: bool) -> N
 
 # 如果box1在box2内部，返回True
 #   如果是部分重合的，则重合面积占box1的比例大于阈值时候返回True
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     ((35, 28, 108, 90), (47, 60, 83, 96), False),  # 包含 box1 up box2,  box2 多半,box1少半
     ((65, 151, 92, 177), (49, 99, 105, 198), True),  # 包含 box1 in box2
     ((80, 62, 112, 84), (74, 40, 144, 111), True),  # 包含 box1 in box2
@@ -119,7 +131,7 @@ def test_is_in_or_part_overlap_with_area_ratio(box1: tuple, box2: tuple, target_
 
 
 # box1在box2内部或者box2在box1内部返回True。如果部分边界重合也算作包含。
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     # ((), (), "Error"),  # Error
     ((65, 151, 92, 177), (49, 99, 105, 198), True),  # 包含 box1 in box2
     ((80, 62, 112, 84), (74, 40, 144, 111), True),  # 包含 box1 in box2
@@ -141,7 +153,7 @@ def test_is_in(box1: tuple, box2: tuple, target_bool: bool) -> None:
 
 
 # 仅仅是部分包含关系，返回True，如果是完全包含关系则返回False
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     ((65, 151, 92, 177), (49, 99, 105, 198), False),  # 包含 box1 in box2
     ((80, 62, 112, 84), (74, 40, 144, 111), False),  # 包含 box1 in box2
     # ((76, 140, 154, 277), (121, 326, 192, 384), False),  # 分离  Error
@@ -161,7 +173,7 @@ def test_is_part_overlap(box1: tuple, box2: tuple, target_bool: bool) -> None:
 
 
 # left_box右侧是否和right_box左侧有部分重叠
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     (None, None, False),
     ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
     ((121, 149, 184, 289), (172, 130, 230, 268), True),  # box1 left bottom box2 相交
@@ -179,7 +191,7 @@ def test_left_intersect(box1: tuple, box2: tuple, target_bool: bool) -> None:
 
 
 # left_box左侧是否和right_box右侧部分重叠
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     (None, None, False),
     ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
     ((121, 149, 184, 289), (172, 130, 230, 268), False),  # box1 left bottom box2 相交
@@ -198,7 +210,7 @@ def test_right_intersect(box1: tuple, box2: tuple, target_bool: bool) -> None:
 
 # x方向上：要么box1包含box2, 要么box2包含box1。不能部分包含
 # y方向上：box1和box2有重叠
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     # (None, None, False),  # Error
     ((35, 28, 108, 90), (47, 60, 83, 96), True),  # box1 top box2, x:box2 in box1, y:有重叠
     ((35, 28, 98, 90), (27, 60, 103, 96), True),  # box1 top box2, x:box1 in box2, y:有重叠
@@ -214,7 +226,7 @@ def test_is_vertical_full_overlap(box1: tuple, box2: tuple, target_bool: bool) -
 
 
 # 检查box1下方和box2的上方有轻微的重叠，轻微程度收到y_tolerance的限制
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     (None, None, False),
     ((35, 28, 108, 90), (47, 89, 83, 116), True),  # box1 top box2, y:有重叠
     ((35, 28, 108, 90), (47, 60, 83, 96), False),  # box1 top box2, y:有重叠且过多
@@ -228,7 +240,7 @@ def test_is_bottom_full_overlap(box1: tuple, box2: tuple, target_bool: bool) -> 
 
 
 # 检查box1的左侧是否和box2有重叠
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     (None, None, False),
     ((88, 81, 222, 173), (60, 221, 123, 358), False),  # 分离
     # ((121, 149, 184, 289), (172, 130, 230, 268), False),  # box1 left bottom box2 相交  Error
@@ -245,7 +257,7 @@ def test_is_left_overlap(box1: tuple, box2: tuple, target_bool: bool) -> None:
 
 
 # 查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过阈值
-@pytest.mark.parametrize("box1, box2, target_bool", [
+@pytest.mark.parametrize('box1, box2, target_bool', [
     # (None, None, "Error"),  # Error
     ((51, 69, 192, 147), (75, 48, 132, 187), True),  # y: box1 in box2
     ((51, 39, 192, 197), (75, 48, 132, 187), True),  # y: box2 in box1
@@ -260,7 +272,7 @@ def test_is_overlaps_y_exceeds_threshold(box1: tuple, box2: tuple, target_bool: 
 
 
 # Determine the coordinates of the intersection rectangle
-@pytest.mark.parametrize("box1, box2, target_num", [
+@pytest.mark.parametrize('box1, box2, target_num', [
     # (None, None, "Error"),  # Error
     ((88, 81, 222, 173), (60, 221, 123, 358), 0.0),  # 分离
     ((76, 140, 154, 277), (121, 326, 192, 384), 0.0),  # 分离
@@ -276,7 +288,7 @@ def test_calculate_iou(box1: tuple, box2: tuple, target_num: float) -> None:
 
 
 # 计算box1和box2的重叠面积占最小面积的box的比例
-@pytest.mark.parametrize("box1, box2, target_num", [
+@pytest.mark.parametrize('box1, box2, target_num', [
     # (None, None, "Error"),  # Error
     ((142, 109, 238, 164), (134, 211, 224, 270), 0.0),  # 分离
     ((88, 81, 222, 173), (60, 221, 123, 358), 0.0),  # 分离
@@ -295,7 +307,7 @@ def test_calculate_overlap_area_2_minbox_area_ratio(box1: tuple, box2: tuple, ta
 
 
 # 计算box1和box2的重叠面积占bbox1的比例
-@pytest.mark.parametrize("box1, box2, target_num", [
+@pytest.mark.parametrize('box1, box2, target_num', [
     # (None, None, "Error"),  # Error
     ((142, 109, 238, 164), (134, 211, 224, 270), 0.0),  # 分离
     ((88, 81, 222, 173), (60, 221, 123, 358), 0.0),  # 分离
@@ -315,7 +327,7 @@ def test_calculate_overlap_area_in_bbox1_area_ratio(box1: tuple, box2: tuple, ta
 
 
 # 计算两个bbox重叠的面积占最小面积的box的比例，如果比例大于ratio，则返回小的那个bbox,否则返回None
-@pytest.mark.parametrize("box1, box2, ratio, target_box", [
+@pytest.mark.parametrize('box1, box2, ratio, target_box', [
     # (None, None, 0.8, "Error"),  # Error
     ((142, 109, 238, 164), (134, 211, 224, 270), 0.0, None),  # 分离
     ((109, 126, 204, 245), (110, 127, 232, 206), 0.5, (110, 127, 232, 206)),
@@ -331,7 +343,7 @@ def test_get_minbox_if_overlap_by_ratio(box1: tuple, box2: tuple, ratio: float, 
 
 
 # 根据boundry获取在这个范围内的所有的box的列表，完全包含关系
-@pytest.mark.parametrize("boxes, boundry, target_boxs", [
+@pytest.mark.parametrize('boxes, boundary, target_boxs', [
     # ([], (), "Error"),  # Error
     ([], (110, 340, 209, 387), []),
     ([(142, 109, 238, 164)], (134, 211, 224, 270), []),  # 分离
@@ -347,15 +359,15 @@ def test_get_minbox_if_overlap_by_ratio(box1: tuple, box2: tuple, ratio: float, 
       (137, 29, 287, 87)], (30, 20, 200, 320),
      [(81, 280, 123, 315), (46, 99, 133, 148), (33, 156, 97, 211)]),
 ])
-def test_get_bbox_in_boundry(boxes: list, boundry: tuple, target_boxs: list) -> None:
-    assert target_boxs == get_bbox_in_boundry(boxes, boundry)
+def test_get_bbox_in_boundary(boxes: list, boundary: tuple, target_boxs: list) -> None:
+    assert target_boxs == get_bbox_in_boundary(boxes, boundary)
 
 
 # 寻找上方距离最近的box,margin 4个单位， x方向有重合，y方向最近的
-@pytest.mark.parametrize("pymu_blocks, obj_box, target_boxs", [
-    ([{"bbox": (81, 280, 123, 315)}, {"bbox": (282, 203, 342, 247)}, {"bbox": (183, 100, 300, 155)},
-      {"bbox": (46, 99, 133, 148)}, {"bbox": (33, 156, 97, 211)},
-      {"bbox": (137, 29, 287, 87)}], (81, 280, 123, 315), {"bbox": (33, 156, 97, 211)}),
+@pytest.mark.parametrize('pymu_blocks, obj_box, target_boxs', [
+    ([{'bbox': (81, 280, 123, 315)}, {'bbox': (282, 203, 342, 247)}, {'bbox': (183, 100, 300, 155)},
+      {'bbox': (46, 99, 133, 148)}, {'bbox': (33, 156, 97, 211)},
+      {'bbox': (137, 29, 287, 87)}], (81, 280, 123, 315), {'bbox': (33, 156, 97, 211)}),
     # ([{"bbox": (168, 120, 263, 159)},
     #   {"bbox": (231, 61, 279, 159)},
     #   {"bbox": (35, 85, 136, 110)},
@@ -363,46 +375,46 @@ def test_get_bbox_in_boundry(boxes: list, boundry: tuple, target_boxs: list) -> 
     #   {"bbox": (144, 264, 188, 323)},
     #   {"bbox": (62, 37, 126, 64)}], (228, 193, 347, 225),
     #  [{"bbox": (168, 120, 263, 159)}, {"bbox": (231, 61, 279, 159)}]),  # y：方向最近的有两个，x: 两个均有重合 Error
-    ([{"bbox": (35, 85, 136, 159)},
-      {"bbox": (168, 120, 263, 159)},
-      {"bbox": (231, 61, 279, 118)},
-      {"bbox": (228, 193, 347, 225)},
-      {"bbox": (144, 264, 188, 323)},
-      {"bbox": (62, 37, 126, 64)}], (228, 193, 347, 225),
-     {"bbox": (168, 120, 263, 159)},),  # y:方向最近的有两个，x:只有一个有重合
-    ([{"bbox": (239, 115, 379, 167)},
-      {"bbox": (33, 237, 104, 262)},
-      {"bbox": (124, 288, 168, 325)},
-      {"bbox": (242, 291, 379, 340)},
-      {"bbox": (55, 117, 121, 154)},
-      {"bbox": (266, 183, 384, 217)}, ], (124, 288, 168, 325), {'bbox': (55, 117, 121, 154)}),
-    ([{"bbox": (239, 115, 379, 167)},
-      {"bbox": (33, 237, 104, 262)},
-      {"bbox": (124, 288, 168, 325)},
-      {"bbox": (242, 291, 379, 340)},
-      {"bbox": (55, 117, 119, 154)},
-      {"bbox": (266, 183, 384, 217)}, ], (124, 288, 168, 325), None),  # x没有重合
-    ([{"bbox": (80, 90, 249, 200)},
-      {"bbox": (183, 100, 240, 155)}, ], (183, 100, 240, 155), None),  # 包含
+    ([{'bbox': (35, 85, 136, 159)},
+      {'bbox': (168, 120, 263, 159)},
+      {'bbox': (231, 61, 279, 118)},
+      {'bbox': (228, 193, 347, 225)},
+      {'bbox': (144, 264, 188, 323)},
+      {'bbox': (62, 37, 126, 64)}], (228, 193, 347, 225),
+     {'bbox': (168, 120, 263, 159)},),  # y:方向最近的有两个，x:只有一个有重合
+    ([{'bbox': (239, 115, 379, 167)},
+      {'bbox': (33, 237, 104, 262)},
+      {'bbox': (124, 288, 168, 325)},
+      {'bbox': (242, 291, 379, 340)},
+      {'bbox': (55, 117, 121, 154)},
+      {'bbox': (266, 183, 384, 217)}, ], (124, 288, 168, 325), {'bbox': (55, 117, 121, 154)}),
+    ([{'bbox': (239, 115, 379, 167)},
+      {'bbox': (33, 237, 104, 262)},
+      {'bbox': (124, 288, 168, 325)},
+      {'bbox': (242, 291, 379, 340)},
+      {'bbox': (55, 117, 119, 154)},
+      {'bbox': (266, 183, 384, 217)}, ], (124, 288, 168, 325), None),  # x没有重合
+    ([{'bbox': (80, 90, 249, 200)},
+      {'bbox': (183, 100, 240, 155)}, ], (183, 100, 240, 155), None),  # 包含
 ])
 def test_find_top_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_boxs: dict) -> None:
     assert target_boxs == find_top_nearest_text_bbox(pymu_blocks, obj_box)
 
 
 # 寻找下方距离自己最近的box, x方向有重合，y方向最近的
-@pytest.mark.parametrize("pymu_blocks, obj_box, target_boxs", [
-    ([{"bbox": (165, 96, 300, 114)},
-      {"bbox": (11, 157, 139, 201)},
-      {"bbox": (124, 208, 265, 262)},
-      {"bbox": (124, 283, 248, 306)},
-      {"bbox": (39, 267, 84, 301)},
-      {"bbox": (36, 89, 114, 145)}, ], (165, 96, 300, 114), {"bbox": (124, 208, 265, 262)}),
-    ([{"bbox": (187, 37, 303, 49)},
-      {"bbox": (2, 227, 90, 283)},
-      {"bbox": (158, 174, 200, 212)},
-      {"bbox": (259, 174, 324, 228)},
-      {"bbox": (205, 61, 316, 97)},
-      {"bbox": (295, 248, 374, 287)}, ], (205, 61, 316, 97), {"bbox": (259, 174, 324, 228)}),  # y有两个最近的, x只有一个重合
+@pytest.mark.parametrize('pymu_blocks, obj_box, target_boxs', [
+    ([{'bbox': (165, 96, 300, 114)},
+      {'bbox': (11, 157, 139, 201)},
+      {'bbox': (124, 208, 265, 262)},
+      {'bbox': (124, 283, 248, 306)},
+      {'bbox': (39, 267, 84, 301)},
+      {'bbox': (36, 89, 114, 145)}, ], (165, 96, 300, 114), {'bbox': (124, 208, 265, 262)}),
+    ([{'bbox': (187, 37, 303, 49)},
+      {'bbox': (2, 227, 90, 283)},
+      {'bbox': (158, 174, 200, 212)},
+      {'bbox': (259, 174, 324, 228)},
+      {'bbox': (205, 61, 316, 97)},
+      {'bbox': (295, 248, 374, 287)}, ], (205, 61, 316, 97), {'bbox': (259, 174, 324, 228)}),  # y有两个最近的, x只有一个重合
     # ([{"bbox": (187, 37, 303, 49)},
     #   {"bbox": (2, 227, 90, 283)},
     #   {"bbox": (259, 174, 324, 228)},
@@ -410,31 +422,31 @@ def test_find_top_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_bo
     #   {"bbox": (295, 248, 374, 287)},
     #   {"bbox": (158, 174, 209, 212)}, ], (205, 61, 316, 97),
     #  [{"bbox": (259, 174, 324, 228)}, {"bbox": (158, 174, 209, 212)}]),  # x有重合，y有两个最近的  Error
-    ([{"bbox": (287, 132, 398, 191)},
-      {"bbox": (44, 141, 163, 188)},
-      {"bbox": (132, 191, 240, 241)},
-      {"bbox": (81, 25, 142, 67)},
-      {"bbox": (74, 297, 116, 314)},
-      {"bbox": (77, 84, 224, 107)}, ], (287, 132, 398, 191), None),  # x没有重合
-    ([{"bbox": (80, 90, 249, 200)},
-      {"bbox": (183, 100, 240, 155)}, ], (183, 100, 240, 155), None),  # 包含
+    ([{'bbox': (287, 132, 398, 191)},
+      {'bbox': (44, 141, 163, 188)},
+      {'bbox': (132, 191, 240, 241)},
+      {'bbox': (81, 25, 142, 67)},
+      {'bbox': (74, 297, 116, 314)},
+      {'bbox': (77, 84, 224, 107)}, ], (287, 132, 398, 191), None),  # x没有重合
+    ([{'bbox': (80, 90, 249, 200)},
+      {'bbox': (183, 100, 240, 155)}, ], (183, 100, 240, 155), None),  # 包含
 ])
 def test_find_bottom_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_boxs: dict) -> None:
     assert target_boxs == find_bottom_nearest_text_bbox(pymu_blocks, obj_box)
 
 
 # 寻找左侧距离自己最近的box, y方向有重叠，x方向最近
-@pytest.mark.parametrize("pymu_blocks, obj_box, target_boxs", [
-    ([{"bbox": (80, 90, 249, 200)}, {"bbox": (183, 100, 240, 155)}], (183, 100, 240, 155), None),  # 包含
-    ([{"bbox": (28, 90, 77, 126)}, {"bbox": (35, 84, 84, 120)}], (35, 84, 84, 120), None),  # y:重叠，x:重叠大于2
-    ([{"bbox": (28, 90, 77, 126)}, {"bbox": (75, 84, 134, 120)}], (75, 84, 134, 120), {"bbox": (28, 90, 77, 126)}),
+@pytest.mark.parametrize('pymu_blocks, obj_box, target_boxs', [
+    ([{'bbox': (80, 90, 249, 200)}, {'bbox': (183, 100, 240, 155)}], (183, 100, 240, 155), None),  # 包含
+    ([{'bbox': (28, 90, 77, 126)}, {'bbox': (35, 84, 84, 120)}], (35, 84, 84, 120), None),  # y:重叠，x:重叠大于2
+    ([{'bbox': (28, 90, 77, 126)}, {'bbox': (75, 84, 134, 120)}], (75, 84, 134, 120), {'bbox': (28, 90, 77, 126)}),
     # y:重叠，x:重叠小于等于2
-    ([{"bbox": (239, 115, 379, 167)},
-      {"bbox": (33, 237, 104, 262)},
-      {"bbox": (124, 288, 168, 325)},
-      {"bbox": (242, 291, 379, 340)},
-      {"bbox": (55, 113, 161, 154)},
-      {"bbox": (266, 123, 384, 217)}], (266, 123, 384, 217), {"bbox": (55, 113, 161, 154)}),  # y重叠，x left
+    ([{'bbox': (239, 115, 379, 167)},
+      {'bbox': (33, 237, 104, 262)},
+      {'bbox': (124, 288, 168, 325)},
+      {'bbox': (242, 291, 379, 340)},
+      {'bbox': (55, 113, 161, 154)},
+      {'bbox': (266, 123, 384, 217)}], (266, 123, 384, 217), {'bbox': (55, 113, 161, 154)}),  # y重叠，x left
     # ([{"bbox": (136, 219, 268, 240)},
     #   {"bbox": (169, 115, 268, 181)},
     #   {"bbox": (33, 237, 104, 262)},
@@ -448,17 +460,17 @@ def test_find_left_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_b
 
 
 # 寻找右侧距离自己最近的box, y方向有重叠，x方向最近
-@pytest.mark.parametrize("pymu_blocks, obj_box, target_boxs", [
-    ([{"bbox": (80, 90, 249, 200)}, {"bbox": (183, 100, 240, 155)}], (183, 100, 240, 155), None),  # 包含
-    ([{"bbox": (28, 90, 77, 126)}, {"bbox": (35, 84, 84, 120)}], (28, 90, 77, 126), None),  # y:重叠，x:重叠大于2
-    ([{"bbox": (28, 90, 77, 126)}, {"bbox": (75, 84, 134, 120)}], (28, 90, 77, 126), {"bbox": (75, 84, 134, 120)}),
+@pytest.mark.parametrize('pymu_blocks, obj_box, target_boxs', [
+    ([{'bbox': (80, 90, 249, 200)}, {'bbox': (183, 100, 240, 155)}], (183, 100, 240, 155), None),  # 包含
+    ([{'bbox': (28, 90, 77, 126)}, {'bbox': (35, 84, 84, 120)}], (28, 90, 77, 126), None),  # y:重叠，x:重叠大于2
+    ([{'bbox': (28, 90, 77, 126)}, {'bbox': (75, 84, 134, 120)}], (28, 90, 77, 126), {'bbox': (75, 84, 134, 120)}),
     # y:重叠，x:重叠小于等于2
-    ([{"bbox": (239, 115, 379, 167)},
-      {"bbox": (33, 237, 104, 262)},
-      {"bbox": (124, 288, 168, 325)},
-      {"bbox": (242, 291, 379, 340)},
-      {"bbox": (55, 113, 161, 154)},
-      {"bbox": (266, 123, 384, 217)}], (55, 113, 161, 154), {"bbox": (239, 115, 379, 167)}),  # y重叠，x right
+    ([{'bbox': (239, 115, 379, 167)},
+      {'bbox': (33, 237, 104, 262)},
+      {'bbox': (124, 288, 168, 325)},
+      {'bbox': (242, 291, 379, 340)},
+      {'bbox': (55, 113, 161, 154)},
+      {'bbox': (266, 123, 384, 217)}], (55, 113, 161, 154), {'bbox': (239, 115, 379, 167)}),  # y重叠，x right
     # ([{"bbox": (169, 115, 298, 181)},
     #   {"bbox": (169, 219, 268, 240)},
     #   {"bbox": (33, 177, 104, 262)},
@@ -472,7 +484,7 @@ def test_find_right_nearest_text_bbox(pymu_blocks: list, obj_box: tuple, target_
 
 
 # 判断两个矩形框的相对位置关系 (left, right, bottom, top)
-@pytest.mark.parametrize("box1, box2, target_box", [
+@pytest.mark.parametrize('box1, box2, target_box', [
     # (None, None, "Error"),  # Error
     ((80, 90, 249, 200), (183, 100, 240, 155), (False, False, False, False)),  # 包含
     # ((124, 81, 222, 173), (60, 221, 123, 358), (False, True, False, True)),  # 分离，右上 Error
@@ -494,7 +506,7 @@ def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
 """
 
 
-@pytest.mark.parametrize("box1, box2, target_num", [
+@pytest.mark.parametrize('box1, box2, target_num', [
     # (None, None, "Error"),  # Error
     ((80, 90, 249, 200), (183, 100, 240, 155), 0.0),  # 包含
     ((142, 109, 238, 164), (134, 211, 224, 270), 47.0),  # 分离，上
@@ -514,17 +526,17 @@ def test_bbox_relative_pos(box1: tuple, box2: tuple, target_box: tuple) -> None:
 def test_bbox_distance(box1: tuple, box2: tuple, target_num: float) -> None:
     assert target_num - bbox_distance(box1, box2) < 1
 
-@pytest.mark.skip(reason="skip")
+
+@pytest.mark.skip(reason='skip')
 # 根据bucket_name获取s3配置ak,sk,endpoint
 def test_get_s3_config() -> None:
-    bucket_name = os.getenv('bucket_name')  
+    bucket_name = os.getenv('bucket_name')
     target_data = os.getenv('target_data')
     assert convert_string_to_list(target_data) == list(get_s3_config(bucket_name))
 
 
-
-def convert_string_to_list(s):  
-    cleaned_s = s.strip("'")  
-    items = cleaned_s.split(',')  
-    cleaned_items = [item.strip() for item in items]    
-    return cleaned_items  
+def convert_string_to_list(s):
+    cleaned_s = s.strip("'")
+    items = cleaned_s.split(',')
+    cleaned_items = [item.strip() for item in items]
+    return cleaned_items

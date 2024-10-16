@@ -48,44 +48,28 @@
 
 ### 5. Install Applications
    ```sh
-   pip install magic-pdf[full]==0.6.2b1 detectron2 --extra-index-url https://wheels.myhloli.com
+   pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
    ```
 ❗ After installation, make sure to check the version of `magic-pdf` using the following command:
    ```sh
    magic-pdf --version
    ```
-   If the version number is less than 0.6.2, please report the issue.
+   If the version number is less than 0.7.0, please report the issue.
 
 ### 6. Download Models
-   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).  
-   After downloading, move the `models` directory to an SSD with more space.
-   
-❗ After downloading the models, ensure they are complete:
-   - Check that the file sizes match the description on the website.
-   - If possible, verify the integrity using SHA256.
+   Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
 
-### 7. Configuration Before First Run
-   Obtain the configuration template file `magic-pdf.template.json` from the root directory of the repository.
-   
-❗ Execute the following command to copy the configuration file to your home directory, otherwise the program will not run:
-   ```sh
-   wget https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json
-   cp magic-pdf.template.json ~/magic-pdf.json
-   ```
-   Find the `magic-pdf.json` file in your home directory and configure `"models-dir"` to be the directory where the model weights from Step 6 were downloaded.
-   
-❗ Correctly specify the absolute path of the directory containing the model weights; otherwise, the program will fail due to missing model files.
-   ```json
-   {
-     "models-dir": "/tmp/models"
-   }
-   ```
+## 7. Understand the Location of the Configuration File
+
+After completing the [6. Download Models](#6-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
+You can find the `magic-pdf.json` file in your user directory.
+> The user directory for Linux is "/home/username".
 
 ### 8. First Run
    Download a sample file from the repository and test it.
    ```sh
    wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```
 
 ### 9. Test CUDA Acceleration
@@ -100,7 +84,7 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA 
    ```
 2. Test CUDA acceleration with the following command:
    ```sh
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```
 
 ### 10. Enable CUDA Acceleration for OCR
@@ -113,5 +97,5 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA 
    ```
 2. Test OCR acceleration with the following command:
    ```sh
-   magic-pdf pdf-command --pdf small_ocr.pdf
+   magic-pdf -p small_ocr.pdf
    ```

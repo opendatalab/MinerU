@@ -30,10 +30,10 @@ tmp/
 tmp
 .vscode
 .vscode/
-/tests/
 ocr_demo
 
 /app/common/__init__.py
 /magic_pdf/config/__init__.py
 source.dev.env
 
+tmp

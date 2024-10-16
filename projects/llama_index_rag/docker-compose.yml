@@ -1,0 +1,24 @@
+services:
+  es:
+    container_name: es
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    volumes:
+      - esdata01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    environment:
+      - node.name=es
+      - ELASTIC_PASSWORD=llama_index
+      - bootstrap.memory_lock=false
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: always
+volumes:
+  esdata01:
+    driver: local
