@@ -339,19 +339,21 @@ TODO
 
 # TODO
 
-- [x] Semantic-based reading order
-- [ ] List recognition within the text
+- [x] Model-based reading order
+- [x] List recognition within the text
 - [ ] Code block recognition within the text
-- [ ] Table of contents recognition
+- [x] Table of contents recognition
 - [x] Table recognition
 - [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] Geometric shape recognition
 
 # Known Issues
 
-- Reading order is segmented based on rules, which can cause disordered sequences in some cases
-- Vertical text is not supported
-- Lists, code blocks, and table of contents are not yet supported in the layout model
+- Reading order is based on the model's sorting of text distribution in space, which may become disordered under extremely complex layouts.
+- Vertical text is not supported.
+- Tables of contents and lists are recognized through rules; a few uncommon list formats may not be identified.
+- Only one level of headings is supported; hierarchical heading levels are currently not supported.
+- Code blocks are not yet supported in the layout model.
 - Comic books, art books, elementary school textbooks, and exercise books are not well-parsed yet
 - Enabling OCR may produce better results in PDFs with a high density of formulas
 - If you are processing PDFs with a large number of formulas, it is strongly recommended to enable the OCR function. When using PyMuPDF to extract text, overlapping text lines can occur, leading to inaccurate formula insertion positions.
