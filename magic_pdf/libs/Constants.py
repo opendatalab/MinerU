@@ -29,10 +29,10 @@ TABLE_MASTER_DICT = "table_master_structure_dict.txt"
 TABLE_MASTER_DIR = "table_structure_tablemaster_infer/"
 
 # pp detect model dir
-DETECT_MODEL_DIR = "ch_PP-OCRv3_det_infer"
+DETECT_MODEL_DIR = "ch_PP-OCRv4_det_infer"
 
 # pp rec model dir
-REC_MODEL_DIR = "ch_PP-OCRv3_rec_infer"
+REC_MODEL_DIR = "ch_PP-OCRv4_rec_infer"
 
 # pp rec char dict path
 REC_CHAR_DICT = "ppocr_keys_v1.txt"

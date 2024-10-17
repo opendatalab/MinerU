@@ -433,3 +433,7 @@ class CustomPEKModel:
         logger.info(f"-----page total time: {round(time.time() - page_start, 2)}-----")
 
         return layout_res
+if __name__ == '__main__':
+    print()
+
+
