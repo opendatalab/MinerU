@@ -1,5 +1,6 @@
 import json
 
+from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.boxbase import (_is_in, _is_part_overlap, bbox_distance,
                                     bbox_relative_pos, box_area, calculate_iou,
                                     calculate_overlap_area_in_bbox1_area_ratio,
@@ -24,7 +25,7 @@ class MagicModel:
             need_remove_list = []
             page_no = model_page_info['page_info']['page_no']
             horizontal_scale_ratio, vertical_scale_ratio = get_scale_ratio(
-                model_page_info, self.__docs[page_no]
+                model_page_info, self.__docs.get_page(page_no)
             )
             layout_dets = model_page_info['layout_dets']
             for layout_det in layout_dets:
@@ -99,7 +100,7 @@ class MagicModel:
             for need_remove in need_remove_list:
                 layout_dets.remove(need_remove)
 
-    def __init__(self, model_list: list, docs: fitz.Document):
+    def __init__(self, model_list: list, docs: Dataset):
         self.__model_list = model_list
         self.__docs = docs
         """为所有模型数据添加bbox信息(缩放，poly->bbox)"""
@@ -123,7 +124,8 @@ class MagicModel:
             l1 = bbox1[2] - bbox1[0]
             l2 = bbox2[2] - bbox2[0]
 
-        if l2 > l1 and (l2 - l1) / l1 > 0.5:
+        min_l, max_l = min(l1, l2), max(l1, l2)
+        if (max_l - min_l) * 1.0 / max_l > 0.4:
             return float('inf')
 
         return bbox_distance(bbox1, bbox2)
@@ -213,9 +215,8 @@ class MagicModel:
         筛选出所有和 merged bbox 有 overlap 且 overlap 面积大于 object 的面积的 subjects。
         再求出筛选出的 subjects 和 object 的最短距离
         """
-        def search_overlap_between_boxes(
-            subject_idx, object_idx
-        ):
+
+        def search_overlap_between_boxes(subject_idx, object_idx):
             idxes = [subject_idx, object_idx]
             x0s = [all_bboxes[idx]['bbox'][0] for idx in idxes]
             y0s = [all_bboxes[idx]['bbox'][1] for idx in idxes]
@@ -243,9 +244,9 @@ class MagicModel:
             for other_object in other_objects:
                 ratio = max(
                     ratio,
-                    get_overlap_area(
-                        merged_bbox, other_object['bbox']
-                    ) * 1.0 / box_area(all_bboxes[object_idx]['bbox'])
+                    get_overlap_area(merged_bbox, other_object['bbox'])
+                    * 1.0
+                    / box_area(all_bboxes[object_idx]['bbox']),
                 )
                 if ratio >= MERGE_BOX_OVERLAP_AREA_RATIO:
                     break
@@ -363,12 +364,17 @@ class MagicModel:
                 if all_bboxes[j]['category_id'] == subject_category_id:
                     subject_idx, object_idx = j, i
 
-                if search_overlap_between_boxes(subject_idx, object_idx) >= MERGE_BOX_OVERLAP_AREA_RATIO:
+                if (
+                    search_overlap_between_boxes(subject_idx, object_idx)
+                    >= MERGE_BOX_OVERLAP_AREA_RATIO
+                ):
                     dis[i][j] = float('inf')
                     dis[j][i] = dis[i][j]
                     continue
 
-                dis[i][j] = self._bbox_distance(all_bboxes[subject_idx]['bbox'], all_bboxes[object_idx]['bbox'])
+                dis[i][j] = self._bbox_distance(
+                    all_bboxes[subject_idx]['bbox'], all_bboxes[object_idx]['bbox']
+                )
                 dis[j][i] = dis[i][j]
 
         used = set()
@@ -584,6 +590,99 @@ class MagicModel:
                 with_caption_subject.add(j)
         return ret, total_subject_object_dis
 
+    def __tie_up_category_by_distance_v2(
+        self, page_no, subject_category_id, object_category_id
+    ):
+
+        subjects = self.__reduct_overlap(
+            list(
+                map(
+                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                    filter(
+                        lambda x: x['category_id'] == subject_category_id,
+                        self.__model_list[page_no]['layout_dets'],
+                    ),
+                )
+            )
+        )
+
+        objects = self.__reduct_overlap(
+            list(
+                map(
+                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                    filter(
+                        lambda x: x['category_id'] == object_category_id,
+                        self.__model_list[page_no]['layout_dets'],
+                    ),
+                )
+            )
+        )
+
+        print(len(subjects), len(objects))
+
+        subjects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
+        objects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
+        dis = [[float('inf')] * len(subjects) for _ in range(len(objects))]
+        for i, obj in enumerate(objects):
+            for j, sub in enumerate(subjects):
+                dis[i][j] = self._bbox_distance(sub['bbox'], obj['bbox'])
+
+        sub_obj_map_h = {i: [] for i in range(len(subjects))}
+        for i in range(len(objects)):
+            min_l_idx = 0
+            for j in range(1, len(subjects)):
+                if dis[i][j] == float('inf'):
+                    continue
+                if dis[i][j] < dis[i][min_l_idx]:
+                    min_l_idx = j
+
+            if dis[i][min_l_idx] < float('inf'):
+                sub_obj_map_h[min_l_idx].append(i)
+            else:
+                print(i, 'no nearest')
+        ret = []
+        for i in sub_obj_map_h.keys():
+            ret.append(
+                {
+                    'sub_bbox': subjects[i]['bbox'],
+                    'obj_bboxes': [objects[j]['bbox'] for j in sub_obj_map_h[i]],
+                    'sub_idx': i,
+                }
+            )
+        return ret
+
+    def get_imgs_v2(self, page_no: int):
+        with_captions = self.__tie_up_category_by_distance_v2(page_no, 3, 4)
+        with_footnotes = self.__tie_up_category_by_distance_v2(
+            page_no, 3, CategoryId.ImageFootnote
+        )
+        ret = []
+        for v in with_captions:
+            record = {
+                'image_bbox': v['sub_bbox'],
+                'image_caption_bbox_list': v['obj_bboxes'],
+            }
+            filter_idx = v['sub_idx']
+            d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
+            record['image_footnote_bbox_list'] = d['obj_bboxes']
+            ret.append(record)
+        return ret
+
+    def get_tables_v2(self, page_no: int) -> list:
+        with_captions = self.__tie_up_category_by_distance_v2(page_no, 5, 6)
+        with_footnotes = self.__tie_up_category_by_distance_v2(page_no, 5, 7)
+        ret = []
+        for v in with_captions:
+            record = {
+                'table_bbox': v['sub_bbox'],
+                'table_caption_bbox_list': v['obj_bboxes'],
+            }
+            filter_idx = v['sub_idx']
+            d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
+            record['table_footnote_bbox_list'] = d['obj_bboxes']
+            ret.append(record)
+        return ret
+
     def get_imgs(self, page_no: int):
         with_captions, _ = self.__tie_up_category_by_distance(page_no, 3, 4)
         with_footnotes, _ = self.__tie_up_category_by_distance(
@@ -717,10 +816,10 @@ class MagicModel:
 
     def get_page_size(self, page_no: int):  # 获取页面宽高
         # 获取当前页的page对象
-        page = self.__docs[page_no]
+        page = self.__docs.get_page(page_no).get_page_info()
         # 获取当前页的宽高
-        page_w = page.rect.width
-        page_h = page.rect.height
+        page_w = page.w
+        page_h = page.h
         return page_w, page_h
 
     def __get_blocks_by_type(
