@@ -8,6 +8,8 @@ nvidia-smi
 
 If you see information similar to the following, it means that the NVIDIA drivers are already installed, and you can skip Step 2.
 
+Notice:`CUDA Version` should be >= 12.1, If the displayed version number is less than 12.1, please upgrade the driver.
+
 ```plaintext
 +---------------------------------------------------------------------------------------+
 | NVIDIA-SMI 537.34                 Driver Version: 537.34       CUDA Version: 12.2     |
