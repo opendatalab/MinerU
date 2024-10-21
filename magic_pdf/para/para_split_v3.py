@@ -59,7 +59,7 @@ def __is_list_or_index_block(block):
     # index block 是一种特殊的list block
     # 一个block如果是index block 应该同时满足以下特征
     # 1.block内有多个line 2.block 内有多个line两侧均顶格写 3.line的开头或者结尾均为数字
-    if len(block['lines']) >= 3:
+    if len(block['lines']) >= 2:
         first_line = block['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block_weight = block['bbox_fs'][2] - block['bbox_fs'][0]
@@ -227,6 +227,15 @@ def __merge_2_list_blocks(block1, block2):
     return block1, block2
 
 
+def __is_list_group(text_blocks_group):
+    # list group的特征是一个group内的所有block都满足以下条件
+    # 1.每个block都不超过3行 2. 每个block 的左边界都比较接近(逻辑简单点先不加这个规则)
+    for block in text_blocks_group:
+        if len(block['lines']) > 3:
+            return False
+    return True
+
+
 def __para_merge_page(blocks):
     page_text_blocks_groups = __process_blocks(blocks)
     for text_blocks_group in page_text_blocks_groups:
@@ -239,6 +248,10 @@ def __para_merge_page(blocks):
                 # logger.info(f"{block['type']}:{block}")
 
         if len(text_blocks_group) > 1:
+
+            # 在合并前判断这个group 是否是一个 list group
+            is_list_group = __is_list_group(text_blocks_group)
+
             # 倒序遍历
             for i in range(len(text_blocks_group) - 1, -1, -1):
                 current_block = text_blocks_group[i]
@@ -247,7 +260,7 @@ def __para_merge_page(blocks):
                 if i - 1 >= 0:
                     prev_block = text_blocks_group[i - 1]
 
-                    if current_block['type'] == 'text' and prev_block['type'] == 'text':
+                    if current_block['type'] == 'text' and prev_block['type'] == 'text' and not is_list_group:
                         __merge_2_text_blocks(current_block, prev_block)
                     elif (
                             (current_block['type'] == BlockType.List and prev_block['type'] == BlockType.List) or
