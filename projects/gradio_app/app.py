@@ -3,10 +3,12 @@
 import base64
 import os
 import time
+import uuid
 import zipfile
 from pathlib import Path
 import re
 
+import pymupdf
 from loguru import logger
 
 from magic_pdf.libs.hash_utils import compute_sha256
@@ -164,12 +166,32 @@ all_lang = [""]
 all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
 
 
+def to_pdf(file_path):
+    with pymupdf.open(file_path) as f:
+        if f.is_pdf:
+            return file_path
+        else:
+            pdf_bytes = f.convert_to_pdf()
+            # 将pdfbytes 写入到uuid.pdf中
+            # 生成唯一的文件名
+            unique_filename = f"{uuid.uuid4()}.pdf"
+
+            # 构建完整的文件路径
+            tmp_file_path = os.path.join(os.path.dirname(file_path), unique_filename)
+
+            # 将字节数据写入文件
+            with open(tmp_file_path, 'wb') as tmp_pdf_file:
+                tmp_pdf_file.write(pdf_bytes)
+
+            return tmp_file_path
+
+
 if __name__ == "__main__":
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
-                pdf_show = gr.Markdown()
+                file = gr.File(label="Please upload a PDF or image", file_types=[".pdf", ".png", ".jpeg", "jpg"])
                 max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
                 with gr.Row():
                     layout_mode = gr.Dropdown(["layoutlmv3", "doclayout_yolo"], label="Layout model", value="layoutlmv3")
@@ -180,14 +202,14 @@ if __name__ == "__main__":
                     table_enable = gr.Checkbox(label="Enable table recognition(test)", value=False)
                 with gr.Row():
                     change_bu = gr.Button("Convert")
-                    clear_bu = gr.ClearButton([pdf_show], value="Clear")
-                pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
+                    clear_bu = gr.ClearButton(value="Clear")
+                pdf_show = PDF(label="PDF preview", interactive=True, height=800)
                 with gr.Accordion("Examples:"):
                     example_root = os.path.join(os.path.dirname(__file__), "examples")
                     gr.Examples(
                         examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
                                   _.endswith("pdf")],
-                        inputs=pdf_show,
+                        inputs=pdf_show
                     )
 
             with gr.Column(variant='panel', scale=5):
@@ -198,8 +220,9 @@ if __name__ == "__main__":
                                          latex_delimiters=latex_delimiters, line_breaks=True)
                     with gr.Tab("Markdown text"):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
+        file.upload(fn=to_pdf, inputs=file, outputs=pdf_show)
         change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([md, pdf_show, md_text, output_file, is_ocr])
+        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, table_enable, language])
 
     demo.launch(server_name="0.0.0.0")
