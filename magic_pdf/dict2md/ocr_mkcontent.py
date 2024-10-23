@@ -162,7 +162,7 @@ def merge_para_with_text(para_block):
 def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason=None):
     para_type = para_block['type']
     para_content = {}
-    if para_type == BlockType.Text:
+    if para_type in [BlockType.Text, BlockType.List, BlockType.Index]:
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block),
