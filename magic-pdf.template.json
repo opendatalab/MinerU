@@ -7,7 +7,7 @@
     "layoutreader-model-dir":"/tmp/layoutreader",
     "device-mode":"cpu",
     "layout-config": {
-        "model": "doclayout_yolo"
+        "model": "layoutlmv3"
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",

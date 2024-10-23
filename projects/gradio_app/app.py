@@ -23,7 +23,7 @@ def read_fn(path):
     return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
 
 
-def parse_pdf(doc_path, output_dir, end_page_id, is_ocr):
+def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, layout_mode, formula_enable, table_enable, language):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
@@ -42,6 +42,10 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr):
             parse_method,
             False,
             end_page_id=end_page_id,
+            layout_model=layout_mode,
+            formula_enable=formula_enable,
+            table_enable=table_enable,
+            lang=language,
         )
         return local_md_dir, file_name
     except Exception as e:
@@ -93,9 +97,10 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages, is_ocr):
+def to_markdown(file_path, end_pages, is_ocr, layout_mode, formula_enable, table_enable, language):
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr)
+    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr,
+                                        layout_mode, formula_enable, table_enable, language)
     archive_zip_path = os.path.join("./output", compute_sha256(local_md_dir) + ".zip")
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -138,6 +143,27 @@ with open("header.html", "r") as file:
     header = file.read()
 
 
+latin_lang = [
+        'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',
+        'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
+        'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
+        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+]
+arabic_lang = ['ar', 'fa', 'ug', 'ur']
+cyrillic_lang = [
+        'ru', 'rs_cyrillic', 'be', 'bg', 'uk', 'mn', 'abq', 'ady', 'kbd', 'ava',
+        'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
+]
+devanagari_lang = [
+        'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',
+        'sa', 'bgc'
+]
+other_lang = ['ch', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
+
+all_lang = [""]
+all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
+
+
 if __name__ == "__main__":
     with gr.Blocks() as demo:
         gr.HTML(header)
@@ -145,8 +171,14 @@ if __name__ == "__main__":
             with gr.Column(variant='panel', scale=5):
                 pdf_show = gr.Markdown()
                 max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
-                with gr.Row() as bu_flow:
-                    is_ocr = gr.Checkbox(label="Force enable OCR")
+                with gr.Row():
+                    layout_mode = gr.Dropdown(["layoutlmv3", "doclayout_yolo"], label="Layout model", value="layoutlmv3")
+                    language = gr.Dropdown(all_lang, label="Language", value="")
+                with gr.Row():
+                    formula_enable = gr.Checkbox(label="Enable formula recognition", value=True)
+                    is_ocr = gr.Checkbox(label="Force enable OCR", value=False)
+                    table_enable = gr.Checkbox(label="Enable table recognition(test)", value=False)
+                with gr.Row():
                     change_bu = gr.Button("Convert")
                     clear_bu = gr.ClearButton([pdf_show], value="Clear")
                 pdf_show = PDF(label="Please upload pdf", interactive=True, height=800)
@@ -166,7 +198,8 @@ if __name__ == "__main__":
                                          latex_delimiters=latex_delimiters, line_breaks=True)
                     with gr.Tab("Markdown text"):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
-        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr], outputs=[md, md_text, output_file, pdf_show])
+        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
+                        outputs=[md, md_text, output_file, pdf_show])
         clear_bu.add([md, pdf_show, md_text, output_file, is_ocr])
 
-    demo.launch()
+    demo.launch(server_name="0.0.0.0")
