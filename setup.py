@@ -45,6 +45,7 @@ if __name__ == '__main__':
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",  # windows版本3.0.0b1效率下降，需锁定2.6.1
                      "pypandoc",  # 表格解析latex转html
                      "struct-eqtable==0.1.0",  # 表格解析
+                     "doclayout_yolo==0.0.2",  # doclayout_yolo
                      "detectron2"
                      ],
         },
