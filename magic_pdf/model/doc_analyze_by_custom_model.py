@@ -5,7 +5,8 @@ import numpy as np
 from loguru import logger
 
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_recog_config
+from magic_pdf.libs.config_reader import get_local_models_dir, get_device, get_table_recog_config, get_layout_config, \
+    get_formula_config
 from magic_pdf.model.model_list import MODEL
 import magic_pdf.model as model_config
 
@@ -68,14 +69,17 @@ class ModelSingleton:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def get_model(self, ocr: bool, show_log: bool, lang=None):
-        key = (ocr, show_log, lang)
+    def get_model(self, ocr: bool, show_log: bool, lang=None, layout_model=None, formula_enable=None, table_enable=None):
+        key = (ocr, show_log, lang, layout_model, formula_enable, table_enable)
         if key not in self._models:
-            self._models[key] = custom_model_init(ocr=ocr, show_log=show_log, lang=lang)
+            self._models[key] = custom_model_init(ocr=ocr, show_log=show_log, lang=lang, layout_model=layout_model,
+                                                  formula_enable=formula_enable, table_enable=table_enable)
         return self._models[key]
 
 
-def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None):
+def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None,
+                      layout_model=None, formula_enable=None, table_enable=None):
+
     model = None
 
     if model_config.__model_mode__ == "lite":
@@ -95,14 +99,30 @@ def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None):
             # 从配置文件读取model-dir和device
             local_models_dir = get_local_models_dir()
             device = get_device()
+
+            layout_config = get_layout_config()
+            if layout_model is not None:
+                layout_config["model"] = layout_model
+
+            formula_config = get_formula_config()
+            if formula_enable is not None:
+                formula_config["enable"] = formula_enable
+
             table_config = get_table_recog_config()
-            model_input = {"ocr": ocr,
-                           "show_log": show_log,
-                           "models_dir": local_models_dir,
-                           "device": device,
-                           "table_config": table_config,
-                           "lang": lang,
-                           }
+            if table_enable is not None:
+                table_config["enable"] = table_enable
+
+            model_input = {
+                            "ocr": ocr,
+                            "show_log": show_log,
+                            "models_dir": local_models_dir,
+                            "device": device,
+                            "table_config": table_config,
+                            "layout_config": layout_config,
+                            "formula_config": formula_config,
+                            "lang": lang,
+            }
+
             custom_model = CustomPEKModel(**model_input)
         else:
             logger.error("Not allow model_name!")
@@ -117,10 +137,14 @@ def custom_model_init(ocr: bool = False, show_log: bool = False, lang=None):
 
 
 def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
-                start_page_id=0, end_page_id=None, lang=None):
+                start_page_id=0, end_page_id=None, lang=None,
+                layout_model=None, formula_enable=None, table_enable=None):
+
+    if lang == "":
+        lang = None
 
     model_manager = ModelSingleton()
-    custom_model = model_manager.get_model(ocr, show_log, lang)
+    custom_model = model_manager.get_model(ocr, show_log, lang, layout_model, formula_enable, table_enable)
 
     with fitz.open("pdf", pdf_bytes) as doc:
         pdf_page_num = doc.page_count

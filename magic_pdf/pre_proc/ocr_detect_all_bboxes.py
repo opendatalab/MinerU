@@ -1,7 +1,7 @@
 from loguru import logger
 
 from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio, calculate_overlap_area_in_bbox1_area_ratio, \
-    calculate_iou
+    calculate_iou, calculate_vertical_projection_overlap_ratio
 from magic_pdf.libs.drop_tag import DropTag
 from magic_pdf.libs.ocr_content_type import BlockType
 from magic_pdf.pre_proc.remove_bbox_overlap import remove_overlap_between_bbox_for_block
@@ -97,12 +97,20 @@ def ocr_prepare_bboxes_for_layout_split_v2(img_blocks, table_blocks, discarded_b
     # 通过后续大框套小框逻辑删除
 
     '''discarded_blocks中只保留宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的（限定footnote）'''
+    footnote_blocks = []
     for discarded in discarded_blocks:
         x0, y0, x1, y1 = discarded['bbox']
         all_discarded_blocks.append([x0, y0, x1, y1, None, None, None, BlockType.Discarded, None, None, None, None, discarded["score"]])
         # 将footnote加入到all_bboxes中，用来计算layout
-        # if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
-        #     all_bboxes.append([x0, y0, x1, y1, None, None, None, BlockType.Footnote, None, None, None, None, discarded["score"]])
+        if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
+            footnote_blocks.append([x0, y0, x1, y1])
+
+    '''移除在footnote下面的任何框'''
+    need_remove_blocks = find_blocks_under_footnote(all_bboxes, footnote_blocks)
+    if len(need_remove_blocks) > 0:
+        for block in need_remove_blocks:
+            all_bboxes.remove(block)
+            all_discarded_blocks.append(block)
 
     '''经过以上处理后，还存在大框套小框的情况，则删除小框'''
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
@@ -111,6 +119,20 @@ def ocr_prepare_bboxes_for_layout_split_v2(img_blocks, table_blocks, discarded_b
     all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
 
     return all_bboxes, all_discarded_blocks
+
+
+def find_blocks_under_footnote(all_bboxes, footnote_blocks):
+    need_remove_blocks = []
+    for block in all_bboxes:
+        block_x0, block_y0, block_x1, block_y1 = block[:4]
+        for footnote_bbox in footnote_blocks:
+            footnote_x0, footnote_y0, footnote_x1, footnote_y1 = footnote_bbox
+            # 如果footnote的纵向投影覆盖了block的纵向投影的80%且block的y0大于等于footnote的y1
+            if block_y0 >= footnote_y1 and calculate_vertical_projection_overlap_ratio((block_x0, block_y0, block_x1, block_y1), footnote_bbox) >= 0.8:
+                if block not in need_remove_blocks:
+                    need_remove_blocks.append(block)
+                    break
+    return need_remove_blocks
 
 
 def fix_interline_equation_overlap_text_blocks_with_hi_iou(all_bboxes):
