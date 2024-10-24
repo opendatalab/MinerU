@@ -24,3 +24,15 @@ Welcome to the MinerU Documentation
    <a class="github-button" href="https://github.com/opendatalab/MinerU/subscription" data-icon="octicon-eye" data-size="large" aria-label="Watch">Watch</a>
    <a class="github-button" href="https://github.com/opendatalab/MinerU/fork" data-icon="octicon-repo-forked" data-size="large" aria-label="Fork">Fork</a>
    </p>
+
+
+API Reference
+-------------
+
+If you are looking for information on a specific function, class or
+method, this part of the documentation is for you.
+
+.. toctree::
+   :maxdepth: 2
+
+   api
