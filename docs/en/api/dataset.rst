@@ -17,11 +17,6 @@ Dataset Api
    :members:
    :inherited-members:
 
-.. autoclass:: magic_pdf.data.dataset.Image
-   :members:
-   :inherited-members:
-
 .. autoclass:: magic_pdf.data.dataset.Doc
    :members:
    :inherited-members:
-
