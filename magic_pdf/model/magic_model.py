@@ -618,8 +618,6 @@ class MagicModel:
             )
         )
 
-        print(len(subjects), len(objects))
-
         subjects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
         objects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
         dis = [[float('inf')] * len(subjects) for _ in range(len(objects))]
