@@ -782,8 +782,7 @@ class MagicModel:
         for i in sub_obj_map_h.keys():
             ret.append(
                 {
-                    'sub_bbox': subjects[i]['bbox'],
-                    'score': subjects[i]['score'],
+                    'sub_bbox': {'bbox': subjects[i]['bbox'], 'score': subjects[i]['score']},
                     'obj_bboxes': [
                         {'score': objects[j]['score'], 'bbox': objects[j]['bbox']}
                         for j in sub_obj_map_h[i]
@@ -803,7 +802,6 @@ class MagicModel:
             record = {
                 'image_body': v['sub_bbox'],
                 'image_caption_list': v['obj_bboxes'],
-                'score': v['score'],
             }
             filter_idx = v['sub_idx']
             d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
@@ -819,7 +817,6 @@ class MagicModel:
             record = {
                 'table_body': v['sub_bbox'],
                 'table_caption_list': v['obj_bboxes'],
-                'score': v['score']
             }
             filter_idx = v['sub_idx']
             d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
