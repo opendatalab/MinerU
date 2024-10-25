@@ -594,7 +594,7 @@ class MagicModel:
         self, page_no, subject_category_id, object_category_id
     ):
 
-        AXIS_MULPLICITY = 3
+        AXIS_MULPLICITY = 0.8
         subjects = self.__reduct_overlap(
             list(
                 map(
@@ -640,10 +640,10 @@ class MagicModel:
             axis_unit = min(l_x_axis, l_y_axis)
             for j, sub in enumerate(subjects):
 
-                bbox1, bbox2, _ = _remove_overlap_between_bbox(objects[i]['bbox'], subjects[j]['bbox'])
-                left, right, bottom, top = bbox_relative_pos(
-                    bbox1, bbox2
+                bbox1, bbox2, _ = _remove_overlap_between_bbox(
+                    objects[i]['bbox'], subjects[j]['bbox']
                 )
+                left, right, bottom, top = bbox_relative_pos(bbox1, bbox2)
                 flags = [left, right, bottom, top]
                 if sum([1 if v else 0 for v in flags]) > 1:
                     continue
@@ -680,7 +680,6 @@ class MagicModel:
                             j,
                             bbox_distance(obj['bbox'], sub['bbox']),
                         ]
-
             if dis_by_directions['left'][i][1] != float('inf') or dis_by_directions[
                 'right'
             ][i][1] != float('inf'):
@@ -701,15 +700,18 @@ class MagicModel:
                         left_sub_bbox_y_axis = left_sub_bbox[3] - left_sub_bbox[1]
                         right_sub_bbox_y_axis = right_sub_bbox[3] - right_sub_bbox[1]
 
-                        if abs(left_sub_bbox_y_axis - l_y_axis) > abs(
-                            right_sub_bbox_y_axis - l_y_axis
+                        if (
+                            abs(left_sub_bbox_y_axis - l_y_axis)
+                            + dis_by_directions['left'][i][0]
+                            > abs(right_sub_bbox_y_axis - l_y_axis)
+                            + dis_by_directions['right'][i][0]
                         ):
                             left_or_right = dis_by_directions['right'][i]
                         else:
                             left_or_right = dis_by_directions['left'][i]
                     else:
                         left_or_right = dis_by_directions['left'][i]
-                        if left_or_right[1] == float('inf'):
+                        if left_or_right[1] > dis_by_directions['right'][i][1]:
                             left_or_right = dis_by_directions['right'][i]
                 else:
                     left_or_right = dis_by_directions['left'][i]
@@ -733,15 +735,15 @@ class MagicModel:
 
                         top_bottom_x_axis = top_bottom[2] - top_bottom[0]
                         bottom_top_x_axis = bottom_top[2] - bottom_top[0]
-                        if abs(top_bottom_x_axis - l_x_axis) > abs(
+                        if abs(top_bottom_x_axis - l_x_axis) + dis_by_directions['bottom'][i][1] > abs(
                             bottom_top_x_axis - l_x_axis
-                        ):
-                            top_or_bottom = dis_by_directions['bottom'][i]
-                        else:
+                        ) + dis_by_directions['top'][i][1]:
                             top_or_bottom = dis_by_directions['top'][i]
+                        else:
+                            top_or_bottom = dis_by_directions['bottom'][i]
                     else:
                         top_or_bottom = dis_by_directions['top'][i]
-                        if top_or_bottom[1] == float('inf'):
+                        if top_or_bottom[1] > dis_by_directions['bottom'][i][1]:
                             top_or_bottom = dis_by_directions['bottom'][i]
                 else:
                     top_or_bottom = dis_by_directions['top'][i]
@@ -782,7 +784,10 @@ class MagicModel:
         for i in sub_obj_map_h.keys():
             ret.append(
                 {
-                    'sub_bbox': {'bbox': subjects[i]['bbox'], 'score': subjects[i]['score']},
+                    'sub_bbox': {
+                        'bbox': subjects[i]['bbox'],
+                        'score': subjects[i]['score'],
+                    },
                     'obj_bboxes': [
                         {'score': objects[j]['score'], 'bbox': objects[j]['bbox']}
                         for j in sub_obj_map_h[i]
