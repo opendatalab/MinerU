@@ -10,6 +10,7 @@ from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.local_math import float_gt
 from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
 from magic_pdf.libs.ocr_content_type import CategoryId, ContentType
+from magic_pdf.pre_proc.remove_bbox_overlap import _remove_overlap_between_bbox
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 
@@ -124,8 +125,7 @@ class MagicModel:
             l1 = bbox1[2] - bbox1[0]
             l2 = bbox2[2] - bbox2[0]
 
-        min_l, max_l = min(l1, l2), max(l1, l2)
-        if (max_l - min_l) * 1.0 / max_l > 0.4:
+        if l2 > l1 and (l2 - l1) / l1 > 0.3:
             return float('inf')
 
         return bbox_distance(bbox1, bbox2)
@@ -594,6 +594,7 @@ class MagicModel:
         self, page_no, subject_category_id, object_category_id
     ):
 
+        AXIS_MULPLICITY = 3
         subjects = self.__reduct_overlap(
             list(
                 map(
@@ -617,33 +618,176 @@ class MagicModel:
                 )
             )
         )
+        M = len(objects)
 
         subjects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
         objects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
-        dis = [[float('inf')] * len(subjects) for _ in range(len(objects))]
-        for i, obj in enumerate(objects):
-            for j, sub in enumerate(subjects):
-                dis[i][j] = self._bbox_distance(sub['bbox'], obj['bbox'])
 
         sub_obj_map_h = {i: [] for i in range(len(subjects))}
-        for i in range(len(objects)):
-            min_l_idx = 0
-            for j in range(1, len(subjects)):
-                if dis[i][j] == float('inf'):
-                    continue
-                if dis[i][j] < dis[i][min_l_idx]:
-                    min_l_idx = j
 
-            if dis[i][min_l_idx] < float('inf'):
-                sub_obj_map_h[min_l_idx].append(i)
+        dis_by_directions = {
+            'top': [[-1, float('inf')]] * M,
+            'bottom': [[-1, float('inf')]] * M,
+            'left': [[-1, float('inf')]] * M,
+            'right': [[-1, float('inf')]] * M,
+        }
+
+        for i, obj in enumerate(objects):
+            l_x_axis, l_y_axis = (
+                obj['bbox'][2] - obj['bbox'][0],
+                obj['bbox'][3] - obj['bbox'][1],
+            )
+            axis_unit = min(l_x_axis, l_y_axis)
+            for j, sub in enumerate(subjects):
+
+                bbox1, bbox2, _ = _remove_overlap_between_bbox(objects[i]['bbox'], subjects[j]['bbox'])
+                left, right, bottom, top = bbox_relative_pos(
+                    bbox1, bbox2
+                )
+                flags = [left, right, bottom, top]
+                if sum([1 if v else 0 for v in flags]) > 1:
+                    continue
+
+                if left:
+                    if dis_by_directions['left'][i][1] > bbox_distance(
+                        obj['bbox'], sub['bbox']
+                    ):
+                        dis_by_directions['left'][i] = [
+                            j,
+                            bbox_distance(obj['bbox'], sub['bbox']),
+                        ]
+                if right:
+                    if dis_by_directions['right'][i][1] > bbox_distance(
+                        obj['bbox'], sub['bbox']
+                    ):
+                        dis_by_directions['right'][i] = [
+                            j,
+                            bbox_distance(obj['bbox'], sub['bbox']),
+                        ]
+                if bottom:
+                    if dis_by_directions['bottom'][i][1] > bbox_distance(
+                        obj['bbox'], sub['bbox']
+                    ):
+                        dis_by_directions['bottom'][i] = [
+                            j,
+                            bbox_distance(obj['bbox'], sub['bbox']),
+                        ]
+                if top:
+                    if dis_by_directions['top'][i][1] > bbox_distance(
+                        obj['bbox'], sub['bbox']
+                    ):
+                        dis_by_directions['top'][i] = [
+                            j,
+                            bbox_distance(obj['bbox'], sub['bbox']),
+                        ]
+
+            if dis_by_directions['left'][i][1] != float('inf') or dis_by_directions[
+                'right'
+            ][i][1] != float('inf'):
+                if dis_by_directions['left'][i][1] != float(
+                    'inf'
+                ) and dis_by_directions['right'][i][1] != float('inf'):
+                    if AXIS_MULPLICITY * axis_unit >= abs(
+                        dis_by_directions['left'][i][1]
+                        - dis_by_directions['right'][i][1]
+                    ):
+                        left_sub_bbox = subjects[dis_by_directions['left'][i][0]][
+                            'bbox'
+                        ]
+                        right_sub_bbox = subjects[dis_by_directions['right'][i][0]][
+                            'bbox'
+                        ]
+
+                        left_sub_bbox_y_axis = left_sub_bbox[3] - left_sub_bbox[1]
+                        right_sub_bbox_y_axis = right_sub_bbox[3] - right_sub_bbox[1]
+
+                        if abs(left_sub_bbox_y_axis - l_y_axis) > abs(
+                            right_sub_bbox_y_axis - l_y_axis
+                        ):
+                            left_or_right = dis_by_directions['right'][i]
+                        else:
+                            left_or_right = dis_by_directions['left'][i]
+                    else:
+                        left_or_right = dis_by_directions['left'][i]
+                        if left_or_right[1] == float('inf'):
+                            left_or_right = dis_by_directions['right'][i]
+                else:
+                    left_or_right = dis_by_directions['left'][i]
+                    if left_or_right[1] == float('inf'):
+                        left_or_right = dis_by_directions['right'][i]
             else:
-                print(i, 'no nearest')
+                left_or_right = [-1, float('inf')]
+
+            if dis_by_directions['top'][i][1] != float('inf') or dis_by_directions[
+                'bottom'
+            ][i][1] != float('inf'):
+                if dis_by_directions['top'][i][1] != float('inf') and dis_by_directions[
+                    'bottom'
+                ][i][1] != float('inf'):
+                    if AXIS_MULPLICITY * axis_unit >= abs(
+                        dis_by_directions['top'][i][1]
+                        - dis_by_directions['bottom'][i][1]
+                    ):
+                        top_bottom = subjects[dis_by_directions['bottom'][i][0]]['bbox']
+                        bottom_top = subjects[dis_by_directions['top'][i][0]]['bbox']
+
+                        top_bottom_x_axis = top_bottom[2] - top_bottom[0]
+                        bottom_top_x_axis = bottom_top[2] - bottom_top[0]
+                        if abs(top_bottom_x_axis - l_x_axis) > abs(
+                            bottom_top_x_axis - l_x_axis
+                        ):
+                            top_or_bottom = dis_by_directions['bottom'][i]
+                        else:
+                            top_or_bottom = dis_by_directions['top'][i]
+                    else:
+                        top_or_bottom = dis_by_directions['top'][i]
+                        if top_or_bottom[1] == float('inf'):
+                            top_or_bottom = dis_by_directions['bottom'][i]
+                else:
+                    top_or_bottom = dis_by_directions['top'][i]
+                    if top_or_bottom[1] == float('inf'):
+                        top_or_bottom = dis_by_directions['bottom'][i]
+            else:
+                top_or_bottom = [-1, float('inf')]
+
+            if left_or_right[1] != float('inf') or top_or_bottom[1] != float('inf'):
+                if left_or_right[1] != float('inf') and top_or_bottom[1] != float(
+                    'inf'
+                ):
+                    if AXIS_MULPLICITY * axis_unit >= abs(
+                        left_or_right[1] - top_or_bottom[1]
+                    ):
+                        y_axis_bbox = subjects[left_or_right[0]]['bbox']
+                        x_axis_bbox = subjects[top_or_bottom[0]]['bbox']
+
+                        if (
+                            abs((x_axis_bbox[2] - x_axis_bbox[0]) - l_x_axis) / l_x_axis
+                            > abs((y_axis_bbox[3] - y_axis_bbox[1]) - l_y_axis)
+                            / l_y_axis
+                        ):
+                            sub_obj_map_h[left_or_right[0]].append(i)
+                        else:
+                            sub_obj_map_h[top_or_bottom[0]].append(i)
+                    else:
+                        if left_or_right[1] > top_or_bottom[1]:
+                            sub_obj_map_h[top_or_bottom[0]].append(i)
+                        else:
+                            sub_obj_map_h[left_or_right[0]].append(i)
+                else:
+                    if left_or_right[1] != float('inf'):
+                        sub_obj_map_h[left_or_right[0]].append(i)
+                    else:
+                        sub_obj_map_h[top_or_bottom[0]].append(i)
         ret = []
         for i in sub_obj_map_h.keys():
             ret.append(
                 {
                     'sub_bbox': subjects[i]['bbox'],
-                    'obj_bboxes': [objects[j]['bbox'] for j in sub_obj_map_h[i]],
+                    'score': subjects[i]['score'],
+                    'obj_bboxes': [
+                        {'score': objects[j]['score'], 'bbox': objects[j]['bbox']}
+                        for j in sub_obj_map_h[i]
+                    ],
                     'sub_idx': i,
                 }
             )
@@ -657,12 +801,13 @@ class MagicModel:
         ret = []
         for v in with_captions:
             record = {
-                'image_bbox': v['sub_bbox'],
-                'image_caption_bbox_list': v['obj_bboxes'],
+                'image_body': v['sub_bbox'],
+                'image_caption_list': v['obj_bboxes'],
+                'score': v['score'],
             }
             filter_idx = v['sub_idx']
             d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
-            record['image_footnote_bbox_list'] = d['obj_bboxes']
+            record['image_footnote_list'] = d['obj_bboxes']
             ret.append(record)
         return ret
 
@@ -672,12 +817,13 @@ class MagicModel:
         ret = []
         for v in with_captions:
             record = {
-                'table_bbox': v['sub_bbox'],
-                'table_caption_bbox_list': v['obj_bboxes'],
+                'table_body': v['sub_bbox'],
+                'table_caption_list': v['obj_bboxes'],
+                'score': v['score']
             }
             filter_idx = v['sub_idx']
             d = next(filter(lambda x: x['sub_idx'] == filter_idx, with_footnotes))
-            record['table_footnote_bbox_list'] = d['obj_bboxes']
+            record['table_footnote_list'] = d['obj_bboxes']
             ret.append(record)
         return ret
 
