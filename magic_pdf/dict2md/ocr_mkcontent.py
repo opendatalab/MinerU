@@ -71,7 +71,7 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
                 for block in para_block['blocks']:  # 2nd.拼image_caption
                     if block['type'] == BlockType.ImageCaption:
                         para_text += merge_para_with_text(block) + '  \n'
-                for block in para_block['blocks']:  # 2nd.拼image_caption
+                for block in para_block['blocks']:  # 3rd.拼image_footnote
                     if block['type'] == BlockType.ImageFootnote:
                         para_text += merge_para_with_text(block) + '  \n'
         elif para_type == BlockType.Table:
