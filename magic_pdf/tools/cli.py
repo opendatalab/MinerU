@@ -52,7 +52,7 @@ without method specified, auto will be used by default.""",
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
     You should input "Abbreviation" with language form url:
-    https://paddlepaddle.github.io/PaddleOCR/en/ppocr/blog/multi_languages.html#5-support-languages-and-abbreviations
+    https://paddlepaddle.github.io/PaddleOCR/latest/en/ppocr/blog/multi_languages.html#5-support-languages-and-abbreviations
     """,
     default=None,
 )
