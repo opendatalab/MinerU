@@ -61,8 +61,6 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 如果您的显卡显存大于等于 **8GB** ，可以进行以下流程，测试CUDA解析加速效果
 
-> ❗️因8GB显存运行本应用非常极限，需要关闭所有其他正在使用显存的程序以确保本应用运行时有足额8GB显存可用。
-
 **1.覆盖安装支持cuda的torch和torchvision**
 
 ```bash
