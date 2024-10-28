@@ -6,8 +6,8 @@ import click
 from loguru import logger
 
 import magic_pdf.model as model_config
-from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_span_bbox,
-                                      draw_model_bbox, draw_line_sort_bbox)
+from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_line_sort_bbox,
+                                      draw_model_bbox, draw_span_bbox)
 from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
@@ -46,10 +46,12 @@ def do_parse(
     start_page_id=0,
     end_page_id=None,
     lang=None,
+    layout_model=None,
+    formula_enable=None,
+    table_enable=None,
 ):
     if debug_able:
         logger.warning('debug mode is on')
-        # f_dump_content_list = True
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
 
@@ -64,13 +66,16 @@ def do_parse(
     if parse_method == 'auto':
         jso_useful_key = {'_pdf_type': '', 'model_list': model_list}
         pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
+                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
     elif parse_method == 'txt':
         pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
+                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
     elif parse_method == 'ocr':
         pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang)
+                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
+                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
     else:
         logger.error('unknown parse method')
         exit(1)

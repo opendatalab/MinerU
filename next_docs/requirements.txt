@@ -1,0 +1,11 @@
+boto3>=1.28.43
+loguru>=0.6.0
+myst-parser
+Pillow==8.4.0
+pydantic>=2.7.2,<2.8.0
+PyMuPDF>=1.24.9
+sphinx
+sphinx-argparse
+sphinx-book-theme
+sphinx-copybutton
+sphinx_rtd_theme

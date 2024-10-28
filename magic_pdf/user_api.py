@@ -101,11 +101,19 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
     if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         if input_model_is_empty:
-            pdf_models = doc_analyze(pdf_bytes,
-                                     ocr=True,
-                                     start_page_id=start_page_id,
-                                     end_page_id=end_page_id,
-                                     lang=lang)
+            layout_model = kwargs.get("layout_model", None)
+            formula_enable = kwargs.get("formula_enable", None)
+            table_enable = kwargs.get("table_enable", None)
+            pdf_models = doc_analyze(
+                pdf_bytes,
+                ocr=True,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                lang=lang,
+                layout_model=layout_model,
+                formula_enable=formula_enable,
+                table_enable=table_enable,
+            )
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
