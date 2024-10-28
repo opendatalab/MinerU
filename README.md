@@ -80,7 +80,7 @@
             <ul>
             <li><a href="#command-line">Command Line</a></li>
             <li><a href="#api">API</a></li>
-            <li><a href="#deploy-derived-project">Deploy Derived Projects</a></li>
+            <li><a href="#deploy-derived-projects">Deploy Derived Projects</a></li>
             <li><a href="#development-guide">Development Guide</a></li>
             </ul>
         </li>
