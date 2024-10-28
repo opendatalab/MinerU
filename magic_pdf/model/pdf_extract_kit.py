@@ -38,19 +38,24 @@ except ImportError as e:
 from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
 from magic_pdf.model.pek_sub_modules.post_process import latex_rm_whitespace
 from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
-from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
+# from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
 from magic_pdf.model.ppTableModel import ppTableModel
 
 
 def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
-        table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
-    else:
+        # table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
+        logger.error("StructEqTable is under upgrade, the current version does not support it.")
+        exit(1)
+    elif table_model_type == MODEL_NAME.TABLE_MASTER:
         config = {
             "model_dir": model_path,
             "device": _device_
         }
         table_model = ppTableModel(config)
+    else:
+        logger.error("table model type not allow")
+        exit(1)
     return table_model
 
 
