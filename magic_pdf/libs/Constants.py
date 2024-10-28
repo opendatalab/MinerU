@@ -10,17 +10,11 @@ block维度自定义字段
 # block中lines是否被删除
 LINES_DELETED = "lines_deleted"
 
-# struct eqtable
-STRUCT_EQTABLE = "struct_eqtable"
-
 # table recognition max time default value
 TABLE_MAX_TIME_VALUE = 400
 
 # pp_table_result_max_length
 TABLE_MAX_LEN = 480
-
-# pp table structure algorithm
-TABLE_MASTER = "TableMaster"
 
 # table master structure dict
 TABLE_MASTER_DICT = "table_master_structure_dict.txt"
@@ -44,3 +38,16 @@ PP_REC_DIRECTORY = ".paddleocr/whl/rec/ch/ch_PP-OCRv4_rec_infer"
 PP_DET_DIRECTORY = ".paddleocr/whl/det/ch/ch_PP-OCRv4_det_infer"
 
 
+class MODEL_NAME:
+    # pp table structure algorithm
+    TABLE_MASTER = "tablemaster"
+    # struct eqtable
+    STRUCT_EQTABLE = "struct_eqtable"
+
+    DocLayout_YOLO = "doclayout_yolo"
+
+    LAYOUTLMv3 = "layoutlmv3"
+
+    YOLO_V8_MFD = "yolo_v8_mfd"
+
+    UniMerNet_v2_Small = "unimernet_small"

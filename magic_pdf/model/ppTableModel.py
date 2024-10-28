@@ -52,11 +52,11 @@ class ppTableModel(object):
         rec_model_dir = os.path.join(model_dir, REC_MODEL_DIR)
         rec_char_dict_path = os.path.join(model_dir, REC_CHAR_DICT)
         device = kwargs.get("device", "cpu")
-        use_gpu = True if device == "cuda" else False
+        use_gpu = True if device.startswith("cuda") else False
         config = {
             "use_gpu": use_gpu,
             "table_max_len": kwargs.get("table_max_len", TABLE_MAX_LEN),
-            "table_algorithm": TABLE_MASTER,
+            "table_algorithm": "TableMaster",
             "table_model_dir": table_model_dir,
             "table_char_dict_path": table_char_dict_path,
             "det_model_dir": det_model_dir,
