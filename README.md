@@ -361,9 +361,9 @@ For detailed implementation, refer to:
 
 ### Deploy Derived Projects
 
-Derived projects include secondary development projects based on MinerU by project developers and community developers,
+Derived projects include secondary development projects based on MinerU by project developers and community developers,  
 such as application interfaces based on Gradio, RAG based on llama, web demos similar to the official website, lightweight multi-GPU load balancing client/server ends, etc.
-These projects may offer more features and a better user experience.
+These projects may offer more features and a better user experience.  
 For specific deployment methods, please refer to the [Derived Project README](projects/README.md)
 
 
