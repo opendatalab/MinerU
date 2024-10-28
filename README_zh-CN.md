@@ -53,6 +53,7 @@
   - 集成 [PDF-Extract-Kit 1.0](https://github.com/opendatalab/PDF-Extract-Kit)
     - 加入自研的 `doclayout_yolo` 模型，在相近解析效果情况下比原方案提速10倍以上，可通过配置文件与 `layoutlmv3` 自由切换
     - 公式解析升级至 `unimernet 0.2.1`，在提升公式解析准确率的同时，大幅降低显存需求
+    - 因 `PDF-Extract-Kit 1.0` 更换仓库，需要重新下载模型，步骤详见 [如何下载模型](docs/how_to_download_models_zh_cn.md)
 - 2024/09/27 0.8.1发布，修复了一些bug，同时提供了[在线demo](https://opendatalab.com/OpenSourceTools/Extractor/PDF/)的[本地化部署版本](projects/web_demo/README_zh-CN.md)和[前端界面](projects/web/README_zh-CN.md)
 - 2024/09/09 0.8.0发布，支持Dockerfile快速部署，同时上线了huggingface、modelscope demo
 - 2024/08/30 0.7.1发布，集成了paddle tablemaster表格识别功能
