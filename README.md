@@ -1,7 +1,7 @@
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
-  <img src="docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
+  <img src="old_docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 
 <!-- icon -->
