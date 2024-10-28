@@ -1,7 +1,7 @@
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
-  <img src="old_docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
+  <img src="docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 
 <!-- icon -->
@@ -377,7 +377,7 @@ TODO
 - 🗹 Recognition of `index` and `list` in the main text  
 - 🗹 Table recognition
 - ☐ Code block recognition in the main text
-- ☐ [Chemical formula recognition](old_docs/chemical_knowledge_introduction/introduction.pdf)
+- ☐ [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
 - ☐ Geometric shape recognition
 
 # Known Issues
