@@ -594,7 +594,7 @@ class MagicModel:
         self, page_no, subject_category_id, object_category_id
     ):
 
-        AXIS_MULPLICITY = 0.8
+        AXIS_MULPLICITY = 0.5
         subjects = self.__reduct_overlap(
             list(
                 map(
