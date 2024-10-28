@@ -53,7 +53,6 @@
     - Added the self-developed `doclayout_yolo` model, which speeds up processing by more than 10 times compared to the original solution while maintaining similar parsing effects, and can be freely switched with `layoutlmv3` via the configuration file.
     - Upgraded formula parsing to `unimernet 0.2.1`, improving formula parsing accuracy while significantly reducing memory usage.
     - Due to the repository change for `PDF-Extract-Kit 1.0`, you need to re-download the model. Please refer to [How to Download Models](docs/how_to_download_models_en.md) for detailed steps.
-
 - 2024/09/27 Version 0.8.1 released, Fixed some bugs, and providing a [localized deployment version](projects/web_demo/README.md) of the [online demo](https://opendatalab.com/OpenSourceTools/Extractor/PDF/) and the [front-end interface](projects/web/README.md).
 - 2024/09/09: Version 0.8.0 released, supporting fast deployment with Dockerfile, and launching demos on Huggingface and Modelscope.
 - 2024/08/30: Version 0.7.1 released, add paddle tablemaster table recognition option
