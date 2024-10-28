@@ -1,5 +1,12 @@
-from struct_eqtable.model import StructTable
+from loguru import logger
+
+try:
+    from struct_eqtable.model import StructTable
+except ImportError:
+    logger.error("StructEqTable is under upgrade, the current version does not support it.")
 from pypandoc import convert_text
+
+
 class StructTableModel:
     def __init__(self, model_path, max_new_tokens=2048, max_time=400, device = 'cpu'):
         # init
