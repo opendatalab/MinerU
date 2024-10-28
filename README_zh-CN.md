@@ -1,7 +1,7 @@
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
-  <img src="old_docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
+  <img src="docs/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 
 <!-- icon -->
@@ -381,7 +381,7 @@ TODO
 - 🗹 正文中目录、列表识别  
 - 🗹 表格识别
 - ☐  正文中代码块识别
-- ☐  [化学式识别](old_docs/chemical_knowledge_introduction/introduction.pdf)
+- ☐  [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
 - ☐  几何图形识别
 
 # Known Issues
