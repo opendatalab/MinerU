@@ -37,4 +37,10 @@ REC_MODEL_DIR = "ch_PP-OCRv4_rec_infer"
 # pp rec char dict path
 REC_CHAR_DICT = "ppocr_keys_v1.txt"
 
+# pp rec copy rec directory
+PP_REC_DIRECTORY = ".paddleocr/whl/rec/ch/ch_PP-OCRv4_rec_infer"
+
+# pp rec copy det directory
+PP_DET_DIRECTORY = ".paddleocr/whl/det/ch/ch_PP-OCRv4_det_infer"
+
 

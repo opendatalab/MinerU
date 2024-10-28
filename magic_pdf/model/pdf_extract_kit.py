@@ -1,7 +1,8 @@
 from loguru import logger
 import os
 import time
-
+from pathlib import Path
+import shutil
 from magic_pdf.libs.Constants import *
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.model.model_list import AtomicModel
@@ -271,6 +272,17 @@ class CustomPEKModel:
                 device=self.device
             )
 
+            home_directory = Path.home()
+            det_source = os.path.join(models_dir, table_model_dir, DETECT_MODEL_DIR)
+            rec_source = os.path.join(models_dir, table_model_dir, REC_MODEL_DIR)
+            det_dest_dir = os.path.join(home_directory, PP_DET_DIRECTORY)
+            rec_dest_dir = os.path.join(home_directory, PP_REC_DIRECTORY)
+
+            if not os.path.exists(det_dest_dir):
+                shutil.copytree(det_source, det_dest_dir)
+            if not os.path.exists(rec_dest_dir):
+                shutil.copytree(rec_source, rec_dest_dir)
+
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -433,7 +445,5 @@ class CustomPEKModel:
         logger.info(f"-----page total time: {round(time.time() - page_start, 2)}-----")
 
         return layout_res
-if __name__ == '__main__':
-    print()
 
 
