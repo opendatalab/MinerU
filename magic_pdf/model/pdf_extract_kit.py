@@ -6,7 +6,6 @@ import shutil
 from magic_pdf.libs.Constants import *
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.model.model_list import AtomicModel
-from .mfr_cudagraph import GraphRunner
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
@@ -70,11 +69,6 @@ def mfr_model_init(weight_dir, cfg_path, _device_='cpu'):
     model = task.build_model(cfg)
     model.to(_device_)
     model.eval()
-    model = model.to(_device_)
-    if 'cuda' in _device_:
-        decoder_runner = GraphRunner(model.model.model.decoder.model.decoder, max_batchs=128, max_kvlens=256,
-                                     device=_device_)
-        model.model.model.decoder.model.decoder = decoder_runner
     vis_processor = load_processor('formula_image_eval', cfg.config.datasets.formula_rec_eval.vis_processor.eval)
     mfr_transform = transforms.Compose([vis_processor, ])
     return [model, mfr_transform]
