@@ -63,7 +63,7 @@ conda activate MinerU
 ## 5. 安装应用
 
 ```bash
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > ❗️下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
