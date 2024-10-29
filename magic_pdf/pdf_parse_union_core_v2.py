@@ -1,3 +1,4 @@
+import copy
 import os
 import statistics
 import time
@@ -15,7 +16,7 @@ from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.local_math import float_equal
-from magic_pdf.libs.ocr_content_type import ContentType
+from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.model.magic_model import MagicModel
 from magic_pdf.para.para_split_v3 import para_split
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
@@ -29,7 +30,7 @@ from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
     ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
                                                fix_block_spans,
-                                               fix_discarded_block)
+                                               fix_discarded_block, fix_block_spans_v2)
 from magic_pdf.pre_proc.ocr_span_list_modify import (
     get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
     remove_overlaps_min_spans)
@@ -173,19 +174,6 @@ def do_predict(boxes: List[List[int]], model) -> List[int]:
 
 def cal_block_index(fix_blocks, sorted_bboxes):
     for block in fix_blocks:
-        # if block['type'] in ['text', 'title', 'interline_equation']:
-        #     line_index_list = []
-        #     if len(block['lines']) == 0:
-        #         block['index'] = sorted_bboxes.index(block['bbox'])
-        #     else:
-        #         for line in block['lines']:
-        #             line['index'] = sorted_bboxes.index(line['bbox'])
-        #             line_index_list.append(line['index'])
-        #         median_value = statistics.median(line_index_list)
-        #         block['index'] = median_value
-        #
-        # elif block['type'] in ['table', 'image']:
-        #     block['index'] = sorted_bboxes.index(block['bbox'])
 
         line_index_list = []
         if len(block['lines']) == 0:
@@ -197,9 +185,11 @@ def cal_block_index(fix_blocks, sorted_bboxes):
             median_value = statistics.median(line_index_list)
             block['index'] = median_value
 
-        # 删除图表block中的虚拟line信息
-        if block['type'] in ['table', 'image']:
-            del block['lines']
+        # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
+        if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
+            block['virtual_lines'] = copy.deepcopy(block['lines'])
+            block['lines'] = copy.deepcopy(block['real_lines'])
+            del block['real_lines']
 
     return fix_blocks
 
@@ -218,13 +208,12 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
         ):  # 可能是双列结构，可以切细点
             lines = int(block_height / line_height) + 1
         else:
-            # 如果block的宽度超过0.4页面宽度，则将block分成3行
+            # 如果block的宽度超过0.4页面宽度，则将block分成3行(是一种复杂布局，图不能切的太细)
             if block_weight > page_w * 0.4:
                 line_height = (y1 - y0) / 3
                 lines = 3
-            elif block_weight > page_w * 0.25:  # 否则将block分成两行
-                line_height = (y1 - y0) / 2
-                lines = 2
+            elif block_weight > page_w * 0.25:  # （可能是三列结构，也切细点）
+                lines = int(block_height / line_height) + 1
             else:  # 判断长宽比
                 if block_height / block_weight > 1.2:  # 细长的不分
                     return [[x0, y0, x1, y1]]
@@ -250,7 +239,11 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
 def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
     for block in fix_blocks:
-        if block['type'] in ['text', 'title', 'interline_equation']:
+        if block['type'] in [
+            BlockType.Text, BlockType.Title, BlockType.InterlineEquation,
+            BlockType.ImageCaption, BlockType.ImageFootnote,
+            BlockType.TableCaption, BlockType.TableFootnote
+        ]:
             if len(block['lines']) == 0:
                 bbox = block['bbox']
                 lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
@@ -261,8 +254,9 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
                 for line in block['lines']:
                     bbox = line['bbox']
                     page_line_list.append(bbox)
-        elif block['type'] in ['table', 'image']:
+        elif block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
             bbox = block['bbox']
+            block["real_lines"] = copy.deepcopy(block['lines'])
             lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
             block['lines'] = []
             for line in lines:
@@ -316,7 +310,11 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
 def get_line_height(blocks):
     page_line_height_list = []
     for block in blocks:
-        if block['type'] in ['text', 'title', 'interline_equation']:
+        if block['type'] in [
+            BlockType.Text, BlockType.Title,
+            BlockType.ImageCaption, BlockType.ImageFootnote,
+            BlockType.TableCaption, BlockType.TableFootnote
+        ]:
             for line in block['lines']:
                 bbox = line['bbox']
                 page_line_height_list.append(int(bbox[3] - bbox[1]))
@@ -326,6 +324,63 @@ def get_line_height(blocks):
         return 10
 
 
+def process_groups(groups, body_key, caption_key, footnote_key):
+    body_blocks = []
+    caption_blocks = []
+    footnote_blocks = []
+    for i, group in enumerate(groups):
+        group[body_key]['group_id'] = i
+        body_blocks.append(group[body_key])
+        for caption_block in group[caption_key]:
+            caption_block['group_id'] = i
+            caption_blocks.append(caption_block)
+        for footnote_block in group[footnote_key]:
+            footnote_block['group_id'] = i
+            footnote_blocks.append(footnote_block)
+    return body_blocks, caption_blocks, footnote_blocks
+
+
+def process_block_list(blocks, body_type, block_type):
+    indices = [block['index'] for block in blocks]
+    median_index = statistics.median(indices)
+
+    body_bbox = next((block['bbox'] for block in blocks if block.get('type') == body_type), [])
+
+    return {
+        'type': block_type,
+        'bbox': body_bbox,
+        'blocks': blocks,
+        'index': median_index,
+    }
+
+
+def revert_group_blocks(blocks):
+    image_groups = {}
+    table_groups = {}
+    new_blocks = []
+    for block in blocks:
+        if block['type'] in [BlockType.ImageBody, BlockType.ImageCaption, BlockType.ImageFootnote]:
+            group_id = block['group_id']
+            if group_id not in image_groups:
+                image_groups[group_id] = []
+            image_groups[group_id].append(block)
+        elif block['type'] in [BlockType.TableBody, BlockType.TableCaption, BlockType.TableFootnote]:
+            group_id = block['group_id']
+            if group_id not in table_groups:
+                table_groups[group_id] = []
+            table_groups[group_id].append(block)
+        else:
+            new_blocks.append(block)
+
+    for group_id, blocks in image_groups.items():
+        new_blocks.append(process_block_list(blocks, BlockType.ImageBody, BlockType.Image))
+
+    for group_id, blocks in table_groups.items():
+        new_blocks.append(process_block_list(blocks, BlockType.TableBody, BlockType.Table))
+
+    return new_blocks
+
+
 def parse_page_core(
     page_doc: PageableData, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode
 ):
@@ -333,8 +388,20 @@ def parse_page_core(
     drop_reason = []
 
     """从magic_model对象中获取后面会用到的区块信息"""
-    img_blocks = magic_model.get_imgs(page_id)
-    table_blocks = magic_model.get_tables(page_id)
+    # img_blocks = magic_model.get_imgs(page_id)
+    # table_blocks = magic_model.get_tables(page_id)
+
+    img_groups = magic_model.get_imgs_v2(page_id)
+    table_groups = magic_model.get_tables_v2(page_id)
+
+    img_body_blocks, img_caption_blocks, img_footnote_blocks = process_groups(
+        img_groups, 'image_body', 'image_caption_list', 'image_footnote_list'
+    )
+
+    table_body_blocks, table_caption_blocks, table_footnote_blocks = process_groups(
+        table_groups, 'table_body', 'table_caption_list', 'table_footnote_list'
+    )
+
     discarded_blocks = magic_model.get_discarded(page_id)
     text_blocks = magic_model.get_text_blocks(page_id)
     title_blocks = magic_model.get_title_blocks(page_id)
@@ -370,8 +437,8 @@ def parse_page_core(
     interline_equation_blocks = []
     if len(interline_equation_blocks) > 0:
         all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
-            img_blocks,
-            table_blocks,
+            img_body_blocks, img_caption_blocks, img_footnote_blocks,
+            table_body_blocks, table_caption_blocks, table_footnote_blocks,
             discarded_blocks,
             text_blocks,
             title_blocks,
@@ -381,8 +448,8 @@ def parse_page_core(
         )
     else:
         all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
-            img_blocks,
-            table_blocks,
+            img_body_blocks, img_caption_blocks, img_footnote_blocks,
+            table_body_blocks, table_caption_blocks, table_footnote_blocks,
             discarded_blocks,
             text_blocks,
             title_blocks,
@@ -419,7 +486,7 @@ def parse_page_core(
     block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.5)
 
     """对block进行fix操作"""
-    fix_blocks = fix_block_spans(block_with_spans, img_blocks, table_blocks)
+    fix_blocks = fix_block_spans_v2(block_with_spans)
 
     """获取所有line并计算正文line的高度"""
     line_height = get_line_height(fix_blocks)
@@ -429,6 +496,9 @@ def parse_page_core(
 
     """根据line的中位数算block的序列关系"""
     fix_blocks = cal_block_index(fix_blocks, sorted_bboxes)
+
+    """将image和table的block还原回group形式参与后续流程"""
+    fix_blocks = revert_group_blocks(fix_blocks)
 
     """重排block"""
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])

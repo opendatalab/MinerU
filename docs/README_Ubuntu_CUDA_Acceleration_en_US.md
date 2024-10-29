@@ -97,8 +97,6 @@ magic-pdf -p small_ocr.pdf
 
 If your graphics card has at least **8GB** of VRAM, follow these steps to test CUDA acceleration:
 
-> ❗ Due to the extremely limited nature of 8GB VRAM for running this application, you need to close all other programs using VRAM to ensure that 8GB of VRAM is available when running this application.
-
 1. Modify the value of `"device-mode"` in the `magic-pdf.json` configuration file located in your home directory.
    ```json
    {

@@ -60,8 +60,6 @@ Download a sample file from the repository and test it.
 
 If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-accelerated parsing performance.
 
-> ❗ Due to the extremely limited nature of 8GB VRAM for running this application, you need to close all other programs using VRAM to ensure that 8GB of VRAM is available when running this application.
-
 1. **Overwrite the installation of torch and torchvision** supporting CUDA.
 
    ```

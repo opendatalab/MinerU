@@ -1,7 +1,8 @@
 from loguru import logger
 import os
 import time
-
+from pathlib import Path
+import shutil
 from magic_pdf.libs.Constants import *
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.model.model_list import AtomicModel
@@ -37,19 +38,24 @@ except ImportError as e:
 from magic_pdf.model.pek_sub_modules.layoutlmv3.model_init import Layoutlmv3_Predictor
 from magic_pdf.model.pek_sub_modules.post_process import latex_rm_whitespace
 from magic_pdf.model.pek_sub_modules.self_modify import ModifiedPaddleOCR
-from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
+# from magic_pdf.model.pek_sub_modules.structeqtable.StructTableModel import StructTableModel
 from magic_pdf.model.ppTableModel import ppTableModel
 
 
 def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
-        table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
-    else:
+        # table_model = StructTableModel(model_path, max_time=max_time, device=_device_)
+        logger.error("StructEqTable is under upgrade, the current version does not support it.")
+        exit(1)
+    elif table_model_type == MODEL_NAME.TABLE_MASTER:
         config = {
             "model_dir": model_path,
             "device": _device_
         }
         table_model = ppTableModel(config)
+    else:
+        logger.error("table model type not allow")
+        exit(1)
     return table_model
 
 
@@ -83,7 +89,7 @@ def doclayout_yolo_model_init(weight):
     return model
 
 
-def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3, lang=None, use_dilation=True, det_db_unclip_ratio=2.4):
+def ocr_model_init(show_log: bool = False, det_db_box_thresh=0.3, lang=None, use_dilation=True, det_db_unclip_ratio=1.8):
     if lang is not None:
         model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=det_db_box_thresh, lang=lang, use_dilation=use_dilation, det_db_unclip_ratio=det_db_unclip_ratio)
     else:
@@ -297,6 +303,17 @@ class CustomPEKModel:
                 device=self.device
             )
 
+            home_directory = Path.home()
+            det_source = os.path.join(models_dir, table_model_dir, DETECT_MODEL_DIR)
+            rec_source = os.path.join(models_dir, table_model_dir, REC_MODEL_DIR)
+            det_dest_dir = os.path.join(home_directory, PP_DET_DIRECTORY)
+            rec_dest_dir = os.path.join(home_directory, PP_REC_DIRECTORY)
+
+            if not os.path.exists(det_dest_dir):
+                shutil.copytree(det_source, det_dest_dir)
+            if not os.path.exists(rec_dest_dir):
+                shutil.copytree(rec_source, rec_dest_dir)
+
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
@@ -314,7 +331,7 @@ class CustomPEKModel:
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             # doclayout_yolo
             layout_res = []
-            doclayout_yolo_res = self.layout_model.predict(image, imgsz=1024, conf=0.15, iou=0.45, verbose=True, device=self.device)[0]
+            doclayout_yolo_res = self.layout_model.predict(image, imgsz=1024, conf=0.25, iou=0.45, verbose=True, device=self.device)[0]
             for xyxy, conf, cla in zip(doclayout_yolo_res.boxes.xyxy.cpu(), doclayout_yolo_res.boxes.conf.cpu(), doclayout_yolo_res.boxes.cls.cpu()):
                 xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
                 new_item = {
@@ -472,3 +489,5 @@ class CustomPEKModel:
         logger.info(f"-----page total time: {round(time.time() - page_start, 2)}-----")
 
         return layout_res
+
+
