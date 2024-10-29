@@ -6,7 +6,7 @@ retry_count=0
 while true; do
     # prepare env
     #python -m pip install -r requirements-qa.txt
-    python -m pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://pypi.tuna.tsinghua.edu.cn/simple
+    python -m pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
     python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
     exit_code=$?
     if [ $exit_code -eq 0 ]; then

@@ -40,7 +40,7 @@ yarn build
 # First, navigate to the back-end directory
 cd projects/web_demo
 # Install dependencies
-pip3 install -r requirements.txt  -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip3 install -r requirements.txt  -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 3. Start the service
