@@ -183,9 +183,10 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason
         para_content = {'type': 'image', 'img_caption': [], 'img_footnote': []}
         for block in para_block['blocks']:
             if block['type'] == BlockType.ImageBody:
-                para_content['img_path'] = join_path(
-                    img_buket_path,
-                    block['lines'][0]['spans'][0]['image_path'])
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if span['type'] == ContentType.Image:
+                            para_content['img_path'] = join_path(img_buket_path, span['image_path'])
             if block['type'] == BlockType.ImageCaption:
                 para_content['img_caption'].append(merge_para_with_text(block))
             if block['type'] == BlockType.ImageFootnote:
@@ -194,11 +195,21 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason
         para_content = {'type': 'table', 'table_caption': [], 'table_footnote': []}
         for block in para_block['blocks']:
             if block['type'] == BlockType.TableBody:
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if span['type'] == ContentType.Table:
+
+                            if span.get('latex', ''):
+                                para_content['table_body'] = f"\n\n$\n {span['latex']}\n$\n\n"
+                            elif span.get('html', ''):
+                                para_content['table_body'] = f"\n\n{span['html']}\n\n"
+
+                            if span.get('image_path', ''):
+                                para_content['img_path'] = join_path(img_buket_path, span['image_path'])
                 if block["lines"][0]["spans"][0].get('latex', ''):
                     para_content['table_body'] = f"\n\n$\n {block['lines'][0]['spans'][0]['latex']}\n$\n\n"
                 elif block["lines"][0]["spans"][0].get('html', ''):
                     para_content['table_body'] = f"\n\n{block['lines'][0]['spans'][0]['html']}\n\n"
-                para_content['img_path'] = join_path(img_buket_path, block["lines"][0]["spans"][0]['image_path'])
             if block['type'] == BlockType.TableCaption:
                 para_content['table_caption'].append(merge_para_with_text(block))
             if block['type'] == BlockType.TableFootnote:
