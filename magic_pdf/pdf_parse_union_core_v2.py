@@ -9,6 +9,7 @@ from loguru import logger
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.dataset import Dataset, PageableData
+from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.commons import fitz, get_delta_time
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
@@ -381,6 +382,37 @@ def revert_group_blocks(blocks):
     return new_blocks
 
 
+def remove_outside_spans(spans, all_bboxes):
+    image_bboxes = []
+    table_bboxes = []
+    for block in all_bboxes:
+        block_type = block[7]
+        block_bbox = block[0:4]
+        if block_type == BlockType.ImageBody:
+            image_bboxes.append(block_bbox)
+        elif block_type == BlockType.TableBody:
+            table_bboxes.append(block_bbox)
+        else:
+            continue
+
+    new_spans = []
+    for span in spans:
+        if span['type'] == ContentType.Image:
+            for block_bbox in image_bboxes:
+                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
+                    new_spans.append(span)
+                    break
+        elif span['type'] == ContentType.Table:
+            for block_bbox in table_bboxes:
+                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
+                    new_spans.append(span)
+                    break
+        else:
+            new_spans.append(span)
+
+    return new_spans
+
+
 def parse_page_core(
     page_doc: PageableData, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode
 ):
@@ -411,27 +443,6 @@ def parse_page_core(
 
     page_w, page_h = magic_model.get_page_size(page_id)
 
-    spans = magic_model.get_all_spans(page_id)
-
-    """根据parse_mode，构造spans"""
-    if parse_mode == SupportedPdfParseMethod.TXT:
-        """ocr 中文本类的 span 用 pymu spans 替换！"""
-        pymu_spans = txt_spans_extract(page_doc, inline_equations, interline_equations)
-        spans = replace_text_span(pymu_spans, spans)
-    elif parse_mode == SupportedPdfParseMethod.OCR:
-        pass
-    else:
-        raise Exception('parse_mode must be txt or ocr')
-
-    """删除重叠spans中置信度较低的那些"""
-    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
-    """删除重叠spans中较小的那些"""
-    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
-    """对image和table截图"""
-    spans = ocr_cut_image_and_table(
-        spans, page_doc, page_id, pdf_bytes_md5, imageWriter
-    )
-
     """将所有区块的bbox整理到一起"""
     # interline_equation_blocks参数不够准，后面切换到interline_equations上
     interline_equation_blocks = []
@@ -457,6 +468,30 @@ def parse_page_core(
             page_w,
             page_h,
         )
+
+    spans = magic_model.get_all_spans(page_id)
+
+    """根据parse_mode，构造spans"""
+    if parse_mode == SupportedPdfParseMethod.TXT:
+        """ocr 中文本类的 span 用 pymu spans 替换！"""
+        pymu_spans = txt_spans_extract(page_doc, inline_equations, interline_equations)
+        spans = replace_text_span(pymu_spans, spans)
+    elif parse_mode == SupportedPdfParseMethod.OCR:
+        pass
+    else:
+        raise Exception('parse_mode must be txt or ocr')
+
+    """在删除重复span之前，应该通过image_body和table_body的block过滤一下image和table的span"""
+    spans = remove_outside_spans(spans, all_bboxes)
+
+    """删除重叠spans中置信度较低的那些"""
+    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
+    """删除重叠spans中较小的那些"""
+    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
+    """对image和table截图"""
+    spans = ocr_cut_image_and_table(
+        spans, page_doc, page_id, pdf_bytes_md5, imageWriter
+    )
 
     """先处理不需要排版的discarded_blocks"""
     discarded_block_with_spans, spans = fill_spans_in_blocks(
