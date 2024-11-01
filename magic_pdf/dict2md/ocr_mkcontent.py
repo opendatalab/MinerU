@@ -153,7 +153,7 @@ def merge_para_with_text(para_block):
                     elif span_type == ContentType.InlineEquation:
                         para_text += f" {content} "
                 else:
-                    if span_type == ContentType.Text:
+                    if span_type in [ContentType.Text, ContentType.InlineEquation]:
                         # 如果是前一行带有-连字符，那么末尾不应该加空格
                         if __is_hyphen_at_line_end(content):
                             para_text += content[:-1]
@@ -161,8 +161,6 @@ def merge_para_with_text(para_block):
                             para_text += f"{content.strip()} "
                     elif span_type == ContentType.InterlineEquation:
                         para_text += content
-                    elif span_type == ContentType.InlineEquation:
-                        para_text += f"{content} "
             else:
                 continue
 
