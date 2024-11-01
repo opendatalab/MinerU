@@ -410,13 +410,11 @@ def remove_outside_spans(spans, all_bboxes):
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
                     new_spans.append(span)
                     break
-        elif span['type'] in [ContentType.Text, ContentType.InlineEquation, ContentType.InterlineEquation]:
+        else:
             for block_bbox in other_block_bboxes:
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
                     new_spans.append(span)
                     break
-        else:
-            new_spans.append(span)
 
     return new_spans
 
