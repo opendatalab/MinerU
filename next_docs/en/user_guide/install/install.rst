@@ -100,7 +100,7 @@ Download model weight files
 .. code-block:: shell
 
     pip install huggingface_hub
-    wget https://github.com/opendatalab/MinerU/raw/master/docs/download_models_hf.py -O download_models_hf.py
+    wget https://github.com/opendatalab/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
     python download_models_hf.py    
 
 
