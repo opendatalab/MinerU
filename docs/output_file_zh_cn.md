@@ -174,12 +174,15 @@ poly 坐标的格式 \[x0, y0, x1, y1, x2, y2, x3, y3\], 分别表示左上、�
 | :----------------- | :------------- |
 | image_body         | 图像的本体     |
 | image_caption      | 图像的描述文本 |
-| table_body         | 表格本体       |
+| image_footnote     | 图像的脚注   |
+| table_body         | 表格本体    |
 | table_caption      | 表格的描述文本 |
-| table_footnote     | 表格的脚注     |
-| text               | 文本块         |
-| title              | 标题块         |
-| interline_equation | 行间公式块     |
+| table_footnote     | 表格的脚注   |
+| text               | 文本块     |
+| title              | 标题块     |
+| index              | 目录块     |
+| list               | 列表块     |
+| interline_equation | 行间公式块   |
 
 <br>
 

@@ -175,11 +175,14 @@ Detailed explanation of second-level block types
 | :----------------- | :--------------------- |
 | image_body         | Main body of the image |
 | image_caption      | Image description text |
+| image_footnote     | Image footnote         |
 | table_body         | Main body of the table |
 | table_caption      | Table description text |
 | table_footnote     | Table footnote         |
 | text               | Text block             |
 | title              | Title block            |
+| index              | Index block            |
+| list               | List block             |
 | interline_equation | Block formula          |
 
 <br>
