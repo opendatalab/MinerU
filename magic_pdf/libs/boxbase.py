@@ -445,3 +445,38 @@ def get_overlap_area(bbox1, bbox2):
 
     # The area of overlap area
     return (x_right - x_left) * (y_bottom - y_top)
+
+
+def calculate_vertical_projection_overlap_ratio(block1, block2):
+    """
+    Calculate the proportion of the x-axis covered by the vertical projection of two blocks.
+
+    Args:
+        block1 (tuple): Coordinates of the first block (x0, y0, x1, y1).
+        block2 (tuple): Coordinates of the second block (x0, y0, x1, y1).
+
+    Returns:
+        float: The proportion of the x-axis covered by the vertical projection of the two blocks.
+    """
+    x0_1, _, x1_1, _ = block1
+    x0_2, _, x1_2, _ = block2
+
+    # Calculate the intersection of the x-coordinates
+    x_left = max(x0_1, x0_2)
+    x_right = min(x1_1, x1_2)
+
+    if x_right < x_left:
+        return 0.0
+
+    # Length of the intersection
+    intersection_length = x_right - x_left
+
+    # Length of the x-axis projection of the first block
+    block1_length = x1_1 - x0_1
+
+    if block1_length == 0:
+        return 0.0
+
+    # Proportion of the x-axis covered by the intersection
+    # logger.info(f"intersection_length: {intersection_length}, block1_length: {block1_length}")
+    return intersection_length / block1_length

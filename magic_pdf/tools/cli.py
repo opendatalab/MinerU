@@ -45,6 +45,18 @@ without method specified, auto will be used by default.""",
     default='auto',
 )
 @click.option(
+    '-l',
+    '--lang',
+    'lang',
+    type=str,
+    help="""
+    Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
+    You should input "Abbreviation" with language form url:
+    https://paddlepaddle.github.io/PaddleOCR/latest/en/ppocr/blog/multi_languages.html#5-support-languages-and-abbreviations
+    """,
+    default=None,
+)
+@click.option(
     '-d',
     '--debug',
     'debug_able',
@@ -68,7 +80,7 @@ without method specified, auto will be used by default.""",
     help='The ending page for PDF parsing, beginning from 0.',
     default=None,
 )
-def cli(path, output_dir, method, debug_able, start_page_id, end_page_id):
+def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
     model_config.__use_inside_model__ = True
     model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
@@ -90,6 +102,7 @@ def cli(path, output_dir, method, debug_able, start_page_id, end_page_id):
                 debug_able,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
+                lang=lang
             )
 
         except Exception as e:

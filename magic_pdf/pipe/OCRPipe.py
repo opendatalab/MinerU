@@ -10,19 +10,25 @@ from magic_pdf.user_api import parse_ocr_pdf
 class OCRPipe(AbsPipe):
 
     def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: AbsReaderWriter, is_debug: bool = False,
-                 start_page_id=0, end_page_id=None):
-        super().__init__(pdf_bytes, model_list, image_writer, is_debug, start_page_id, end_page_id)
+                 start_page_id=0, end_page_id=None, lang=None,
+                 layout_model=None, formula_enable=None, table_enable=None):
+        super().__init__(pdf_bytes, model_list, image_writer, is_debug, start_page_id, end_page_id, lang,
+                         layout_model, formula_enable, table_enable)
 
     def pipe_classify(self):
         pass
 
     def pipe_analyze(self):
         self.model_list = doc_analyze(self.pdf_bytes, ocr=True,
-                                      start_page_id=self.start_page_id, end_page_id=self.end_page_id)
+                                      start_page_id=self.start_page_id, end_page_id=self.end_page_id,
+                                      lang=self.lang, layout_model=self.layout_model,
+                                      formula_enable=self.formula_enable, table_enable=self.table_enable)
 
     def pipe_parse(self):
         self.pdf_mid_data = parse_ocr_pdf(self.pdf_bytes, self.model_list, self.image_writer, is_debug=self.is_debug,
-                                          start_page_id=self.start_page_id, end_page_id=self.end_page_id)
+                                          start_page_id=self.start_page_id, end_page_id=self.end_page_id,
+                                          lang=self.lang, layout_model=self.layout_model,
+                                          formula_enable=self.formula_enable, table_enable=self.table_enable)
 
     def pipe_mk_uni_format(self, img_parent_path: str, drop_mode=DropMode.WHOLE_PDF):
         result = super().pipe_mk_uni_format(img_parent_path, drop_mode)

@@ -36,7 +36,7 @@ if __name__ == '__main__':
                      "paddlepaddle==3.0.0b1;platform_system=='Linux'",
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
                      ],
-            "full": ["unimernet==0.1.6",  # 0.1.6版本大幅裁剪依赖包范围，推荐使用此版本
+            "full": ["unimernet==0.2.1",  # unimernet升级0.2.1
                      "matplotlib<=3.9.0;platform_system=='Windows'",  # 3.9.1及之后不提供windows的预编译包，避免一些没有编译环境的windows设备安装失败
                      "matplotlib;platform_system=='Linux' or platform_system=='Darwin'",  # linux 和 macos 不应限制matplotlib的最高版本，以避免无法更新导致的一些bug
                      "ultralytics",  # yolov8,公式检测
@@ -45,6 +45,7 @@ if __name__ == '__main__':
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",  # windows版本3.0.0b1效率下降，需锁定2.6.1
                      "pypandoc",  # 表格解析latex转html
                      "struct-eqtable==0.1.0",  # 表格解析
+                     "doclayout_yolo==0.0.2",  # doclayout_yolo
                      "detectron2"
                      ],
         },

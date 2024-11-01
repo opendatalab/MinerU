@@ -10,7 +10,6 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
-      - "**.yml"
   pull_request:
     branches:
       - "master"
@@ -18,12 +17,11 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
-      - "**.yml"
   workflow_dispatch:
 jobs:
   cli-test:
     runs-on: pdf
-    timeout-minutes: 120
+    timeout-minutes: 240
     strategy:
       fail-fast: true
 
@@ -33,16 +31,16 @@ jobs:
       with:
         fetch-depth: 2
 
-    - name: install
+    - name: install&test
       run: |
-        echo $GITHUB_WORKSPACE && sh tests/retry_env.sh
-    - name: unit test
-      run: |        
-        cd $GITHUB_WORKSPACE && export PYTHONPATH=. && coverage run -m  pytest  tests/test_unit.py --cov=magic_pdf/ --cov-report term-missing --cov-report html
+        source activate mineru
+        conda env list
+        pip show coverage
+        # cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
+        cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
+        cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
-    - name: cli test
-      run: |
-        cd $GITHUB_WORKSPACE &&  pytest -s -v tests/test_cli/test_cli_sdk.py
+        cd $GITHUB_WORKSPACE && pytest -m P0 -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}

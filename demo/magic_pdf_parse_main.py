@@ -4,13 +4,12 @@ import copy
 
 from loguru import logger
 
+from magic_pdf.libs.draw_bbox import draw_layout_bbox, draw_span_bbox
 from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-import magic_pdf.model as model_config
 
-model_config.__use_inside_model__ = True
 
 # todo: 设备类型选择 （？）
 
@@ -47,11 +46,20 @@ def json_md_dump(
     )
 
 
+# 可视化
+def draw_visualization_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name):
+    # 画布局框，附带排序结果
+    draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
+    # 画 span 框
+    draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
+
+
 def pdf_parse_main(
         pdf_path: str,
         parse_method: str = 'auto',
         model_json_path: str = None,
         is_json_md_dump: bool = True,
+        is_draw_visualization_bbox: bool = True,
         output_dir: str = None
 ):
     """
@@ -108,11 +116,7 @@ def pdf_parse_main(
 
         # 如果没有传入模型数据，则使用内置模型解析
         if not model_json:
-            if model_config.__use_inside_model__:
-                pipe.pipe_analyze()  # 解析
-            else:
-                logger.error("need model list input")
-                exit(1)
+            pipe.pipe_analyze()  # 解析
 
         # 执行解析
         pipe.pipe_parse()
@@ -121,10 +125,11 @@ def pdf_parse_main(
         content_list = pipe.pipe_mk_uni_format(image_path_parent, drop_mode="none")
         md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode="none")
 
-
         if is_json_md_dump:
             json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
 
+        if is_draw_visualization_bbox:
+            draw_visualization_bbox(pipe.pdf_mid_data['pdf_info'], pdf_bytes, output_path, pdf_name)
 
     except Exception as e:
         logger.exception(e)
@@ -132,5 +137,5 @@ def pdf_parse_main(
 
 # 测试
 if __name__ == '__main__':
-    pdf_path = r"C:\Users\XYTK2\Desktop\2024-2016-gb-cd-300.pdf"
+    pdf_path = r"D:\project\20240617magicpdf\Magic-PDF\demo\demo1.pdf"
     pdf_parse_main(pdf_path)

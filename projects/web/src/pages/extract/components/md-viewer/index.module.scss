@@ -1,0 +1,1141 @@
+/*light*/
+
+// 自定义滚动跳
+.scrollBar {
+  // 火狐
+  scrollbar-color: #EBECF0 transparent;
+  scrollbar-width: thin;
+
+  // 定义滚动条高宽及背景 高宽分别对应横竖滚动条的尺寸
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 6px;
+    background-color: transparent;
+  }
+
+  // 定义滚动条轨道 内阴影+圆角
+  &::-webkit-scrollbar-track {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: transparent;
+  }
+
+  // 定义滑块 内阴影+圆角
+  &::-webkit-scrollbar-thumb {
+    background: #EBECF0;
+    border-radius: 10px;
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.mdViewerWrap {
+  font-size: 10px;
+}
+
+.mdViewerWrap {
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  margin: 0;
+  color: #1f2328;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+    Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 16px;
+  line-height: 1.5;
+  word-wrap: break-word;
+  scroll-behavior: auto;
+}
+
+.mdViewerWrap .octicon {
+  display: inline-block;
+  fill: currentColor;
+  vertical-align: text-bottom;
+}
+
+.mdViewerWrap h1:hover .anchor .octicon-link:before,
+.mdViewerWrap h2:hover .anchor .octicon-link:before,
+.mdViewerWrap h3:hover .anchor .octicon-link:before,
+.mdViewerWrap h4:hover .anchor .octicon-link:before,
+.mdViewerWrap h5:hover .anchor .octicon-link:before,
+.mdViewerWrap h6:hover .anchor .octicon-link:before {
+  width: 16px;
+  height: 16px;
+  content: " ";
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' version='1.1' aria-hidden='true'><path fill-rule='evenodd' d='M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z'></path></svg>");
+  mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' version='1.1' aria-hidden='true'><path fill-rule='evenodd' d='M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z'></path></svg>");
+}
+
+.mdViewerWrap details,
+.mdViewerWrap figcaption,
+.mdViewerWrap figure {
+  display: block;
+}
+
+.mdViewerWrap summary {
+  display: list-item;
+}
+
+.mdViewerWrap [hidden] {
+  display: none !important;
+}
+
+.mdViewerWrap a {
+  background-color: transparent;
+  color: #0969da;
+  text-decoration: none;
+}
+
+.mdViewerWrap abbr[title] {
+  border-bottom: none;
+  -webkit-text-decoration: underline dotted;
+  text-decoration: underline dotted;
+}
+
+.mdViewerWrap b,
+.mdViewerWrap strong {
+  font-weight: 600;
+}
+
+.mdViewerWrap dfn {
+  font-style: italic;
+}
+
+.mdViewerWrap h1 {
+  margin: 0.67em 0;
+  font-weight: 600;
+  padding-bottom: 0.3em;
+  font-size: 2em;
+  border-bottom: 1px solid #d0d7deb3;
+}
+
+.mdViewerWrap mark {
+  background-color: #fff8c5;
+  color: #1f2328;
+}
+
+.mdViewerWrap small {
+  font-size: 90%;
+}
+
+.mdViewerWrap sub,
+.mdViewerWrap sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.mdViewerWrap sub {
+  bottom: -0.25em;
+}
+
+.mdViewerWrap sup {
+  top: -0.5em;
+}
+
+.mdViewerWrap img {
+  border-style: none;
+  max-width: 100%;
+  box-sizing: content-box;
+  background-color: #ffffff;
+}
+
+.mdViewerWrap code,
+.mdViewerWrap kbd,
+.mdViewerWrap pre,
+.mdViewerWrap samp {
+  font-family: monospace;
+  font-size: 1em;
+}
+
+.mdViewerWrap figure {
+  margin: 1em 40px;
+}
+
+.mdViewerWrap hr {
+  box-sizing: content-box;
+  overflow: hidden;
+  background: transparent;
+  border-bottom: 1px solid #d0d7deb3;
+  height: 0.25em;
+  padding: 0;
+  margin: 24px 0;
+  background-color: #d0d7de;
+  border: 0;
+}
+
+.mdViewerWrap input {
+  font: inherit;
+  margin: 0;
+  overflow: visible;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.mdViewerWrap [type="button"],
+.mdViewerWrap [type="reset"],
+.mdViewerWrap [type="submit"] {
+  -webkit-appearance: button;
+  appearance: button;
+}
+
+.mdViewerWrap [type="checkbox"],
+.mdViewerWrap [type="radio"] {
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.mdViewerWrap [type="number"]::-webkit-inner-spin-button,
+.mdViewerWrap [type="number"]::-webkit-outer-spin-button {
+  height: auto;
+}
+
+.mdViewerWrap [type="search"]::-webkit-search-cancel-button,
+.mdViewerWrap [type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mdViewerWrap ::-webkit-input-placeholder {
+  color: inherit;
+  opacity: 0.54;
+}
+
+.mdViewerWrap ::-webkit-file-upload-button {
+  -webkit-appearance: button;
+  appearance: button;
+  font: inherit;
+}
+
+.mdViewerWrap a:hover {
+  text-decoration: underline;
+}
+
+.mdViewerWrap ::placeholder {
+  color: #636c76;
+  opacity: 1;
+}
+
+.mdViewerWrap hr::before {
+  display: table;
+  content: "";
+}
+
+.mdViewerWrap hr::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.mdViewerWrap table {
+  border-spacing: 0;
+  border-collapse: collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.mdViewerWrap td,
+.mdViewerWrap th {
+  padding: 0;
+}
+
+.mdViewerWrap details summary {
+  cursor: pointer;
+}
+
+.mdViewerWrap details:not([open]) > *:not(summary) {
+  display: none;
+}
+
+.mdViewerWrap a:focus,
+.mdViewerWrap [role="button"]:focus,
+.mdViewerWrap input[type="radio"]:focus,
+.mdViewerWrap input[type="checkbox"]:focus {
+  outline: 2px solid #0969da;
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.mdViewerWrap a:focus:not(:focus-visible),
+.mdViewerWrap [role="button"]:focus:not(:focus-visible),
+.mdViewerWrap input[type="radio"]:focus:not(:focus-visible),
+.mdViewerWrap input[type="checkbox"]:focus:not(:focus-visible) {
+  outline: solid 1px transparent;
+}
+
+.mdViewerWrap a:focus-visible,
+.mdViewerWrap [role="button"]:focus-visible,
+.mdViewerWrap input[type="radio"]:focus-visible,
+.mdViewerWrap input[type="checkbox"]:focus-visible {
+  outline: 2px solid #0969da;
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.mdViewerWrap a:not([class]):focus,
+.mdViewerWrap a:not([class]):focus-visible,
+.mdViewerWrap input[type="radio"]:focus,
+.mdViewerWrap input[type="radio"]:focus-visible,
+.mdViewerWrap input[type="checkbox"]:focus,
+.mdViewerWrap input[type="checkbox"]:focus-visible {
+  outline-offset: 0;
+}
+
+.mdViewerWrap kbd {
+  display: inline-block;
+  padding: 3px 5px;
+  font: 11px ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+  line-height: 10px;
+  color: #1f2328;
+  vertical-align: middle;
+  background-color: #f6f8fa;
+  border: solid 1px #afb8c133;
+  border-bottom-color: #afb8c133;
+  border-radius: 6px;
+  box-shadow: inset 0 -1px 0 #afb8c133;
+}
+
+.mdViewerWrap h1,
+.mdViewerWrap h2,
+.mdViewerWrap h3,
+.mdViewerWrap h4,
+.mdViewerWrap h5,
+.mdViewerWrap h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mdViewerWrap h2 {
+  font-weight: 600;
+  padding-bottom: 0.3em;
+  font-size: 1.5em;
+  border-bottom: 1px solid #d0d7deb3;
+}
+
+.mdViewerWrap h3 {
+  font-weight: 600;
+  font-size: 1.25em;
+}
+
+.mdViewerWrap h4 {
+  font-weight: 600;
+  font-size: 1em;
+}
+
+.mdViewerWrap h5 {
+  font-weight: 600;
+  font-size: 0.875em;
+}
+
+.mdViewerWrap h6 {
+  font-weight: 600;
+  font-size: 0.85em;
+  color: #636c76;
+}
+
+.mdViewerWrap p {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 1.25em;
+}
+
+.mdViewerWrap blockquote {
+  margin: 0;
+  padding: 0 1em;
+  color: #636c76;
+  border-left: 0.25em solid #d0d7de;
+}
+
+.mdViewerWrap ul,
+.mdViewerWrap ol {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 2em;
+}
+
+.mdViewerWrap ol ol,
+.mdViewerWrap ul ol {
+  list-style-type: lower-roman;
+}
+
+.mdViewerWrap ul ul ol,
+.mdViewerWrap ul ol ol,
+.mdViewerWrap ol ul ol,
+.mdViewerWrap ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+.mdViewerWrap dd {
+  margin-left: 0;
+}
+
+.mdViewerWrap tt,
+.mdViewerWrap code,
+.mdViewerWrap samp {
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+  font-size: 12px;
+}
+
+.mdViewerWrap pre {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+  font-size: 12px;
+  word-wrap: normal;
+}
+
+.mdViewerWrap .octicon {
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.mdViewerWrap input::-webkit-outer-spin-button,
+.mdViewerWrap input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mdViewerWrap .mr-2 {
+  margin-right: 0.5rem !important;
+}
+
+.mdViewerWrap::before {
+  display: table;
+  content: "";
+}
+
+.mdViewerWrap::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.mdViewerWrap > *:first-child {
+  margin-top: 0 !important;
+}
+
+.mdViewerWrap > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+.mdViewerWrap a:not([href]) {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mdViewerWrap .absent {
+  color: #d1242f;
+}
+
+.mdViewerWrap .anchor {
+  float: left;
+  padding-right: 4px;
+  margin-left: -20px;
+  line-height: 1;
+}
+
+.mdViewerWrap .anchor:focus {
+  outline: none;
+}
+
+.mdViewerWrap p,
+.mdViewerWrap blockquote,
+.mdViewerWrap ul,
+.mdViewerWrap ol,
+.mdViewerWrap dl,
+.mdViewerWrap table,
+.mdViewerWrap pre,
+.mdViewerWrap details {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.mdViewerWrap blockquote > :first-child {
+  margin-top: 0;
+}
+
+.mdViewerWrap blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.mdViewerWrap h1 .octicon-link,
+.mdViewerWrap h2 .octicon-link,
+.mdViewerWrap h3 .octicon-link,
+.mdViewerWrap h4 .octicon-link,
+.mdViewerWrap h5 .octicon-link,
+.mdViewerWrap h6 .octicon-link {
+  color: #1f2328;
+  vertical-align: middle;
+  visibility: hidden;
+}
+
+.mdViewerWrap h1:hover .anchor,
+.mdViewerWrap h2:hover .anchor,
+.mdViewerWrap h3:hover .anchor,
+.mdViewerWrap h4:hover .anchor,
+.mdViewerWrap h5:hover .anchor,
+.mdViewerWrap h6:hover .anchor {
+  text-decoration: none;
+}
+
+.mdViewerWrap h1:hover .anchor .octicon-link,
+.mdViewerWrap h2:hover .anchor .octicon-link,
+.mdViewerWrap h3:hover .anchor .octicon-link,
+.mdViewerWrap h4:hover .anchor .octicon-link,
+.mdViewerWrap h5:hover .anchor .octicon-link,
+.mdViewerWrap h6:hover .anchor .octicon-link {
+  visibility: visible;
+}
+
+.mdViewerWrap h1 tt,
+.mdViewerWrap h1 code,
+.mdViewerWrap h2 tt,
+.mdViewerWrap h2 code,
+.mdViewerWrap h3 tt,
+.mdViewerWrap h3 code,
+.mdViewerWrap h4 tt,
+.mdViewerWrap h4 code,
+.mdViewerWrap h5 tt,
+.mdViewerWrap h5 code,
+.mdViewerWrap h6 tt,
+.mdViewerWrap h6 code {
+  padding: 0 0.2em;
+  font-size: inherit;
+}
+
+.mdViewerWrap summary h1,
+.mdViewerWrap summary h2,
+.mdViewerWrap summary h3,
+.mdViewerWrap summary h4,
+.mdViewerWrap summary h5,
+.mdViewerWrap summary h6 {
+  display: inline-block;
+}
+
+.mdViewerWrap summary h1 .anchor,
+.mdViewerWrap summary h2 .anchor,
+.mdViewerWrap summary h3 .anchor,
+.mdViewerWrap summary h4 .anchor,
+.mdViewerWrap summary h5 .anchor,
+.mdViewerWrap summary h6 .anchor {
+  margin-left: -40px;
+}
+
+.mdViewerWrap summary h1,
+.mdViewerWrap summary h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mdViewerWrap ul.no-list,
+.mdViewerWrap ol.no-list {
+  padding: 0;
+  list-style-type: none;
+}
+
+.mdViewerWrap ol[type="a s"] {
+  list-style-type: lower-alpha;
+}
+
+.mdViewerWrap ol[type="A s"] {
+  list-style-type: upper-alpha;
+}
+
+.mdViewerWrap ol[type="i s"] {
+  list-style-type: lower-roman;
+}
+
+.mdViewerWrap ol[type="I s"] {
+  list-style-type: upper-roman;
+}
+
+.mdViewerWrap ol[type="1"] {
+  list-style-type: decimal;
+}
+
+.mdViewerWrap div > ol:not([type]) {
+  list-style-type: decimal;
+}
+
+.mdViewerWrap ul ul,
+.mdViewerWrap ul ol,
+.mdViewerWrap ol ol,
+.mdViewerWrap ol ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.mdViewerWrap li > p {
+  margin-top: 16px;
+}
+
+.mdViewerWrap li + li {
+  margin-top: 0.25em;
+}
+
+.mdViewerWrap dl {
+  padding: 0;
+}
+
+.mdViewerWrap dl dt {
+  padding: 0;
+  margin-top: 16px;
+  font-size: 1em;
+  font-style: italic;
+  font-weight: 600;
+}
+
+.mdViewerWrap dl dd {
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+
+.mdViewerWrap table th {
+  font-weight: 600;
+}
+
+.mdViewerWrap table th,
+.mdViewerWrap table td {
+  padding: 6px 13px;
+  border: 1px solid #d0d7de;
+}
+
+.mdViewerWrap table td > :last-child {
+  margin-bottom: 0;
+}
+
+.mdViewerWrap table tr {
+  background-color: #ffffff;
+  border-top: 1px solid #d0d7deb3;
+}
+
+.mdViewerWrap table tr:nth-child(2n) {
+  background-color: #f6f8fa;
+}
+
+.mdViewerWrap table img {
+  background-color: transparent;
+}
+
+.mdViewerWrap img[align="right"] {
+  padding-left: 20px;
+}
+
+.mdViewerWrap img[align="left"] {
+  padding-right: 20px;
+}
+
+.mdViewerWrap .emoji {
+  max-width: none;
+  vertical-align: text-top;
+  background-color: transparent;
+}
+
+.mdViewerWrap span.frame {
+  display: block;
+  overflow: hidden;
+}
+
+.mdViewerWrap span.frame > span {
+  display: block;
+  float: left;
+  width: auto;
+  padding: 7px;
+  margin: 13px 0 0;
+  overflow: hidden;
+  border: 1px solid #d0d7de;
+}
+
+.mdViewerWrap span.frame span img {
+  display: block;
+  float: left;
+}
+
+.mdViewerWrap span.frame span span {
+  display: block;
+  padding: 5px 0 0;
+  clear: both;
+  color: #1f2328;
+}
+
+.mdViewerWrap span.align-center {
+  display: block;
+  overflow: hidden;
+  clear: both;
+}
+
+.mdViewerWrap span.align-center > span {
+  display: block;
+  margin: 13px auto 0;
+  overflow: hidden;
+  text-align: center;
+}
+
+.mdViewerWrap span.align-center span img {
+  margin: 0 auto;
+  text-align: center;
+}
+
+.mdViewerWrap span.align-right {
+  display: block;
+  overflow: hidden;
+  clear: both;
+}
+
+.mdViewerWrap span.align-right > span {
+  display: block;
+  margin: 13px 0 0;
+  overflow: hidden;
+  text-align: right;
+}
+
+.mdViewerWrap span.align-right span img {
+  margin: 0;
+  text-align: right;
+}
+
+.mdViewerWrap span.float-left {
+  display: block;
+  float: left;
+  margin-right: 13px;
+  overflow: hidden;
+}
+
+.mdViewerWrap span.float-left span {
+  margin: 13px 0 0;
+}
+
+.mdViewerWrap span.float-right {
+  display: block;
+  float: right;
+  margin-left: 13px;
+  overflow: hidden;
+}
+
+.mdViewerWrap span.float-right > span {
+  display: block;
+  margin: 13px auto 0;
+  overflow: hidden;
+  text-align: right;
+}
+
+.mdViewerWrap code,
+.mdViewerWrap tt {
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  white-space: break-spaces;
+  background-color: #afb8c133;
+  border-radius: 6px;
+}
+
+.mdViewerWrap code br,
+.mdViewerWrap tt br {
+  display: none;
+}
+
+.mdViewerWrap del code {
+  text-decoration: inherit;
+}
+
+.mdViewerWrap samp {
+  font-size: 85%;
+}
+
+.mdViewerWrap pre code {
+  font-size: 100%;
+}
+
+.mdViewerWrap pre > code {
+  padding: 0;
+  margin: 0;
+  word-break: normal;
+  white-space: pre;
+  background: transparent;
+  border: 0;
+}
+
+.mdViewerWrap .highlight {
+  margin-bottom: 16px;
+}
+
+.mdViewerWrap .highlight pre {
+  margin-bottom: 0;
+  word-break: normal;
+}
+
+.mdViewerWrap .highlight pre,
+.mdViewerWrap pre {
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  color: #1f2328;
+  background-color: #f6f8fa;
+  border-radius: 6px;
+}
+
+.mdViewerWrap pre code,
+.mdViewerWrap pre tt {
+  display: inline;
+  max-width: auto;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  line-height: inherit;
+  word-wrap: normal;
+  background-color: transparent;
+  border: 0;
+}
+
+.mdViewerWrap .csv-data td,
+.mdViewerWrap .csv-data th {
+  padding: 5px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mdViewerWrap .csv-data .blob-num {
+  padding: 10px 8px 9px;
+  text-align: right;
+  background: #ffffff;
+  border: 0;
+}
+
+.mdViewerWrap .csv-data tr {
+  border-top: 0;
+}
+
+.mdViewerWrap .csv-data th {
+  font-weight: 600;
+  background: #f6f8fa;
+  border-top: 0;
+}
+
+.mdViewerWrap [data-footnote-ref]::before {
+  content: "[";
+}
+
+.mdViewerWrap [data-footnote-ref]::after {
+  content: "]";
+}
+
+.mdViewerWrap .footnotes {
+  font-size: 12px;
+  color: #636c76;
+  border-top: 1px solid #d0d7de;
+}
+
+.mdViewerWrap .footnotes ol {
+  padding-left: 16px;
+}
+
+.mdViewerWrap .footnotes ol ul {
+  display: inline-block;
+  padding-left: 16px;
+  margin-top: 16px;
+}
+
+.mdViewerWrap .footnotes li {
+  position: relative;
+}
+
+.mdViewerWrap .footnotes li:target::before {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  bottom: -8px;
+  left: -24px;
+  pointer-events: none;
+  content: "";
+  border: 2px solid #0969da;
+  border-radius: 6px;
+}
+
+.mdViewerWrap .footnotes li:target {
+  color: #1f2328;
+}
+
+.mdViewerWrap .footnotes .data-footnote-backref g-emoji {
+  font-family: monospace;
+}
+
+.mdViewerWrap .pl-c {
+  color: #57606a;
+}
+
+.mdViewerWrap .pl-c1,
+.mdViewerWrap .pl-s .pl-v {
+  color: #0550ae;
+}
+
+.mdViewerWrap .pl-e,
+.mdViewerWrap .pl-en {
+  color: #6639ba;
+}
+
+.mdViewerWrap .pl-smi,
+.mdViewerWrap .pl-s .pl-s1 {
+  color: #24292f;
+}
+
+.mdViewerWrap .pl-ent {
+  color: #0550ae;
+}
+
+.mdViewerWrap .pl-k {
+  color: #cf222e;
+}
+
+.mdViewerWrap .pl-s,
+.mdViewerWrap .pl-pds,
+.mdViewerWrap .pl-s .pl-pse .pl-s1,
+.mdViewerWrap .pl-sr,
+.mdViewerWrap .pl-sr .pl-cce,
+.mdViewerWrap .pl-sr .pl-sre,
+.mdViewerWrap .pl-sr .pl-sra {
+  color: #0a3069;
+}
+
+.mdViewerWrap .pl-v,
+.mdViewerWrap .pl-smw {
+  color: #953800;
+}
+
+.mdViewerWrap .pl-bu {
+  color: #82071e;
+}
+
+.mdViewerWrap .pl-ii {
+  color: #f6f8fa;
+  background-color: #82071e;
+}
+
+.mdViewerWrap .pl-c2 {
+  color: #f6f8fa;
+  background-color: #cf222e;
+}
+
+.mdViewerWrap .pl-sr .pl-cce {
+  font-weight: bold;
+  color: #116329;
+}
+
+.mdViewerWrap .pl-ml {
+  color: #3b2300;
+}
+
+.mdViewerWrap .pl-mh,
+.mdViewerWrap .pl-mh .pl-en,
+.mdViewerWrap .pl-ms {
+  font-weight: bold;
+  color: #0550ae;
+}
+
+.mdViewerWrap .pl-mi {
+  font-style: italic;
+  color: #24292f;
+}
+
+.mdViewerWrap .pl-mb {
+  font-weight: bold;
+  color: #24292f;
+}
+
+.mdViewerWrap .pl-md {
+  color: #82071e;
+  background-color: #ffebe9;
+}
+
+.mdViewerWrap .pl-mi1 {
+  color: #116329;
+  background-color: #dafbe1;
+}
+
+.mdViewerWrap .pl-mc {
+  color: #953800;
+  background-color: #ffd8b5;
+}
+
+.mdViewerWrap .pl-mi2 {
+  color: #eaeef2;
+  background-color: #0550ae;
+}
+
+.mdViewerWrap .pl-mdr {
+  font-weight: bold;
+  color: #8250df;
+}
+
+.mdViewerWrap .pl-ba {
+  color: #57606a;
+}
+
+.mdViewerWrap .pl-sg {
+  color: #8c959f;
+}
+
+.mdViewerWrap .pl-corl {
+  text-decoration: underline;
+  color: #0a3069;
+}
+
+.mdViewerWrap [role="button"]:focus:not(:focus-visible),
+.mdViewerWrap [role="tabpanel"][tabindex="0"]:focus:not(:focus-visible),
+.mdViewerWrap button:focus:not(:focus-visible),
+.mdViewerWrap summary:focus:not(:focus-visible),
+.mdViewerWrap a:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+.mdViewerWrap [tabindex="0"]:focus:not(:focus-visible),
+.mdViewerWrap details-dialog:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.mdViewerWrap g-emoji {
+  display: inline-block;
+  min-width: 1ch;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-size: 1em;
+  font-style: normal !important;
+  font-weight: 400;
+  line-height: 1;
+  vertical-align: -0.075em;
+}
+
+.mdViewerWrap g-emoji img {
+  width: 1em;
+  height: 1em;
+}
+
+.mdViewerWrap .task-list-item {
+  list-style-type: none;
+}
+
+.mdViewerWrap .task-list-item label {
+  font-weight: 400;
+}
+
+.mdViewerWrap .task-list-item.enabled label {
+  cursor: pointer;
+}
+
+.mdViewerWrap .task-list-item + .task-list-item {
+  margin-top: 0.25rem;
+}
+
+.mdViewerWrap .task-list-item .handle {
+  display: none;
+}
+
+.mdViewerWrap .task-list-item-checkbox {
+  margin: 0 0.2em 0.25em -1.4em;
+  vertical-align: middle;
+}
+
+.mdViewerWrap .contains-task-list:dir(rtl) .task-list-item-checkbox {
+  margin: 0 -1.6em 0.25em 0.2em;
+}
+
+.mdViewerWrap .contains-task-list {
+  position: relative;
+}
+
+.mdViewerWrap .contains-task-list:hover .task-list-item-convert-container,
+.mdViewerWrap
+  .contains-task-list:focus-within
+  .task-list-item-convert-container {
+  display: block;
+  width: auto;
+  height: 24px;
+  overflow: visible;
+  clip: auto;
+}
+
+.mdViewerWrap ::-webkit-calendar-picker-indicator {
+  filter: invert(50%);
+}
+
+.mdViewerWrap .markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  color: inherit;
+  border-left: 0.25em solid #d0d7de;
+}
+
+.mdViewerWrap .markdown-alert > :first-child {
+  margin-top: 0;
+}
+
+.mdViewerWrap .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.mdViewerWrap .markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-note {
+  border-left-color: #0969da;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: #0969da;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-important {
+  border-left-color: #8250df;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: #8250df;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-warning {
+  border-left-color: #bf8700;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: #9a6700;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-tip {
+  border-left-color: #1a7f37;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: #1a7f37;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-caution {
+  border-left-color: #cf222e;
+}
+
+.mdViewerWrap .markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: #d1242f;
+}
+
+.mdViewerWrap > *:first-child > .heading-element:first-child {
+  margin-top: 0 !important;
+}

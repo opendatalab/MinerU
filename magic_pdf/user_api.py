@@ -26,7 +26,7 @@ PARSE_TYPE_OCR = "ocr"
 
 
 def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None,
+                  start_page_id=0, end_page_id=None, lang=None,
                   *args, **kwargs):
     """
     解析文本类pdf
@@ -44,11 +44,14 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
     pdf_info_dict["_version_name"] = __version__
 
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
+
     return pdf_info_dict
 
 
 def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None,
+                  start_page_id=0, end_page_id=None, lang=None,
                   *args, **kwargs):
     """
     解析ocr类pdf
@@ -66,12 +69,15 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWrit
 
     pdf_info_dict["_version_name"] = __version__
 
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
+
     return pdf_info_dict
 
 
 def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWriter, is_debug=False,
                     input_model_is_empty: bool = False,
-                    start_page_id=0, end_page_id=None,
+                    start_page_id=0, end_page_id=None, lang=None,
                     *args, **kwargs):
     """
     ocr和文本混合的pdf，全部解析出来
@@ -95,9 +101,19 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
     if pdf_info_dict is None or pdf_info_dict.get("_need_drop", False):
         logger.warning(f"parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr")
         if input_model_is_empty:
-            pdf_models = doc_analyze(pdf_bytes, ocr=True,
-                                     start_page_id=start_page_id,
-                                     end_page_id=end_page_id)
+            layout_model = kwargs.get("layout_model", None)
+            formula_enable = kwargs.get("formula_enable", None)
+            table_enable = kwargs.get("table_enable", None)
+            pdf_models = doc_analyze(
+                pdf_bytes,
+                ocr=True,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id,
+                lang=lang,
+                layout_model=layout_model,
+                formula_enable=formula_enable,
+                table_enable=table_enable,
+            )
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception("Both parse_pdf_by_txt and parse_pdf_by_ocr failed.")
@@ -107,5 +123,8 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: AbsReaderWr
         pdf_info_dict["_parse_type"] = PARSE_TYPE_TXT
 
     pdf_info_dict["_version_name"] = __version__
+
+    if lang is not None:
+        pdf_info_dict["_lang"] = lang
 
     return pdf_info_dict
