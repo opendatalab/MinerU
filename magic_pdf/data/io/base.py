@@ -29,7 +29,7 @@ class IOReader(ABC):
         pass
 
 
-class IOWriter:
+class IOWriter(ABC):
 
     @abstractmethod
     def write(self, path: str, data: bytes) -> None:
