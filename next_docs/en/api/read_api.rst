@@ -1,5 +1,5 @@
-read_api Api
-------------------
+read_api
+=========
 
 .. automodule:: magic_pdf.data.read_api
    :members:

@@ -1,3 +1,4 @@
+import os
 from magic_pdf.config.exceptions import InvalidConfig, InvalidParams
 from magic_pdf.data.data_reader_writer.base import DataReader, DataWriter
 from magic_pdf.data.io.s3 import S3Reader, S3Writer
@@ -7,30 +8,34 @@ from magic_pdf.libs.path_utils import (parse_s3_range_params, parse_s3path,
 
 
 class MultiS3Mixin:
-    def __init__(self, default_bucket: str, s3_configs: list[S3Config]):
+    def __init__(self, default_prefix: str, s3_configs: list[S3Config]):
         """Initialized with multiple s3 configs.
 
         Args:
-            default_bucket (str): the default bucket name of the relative path
+            default_prefix (str): the default prefix of the relative path. for example, {some_bucket}/{some_prefix} or {some_bucket}
             s3_configs (list[S3Config]): list of s3 configs, the bucket_name must be unique in the list.
 
         Raises:
-            InvalidConfig: default bucket config not in s3_configs
-            InvalidConfig: bucket name not unique in s3_configs
-            InvalidConfig: default bucket must be provided
+            InvalidConfig: default bucket config not in s3_configs.
+            InvalidConfig: bucket name not unique in s3_configs.
+            InvalidConfig: default bucket must be provided.
         """
-        if len(default_bucket) == 0:
-            raise InvalidConfig('default_bucket must be provided')
+        if len(default_prefix) == 0:
+            raise InvalidConfig('default_prefix must be provided')
+    
+        arr = default_prefix.strip("/").split("/")
+        self.default_bucket = arr[0]
+        self.default_prefix = "/".join(arr[1:])
 
         found_default_bucket_config = False
         for conf in s3_configs:
-            if conf.bucket_name == default_bucket:
+            if conf.bucket_name == self.default_bucket:
                 found_default_bucket_config = True
                 break
 
         if not found_default_bucket_config:
             raise InvalidConfig(
-                f'default_bucket: {default_bucket} config must be provided in s3_configs: {s3_configs}'
+                f'default_bucket: {self.default_bucket} config must be provided in s3_configs: {s3_configs}'
             )
 
         uniq_bucket = set([conf.bucket_name for conf in s3_configs])
@@ -39,7 +44,6 @@ class MultiS3Mixin:
                 f'the bucket_name in s3_configs: {s3_configs} must be unique'
             )
 
-        self.default_bucket = default_bucket
         self.s3_configs = s3_configs
         self._s3_clients_h: dict = {}
 
@@ -47,14 +51,14 @@ class MultiS3Mixin:
 class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
     def read(self, path: str) -> bytes:
         """Read the path from s3, select diffect bucket client for each request
-        based on the path, also support range read.
+        based on the bucket, also support range read.
 
         Args:
-            path (str): the s3 path of file, the path must be in the format of s3://bucket_name/path?offset,limit
-            for example: s3://bucket_name/path?0,100
+            path (str): the s3 path of file, the path must be in the format of s3://bucket_name/path?offset,limit.
+            for example: s3://bucket_name/path?0,100.
 
         Returns:
-            bytes: the content of s3 file
+            bytes: the content of s3 file.
         """
         may_range_params = parse_s3_range_params(path)
         if may_range_params is None or 2 != len(may_range_params):
@@ -84,21 +88,22 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
 
     def read_at(self, path: str, offset: int = 0, limit: int = -1) -> bytes:
         """Read the file with offset and limit, select diffect bucket client
-        for each request based on the path.
+        for each request based on the bucket.
 
         Args:
-            path (str): the file path
+            path (str): the file path.
             offset (int, optional): the number of bytes skipped. Defaults to 0.
             limit (int, optional): the number of bytes want to read. Defaults to -1 which means infinite.
 
         Returns:
-            bytes: the file content
+            bytes: the file content.
         """
         if path.startswith('s3://'):
             bucket_name, path = parse_s3path(path)
             s3_reader = self.__get_s3_client(bucket_name)
         else:
             s3_reader = self.__get_s3_client(self.default_bucket)
+            path = os.path.join(self.default_prefix, path)
         return s3_reader.read_at(path, offset, limit)
 
 
@@ -123,15 +128,16 @@ class MultiBucketS3DataWriter(DataWriter, MultiS3Mixin):
 
     def write(self, path: str, data: bytes) -> None:
         """Write file with data, also select diffect bucket client for each
-        request based on the path.
+        request based on the bucket.
 
         Args:
             path (str): the path of file, if the path is relative path, it will be joined with parent_dir.
-            data (bytes): the data want to write
+            data (bytes): the data want to write.
         """
         if path.startswith('s3://'):
             bucket_name, path = parse_s3path(path)
             s3_writer = self.__get_s3_client(bucket_name)
         else:
             s3_writer = self.__get_s3_client(self.default_bucket)
+            path = os.path.join(self.default_prefix, path)
         return s3_writer.write(path, data)

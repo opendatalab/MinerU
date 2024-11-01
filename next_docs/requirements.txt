@@ -5,7 +5,8 @@ Pillow==8.4.0
 pydantic>=2.7.2,<2.8.0
 PyMuPDF>=1.24.9
 sphinx
-sphinx-argparse
-sphinx-book-theme
-sphinx-copybutton
-sphinx_rtd_theme
+sphinx-argparse>=0.5.2
+sphinx-book-theme>=1.1.3
+sphinx-copybutton>=0.5.2
+sphinx_rtd_theme>=3.0.1
+autodoc_pydantic>=2.2.0
