@@ -17,3 +17,10 @@ Changelog
 -  2024/08/01: Version 0.6.2b1 released, optimized dependency conflict
    issues and installation documentation
 -  2024/07/05: Initial open-source release
+
+
+.. warning::
+
+   fix ``localized deployment version`` and ``front-end interface``
+
+

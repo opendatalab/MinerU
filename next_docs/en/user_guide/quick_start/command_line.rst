@@ -55,6 +55,5 @@ directory. The output file list is as follows:
    ├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
    └── some_pdf_content_list.json           # Rich text JSON arranged in reading order
 
-For more information about the output files, please refer to the `Output
-File Description <docs/output_file_en_us.md>`__.
+For more information about the output files, please refer to the :doc:`../tutorial/output_file_description`
 

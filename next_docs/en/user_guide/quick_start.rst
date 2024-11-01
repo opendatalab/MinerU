@@ -9,5 +9,5 @@ Eager to get started? This page gives a good introduction to MinerU. Follow Inst
     :maxdepth: 1
 
     quick_start/command_line
-    quick_start/extract_text
+    quick_start/to_markdown
 
