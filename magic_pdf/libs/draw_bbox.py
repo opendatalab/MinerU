@@ -249,7 +249,8 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
                         page_dropped_list.append(span['bbox'])
         dropped_list.append(page_dropped_list)
         # 构造其余useful_list
-        for block in page['para_blocks']:
+        # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
+        for block in page['preproc_blocks']:
             if block['type'] in [
                 BlockType.Text,
                 BlockType.Title,
