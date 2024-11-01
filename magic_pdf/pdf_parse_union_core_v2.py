@@ -385,9 +385,11 @@ def revert_group_blocks(blocks):
 def remove_outside_spans(spans, all_bboxes):
     image_bboxes = []
     table_bboxes = []
+    all_block_bboxes = []
     for block in all_bboxes:
         block_type = block[7]
         block_bbox = block[0:4]
+        all_block_bboxes.append(block_bbox)
         if block_type == BlockType.ImageBody:
             image_bboxes.append(block_bbox)
         elif block_type == BlockType.TableBody:
@@ -396,6 +398,7 @@ def remove_outside_spans(spans, all_bboxes):
             continue
 
     new_spans = []
+
     for span in spans:
         if span['type'] == ContentType.Image:
             for block_bbox in image_bboxes:
@@ -404,6 +407,11 @@ def remove_outside_spans(spans, all_bboxes):
                     break
         elif span['type'] == ContentType.Table:
             for block_bbox in table_bboxes:
+                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
+                    new_spans.append(span)
+                    break
+        elif span['type'] in [ContentType.Text, ContentType.InlineEquation, ContentType.InterlineEquation]:
+            for block_bbox in all_block_bboxes:
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
                     new_spans.append(span)
                     break
