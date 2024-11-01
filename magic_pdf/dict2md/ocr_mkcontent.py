@@ -141,22 +141,29 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.Text:
                 content = ocr_escape_special_markdown_char(span['content'])
             elif span_type == ContentType.InlineEquation:
-                content = f" ${span['content']}$ "
+                content = f"${span['content']}$"
             elif span_type == ContentType.InterlineEquation:
                 content = f"\n$$\n{span['content']}\n$$\n"
 
-            if content != '':
+            if content.strip() != '':
                 langs = ['zh', 'ja', 'ko']
                 if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
-                    para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
-                elif line_lang == 'en':
-                    # 如果是前一行带有-连字符，那么末尾不应该加空格
-                    if __is_hyphen_at_line_end(content):
-                        para_text += content[:-1]
-                    else:
-                        para_text += content + ' '
+                    if span_type in [ContentType.Text, ContentType.InterlineEquation]:
+                        para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
+                    elif span_type == ContentType.InlineEquation:
+                        para_text += f" {content} "
                 else:
-                    para_text += content + ' '  # 西方文本语境下 content间需要空格分隔
+                    if span_type in [ContentType.Text, ContentType.InlineEquation]:
+                        # 如果是前一行带有-连字符，那么末尾不应该加空格
+                        if __is_hyphen_at_line_end(content):
+                            para_text += content[:-1]
+                        else:  # 西方文本语境下 content间需要空格分隔
+                            para_text += f"{content.strip()} "
+                    elif span_type == ContentType.InterlineEquation:
+                        para_text += content
+            else:
+                continue
+
     return para_text
 
 
