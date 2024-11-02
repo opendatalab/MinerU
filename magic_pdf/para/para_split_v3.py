@@ -69,9 +69,11 @@ def __is_list_or_index_block(block):
         right_not_close_num = 0
         right_close_num = 0
         lines_text_list = []
-
+        center_close_num = 0
+        external_sides_not_close_num = 0
         multiple_para_flag = False
         last_line = block['lines'][-1]
+
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
         if (first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2 and
                 # block['bbox_fs'][2] - first_line['bbox'][2] < line_height and
@@ -81,6 +83,14 @@ def __is_list_or_index_block(block):
             multiple_para_flag = True
 
         for line in block['lines']:
+
+            line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
+            block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
+            if (line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height and
+                block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height):
+                external_sides_not_close_num += 1
+            if abs(line_mid_x - block_mid_x) < line_height/2:
+                center_close_num += 1
 
             line_text = ""
 
@@ -139,7 +149,11 @@ def __is_list_or_index_block(block):
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.Index
 
-        # @TODO 全部line都居中的特殊list识别，每行都需要换行，特征是多行，且大多数行都前后not_close,每line中点x坐标接近
+        # 全部line都居中的特殊list识别，每行都需要换行，特征是多行，且大多数行都前后not_close,每line中点x坐标接近
+        elif external_sides_not_close_num >= 2 and center_close_num == len(block['lines']) and external_sides_not_close_num / len(block['lines']) >= 0.5:
+            for line in block['lines']:
+                line[ListLineTag.IS_LIST_START_LINE] = True
+            return BlockType.List
 
         elif left_close_num >= 2 and (
                 right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2) and not multiple_para_flag:
