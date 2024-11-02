@@ -91,7 +91,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ```bash
 wget https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf
-magic-pdf -p small_ocr.pdf
+magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ## 9. 测试CUDA加速
@@ -109,7 +109,7 @@ magic-pdf -p small_ocr.pdf
 **2.运行以下命令测试cuda加速效果**
 
 ```bash
-magic-pdf -p small_ocr.pdf
+magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
@@ -125,7 +125,7 @@ python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.
 **2.运行以下命令测试ocr加速效果**
 
 ```bash
-magic-pdf -p small_ocr.pdf
+magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
