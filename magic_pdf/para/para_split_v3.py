@@ -69,9 +69,11 @@ def __is_list_or_index_block(block):
         right_not_close_num = 0
         right_close_num = 0
         lines_text_list = []
-
+        center_close_num = 0
+        external_sides_not_close_num = 0
         multiple_para_flag = False
         last_line = block['lines'][-1]
+
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
         if (first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2 and
                 # block['bbox_fs'][2] - first_line['bbox'][2] < line_height and
@@ -81,6 +83,14 @@ def __is_list_or_index_block(block):
             multiple_para_flag = True
 
         for line in block['lines']:
+
+            line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
+            block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
+            if (line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height and
+                block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height):
+                external_sides_not_close_num += 1
+            if abs(line_mid_x - block_mid_x) < line_height/2:
+                center_close_num += 1
 
             line_text = ""
 
@@ -103,7 +113,7 @@ def __is_list_or_index_block(block):
                 right_close_num += 1
             else:
                 # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
-                closed_area = 0.3 * block_weight
+                closed_area = 0.26 * block_weight
                 # closed_area = 5 * line_height
                 if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
                     right_not_close_num += 1
@@ -139,10 +149,16 @@ def __is_list_or_index_block(block):
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.Index
 
+        # 全部line都居中的特殊list识别，每行都需要换行，特征是多行，且大多数行都前后not_close,每line中点x坐标接近
+        elif external_sides_not_close_num >= 2 and center_close_num == len(block['lines']) and external_sides_not_close_num / len(block['lines']) >= 0.5:
+            for line in block['lines']:
+                line[ListLineTag.IS_LIST_START_LINE] = True
+            return BlockType.List
+
         elif left_close_num >= 2 and (
                 right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2) and not multiple_para_flag:
             # 处理一种特殊的没有缩进的list，所有行都贴左边，通过右边的空隙判断是否是item尾
-            if left_close_num / len(block['lines']) > 0.9:
+            if left_close_num / len(block['lines']) > 0.8:
                 # 这种是每个item只有一行，且左边都贴边的短item list
                 if flag_end_count == 0 and right_close_num / len(block['lines']) < 0.5:
                     for line in block['lines']:
@@ -162,7 +178,8 @@ def __is_list_or_index_block(block):
                         if line_start_flag:
                             line[ListLineTag.IS_LIST_START_LINE] = True
                             line_start_flag = False
-                        elif abs(block['bbox_fs'][2] - line['bbox'][2]) > line_height:
+                        # elif abs(block['bbox_fs'][2] - line['bbox'][2]) > line_height:
+                        if abs(block['bbox_fs'][2] - line['bbox'][2]) > 0.1 * block_weight:
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             line_start_flag = True
             # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_LINE 结尾且数量和start line 一致
