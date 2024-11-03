@@ -63,6 +63,7 @@ def __is_list_or_index_block(block):
         first_line = block['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block_weight = block['bbox_fs'][2] - block['bbox_fs'][0]
+        block_height = block['bbox_fs'][3] - block['bbox_fs'][1]
 
         left_close_num = 0
         left_not_close_num = 0
@@ -86,10 +87,12 @@ def __is_list_or_index_block(block):
 
             line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
             block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
-            if (line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height and
-                block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height):
+            if (
+                    line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height and
+                    block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height
+            ):
                 external_sides_not_close_num += 1
-            if abs(line_mid_x - block_mid_x) < line_height/2:
+            if abs(line_mid_x - block_mid_x) < line_height / 2:
                 center_close_num += 1
 
             line_text = ""
@@ -142,7 +145,7 @@ def __is_list_or_index_block(block):
                 line_num_flag = True
 
         # 有的目录右侧不贴边, 目前认为左边或者右边有一边全贴边，且符合数字规则极为index
-        if ((left_close_num/len(block['lines']) >= 0.8 or right_close_num/len(block['lines']) >= 0.8)
+        if ((left_close_num / len(block['lines']) >= 0.8 or right_close_num / len(block['lines']) >= 0.8)
                 and line_num_flag
         ):
             for line in block['lines']:
@@ -150,7 +153,13 @@ def __is_list_or_index_block(block):
             return BlockType.Index
 
         # 全部line都居中的特殊list识别，每行都需要换行，特征是多行，且大多数行都前后not_close,每line中点x坐标接近
-        elif external_sides_not_close_num >= 2 and center_close_num == len(block['lines']) and external_sides_not_close_num / len(block['lines']) >= 0.5:
+        # 补充条件block的长宽比有要求
+        elif (
+                external_sides_not_close_num >= 2 and
+                center_close_num == len(block['lines']) and
+                external_sides_not_close_num / len(block['lines']) >= 0.5 and
+                block_height / block_weight > 0.4
+        ):
             for line in block['lines']:
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.List
@@ -170,7 +179,7 @@ def __is_list_or_index_block(block):
                         if lines_text_list[i][-1] in LIST_END_FLAG:
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             if i + 1 < len(block['lines']):
-                                block['lines'][i+1][ListLineTag.IS_LIST_START_LINE] = True
+                                block['lines'][i + 1][ListLineTag.IS_LIST_START_LINE] = True
                 # line item基本没有结束标识符，而且也没有缩进，按右侧空隙判断哪些是item end
                 else:
                     line_start_flag = False
