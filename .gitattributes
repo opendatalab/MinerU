@@ -1,0 +1,3 @@
+*.js linguist-vendored
+*.mjs linguist-vendored
+*.html linguist-documentation
