@@ -41,7 +41,7 @@ class ppTableModel(object):
         pred_html = pred_res["html"]
         res = '<td><table  border="1">' + pred_html.replace("<html><body><table>", "").replace("</table></body></html>",
                                                                                                "") + "</table></td>\n"
-        return res
+        return pred_html
 
     def parse_args(self, **kwargs):
         parser = init_args()
