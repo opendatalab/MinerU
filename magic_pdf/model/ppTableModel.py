@@ -39,9 +39,9 @@ class ppTableModel(object):
             image = np.array(image)
         pred_res, _ = self.table_sys(image)
         pred_html = pred_res["html"]
-        res = '<td><table  border="1">' + pred_html.replace("<html><body><table>", "").replace("</table></body></html>",
-                                                                                               "") + "</table></td>\n"
-        return res
+        # res = '<td><table  border="1">' + pred_html.replace("<html><body><table>", "").replace(
+        # "</table></body></html>","") + "</table></td>\n"
+        return pred_html
 
     def parse_args(self, **kwargs):
         parser = init_args()
