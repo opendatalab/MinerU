@@ -119,6 +119,16 @@ def detect_language(text):
         return 'empty'
 
 
+# 连写字符拆分
+def __replace_ligatures(text: str):
+    text = re.sub(r'ﬁ', 'fi', text)  # 替换 fi 连写符
+    text = re.sub(r'ﬂ', 'fl', text)  # 替换 fl 连写符
+    text = re.sub(r'ﬀ', 'ff', text)  # 替换 ff 连写符
+    text = re.sub(r'ﬃ', 'ffi', text)  # 替换 ffi 连写符
+    text = re.sub(r'ﬄ', 'ffl', text)  # 替换 ffl 连写符
+    return text
+
+
 def merge_para_with_text(para_block):
     para_text = ''
     for i, line in enumerate(para_block['lines']):
@@ -166,6 +176,8 @@ def merge_para_with_text(para_block):
                         para_text += content
             else:
                 continue
+    # 连写字符拆分
+    para_text = __replace_ligatures(para_text)
 
     return para_text
 
