@@ -393,7 +393,7 @@ class CustomPEKModel:
             elif int(res['category_id']) in [5]:
                 table_res_list.append(res)
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and self.device != 'cpu':
             properties = torch.cuda.get_device_properties(self.device)
             total_memory = properties.total_memory / (1024 ** 3)  # 将字节转换为 GB
             if total_memory <= 10:
