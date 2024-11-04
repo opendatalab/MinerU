@@ -1,3 +1,5 @@
+import re
+
 import torch
 from struct_eqtable import build_model
 
@@ -28,4 +30,16 @@ class StructTableModel:
             images, output_format=output_format
         )
 
+        if output_format == "html":
+            results = [self.minify_html(html) for html in results]
+
         return results
+
+    def minify_html(self, html):
+        # 移除多余的空白字符
+        html = re.sub(r'\s+', ' ', html)
+        # 移除行尾的空白字符
+        html = re.sub(r'\s*>\s*', '>', html)
+        # 移除标签前的空白字符
+        html = re.sub(r'\s*<\s*', '<', html)
+        return html.strip()
