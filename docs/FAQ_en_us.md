@@ -57,3 +57,10 @@ pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/package
 ```
 
 Reference: https://github.com/opendatalab/MinerU/issues/558
+
+### 7. On some Linux servers, the program immediately reports an error `Illegal instruction (core dumped)`
+
+This might be because the server's CPU does not support the AVX/AVX2 instruction set, or the CPU itself supports it but has been disabled by the system administrator. You can try contacting the system administrator to remove the restriction or change to a different server.
+
+References: https://github.com/opendatalab/MinerU/issues/591 , https://github.com/opendatalab/MinerU/issues/736
+
