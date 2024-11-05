@@ -59,3 +59,9 @@ pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/package
 ```
 
 参考：https://github.com/opendatalab/MinerU/issues/558
+
+### 7.在部分Linux服务器上，程序一运行就报错 `非法指令 (核心已转储)` 或 `Illegal instruction (core dumped)`
+
+可能是因为服务器CPU不支持AVX/AVX2指令集，或cpu本身支持但被运维禁用了，可以尝试联系运维解除限制或更换服务器。
+
+参考：https://github.com/opendatalab/MinerU/issues/591 ， https://github.com/opendatalab/MinerU/issues/736
