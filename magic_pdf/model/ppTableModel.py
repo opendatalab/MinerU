@@ -1,3 +1,4 @@
+import cv2
 from paddleocr.ppstructure.table.predict_table import TableSystem
 from paddleocr.ppstructure.utility import init_args
 from magic_pdf.libs.Constants import *
@@ -36,7 +37,8 @@ class ppTableModel(object):
         - HTML (str): A string representing the HTML structure with content of the table.
         """
         if isinstance(image, Image.Image):
-            image = np.array(image)
+            image = np.asarray(image)
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         pred_res, _ = self.table_sys(image)
         pred_html = pred_res["html"]
         # res = '<td><table  border="1">' + pred_html.replace("<html><body><table>", "").replace(
