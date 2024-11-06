@@ -42,7 +42,7 @@
 
 # 更新记录
 
-- 2024/11/06 0.9.1发布，为表格识别功能接入了[StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B)模型
+- 2024/11/06 0.9.2发布，为表格识别功能接入了[StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B)模型
 - 2024/10/31 0.9.0发布，这是我们进行了大量代码重构的全新版本，解决了众多问题，提升了性能，降低了硬件需求，并提供了更丰富的易用性：
   - 重构排序模块代码，使用 [layoutreader](https://github.com/ppaanngggg/layoutreader) 进行阅读顺序排序，确保在各种排版下都能实现极高准确率
   - 重构段落拼接模块，在跨栏、跨页、跨图、跨表情况下均能实现良好的段落拼接效果
@@ -138,13 +138,15 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
 - [Linux/Windows + CUDA](#使用gpu)
 
-**⚠️安装前必看——软硬件环境支持说明**
 
-为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
-
-通过集中资源和精力于主线环境，我们团队能够更高效地解决潜在的BUG，及时开发新功能。
-
-在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
+> [!WARNING]
+> **安装前必看——软硬件环境支持说明**
+> 
+> 为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
+>
+> 通过集中资源和精力于主线环境，我们团队能够更高效地解决潜在的BUG，及时开发新功能。
+>
+> 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
 <table>
     <tr>
@@ -210,7 +212,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 #### 1. 安装magic-pdf
 
-最新版本国内镜像源同步可能会有延迟，请耐心等待
+> [!NOTE]
+> 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
 conda create -n MinerU python=3.10
@@ -226,10 +229,13 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 完成[2. 下载模型权重文件](#2-下载模型权重文件)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
 您可在【用户目录】下找到magic-pdf.json文件。
+
+> [!TIP]
 > windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
 您可修改该文件中的部分配置实现功能的开关，如表格识别功能：
 
+> [!NOTE]
 >如json内没有如下项目，请手动添加需要的项目，并删除注释内容（标准json不支持注释）
 
 ```json
@@ -258,13 +264,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
-    > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
-    > 
-    > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
-    > 
-    > ```bash
-    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-    > ```
+> [!IMPORTANT]
+> Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
+> 
+> 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
+> 
+> ```bash
+> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+> ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
@@ -328,7 +335,8 @@ magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 └── some_pdf_content_list.json           # 按阅读顺序排列的富文本json
 ```
 
-更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
+> [!TIP]
+> 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
 ### API
 
@@ -379,12 +387,12 @@ TODO
 
 # TODO
 
-- 🗹 基于模型的阅读顺序  
-- 🗹 正文中目录、列表识别  
-- 🗹 表格识别
-- ☐  正文中代码块识别
-- ☐  [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
-- ☐  几何图形识别
+- [x] 基于模型的阅读顺序  
+- [x] 正文中目录、列表识别  
+- [x] 表格识别
+- [ ] 正文中代码块识别
+- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
+- [ ] 几何图形识别
 
 # Known Issues
 
