@@ -28,7 +28,8 @@ conda activate MinerU
 pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 ```
 
-> ❗️After installation, verify the version of `magic-pdf`:
+> [!IMPORTANT]
+> After installation, verify the version of `magic-pdf`:
 >
 > ```bash
 > magic-pdf --version
@@ -45,6 +46,7 @@ Refer to detailed instructions on [how to download model files](how_to_download_
 After completing the [5. Download Models](#5-download-models) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
 You can find the `magic-pdf.json` file in your 【user directory】 .
 
+> [!TIP]
 > The user directory for Windows is "C:/Users/username".
 
 ### 7. First Run
@@ -65,8 +67,8 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-
    ```
    pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
    ```
-
-   > ❗️Ensure the following versions are specified in the command:
+   > [!IMPORTANT]
+   > Ensure the following versions are specified in the command:
    >
    > ```
    > torch==2.3.1 torchvision==0.18.1
