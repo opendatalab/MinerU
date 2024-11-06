@@ -138,7 +138,7 @@ There are three different ways to experience MinerU:
 - [Linux/Windows + CUDA](#Using-GPU)
 
 > [!IMPORTANT]
-> **⚠️ Pre-installation Notice—Hardware and Software Environment Support**
+> **Pre-installation Notice—Hardware and Software Environment Support**
 >
 > To ensure the stability and reliability of the project, we only optimize and test for specific hardware and software environments during development. This ensures that users deploying and running the project on recommended system configurations will get the best performance with the fewest compatibility issues.
 >
@@ -258,14 +258,14 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Ubuntu 22.04 LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_en_US.md)
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
-    > [!IMPORTANT]
-    > Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
-    >
-    > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
-    > 
-    > ```bash
-    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-    > ```
+> [!IMPORTANT]
+> Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
+>
+> Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
+> 
+> ```bash
+> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+> ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
@@ -379,12 +379,12 @@ TODO
 
 # TODO
 
-- 🗹 Reading order based on the model  
-- 🗹 Recognition of `index` and `list` in the main text  
-- 🗹 Table recognition
-- ☐ Code block recognition in the main text
-- ☐ [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
-- ☐ Geometric shape recognition
+- [x] Reading order based on the model  
+- [x] Recognition of `index` and `list` in the main text  
+- [x] Table recognition
+- [ ] Code block recognition in the main text
+- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
+- [ ] Geometric shape recognition
 
 # Known Issues
 

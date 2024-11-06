@@ -264,14 +264,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
-    > [!IMPORTANT]
-    > Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
-    > 
-    > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
-    > 
-    > ```bash
-    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-    > ```
+> [!IMPORTANT]
+> Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
+> 
+> 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
+> 
+> ```bash
+> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+> ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
@@ -387,12 +387,12 @@ TODO
 
 # TODO
 
-- 🗹 基于模型的阅读顺序  
-- 🗹 正文中目录、列表识别  
-- 🗹 表格识别
-- ☐  正文中代码块识别
-- ☐  [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
-- ☐  几何图形识别
+- [x] 基于模型的阅读顺序  
+- [x] 正文中目录、列表识别  
+- [x] 表格识别
+- [ ] 正文中代码块识别
+- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
+- [ ] 几何图形识别
 
 # Known Issues
 
