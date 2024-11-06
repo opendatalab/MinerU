@@ -76,7 +76,9 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
 ### 6. Download Models
 
+
 Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
+
 
 ## 7. Understand the Location of the Configuration File
 
@@ -85,6 +87,7 @@ You can find the `magic-pdf.json` file in your user directory.
 
 > [!TIP]
 > The user directory for Linux is "/home/username".
+
 
 ### 8. First Run
 
