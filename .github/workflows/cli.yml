@@ -20,6 +20,7 @@ on:
   workflow_dispatch:
 jobs:
   cli-test:
+    if: github.repository == 'opendatalab/MinerU'
     runs-on: pdf
     timeout-minutes: 240
     strategy:
