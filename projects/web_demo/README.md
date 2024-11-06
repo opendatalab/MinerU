@@ -56,5 +56,5 @@ python3 app.py or python app.py
 ps：API documentation
 
 ```
-Open the mineru-web API mineru-web接口文档.html in the browser
+https://apifox.com/apidoc/shared-b8eda098-ab9c-4cb3-9432-62be9be9c6f7
 ```

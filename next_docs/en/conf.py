@@ -15,7 +15,8 @@ import subprocess
 import sys
 
 from sphinx.ext import autodoc
-
+from docutils import nodes
+from docutils.parsers.rst import Directive
 
 def install(package):
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
@@ -58,9 +59,19 @@ extensions = [
     'sphinx_copybutton',
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
+    'sphinx.ext.inheritance_diagram',
     'myst_parser',
     'sphinxarg.ext',
+    'sphinxcontrib.autodoc_pydantic',
 ]
+
+# class hierarchy diagram
+inheritance_graph_attrs = dict(rankdir="LR", size='"8.0, 12.0"', fontsize=14, ratio='compress')
+inheritance_node_attrs = dict(shape='ellipse', fontsize=14, height=0.75)
+inheritance_edge_attrs = dict(arrow='vee')
+
+autodoc_pydantic_model_show_json = True
+autodoc_pydantic_model_show_config_summary = False
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -120,3 +131,21 @@ class MockedClassDocumenter(autodoc.ClassDocumenter):
 autodoc.ClassDocumenter = MockedClassDocumenter
 
 navigation_with_keys = False
+
+
+# add custom directive 
+
+
+class VideoDirective(Directive):
+    required_arguments = 1
+    optional_arguments = 0
+    final_argument_whitespace = True
+    option_spec = {}
+
+    def run(self):
+        url = self.arguments[0]
+        video_node = nodes.raw('', f'<iframe width="560" height="315" src="{url}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>', format='html')
+        return [video_node]
+
+def setup(app):
+    app.add_directive('video', VideoDirective)

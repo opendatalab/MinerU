@@ -55,5 +55,5 @@ python3 app.py 或者 python app.py
 ps：接口文档
 
 ```
-在浏览器打开 mineru-web接口文档.html
+https://apifox.com/apidoc/shared-b8eda098-ab9c-4cb3-9432-62be9be9c6f7
 ```

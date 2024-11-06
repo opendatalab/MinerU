@@ -78,9 +78,9 @@ body:
       #multiple: false
       options:
         -
-        - "0.6.x"
         - "0.7.x"
         - "0.8.x"
+        - "0.9.x"
     validations:
       required: true
 

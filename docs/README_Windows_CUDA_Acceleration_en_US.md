@@ -53,7 +53,7 @@ Download a sample file from the repository and test it.
 
 ```powershell
   wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
-  magic-pdf -p small_ocr.pdf
+  magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ### 8. Test CUDA Acceleration
@@ -86,7 +86,7 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-
 3. **Run the following command to test CUDA acceleration**:
 
    ```
-   magic-pdf -p small_ocr.pdf
+   magic-pdf -p small_ocr.pdf -o ./output
    ```
 
 ### 9. Enable CUDA Acceleration for OCR
@@ -97,5 +97,5 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-
    ```
 2. **Run the following command to test OCR acceleration**:
    ```
-   magic-pdf -p small_ocr.pdf
+   magic-pdf -p small_ocr.pdf -o ./output
    ```

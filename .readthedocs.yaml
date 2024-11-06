@@ -10,7 +10,7 @@ formats:
 
 python:
   install:
-    - requirements: docs/zh_cn/requirements.txt
+    - requirements: next_docs/zh_cn/requirements.txt
 
 sphinx:
-  configuration: docs/zh_cn/conf.py
+  configuration: next_docs/zh_cn/conf.py

@@ -43,8 +43,9 @@ if __name__ == '__main__':
                      "paddleocr==2.7.3",  # 2.8.0及2.8.1版本与detectron2有冲突，需锁定2.7.3
                      "paddlepaddle==3.0.0b1;platform_system=='Linux'",  # 解决linux的段异常问题
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",  # windows版本3.0.0b1效率下降，需锁定2.6.1
-                     "pypandoc",  # 表格解析latex转html
-                     "struct-eqtable==0.1.0",  # 表格解析
+                     "struct-eqtable==0.3.2",  # 表格解析
+                     "einops",  # struct-eqtable依赖
+                     "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2",  # doclayout_yolo
                      "detectron2"
                      ],

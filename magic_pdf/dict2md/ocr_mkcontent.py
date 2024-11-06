@@ -119,6 +119,16 @@ def detect_language(text):
         return 'empty'
 
 
+# 连写字符拆分
+def __replace_ligatures(text: str):
+    text = re.sub(r'ﬁ', 'fi', text)  # 替换 fi 连写符
+    text = re.sub(r'ﬂ', 'fl', text)  # 替换 fl 连写符
+    text = re.sub(r'ﬀ', 'ff', text)  # 替换 ff 连写符
+    text = re.sub(r'ﬃ', 'ffi', text)  # 替换 ffi 连写符
+    text = re.sub(r'ﬄ', 'ffl', text)  # 替换 ffl 连写符
+    return text
+
+
 def merge_para_with_text(para_block):
     para_text = ''
     for i, line in enumerate(para_block['lines']):
@@ -141,22 +151,34 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.Text:
                 content = ocr_escape_special_markdown_char(span['content'])
             elif span_type == ContentType.InlineEquation:
-                content = f" ${span['content']}$ "
+                content = f"${span['content']}$"
             elif span_type == ContentType.InterlineEquation:
                 content = f"\n$$\n{span['content']}\n$$\n"
 
+            content = content.strip()
             if content != '':
                 langs = ['zh', 'ja', 'ko']
                 if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
-                    para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
-                elif line_lang == 'en':
-                    # 如果是前一行带有-连字符，那么末尾不应该加空格
-                    if __is_hyphen_at_line_end(content):
-                        para_text += content[:-1]
-                    else:
-                        para_text += content + ' '
+                    if span_type in [ContentType.Text, ContentType.InterlineEquation]:
+                        para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
+                    elif span_type == ContentType.InlineEquation:
+                        para_text += f" {content} "
                 else:
-                    para_text += content + ' '  # 西方文本语境下 content间需要空格分隔
+                    if span_type in [ContentType.Text, ContentType.InlineEquation]:
+                        # 如果是前一行带有-连字符，那么末尾不应该加空格
+                        if __is_hyphen_at_line_end(content):
+                            para_text += content[:-1]
+                        elif len(content) == 1 and content not in ['A', 'I', 'a', 'i']:
+                            para_text += content
+                        else:  # 西方文本语境下 content间需要空格分隔
+                            para_text += f"{content} "
+                    elif span_type == ContentType.InterlineEquation:
+                        para_text += content
+            else:
+                continue
+    # 连写字符拆分
+    para_text = __replace_ligatures(para_text)
+
     return para_text
 
 

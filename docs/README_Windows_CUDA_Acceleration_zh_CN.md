@@ -55,7 +55,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ```powershell
  wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
- magic-pdf -p small_ocr.pdf
+ magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ## 8. 测试CUDA加速
@@ -87,7 +87,7 @@ pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https
 **3.运行以下命令测试cuda加速效果**
 
 ```bash
-magic-pdf -p small_ocr.pdf
+magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下，`layout detection time` 和 `mfr time` 应提速10倍以上。
@@ -103,7 +103,7 @@ pip install paddlepaddle-gpu==2.6.1
 **2.运行以下命令测试ocr加速效果**
 
 ```bash
-magic-pdf -p small_ocr.pdf
+magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 > 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr time`应提速10倍以上。
