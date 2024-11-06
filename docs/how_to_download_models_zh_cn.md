@@ -35,11 +35,10 @@ python脚本会自动下载模型文件并配置好配置文件中的模型目�
 
 > [!IMPORTANT]
 > 由于部分用户反馈通过git lfs下载模型文件遇到下载不全和模型文件损坏情况，现已不推荐使用该方式下载。
+> 
+> 0.9.x及以后版本由于PDF-Extract-Kit 1.0更换仓库和新增layout排序模型，不能通过`git pull`命令更新，需要使用python脚本一键更新。
 
 当magic-pdf <= 0.8.1时，如此前通过 git lfs 下载过模型文件，可以进入到之前的下载目录中，通过`git pull`命令更新模型。
-
-> [!WARNING]
-> 0.9.x及以后版本由于PDF-Extract-Kit 1.0更换仓库和新增layout排序模型，不能通过`git pull`命令更新，需要使用python脚本一键更新。
 
 
 ## 2. 通过 Hugging Face 或 Model Scope 下载过模型
