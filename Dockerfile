@@ -44,7 +44,6 @@ RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.tem
 RUN /bin/bash -c "pip3 install modelscope && \
     wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py && \
     python3 download_models.py && \
-    sed -i 's|/tmp/models|/root/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models|g' /root/magic-pdf.json && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
 # Set the entry point to activate the virtual environment and run the command line tool

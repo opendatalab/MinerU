@@ -75,7 +75,9 @@ If the version number is less than 0.7.0, please report the issue.
 
 ### 6. Download Models
 
+
 Refer to detailed instructions on [how to download model files](how_to_download_models_en.md).
+
 
 ## 7. Understand the Location of the Configuration File
 
@@ -83,6 +85,7 @@ After completing the [6. Download Models](#6-download-models) step, the script w
 You can find the `magic-pdf.json` file in your user directory.
 
 > The user directory for Linux is "/home/username".
+
 
 ### 8. First Run
 

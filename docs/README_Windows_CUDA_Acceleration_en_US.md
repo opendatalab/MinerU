@@ -82,6 +82,7 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-
    }
    ```
 
+
 3. **Run the following command to test CUDA acceleration**:
 
    ```

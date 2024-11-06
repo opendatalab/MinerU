@@ -75,12 +75,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ## 6. 下载模型
 
+
 详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)
 
 ## 7. 了解配置文件存放的位置
 
 完成[6.下载模型](#6-下载模型)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
 您可在【用户目录】下找到magic-pdf.json文件。
+
 
 > linux用户目录为 "/home/用户名"
 
