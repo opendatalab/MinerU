@@ -41,7 +41,7 @@
 </div>
 
 # Changelog
-- 2024/11/06 0.9.1 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
+- 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
   - Refactored the sorting module code to use [layoutreader](https://github.com/ppaanngggg/layoutreader) for reading order sorting, ensuring high accuracy in various layouts.
   - Refactored the paragraph concatenation module to achieve good results in cross-column, cross-page, cross-figure, and cross-table scenarios.
@@ -137,13 +137,14 @@ There are three different ways to experience MinerU:
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
 - [Linux/Windows + CUDA](#Using-GPU)
 
-**⚠️ Pre-installation Notice—Hardware and Software Environment Support**
-
-To ensure the stability and reliability of the project, we only optimize and test for specific hardware and software environments during development. This ensures that users deploying and running the project on recommended system configurations will get the best performance with the fewest compatibility issues.
-
-By focusing resources on the mainline environment, our team can more efficiently resolve potential bugs and develop new features.
-
-In non-mainline environments, due to the diversity of hardware and software configurations, as well as third-party dependency compatibility issues, we cannot guarantee 100% project availability. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first. Most issues already have corresponding solutions in the FAQ. We also encourage community feedback to help us gradually expand support.
+> [!WARNING]
+> **Pre-installation Notice—Hardware and Software Environment Support**
+>
+> To ensure the stability and reliability of the project, we only optimize and test for specific hardware and software environments during development. This ensures that users deploying and running the project on recommended system configurations will get the best performance with the fewest compatibility issues.
+>
+> By focusing resources on the mainline environment, our team can more efficiently resolve potential bugs and develop new features.
+>
+> In non-mainline environments, due to the diversity of hardware and software configurations, as well as third-party dependency compatibility issues, we cannot guarantee 100% project availability. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first. Most issues already have corresponding solutions in the FAQ. We also encourage community feedback to help us gradually expand support.
 
 <table>
     <tr>
@@ -223,10 +224,12 @@ Refer to [How to Download Model Files](docs/how_to_download_models_en.md) for de
 After completing the [2. Download model weight files](#2-download-model-weight-files) step, the script will automatically generate a `magic-pdf.json` file in the user directory and configure the default model path.
 You can find the `magic-pdf.json` file in your 【user directory】.
 
+> [!TIP]
 > The user directory for Windows is "C:\\Users\\username", for Linux it is "/home/username", and for macOS it is "/Users/username".
 
 You can modify certain configurations in this file to enable or disable features, such as table recognition:
 
+> [!NOTE]
 > If the following items are not present in the JSON, please manually add the required items and remove the comment content (standard JSON does not support comments).
 
 ```json
@@ -255,13 +258,14 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Ubuntu 22.04 LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_en_US.md)
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
-    > Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
-    >
-    > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
-    > 
-    > ```bash
-    > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-    > ```
+> [!IMPORTANT]
+> Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
+>
+> Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
+> 
+> ```bash
+> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+> ```
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
   docker build -t mineru:latest .
@@ -323,8 +327,8 @@ The results will be saved in the `{some_output_dir}` directory. The output file 
 ├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
 └── some_pdf_content_list.json           # Rich text JSON arranged in reading order
 ```
-
-For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
+> [!TIP]
+> For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
 
 ### API
 
@@ -375,12 +379,12 @@ TODO
 
 # TODO
 
-- 🗹 Reading order based on the model  
-- 🗹 Recognition of `index` and `list` in the main text  
-- 🗹 Table recognition
-- ☐ Code block recognition in the main text
-- ☐ [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
-- ☐ Geometric shape recognition
+- [x] Reading order based on the model  
+- [x] Recognition of `index` and `list` in the main text  
+- [x] Table recognition
+- [ ] Code block recognition in the main text
+- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
+- [ ] Geometric shape recognition
 
 # Known Issues
 

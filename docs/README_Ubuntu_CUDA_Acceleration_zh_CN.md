@@ -8,7 +8,8 @@ nvidia-smi
 
 如果看到类似如下的信息，说明已经安装了nvidia驱动，可以跳过步骤2
 
-注意:`CUDA Version` 显示的版本号应 >= 12.1，如显示的版本号小于12.1，请升级驱动
+> [!NOTE]
+> `CUDA Version` 显示的版本号应 >= 12.1，如显示的版本号小于12.1，请升级驱动
 
 ```plaintext
 +---------------------------------------------------------------------------------------+
@@ -65,7 +66,8 @@ conda activate MinerU
 pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-> ❗️下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
+> [!IMPORTANT]
+> 下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
 >
 > ```bash
 > magic-pdf --version
@@ -82,6 +84,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 完成[6.下载模型](#6-下载模型)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
 您可在【用户目录】下找到magic-pdf.json文件。
 
+> [!TIP]
 > linux用户目录为 "/home/用户名"
 
 ## 8. 第一次运行
@@ -110,8 +113,8 @@ magic-pdf -p small_ocr.pdf -o ./output
 ```bash
 magic-pdf -p small_ocr.pdf -o ./output
 ```
-
-> 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
+> [!TIP]
+> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
 
 ## 10. 为ocr开启cuda加速
 
@@ -126,5 +129,5 @@ python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.
 ```bash
 magic-pdf -p small_ocr.pdf -o ./output
 ```
-
-> 提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
+> [!TIP]
+> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
