@@ -282,8 +282,6 @@ class CustomPEKModel:
             )
         # 初始化ocr
         if self.apply_ocr:
-
-            # self.ocr_model = ModifiedPaddleOCR(show_log=show_log, det_db_box_thresh=0.3)
             self.ocr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.OCR,
                 ocr_show_log=show_log,
@@ -300,17 +298,6 @@ class CustomPEKModel:
                 table_max_time=self.table_max_time,
                 device=self.device
             )
-
-            home_directory = Path.home()
-            det_source = os.path.join(models_dir, table_model_dir, DETECT_MODEL_DIR)
-            rec_source = os.path.join(models_dir, table_model_dir, REC_MODEL_DIR)
-            det_dest_dir = os.path.join(home_directory, PP_DET_DIRECTORY)
-            rec_dest_dir = os.path.join(home_directory, PP_REC_DIRECTORY)
-
-            if not os.path.exists(det_dest_dir):
-                shutil.copytree(det_source, det_dest_dir)
-            if not os.path.exists(rec_dest_dir):
-                shutil.copytree(rec_source, rec_dest_dir)
 
         logger.info('DocAnalysis init done!')
 
