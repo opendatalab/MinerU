@@ -137,7 +137,7 @@ There are three different ways to experience MinerU:
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
 - [Linux/Windows + CUDA](#Using-GPU)
 
-> [!IMPORTANT]
+> [!WARNING]
 > **Pre-installation Notice—Hardware and Software Environment Support**
 >
 > To ensure the stability and reliability of the project, we only optimize and test for specific hardware and software environments during development. This ensures that users deploying and running the project on recommended system configurations will get the best performance with the fewest compatibility issues.
