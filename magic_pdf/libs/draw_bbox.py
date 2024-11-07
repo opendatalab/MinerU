@@ -369,10 +369,16 @@ def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
             if block['type'] in [BlockType.Image, BlockType.Table]:
                 for sub_block in block['blocks']:
                     if sub_block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
-                        for line in sub_block['virtual_lines']:
-                            bbox = line['bbox']
-                            index = line['index']
-                            page_line_list.append({'index': index, 'bbox': bbox})
+                        if len(sub_block['virtual_lines']) > 0 and sub_block['virtual_lines'][0].get('index', None) is not None:
+                            for line in sub_block['virtual_lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
+                        else:
+                            for line in sub_block['lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
                     elif sub_block['type'] in [BlockType.ImageCaption, BlockType.TableCaption, BlockType.ImageFootnote, BlockType.TableFootnote]:
                         for line in sub_block['lines']:
                             bbox = line['bbox']
