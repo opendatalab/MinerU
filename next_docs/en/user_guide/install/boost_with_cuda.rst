@@ -137,17 +137,13 @@ Download a sample file from the repository and test it.
 .. code:: sh
 
    wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf
-   magic-pdf -p small_ocr.pdf
+   magic-pdf -p small_ocr.pdf -o ./output
 
 9. Test CUDA Acceleration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your graphics card has at least **8GB** of VRAM, follow these steps
 to test CUDA acceleration:
-
-   ❗ Due to the extremely limited nature of 8GB VRAM for running this
-   application, you need to close all other programs using VRAM to
-   ensure that 8GB of VRAM is available when running this application.
 
 1. Modify the value of ``"device-mode"`` in the ``magic-pdf.json``
    configuration file located in your home directory.
@@ -162,7 +158,7 @@ to test CUDA acceleration:
 
    .. code:: sh
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
 
 10. Enable CUDA Acceleration for OCR
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,7 +174,9 @@ to test CUDA acceleration:
 
    .. code:: sh
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
+
+
 
 .. _windows_10_or_11_section:
 
@@ -252,17 +250,13 @@ Download a sample file from the repository and test it.
 .. code:: powershell
 
      wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
-     magic-pdf -p small_ocr.pdf
+     magic-pdf -p small_ocr.pdf -o ./output
 
 8. Test CUDA Acceleration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your graphics card has at least 8GB of VRAM, follow these steps to
 test CUDA-accelerated parsing performance.
-
-   ❗ Due to the extremely limited nature of 8GB VRAM for running this
-   application, you need to close all other programs using VRAM to
-   ensure that 8GB of VRAM is available when running this application.
 
 1. **Overwrite the installation of torch and torchvision** supporting
    CUDA.
@@ -295,7 +289,7 @@ test CUDA-accelerated parsing performance.
 
    ::
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
 
 9. Enable CUDA Acceleration for OCR
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -311,5 +305,4 @@ test CUDA-accelerated parsing performance.
 
    ::
 
-      magic-pdf -p small_ocr.pdf
-
+      magic-pdf -p small_ocr.pdf -o ./output

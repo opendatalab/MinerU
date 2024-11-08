@@ -46,20 +46,29 @@ the relevant PDF**.
 Key Features
 ------------
 
--  Removes elements such as headers, footers, footnotes, and page
-   numbers while maintaining semantic continuity
--  Outputs text in a human-readable order from multi-column documents
--  Retains the original structure of the document, including titles,
-   paragraphs, and lists
--  Extracts images, image captions, tables, and table captions
--  Automatically recognizes formulas in the document and converts them
-   to LaTeX
--  Automatically recognizes tables in the document and converts them to
-   LaTeX
--  Automatically detects and enables OCR for corrupted PDFs
--  Supports both CPU and GPU environments
--  Supports Windows, Linux, and Mac platforms
-
+-  Remove headers, footers, footnotes, page numbers, etc., to ensure
+   semantic coherence.
+-  Output text in human-readable order, suitable for single-column,
+   multi-column, and complex layouts.
+-  Preserve the structure of the original document, including headings,
+   paragraphs, lists, etc.
+-  Extract images, image descriptions, tables, table titles, and
+   footnotes.
+-  Automatically recognize and convert formulas in the document to LaTeX
+   format.
+-  Automatically recognize and convert tables in the document to LaTeX
+   or HTML format.
+-  Automatically detect scanned PDFs and garbled PDFs and enable OCR
+   functionality.
+-  OCR supports detection and recognition of 84 languages.
+-  Supports multiple output formats, such as multimodal and NLP
+   Markdown, JSON sorted by reading order, and rich intermediate
+   formats.
+-  Supports various visualization results, including layout
+   visualization and span visualization, for efficient confirmation of
+   output quality.
+-  Supports both CPU and GPU environments.
+-  Compatible with Windows, Linux, and Mac platforms.
 
 User Guide
 -------------
@@ -91,14 +100,6 @@ Additional Notes
 
    additional_notes/known_issues
    additional_notes/faq
-   additional_notes/changelog
    additional_notes/glossary
 
 
-Projects 
----------
-.. toctree::
-   :maxdepth: 1
-   :caption: Projects
-
-   projects

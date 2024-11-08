@@ -1,7 +1,7 @@
 
 
-Command Line
-===================
+命令行
+========
 
 .. code:: bash
 
@@ -40,23 +40,22 @@ Command Line
    ## command line example
    magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 
-``{some_pdf}`` can be a single PDF file or a directory containing
-multiple PDFs. The results will be saved in the ``{some_output_dir}``
-directory. The output file list is as follows:
+``{some_pdf}`` 可以是单个 PDF 文件或者一个包含多个 PDF 文件的目录。 解析的结果文件存放在目录 ``{some_output_dir}`` 下。 生成的结果文件列表如下所示：
 
 .. code:: text
 
-   ├── some_pdf.md                          # markdown file
-   ├── images                               # directory for storing images
-   ├── some_pdf_layout.pdf                  # layout diagram
-   ├── some_pdf_middle.json                 # MinerU intermediate processing result
-   ├── some_pdf_model.json                  # model inference result
-   ├── some_pdf_origin.pdf                  # original PDF file
-   ├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
-   └── some_pdf_content_list.json           # Rich text JSON arranged in reading order
+   ├── some_pdf.md                          # markdown 文件
+   ├── images                               # 存放图片目录
+   ├── some_pdf_layout.pdf                  # layout 绘图 （包含layout阅读顺序）
+   ├── some_pdf_middle.json                 # minerU 中间处理结果
+   ├── some_pdf_model.json                  # 模型推理结果
+   ├── some_pdf_origin.pdf                  # 原 pdf 文件
+   ├── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
+   └── some_pdf_content_list.json           # 按阅读顺序排列的富文本json
+
 
 .. admonition:: Tip
    :class: tip
 
-   For more information about the output files, please refer to the :doc:`../tutorial/output_file_description`
+   欲知更多有关结果文件的信息，请参考 :doc:`../tutorial/output_file_description`
 
