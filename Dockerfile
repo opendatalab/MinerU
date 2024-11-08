@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # set mirrors to aliyun
 RUN /bin/bash -c "sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-                  sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list
+                  sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list"
 
 # Update the package list and install necessary packages
 RUN apt-get update && \
@@ -50,11 +50,12 @@ RUN /bin/bash -c "pip3 install modelscope && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
-    # Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "wget https://github.com/lztiancn/lzmineru/blob/master/requirements-fastapi.txt && \
-    pip3 install -r requirements-fastapi.txt"
-
 WORKDIR /minerugw
+
+COPY ./requirements-fastapi.txt /minerugw/requirements-fastapi.txt
+    # Activate the virtual environment and install necessary Python packages
+RUN pip3 install -r /minerugw/requirements-fastapi.txt
+
 
 # Set the entry point to activate the virtual environment and run the command line tool
 #ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]
