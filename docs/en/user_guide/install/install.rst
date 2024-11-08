@@ -1,9 +1,8 @@
 
 Install 
 ===============================================================
-If you encounter any installation issues, please first consult the FAQ.
-If the parsing results are not as expected, refer to the Known Issues.
-There are three different ways to experience MinerU
+If you encounter any installation issues, please first consult the :doc:`../../additional_notes/faq`.
+If the parsing results are not as expected, refer to the :doc:`../../additional_notes/known_issues`.
 
 Pre-installation Notice—Hardware and Software Environment Support
 ------------------------------------------------------------------

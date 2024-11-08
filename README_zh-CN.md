@@ -76,12 +76,10 @@
             <ul>
             <li><a href="#在线体验">在线体验</a></li>
             <li><a href="#使用CPU快速体验">使用CPU快速体验</a></li>
-            <li><a href="#使用GPU">使用GPU</a></li>
             </ul>
         </li>
         <li><a href="#使用">使用方式</a>
             <ul>
-            <li><a href="#命令行">命令行</a></li>
             <li><a href="#api">API</a></li>
             <li><a href="#部署衍生项目">部署衍生项目</a></li>
             <li><a href="#二次开发">二次开发</a></li>
@@ -113,90 +111,13 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
-## 主要功能
-
-- 删除页眉、页脚、脚注、页码等元素，确保语义连贯
-- 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
-- 保留原文档的结构，包括标题、段落、列表等
-- 提取图像、图片描述、表格、表格标题及脚注
-- 自动识别并转换文档中的公式为LaTeX格式
-- 自动识别并转换文档中的表格为LaTeX或HTML格式
-- 自动检测扫描版PDF和乱码PDF，并启用OCR功能
-- OCR支持84种语言的检测与识别
-- 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
-- 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
-- 支持CPU和GPU环境
-- 兼容Windows、Linux和Mac平台
 
 ## 快速开始
 
-如果遇到任何安装问题，请先查询 <a href="#faq">FAQ</a> </br>
-如果遇到解析效果不及预期，参考 <a href="#known-issues">Known Issues</a></br>
-有3种不同方式可以体验MinerU的效果：
+有多种不同方式可以体验MinerU的效果：
 
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
-- [Linux/Windows + CUDA](#使用gpu)
-
-
-> [!WARNING]
-> **安装前必看——软硬件环境支持说明**
-> 
-> 为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
->
-> 通过集中资源和精力于主线环境，我们团队能够更高效地解决潜在的BUG，及时开发新功能。
->
-> 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
-
-<table>
-    <tr>
-        <td colspan="3" rowspan="2">操作系统</td>
-    </tr>
-    <tr>
-        <td>Ubuntu 22.04 LTS</td>
-        <td>Windows 10 / 11</td>
-        <td>macOS 11+</td>
-    </tr>
-    <tr>
-        <td colspan="3">CPU</td>
-        <td>x86_64(暂不支持ARM Linux)</td>
-        <td>x86_64(暂不支持ARM Windows)</td>
-        <td>x86_64 / arm64</td>
-    </tr>
-    <tr>
-        <td colspan="3">内存</td>
-        <td colspan="3">大于等于16GB，推荐32G以上</td>
-    </tr>
-    <tr>
-        <td colspan="3">python版本</td>
-        <td colspan="3">3.10 (请务必通过conda创建3.10虚拟环境)</td>
-    </tr>
-    <tr>
-        <td colspan="3">Nvidia Driver 版本</td>
-        <td>latest(专有驱动)</td>
-        <td>latest</td>
-        <td>None</td>
-    </tr>
-    <tr>
-        <td colspan="3">CUDA环境</td>
-        <td>自动安装[12.1(pytorch)+11.8(paddle)]</td>
-        <td>11.8(手动安装)+cuDNN v8.7.0(手动安装)</td>
-        <td>None</td>
-    </tr>
-    <tr>
-        <td rowspan="2">GPU硬件支持列表</td>
-        <td colspan="2">最低要求 8G+显存</td>
-        <td colspan="2">3060ti/3070/4060<br>
-        8G显存可开启layout、公式识别和ocr加速</td>
-        <td rowspan="2">None</td>
-    </tr>
-    <tr>
-        <td colspan="2">推荐配置 10G+显存</td>
-        <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-        10G显存及以上可以同时开启layout、公式识别和ocr加速和表格识别加速<br>
-        </td>
-    </tr>
-</table>
 
 ### 在线体验
 稳定版(经过QA验证的稳定版本)：
@@ -257,86 +178,8 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 }
 ```
 
-### 使用GPU
-
-如果您的设备支持CUDA，且满足主线环境中的显卡要求，则可以使用GPU加速，请根据自己的系统选择适合的教程：
-
-- [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
-- [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
-- 使用Docker快速部署
-> [!IMPORTANT]
-> Docker 需设备gpu显存大于等于16GB，默认开启所有加速功能
-> 
-> 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
-> 
-> ```bash
-> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-> ```
-  ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-  docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
-  magic-pdf --help
-  ```
-    
 
 ## 使用
-
-### 命令行
-
-```bash
-magic-pdf --help
-Usage: magic-pdf [OPTIONS]
-
-Options:
-  -v, --version                display the version and exit
-  -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir PATH        output local directory  [required]
-  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
-                               technique to extract information from pdf. txt:
-                               suitable for the text-based pdf only and
-                               outperform ocr. auto: automatically choose the
-                               best method for parsing pdf from ocr and txt.
-                               without method specified, auto will be used by
-                               default.
-  -l, --lang TEXT              Input the languages in the pdf (if known) to
-                               improve OCR accuracy.  Optional. You should
-                               input "Abbreviation" with language form url: ht
-                               tps://paddlepaddle.github.io/PaddleOCR/latest/en
-                               /ppocr/blog/multi_languages.html#5-support-languages-
-                               and-abbreviations
-  -d, --debug BOOLEAN          Enables detailed debugging information during
-                               the execution of the CLI commands.
-  -s, --start INTEGER          The starting page for PDF parsing, beginning
-                               from 0.
-  -e, --end INTEGER            The ending page for PDF parsing, beginning from
-                               0.
-  --help                       Show this message and exit.
-
-
-## show version
-magic-pdf -v
-
-## command line example
-magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
-```
-
-其中 `{some_pdf}` 可以是单个pdf文件，也可以是一个包含多个pdf文件的目录。
-运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
-
-```text
-├── some_pdf.md                          # markdown 文件
-├── images                               # 存放图片目录
-├── some_pdf_layout.pdf                  # layout 绘图 （包含layout阅读顺序）
-├── some_pdf_middle.json                 # minerU 中间处理结果
-├── some_pdf_model.json                  # 模型推理结果
-├── some_pdf_origin.pdf                  # 原 pdf 文件
-├── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
-└── some_pdf_content_list.json           # 按阅读顺序排列的富文本json
-```
-
-> [!TIP]
-> 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
 ### API
 
@@ -394,24 +237,6 @@ TODO
 - [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] 几何图形识别
 
-# Known Issues
-
-- 阅读顺序基于模型对可阅读内容在空间中的分布进行排序，在极端复杂的排版下可能会部分区域乱序
-- 不支持竖排文字
-- 目录和列表通过规则进行识别，少部分不常见的列表形式可能无法识别
-- 标题只有一级，目前不支持标题分级
-- 代码块在layout模型里还没有支持
-- 漫画书、艺术图册、小学教材、习题尚不能很好解析
-- 表格识别在复杂表格上可能会出现行/列识别错误
-- 在小语种PDF上，OCR识别可能会出现字符不准确的情况（如拉丁文的重音符号、阿拉伯文易混淆字符等）
-- 部分公式可能会无法在markdown中渲染
-
-# FAQ
-
-[常见问题](docs/FAQ_zh_cn.md)
-
-
-[FAQ](docs/FAQ_en_us.md)
 
 # All Thanks To Our Contributors
 

@@ -110,9 +110,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Quick Start
 
-If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
-If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
-There are three different ways to experience MinerU:
+There are multiple different ways to experience MinerU:
 
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
@@ -171,7 +169,6 @@ You can modify certain configurations in this file to enable or disable features
     }
 }
 ```
-
 
 ## Usage
 
