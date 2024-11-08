@@ -95,7 +95,7 @@ language = 'zh_CN'
 html_theme = 'sphinx_book_theme'
 html_logo = '_static/image/logo.png'
 html_theme_options = {
-    'path_to_docs': 'docs/zh_cn',
+    'path_to_docs': 'next_docs/zh_cn',
     'repository_url': 'https://github.com/opendatalab/MinerU',
     'use_repository_button': True,
 }
