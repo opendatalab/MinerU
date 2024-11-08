@@ -191,7 +191,7 @@ if __name__ == "__main__":
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
-                file = gr.File(label="Please upload a PDF or image", file_types=[".pdf", ".png", ".jpeg", "jpg"])
+                file = gr.File(label="Please upload a PDF or image", file_types=[".pdf", ".png", ".jpeg", ".jpg"])
                 max_pages = gr.Slider(1, 10, 5, step=1, label="Max convert pages")
                 with gr.Row():
                     layout_mode = gr.Dropdown(["layoutlmv3", "doclayout_yolo"], label="Layout model", value="layoutlmv3")
