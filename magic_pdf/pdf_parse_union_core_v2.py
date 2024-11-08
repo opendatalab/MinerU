@@ -298,7 +298,7 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
                 block['lines'].append({'bbox': line, 'spans': []})
             page_line_list.extend(lines)
 
-    if len(page_line_list) > 512:  # layoutreader最高支持512line
+    if len(page_line_list) > 200:  # layoutreader最高支持512line
         return None
 
     # 使用layoutreader排序
