@@ -5,3 +5,4 @@ weights:
   unimernet_small: MFR/unimernet_small
   struct_eqtable: TabRec/StructEqTable
   tablemaster: TabRec/TableMaster
+  rapid_table: TabRec/RapidTable

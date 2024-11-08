@@ -51,3 +51,5 @@ class MODEL_NAME:
     YOLO_V8_MFD = "yolo_v8_mfd"
 
     UniMerNet_v2_Small = "unimernet_small"
+
+    RAPID_TABLE = "rapid_table"
