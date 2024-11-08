@@ -1,0 +1,19 @@
+services:
+  minerugw:
+    build:
+      context: .
+    container_name: mineru-gw
+    ports:
+      - "8988:80"
+    volumes:
+      - ./api:/minerugw/:rw
+    environment:
+      TZ: Asia/Shanghai
+    command: sh -c "source /opt/mineru_venv/bin/activate; uvicorn app.main:app --host 0.0.0.0 --port 80"
+    restart: always
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
