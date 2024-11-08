@@ -15,7 +15,7 @@
         "enable": true
     },
     "table-config": {
-        "model": "tablemaster",
+        "model": "rapid_table",
         "enable": false,
         "max_time": 400
     },
