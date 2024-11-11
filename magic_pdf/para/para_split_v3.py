@@ -77,14 +77,12 @@ def __is_list_or_index_block(block):
 
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
         if (first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2 and
-                # block['bbox_fs'][2] - first_line['bbox'][2] < line_height and
                 abs(last_line['bbox'][0] - block['bbox_fs'][0]) < line_height / 2 and
                 block['bbox_fs'][2] - last_line['bbox'][2] > line_height
         ):
             multiple_para_flag = True
 
         for line in block['lines']:
-
             line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
             block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
             if (
@@ -102,13 +100,13 @@ def __is_list_or_index_block(block):
                 if span_type == ContentType.Text:
                     line_text += span['content'].strip()
 
+            # 添加所有文本，包括空行，保持与block['lines']长度一致
             lines_text_list.append(line_text)
 
             # 计算line左侧顶格数量是否大于2，是否顶格用abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height/2 来判断
             if abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height / 2:
                 left_close_num += 1
             elif line['bbox'][0] - block['bbox_fs'][0] > line_height:
-                # logger.info(f"{line_text}, {block['bbox_fs']}, {line['bbox']}")
                 left_not_close_num += 1
 
             # 计算右侧是否顶格
@@ -117,7 +115,6 @@ def __is_list_or_index_block(block):
             else:
                 # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
                 closed_area = 0.26 * block_weight
-                # closed_area = 5 * line_height
                 if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
                     right_not_close_num += 1
 
@@ -128,6 +125,7 @@ def __is_list_or_index_block(block):
         num_start_count = 0
         num_end_count = 0
         flag_end_count = 0
+
         if len(lines_text_list) > 0:
             for line_text in lines_text_list:
                 if len(line_text) > 0:
@@ -138,11 +136,10 @@ def __is_list_or_index_block(block):
                     if line_text[-1].isdigit():
                         num_end_count += 1
 
-            if flag_end_count / len(lines_text_list) >= 0.8:
-                line_end_flag = True
-
             if num_start_count / len(lines_text_list) >= 0.8 or num_end_count / len(lines_text_list) >= 0.8:
                 line_num_flag = True
+            if flag_end_count / len(lines_text_list) >= 0.8:
+                line_end_flag = True
 
         # 有的目录右侧不贴边, 目前认为左边或者右边有一边全贴边，且符合数字规则极为index
         if ((left_close_num / len(block['lines']) >= 0.8 or right_close_num / len(block['lines']) >= 0.8)
@@ -176,7 +173,7 @@ def __is_list_or_index_block(block):
                 # 这种是大部分line item 都有结束标识符的情况，按结束标识符区分不同item
                 elif line_end_flag:
                     for i, line in enumerate(block['lines']):
-                        if lines_text_list[i][-1] in LIST_END_FLAG:
+                        if len(lines_text_list[i]) > 0 and lines_text_list[i][-1] in LIST_END_FLAG:
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             if i + 1 < len(block['lines']):
                                 block['lines'][i + 1][ListLineTag.IS_LIST_START_LINE] = True
@@ -187,17 +184,18 @@ def __is_list_or_index_block(block):
                         if line_start_flag:
                             line[ListLineTag.IS_LIST_START_LINE] = True
                             line_start_flag = False
-                        # elif abs(block['bbox_fs'][2] - line['bbox'][2]) > line_height:
+
                         if abs(block['bbox_fs'][2] - line['bbox'][2]) > 0.1 * block_weight:
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             line_start_flag = True
-            # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_LINE 结尾且数量和start line 一致
-            elif num_start_count >= 2 and num_start_count == flag_end_count:  # 简单一点先不考虑左侧不贴边的情况
+            # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_FLAG 结尾且数量和start line 一致
+            elif num_start_count >= 2 and num_start_count == flag_end_count:
                 for i, line in enumerate(block['lines']):
-                    if lines_text_list[i][0].isdigit():
-                        line[ListLineTag.IS_LIST_START_LINE] = True
-                    if lines_text_list[i][-1] in LIST_END_FLAG:
-                        line[ListLineTag.IS_LIST_END_LINE] = True
+                    if len(lines_text_list[i]) > 0:
+                        if lines_text_list[i][0].isdigit():
+                            line[ListLineTag.IS_LIST_START_LINE] = True
+                        if lines_text_list[i][-1] in LIST_END_FLAG:
+                            line[ListLineTag.IS_LIST_END_LINE] = True
             else:
                 # 正常有缩进的list处理
                 for line in block['lines']:
