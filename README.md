@@ -1,8 +1,3 @@
- 
- <div align="left">
- <a href="https://mineru.readthedocs.io/en/latest/"> <img src="next_docs/en/_static/image/ReadTheDocs.svg"> </a>
-</div>
-
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
@@ -41,6 +36,12 @@
 
 <p align="center">
     👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+</p>
+
+
+<!-- read the docs -->
+<p align="center">
+    read more docs on  <a href="https://mineru.readthedocs.io/en/latest/"> Read The Docs </a>
 </p>
 
 </div>
