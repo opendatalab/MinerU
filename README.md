@@ -1,4 +1,7 @@
- <a href="https://mineru.readthedocs.io/en/latest/"> <img style="width: 200px; height: 200px"  src="next_docs/en/_static/image/ReadTheDocs.svg"> </a>
+ 
+ <div align="left">
+ <a href="https://mineru.readthedocs.io/en/latest/"> <img src="next_docs/en/_static/image/ReadTheDocs.svg"> </a>
+</div>
 
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
