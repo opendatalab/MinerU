@@ -1,36 +1,64 @@
 下载模型权重文件
-===============
+==================
 
 模型下载分为初始下载和更新到模型目录。请参考相应的文档以获取如何操作的指示。
 
-初始下载模型文件
---------------
-从 Hugging Face 下载模型
+首次下载模型文件
+-----------------
+
+模型文件可以从 Hugging Face 或 Model Scope下载，由于网络原因，国内用户访问HF可能会失败，请使用 ModelScope。
 
 
-使用 Python 脚本从 Hugging Face 下载模型文件
+方法一：从 Hugging Face 下载模型
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+使用python脚本 从Hugging Face下载模型文件
 
 .. code:: bash
 
    pip install huggingface_hub
-   wget https://github.com/opendatalab/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
+   wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
    python download_models_hf.py
 
-该 Python 脚本将自动下载模型文件，并在配置文件中配置模型目录。
+python脚本会自动下载模型文件并配置好配置文件中的模型目录
 
-配置文件可以在用户目录中找到，文件名为 ``magic-pdf.json``。
+方法二：从 ModelScope 下载模型
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-如何更新先前下载的模型
------------------------------------------
+使用python脚本 从ModelScope下载模型文件
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. 通过 Git LFS 下载的模型
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code:: bash
 
-   由于一些用户的反馈指出使用 git lfs 下载模型文件会出现不完整或导致模型文件损坏的情况，因此不再推荐使用这种方法。
+   pip install modelscope
+   wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py
+   python download_models.py
 
-如果您之前通过 git lfs 下载了模型文件，您可以导航到之前的下载目录并使用 ``git pull`` 命令来更新模型。
+python脚本会自动下载模型文件并配置好配置文件中的模型目录
 
-2. 通过 Hugging Face 或 ModelScope 下载的模型
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+配置文件可以在用户目录中找到，文件名为\ ``magic-pdf.json``
 
-如果您之前通过 Hugging Face 或 ModelScope 下载了模型，您可以重新运行用于初始下载的 Python 脚本。这将自动将模型目录更新到最新版本。
+.. admonition:: Tip
+    :class: tip
+
+    windows的用户目录为 “C:\Users\用户名”, linux用户目录为 “/home/用户名”, macOS用户目录为 “/Users/用户名”
+
+此前下载过模型，如何更新
+--------------------
+
+1. 通过git lfs下载过模型
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. admonition:: Important
+    :class: tip
+
+    由于部分用户反馈通过git lfs下载模型文件遇到下载不全和模型文件损坏情况，现已不推荐使用该方式下载。
+
+    0.9.x及以后版本由于PDF-Extract-Kit 1.0更换仓库和新增layout排序模型，不能通过 ``git pull``\命令更新，需要使用python脚本一键更新。
+
+当magic-pdf <= 0.8.1时，如此前通过 git lfs 下载过模型文件，可以进入到之前的下载目录中，通过 ``git pull`` 命令更新模型。
+
+2. 通过 Hugging Face 或 Model Scope 下载过模型
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+如此前通过 HuggingFace 或 Model Scope 下载过模型，可以重复执行此前的模型下载python脚本，将会自动将模型目录更新到最新版本。
