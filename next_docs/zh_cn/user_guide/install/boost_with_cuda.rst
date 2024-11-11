@@ -5,14 +5,16 @@
 
 -  :ref:`ubuntu_22_04_lts_section`
 -  :ref:`windows_10_or_11_section`
-
+-  使用 Docker 快速部署
+ 
 .. admonition:: Important
-   :class: warning
+    :class: tip
 
-   使用 Docker 快速部署 > Docker 需要至少 16GB 显存的 GPU，并且所有加速功能默认启用。
-   在运行此 Docker 容器之前，您可以使用以下命令检查您的设备是否支持 Docker 上的 CUDA 加速。
+    Docker 需要至少 16GB 显存的 GPU，并且所有加速功能默认启用。
+   
+    在运行此 Docker 容器之前，您可以使用以下命令检查您的设备是否支持 Docker 上的 CUDA 加速。
 
-   .. code-block:: sh
+    .. code-block:: sh
 
       bash  docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 
@@ -26,7 +28,7 @@
 
 .. _ubuntu_22_04_lts_section:
 
-Ubuntu 22.04 LT
+Ubuntu 22.04 LTS
 ----------------
 
 1.检查 NVIDIA 驱动程序是否已安装
@@ -37,7 +39,9 @@ Ubuntu 22.04 LT
 
 如果您看到类似以下的信息，则表示 NVIDIA 驱动程序已安装，可以跳过第 2 步。
 
-注意：“CUDA 版本”应 >= 12.1，如果显示的版本号小于 12.1，请升级驱动程序。
+.. note::
+
+   ``CUDA 版本`` 应 >= 12.1，如果显示的版本号小于 12.1，请升级驱动程序。
 
 .. code:: text
 
@@ -99,7 +103,10 @@ Ubuntu 22.04 LT
 
    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
-❗ 安装完成后，请确保使用以下命令检查 ``magic-pdf`` 的版本：
+.. admonition:: Important
+    :class: tip
+
+    ❗ 安装完成后，请确保使用以下命令检查 ``magic-pdf`` 的版本：
 
 .. code:: sh
 
@@ -117,7 +124,10 @@ Ubuntu 22.04 LT
 
 完成 `6. 下载模型 <#6-download-models>`__ 步骤后，脚本将自动在用户目录中生成一个 ``magic-pdf.json`` 文件并配置默认模型路径。您可以在用户目录中找到 ``magic-pdf.json`` 文件。
 
-   Linux 用户目录是 “/home/用户名”。
+.. admonition:: Tip
+    :class: tip
+   
+    Linux 用户目录是 “/home/用户名”。
 
 8. 首次运行
 ~~~~~~~~~~~~
@@ -148,6 +158,11 @@ Ubuntu 22.04 LT
 
       magic-pdf -p small_ocr.pdf -o ./output
 
+.. admonition:: Tip
+    :class: tip
+
+    CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，``layout detection cost`` 和 ``mfr time`` 应提速10倍以上。
+
 10. 启用 OCR 的 CUDA 加速
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -162,6 +177,11 @@ Ubuntu 22.04 LT
    .. code:: sh
 
       magic-pdf -p small_ocr.pdf -o ./output
+
+.. admonition:: Tip
+    :class: tip
+
+    CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下， ``ocr cost`` 应提速10倍以上。
 
 .. _windows_10_or_11_section:
 
@@ -189,7 +209,7 @@ Windows 10/11
 
 Python 版本必须是 3.10。
 
-::
+.. code:: bash
 
    conda create -n MinerU python=3.10
    conda activate MinerU
@@ -201,14 +221,16 @@ Python 版本必须是 3.10。
 
    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
+.. admonition:: Important
+    :class: tip
 
-❗️安装完成后，请验证 ``magic-pdf`` 的版本：
+    ❗️安装完成后，请验证 ``magic-pdf`` 的版本：
 
-.. code:: bash
+    .. code:: bash
 
       magic-pdf --version
 
-如果版本号小于 0.7.0，请在问题部分报告。
+    如果版本号小于 0.7.0，请在问题部分报告。
 
 5. 下载模型
 ~~~~~~~~~~~~~~~~~~
@@ -220,7 +242,10 @@ Python 版本必须是 3.10。
 
 完成 `5. 下载模型 <#5-download-models>__` 步骤后，脚本将自动在用户目录中生成一个 magic-pdf.json 文件并配置默认模型路径。您可以在【用户目录】中找到 magic-pdf.json 文件。
 
-Windows 用户目录是 “C:/Users/用户名”。
+.. admonition:: Tip
+    :class: tip
+
+    Windows 用户目录是 “C:/Users/用户名”。
 
 7. 首次运行
 ~~~~~~~~~~
@@ -244,15 +269,16 @@ Windows 用户目录是 “C:/Users/用户名”。
 
    pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 
-..
+.. admonition:: Important
+    :class: tip
 
-   ❗️务必在命令中指定以下版本
+    ❗️务必在命令中指定以下版本
 
-   .. code:: bash
+    .. code:: bash
 
       torch==2.3.1 torchvision==0.18.1
 
-   这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
+    这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
 
 **2.修改【用户目录】中配置文件magic-pdf.json中”device-mode”的值**
 
@@ -268,10 +294,10 @@ Windows 用户目录是 “C:/Users/用户名”。
 
    magic-pdf -p small_ocr.pdf -o ./output
 
-..
+.. admonition:: Tip
+    :class: tip
 
-   提示：CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下，\ ``layout detection time``
-   和 ``mfr time`` 应提速10倍以上。
+    提示：CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下，\ ``layout detection time`` 和 ``mfr time`` 应提速10倍以上。
 
 9. 为ocr开启cuda加速
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -288,6 +314,7 @@ Windows 用户目录是 “C:/Users/用户名”。
 
    magic-pdf -p small_ocr.pdf -o ./output
 
-..
+.. admonition:: Tip
+    :class: tip   
 
-提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，\ ``ocr time``\ 应提速10倍以上。
+    提示：CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，\ ``ocr time``\ 应提速10倍以上。
