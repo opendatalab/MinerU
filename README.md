@@ -38,6 +38,12 @@
     👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 
+
+<!-- read the docs -->
+<p align="center">
+    read more docs on  <a href="https://mineru.readthedocs.io/en/latest/"> Read The Docs </a>
+</p>
+
 </div>
 
 # Changelog
