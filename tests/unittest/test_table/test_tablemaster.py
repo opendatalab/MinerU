@@ -6,10 +6,10 @@ from magic_pdf.model.ppTableModel import ppTableModel
 
 class TestppTableModel(unittest.TestCase):
     def test_image2html(self):
-        img = Image.open("tests/test_table/assets/table.jpg")
+        img = Image.open("tests/unittest/test_table/assets/table.jpg")
         # 修改table模型路径
         config = {"device": "cuda",
-                  "model_dir": "D:/models/PDF-Extract-Kit/models/TabRec/TableMaster"}
+                  "model_dir": "/home/quyuan/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models/TabRec/TableMaster"}
         table_model = ppTableModel(config)
         res = table_model.img2html(img)
         # 验证生成的 HTML 是否符合预期
