@@ -7,4 +7,3 @@
    api/read_api
    api/schemas
    api/io
-   api/classes

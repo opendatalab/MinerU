@@ -201,4 +201,4 @@ Write Examples
     s3_writer1.write('s3://test_bucket/efg', '123'.encode())
 
 
-Check :doc:`../../api/classes` for more intuitions or check :doc:`../../api/data_reader_writer` for more details
+Check :doc:`../../api/data_reader_writer` for more details
