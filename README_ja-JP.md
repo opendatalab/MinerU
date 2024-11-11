@@ -18,9 +18,9 @@
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 200px; height: 55px;"/></a>
 
 
-<div align="center" style="color: red; background-color: #ffdddd; padding: 10px; border: 1px solid red; border-radius: 5px;">
-  <strong>NOTE：</strong> このドキュメントはすでに古くなっています。最新版のドキュメントを参照してください。
-</div>
+> [!Warning]
+> このドキュメントはすでに古くなっています。最新版のドキュメントを参照してください。
+
 
 
 [English](README.md) | [简体中文](README_zh-CN.md) | [日本語](README_ja-JP.md)

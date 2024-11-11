@@ -163,7 +163,7 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "tablemaster",  // When using structEqTable, please change to "struct_eqtable".
+        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
         "enable": false, // The table recognition feature is disabled by default. If you need to enable it, please change the value here to "true".
         "max_time": 400
     }
