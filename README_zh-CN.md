@@ -20,6 +20,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
 [![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/abs/2409.18839)
 
+
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
@@ -253,6 +254,7 @@ TODO
 # Acknowledgments
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
+- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)

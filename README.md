@@ -20,6 +20,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
 [![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/abs/2409.18839)
 
+
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
@@ -147,6 +148,7 @@ You can find the `magic-pdf.json` file in your 【user directory】.
 > The user directory for Windows is "C:\\Users\\username", for Linux it is "/home/username", and for macOS it is "/Users/username".
 
 You can modify certain configurations in this file to enable or disable features, such as table recognition:
+
 
 > [!NOTE]
 > If the following items are not present in the JSON, please manually add the required items and remove the comment content (standard JSON does not support comments).

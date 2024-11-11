@@ -77,6 +77,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ## 6. 下载模型
 
+
 详细参考 [如何下载模型文件](how_to_download_models_zh_cn.md)
 
 ## 7. 了解配置文件存放的位置

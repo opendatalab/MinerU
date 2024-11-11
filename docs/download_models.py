@@ -1,3 +1,4 @@
+
 import json
 import os
 
@@ -21,6 +22,7 @@ def download_and_modify_json(url, local_filename, modifications):
     else:
         data = download_json(url)
 
+
     # 修改内容
     for key, value in modifications.items():
         data[key] = value
@@ -31,6 +33,7 @@ def download_and_modify_json(url, local_filename, modifications):
 
 
 if __name__ == '__main__':
+
     mineru_patterns = [
         "models/Layout/LayoutLMv3/*",
         "models/Layout/YOLO/*",
@@ -48,6 +51,7 @@ if __name__ == '__main__':
     json_url = 'https://gitee.com/myhloli/MinerU/raw/dev/magic-pdf.template.json'
     config_file_name = 'magic-pdf.json'
     home_dir = os.path.expanduser('~')
+
     config_file = os.path.join(home_dir, config_file_name)
 
     json_mods = {
@@ -56,4 +60,6 @@ if __name__ == '__main__':
     }
 
     download_and_modify_json(json_url, config_file, json_mods)
+
     print(f'The configuration file has been configured successfully, the path is: {config_file}')
+
