@@ -171,7 +171,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
         "enable": true  // 公式识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
     },
     "table-config": {
-        "model": "tablemaster",  // 使用structEqTable请修改为"struct_eqtable"
+        "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
         "enable": false, // 表格识别功能默认是关闭的，如果需要开启请修改此处的值为"true"
         "max_time": 400
     }
