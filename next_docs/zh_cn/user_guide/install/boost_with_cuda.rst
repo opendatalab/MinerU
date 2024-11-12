@@ -30,14 +30,14 @@
 
 Ubuntu 22.04 LTS
 ----------------
-1. 检测是否已安装nvidia驱动
+1. 检测是否已安装 nvidia 驱动
 ---------------------------
 
 .. code:: bash
 
    nvidia-smi
 
-如果看到类似如下的信息，说明已经安装了nvidia驱动，可以跳过步骤2
+如果看到类似如下的信息，说明已经安装了 nvidia 驱动，可以跳过步骤2
 
 .. admonition:: Important
     :class: tip
@@ -74,10 +74,10 @@ Ubuntu 22.04 LTS
 
    reboot
 
-3. 安装anacoda
+3. 安装 anacoda
 --------------
 
-如果已安装conda，可以跳过本步骤
+如果已安装 conda，可以跳过本步骤
 
 .. code:: bash
 
@@ -86,10 +86,10 @@ Ubuntu 22.04 LTS
 
 最后一步输入yes，关闭终端重新打开
 
-4. 使用conda 创建环境
+4. 使用 conda 创建环境
 ---------------------
 
-需指定python版本为3.10
+需指定 python 版本为3.10
 
 .. code:: bash
 
@@ -145,7 +145,7 @@ Ubuntu 22.04 LTS
 如果您的显卡显存大于等于 **8GB**
 ，可以进行以下流程，测试CUDA解析加速效果
 
-**1.修改【用户目录】中配置文件magic-pdf.json中”device-mode”的值**
+**1.修改【用户目录】中配置文件 magic-pdf.json 中”device-mode”的值**
 
 .. code:: json
 
@@ -153,7 +153,7 @@ Ubuntu 22.04 LTS
      "device-mode":"cuda"
    }
 
-**2.运行以下命令测试cuda加速效果**
+**2.运行以下命令测试 cuda 加速效果**
 
 .. code:: bash
 
@@ -163,9 +163,9 @@ Ubuntu 22.04 LTS
 .. admonition:: Tip
     :class: tip
 
-    CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下， ``layout detection cost`` 和 ``mfr time`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``layout detection cost`` 和 ``mfr time`` 应提速10倍以上。
 
-10. 为ocr开启cuda加速
+10. 为 ocr 开启 cuda 加速
 ---------------------
 
 **1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
@@ -183,7 +183,7 @@ Ubuntu 22.04 LTS
 .. admonition:: Tip
     :class: tip
 
-    CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下， ``ocr cost`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``ocr cost`` 应提速10倍以上。
 
 
 .. _windows_10_or_11_section:
@@ -191,7 +191,7 @@ Ubuntu 22.04 LTS
 Windows 10/11
 --------------
 
-1. 安装cuda和cuDNN
+1. 安装 cuda 和 cuDNN
 ------------------
 
 需要安装的版本 CUDA 11.8 + cuDNN 8.7.0
@@ -199,14 +199,14 @@ Windows 10/11
 -  CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
 -  cuDNN v8.7.0 (November 28th, 2022), for CUDA 11.x https://developer.nvidia.com/rdp/cudnn-archive
 
-2. 安装anaconda
+2. 安装 anaconda
 ---------------
 
-如果已安装conda，可以跳过本步骤
+如果已安装 conda，可以跳过本步骤
 
 下载链接：https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-2024.06-1-Windows-x86_64.exe
 
-3. 使用conda 创建环境
+3. 使用 conda 创建环境
 ---------------------
 
 需指定python版本为3.10
@@ -242,12 +242,12 @@ Windows 10/11
 6. 了解配置文件存放的位置
 -------------------------
 
-完成\ `5.下载模型 <#5-下载模型>`__\ 步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。您可在【用户目录】下找到magic-pdf.json文件。
+完成\ `5.下载模型 <#5-下载模型>`__\ 步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。您可在【用户目录】下找到 magic-pdf.json 文件。
 
 .. admonition:: Tip
     :class: tip
 
-    windows用户目录为 “C:/Users/用户名”
+    windows 用户目录为 “C:/Users/用户名”
 
 7. 第一次运行
 -------------
@@ -259,10 +259,10 @@ Windows 10/11
     wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
     magic-pdf -p small_ocr.pdf -o ./output
 
-8. 测试CUDA加速
+8. 测试 CUDA 加速
 ---------------
 
-如果您的显卡显存大于等于 **8GB**，可以进行以下流程，测试CUDA解析加速效果
+如果您的显卡显存大于等于 **8GB**，可以进行以下流程，测试 CUDA 解析加速效果
 
 **1.覆盖安装支持cuda的torch和torchvision**
 
@@ -298,9 +298,9 @@ Windows 10/11
 .. admonition:: Tip
     :class: tip
 
-    CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下， ``layout detection time`` 和 ``mfr time`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段的耗时来简单判断，通常情况下， ``layout detection time`` 和 ``mfr time`` 应提速10倍以上。
 
-9. 为ocr开启cuda加速
+9. 为 ocr 开启 cuda 加速
 --------------------
 
 **1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
@@ -318,4 +318,4 @@ Windows 10/11
 .. admonition:: Tip
     :class: tip
 
-    CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下， ``ocr time`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``ocr time`` 应提速10倍以上。
