@@ -12,7 +12,11 @@ matplotlib
 ultralytics
 paddleocr==2.7.3
 paddlepaddle==3.0.0b1
-pypandoc
-struct-eqtable==0.1.0
+struct-eqtable==0.3.2
+einops
+accelerate
+doclayout_yolo==0.0.2
+rapidocr-paddle
+rapid_table
 doclayout-yolo==0.0.2
 detectron2
