@@ -6,10 +6,11 @@ services:
     ports:
       - "8988:80"
     volumes:
-      - ./api:/minerugw/:rw
+      - ./api:/minerugw/app:rw
     environment:
       TZ: Asia/Shanghai
-    command: sh -c "source /opt/mineru_venv/bin/activate; uvicorn app.main:app --host 0.0.0.0 --port 80"
+    #command: /bin/bash -c "source /opt/mineru_venv/bin/activate; cd /minerugw/; uvicorn app.main:app --host 0.0.0.0 --port 80"
+    command: /bin/bash -c "source /opt/mineru_venv/bin/activate; cd /minerugw/; uvicorn app.main:app --host 0.0.0.0 --port 80"
     restart: always
     networks:
       - default
