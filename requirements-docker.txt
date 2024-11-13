@@ -20,3 +20,4 @@ rapidocr-paddle
 rapid_table
 doclayout-yolo==0.0.2
 detectron2
+modelscope
