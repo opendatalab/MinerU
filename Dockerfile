@@ -42,7 +42,7 @@ RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.tem
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
-    wget https://gitee.com/myhloli/MinerU/raw/master/docs/download_models.py && \
+    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
