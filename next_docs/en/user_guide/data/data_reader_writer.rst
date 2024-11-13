@@ -87,6 +87,8 @@ Read Examples
 
 .. code:: python
 
+    from magic_pdf.data.data_reader_writer import *
+
     # file based related 
     file_based_reader1 = FileBasedDataReader('')
 
@@ -141,6 +143,8 @@ Write Examples
 ---------------
 
 .. code:: python
+
+    from magic_pdf.data.data_reader_writer import *
 
     # file based related 
     file_based_writer1 = FileBasedDataWriter('')

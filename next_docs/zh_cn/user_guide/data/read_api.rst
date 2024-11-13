@@ -15,6 +15,8 @@ read_jsonl
 
 .. code:: python
 
+    from magic_pdf.data.io.read_api import *
+
     # 从本地机器读取 JSONL
     datasets = read_jsonl("tt.jsonl", None)
 
@@ -28,6 +30,8 @@ read_local_pdfs
 
 .. code:: python
 
+    from magic_pdf.data.io.read_api import *
+
     # 读取 PDF 路径
     datasets = read_local_pdfs("tt.pdf")
 
@@ -40,6 +44,8 @@ read_local_images
 从路径或目录读取图像。
 
 .. code:: python
+
+    from magic_pdf.data.io.read_api import *
 
     # 从图像路径读取
     datasets = read_local_images("tt.png")
