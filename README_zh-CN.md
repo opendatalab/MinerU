@@ -429,6 +429,7 @@ TODO
 # Acknowledgments
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
+- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
