@@ -1,12 +1,14 @@
 services:
-  minerugw-02:
+  mineru-gw:
     build:
       context: .
-    container_name: mineru-gw-02
+    depends_on:
+      - redis
+    container_name: mineru-gw
     ports:
-      - "8988:80"
+      - "8910:80"
     volumes:
-      - ./api:/minerugw/app:rw
+      - ./services/fastapi/app:/minerugw/app:rw
     deploy:
       resources:
         reservations:
@@ -18,6 +20,21 @@ services:
       TZ: Asia/Shanghai
     command: ["/minerugw/app/start.sh"]
     restart: always
+    networks:
+      - default
+
+  redis:
+    image: redis:7.2.4
+    container_name: redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./services/redis/conf/redis.conf:/etc/redis.conf:ro
+      - ./services/redis/conf/:/data/:rw
+    restart: always
+    entrypoint: ["redis-server", "/etc/redis.conf"]
+    environment:
+      TZ: Asia/Shanghai
     networks:
       - default
 

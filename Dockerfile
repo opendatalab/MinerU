@@ -50,6 +50,7 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
+# install extents
 COPY requirements-fastapi.txt /minerugw/requirements-fastapi.txt
 
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
