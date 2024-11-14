@@ -1,16 +1,22 @@
 services:
-  minerugw:
+  minerugw-02:
     build:
       context: .
-    container_name: mineru-gw
+    container_name: mineru-gw-02
     ports:
       - "8988:80"
     volumes:
       - ./api:/minerugw/app:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       TZ: Asia/Shanghai
-    #command: /bin/bash -c "source /opt/mineru_venv/bin/activate; cd /minerugw/; uvicorn app.main:app --host 0.0.0.0 --port 80"
-    command: /bin/bash -c "source /opt/mineru_venv/bin/activate; cd /minerugw/; uvicorn app.main:app --host 0.0.0.0 --port 80"
+    command: ["/minerugw/app/start.sh"]
     restart: always
     networks:
       - default

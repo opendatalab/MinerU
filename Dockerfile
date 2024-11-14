@@ -56,4 +56,4 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install -r /minerugw/requirements-fastapi.txt"
 
 # Set the entry point to activate the virtual environment and run the command line tool
-ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]
+CMD ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]
