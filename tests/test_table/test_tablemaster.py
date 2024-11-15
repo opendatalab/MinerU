@@ -2,15 +2,16 @@ import unittest
 from PIL import Image
 from lxml import etree
 
-from magic_pdf.model.ppTableModel import ppTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
+
 
 class TestppTableModel(unittest.TestCase):
     def test_image2html(self):
         img = Image.open("tests/test_table/assets/table.jpg")
         # 修改table模型路径
         config = {"device": "cuda",
-                  "model_dir": "D:/models/PDF-Extract-Kit/models/TabRec/TableMaster"}
-        table_model = ppTableModel(config)
+                  "model_dir": "/home/quyuan/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models/TabRec/TableMaster"}
+        table_model = TableMasterPaddleModel(config)
         res = table_model.img2html(img)
         # 验证生成的 HTML 是否符合预期
         parser = etree.HTMLParser()
@@ -45,7 +46,8 @@ class TestppTableModel(unittest.TestCase):
         # 检查倒数第二行数据
         second_last_row = tree.xpath('//tbody/tr[position()=last()-1]/td')
         assert len(second_last_row) == 5, "second_last_row should have 5 cells"
-        assert second_last_row[0].text and second_last_row[0].text.strip() == "Ours (SynText)", "First cell should be 'Ours (SynText)'"
+        assert second_last_row[0].text and second_last_row[
+            0].text.strip() == "Ours (SynText)", "First cell should be 'Ours (SynText)'"
         assert second_last_row[1].text and second_last_row[1].text.strip() == "80.68", "Second cell should be '80.68'"
         assert second_last_row[2].text and second_last_row[2].text.strip() == "85.40", "Third cell should be '85.40'"
         assert second_last_row[3].text and second_last_row[3].text.strip() == "82.97", "Fourth cell should be '82.97'"

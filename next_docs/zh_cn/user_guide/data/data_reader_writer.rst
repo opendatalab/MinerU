@@ -73,6 +73,8 @@ S3DataReader 基于 MultiBucketS3DataReader 构建，但仅支持单个桶。S3D
 ---------
 .. code:: python
 
+    from magic_pdf.data.data_reader_writer import * 
+
     # 文件相关的
     file_based_reader1 = FileBasedDataReader('')
 
@@ -125,6 +127,8 @@ S3DataReader 基于 MultiBucketS3DataReader 构建，但仅支持单个桶。S3D
 写入示例
 ----------
 .. code:: python
+
+    from magic_pdf.data.data_reader_writer import *
 
     # 文件相关的
     file_based_writer1 = FileBasedDataWriter('')

@@ -19,9 +19,10 @@ def json_md_dump(
         pdf_name,
         content_list,
         md_content,
+        orig_model_list,
 ):
     # 写入模型结果到 model.json
-    orig_model_list = copy.deepcopy(pipe.model_list)
+
     md_writer.write(
         content=json.dumps(orig_model_list, ensure_ascii=False, indent=4),
         path=f"{pdf_name}_model.json"
@@ -87,9 +88,12 @@ def pdf_parse_main(
 
         pdf_bytes = open(pdf_path, "rb").read()  # 读取 pdf 文件的二进制数据
 
+        orig_model_list = []
+
         if model_json_path:
             # 读取已经被模型解析后的pdf文件的 json 原始数据，list 类型
             model_json = json.loads(open(model_json_path, "r", encoding="utf-8").read())
+            orig_model_list = copy.deepcopy(model_json)
         else:
             model_json = []
 
@@ -115,8 +119,9 @@ def pdf_parse_main(
         pipe.pipe_classify()
 
         # 如果没有传入模型数据，则使用内置模型解析
-        if not model_json:
+        if len(model_json) == 0:
             pipe.pipe_analyze()  # 解析
+            orig_model_list = copy.deepcopy(pipe.model_list)
 
         # 执行解析
         pipe.pipe_parse()
@@ -126,7 +131,7 @@ def pdf_parse_main(
         md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode="none")
 
         if is_json_md_dump:
-            json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
+            json_md_dump(pipe, md_writer, pdf_name, content_list, md_content, orig_model_list)
 
         if is_draw_visualization_bbox:
             draw_visualization_bbox(pipe.pdf_mid_data['pdf_info'], pdf_bytes, output_path, pdf_name)

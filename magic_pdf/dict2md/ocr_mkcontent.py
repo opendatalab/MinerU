@@ -168,7 +168,7 @@ def merge_para_with_text(para_block):
                         # 如果是前一行带有-连字符，那么末尾不应该加空格
                         if __is_hyphen_at_line_end(content):
                             para_text += content[:-1]
-                        elif len(content) == 1 and content not in ['A', 'I', 'a', 'i']:
+                        elif len(content) == 1 and content not in ['A', 'I', 'a', 'i'] and not content.isdigit():
                             para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f"{content} "
