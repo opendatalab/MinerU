@@ -7,7 +7,7 @@ from PIL import Image
 import numpy as np
 
 
-class ppTableModel(object):
+class TableMasterPaddleModel(object):
     """
         This class is responsible for converting image of table into HTML format using a pre-trained model.
 

@@ -2,7 +2,7 @@ import unittest
 from PIL import Image
 from lxml import etree
 
-from magic_pdf.model.ppTableModel import ppTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import ppTableModel
 
 
 class TestppTableModel(unittest.TestCase):

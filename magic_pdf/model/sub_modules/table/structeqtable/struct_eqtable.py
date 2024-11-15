@@ -1,7 +1,7 @@
-import re
-
 import torch
 from struct_eqtable import build_model
+
+from magic_pdf.model.sub_modules.table.table_utils import minify_html
 
 
 class StructTableModel:
@@ -31,15 +31,7 @@ class StructTableModel:
         )
 
         if output_format == "html":
-            results = [self.minify_html(html) for html in results]
+            results = [minify_html(html) for html in results]
 
         return results
 
-    def minify_html(self, html):
-        # 移除多余的空白字符
-        html = re.sub(r'\s+', ' ', html)
-        # 移除行尾的空白字符
-        html = re.sub(r'\s*>\s*', '>', html)
-        # 移除标签前的空白字符
-        html = re.sub(r'\s*<\s*', '<', html)
-        return html.strip()
