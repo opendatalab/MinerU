@@ -1,5 +1,7 @@
 import json
 import re
+import os
+import shutil
 import traceback
 from pathlib import Path
 from flask import current_app, url_for
@@ -7,7 +9,7 @@ from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.pipe.UNIPipe import UNIPipe
 import magic_pdf.model as model_config
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.dict2md.ocr_mkcontent import ocr_mk_mm_markdown_with_para_and_pagination
+from common.mk_markdown.mk_markdown import ocr_mk_mm_markdown_with_para_and_pagination
 from .ext import find_file
 from ..extentions import app, db
 from .models import AnalysisPdf, AnalysisTask
@@ -17,7 +19,7 @@ from loguru import logger
 model_config.__use_inside_model__ = True
 
 
-def analysis_pdf(image_dir, pdf_bytes, is_ocr=False):
+def analysis_pdf(image_url_prefix, image_dir, pdf_bytes, is_ocr=False):
     try:
         model_json = []  # model_json传空list使用内置模型解析
         logger.info(f"is_ocr: {is_ocr}")
@@ -40,7 +42,7 @@ def analysis_pdf(image_dir, pdf_bytes, is_ocr=False):
         pipe.pipe_parse()
         pdf_mid_data = JsonCompressor.decompress_json(pipe.get_compress_pdf_mid_data())
         pdf_info_list = pdf_mid_data["pdf_info"]
-        md_content = json.dumps(ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_list, image_dir),
+        md_content = json.dumps(ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_list, image_url_prefix),
                                 ensure_ascii=False)
         bbox_info = get_bbox_info(pdf_info_list)
         return md_content, bbox_info
@@ -77,20 +79,22 @@ def analysis_pdf_task(pdf_dir, image_dir, pdf_path, is_ocr, analysis_pdf_id):
         logger.info(f"image_dir: {image_dir}")
         if not Path(image_dir).exists():
             Path(image_dir).mkdir(parents=True, exist_ok=True)
+        else:
+            # 清空image_dir，避免同文件多次解析图片积累
+            shutil.rmtree(image_dir, ignore_errors=True)
+            os.makedirs(image_dir, exist_ok=True)
+
+        # 获取文件内容
         with open(pdf_path, 'rb') as file:
             pdf_bytes = file.read()
-        md_content, bbox_info = analysis_pdf(image_dir, pdf_bytes, is_ocr)
-        img_list = Path(image_dir).glob('*') if Path(image_dir).exists() else []
-
-        pdf_name = Path(pdf_path).name
+        # 生成图片链接
         with app.app_context():
-            for img in img_list:
-                img_name = Path(img).name
-                regex = re.compile(fr'.*\((.*?{img_name})')
-                regex_result = regex.search(md_content)
-                if regex_result:
-                    img_url = url_for('analysis.imgview', filename=img_name, as_attachment=False)
-                    md_content = md_content.replace(regex_result.group(1), f"{img_url}&pdf={pdf_name}")
+            image_url_prefix = f"http://{current_app.config['SERVER_NAME']}{current_app.config['FILE_API']}&pdf={Path(pdf_path).name}&filename="
+        # 解析文件
+        md_content, bbox_info = analysis_pdf(image_url_prefix, image_dir, pdf_bytes, is_ocr)
+
+        # ############ markdown #############
+        pdf_name = Path(pdf_path).name
 
         full_md_content = ""
         for item in json.loads(md_content):
