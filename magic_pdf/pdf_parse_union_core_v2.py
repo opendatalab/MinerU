@@ -164,8 +164,8 @@ class ModelSingleton:
 
 
 def do_predict(boxes: List[List[int]], model) -> List[int]:
-    from magic_pdf.model.v3.helpers import (boxes2inputs, parse_logits,
-                                            prepare_inputs)
+    from magic_pdf.model.sub_modules.reading_oreder.layoutreader.helpers import (boxes2inputs, parse_logits,
+                                                                                 prepare_inputs)
 
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
@@ -206,7 +206,7 @@ def cal_block_index(fix_blocks, sorted_bboxes):
                 del block['real_lines']
 
         import numpy as np
-        from magic_pdf.model.v3.xycut import recursive_xy_cut
+        from magic_pdf.model.sub_modules.reading_oreder.layoutreader.xycut import recursive_xy_cut
 
         random_boxes = np.array(block_bboxes)
         np.random.shuffle(random_boxes)
