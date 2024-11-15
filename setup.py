@@ -47,6 +47,9 @@ if __name__ == '__main__':
                      "einops",  # struct-eqtable依赖
                      "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2",  # doclayout_yolo
+                     "rapidocr-paddle",  # rapidocr-paddle
+                     "rapid_table",  # rapid_table
+                     "PyYAML",  # yaml
                      "detectron2"
                      ],
         },

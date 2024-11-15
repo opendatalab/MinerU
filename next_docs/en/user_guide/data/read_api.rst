@@ -18,6 +18,8 @@ Read the contet from jsonl which may located on local machine or remote s3. if y
 
 .. code:: python
 
+    from magic_pdf.data.io.read_api import *
+
     # read jsonl from local machine 
     datasets = read_jsonl("tt.jsonl", None)
 
@@ -33,6 +35,8 @@ Read pdf from path or directory.
 
 .. code:: python
 
+    from magic_pdf.data.io.read_api import *
+
     # read pdf path
     datasets = read_local_pdfs("tt.pdf")
 
@@ -47,9 +51,10 @@ Read images from path or directory
 
 .. code:: python 
 
+    from magic_pdf.data.io.read_api import *
+
     # read from image path 
     datasets = read_local_images("tt.png")
-
 
     # read files from directory that endswith suffix in suffixes array 
     datasets = read_local_images("images/", suffixes=["png", "jpg"])

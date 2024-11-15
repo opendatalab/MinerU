@@ -87,6 +87,8 @@ Read Examples
 
 .. code:: python
 
+    from magic_pdf.data.data_reader_writer import *
+
     # file based related 
     file_based_reader1 = FileBasedDataReader('')
 
@@ -141,6 +143,8 @@ Write Examples
 ---------------
 
 .. code:: python
+
+    from magic_pdf.data.data_reader_writer import *
 
     # file based related 
     file_based_writer1 = FileBasedDataWriter('')
@@ -201,4 +205,4 @@ Write Examples
     s3_writer1.write('s3://test_bucket/efg', '123'.encode())
 
 
-Check :doc:`../../api/classes` for more intuitions or check :doc:`../../api/data_reader_writer` for more details
+Check :doc:`../../api/data_reader_writer` for more details

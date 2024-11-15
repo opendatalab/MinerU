@@ -36,5 +36,5 @@ Extract chars via third-party library, currently we use ``pymupdf``.
 
 
 
-Check :doc:`../../api/classes` for more intuitions or check :doc:`../../api/dataset` for more details
+Check :doc:`../../api/dataset` for more details
 

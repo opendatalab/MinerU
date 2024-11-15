@@ -30,8 +30,8 @@ from magic_pdf.pre_proc.equations_replace import (
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
     ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
-                                               fix_block_spans,
-                                               fix_discarded_block, fix_block_spans_v2)
+                                               fix_discarded_block,
+                                               fix_block_spans_v2)
 from magic_pdf.pre_proc.ocr_span_list_modify import (
     get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
     remove_overlaps_min_spans)
@@ -164,8 +164,8 @@ class ModelSingleton:
 
 
 def do_predict(boxes: List[List[int]], model) -> List[int]:
-    from magic_pdf.model.v3.helpers import (boxes2inputs, parse_logits,
-                                            prepare_inputs)
+    from magic_pdf.model.sub_modules.reading_oreder.layoutreader.helpers import (boxes2inputs, parse_logits,
+                                                                                 prepare_inputs)
 
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
@@ -174,23 +174,57 @@ def do_predict(boxes: List[List[int]], model) -> List[int]:
 
 
 def cal_block_index(fix_blocks, sorted_bboxes):
-    for block in fix_blocks:
 
-        line_index_list = []
-        if len(block['lines']) == 0:
-            block['index'] = sorted_bboxes.index(block['bbox'])
-        else:
+    if sorted_bboxes is not None:
+        # 使用layoutreader排序
+        for block in fix_blocks:
+            line_index_list = []
+            if len(block['lines']) == 0:
+                block['index'] = sorted_bboxes.index(block['bbox'])
+            else:
+                for line in block['lines']:
+                    line['index'] = sorted_bboxes.index(line['bbox'])
+                    line_index_list.append(line['index'])
+                median_value = statistics.median(line_index_list)
+                block['index'] = median_value
+
+            # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
+            if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
+                block['virtual_lines'] = copy.deepcopy(block['lines'])
+                block['lines'] = copy.deepcopy(block['real_lines'])
+                del block['real_lines']
+    else:
+        # 使用xycut排序
+        block_bboxes = []
+        for block in fix_blocks:
+            block_bboxes.append(block['bbox'])
+
+            # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
+            if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
+                block['virtual_lines'] = copy.deepcopy(block['lines'])
+                block['lines'] = copy.deepcopy(block['real_lines'])
+                del block['real_lines']
+
+        import numpy as np
+        from magic_pdf.model.sub_modules.reading_oreder.layoutreader.xycut import recursive_xy_cut
+
+        random_boxes = np.array(block_bboxes)
+        np.random.shuffle(random_boxes)
+        res = []
+        recursive_xy_cut(np.asarray(random_boxes).astype(int), np.arange(len(block_bboxes)), res)
+        assert len(res) == len(block_bboxes)
+        sorted_boxes = random_boxes[np.array(res)].tolist()
+
+        for i, block in enumerate(fix_blocks):
+            block['index'] = sorted_boxes.index(block['bbox'])
+
+        # 生成line index
+        sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
+        line_inedx = 1
+        for block in sorted_blocks:
             for line in block['lines']:
-                line['index'] = sorted_bboxes.index(line['bbox'])
-                line_index_list.append(line['index'])
-            median_value = statistics.median(line_index_list)
-            block['index'] = median_value
-
-        # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
-        if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
-            block['virtual_lines'] = copy.deepcopy(block['lines'])
-            block['lines'] = copy.deepcopy(block['real_lines'])
-            del block['real_lines']
+                line['index'] = line_inedx
+                line_inedx += 1
 
     return fix_blocks
 
@@ -263,6 +297,9 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
             for line in lines:
                 block['lines'].append({'bbox': line, 'spans': []})
             page_line_list.extend(lines)
+
+    if len(page_line_list) > 200:  # layoutreader最高支持512line
+        return None
 
     # 使用layoutreader排序
     x_scale = 1000.0 / page_w
