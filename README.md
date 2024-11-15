@@ -121,7 +121,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
 - Extract images, image descriptions, tables, table titles, and footnotes.
 - Automatically recognize and convert formulas in the document to LaTeX format.
-- Automatically recognize and convert tables in the document to LaTeX or HTML format.
+- Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
 - OCR supports detection and recognition of 84 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.

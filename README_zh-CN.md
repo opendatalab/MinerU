@@ -121,7 +121,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 保留原文档的结构，包括标题、段落、列表等
 - 提取图像、图片描述、表格、表格标题及脚注
 - 自动识别并转换文档中的公式为LaTeX格式
-- 自动识别并转换文档中的表格为LaTeX或HTML格式
+- 自动识别并转换文档中的表格为HTML格式
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
 - OCR支持84种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
