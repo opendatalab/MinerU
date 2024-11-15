@@ -188,7 +188,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">显存8G以上</td>
         <td colspan="2">
-        2080~2080Ti/3060Ti~3090Ti/4060~4090<br>
+        2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
         8G显存及以上可开启全部加速功能</td>
         <td rowspan="2">None</td>
     </tr>
