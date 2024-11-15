@@ -42,7 +42,7 @@ if database:
 ip_address = get_local_ip()
 port = config.get("PORT", 5559)
 # 配置 SERVER_NAME
-config['SERVER_NAME'] = f'{ip_address}:5559'
+config['SERVER_NAME'] = f'{ip_address}:{port}'
 # 配置 APPLICATION_ROOT
 config['APPLICATION_ROOT'] = '/'
 # 配置 PREFERRED_URL_SCHEME

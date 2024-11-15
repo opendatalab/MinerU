@@ -121,7 +121,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 保留原文档的结构，包括标题、段落、列表等
 - 提取图像、图片描述、表格、表格标题及脚注
 - 自动识别并转换文档中的公式为LaTeX格式
-- 自动识别并转换文档中的表格为LaTeX或HTML格式
+- 自动识别并转换文档中的表格为HTML格式
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
 - OCR支持84种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
@@ -186,17 +186,13 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td rowspan="2">GPU硬件支持列表</td>
-        <td colspan="2">最低要求 8G+显存</td>
-        <td colspan="2">3060ti/3070/4060<br>
-        8G显存可开启全部加速功能(表格仅限rapid_table)</td>
+        <td colspan="2">显存8G以上</td>
+        <td colspan="2">
+        2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
+        8G显存及以上可开启全部加速功能</td>
         <td rowspan="2">None</td>
     </tr>
-    <tr>
-        <td colspan="2">推荐配置 10G+显存</td>
-        <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-        10G显存及以上可开启全部加速功能<br>
-        </td>
-    </tr>
+
 </table>
 
 ### 在线体验
@@ -251,7 +247,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
         "enable": true  // 公式识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
     },
     "table-config": {
-        "model": "rapid_table",  // 使用structEqTable请修改为"struct_eqtable"
+        "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
         "enable": false, // 表格识别功能默认是关闭的，如果需要开启请修改此处的值为"true"
         "max_time": 400
     }

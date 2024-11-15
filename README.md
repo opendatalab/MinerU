@@ -121,7 +121,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
 - Extract images, image descriptions, tables, table titles, and footnotes.
 - Automatically recognize and convert formulas in the document to LaTeX format.
-- Automatically recognize and convert tables in the document to LaTeX or HTML format.
+- Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
 - OCR supports detection and recognition of 84 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
@@ -185,16 +185,10 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td rowspan="2">GPU Hardware Support List</td>
-        <td colspan="2">Minimum Requirement 8G+ VRAM</td>
-        <td colspan="2">3060ti/3070/4060<br>
-        8G VRAM enables layout, formula recognition acceleration and OCR acceleration</td>
+        <td colspan="2">GPU VRAM 8GB or more</td>
+        <td colspan="2">2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
+        8G VRAM can enable all acceleration features</td>
         <td rowspan="2">None</td>
-    </tr>
-    <tr>
-        <td colspan="2">Recommended Configuration 10G+ VRAM</td>
-        <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-        10G VRAM or more can enable layout, formula recognition, OCR acceleration and table recognition acceleration simultaneously
-        </td>
     </tr>
 </table>
 
@@ -247,7 +241,7 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "rapid_table",  // When using structEqTable, please change to "struct_eqtable".
+        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
         "enable": false, // The table recognition feature is disabled by default. If you need to enable it, please change the value here to "true".
         "max_time": 400
     }
