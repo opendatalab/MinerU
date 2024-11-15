@@ -20,7 +20,6 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
 [![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/abs/2409.18839)
 
-
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
@@ -39,10 +38,15 @@
     👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
 </p>
 
+
+<!-- read the docs -->
+<p align="center">
+    read more docs on  <a href="https://mineru.readthedocs.io/en/latest/"> Read The Docs </a>
+</p>
+
 </div>
 
 # Changelog
-- 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
   - Refactored the sorting module code to use [layoutreader](https://github.com/ppaanngggg/layoutreader) for reading order sorting, ensuring high accuracy in various layouts.
@@ -77,12 +81,10 @@
             <ul>
             <li><a href="#online-demo">Online Demo</a></li>
             <li><a href="#quick-cpu-demo">Quick CPU Demo</a></li>
-            <li><a href="#using-gpu">Using GPU</a></li>
             </ul>
         </li>
         <li><a href="#usage">Usage</a>
             <ul>
-            <li><a href="#command-line">Command Line</a></li>
             <li><a href="#api">API</a></li>
             <li><a href="#deploy-derived-projects">Deploy Derived Projects</a></li>
             <li><a href="#development-guide">Development Guide</a></li>
@@ -91,8 +93,6 @@
       </ul>
     </li>
     <li><a href="#todo">TODO</a></li>
-    <li><a href="#known-issues">Known Issues</a></li>
-    <li><a href="#faq">FAQ</a></li>
     <li><a href="#all-thanks-to-our-contributors">All Thanks To Our Contributors</a></li>
     <li><a href="#license-information">License Information</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
@@ -114,89 +114,12 @@ Compared to well-known commercial products, MinerU is still young. If you encoun
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
-## Key Features
-
-- Remove headers, footers, footnotes, page numbers, etc., to ensure semantic coherence.
-- Output text in human-readable order, suitable for single-column, multi-column, and complex layouts.
-- Preserve the structure of the original document, including headings, paragraphs, lists, etc.
-- Extract images, image descriptions, tables, table titles, and footnotes.
-- Automatically recognize and convert formulas in the document to LaTeX format.
-- Automatically recognize and convert tables in the document to LaTeX or HTML format.
-- Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
-- OCR supports detection and recognition of 84 languages.
-- Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
-- Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
-- Supports both CPU and GPU environments.
-- Compatible with Windows, Linux, and Mac platforms.
-
 ## Quick Start
 
-If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
-If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
-There are three different ways to experience MinerU:
+There are multiple different ways to experience MinerU:
 
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
-- [Linux/Windows + CUDA](#Using-GPU)
-
-> [!WARNING]
-> **Pre-installation Notice—Hardware and Software Environment Support**
->
-> To ensure the stability and reliability of the project, we only optimize and test for specific hardware and software environments during development. This ensures that users deploying and running the project on recommended system configurations will get the best performance with the fewest compatibility issues.
->
-> By focusing resources on the mainline environment, our team can more efficiently resolve potential bugs and develop new features.
->
-> In non-mainline environments, due to the diversity of hardware and software configurations, as well as third-party dependency compatibility issues, we cannot guarantee 100% project availability. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first. Most issues already have corresponding solutions in the FAQ. We also encourage community feedback to help us gradually expand support.
-
-<table>
-    <tr>
-        <td colspan="3" rowspan="2">Operating System</td>
-    </tr>
-    <tr>
-        <td>Ubuntu 22.04 LTS</td>
-        <td>Windows 10 / 11</td>
-        <td>macOS 11+</td>
-    </tr>
-    <tr>
-        <td colspan="3">CPU</td>
-        <td>x86_64(unsupported ARM Linux)</td>
-        <td>x86_64(unsupported ARM Windows)</td>
-        <td>x86_64 / arm64</td>
-    </tr>
-    <tr>
-        <td colspan="3">Memory</td>
-        <td colspan="3">16GB or more, recommended 32GB+</td>
-    </tr>
-    <tr>
-        <td colspan="3">Python Version</td>
-        <td colspan="3">3.10(Please make sure to create a Python 3.10 virtual environment using conda)</td>
-    </tr>
-    <tr>
-        <td colspan="3">Nvidia Driver Version</td>
-        <td>latest (Proprietary Driver)</td>
-        <td>latest</td>
-        <td>None</td>
-    </tr>
-    <tr>
-        <td colspan="3">CUDA Environment</td>
-        <td>Automatic installation [12.1 (pytorch) + 11.8 (paddle)]</td>
-        <td>11.8 (manual installation) + cuDNN v8.7.0 (manual installation)</td>
-        <td>None</td>
-    </tr>
-    <tr>
-        <td rowspan="2">GPU Hardware Support List</td>
-        <td colspan="2">Minimum Requirement 8G+ VRAM</td>
-        <td colspan="2">3060ti/3070/4060<br>
-        8G VRAM enables layout, formula recognition acceleration and OCR acceleration</td>
-        <td rowspan="2">None</td>
-    </tr>
-    <tr>
-        <td colspan="2">Recommended Configuration 10G+ VRAM</td>
-        <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-        10G VRAM or more can enable layout, formula recognition, OCR acceleration and table recognition acceleration simultaneously
-        </td>
-    </tr>
-</table>
 
 ### Online Demo
 
@@ -231,7 +154,6 @@ You can find the `magic-pdf.json` file in your 【user directory】.
 
 You can modify certain configurations in this file to enable or disable features, such as table recognition:
 
-
 > [!NOTE]
 > If the following items are not present in the JSON, please manually add the required items and remove the comment content (standard JSON does not support comments).
 
@@ -247,91 +169,14 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "rapid_table",  // When using structEqTable, please change to "struct_eqtable".
+        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
         "enable": false, // The table recognition feature is disabled by default. If you need to enable it, please change the value here to "true".
         "max_time": 400
     }
 }
 ```
 
-### Using GPU
-
-If your device supports CUDA and meets the GPU requirements of the mainline environment, you can use GPU acceleration. Please select the appropriate guide based on your system:
-
-- [Ubuntu 22.04 LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_en_US.md)
-- [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
-- Quick Deployment with Docker
-> [!IMPORTANT]
-> Docker requires a GPU with at least 8GB of VRAM, and all acceleration features are enabled by default.
->
-> Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
-> 
-> ```bash
-> docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-> ```
-  ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-  docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
-  magic-pdf --help
-  ```
-
 ## Usage
-
-### Command Line
-
-```bash
-magic-pdf --help
-Usage: magic-pdf [OPTIONS]
-
-Options:
-  -v, --version                display the version and exit
-  -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir PATH        output local directory  [required]
-  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
-                               technique to extract information from pdf. txt:
-                               suitable for the text-based pdf only and
-                               outperform ocr. auto: automatically choose the
-                               best method for parsing pdf from ocr and txt.
-                               without method specified, auto will be used by
-                               default.
-  -l, --lang TEXT              Input the languages in the pdf (if known) to
-                               improve OCR accuracy.  Optional. You should
-                               input "Abbreviation" with language form url: ht
-                               tps://paddlepaddle.github.io/PaddleOCR/latest/en
-                               /ppocr/blog/multi_languages.html#5-support-languages-
-                               and-abbreviations
-  -d, --debug BOOLEAN          Enables detailed debugging information during
-                               the execution of the CLI commands.
-  -s, --start INTEGER          The starting page for PDF parsing, beginning
-                               from 0.
-  -e, --end INTEGER            The ending page for PDF parsing, beginning from
-                               0.
-  --help                       Show this message and exit.
-
-
-## show version
-magic-pdf -v
-
-## command line example
-magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
-```
-
-`{some_pdf}` can be a single PDF file or a directory containing multiple PDFs.
-The results will be saved in the `{some_output_dir}` directory. The output file list is as follows:
-
-```text
-├── some_pdf.md                          # markdown file
-├── images                               # directory for storing images
-├── some_pdf_layout.pdf                  # layout diagram (Include layout reading order)
-├── some_pdf_middle.json                 # MinerU intermediate processing result
-├── some_pdf_model.json                  # model inference result
-├── some_pdf_origin.pdf                  # original PDF file
-├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
-└── some_pdf_content_list.json           # Rich text JSON arranged in reading order
-```
-> [!TIP]
-> For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
 
 ### API
 
@@ -389,24 +234,6 @@ TODO
 - [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] Geometric shape recognition
 
-# Known Issues
-
-- Reading order is determined by the model based on the spatial distribution of readable content, and may be out of order in some areas under extremely complex layouts.
-- Vertical text is not supported.
-- Tables of contents and lists are recognized through rules, and some uncommon list formats may not be recognized.
-- Only one level of headings is supported; hierarchical headings are not currently supported.
-- Code blocks are not yet supported in the layout model.
-- Comic books, art albums, primary school textbooks, and exercises cannot be parsed well.
-- Table recognition may result in row/column recognition errors in complex tables.
-- OCR recognition may produce inaccurate characters in PDFs of lesser-known languages (e.g., diacritical marks in Latin script, easily confused characters in Arabic script).
-- Some formulas may not render correctly in Markdown.
-
-# FAQ
-
-[FAQ in Chinese](docs/FAQ_zh_cn.md)
-
-[FAQ in English](docs/FAQ_en_us.md)
-
 # All Thanks To Our Contributors
 
 <a href="https://github.com/opendatalab/MinerU/graphs/contributors">
@@ -422,7 +249,9 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 # Acknowledgments
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
+- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
+- [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
