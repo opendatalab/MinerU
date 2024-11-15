@@ -1,0 +1,259 @@
+import math
+
+import numpy as np
+from loguru import logger
+
+from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
+from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
+
+
+def bbox_to_points(bbox):
+    """ 将bbox格式转换为四个顶点的数组 """
+    x0, y0, x1, y1 = bbox
+    return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).astype('float32')
+
+
+def points_to_bbox(points):
+    """ 将四个顶点的数组转换为bbox格式 """
+    x0, y0 = points[0]
+    x1, _ = points[1]
+    _, y1 = points[2]
+    return [x0, y0, x1, y1]
+
+
+def merge_intervals(intervals):
+    # Sort the intervals based on the start value
+    intervals.sort(key=lambda x: x[0])
+
+    merged = []
+    for interval in intervals:
+        # If the list of merged intervals is empty or if the current
+        # interval does not overlap with the previous, simply append it.
+        if not merged or merged[-1][1] < interval[0]:
+            merged.append(interval)
+        else:
+            # Otherwise, there is overlap, so we merge the current and previous intervals.
+            merged[-1][1] = max(merged[-1][1], interval[1])
+
+    return merged
+
+
+def remove_intervals(original, masks):
+    # Merge all mask intervals
+    merged_masks = merge_intervals(masks)
+
+    result = []
+    original_start, original_end = original
+
+    for mask in merged_masks:
+        mask_start, mask_end = mask
+
+        # If the mask starts after the original range, ignore it
+        if mask_start > original_end:
+            continue
+
+        # If the mask ends before the original range starts, ignore it
+        if mask_end < original_start:
+            continue
+
+        # Remove the masked part from the original range
+        if original_start < mask_start:
+            result.append([original_start, mask_start - 1])
+
+        original_start = max(mask_end + 1, original_start)
+
+    # Add the remaining part of the original range, if any
+    if original_start <= original_end:
+        result.append([original_start, original_end])
+
+    return result
+
+
+def update_det_boxes(dt_boxes, mfd_res):
+    new_dt_boxes = []
+    for text_box in dt_boxes:
+        text_bbox = points_to_bbox(text_box)
+        masks_list = []
+        for mf_box in mfd_res:
+            mf_bbox = mf_box['bbox']
+            if __is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
+                masks_list.append([mf_bbox[0], mf_bbox[2]])
+        text_x_range = [text_bbox[0], text_bbox[2]]
+        text_remove_mask_range = remove_intervals(text_x_range, masks_list)
+        temp_dt_box = []
+        for text_remove_mask in text_remove_mask_range:
+            temp_dt_box.append(bbox_to_points([text_remove_mask[0], text_bbox[1], text_remove_mask[1], text_bbox[3]]))
+        if len(temp_dt_box) > 0:
+            new_dt_boxes.extend(temp_dt_box)
+    return new_dt_boxes
+
+
+def merge_overlapping_spans(spans):
+    """
+    Merges overlapping spans on the same line.
+
+    :param spans: A list of span coordinates [(x1, y1, x2, y2), ...]
+    :return: A list of merged spans
+    """
+    # Return an empty list if the input spans list is empty
+    if not spans:
+        return []
+
+    # Sort spans by their starting x-coordinate
+    spans.sort(key=lambda x: x[0])
+
+    # Initialize the list of merged spans
+    merged = []
+    for span in spans:
+        # Unpack span coordinates
+        x1, y1, x2, y2 = span
+        # If the merged list is empty or there's no horizontal overlap, add the span directly
+        if not merged or merged[-1][2] < x1:
+            merged.append(span)
+        else:
+            # If there is horizontal overlap, merge the current span with the previous one
+            last_span = merged.pop()
+            # Update the merged span's top-left corner to the smaller (x1, y1) and bottom-right to the larger (x2, y2)
+            x1 = min(last_span[0], x1)
+            y1 = min(last_span[1], y1)
+            x2 = max(last_span[2], x2)
+            y2 = max(last_span[3], y2)
+            # Add the merged span back to the list
+            merged.append((x1, y1, x2, y2))
+
+    # Return the list of merged spans
+    return merged
+
+
+def merge_det_boxes(dt_boxes):
+    """
+    Merge detection boxes.
+
+    This function takes a list of detected bounding boxes, each represented by four corner points.
+    The goal is to merge these bounding boxes into larger text regions.
+
+    Parameters:
+    dt_boxes (list): A list containing multiple text detection boxes, where each box is defined by four corner points.
+
+    Returns:
+    list: A list containing the merged text regions, where each region is represented by four corner points.
+    """
+    # Convert the detection boxes into a dictionary format with bounding boxes and type
+    dt_boxes_dict_list = []
+    angle_boxes_list = []
+    for text_box in dt_boxes:
+        text_bbox = points_to_bbox(text_box)
+        if text_bbox[2] <= text_bbox[0] or text_bbox[3] <= text_bbox[1]:
+            angle_boxes_list.append(text_box)
+            continue
+        text_box_dict = {
+            'bbox': text_bbox,
+            'type': 'text',
+        }
+        dt_boxes_dict_list.append(text_box_dict)
+
+    # Merge adjacent text regions into lines
+    lines = merge_spans_to_line(dt_boxes_dict_list)
+
+    # Initialize a new list for storing the merged text regions
+    new_dt_boxes = []
+    for line in lines:
+        line_bbox_list = []
+        for span in line:
+            line_bbox_list.append(span['bbox'])
+
+        # Merge overlapping text regions within the same line
+        merged_spans = merge_overlapping_spans(line_bbox_list)
+
+        # Convert the merged text regions back to point format and add them to the new detection box list
+        for span in merged_spans:
+            new_dt_boxes.append(bbox_to_points(span))
+
+    new_dt_boxes.extend(angle_boxes_list)
+
+    return new_dt_boxes
+
+
+def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
+    paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
+    # Adjust the coordinates of the formula area
+    adjusted_mfdetrec_res = []
+    for mf_res in single_page_mfdetrec_res:
+        mf_xmin, mf_ymin, mf_xmax, mf_ymax = mf_res["bbox"]
+        # Adjust the coordinates of the formula area to the coordinates relative to the cropping area
+        x0 = mf_xmin - xmin + paste_x
+        y0 = mf_ymin - ymin + paste_y
+        x1 = mf_xmax - xmin + paste_x
+        y1 = mf_ymax - ymin + paste_y
+        # Filter formula blocks outside the graph
+        if any([x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height]):
+            continue
+        else:
+            adjusted_mfdetrec_res.append({
+                "bbox": [x0, y0, x1, y1],
+            })
+    return adjusted_mfdetrec_res
+
+
+def get_ocr_result_list(ocr_res, useful_list):
+    paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
+    ocr_result_list = []
+    for box_ocr_res in ocr_res:
+
+        p1, p2, p3, p4 = box_ocr_res[0]
+        text, score = box_ocr_res[1]
+        average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
+        if average_angle_degrees > 0.5:
+            # logger.info(f"average_angle_degrees: {average_angle_degrees}, text: {text}")
+            # 与x轴的夹角超过0.5度，对边界做一下矫正
+            # 计算几何中心
+            x_center = sum(point[0] for point in box_ocr_res[0]) / 4
+            y_center = sum(point[1] for point in box_ocr_res[0]) / 4
+            new_height = ((p4[1] - p1[1]) + (p3[1] - p2[1])) / 2
+            new_width = p3[0] - p1[0]
+            p1 = [x_center - new_width / 2, y_center - new_height / 2]
+            p2 = [x_center + new_width / 2, y_center - new_height / 2]
+            p3 = [x_center + new_width / 2, y_center + new_height / 2]
+            p4 = [x_center - new_width / 2, y_center + new_height / 2]
+
+        # Convert the coordinates back to the original coordinate system
+        p1 = [p1[0] - paste_x + xmin, p1[1] - paste_y + ymin]
+        p2 = [p2[0] - paste_x + xmin, p2[1] - paste_y + ymin]
+        p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
+        p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
+
+        ocr_result_list.append({
+            'category_id': 15,
+            'poly': p1 + p2 + p3 + p4,
+            'score': float(round(score, 2)),
+            'text': text,
+        })
+
+    return ocr_result_list
+
+
+def calculate_angle_degrees(poly):
+    # 定义对角线的顶点
+    diagonal1 = (poly[0], poly[2])
+    diagonal2 = (poly[1], poly[3])
+
+    # 计算对角线的斜率
+    def slope(p1, p2):
+        return (p2[1] - p1[1]) / (p2[0] - p1[0]) if p2[0] != p1[0] else float('inf')
+
+    slope1 = slope(diagonal1[0], diagonal1[1])
+    slope2 = slope(diagonal2[0], diagonal2[1])
+
+    # 计算对角线与x轴的夹角（以弧度为单位）
+    angle1_radians = math.atan(slope1)
+    angle2_radians = math.atan(slope2)
+
+    # 将弧度转换为角度
+    angle1_degrees = math.degrees(angle1_radians)
+    angle2_degrees = math.degrees(angle2_radians)
+
+    # 取两条对角线与x轴夹角的平均值
+    average_angle_degrees = abs((angle1_degrees + angle2_degrees) / 2)
+    # logger.info(f"average_angle_degrees: {average_angle_degrees}")
+    return average_angle_degrees
+

@@ -2,7 +2,7 @@ import unittest
 from PIL import Image
 from lxml import etree
 
-from magic_pdf.model.ppTableModel import ppTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
 
 
 class TestppTableModel(unittest.TestCase):
@@ -11,7 +11,7 @@ class TestppTableModel(unittest.TestCase):
         # 修改table模型路径
         config = {"device": "cuda",
                   "model_dir": "/home/quyuan/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models/TabRec/TableMaster"}
-        table_model = ppTableModel(config)
+        table_model = TableMasterPaddleModel(config)
         res = table_model.img2html(img)
         # 验证生成的 HTML 是否符合预期
         parser = etree.HTMLParser()
