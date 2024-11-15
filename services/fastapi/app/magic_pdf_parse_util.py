@@ -1,6 +1,7 @@
 import os
 import json
 import datetime
+import shutil
 
 from loguru import logger
 
@@ -10,7 +11,10 @@ from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
 from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 
+from . import redis_util
+
 def pdf_parse(
+        md5_value,
         pdf_bytes: bytes,
         parse_method: str = 'auto',
         model_json_path: str = None,
@@ -26,6 +30,7 @@ def pdf_parse(
     :param output_dir: 输出结果的目录地址，会生成一个以 pdf 文件名命名的文件夹并保存所有结果
     """
     try:
+        redis_util.set_file_info(md5_value, redis_util.ParseState.parsing)
         current_script_dir = os.path.dirname(os.path.abspath(__file__))
         foldname = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         if output_dir:
@@ -59,8 +64,10 @@ def pdf_parse(
         elif parse_method == "ocr":
             pipe = OCRPipe(pdf_bytes, model_json, image_writer)
         else:
+            shutil.rmtree(output_path)
+            redis_util.set_file_info(md5_value, redis_util.ParseState.failed)
             logger.error("unknown parse method, only auto, ocr, txt allowed")
-            exit(1)
+            return
 
         # 执行分类
         pipe.pipe_classify()
@@ -76,7 +83,11 @@ def pdf_parse(
         content_list = pipe.pipe_mk_uni_format(image_path_parent, drop_mode="none")
         md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode="none")
 
-        return content_list, md_content
+        # delete fold
+        shutil.rmtree(output_path)
+        redis_util.set_file_info(md5_value, redis_util.ParseState.parsed, content_list, md_content)
 
     except Exception as e:
+        redis_util.set_file_info(md5_value, redis_util.ParseState.failed)
+        redis_util.set_file_info_expire(md5_value, 10)
         logger.exception(e)

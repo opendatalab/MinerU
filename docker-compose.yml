@@ -29,8 +29,8 @@ services:
     ports:
       - "6380:6379"
     volumes:
-      - ./services/redis/conf/redis.conf:/etc/redis.conf:ro
-      - ./services/redis/conf/:/data/:rw
+      - ./services/redis/conf/redis.conf:/etc/redis.conf
+      - ./services/redis/conf/:/data/
     restart: always
     entrypoint: ["redis-server", "/etc/redis.conf"]
     environment:
@@ -41,3 +41,5 @@ services:
 networks:
   default:
     driver: bridge
+    ipam:
+      driver: default
