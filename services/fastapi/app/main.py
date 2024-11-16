@@ -45,7 +45,7 @@ async def parse_pdf(imageUrl: str, parse_method: str = 'auto'):
     try:
         commit_parse_task(md5_value, pdf_bytes, parse_method)
     except Exception:
-        redis_util.set_file_info(md5_value, redis_util.ParseState.deny)
+        redis_util.set_parse_deny(md5_value)
         return redis_util.get_file_info(md5_value)
-    redis_util.set_file_info(md5_value, redis_util.ParseState.init)
+    redis_util.set_parse_init(md5_value)
     return redis_util.get_file_info(md5_value)
