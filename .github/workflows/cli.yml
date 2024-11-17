@@ -3,13 +3,6 @@
 
 name: mineru
 on:
-  push:
-    branches:
-      - "master"
-      - "dev"
-    paths-ignore:
-      - "cmds/**"
-      - "**.md"
   pull_request:
     branches:
       - "master"
