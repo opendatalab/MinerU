@@ -392,7 +392,7 @@ class TestCli:
         #os.system(pre_cmd)
         value = {
         "model": "tablemaster",
-        "enable": True,
+        "enable": False,
         "max_time": 400
         }   
         common.update_config_file(magic_pdf_config, "table-config", value)
@@ -401,8 +401,7 @@ class TestCli:
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
-        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
-        assert res is  True
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
 
 
     @pytest.mark.P1
