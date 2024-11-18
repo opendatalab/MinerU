@@ -2,9 +2,6 @@
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
 name: mineru
-on:
-  schedule:
-    - cron: '0 22 * * *'  # 每天晚上 10 点执行
 jobs:
   cli-test:
     runs-on: pdf
