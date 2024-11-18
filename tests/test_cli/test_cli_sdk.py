@@ -385,8 +385,8 @@ class TestCli:
         #res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
 
     @pytest.mark.P1
-    def test_magic_pdf_open_tablemaster_table_cpu(self):
-        """magic pdf cli close html table cpu mode."""
+    def test_magic_pdf_cpu(self):
+        """magic pdf cli cpu mode."""
         time.sleep(2)
         #pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
         #os.system(pre_cmd)
