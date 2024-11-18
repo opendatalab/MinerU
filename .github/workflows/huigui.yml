@@ -10,7 +10,6 @@ on:
     paths-ignore:
       - "cmds/**"
       - "**.md"
-  workflow_dispatch:
 jobs:
   cli-test:
     if: github.repository == 'opendatalab/MinerU'
