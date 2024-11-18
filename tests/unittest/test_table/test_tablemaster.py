@@ -7,7 +7,7 @@ from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import Tab
 
 class TestppTableModel(unittest.TestCase):
     def test_image2html(self):
-        img = Image.open("tests/test_table/assets/table.jpg")
+        img = Image.open("tests/unittest/test_table/assets/table.jpg")
         # 修改table模型路径
         config = {"device": "cuda",
                   "model_dir": "/home/quyuan/.cache/modelscope/hub/opendatalab/PDF-Extract-Kit/models/TabRec/TableMaster"}
