@@ -64,6 +64,7 @@ def __is_list_or_index_block(block):
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block_weight = block['bbox_fs'][2] - block['bbox_fs'][0]
         block_height = block['bbox_fs'][3] - block['bbox_fs'][1]
+        page_weight, page_height = block['page_size']
 
         left_close_num = 0
         left_not_close_num = 0
@@ -74,6 +75,12 @@ def __is_list_or_index_block(block):
         external_sides_not_close_num = 0
         multiple_para_flag = False
         last_line = block['lines'][-1]
+
+        if page_weight == 0:
+            block_weight_radio = 0
+        else:
+            block_weight_radio = block_weight / page_weight
+        # logger.info(f"block_weight_radio: {block_weight_radio}")
 
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
         if (first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2 and
@@ -114,7 +121,8 @@ def __is_list_or_index_block(block):
                 right_close_num += 1
             else:
                 # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
-                closed_area = 0.26 * block_weight
+                # 0.26
+                closed_area = 0.35 * block_weight
                 if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
                     right_not_close_num += 1
 
@@ -161,8 +169,12 @@ def __is_list_or_index_block(block):
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.List
 
-        elif left_close_num >= 2 and (
-                right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2) and not multiple_para_flag:
+        elif (
+                left_close_num >= 2
+                and (right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2)
+                and not multiple_para_flag
+                # and block_weight_radio > 0.27
+        ):
             # 处理一种特殊的没有缩进的list，所有行都贴左边，通过右边的空隙判断是否是item尾
             if left_close_num / len(block['lines']) > 0.8:
                 # 这种是每个item只有一行，且左边都贴边的短item list
@@ -223,18 +235,23 @@ def __merge_2_text_blocks(block1, block2):
             if len(last_line['spans']) > 0:
                 last_span = last_line['spans'][-1]
                 line_height = last_line['bbox'][3] - last_line['bbox'][1]
-                if (abs(block2['bbox_fs'][2] - last_line['bbox'][2]) < line_height and
-                        not last_span['content'].endswith(LINE_STOP_FLAG) and
-                        # 两个block宽度差距超过2倍也不合并
-                        abs(block1_weight - block2_weight) < min_block_weight
-                ):
-                    if block1['page_num'] != block2['page_num']:
-                        for line in block1['lines']:
-                            for span in line['spans']:
-                                span[CROSS_PAGE] = True
-                    block2['lines'].extend(block1['lines'])
-                    block1['lines'] = []
-                    block1[LINES_DELETED] = True
+                if len(first_line['spans']) > 0:
+                    first_span = first_line['spans'][0]
+                    if len(first_span['content']) > 0:
+                        span_start_with_num = first_span['content'][0].isdigit()
+                        if (abs(block2['bbox_fs'][2] - last_line['bbox'][2]) < line_height
+                                and not last_span['content'].endswith(LINE_STOP_FLAG)
+                                # 两个block宽度差距超过2倍也不合并
+                                and abs(block1_weight - block2_weight) < min_block_weight
+                                and not span_start_with_num
+                        ):
+                            if block1['page_num'] != block2['page_num']:
+                                for line in block1['lines']:
+                                    for span in line['spans']:
+                                        span[CROSS_PAGE] = True
+                            block2['lines'].extend(block1['lines'])
+                            block1['lines'] = []
+                            block1[LINES_DELETED] = True
 
     return block1, block2
 
@@ -302,6 +319,7 @@ def para_split(pdf_info_dict, debug_mode=False):
         blocks = copy.deepcopy(page['preproc_blocks'])
         for block in blocks:
             block['page_num'] = page_num
+            block['page_size'] = page['page_size']
         all_blocks.extend(blocks)
 
     __para_merge_page(all_blocks)
