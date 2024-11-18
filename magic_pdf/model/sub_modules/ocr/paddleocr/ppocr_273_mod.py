@@ -125,9 +125,8 @@ class ModifiedPaddleOCR(PaddleOCR):
 
         dt_boxes = sorted_boxes(dt_boxes)
 
-        # @todo 目前是在bbox层merge，对倾斜文本行的兼容性不佳，需要修改成支持poly的merge
-        # dt_boxes = merge_det_boxes(dt_boxes)
-
+        # merge_det_boxes 和 update_det_boxes 都会把poly转成bbox再转回poly，因此需要过滤所有倾斜程度较大的文本框
+        dt_boxes = merge_det_boxes(dt_boxes)
 
         if mfd_res:
             bef = time.time()
