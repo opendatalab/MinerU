@@ -5,7 +5,7 @@ import pytest
 from magic_pdf.filter.pdf_classify_by_type import classify_by_area, classify_by_text_len, classify_by_avg_words, \
     classify_by_img_num, classify_by_text_layout, classify_by_img_narrow_strips
 from magic_pdf.filter.pdf_meta_scan import get_pdf_page_size_pts, get_pdf_textlen_per_page, get_imgs_per_page
-from tests.test_commons import get_docs_from_test_pdf, get_test_json_data
+from test_commons import get_docs_from_test_pdf, get_test_json_data
 
 # 获取当前目录
 current_directory = os.path.dirname(os.path.abspath(__file__))
