@@ -121,8 +121,12 @@ def __is_list_or_index_block(block):
                 right_close_num += 1
             else:
                 # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
-                # 0.26
-                closed_area = 0.35 * block_weight
+                # block宽的阈值可以小些，block窄的阈值要大
+
+                if block_weight_radio >= 0.5:
+                    closed_area = 0.26 * block_weight
+                else:
+                    closed_area = 0.36 * block_weight
                 if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
                     right_not_close_num += 1
 
