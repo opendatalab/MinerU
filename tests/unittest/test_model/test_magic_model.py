@@ -5,8 +5,8 @@ from magic_pdf.model.magic_model import MagicModel
 
 
 def test_magic_model_image_v2():
-    datasets = read_local_pdfs('tests/test_model/assets/test_01.pdf')
-    with open('tests/test_model/assets/test_01.model.json') as f:
+    datasets = read_local_pdfs('tests/unittest/test_model/assets/test_01.pdf')
+    with open('tests/unittest/test_model/assets/test_01.model.json') as f:
         model_json = json.load(f)
 
     magic_model = MagicModel(model_json, datasets[0])
@@ -19,8 +19,8 @@ def test_magic_model_image_v2():
 
 
 def test_magic_model_table_v2():
-    datasets = read_local_pdfs('tests/test_model/assets/test_02.pdf')
-    with open('tests/test_model/assets/test_02.model.json') as f:
+    datasets = read_local_pdfs('tests/unittest/test_model/assets/test_02.pdf')
+    with open('tests/unittest/test_model/assets/test_02.model.json') as f:
         model_json = json.load(f)
 
     magic_model = MagicModel(model_json, datasets[0])
