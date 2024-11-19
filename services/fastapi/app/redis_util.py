@@ -18,7 +18,7 @@ def set_file_info_expire(md5_value, expire_seconds):
     redis_conn.expire(md5_value, expire_seconds)
 
 def set_file_info(md5_value, state: ParseState, content_list = "", md_content = ""):
-    json_str = json.dumps({"state": state.name, "content_list": content_list, "md_content": md_content})
+    json_str = json.dumps({"state": state.name, "md5": md5_value, "content_list": content_list, "md_content": md_content})
     redis_conn.set(md5_value, json_str)
 
 def set_parse_deny(md5_value):

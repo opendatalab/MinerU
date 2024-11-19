@@ -2,7 +2,7 @@
 Author: dt_4541218930 abcstorms@163.com
 Date: 2024-11-14 17:04:42
 LastEditors: dt_4541218930 abcstorms@163.com
-LastEditTime: 2024-11-15 22:38:00
+LastEditTime: 2024-11-19 19:32:11
 FilePath: \lzmineru\services\fastapi\app\main.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -36,8 +36,18 @@ consumer_thread = threading.Thread(target=queue_consumer, args=(message_queue,))
 consumer_thread.start()
 
 @app.post("/parse_pdf")
-async def parse_pdf(imageUrl: str, parse_method: str = 'auto'):
+async def parse_pdf(imageUrl: str = None, md5: str = None, parse_method: str = 'auto'):
+    if (imageUrl is None and md5 is None):
+        return {"state": "failed", "error": "imageUrl or md5 is required" }
+    if (md5):
+        file_info = redis_util.get_file_info(md5)
+        if (file_info):
+            return file_info
+    if (imageUrl is None):
+        return {"state": "failed", "error": "imageUrl is required when md5 is not valid"}
     pdf_bytes = urllib.request.urlopen(imageUrl).read()
+    if (pdf_bytes is None):
+        return {"state": "failed", "error": "imageUrl is not valid"}
     md5_value = calc_md5(pdf_bytes)
     file_info = redis_util.get_file_info(md5_value)
     if file_info:
