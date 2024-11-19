@@ -5,13 +5,13 @@ from pathlib import Path
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.data_reader_writer import FileBasedDataReader
 from magic_pdf.dict2md.ocr_mkcontent import merge_para_with_text
 from magic_pdf.integrations.rag.type import (CategoryType, ContentObject,
                                              ElementRelation, ElementRelType,
                                              LayoutElements,
                                              LayoutElementsExtra, PageInfo)
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 from magic_pdf.tools.common import do_parse, prepare_env
 
 

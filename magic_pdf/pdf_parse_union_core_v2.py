@@ -7,17 +7,17 @@ from typing import List
 import torch
 from loguru import logger
 
+from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.config.enums import SupportedPdfParseMethod
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.commons import fitz, get_delta_time
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
 from magic_pdf.libs.convert_utils import dict_to_list
-from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.local_math import float_equal
-from magic_pdf.libs.ocr_content_type import ContentType, BlockType
 from magic_pdf.model.magic_model import MagicModel
 from magic_pdf.para.para_split_v3 import para_split
 from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
@@ -30,8 +30,8 @@ from magic_pdf.pre_proc.equations_replace import (
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
     ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
-                                               fix_discarded_block,
-                                               fix_block_spans_v2)
+                                               fix_block_spans_v2,
+                                               fix_discarded_block)
 from magic_pdf.pre_proc.ocr_span_list_modify import (
     get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
     remove_overlaps_min_spans)
@@ -164,8 +164,8 @@ class ModelSingleton:
 
 
 def do_predict(boxes: List[List[int]], model) -> List[int]:
-    from magic_pdf.model.sub_modules.reading_oreder.layoutreader.helpers import (boxes2inputs, parse_logits,
-                                                                                 prepare_inputs)
+    from magic_pdf.model.sub_modules.reading_oreder.layoutreader.helpers import (
+        boxes2inputs, parse_logits, prepare_inputs)
 
     inputs = boxes2inputs(boxes)
     inputs = prepare_inputs(inputs, model)
@@ -206,7 +206,9 @@ def cal_block_index(fix_blocks, sorted_bboxes):
                 del block['real_lines']
 
         import numpy as np
-        from magic_pdf.model.sub_modules.reading_oreder.layoutreader.xycut import recursive_xy_cut
+
+        from magic_pdf.model.sub_modules.reading_oreder.layoutreader.xycut import \
+            recursive_xy_cut
 
         random_boxes = np.array(block_bboxes)
         np.random.shuffle(random_boxes)
@@ -291,7 +293,7 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
                     page_line_list.append(bbox)
         elif block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
             bbox = block['bbox']
-            block["real_lines"] = copy.deepcopy(block['lines'])
+            block['real_lines'] = copy.deepcopy(block['lines'])
             lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
             block['lines'] = []
             for line in lines:

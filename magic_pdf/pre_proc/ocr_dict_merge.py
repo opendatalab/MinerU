@@ -1,8 +1,8 @@
+from magic_pdf.config.drop_tag import DropTag
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.boxbase import (__is_overlaps_y_exceeds_threshold,
                                     _is_in_or_part_overlap_with_area_ratio,
                                     calculate_overlap_area_in_bbox1_area_ratio)
-from magic_pdf.libs.drop_tag import DropTag
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 
 
 # 将每一个line中的span从左到右排序
@@ -157,7 +157,7 @@ def fill_spans_in_blocks(blocks, spans, radio):
             BlockType.ImageBody, BlockType.ImageCaption, BlockType.ImageFootnote,
             BlockType.TableBody, BlockType.TableCaption, BlockType.TableFootnote
         ]:
-            block_dict["group_id"] = block[-1]
+            block_dict['group_id'] = block[-1]
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']

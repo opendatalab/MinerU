@@ -2,9 +2,9 @@ import json
 
 from loguru import logger
 
+from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.libs.commons import join_path
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.pipe.AbsPipe import AbsPipe
 from magic_pdf.user_api import parse_ocr_pdf, parse_union_pdf

@@ -1,6 +1,8 @@
 import enum
 import json
 
+from magic_pdf.config.model_block_type import ModelBlockTypeEnum
+from magic_pdf.config.ocr_content_type import CategoryId, ContentType
 from magic_pdf.data.data_reader_writer import (FileBasedDataReader,
                                                FileBasedDataWriter)
 from magic_pdf.data.dataset import Dataset
@@ -11,8 +13,6 @@ from magic_pdf.libs.boxbase import (_is_in, _is_part_overlap, bbox_distance,
 from magic_pdf.libs.commons import fitz, join_path
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.local_math import float_gt
-from magic_pdf.libs.ModelBlockTypeEnum import ModelBlockTypeEnum
-from magic_pdf.libs.ocr_content_type import CategoryId, ContentType
 from magic_pdf.pre_proc.remove_bbox_overlap import _remove_overlap_between_bbox
 
 CAPATION_OVERLAP_AREA_RATIO = 0.6
