@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 
+from magic_pdf.config.drop_reason import DropReason
+from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.dict2md.ocr_mkcontent import union_make
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
-from magic_pdf.libs.drop_reason import DropReason
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 
 
 class AbsPipe(ABC):

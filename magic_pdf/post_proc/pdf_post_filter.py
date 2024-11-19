@@ -1,19 +1,17 @@
 from loguru import logger
 
+from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.layout.layout_sort import get_columns_cnt_of_layout
-from magic_pdf.libs.drop_reason import DropReason
 
 
 def __is_pseudo_single_column(page_info) -> bool:
-    """
-    判断一个页面是否伪单列。
+    """判断一个页面是否伪单列。
 
     Args:
         page_info (dict): 页面信息字典，包括'_layout_tree'和'preproc_blocks'。
 
     Returns:
         Tuple[bool, Optional[str]]: 如果页面伪单列返回(True, extra_info)，否则返回(False, None)。
-
     """
     layout_tree = page_info['_layout_tree']
     layout_column_width = get_columns_cnt_of_layout(layout_tree)
@@ -41,27 +39,22 @@ def __is_pseudo_single_column(page_info) -> bool:
             if num_lines > 20:
                 radio = num_satisfying_lines / num_lines
                 if radio >= 0.5:
-                    extra_info = f"{{num_lines: {num_lines}, num_satisfying_lines: {num_satisfying_lines}}}"
+                    extra_info = f'{{num_lines: {num_lines}, num_satisfying_lines: {num_satisfying_lines}}}'
                     block_text = []
                     for line in lines:
                         if line['spans']:
                             for span in line['spans']:
                                 block_text.append(span['text'])
-                    logger.warning(f"pseudo_single_column block_text: {block_text}")
+                    logger.warning(f'pseudo_single_column block_text: {block_text}')
                     return True, extra_info
 
     return False, None
 
 
 def pdf_post_filter(page_info) -> tuple:
-    """
-    return:(True|False, err_msg)
-        True, 如果pdf符合要求
-        False, 如果pdf不符合要求
-
-    """
+    """return:(True|False, err_msg) True, 如果pdf符合要求 False, 如果pdf不符合要求."""
     bool_is_pseudo_single_column, extra_info = __is_pseudo_single_column(page_info)
     if bool_is_pseudo_single_column:
-        return False, {"_need_drop": True, "_drop_reason": DropReason.PSEUDO_SINGLE_COLUMN, "extra_info": extra_info}
+        return False, {'_need_drop': True, '_drop_reason': DropReason.PSEUDO_SINGLE_COLUMN, 'extra_info': extra_info}
 
     return True, None
