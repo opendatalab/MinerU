@@ -2,7 +2,7 @@
 Author: dt_4541218930 abcstorms@163.com
 Date: 2024-11-14 17:04:42
 LastEditors: FutureMeng be_loving@163.com
-LastEditTime: 2024-11-20 20:38:01
+LastEditTime: 2024-11-20 21:10:20
 FilePath: \lzmineru\services\fastapi\app\main.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -38,6 +38,8 @@ def queue_consumer(q):
                 byteContent = open(file_path,'rb').read() 
                 logger.info('start to parse '+item['md5'])
                 magic_pdf_parse_util.pdf_parse(item['md5'], byteContent, item['parse_method'])
+            else:
+                logger.error(file_path+' can not read')
 
 consumer_thread = threading.Thread(target=queue_consumer, args=(message_queue,))
 consumer_thread.start()
@@ -46,7 +48,8 @@ consumer_thread.start()
 list = redis_util.get_init_list()
 logger.info(list)
 for item in list:
-    commit_parse_task(item, 'auto')
+    redis_util.set_parse_init(item['md5'])
+    commit_parse_task(item['md5'], 'auto')
     
 
 
@@ -81,11 +84,15 @@ async def parse_pdf(encodeUrl: str = None, md5: str = None, parse_method: str = 
     
     file_info = redis_util.get_file_info(md5_value)
     if file_info:
+        file_info['queue'] = message_queue.qsize()
         return file_info
     try:
         commit_parse_task(md5_value, parse_method)
     except Exception:
         redis_util.set_parse_deny(md5_value)
         return redis_util.get_file_info(md5_value)
+    
     redis_util.set_parse_init(md5_value)
-    return redis_util.get_file_info(md5_value)
+    file_info = redis_util.get_file_info(md5_value)
+    file_info['queue'] = message_queue.qsize()
+    return file_info

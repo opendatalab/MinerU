@@ -20,7 +20,7 @@ def get_init_list():
     for key in redis_conn.keys('*'):
         file_info = get_file_info(key)
         if file_info["state"] == "waiting" or file_info["state"] == "parsing":
-            list.append(file_info["md5"])
+            list.append(file_info)
     return list
 
 def get_file_info(md5_value):
