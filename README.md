@@ -42,6 +42,7 @@
 </div>
 
 # Changelog
+- 2024/11/20 add fastapi
 - 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
@@ -130,6 +131,11 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Compatible with Windows, Linux, and Mac platforms.
 
 ## Quick Start
+
+
+```
+docker-compose up -d
+```
 
 If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
 If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
@@ -361,6 +367,12 @@ For detailed implementation, refer to:
 
 - [demo.py Simplest Processing Method](demo/demo.py)
 - [magic_pdf_parse_main.py More Detailed Processing Workflow](demo/magic_pdf_parse_main.py)
+
+
+### FAST API
+
+doc [http://localhost:8910/docs](http://localhost:8910/docs)
+
 
 ### Deploy Derived Projects
 

@@ -42,6 +42,7 @@
 </div>
 
 # 更新记录
+- 2024/11/20 增加fastapi
 - 2024/11/15 0.9.3发布，为表格识别功能接入了[RapidTable](https://github.com/RapidAI/RapidTable),单表解析速度提升10倍以上，准确率更高，显存占用更低
 - 2024/11/06 0.9.2发布，为表格识别功能接入了[StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B)模型
 - 2024/10/31 0.9.0发布，这是我们进行了大量代码重构的全新版本，解决了众多问题，提升了性能，降低了硬件需求，并提供了更丰富的易用性：
@@ -369,6 +370,11 @@ md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
 
 - [demo.py 最简单的处理方式](demo/demo.py)
 - [magic_pdf_parse_main.py 能够更清晰看到处理流程](demo/magic_pdf_parse_main.py)
+
+
+### FAST API
+
+接口文档doc [http://localhost:8910/docs](http://localhost:8910/docs)
 
 ### 部署衍生项目
 
