@@ -4,6 +4,9 @@ FROM ubuntu:22.04
 # Set environment variables to non-interactive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
+RUN /bin/bash -c "sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+                  sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list"
+
 # Update the package list and install necessary packages
 RUN apt-get update && \
     apt-get install -y \
@@ -41,10 +44,17 @@ RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.tem
     pip3 install -U magic-pdf"
 
 # Download models and update the configuration file
-RUN /bin/bash -c "pip3 install modelscope && \
+RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
+    pip3 install modelscope && \
     wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
+# install extents
+COPY requirements-fastapi.txt /minerugateway/requirements-fastapi.txt
+
+RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
+    pip3 install -r /minerugateway/requirements-fastapi.txt"
+
 # Set the entry point to activate the virtual environment and run the command line tool
-ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]
+CMD ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]

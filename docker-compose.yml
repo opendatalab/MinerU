@@ -1,0 +1,45 @@
+services:
+  gateway:
+    build:
+      context: .
+    depends_on:
+      - redis
+    container_name: mineru-gateway
+    ports:
+      - "8910:80"
+    volumes:
+      - ./services/fastapi/app:/minerugateway/app:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      TZ: Asia/Shanghai
+    command: ["/minerugateway/app/start.sh"]
+    restart: always
+    networks:
+      - default
+
+  redis:
+    image: redis:7.2.4
+    container_name: mineru-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./services/redis/conf/redis.conf:/etc/redis.conf
+      - ./services/redis/data/:/data/
+    restart: always
+    entrypoint: ["redis-server", "/etc/redis.conf"]
+    environment:
+      TZ: Asia/Shanghai
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      driver: default
