@@ -1,3 +1,11 @@
+'''
+Author: FutureMeng be_loving@163.com
+Date: 2024-11-20 11:10:37
+LastEditors: FutureMeng be_loving@163.com
+LastEditTime: 2024-11-20 20:21:22
+FilePath: \MinerU\services\fastapi\app\magic_pdf_parse_util.py
+Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+'''
 import os
 import json
 import datetime
@@ -31,7 +39,7 @@ def pdf_parse(
         file_info = redis_util.get_file_info(md5_value)
         if not file_info:
             return
-        if file_info["state"] != "init":
+        if file_info["state"] != "waiting":
             return
         redis_util.set_parse_parsing(md5_value)
         current_script_dir = os.path.dirname(os.path.abspath(__file__))

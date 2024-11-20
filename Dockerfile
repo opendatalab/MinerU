@@ -51,10 +51,10 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
 # install extents
-COPY requirements-fastapi.txt /minerugateway/requirements-fastapi.txt
+COPY requirements-fastapi.txt /gateway/requirements-fastapi.txt
 
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install -r /minerugateway/requirements-fastapi.txt"
+    pip3 install -r /gateway/requirements-fastapi.txt"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 CMD ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\"", "--"]

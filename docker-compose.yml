@@ -8,7 +8,8 @@ services:
     ports:
       - "8910:80"
     volumes:
-      - ./services/fastapi/app:/minerugateway/app:rw
+      - ./services/fastapi/app:/gateway/app:ro
+      - ./services/fastapi/tmp:/gateway/tmp:rw
     deploy:
       resources:
         reservations:
@@ -18,7 +19,7 @@ services:
               capabilities: [gpu]
     environment:
       TZ: Asia/Shanghai
-    command: ["/minerugateway/app/start.sh"]
+    command: ["/gateway/app/start.sh"]
     restart: always
     networks:
       - default
