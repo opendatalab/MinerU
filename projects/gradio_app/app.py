@@ -13,13 +13,13 @@ import pymupdf
 from gradio_pdf import PDF
 from loguru import logger
 
-from magic_pdf.data.data_reader_writer import DataReader
+from magic_pdf.data.data_reader_writer import FileBasedDataReader
 from magic_pdf.libs.hash_utils import compute_sha256
 from magic_pdf.tools.common import do_parse, prepare_env
 
 
 def read_fn(path):
-    disk_rw = DataReader(os.path.dirname(path))
+    disk_rw = FileBasedDataReader(os.path.dirname(path))
     return disk_rw.read(os.path.basename(path))
 
 
