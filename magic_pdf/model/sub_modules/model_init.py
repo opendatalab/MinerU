@@ -63,7 +63,7 @@ def ocr_model_init(show_log: bool = False,
                    use_dilation=True,
                    det_db_unclip_ratio=1.8,
                    ):
-    if lang is not None:
+    if lang is not None and lang != '':
         model = ModifiedPaddleOCR(
             show_log=show_log,
             det_db_box_thresh=det_db_box_thresh,
