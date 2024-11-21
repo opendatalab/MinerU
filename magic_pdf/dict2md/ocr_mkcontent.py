@@ -141,9 +141,10 @@ def merge_para_with_text(para_block):
             span_type = span['type']
             if span_type == ContentType.Text:
                 line_text += span['content'].strip()
+
         if line_text != '':
             line_lang = detect_lang(line_text)
-        for span in line['spans']:
+        for j, span in enumerate(line['spans']):
 
             span_type = span['type']
             content = ''
@@ -164,8 +165,8 @@ def merge_para_with_text(para_block):
                         para_text += f' {content} '
                 else:
                     if span_type in [ContentType.Text, ContentType.InlineEquation]:
-                        # 如果是前一行带有-连字符，那么末尾不应该加空格
-                        if __is_hyphen_at_line_end(content):
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if j == len(line['spans'])-1 and __is_hyphen_at_line_end(content):
                             para_text += content[:-1]
                         elif len(content) == 1 and content not in ['A', 'I', 'a', 'i'] and not content.isdigit():
                             para_text += content
