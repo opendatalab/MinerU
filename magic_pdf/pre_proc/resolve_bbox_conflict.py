@@ -4,8 +4,9 @@
 2. 然后去掉出现在文字blcok上的图片bbox
 """
 
-from magic_pdf.libs.boxbase import _is_in, _is_in_or_part_overlap, _is_left_overlap
-from magic_pdf.libs.drop_tag import ON_IMAGE_TEXT, ON_TABLE_TEXT
+from magic_pdf.config.drop_tag import ON_IMAGE_TEXT, ON_TABLE_TEXT
+from magic_pdf.libs.boxbase import (_is_in, _is_in_or_part_overlap,
+                                    _is_left_overlap)
 
 
 def resolve_bbox_overlap_conflict(images: list, tables: list, interline_equations: list, inline_equations: list,
@@ -26,14 +27,14 @@ def resolve_bbox_overlap_conflict(images: list, tables: list, interline_equation
     # 去掉位于图片上的文字block
     for image_box in images:
         for text_block in text_raw_blocks:
-            text_bbox = text_block["bbox"]
+            text_bbox = text_block['bbox']
             if _is_in(text_bbox, image_box):
                 text_block['tag'] = ON_IMAGE_TEXT
                 text_block_removed.append(text_block)
     # 去掉table上的文字block
     for table_box in tables:
         for text_block in text_raw_blocks:
-            text_bbox = text_block["bbox"]
+            text_bbox = text_block['bbox']
             if _is_in(text_bbox, table_box):
                 text_block['tag'] = ON_TABLE_TEXT
                 text_block_removed.append(text_block)
@@ -77,7 +78,7 @@ def resolve_bbox_overlap_conflict(images: list, tables: list, interline_equation
     # 图片和文字重叠，丢掉图片
     for image_box in images:
         for text_block in text_raw_blocks:
-            text_bbox = text_block["bbox"]
+            text_bbox = text_block['bbox']
             if _is_in_or_part_overlap(image_box, text_bbox):
                 images_backup.append(image_box)
                 break
@@ -122,11 +123,7 @@ def resolve_bbox_overlap_conflict(images: list, tables: list, interline_equation
 
 
 def check_text_block_horizontal_overlap(text_blocks: list, header, footer) -> bool:
-    """
-    检查文本block之间的水平重叠情况，这种情况如果发生，那么这个pdf就不再继续处理了。
-    因为这种情况大概率发生了公式没有被检测出来。
-    
-    """
+    """检查文本block之间的水平重叠情况，这种情况如果发生，那么这个pdf就不再继续处理了。 因为这种情况大概率发生了公式没有被检测出来。"""
     if len(text_blocks) == 0:
         return False
 
@@ -148,7 +145,7 @@ def check_text_block_horizontal_overlap(text_blocks: list, header, footer) -> bo
 
     txt_bboxes = []
     for text_block in text_blocks:
-        bbox = text_block["bbox"]
+        bbox = text_block['bbox']
         if bbox[1] >= clip_y0 and bbox[3] <= clip_y1:
             txt_bboxes.append(bbox)
 
@@ -161,11 +158,7 @@ def check_text_block_horizontal_overlap(text_blocks: list, header, footer) -> bo
 
 
 def check_useful_block_horizontal_overlap(useful_blocks: list) -> bool:
-    """
-    检查文本block之间的水平重叠情况，这种情况如果发生，那么这个pdf就不再继续处理了。
-    因为这种情况大概率发生了公式没有被检测出来。
-
-    """
+    """检查文本block之间的水平重叠情况，这种情况如果发生，那么这个pdf就不再继续处理了。 因为这种情况大概率发生了公式没有被检测出来。"""
     if len(useful_blocks) == 0:
         return False
 
@@ -174,7 +167,7 @@ def check_useful_block_horizontal_overlap(useful_blocks: list) -> bool:
 
     useful_bboxes = []
     for text_block in useful_blocks:
-        bbox = text_block["bbox"]
+        bbox = text_block['bbox']
         if bbox[1] >= page_min_y and bbox[3] <= page_max_y:
             useful_bboxes.append(bbox)
 

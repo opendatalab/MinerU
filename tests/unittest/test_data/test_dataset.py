@@ -3,7 +3,7 @@ from magic_pdf.data.dataset import ImageDataset, PymuDocDataset
 
 
 def test_pymudataset():
-    with open('tests/test_data/assets/pdfs/test_01.pdf', 'rb') as f:
+    with open('tests/unittest/test_data/assets/pdfs/test_01.pdf', 'rb') as f:
         bits = f.read()
     datasets = PymuDocDataset(bits)
     assert len(datasets) > 0
@@ -11,7 +11,7 @@ def test_pymudataset():
 
 
 def test_imagedataset():
-    with open('tests/test_data/assets/pngs/test_01.png', 'rb') as f:
+    with open('tests/unittest/test_data/assets/pngs/test_01.png', 'rb') as f:
         bits = f.read()
     datasets = ImageDataset(bits)
     assert len(datasets) == 1

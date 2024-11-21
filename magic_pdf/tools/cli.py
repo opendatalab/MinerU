@@ -5,9 +5,8 @@ import click
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.data.data_reader_writer import FileBasedDataReader
 from magic_pdf.libs.version import __version__
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.tools.common import do_parse, parse_pdf_methods
 
 
@@ -86,8 +85,8 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
     os.makedirs(output_dir, exist_ok=True)
 
     def read_fn(path):
-        disk_rw = DiskReaderWriter(os.path.dirname(path))
-        return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
+        disk_rw = FileBasedDataReader(os.path.dirname(path))
+        return disk_rw.read(os.path.basename(path))
 
     def parse_doc(doc_path: str):
         try:

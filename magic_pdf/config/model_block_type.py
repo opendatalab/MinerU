@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class ModelBlockTypeEnum(Enum):
     TITLE = 0
     PLAIN_TEXT = 1
