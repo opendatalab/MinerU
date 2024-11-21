@@ -24,7 +24,7 @@ def line_sort_spans_by_left_to_right(lines):
     return line_objects
 
 
-def merge_spans_to_line(spans):
+def merge_spans_to_line(spans, threshold=0.6):
     if len(spans) == 0:
         return []
     else:
@@ -49,7 +49,7 @@ def merge_spans_to_line(spans):
                 continue
 
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], 0.5):
+            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 # 否则，开始新行
