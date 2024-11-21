@@ -30,6 +30,7 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, i
         start_page_id=start_page_id,
         end_page_id=end_page_id,
         debug_mode=is_debug,
+        lang=lang,
     )
 
     pdf_info_dict['_parse_type'] = PARSE_TYPE_TXT
@@ -53,6 +54,7 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, i
         start_page_id=start_page_id,
         end_page_id=end_page_id,
         debug_mode=is_debug,
+        lang=lang,
     )
 
     pdf_info_dict['_parse_type'] = PARSE_TYPE_OCR
@@ -80,6 +82,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
                 debug_mode=is_debug,
+                lang=lang,
             )
         except Exception as e:
             logger.exception(e)

@@ -1,4 +1,7 @@
-
+from io import BytesIO
+import cv2
+import numpy as np
+from PIL import Image
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.libs.commons import fitz, join_path
 from magic_pdf.libs.hash_utils import compute_sha256
@@ -29,3 +32,26 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
     imageWriter.write(img_hash256_path, byte_data)
 
     return img_hash256_path
+
+
+def cut_image_to_pil_image(bbox: tuple, page: fitz.Page, mode="pillow"):
+
+    # 将坐标转换为fitz.Rect对象
+    rect = fitz.Rect(*bbox)
+    # 配置缩放倍数为3倍
+    zoom = fitz.Matrix(3, 3)
+    # 截取图片
+    pix = page.get_pixmap(clip=rect, matrix=zoom)
+
+    # 将字节数据转换为文件对象
+    image_file = BytesIO(pix.tobytes(output='png'))
+    # 使用 Pillow 打开图像
+    pil_image = Image.open(image_file)
+    if mode == "cv2":
+        image_result = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
+    elif mode == "pillow":
+        image_result = pil_image
+    else:
+        raise ValueError(f"mode: {mode} is not supported.")
+
+    return image_result

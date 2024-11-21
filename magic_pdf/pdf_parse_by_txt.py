@@ -10,6 +10,7 @@ def parse_pdf_by_txt(
     start_page_id=0,
     end_page_id=None,
     debug_mode=False,
+    lang=None,
 ):
     dataset = PymuDocDataset(pdf_bytes)
     return pdf_parse_union(dataset,
@@ -19,4 +20,5 @@ def parse_pdf_by_txt(
                            start_page_id=start_page_id,
                            end_page_id=end_page_id,
                            debug_mode=debug_mode,
+                           lang=lang,
                            )
