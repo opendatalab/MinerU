@@ -94,6 +94,9 @@ def do_parse(
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
 
+    if lang == "":
+        lang = None
+
     pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(pdf_bytes, start_page_id, end_page_id)
 
     orig_model_list = copy.deepcopy(model_list)
