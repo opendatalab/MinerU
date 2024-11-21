@@ -211,16 +211,21 @@ def get_ocr_result_list(ocr_res, useful_list):
     ocr_result_list = []
     for box_ocr_res in ocr_res:
 
-        p1, p2, p3, p4 = box_ocr_res[0]
-        text, score = box_ocr_res[1]
+        if len(box_ocr_res) == 2:
+            p1, p2, p3, p4 = box_ocr_res[0]
+            text, score = box_ocr_res[1]
+        else:
+            p1, p2, p3, p4 = box_ocr_res
+            text, score = "", 1
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
         # if average_angle_degrees > 0.5:
-        if calculate_is_angle(box_ocr_res[0]):
+        poly = [p1, p2, p3, p4]
+        if calculate_is_angle(poly):
             # logger.info(f"average_angle_degrees: {average_angle_degrees}, text: {text}")
             # 与x轴的夹角超过0.5度，对边界做一下矫正
             # 计算几何中心
-            x_center = sum(point[0] for point in box_ocr_res[0]) / 4
-            y_center = sum(point[1] for point in box_ocr_res[0]) / 4
+            x_center = sum(point[0] for point in poly) / 4
+            y_center = sum(point[1] for point in poly) / 4
             new_height = ((p4[1] - p1[1]) + (p3[1] - p2[1])) / 2
             new_width = p3[0] - p1[0]
             p1 = [x_center - new_width / 2, y_center - new_height / 2]
