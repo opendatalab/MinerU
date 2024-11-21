@@ -5,7 +5,7 @@ import os
 
 from loguru import logger
 
-from magic_pdf.libs.Constants import MODEL_NAME
+from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.libs.commons import parse_bucket_key
 
 # 定义配置文件名常量
@@ -99,7 +99,7 @@ def get_table_recog_config():
 
 def get_layout_config():
     config = read_config()
-    layout_config = config.get("layout-config")
+    layout_config = config.get('layout-config')
     if layout_config is None:
         logger.warning(f"'layout-config' not found in {CONFIG_FILE_NAME}, use '{MODEL_NAME.LAYOUTLMv3}' as default")
         return json.loads(f'{{"model": "{MODEL_NAME.LAYOUTLMv3}"}}')
@@ -109,7 +109,7 @@ def get_layout_config():
 
 def get_formula_config():
     config = read_config()
-    formula_config = config.get("formula-config")
+    formula_config = config.get('formula-config')
     if formula_config is None:
         logger.warning(f"'formula-config' not found in {CONFIG_FILE_NAME}, use 'True' as default")
         return json.loads(f'{{"mfd_model": "{MODEL_NAME.YOLO_V8_MFD}","mfr_model": "{MODEL_NAME.UniMerNet_v2_Small}","enable": true}}')
@@ -117,5 +117,5 @@ def get_formula_config():
         return formula_config
 
 
-if __name__ == "__main__":
-    ak, sk, endpoint = get_s3_config("llm-raw")
+if __name__ == '__main__':
+    ak, sk, endpoint = get_s3_config('llm-raw')

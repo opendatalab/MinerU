@@ -35,7 +35,7 @@ def read_jsonl(
     jsonl_d = [
         json.loads(line) for line in jsonl_bits.decode().split('\n') if line.strip()
     ]
-    for d in jsonl_d[:5]:
+    for d in jsonl_d:
         pdf_path = d.get('file_location', '') or d.get('path', '')
         if len(pdf_path) == 0:
             raise EmptyData('pdf file location is empty')

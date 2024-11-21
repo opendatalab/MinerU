@@ -17,7 +17,7 @@ def test_rag_document_reader():
     os.makedirs(temp_output_dir, exist_ok=True)
 
     # test
-    with open('tests/test_integrations/test_rag/assets/middle.json') as f:
+    with open('tests/unittest/test_integrations/test_rag/assets/middle.json') as f:
         json_data = json.load(f)
     res = convert_middle_json_to_layout_elements(json_data, temp_output_dir)
 
@@ -43,7 +43,7 @@ def test_data_reader():
     os.makedirs(temp_output_dir, exist_ok=True)
 
     # test
-    data_reader = DataReader('tests/test_integrations/test_rag/assets', 'ocr',
+    data_reader = DataReader('tests/unittest/test_integrations/test_rag/assets', 'ocr',
                              temp_output_dir)
 
     assert data_reader.get_documents_count() == 2

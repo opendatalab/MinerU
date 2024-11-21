@@ -9,7 +9,7 @@ from magic_pdf.data.schemas import S3Config
 
 
 def test_read_local_pdfs():
-    datasets = read_local_pdfs('tests/test_data/assets/pdfs')
+    datasets = read_local_pdfs('tests/unittest/test_data/assets/pdfs')
     assert len(datasets) == 2
     assert len(datasets[0]) > 0
     assert len(datasets[1]) > 0
@@ -19,7 +19,7 @@ def test_read_local_pdfs():
 
 
 def test_read_local_images():
-    datasets = read_local_images('tests/test_data/assets/pngs', suffixes=['png'])
+    datasets = read_local_images('tests/unittest/test_data/assets/pngs', suffixes=['png'])
     assert len(datasets) == 2
     assert len(datasets[0]) == 1
     assert len(datasets[1]) == 1
@@ -69,10 +69,10 @@ def test_read_json():
     assert len(datasets) > 0
     assert len(datasets[0]) == 10
 
-    datasets = read_jsonl('tests/test_data/assets/jsonl/test_01.jsonl', reader)
+    datasets = read_jsonl('tests/unittest/test_data/assets/jsonl/test_01.jsonl', reader)
     assert len(datasets) == 1
     assert len(datasets[0]) == 10
 
-    datasets = read_jsonl('tests/test_data/assets/jsonl/test_02.jsonl')
+    datasets = read_jsonl('tests/unittest/test_data/assets/jsonl/test_02.jsonl')
     assert len(datasets) == 1
     assert len(datasets[0]) == 1

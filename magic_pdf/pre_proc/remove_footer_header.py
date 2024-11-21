@@ -1,15 +1,12 @@
 import re
 
+from magic_pdf.config.drop_tag import CONTENT_IN_FOOT_OR_HEADER, PAGE_NO
 from magic_pdf.libs.boxbase import _is_in_or_part_overlap
-from magic_pdf.libs.drop_tag import CONTENT_IN_FOOT_OR_HEADER, PAGE_NO
 
 
 def remove_headder_footer_one_page(text_raw_blocks, image_bboxes, table_bboxes, header_bboxs, footer_bboxs,
                                    page_no_bboxs, page_w, page_h):
-    """
-    删除页眉页脚，页码
-    从line级别进行删除，删除之后观察这个text-block是否是空的，如果是空的，则移动到remove_list中
-    """
+    """删除页眉页脚，页码 从line级别进行删除，删除之后观察这个text-block是否是空的，如果是空的，则移动到remove_list中."""
     header = []
     footer = []
     if len(header) == 0:
