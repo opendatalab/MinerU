@@ -151,6 +151,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
         if char_is_line_stop_flag:
             if (
                 (span_bbox[2] - span_height) < char_bbox[0] < span_bbox[2]
+                and char_center_x > span_bbox[0]
                 and span_bbox[1] < char_center_y < span_bbox[3]
                 and abs(char_center_y - span_center_y) < span_height / 4
             ):
