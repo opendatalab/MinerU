@@ -116,13 +116,12 @@ class CustomPEKModel:
                 device=self.device
             )
         # 初始化ocr
-        if self.apply_ocr:
-            self.ocr_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.OCR,
-                ocr_show_log=show_log,
-                det_db_box_thresh=0.3,
-                lang=self.lang
-            )
+        self.ocr_model = atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.OCR,
+            ocr_show_log=show_log,
+            det_db_box_thresh=0.3,
+            lang=self.lang
+        )
         # init table model
         if self.apply_table:
             table_model_dir = self.configs["weights"][self.table_model_name]
@@ -174,24 +173,29 @@ class CustomPEKModel:
         ocr_res_list, table_res_list, single_page_mfdetrec_res = get_res_list_from_layout_res(layout_res)
 
         # ocr识别
-        if self.apply_ocr:
-            ocr_start = time.time()
-            # Process each area that requires OCR processing
-            for res in ocr_res_list:
-                new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
+        ocr_start = time.time()
+        # Process each area that requires OCR processing
+        for res in ocr_res_list:
+            new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
+            adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
 
-                # OCR recognition
-                new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+            # OCR recognition
+            new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+            if self.apply_ocr:
                 ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
+            else:
+                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res, rec=False)[0]
 
-                # Integration results
-                if ocr_res:
-                    ocr_result_list = get_ocr_result_list(ocr_res, useful_list)
-                    layout_res.extend(ocr_result_list)
+            # Integration results
+            if ocr_res:
+                ocr_result_list = get_ocr_result_list(ocr_res, useful_list)
+                layout_res.extend(ocr_result_list)
 
-            ocr_cost = round(time.time() - ocr_start, 2)
+        ocr_cost = round(time.time() - ocr_start, 2)
+        if self.apply_ocr:
             logger.info(f"ocr time: {ocr_cost}")
+        else:
+            logger.info(f"det time: {ocr_cost}")
 
         # 表格识别 table recognition
         if self.apply_table:
