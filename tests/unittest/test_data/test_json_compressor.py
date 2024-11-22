@@ -64,3 +64,12 @@ def test_compression_decompression_cycle(test_cases):
         
         # Verify the decompressed data matches original
         assert test_data == decompressed
+
+def test_compression_reduces_size(large_data):
+    """Test that compression actually reduces data size for large enough input"""
+    original_size = len(json.dumps(large_data))
+    compressed = JsonCompressor.compress_json(large_data)
+    compressed_size = len(compressed)
+    
+    # Verify compression actually saved space
+    assert compressed_size < original_size
