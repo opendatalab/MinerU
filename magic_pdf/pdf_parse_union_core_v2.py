@@ -222,7 +222,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             ocr_res = ocr_model.ocr(span_img, det=False)
             # logger.info(f"ocr_res: {ocr_res}")
             # logger.info(f"empty_span: {span}")
-            if len(ocr_res) > 0:
+            if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
                     ocr_text, ocr_score = ocr_res[0][0]
                     if ocr_score > 0.5 and len(ocr_text) > 0:
