@@ -78,3 +78,8 @@ def test_invalid_json_serializable():
     """Test handling of non-JSON serializable input"""
     with pytest.raises(TypeError):
         JsonCompressor.compress_json(set([1, 2, 3]))  # sets are not JSON serializable
+
+def test_invalid_compressed_string():
+    """Test handling of invalid compressed string"""
+    with pytest.raises(Exception):
+        JsonCompressor.decompress_json("invalid_base64_string")
