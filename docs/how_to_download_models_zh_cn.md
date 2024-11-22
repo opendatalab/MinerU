@@ -10,6 +10,7 @@
   <pre><code>pip install huggingface_hub
 wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
 python download_models_hf.py</code></pre>
+  <p>python脚本会自动下载模型文件并配置好配置文件中的模型目录</p>
 </details>
 
 ## 方法二：从 ModelScope 下载模型
@@ -21,13 +22,13 @@ pip install modelscope
 wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py
 python download_models.py
 ```
-
 python脚本会自动下载模型文件并配置好配置文件中的模型目录
 
 配置文件可以在用户目录中找到，文件名为`magic-pdf.json`
 
 > [!TIP]
 > windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
+
 
 # 此前下载过模型，如何更新
 
