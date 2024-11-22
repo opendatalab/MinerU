@@ -114,7 +114,7 @@ def chars_to_content(span):
         del span['chars']
 
 
-LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，')
+LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
 def fill_char_in_spans(spans, all_chars):
 
     for char in all_chars:
@@ -830,7 +830,7 @@ def pdf_parse_union(
         pdf_info_dict[f'page_{page_id}'] = page_info
 
     """分段"""
-    para_split(pdf_info_dict, debug_mode=debug_mode)
+    para_split(pdf_info_dict)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
