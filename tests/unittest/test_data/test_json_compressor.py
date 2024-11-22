@@ -73,3 +73,8 @@ def test_compression_reduces_size(large_data):
     
     # Verify compression actually saved space
     assert compressed_size < original_size
+
+def test_invalid_json_serializable():
+    """Test handling of non-JSON serializable input"""
+    with pytest.raises(TypeError):
+        JsonCompressor.compress_json(set([1, 2, 3]))  # sets are not JSON serializable
