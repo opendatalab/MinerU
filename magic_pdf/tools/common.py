@@ -3,18 +3,18 @@ import json as json_parse
 import os
 
 import click
+import fitz
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_line_sort_bbox,
                                       draw_model_bbox, draw_span_bbox)
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.pipe.TXTPipe import TXTPipe
 from magic_pdf.pipe.UNIPipe import UNIPipe
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-import fitz
+
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
 
@@ -54,11 +54,11 @@ def prepare_env(output_dir, pdf_file_name, method):
 
 
 def convert_pdf_bytes_to_bytes_by_pymupdf(pdf_bytes, start_page_id=0, end_page_id=None):
-    document = fitz.open("pdf", pdf_bytes)
+    document = fitz.open('pdf', pdf_bytes)
     output_document = fitz.open()
     end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(document) - 1
     if end_page_id > len(document) - 1:
-        logger.warning("end_page_id is out of range, use pdf_docs length")
+        logger.warning('end_page_id is out of range, use pdf_docs length')
         end_page_id = len(document) - 1
     output_document.insert_pdf(document, from_page=start_page_id, to_page=end_page_id)
     output_bytes = output_document.tobytes()
@@ -94,14 +94,17 @@ def do_parse(
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
 
+    if lang == "":
+        lang = None
+
     pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(pdf_bytes, start_page_id, end_page_id)
 
     orig_model_list = copy.deepcopy(model_list)
     local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name,
                                                 parse_method)
 
-    image_writer, md_writer = DiskReaderWriter(
-        local_image_dir), DiskReaderWriter(local_md_dir)
+    image_writer, md_writer = FileBasedDataWriter(
+        local_image_dir), FileBasedDataWriter(local_md_dir)
     image_dir = str(os.path.basename(local_image_dir))
 
     if parse_method == 'auto':
@@ -145,49 +148,36 @@ def do_parse(
     if f_draw_line_sort_bbox:
         draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
 
-    md_content = pipe.pipe_mk_markdown(image_dir,
-                                       drop_mode=DropMode.NONE,
-                                       md_make_mode=f_make_md_mode)
+    md_content = pipe.pipe_mk_markdown(image_dir, drop_mode=DropMode.NONE, md_make_mode=f_make_md_mode)
     if f_dump_md:
-        md_writer.write(
-            content=md_content,
-            path=f'{pdf_file_name}.md',
-            mode=AbsReaderWriter.MODE_TXT,
+        md_writer.write_string(
+            f'{pdf_file_name}.md',
+            md_content
         )
 
     if f_dump_middle_json:
-        md_writer.write(
-            content=json_parse.dumps(pipe.pdf_mid_data,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_middle.json',
-            mode=AbsReaderWriter.MODE_TXT,
+        md_writer.write_string(
+            f'{pdf_file_name}_middle.json',
+            json_parse.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4)
         )
 
     if f_dump_model_json:
-        md_writer.write(
-            content=json_parse.dumps(orig_model_list,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_model.json',
-            mode=AbsReaderWriter.MODE_TXT,
+        md_writer.write_string(
+            f'{pdf_file_name}_model.json',
+            json_parse.dumps(orig_model_list, ensure_ascii=False, indent=4)
         )
 
     if f_dump_orig_pdf:
         md_writer.write(
-            content=pdf_bytes,
-            path=f'{pdf_file_name}_origin.pdf',
-            mode=AbsReaderWriter.MODE_BIN,
+            f'{pdf_file_name}_origin.pdf',
+            pdf_bytes,
         )
 
     content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
     if f_dump_content_list:
-        md_writer.write(
-            content=json_parse.dumps(content_list,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_content_list.json',
-            mode=AbsReaderWriter.MODE_TXT,
+        md_writer.write_string(
+            f'{pdf_file_name}_content_list.json',
+            json_parse.dumps(content_list, ensure_ascii=False, indent=4)
         )
 
     logger.info(f'local output dir is {local_md_dir}')

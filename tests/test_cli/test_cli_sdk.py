@@ -13,10 +13,19 @@ model_config.__use_inside_model__ = True
 pdf_res_path = conf.conf['pdf_res_path']
 code_path = conf.conf['code_path']
 pdf_dev_path = conf.conf['pdf_dev_path']
-
+magic_pdf_config = "/home/quyuan/magic-pdf.json"
 
 class TestCli:
     """test cli."""
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """
+        init
+        """
+        common.clear_gpu_memory()
+        common.update_config_file(magic_pdf_config, "device-mode", "cuda")
+        # 这里可以添加任何前置操作
+        yield
 
     @pytest.mark.P0
     def test_pdf_auto_sdk(self):
@@ -291,22 +300,32 @@ class TestCli:
     def test_local_magic_pdf_open_st_table(self):
         """magic pdf cli open st table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_st.json ~/magic-pdf.json"
-        print (pre_cmd)
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_st.json ~/magic-pdf.json"
+        value = {
+        "model": "struct_eqtable",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
-        res = common.check_latex_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
         assert res is True
   
     @pytest.mark.P1
-    def test_local_magic_pdf_open_html_table(self):
-        """magic pdf cli open html table."""
+    def test_local_magic_pdf_open_tablemaster_cuda(self):
+        """magic pdf cli open table master html table cuda mode."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
@@ -315,24 +334,88 @@ class TestCli:
         assert res is True
     
     @pytest.mark.P1
-    def test_magic_pdf_close_html_table_cpu(self):
-        """magic pdf cli close html table cpu mode."""
+    def test_local_magic_pdf_open_rapidai_table(self):
+        """magic pdf cli open rapid ai table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "rapid_table",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
         res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
-        assert res is  True
+        assert res is True
+    
+    
+    @pytest.mark.P1
+    def test_local_magic_pdf_doclayout_yolo(self):
+        """magic pdf cli open doclyaout yolo."""
+        time.sleep(2)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "doclayout_yolo"
+        }   
+        common.update_config_file(magic_pdf_config, "layout-config", value)
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+
+    @pytest.mark.P1
+    def test_local_magic_pdf_layoutlmv3_yolo(self):
+        """magic pdf cli open layoutlmv3."""
+        time.sleep(2)
+        value = {
+        "model": "layoutlmv3"
+        }   
+        common.update_config_file(magic_pdf_config, "layout-config", value)
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+        #res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+
+    @pytest.mark.P1
+    def test_magic_pdf_cpu(self):
+        """magic pdf cli cpu mode."""
+        time.sleep(2)
+        #pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": False,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
+        common.update_config_file(magic_pdf_config, "device-mode", "cpu")
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+
 
     @pytest.mark.P1
     def test_local_magic_pdf_close_html_table(self):
         """magic pdf cli close table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": False,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)

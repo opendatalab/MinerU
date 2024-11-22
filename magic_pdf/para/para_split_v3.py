@@ -1,17 +1,30 @@
 import copy
 
-from loguru import logger
+from magic_pdf.config.constants import CROSS_PAGE, LINES_DELETED
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 
-from magic_pdf.libs.Constants import LINES_DELETED, CROSS_PAGE
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
-
-LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；')
+LINE_STOP_FLAG = (
+    '.',
+    '!',
+    '?',
+    '。',
+    '！',
+    '？',
+    ')',
+    '）',
+    '"',
+    '”',
+    ':',
+    '：',
+    ';',
+    '；',
+)
 LIST_END_FLAG = ('.', '。', ';', '；')
 
 
 class ListLineTag:
-    IS_LIST_START_LINE = "is_list_start_line"
-    IS_LIST_END_LINE = "is_list_end_line"
+    IS_LIST_START_LINE = 'is_list_start_line'
+    IS_LIST_END_LINE = 'is_list_end_line'
 
 
 def __process_blocks(blocks):
@@ -27,12 +40,14 @@ def __process_blocks(blocks):
 
         # 如果当前块是 text 类型
         if current_block['type'] == 'text':
-            current_block["bbox_fs"] = copy.deepcopy(current_block["bbox"])
-            if 'lines' in current_block and len(current_block["lines"]) > 0:
-                current_block['bbox_fs'] = [min([line['bbox'][0] for line in current_block['lines']]),
-                                            min([line['bbox'][1] for line in current_block['lines']]),
-                                            max([line['bbox'][2] for line in current_block['lines']]),
-                                            max([line['bbox'][3] for line in current_block['lines']])]
+            current_block['bbox_fs'] = copy.deepcopy(current_block['bbox'])
+            if 'lines' in current_block and len(current_block['lines']) > 0:
+                current_block['bbox_fs'] = [
+                    min([line['bbox'][0] for line in current_block['lines']]),
+                    min([line['bbox'][1] for line in current_block['lines']]),
+                    max([line['bbox'][2] for line in current_block['lines']]),
+                    max([line['bbox'][3] for line in current_block['lines']]),
+                ]
             current_group.append(current_block)
 
         # 检查下一个块是否存在
@@ -64,6 +79,7 @@ def __is_list_or_index_block(block):
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block_weight = block['bbox_fs'][2] - block['bbox_fs'][0]
         block_height = block['bbox_fs'][3] - block['bbox_fs'][1]
+        page_weight, page_height = block['page_size']
 
         left_close_num = 0
         left_not_close_num = 0
@@ -75,10 +91,17 @@ def __is_list_or_index_block(block):
         multiple_para_flag = False
         last_line = block['lines'][-1]
 
+        if page_weight == 0:
+            block_weight_radio = 0
+        else:
+            block_weight_radio = block_weight / page_weight
+        # logger.info(f"block_weight_radio: {block_weight_radio}")
+
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
-        if (first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2 and
-                abs(last_line['bbox'][0] - block['bbox_fs'][0]) < line_height / 2 and
-                block['bbox_fs'][2] - last_line['bbox'][2] > line_height
+        if (
+            first_line['bbox'][0] - block['bbox_fs'][0] > line_height / 2
+            and abs(last_line['bbox'][0] - block['bbox_fs'][0]) < line_height / 2
+            and block['bbox_fs'][2] - last_line['bbox'][2] > line_height
         ):
             multiple_para_flag = True
 
@@ -86,14 +109,14 @@ def __is_list_or_index_block(block):
             line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
             block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
             if (
-                    line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height and
-                    block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height
+                line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height
+                and block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height
             ):
                 external_sides_not_close_num += 1
             if abs(line_mid_x - block_mid_x) < line_height / 2:
                 center_close_num += 1
 
-            line_text = ""
+            line_text = ''
 
             for span in line['spans']:
                 span_type = span['type']
@@ -114,7 +137,12 @@ def __is_list_or_index_block(block):
                 right_close_num += 1
             else:
                 # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
-                closed_area = 0.26 * block_weight
+                # block宽的阈值可以小些，block窄的阈值要大
+
+                if block_weight_radio >= 0.5:
+                    closed_area = 0.26 * block_weight
+                else:
+                    closed_area = 0.36 * block_weight
                 if block['bbox_fs'][2] - line['bbox'][2] > closed_area:
                     right_not_close_num += 1
 
@@ -136,15 +164,19 @@ def __is_list_or_index_block(block):
                     if line_text[-1].isdigit():
                         num_end_count += 1
 
-            if num_start_count / len(lines_text_list) >= 0.8 or num_end_count / len(lines_text_list) >= 0.8:
+            if (
+                num_start_count / len(lines_text_list) >= 0.8
+                or num_end_count / len(lines_text_list) >= 0.8
+            ):
                 line_num_flag = True
             if flag_end_count / len(lines_text_list) >= 0.8:
                 line_end_flag = True
 
         # 有的目录右侧不贴边, 目前认为左边或者右边有一边全贴边，且符合数字规则极为index
-        if ((left_close_num / len(block['lines']) >= 0.8 or right_close_num / len(block['lines']) >= 0.8)
-                and line_num_flag
-        ):
+        if (
+            left_close_num / len(block['lines']) >= 0.8
+            or right_close_num / len(block['lines']) >= 0.8
+        ) and line_num_flag:
             for line in block['lines']:
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.Index
@@ -152,17 +184,21 @@ def __is_list_or_index_block(block):
         # 全部line都居中的特殊list识别，每行都需要换行，特征是多行，且大多数行都前后not_close,每line中点x坐标接近
         # 补充条件block的长宽比有要求
         elif (
-                external_sides_not_close_num >= 2 and
-                center_close_num == len(block['lines']) and
-                external_sides_not_close_num / len(block['lines']) >= 0.5 and
-                block_height / block_weight > 0.4
+            external_sides_not_close_num >= 2
+            and center_close_num == len(block['lines'])
+            and external_sides_not_close_num / len(block['lines']) >= 0.5
+            and block_height / block_weight > 0.4
         ):
             for line in block['lines']:
                 line[ListLineTag.IS_LIST_START_LINE] = True
             return BlockType.List
 
-        elif left_close_num >= 2 and (
-                right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2) and not multiple_para_flag:
+        elif (
+            left_close_num >= 2
+            and (right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2)
+            and not multiple_para_flag
+            # and block_weight_radio > 0.27
+        ):
             # 处理一种特殊的没有缩进的list，所有行都贴左边，通过右边的空隙判断是否是item尾
             if left_close_num / len(block['lines']) > 0.8:
                 # 这种是每个item只有一行，且左边都贴边的短item list
@@ -173,10 +209,15 @@ def __is_list_or_index_block(block):
                 # 这种是大部分line item 都有结束标识符的情况，按结束标识符区分不同item
                 elif line_end_flag:
                     for i, line in enumerate(block['lines']):
-                        if len(lines_text_list[i]) > 0 and lines_text_list[i][-1] in LIST_END_FLAG:
+                        if (
+                            len(lines_text_list[i]) > 0
+                            and lines_text_list[i][-1] in LIST_END_FLAG
+                        ):
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             if i + 1 < len(block['lines']):
-                                block['lines'][i + 1][ListLineTag.IS_LIST_START_LINE] = True
+                                block['lines'][i + 1][
+                                    ListLineTag.IS_LIST_START_LINE
+                                ] = True
                 # line item基本没有结束标识符，而且也没有缩进，按右侧空隙判断哪些是item end
                 else:
                     line_start_flag = False
@@ -185,7 +226,10 @@ def __is_list_or_index_block(block):
                             line[ListLineTag.IS_LIST_START_LINE] = True
                             line_start_flag = False
 
-                        if abs(block['bbox_fs'][2] - line['bbox'][2]) > 0.1 * block_weight:
+                        if (
+                            abs(block['bbox_fs'][2] - line['bbox'][2])
+                            > 0.1 * block_weight
+                        ):
                             line[ListLineTag.IS_LIST_END_LINE] = True
                             line_start_flag = True
             # 一种有缩进的特殊有序list,start line 左侧不贴边且以数字开头，end line 以 IS_LIST_END_FLAG 结尾且数量和start line 一致
@@ -223,18 +267,25 @@ def __merge_2_text_blocks(block1, block2):
             if len(last_line['spans']) > 0:
                 last_span = last_line['spans'][-1]
                 line_height = last_line['bbox'][3] - last_line['bbox'][1]
-                if (abs(block2['bbox_fs'][2] - last_line['bbox'][2]) < line_height and
-                        not last_span['content'].endswith(LINE_STOP_FLAG) and
-                        # 两个block宽度差距超过2倍也不合并
-                        abs(block1_weight - block2_weight) < min_block_weight
-                ):
-                    if block1['page_num'] != block2['page_num']:
-                        for line in block1['lines']:
-                            for span in line['spans']:
-                                span[CROSS_PAGE] = True
-                    block2['lines'].extend(block1['lines'])
-                    block1['lines'] = []
-                    block1[LINES_DELETED] = True
+                if len(first_line['spans']) > 0:
+                    first_span = first_line['spans'][0]
+                    if len(first_span['content']) > 0:
+                        span_start_with_num = first_span['content'][0].isdigit()
+                        if (
+                            abs(block2['bbox_fs'][2] - last_line['bbox'][2])
+                            < line_height
+                            and not last_span['content'].endswith(LINE_STOP_FLAG)
+                            # 两个block宽度差距超过2倍也不合并
+                            and abs(block1_weight - block2_weight) < min_block_weight
+                            and not span_start_with_num
+                        ):
+                            if block1['page_num'] != block2['page_num']:
+                                for line in block1['lines']:
+                                    for span in line['spans']:
+                                        span[CROSS_PAGE] = True
+                            block2['lines'].extend(block1['lines'])
+                            block1['lines'] = []
+                            block1[LINES_DELETED] = True
 
     return block1, block2
 
@@ -263,7 +314,6 @@ def __is_list_group(text_blocks_group):
 def __para_merge_page(blocks):
     page_text_blocks_groups = __process_blocks(blocks)
     for text_blocks_group in page_text_blocks_groups:
-
         if len(text_blocks_group) > 0:
             # 需要先在合并前对所有block判断是否为list or index block
             for block in text_blocks_group:
@@ -272,7 +322,6 @@ def __para_merge_page(blocks):
                 # logger.info(f"{block['type']}:{block}")
 
         if len(text_blocks_group) > 1:
-
             # 在合并前判断这个group 是否是一个 list group
             is_list_group = __is_list_group(text_blocks_group)
 
@@ -284,11 +333,18 @@ def __para_merge_page(blocks):
                 if i - 1 >= 0:
                     prev_block = text_blocks_group[i - 1]
 
-                    if current_block['type'] == 'text' and prev_block['type'] == 'text' and not is_list_group:
+                    if (
+                        current_block['type'] == 'text'
+                        and prev_block['type'] == 'text'
+                        and not is_list_group
+                    ):
                         __merge_2_text_blocks(current_block, prev_block)
                     elif (
-                            (current_block['type'] == BlockType.List and prev_block['type'] == BlockType.List) or
-                            (current_block['type'] == BlockType.Index and prev_block['type'] == BlockType.Index)
+                        current_block['type'] == BlockType.List
+                        and prev_block['type'] == BlockType.List
+                    ) or (
+                        current_block['type'] == BlockType.Index
+                        and prev_block['type'] == BlockType.Index
                     ):
                         __merge_2_list_blocks(current_block, prev_block)
 
@@ -296,12 +352,13 @@ def __para_merge_page(blocks):
             continue
 
 
-def para_split(pdf_info_dict, debug_mode=False):
+def para_split(pdf_info_dict):
     all_blocks = []
     for page_num, page in pdf_info_dict.items():
         blocks = copy.deepcopy(page['preproc_blocks'])
         for block in blocks:
             block['page_num'] = page_num
+            block['page_size'] = page['page_size']
         all_blocks.extend(blocks)
 
     __para_merge_page(all_blocks)
@@ -317,4 +374,4 @@ if __name__ == '__main__':
     # 调用函数
     groups = __process_blocks(input_blocks)
     for group_index, group in enumerate(groups):
-        print(f"Group {group_index}: {group}")
+        print(f'Group {group_index}: {group}')

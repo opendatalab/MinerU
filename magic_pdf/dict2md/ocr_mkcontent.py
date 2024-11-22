@@ -2,21 +2,20 @@ import re
 
 from loguru import logger
 
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 from magic_pdf.para.para_split_v3 import ListLineTag
 
 
 def __is_hyphen_at_line_end(line):
-    """
-    Check if a line ends with one or more letters followed by a hyphen.
-    
+    """Check if a line ends with one or more letters followed by a hyphen.
+
     Args:
     line (str): The line of text to check.
-    
+
     Returns:
     bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
     """
@@ -142,9 +141,10 @@ def merge_para_with_text(para_block):
             span_type = span['type']
             if span_type == ContentType.Text:
                 line_text += span['content'].strip()
+
         if line_text != '':
             line_lang = detect_lang(line_text)
-        for span in line['spans']:
+        for j, span in enumerate(line['spans']):
 
             span_type = span['type']
             content = ''
@@ -162,16 +162,16 @@ def merge_para_with_text(para_block):
                     if span_type in [ContentType.Text, ContentType.InterlineEquation]:
                         para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
                     elif span_type == ContentType.InlineEquation:
-                        para_text += f" {content} "
+                        para_text += f' {content} '
                 else:
                     if span_type in [ContentType.Text, ContentType.InlineEquation]:
-                        # 如果是前一行带有-连字符，那么末尾不应该加空格
-                        if __is_hyphen_at_line_end(content):
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if j == len(line['spans'])-1 and __is_hyphen_at_line_end(content):
                             para_text += content[:-1]
                         elif len(content) == 1 and content not in ['A', 'I', 'a', 'i'] and not content.isdigit():
                             para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
-                            para_text += f"{content} "
+                            para_text += f'{content} '
                     elif span_type == ContentType.InterlineEquation:
                         para_text += content
             else:

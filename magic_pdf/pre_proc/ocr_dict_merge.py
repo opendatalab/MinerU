@@ -1,8 +1,8 @@
+from magic_pdf.config.drop_tag import DropTag
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.boxbase import (__is_overlaps_y_exceeds_threshold,
                                     _is_in_or_part_overlap_with_area_ratio,
                                     calculate_overlap_area_in_bbox1_area_ratio)
-from magic_pdf.libs.drop_tag import DropTag
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 
 
 # 将每一个line中的span从左到右排序
@@ -24,7 +24,7 @@ def line_sort_spans_by_left_to_right(lines):
     return line_objects
 
 
-def merge_spans_to_line(spans):
+def merge_spans_to_line(spans, threshold=0.6):
     if len(spans) == 0:
         return []
     else:
@@ -49,7 +49,7 @@ def merge_spans_to_line(spans):
                 continue
 
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], 0.5):
+            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 # 否则，开始新行
@@ -157,7 +157,7 @@ def fill_spans_in_blocks(blocks, spans, radio):
             BlockType.ImageBody, BlockType.ImageCaption, BlockType.ImageFootnote,
             BlockType.TableBody, BlockType.TableCaption, BlockType.TableFootnote
         ]:
-            block_dict["group_id"] = block[-1]
+            block_dict['group_id'] = block[-1]
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']

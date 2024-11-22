@@ -10,5 +10,7 @@ class RapidTableModel(object):
 
     def predict(self, image):
         ocr_result, _ = self.ocr_engine(np.asarray(image))
+        if ocr_result is None:
+            return None, None, None
         html_code, table_cell_bboxes, elapse = self.table_model(np.asarray(image), ocr_result)
         return html_code, table_cell_bboxes, elapse
