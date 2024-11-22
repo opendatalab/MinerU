@@ -352,7 +352,7 @@ def __para_merge_page(blocks):
             continue
 
 
-def para_split(pdf_info_dict, debug_mode=False):
+def para_split(pdf_info_dict):
     all_blocks = []
     for page_num, page in pdf_info_dict.items():
         blocks = copy.deepcopy(page['preproc_blocks'])
