@@ -83,3 +83,8 @@ def test_invalid_compressed_string():
     """Test handling of invalid compressed string"""
     with pytest.raises(Exception):
         JsonCompressor.decompress_json("invalid_base64_string")
+
+def test_empty_string_input():
+    """Test handling of empty string input"""
+    with pytest.raises(Exception):
+        JsonCompressor.decompress_json("")
