@@ -170,7 +170,6 @@ class CustomPEKModel:
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
-        page_start = time.time()
 
         # layout检测
         layout_start = time.time()
@@ -271,7 +270,5 @@ class CustomPEKModel:
                         'table recognition processing fails, not get html return'
                     )
             logger.info(f'table time: {round(time.time() - table_start, 2)}')
-
-        logger.info(f'-----page total time: {round(time.time() - page_start, 2)}-----')
 
         return layout_res

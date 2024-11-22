@@ -163,7 +163,9 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
         page_width = img_dict["width"]
         page_height = img_dict["height"]
         if start_page_id <= index <= end_page_id:
+            page_start = time.time()
             result = custom_model(img)
+            logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
         else:
             result = []
         page_info = {"page_no": index, "height": page_height, "width": page_width}
