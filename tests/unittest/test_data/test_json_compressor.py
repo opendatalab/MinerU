@@ -88,3 +88,28 @@ def test_empty_string_input():
     """Test handling of empty string input"""
     with pytest.raises(Exception):
         JsonCompressor.decompress_json("")
+
+def test_special_characters():
+    """Test handling of special characters"""
+    test_data = {
+        "special": "!@#$%^&*()_+-=[]{}|;:,.<>?",
+        "unicode": "Hello 世界 🌍"
+    }
+    
+    compressed = JsonCompressor.compress_json(test_data)
+    decompressed = JsonCompressor.decompress_json(compressed)
+    assert test_data == decompressed
+
+# Parametrized test for different types of input
+@pytest.mark.parametrize("test_input", [
+    {"simple": "value"},
+    [1, 2, 3],
+    {"nested": {"key": "value"}},
+    ["mixed", 1, True, None],
+    {"unicode": "🌍"}
+])
+def test_various_input_types(test_input):
+    """Test compression and decompression with various input types"""
+    compressed = JsonCompressor.compress_json(test_input)
+    decompressed = JsonCompressor.decompress_json(compressed)
+    assert test_input == decompressed
