@@ -42,6 +42,9 @@
 </div>
 
 # Changelog
+- 2024/11/22 0.10.0 released. Introducing hybrid OCR text extraction capabilities,
+  - Significantly improved parsing performance in complex text distribution scenarios such as dense formulas, irregular span regions, and text represented by images.
+  - Combines the dual advantages of accurate content extraction and faster speed in text mode, and more precise span/line region recognition in OCR mode.
 - 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
