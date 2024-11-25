@@ -69,6 +69,7 @@ def pdf_parse_main(
     :param parse_method: 解析方法， 共 auto、ocr、txt 三种，默认 auto，如果效果不好，可以尝试 ocr
     :param model_json_path: 已经存在的模型数据文件，如果为空则使用内置模型，pdf 和 model_json 务必对应
     :param is_json_md_dump: 是否将解析后的数据写入到 .json 和 .md 文件中，默认 True，会将不同阶段的数据写入到不同的 .json 文件中（共3个.json文件），md内容会保存到 .md 文件中
+    :param is_draw_visualization_bbox: 是否绘制可视化边界框，默认 True，会生成布局框和 span 框的图像
     :param output_dir: 输出结果的目录地址，会生成一个以 pdf 文件名命名的文件夹并保存所有结果
     """
     try:
@@ -97,12 +98,9 @@ def pdf_parse_main(
             model_json = []
 
         # 执行解析步骤
-        # image_writer = DiskReaderWriter(output_image_path)
         image_writer, md_writer = FileBasedDataWriter(output_image_path), FileBasedDataWriter(output_path)
 
         # 选择解析方式
-        # jso_useful_key = {"_pdf_type": "", "model_list": model_json}
-        # pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
         if parse_method == 'auto':
             jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -141,5 +139,5 @@ def pdf_parse_main(
 
 # 测试
 if __name__ == '__main__':
-    pdf_path = r'D:\project\20240617magicpdf\Magic-PDF\demo\demo1.pdf'
-    pdf_parse_main(pdf_path)
+    file_path = r'D:\project\20240617magicpdf\Magic-PDF\demo\demo1.pdf'
+    pdf_parse_main(file_path)
