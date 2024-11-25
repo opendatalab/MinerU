@@ -139,5 +139,8 @@ def pdf_parse_main(
 
 # 测试
 if __name__ == '__main__':
-    file_path = r'D:\project\20240617magicpdf\Magic-PDF\demo\demo1.pdf'
-    pdf_parse_main(file_path)
+    current_script_dir = os.path.dirname(os.path.abspath(__file__))
+    demo_names = ['demo1', 'demo2', 'small_ocr']
+    for name in demo_names:
+        file_path = os.path.join(current_script_dir, f'{name}.pdf')
+        pdf_parse_main(file_path)
