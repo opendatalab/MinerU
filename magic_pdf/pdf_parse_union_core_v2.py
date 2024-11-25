@@ -128,8 +128,13 @@ def fill_char_in_spans(spans, all_chars):
                 span['chars'].append(char)
                 break
 
+    empty_spans = []
+
     for span in spans:
         chars_to_content(span)
+        if len(span['content']) == 0:
+            empty_spans.append(span)
+    return empty_spans
 
 
 # 使用鲁棒性更强的中心点坐标判断
@@ -162,21 +167,6 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    useful_spans = []
-    unuseful_spans = []
-    for span in spans:
-        for block in all_bboxes:
-            if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
-                continue
-            else:
-                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                    useful_spans.append(span)
-                    break
-        for block in all_discarded_blocks:
-            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                unuseful_spans.append(span)
-                break
-
     text_blocks = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
 
     # @todo: 拿到char之后把倾斜角度较大的先删一遍
@@ -186,24 +176,29 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
 
+    useful_spans = []
+    unuseful_spans = []
+    for span in spans:
+            for block in all_bboxes + all_discarded_blocks:
+                if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
+                    continue
+                overlap_ratio = calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4])
+                if overlap_ratio > 0.5:
+                    if block in all_bboxes:
+                        useful_spans.append(span)
+                    else:
+                        unuseful_spans.append(span)
+                    break
+
     new_spans = []
 
-    for span in useful_spans:
+    for span in useful_spans + unuseful_spans:
         if span['type'] in [ContentType.Text]:
             span['chars'] = []
             new_spans.append(span)
 
-    for span in unuseful_spans:
-        if span['type'] in [ContentType.Text]:
-            span['chars'] = []
-            new_spans.append(span)
+    empty_spans = fill_char_in_spans(new_spans, all_pymu_chars)
 
-    fill_char_in_spans(new_spans, all_pymu_chars)
-
-    empty_spans = []
-    for span in new_spans:
-        if len(span['content']) == 0:
-            empty_spans.append(span)
     if len(empty_spans) > 0:
 
         # 初始化ocr模型
@@ -216,18 +211,14 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
         )
 
         for span in empty_spans:
-            spans.remove(span)
-            # 对span的bbox截图
+            # 对span的bbox截图再ocr
             span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode="cv2")
             ocr_res = ocr_model.ocr(span_img, det=False)
-            # logger.info(f"ocr_res: {ocr_res}")
-            # logger.info(f"empty_span: {span}")
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
                     ocr_text, ocr_score = ocr_res[0][0]
                     if ocr_score > 0.5 and len(ocr_text) > 0:
-                            span['content'] = ocr_text
-                            spans.append(span)
+                        span['content'] = ocr_text
 
     return spans
 
