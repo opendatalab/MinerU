@@ -682,6 +682,27 @@ def parse_page_core(
     """顺便删除大水印并保留abandon的span"""
     spans = remove_outside_spans(spans, all_bboxes, all_discarded_blocks)
 
+    """删除重叠spans中置信度较低的那些"""
+    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
+    """删除重叠spans中较小的那些"""
+    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
+
+    """根据parse_mode，构造spans，主要是文本类的字符填充"""
+    if parse_mode == SupportedPdfParseMethod.TXT:
+
+        """之前的公式替换方案"""
+        # pymu_spans = txt_spans_extract_v1(page_doc, inline_equations, interline_equations)
+        # spans = replace_text_span(pymu_spans, spans)
+
+        """使用新版本的混合ocr方案"""
+        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
+
+    elif parse_mode == SupportedPdfParseMethod.OCR:
+        pass
+    else:
+        raise Exception('parse_mode must be txt or ocr')
+
+
     """先处理不需要排版的discarded_blocks"""
     discarded_block_with_spans, spans = fill_spans_in_blocks(
         all_discarded_blocks, spans, 0.4
@@ -705,26 +726,6 @@ def parse_page_core(
             need_drop,
             drop_reason,
         )
-
-    """删除重叠spans中置信度较低的那些"""
-    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
-    """删除重叠spans中较小的那些"""
-    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
-
-    """根据parse_mode，构造spans，主要是文本类的字符填充"""
-    if parse_mode == SupportedPdfParseMethod.TXT:
-
-        """之前的公式替换方案"""
-        # pymu_spans = txt_spans_extract_v1(page_doc, inline_equations, interline_equations)
-        # spans = replace_text_span(pymu_spans, spans)
-
-        """ocr 中文本类的 span 用 pymu spans 替换！"""
-        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
-
-    elif parse_mode == SupportedPdfParseMethod.OCR:
-        pass
-    else:
-        raise Exception('parse_mode must be txt or ocr')
 
     """对image和table截图"""
     spans = ocr_cut_image_and_table(
