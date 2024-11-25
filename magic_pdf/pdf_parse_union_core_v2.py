@@ -89,28 +89,25 @@ def __replace_STX_ETX(text_str: str):
 
 
 def chars_to_content(span):
-    # # 先给chars按char['bbox']的x坐标排序
-    # span['chars'] = sorted(span['chars'], key=lambda x: x['bbox'][0])
-
-    # 先给chars按char['bbox']的中心点的x坐标排序
-    span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
-    content = ''
-
-    # 求char的平均宽度
+    # 检查span中的char是否为空
     if len(span['chars']) == 0:
-        span['content'] = content
-        del span['chars']
-        return
+        span['content'] = ''
     else:
+        # 先给chars按char['bbox']的中心点的x坐标排序
+        span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
+
+        # 求char的平均宽度
         char_width_sum = sum([char['bbox'][2] - char['bbox'][0] for char in span['chars']])
         char_avg_width = char_width_sum / len(span['chars'])
 
-    for char in span['chars']:
-        # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
-        if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
-            content += ' '
-        content += char['c']
-    span['content'] = __replace_STX_ETX(content)
+        content = ''
+        for char in span['chars']:
+            # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
+            if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
+                content += ' '
+            content += char['c']
+        span['content'] = __replace_STX_ETX(content)
+
     del span['chars']
 
 
@@ -218,6 +215,8 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
                     ocr_text, ocr_score = ocr_res[0][0]
                     if ocr_score > 0.5 and len(ocr_text) > 0:
                         span['content'] = ocr_text
+                    else:
+                        spans.remove(span)
 
     return spans
 
