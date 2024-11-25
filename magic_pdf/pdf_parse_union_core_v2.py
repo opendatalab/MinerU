@@ -179,16 +179,15 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     useful_spans = []
     unuseful_spans = []
     for span in spans:
-            for block in all_bboxes + all_discarded_blocks:
-                if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
-                    continue
-                overlap_ratio = calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4])
-                if overlap_ratio > 0.5:
-                    if block in all_bboxes:
-                        useful_spans.append(span)
-                    else:
-                        unuseful_spans.append(span)
-                    break
+        for block in all_bboxes + all_discarded_blocks:
+            if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
+                continue
+            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
+                if block in all_bboxes:
+                    useful_spans.append(span)
+                else:
+                    unuseful_spans.append(span)
+                break
 
     new_spans = []
 
