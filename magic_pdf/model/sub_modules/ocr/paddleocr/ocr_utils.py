@@ -214,6 +214,9 @@ def get_ocr_result_list(ocr_res, useful_list):
         if len(box_ocr_res) == 2:
             p1, p2, p3, p4 = box_ocr_res[0]
             text, score = box_ocr_res[1]
+            # logger.info(f"text: {text}, score: {score}")
+            if score < 0.6:  # 过滤低置信度的结果
+                continue
         else:
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
