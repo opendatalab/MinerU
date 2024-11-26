@@ -46,8 +46,8 @@ def load_images_from_pdf(pdf_bytes: bytes, dpi=200, start_page_id=0, end_page_id
                 mat = fitz.Matrix(dpi / 72, dpi / 72)
                 pm = page.get_pixmap(matrix=mat, alpha=False)
 
-                # If the width or height exceeds 9000 after scaling, do not scale further.
-                if pm.width > 9000 or pm.height > 9000:
+                # If the width or height exceeds 4500 after scaling, do not scale further.
+                if pm.width > 4500 or pm.height > 4500:
                     pm = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
 
                 img = Image.frombytes("RGB", (pm.width, pm.height), pm.samples)
