@@ -8,7 +8,7 @@ services:
     ports:
       - "8910:80"
     volumes:
-      - ./services/fastapi/app:/gateway/app:ro
+      - ./services/fastapi/app:/gateway/app:rw
       - ./services/fastapi/tmp:/gateway/tmp:rw
     deploy:
       resources:
