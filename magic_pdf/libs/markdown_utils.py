@@ -1,6 +1,4 @@
-import re
-
-
+@DeprecationWarning
 def escape_special_markdown_char(pymu_blocks):
     """
     转义正文里对markdown语法有特殊意义的字符

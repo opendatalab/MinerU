@@ -34,13 +34,11 @@ except ImportError:
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 
 from magic_pdf.para.para_split_v3 import para_split
-from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
+
 from magic_pdf.pre_proc.construct_page_dict import \
     ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
-from magic_pdf.pre_proc.equations_replace import (
-    combine_chars_to_pymudict, remove_chars_in_text_blocks,
-    replace_equations_in_textblock)
+
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
     ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
@@ -49,26 +47,6 @@ from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
 from magic_pdf.pre_proc.ocr_span_list_modify import (
     get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
     remove_overlaps_min_spans)
-from magic_pdf.pre_proc.resolve_bbox_conflict import \
-    check_useful_block_horizontal_overlap
-
-
-def remove_horizontal_overlap_block_which_smaller(all_bboxes):
-    useful_blocks = []
-    for bbox in all_bboxes:
-        useful_blocks.append({'bbox': bbox[:4]})
-    is_useful_block_horz_overlap, smaller_bbox, bigger_bbox = (
-        check_useful_block_horizontal_overlap(useful_blocks)
-    )
-    if is_useful_block_horz_overlap:
-        logger.warning(
-            f'skip this page, reason: {DropReason.USEFUL_BLOCK_HOR_OVERLAP}, smaller bbox is {smaller_bbox}, bigger bbox is {bigger_bbox}'
-        )  # noqa: E501
-        for bbox in all_bboxes.copy():
-            if smaller_bbox == bbox[:4]:
-                all_bboxes.remove(bbox)
-
-    return is_useful_block_horz_overlap, all_bboxes
 
 
 def __replace_STX_ETX(text_str: str):
@@ -261,39 +239,6 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
                     else:
                         spans.remove(span)
 
-    return spans
-
-
-def txt_spans_extract_v1(pdf_page, inline_equations, interline_equations):
-    text_raw_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
-    char_level_text_blocks = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)[
-        'blocks'
-    ]
-    text_blocks = combine_chars_to_pymudict(text_raw_blocks, char_level_text_blocks)
-    text_blocks = replace_equations_in_textblock(
-        text_blocks, inline_equations, interline_equations
-    )
-    text_blocks = remove_citation_marker(text_blocks)
-    text_blocks = remove_chars_in_text_blocks(text_blocks)
-    spans = []
-    for v in text_blocks:
-        for line in v['lines']:
-            for span in line['spans']:
-                bbox = span['bbox']
-                if float_equal(bbox[0], bbox[2]) or float_equal(bbox[1], bbox[3]):
-                    continue
-                if span.get('type') not in (
-                    ContentType.InlineEquation,
-                    ContentType.InterlineEquation,
-                ):
-                    spans.append(
-                        {
-                            'bbox': list(span['bbox']),
-                            'content': __replace_STX_ETX(span['text']),
-                            'type': ContentType.Text,
-                            'score': 1.0,
-                        }
-                    )
     return spans
 
 
@@ -721,10 +666,6 @@ def parse_page_core(
 
     """根据parse_mode，构造spans，主要是文本类的字符填充"""
     if parse_mode == SupportedPdfParseMethod.TXT:
-
-        """之前的公式替换方案"""
-        # pymu_spans = txt_spans_extract_v1(page_doc, inline_equations, interline_equations)
-        # spans = replace_text_span(pymu_spans, spans)
 
         """使用新版本的混合ocr方案"""
         spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
