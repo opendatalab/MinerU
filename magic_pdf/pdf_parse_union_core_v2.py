@@ -164,28 +164,70 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    text_blocks = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
 
     # @todo: 拿到char之后把倾斜角度较大的先删一遍
     all_pymu_chars = []
-    for block in text_blocks:
+    for block in text_blocks_raw:
         for line in block['lines']:
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
 
+    # 计算所有sapn的高度的中位数
+    span_height_list = []
+    for span in spans:
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+            continue
+        span_height = span['bbox'][3] - span['bbox'][1]
+        span['height'] = span_height
+        span_height_list.append(span_height)
+    if len(span_height_list) == 0:
+        return spans
+    else:
+        median_span_height = statistics.median(span_height_list)
+
     useful_spans = []
     unuseful_spans = []
+    # 纵向span的两个特征：1. 高度超过多个line 2. 高宽比超过某个值
+    vertical_spans = []
     for span in spans:
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+            continue
         for block in all_bboxes + all_discarded_blocks:
             if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
                 continue
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                if block in all_bboxes:
+                if span['height'] > median_span_height * 3 and span['height'] > (span['bbox'][2] - span['bbox'][0]) * 3:
+                    vertical_spans.append(span)
+                elif block in all_bboxes:
                     useful_spans.append(span)
                 else:
                     unuseful_spans.append(span)
+
+                del span['height']
+
                 break
 
+    """垂直的span框直接用pymu的line进行填充"""
+    if len(vertical_spans) > 0:
+        text_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+        all_pymu_lines = []
+        for block in text_blocks:
+            for line in block['lines']:
+                all_pymu_lines.append(line)
+
+        for pymu_line in all_pymu_lines:
+            for span in vertical_spans:
+                if calculate_overlap_area_in_bbox1_area_ratio(pymu_line['bbox'], span['bbox']) > 0.5:
+                    for pymu_span in pymu_line['spans']:
+                        span['content'] += pymu_span['text']
+                    break
+
+        for span in vertical_spans:
+            if len(span['content']) == 0:
+                spans.remove(span)
+
+    """水平的span框如果没有char则用ocr进行填充"""
     new_spans = []
 
     for span in useful_spans + unuseful_spans:
