@@ -215,6 +215,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
                     ocr_text, ocr_score = ocr_res[0][0]
                     if ocr_score > 0.5 and len(ocr_text) > 0:
                         span['content'] = ocr_text
+                        span['score'] = ocr_score
                     else:
                         spans.remove(span)
 
