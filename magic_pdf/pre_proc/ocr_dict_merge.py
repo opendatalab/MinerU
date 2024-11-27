@@ -1,4 +1,3 @@
-
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold, calculate_overlap_area_in_bbox1_area_ratio
 
@@ -82,14 +81,6 @@ def fill_spans_in_blocks(blocks, spans, radio):
             if calculate_overlap_area_in_bbox1_area_ratio(
                     span_bbox, block_bbox) > radio:
                 block_spans.append(span)
-        '''行内公式调整, 高度调整至与同行文字高度一致(优先左侧, 其次右侧)'''
-        # displayed_list = []
-        # text_inline_lines = []
-        # modify_y_axis(block_spans, displayed_list, text_inline_lines)
-        '''模型识别错误的行间公式, type类型转换成行内公式'''
-        # block_spans = modify_inline_equation(block_spans, displayed_list, text_inline_lines)
-        '''bbox去除粘连'''  # 去粘连会影响span的bbox，导致后续fill的时候出错
-        # block_spans = remove_overlap_between_bbox_for_span(block_spans)
 
         block_dict['spans'] = block_spans
         block_with_spans.append(block_dict)
@@ -103,9 +94,6 @@ def fill_spans_in_blocks(blocks, spans, radio):
 
 
 def fix_block_spans_v2(block_with_spans):
-    """1、img_block和table_block因为包含caption和footnote的关系，存在block的嵌套关系
-    需要将caption和footnote的text_span放入相应img_block和table_block内的
-    caption_block和footnote_block中 2、同时需要删除block中的spans字段."""
     fix_blocks = []
     for block in block_with_spans:
         block_type = block['type']
