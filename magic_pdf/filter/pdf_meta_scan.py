@@ -1,13 +1,12 @@
 """输入： s3路径，每行一个 输出： pdf文件元信息，包括每一页上的所有图片的长宽高，bbox位置."""
 
-import sys
 from collections import Counter
 
-import click
+import fitz
 from loguru import logger
 
 from magic_pdf.config.drop_reason import DropReason
-from magic_pdf.libs.commons import fitz, get_top_percent_list, mymax, read_file
+from magic_pdf.libs.commons import get_top_percent_list, mymax
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.pdf_check import detect_invalid_chars
 
@@ -384,21 +383,8 @@ def pdf_meta_scan(pdf_bytes: bytes):
         return res
 
 
-@click.command()
-@click.option('--s3-pdf-path', help='s3上pdf文件的路径')
-@click.option('--s3-profile', help='s3上的profile')
-def main(s3_pdf_path: str, s3_profile: str):
-    """"""
-    try:
-        file_content = read_file(s3_pdf_path, s3_profile)
-        pdf_meta_scan(file_content)
-    except Exception as e:
-        print(f'ERROR: {s3_pdf_path}, {e}', file=sys.stderr)
-        logger.exception(e)
-
-
 if __name__ == '__main__':
-    main()
+    pass
     # "D:\project/20231108code-clean\pdf_cost_time\竖排例子\净空法师-大乘无量寿.pdf"
     # "D:\project/20231108code-clean\pdf_cost_time\竖排例子\三国演义_繁体竖排版.pdf"
     # "D:\project/20231108code-clean\pdf_cost_time\scihub\scihub_86800000\libgen.scimag86880000-86880999.zip_10.1021/acsami.1c03109.s002.pdf"

@@ -1,16 +1,12 @@
 import enum
-import json
 
 from magic_pdf.config.model_block_type import ModelBlockTypeEnum
 from magic_pdf.config.ocr_content_type import CategoryId, ContentType
-from magic_pdf.data.data_reader_writer import (FileBasedDataReader,
-                                               FileBasedDataWriter)
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.boxbase import (_is_in, _is_part_overlap, bbox_distance,
                                     bbox_relative_pos, box_area, calculate_iou,
                                     calculate_overlap_area_in_bbox1_area_ratio,
                                     get_overlap_area)
-from magic_pdf.libs.commons import fitz, join_path
 from magic_pdf.libs.coordinate_transform import get_scale_ratio
 from magic_pdf.libs.local_math import float_gt
 from magic_pdf.pre_proc.remove_bbox_overlap import _remove_overlap_between_bbox
@@ -1048,29 +1044,3 @@ class MagicModel:
     def get_model_list(self, page_no):
         return self.__model_list[page_no]
 
-
-if __name__ == '__main__':
-    drw = FileBasedDataReader(r'D:/project/20231108code-clean')
-    if 0:
-        pdf_file_path = r'linshixuqiu\19983-00.pdf'
-        model_file_path = r'linshixuqiu\19983-00_new.json'
-        pdf_bytes = drw.read(pdf_file_path)
-        model_json_txt = drw.read(model_file_path).decode()
-        model_list = json.loads(model_json_txt)
-        write_path = r'D:\project\20231108code-clean\linshixuqiu\19983-00'
-        img_bucket_path = 'imgs'
-        img_writer = FileBasedDataWriter(join_path(write_path, img_bucket_path))
-        pdf_docs = fitz.open('pdf', pdf_bytes)
-        magic_model = MagicModel(model_list, pdf_docs)
-
-    if 1:
-        from magic_pdf.data.dataset import PymuDocDataset
-
-        model_list = json.loads(
-            drw.read('/opt/data/pdf/20240418/j.chroma.2009.03.042.json')
-        )
-        pdf_bytes = drw.read('/opt/data/pdf/20240418/j.chroma.2009.03.042.pdf')
-
-        magic_model = MagicModel(model_list, PymuDocDataset(pdf_bytes))
-        for i in range(7):
-            print(magic_model.get_imgs(i))

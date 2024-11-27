@@ -2,10 +2,10 @@ import io
 import json
 import os
 
+import fitz
 import boto3
 from botocore.config import Config
 
-from magic_pdf.libs.commons import fitz
 from magic_pdf.libs.config_reader import get_s3_config_dict
 
 from magic_pdf.libs.commons import join_path, json_dump_path, read_file, parse_bucket_key
