@@ -1,5 +1,3 @@
-import math
-
 import numpy as np
 from loguru import logger
 
@@ -250,32 +248,6 @@ def get_ocr_result_list(ocr_res, useful_list):
         })
 
     return ocr_result_list
-
-
-def calculate_angle_degrees(poly):
-    # 定义对角线的顶点
-    diagonal1 = (poly[0], poly[2])
-    diagonal2 = (poly[1], poly[3])
-
-    # 计算对角线的斜率
-    def slope(p1, p2):
-        return (p2[1] - p1[1]) / (p2[0] - p1[0]) if p2[0] != p1[0] else float('inf')
-
-    slope1 = slope(diagonal1[0], diagonal1[1])
-    slope2 = slope(diagonal2[0], diagonal2[1])
-
-    # 计算对角线与x轴的夹角（以弧度为单位）
-    angle1_radians = math.atan(slope1)
-    angle2_radians = math.atan(slope2)
-
-    # 将弧度转换为角度
-    angle1_degrees = math.degrees(angle1_radians)
-    angle2_degrees = math.degrees(angle2_radians)
-
-    # 取两条对角线与x轴夹角的平均值
-    average_angle_degrees = abs((angle1_degrees + angle2_degrees) / 2)
-    # logger.info(f"average_angle_degrees: {average_angle_degrees}")
-    return average_angle_degrees
 
 
 def calculate_is_angle(poly):
