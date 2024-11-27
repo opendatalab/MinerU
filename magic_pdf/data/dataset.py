@@ -1,11 +1,13 @@
+import os
 from abc import ABC, abstractmethod
-from typing import Iterator
+from typing import Callable, Iterator
 
 import fitz
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.schemas import PageInfo
 from magic_pdf.data.utils import fitz_doc_to_image
+from magic_pdf.filter import classify
 
 
 class PageableData(ABC):
@@ -26,6 +28,14 @@ class PageableData(ABC):
         Returns:
             PageInfo: the page info of this page
         """
+        pass
+
+    @abstractmethod
+    def draw_rect(self, rect_coords, color, fill, fill_opacity, width, overlay):
+        pass
+
+    @abstractmethod
+    def insert_text(self, coord, content, fontsize, color):
         pass
 
 
@@ -66,6 +76,18 @@ class Dataset(ABC):
         """
         pass
 
+    @abstractmethod
+    def dump_to_file(self, file_path: str):
+        pass
+
+    @abstractmethod
+    def apply(self, proc: Callable, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def classify(self) -> SupportedPdfParseMethod:
+        pass
+
 
 class PymuDocDataset(Dataset):
     def __init__(self, bits: bytes):
@@ -74,7 +96,8 @@ class PymuDocDataset(Dataset):
         Args:
             bits (bytes): the bytes of the pdf
         """
-        self._records = [Doc(v) for v in fitz.open('pdf', bits)]
+        self._raw_fitz = fitz.open('pdf', bits)
+        self._records = [Doc(v) for v in self._raw_fitz]
         self._data_bits = bits
         self._raw_data = bits
 
@@ -109,6 +132,19 @@ class PymuDocDataset(Dataset):
         """
         return self._records[page_id]
 
+    def dump_to_file(self, file_path: str):
+        dir_name = os.path.dirname(file_path)
+        if dir_name not in ('', '.', '..'):
+            os.makedirs(dir_name, exist_ok=True)
+        self._raw_fitz.save(file_path)
+
+    def apply(self, proc: Callable, *args, **kwargs):
+        new_args = tuple([self] + list(args))
+        return proc(*new_args, **kwargs)
+
+    def classify(self) -> SupportedPdfParseMethod:
+        return classify(self._data_bits)
+
 
 class ImageDataset(Dataset):
     def __init__(self, bits: bytes):
@@ -118,7 +154,8 @@ class ImageDataset(Dataset):
             bits (bytes): the bytes of the photo which will be converted to pdf first. then converted to pymudoc.
         """
         pdf_bytes = fitz.open(stream=bits).convert_to_pdf()
-        self._records = [Doc(v) for v in fitz.open('pdf', pdf_bytes)]
+        self._raw_fitz = fitz.open('pdf', pdf_bytes)
+        self._records = [Doc(v) for v in self._raw_fitz]
         self._raw_data = bits
         self._data_bits = pdf_bytes
 
@@ -153,9 +190,22 @@ class ImageDataset(Dataset):
         """
         return self._records[page_id]
 
+    def dump_to_file(self, file_path: str):
+        dir_name = os.path.dirname(file_path)
+        if dir_name not in ('', '.', '..'):
+            os.makedirs(dir_name, exist_ok=True)
+        self._raw_fitz.save(file_path)
+
+    def apply(self, proc: Callable, *args, **kwargs):
+        return proc(self, *args, **kwargs)
+
+    def classify(self) -> SupportedPdfParseMethod:
+        return SupportedPdfParseMethod.OCR
+
 
 class Doc(PageableData):
     """Initialized with pymudoc object."""
+
     def __init__(self, doc: fitz.Page):
         self._doc = doc
 
@@ -192,3 +242,16 @@ class Doc(PageableData):
     def __getattr__(self, name):
         if hasattr(self._doc, name):
             return getattr(self._doc, name)
+
+    def draw_rect(self, rect_coords, color, fill, fill_opacity, width, overlay):
+        self._doc.draw_rect(
+            rect_coords,
+            color=color,
+            fill=fill,
+            fill_opacity=fill_opacity,
+            width=width,
+            overlay=overlay,
+        )
+
+    def insert_text(self, coord, content, fontsize, color):
+        self._doc.insert_text(coord, content, fontsize=fontsize, color=color)
