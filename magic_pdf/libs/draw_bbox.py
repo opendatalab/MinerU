@@ -1,8 +1,7 @@
+import fitz
 from magic_pdf.config.constants import CROSS_PAGE
-from magic_pdf.config.ocr_content_type import (BlockType, CategoryId,
-                                               ContentType)
+from magic_pdf.config.ocr_content_type import BlockType, CategoryId, ContentType
 from magic_pdf.data.dataset import PymuDocDataset
-from magic_pdf.libs.commons import fitz  # PyMuPDF
 from magic_pdf.model.magic_model import MagicModel
 
 

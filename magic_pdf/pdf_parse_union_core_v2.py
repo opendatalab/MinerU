@@ -5,6 +5,7 @@ import time
 from typing import List
 
 import torch
+import fitz
 from loguru import logger
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
@@ -12,7 +13,6 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.commons import fitz, get_delta_time
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
@@ -784,7 +784,7 @@ def pdf_parse_union(
         if debug_mode:
             time_now = time.time()
             logger.info(
-                f'page_id: {page_id}, last_page_cost_time: {get_delta_time(start_time)}'
+                f'page_id: {page_id}, last_page_cost_time: {time.time() - start_time}'
             )
             start_time = time_now
 
