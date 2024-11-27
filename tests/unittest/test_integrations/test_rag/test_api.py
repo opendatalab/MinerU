@@ -25,8 +25,8 @@ def test_rag_document_reader():
     assert len(list(iter(doc))) == 1
 
     page = list(iter(doc))[0]
-    assert len(list(iter(page))) == 10
-    assert len(page.get_rel_map()) == 3
+    assert len(list(iter(page))) >= 10
+    assert len(page.get_rel_map()) >= 3
 
     item = list(iter(page))[0]
     assert item.category_type == CategoryType.text

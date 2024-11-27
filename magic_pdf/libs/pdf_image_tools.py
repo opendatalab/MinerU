@@ -1,9 +1,10 @@
 from io import BytesIO
 import cv2
+import fitz
 import numpy as np
 from PIL import Image
 from magic_pdf.data.data_reader_writer import DataWriter
-from magic_pdf.libs.commons import fitz, join_path
+from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.hash_utils import compute_sha256
 
 

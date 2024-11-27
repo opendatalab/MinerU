@@ -271,13 +271,18 @@ def __merge_2_text_blocks(block1, block2):
                     first_span = first_line['spans'][0]
                     if len(first_span['content']) > 0:
                         span_start_with_num = first_span['content'][0].isdigit()
+                        span_start_with_big_char = first_span['content'][0].isupper()
                         if (
-                            abs(block2['bbox_fs'][2] - last_line['bbox'][2])
-                            < line_height
+                            # 上一个block的最后一个line的右边界和block的右边界差距不超过line_height
+                            abs(block2['bbox_fs'][2] - last_line['bbox'][2]) < line_height
+                            # 上一个block的最后一个span不是以特定符号结尾
                             and not last_span['content'].endswith(LINE_STOP_FLAG)
                             # 两个block宽度差距超过2倍也不合并
                             and abs(block1_weight - block2_weight) < min_block_weight
+                            # 下一个block的第一个字符是数字
                             and not span_start_with_num
+                            # 下一个block的第一个字符是大写字母
+                            and not span_start_with_big_char
                         ):
                             if block1['page_num'] != block2['page_num']:
                                 for line in block1['lines']:

@@ -5,19 +5,18 @@ import time
 from typing import List
 
 import torch
+import fitz
 from loguru import logger
 
-from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.commons import fitz, get_delta_time
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
-from magic_pdf.libs.local_math import float_equal
+
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
 from magic_pdf.model.magic_model import MagicModel
 
@@ -34,13 +33,11 @@ except ImportError:
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 
 from magic_pdf.para.para_split_v3 import para_split
-from magic_pdf.pre_proc.citationmarker_remove import remove_citation_marker
+
 from magic_pdf.pre_proc.construct_page_dict import \
     ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
-from magic_pdf.pre_proc.equations_replace import (
-    combine_chars_to_pymudict, remove_chars_in_text_blocks,
-    replace_equations_in_textblock)
+
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
     ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
@@ -49,26 +46,6 @@ from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
 from magic_pdf.pre_proc.ocr_span_list_modify import (
     get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
     remove_overlaps_min_spans)
-from magic_pdf.pre_proc.resolve_bbox_conflict import \
-    check_useful_block_horizontal_overlap
-
-
-def remove_horizontal_overlap_block_which_smaller(all_bboxes):
-    useful_blocks = []
-    for bbox in all_bboxes:
-        useful_blocks.append({'bbox': bbox[:4]})
-    is_useful_block_horz_overlap, smaller_bbox, bigger_bbox = (
-        check_useful_block_horizontal_overlap(useful_blocks)
-    )
-    if is_useful_block_horz_overlap:
-        logger.warning(
-            f'skip this page, reason: {DropReason.USEFUL_BLOCK_HOR_OVERLAP}, smaller bbox is {smaller_bbox}, bigger bbox is {bigger_bbox}'
-        )  # noqa: E501
-        for bbox in all_bboxes.copy():
-            if smaller_bbox == bbox[:4]:
-                all_bboxes.remove(bbox)
-
-    return is_useful_block_horz_overlap, all_bboxes
 
 
 def __replace_STX_ETX(text_str: str):
@@ -89,29 +66,26 @@ def __replace_STX_ETX(text_str: str):
 
 
 def chars_to_content(span):
-        # # 先给chars按char['bbox']的x坐标排序
-        # span['chars'] = sorted(span['chars'], key=lambda x: x['bbox'][0])
-
+    # 检查span中的char是否为空
+    if len(span['chars']) == 0:
+        span['content'] = ''
+    else:
         # 先给chars按char['bbox']的中心点的x坐标排序
         span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
-        content = ''
 
         # 求char的平均宽度
-        if len(span['chars']) == 0:
-            span['content'] = content
-            del span['chars']
-            return
-        else:
-            char_width_sum = sum([char['bbox'][2] - char['bbox'][0] for char in span['chars']])
-            char_avg_width = char_width_sum / len(span['chars'])
+        char_width_sum = sum([char['bbox'][2] - char['bbox'][0] for char in span['chars']])
+        char_avg_width = char_width_sum / len(span['chars'])
 
+        content = ''
         for char in span['chars']:
             # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
             if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
                 content += ' '
             content += char['c']
         span['content'] = __replace_STX_ETX(content)
-        del span['chars']
+
+    del span['chars']
 
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
@@ -128,8 +102,13 @@ def fill_char_in_spans(spans, all_chars):
                 span['chars'].append(char)
                 break
 
+    empty_spans = []
+
     for span in spans:
         chars_to_content(span)
+        if len(span['content']) == 0:
+            empty_spans.append(span)
+    return empty_spans
 
 
 # 使用鲁棒性更强的中心点坐标判断
@@ -162,48 +141,79 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    useful_spans = []
-    unuseful_spans = []
-    for span in spans:
-        for block in all_bboxes:
-            if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
-                continue
-            else:
-                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                    useful_spans.append(span)
-                    break
-        for block in all_discarded_blocks:
-            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                unuseful_spans.append(span)
-                break
-
-    text_blocks = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
 
     # @todo: 拿到char之后把倾斜角度较大的先删一遍
     all_pymu_chars = []
-    for block in text_blocks:
+    for block in text_blocks_raw:
         for line in block['lines']:
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
 
+    # 计算所有sapn的高度的中位数
+    span_height_list = []
+    for span in spans:
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+            continue
+        span_height = span['bbox'][3] - span['bbox'][1]
+        span['height'] = span_height
+        span_height_list.append(span_height)
+    if len(span_height_list) == 0:
+        return spans
+    else:
+        median_span_height = statistics.median(span_height_list)
+
+    useful_spans = []
+    unuseful_spans = []
+    # 纵向span的两个特征：1. 高度超过多个line 2. 高宽比超过某个值
+    vertical_spans = []
+    for span in spans:
+        if span['type'] in [ContentType.InterlineEquation, ContentType.Image, ContentType.Table]:
+            continue
+        for block in all_bboxes + all_discarded_blocks:
+            if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
+                continue
+            if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
+                if span['height'] > median_span_height * 3 and span['height'] > (span['bbox'][2] - span['bbox'][0]) * 3:
+                    vertical_spans.append(span)
+                elif block in all_bboxes:
+                    useful_spans.append(span)
+                else:
+                    unuseful_spans.append(span)
+
+                del span['height']
+
+                break
+
+    """垂直的span框直接用pymu的line进行填充"""
+    if len(vertical_spans) > 0:
+        text_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+        all_pymu_lines = []
+        for block in text_blocks:
+            for line in block['lines']:
+                all_pymu_lines.append(line)
+
+        for pymu_line in all_pymu_lines:
+            for span in vertical_spans:
+                if calculate_overlap_area_in_bbox1_area_ratio(pymu_line['bbox'], span['bbox']) > 0.5:
+                    for pymu_span in pymu_line['spans']:
+                        span['content'] += pymu_span['text']
+                    break
+
+        for span in vertical_spans:
+            if len(span['content']) == 0:
+                spans.remove(span)
+
+    """水平的span框如果没有char则用ocr进行填充"""
     new_spans = []
 
-    for span in useful_spans:
+    for span in useful_spans + unuseful_spans:
         if span['type'] in [ContentType.Text]:
             span['chars'] = []
             new_spans.append(span)
 
-    for span in unuseful_spans:
-        if span['type'] in [ContentType.Text]:
-            span['chars'] = []
-            new_spans.append(span)
+    empty_spans = fill_char_in_spans(new_spans, all_pymu_chars)
 
-    fill_char_in_spans(new_spans, all_pymu_chars)
-
-    empty_spans = []
-    for span in new_spans:
-        if len(span['content']) == 0:
-            empty_spans.append(span)
     if len(empty_spans) > 0:
 
         # 初始化ocr模型
@@ -216,52 +226,18 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
         )
 
         for span in empty_spans:
-            spans.remove(span)
-            # 对span的bbox截图
+            # 对span的bbox截图再ocr
             span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode="cv2")
             ocr_res = ocr_model.ocr(span_img, det=False)
-            # logger.info(f"ocr_res: {ocr_res}")
-            # logger.info(f"empty_span: {span}")
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
                     ocr_text, ocr_score = ocr_res[0][0]
                     if ocr_score > 0.5 and len(ocr_text) > 0:
-                            span['content'] = ocr_text
-                            spans.append(span)
+                        span['content'] = ocr_text
+                        span['score'] = ocr_score
+                    else:
+                        spans.remove(span)
 
-    return spans
-
-
-def txt_spans_extract_v1(pdf_page, inline_equations, interline_equations):
-    text_raw_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
-    char_level_text_blocks = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)[
-        'blocks'
-    ]
-    text_blocks = combine_chars_to_pymudict(text_raw_blocks, char_level_text_blocks)
-    text_blocks = replace_equations_in_textblock(
-        text_blocks, inline_equations, interline_equations
-    )
-    text_blocks = remove_citation_marker(text_blocks)
-    text_blocks = remove_chars_in_text_blocks(text_blocks)
-    spans = []
-    for v in text_blocks:
-        for line in v['lines']:
-            for span in line['spans']:
-                bbox = span['bbox']
-                if float_equal(bbox[0], bbox[2]) or float_equal(bbox[1], bbox[3]):
-                    continue
-                if span.get('type') not in (
-                    ContentType.InlineEquation,
-                    ContentType.InterlineEquation,
-                ):
-                    spans.append(
-                        {
-                            'bbox': list(span['bbox']),
-                            'content': __replace_STX_ETX(span['text']),
-                            'type': ContentType.Text,
-                            'score': 1.0,
-                        }
-                    )
     return spans
 
 
@@ -682,6 +658,23 @@ def parse_page_core(
     """顺便删除大水印并保留abandon的span"""
     spans = remove_outside_spans(spans, all_bboxes, all_discarded_blocks)
 
+    """删除重叠spans中置信度较低的那些"""
+    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
+    """删除重叠spans中较小的那些"""
+    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
+
+    """根据parse_mode，构造spans，主要是文本类的字符填充"""
+    if parse_mode == SupportedPdfParseMethod.TXT:
+
+        """使用新版本的混合ocr方案"""
+        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
+
+    elif parse_mode == SupportedPdfParseMethod.OCR:
+        pass
+    else:
+        raise Exception('parse_mode must be txt or ocr')
+
+
     """先处理不需要排版的discarded_blocks"""
     discarded_block_with_spans, spans = fill_spans_in_blocks(
         all_discarded_blocks, spans, 0.4
@@ -705,26 +698,6 @@ def parse_page_core(
             need_drop,
             drop_reason,
         )
-
-    """删除重叠spans中置信度较低的那些"""
-    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
-    """删除重叠spans中较小的那些"""
-    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
-
-    """根据parse_mode，构造spans，主要是文本类的字符填充"""
-    if parse_mode == SupportedPdfParseMethod.TXT:
-
-        """之前的公式替换方案"""
-        # pymu_spans = txt_spans_extract_v1(page_doc, inline_equations, interline_equations)
-        # spans = replace_text_span(pymu_spans, spans)
-
-        """ocr 中文本类的 span 用 pymu spans 替换！"""
-        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
-
-    elif parse_mode == SupportedPdfParseMethod.OCR:
-        pass
-    else:
-        raise Exception('parse_mode must be txt or ocr')
 
     """对image和table截图"""
     spans = ocr_cut_image_and_table(
@@ -811,7 +784,7 @@ def pdf_parse_union(
         if debug_mode:
             time_now = time.time()
             logger.info(
-                f'page_id: {page_id}, last_page_cost_time: {get_delta_time(start_time)}'
+                f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
             )
             start_time = time_now
 

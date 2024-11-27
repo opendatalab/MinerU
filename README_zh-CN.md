@@ -284,89 +284,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ### 命令行
 
-```bash
-magic-pdf --help
-Usage: magic-pdf [OPTIONS]
-
-Options:
-  -v, --version                display the version and exit
-  -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir PATH        output local directory  [required]
-  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
-                               technique to extract information from pdf. txt:
-                               suitable for the text-based pdf only and
-                               outperform ocr. auto: automatically choose the
-                               best method for parsing pdf from ocr and txt.
-                               without method specified, auto will be used by
-                               default.
-  -l, --lang TEXT              Input the languages in the pdf (if known) to
-                               improve OCR accuracy.  Optional. You should
-                               input "Abbreviation" with language form url: ht
-                               tps://paddlepaddle.github.io/PaddleOCR/latest/en
-                               /ppocr/blog/multi_languages.html#5-support-languages-
-                               and-abbreviations
-  -d, --debug BOOLEAN          Enables detailed debugging information during
-                               the execution of the CLI commands.
-  -s, --start INTEGER          The starting page for PDF parsing, beginning
-                               from 0.
-  -e, --end INTEGER            The ending page for PDF parsing, beginning from
-                               0.
-  --help                       Show this message and exit.
-
-
-## show version
-magic-pdf -v
-
-## command line example
-magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
-```
-
-其中 `{some_pdf}` 可以是单个pdf文件，也可以是一个包含多个pdf文件的目录。
-运行完命令后输出的结果会保存在`{some_output_dir}`目录下, 输出的文件列表如下
-
-```text
-├── some_pdf.md                          # markdown 文件
-├── images                               # 存放图片目录
-├── some_pdf_layout.pdf                  # layout 绘图 （包含layout阅读顺序）
-├── some_pdf_middle.json                 # minerU 中间处理结果
-├── some_pdf_model.json                  # 模型推理结果
-├── some_pdf_origin.pdf                  # 原 pdf 文件
-├── some_pdf_spans.pdf                   # 最小粒度的bbox位置信息绘图
-└── some_pdf_content_list.json           # 按阅读顺序排列的富文本json
-```
+[通过命令行使用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/command_line.html)
 
 > [!TIP]
 > 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
 ### API
 
-处理本地磁盘上的文件
-
-```python
-image_writer = DiskReaderWriter(local_image_dir)
-image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
-
-处理对象存储上的文件
-
-```python
-s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-image_dir = "s3://img_bucket/"
-s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
-pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
+[通过Python代码调用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/to_markdown.html)
 
 详细实现可参考
 

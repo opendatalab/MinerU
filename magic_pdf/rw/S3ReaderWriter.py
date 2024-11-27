@@ -1,5 +1,5 @@
 from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.libs.commons import parse_aws_param, parse_bucket_key, join_path
+from magic_pdf.libs.commons import parse_bucket_key, join_path
 import boto3
 from loguru import logger
 from botocore.config import Config
