@@ -784,7 +784,7 @@ def pdf_parse_union(
         if debug_mode:
             time_now = time.time()
             logger.info(
-                f'page_id: {page_id}, last_page_cost_time: {time.time() - start_time}'
+                f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
             )
             start_time = time_now
 
