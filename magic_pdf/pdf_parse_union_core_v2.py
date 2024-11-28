@@ -57,6 +57,13 @@ def __replace_STX_ETX(text_str: str):
     return text_str
 
 
+def __replace_0xfffd(text_str: str):
+    """Replace \ufffd, as these characters become garbled when extracted using pymupdf."""
+    if text_str:
+        s = text_str.replace('\ufffd', " ")
+        return s
+    return text_str
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
@@ -76,7 +83,8 @@ def chars_to_content(span):
             if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
                 content += ' '
             content += char['c']
-        span['content'] = __replace_STX_ETX(content)
+
+        span['content'] = __replace_0xfffd(content)
 
     del span['chars']
 
@@ -140,7 +148,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP | fitz.TEXT_CID_FOR_UNKNOWN_UNICODE)['blocks']
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
     all_pymu_chars = []
     for block in text_blocks_raw:
