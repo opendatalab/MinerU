@@ -84,6 +84,9 @@ def chars_to_content(span):
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
 def fill_char_in_spans(spans, all_chars):
 
+    # 简单从上到下排一下序
+    spans = sorted(spans, key=lambda x: x['bbox'][1])
+
     for char in all_chars:
         for span in spans:
             # 判断char是否属于LINE_STOP_FLAG
@@ -137,7 +140,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP | fitz.TEXT_CID_FOR_UNKNOWN_UNICODE)['blocks']
 
     all_pymu_chars = []
     for block in text_blocks_raw:

@@ -136,14 +136,11 @@ def merge_para_with_text(para_block):
             para_text += '  \n'
 
         line_text = ''
-        line_lang = ''
         for span in line['spans']:
             span_type = span['type']
             if span_type == ContentType.Text:
                 line_text += span['content'].strip()
 
-        if line_text != '':
-            line_lang = detect_lang(line_text)
         for j, span in enumerate(line['spans']):
 
             span_type = span['type']
@@ -157,27 +154,18 @@ def merge_para_with_text(para_block):
 
             content = content.strip()
             if content != '':
-                langs = ['zh', 'ja', 'ko']
-                if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
-                    if span_type in [ContentType.Text, ContentType.InterlineEquation]:
-                        para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
-                    elif span_type == ContentType.InlineEquation:
-                        para_text += f' {content} '
-                else:
-                    if span_type in [ContentType.Text, ContentType.InlineEquation]:
-                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if j == len(line['spans'])-1 and __is_hyphen_at_line_end(content):
-                            para_text += content[:-1]
-                        elif len(content) == 1 and content not in ['A', 'I', 'a', 'i'] and not content.isdigit():
-                            para_text += content
-                        else:  # 西方文本语境下 content间需要空格分隔
-                            para_text += f'{content} '
-                    elif span_type == ContentType.InterlineEquation:
-                        para_text += content
+                if span_type in [ContentType.Text, ContentType.InlineEquation]:
+                    # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                    if j == len(line['spans'])-1 and __is_hyphen_at_line_end(content):
+                        para_text += content[:-1]
+                    else:  # content间需要空格分隔
+                        para_text += f'{content} '
+                elif span_type == ContentType.InterlineEquation:
+                    para_text += content
             else:
                 continue
     # 连写字符拆分
-    para_text = __replace_ligatures(para_text)
+    # para_text = __replace_ligatures(para_text)
 
     return para_text
 
