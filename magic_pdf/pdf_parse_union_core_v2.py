@@ -30,22 +30,14 @@ try:
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass
+
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
-
 from magic_pdf.para.para_split_v3 import para_split
-
-from magic_pdf.pre_proc.construct_page_dict import \
-    ocr_construct_page_component_v2
+from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
-
-from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
-    ocr_prepare_bboxes_for_layout_split_v2
-from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
-                                               fix_block_spans_v2,
-                                               fix_discarded_block)
-from magic_pdf.pre_proc.ocr_span_list_modify import (
-    get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
-    remove_overlaps_min_spans)
+from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
+from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
+from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, remove_overlaps_min_spans
 
 
 def __replace_STX_ETX(text_str: str):
@@ -68,7 +60,8 @@ def __replace_STX_ETX(text_str: str):
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
-        span['content'] = ''
+        pass
+        # span['content'] = ''
     else:
         # 先给chars按char['bbox']的中心点的x坐标排序
         span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
@@ -106,8 +99,11 @@ def fill_char_in_spans(spans, all_chars):
 
     for span in spans:
         chars_to_content(span)
-        if len(span['content']) == 0:
+        # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
+        if len(span['content']) * span['height'] < span['width'] * 0.5:
+            # logger.info(f"maybe empty span: {len(span['content'])}, {span['height']}, {span['width']}")
             empty_spans.append(span)
+        del span['height'], span['width']
     return empty_spans
 
 
@@ -157,6 +153,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             continue
         span_height = span['bbox'][3] - span['bbox'][1]
         span['height'] = span_height
+        span['width'] = span['bbox'][2] - span['bbox'][0]
         span_height_list.append(span_height)
     if len(span_height_list) == 0:
         return spans
@@ -174,14 +171,12 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
                 continue
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                if span['height'] > median_span_height * 3 and span['height'] > (span['bbox'][2] - span['bbox'][0]) * 3:
+                if span['height'] > median_span_height * 3 and span['height'] > span['width'] * 3:
                     vertical_spans.append(span)
                 elif block in all_bboxes:
                     useful_spans.append(span)
                 else:
                     unuseful_spans.append(span)
-
-                del span['height']
 
                 break
 
@@ -232,6 +227,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
                     ocr_text, ocr_score = ocr_res[0][0]
+                    # logger.info(f"ocr_text: {ocr_text}, ocr_score: {ocr_score}")
                     if ocr_score > 0.5 and len(ocr_text) > 0:
                         span['content'] = ocr_text
                         span['score'] = ocr_score
