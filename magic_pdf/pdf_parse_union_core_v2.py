@@ -139,10 +139,12 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
 
     text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
 
-    # @todo: 拿到char之后把倾斜角度较大的先删一遍
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
+            cosine, sine = line['dir']
+            if abs (cosine) < 0.9 or abs(sine) > 0.1:
+                continue
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
 
