@@ -32,10 +32,28 @@ class PageableData(ABC):
 
     @abstractmethod
     def draw_rect(self, rect_coords, color, fill, fill_opacity, width, overlay):
+        """draw rectangle.
+
+        Args:
+            rect_coords (list[float]): four elements array contain the top-left and bottom-right coordinates, [x0, y0, x1, y1]
+            color (list[float] | None): three element tuple which descript the RGB of the board line, None means no board line
+            fill (list[float] | None): fill the board with RGB, None means will not fill with color
+            fill_opacity (float): opacity of the fill, range from [0, 1]
+            width (float): the width of board
+            overlay (bool): fill the color in foreground or background. True means fill in background.
+        """
         pass
 
     @abstractmethod
     def insert_text(self, coord, content, fontsize, color):
+        """insert text.
+
+        Args:
+            coord (list[float]): four elements array contain the top-left and bottom-right coordinates, [x0, y0, x1, y1]
+            content (str): the text content
+            fontsize (int): font size of the text
+            color (list[float] | None):  three element tuple which descript the RGB of the board line, None will use the default font color!
+        """
         pass
 
 
@@ -244,6 +262,16 @@ class Doc(PageableData):
             return getattr(self._doc, name)
 
     def draw_rect(self, rect_coords, color, fill, fill_opacity, width, overlay):
+        """draw rectangle.
+
+        Args:
+            rect_coords (list[float]): four elements array contain the top-left and bottom-right coordinates, [x0, y0, x1, y1]
+            color (list[float] | None): three element tuple which descript the RGB of the board line, None means no board line
+            fill (list[float] | None): fill the board with RGB, None means will not fill with color
+            fill_opacity (float): opacity of the fill, range from [0, 1]
+            width (float): the width of board
+            overlay (bool): fill the color in foreground or background. True means fill in background.
+        """
         self._doc.draw_rect(
             rect_coords,
             color=color,
@@ -254,4 +282,12 @@ class Doc(PageableData):
         )
 
     def insert_text(self, coord, content, fontsize, color):
+        """insert text.
+
+        Args:
+            coord (list[float]): four elements array contain the top-left and bottom-right coordinates, [x0, y0, x1, y1]
+            content (str): the text content
+            fontsize (int): font size of the text
+            color (list[float] | None):  three element tuple which descript the RGB of the board line, None will use the default font color!
+        """
         self._doc.insert_text(coord, content, fontsize=fontsize, color=color)

@@ -13,7 +13,7 @@ from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_local_models_dir,
                                           get_table_recog_config)
 from magic_pdf.model.model_list import MODEL
-from magic_pdf.model.types import InferenceResult
+from magic_pdf.model.operators import InferenceResult
 
 
 def dict_compare(d1, d2):

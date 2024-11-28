@@ -10,7 +10,7 @@ from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.model.types import InferenceResult
+from magic_pdf.model.operators import InferenceResult
 
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
@@ -223,8 +223,7 @@ def do_parse(
         pipe_result.dump_content_list(
             md_writer,
             f'{pdf_file_name}_content_list.json',
-            image_dir,
-            drop_mode=DropMode.NONE,
+            image_dir
         )
 
     logger.info(f'local output dir is {local_md_dir}')
