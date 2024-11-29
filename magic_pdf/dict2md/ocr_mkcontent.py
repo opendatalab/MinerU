@@ -5,7 +5,6 @@ from loguru import logger
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
-from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.para.para_split_v3 import ListLineTag
 
@@ -30,6 +29,13 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list,
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
         if not paras_of_layout:
+            markdown_with_para_and_pagination.append({
+                'page_no':
+                    page_no,
+                'md_content':
+                    '',
+            })
+            page_no += 1
             continue
         page_markdown = ocr_mk_markdown_with_para_core_v2(
             paras_of_layout, 'mm', img_buket_path)
