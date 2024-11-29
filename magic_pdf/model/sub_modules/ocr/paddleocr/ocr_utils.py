@@ -1,8 +1,54 @@
+import cv2
 import numpy as np
 from loguru import logger
-
+from io import BytesIO
+from PIL import Image
+import base64
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
+
+from ppocr.utils.utility import check_and_read
+
+
+def img_decode(content: bytes):
+    np_arr = np.frombuffer(content, dtype=np.uint8)
+    return cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
+
+
+def check_img(img):
+    if isinstance(img, bytes):
+        img = img_decode(img)
+    if isinstance(img, str):
+        image_file = img
+        img, flag_gif, flag_pdf = check_and_read(image_file)
+        if not flag_gif and not flag_pdf:
+            with open(image_file, 'rb') as f:
+                img_str = f.read()
+                img = img_decode(img_str)
+            if img is None:
+                try:
+                    buf = BytesIO()
+                    image = BytesIO(img_str)
+                    im = Image.open(image)
+                    rgb = im.convert('RGB')
+                    rgb.save(buf, 'jpeg')
+                    buf.seek(0)
+                    image_bytes = buf.read()
+                    data_base64 = str(base64.b64encode(image_bytes),
+                                      encoding="utf-8")
+                    image_decode = base64.b64decode(data_base64)
+                    img_array = np.frombuffer(image_decode, np.uint8)
+                    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                except:
+                    logger.error("error in loading image:{}".format(image_file))
+                    return None
+        if img is None:
+            logger.error("error in loading image:{}".format(image_file))
+            return None
+    if isinstance(img, np.ndarray) and len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    return img
 
 
 def bbox_to_points(bbox):
