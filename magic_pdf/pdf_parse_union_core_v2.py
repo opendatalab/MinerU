@@ -30,22 +30,14 @@ try:
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass
+
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
-
 from magic_pdf.para.para_split_v3 import para_split
-
-from magic_pdf.pre_proc.construct_page_dict import \
-    ocr_construct_page_component_v2
+from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
-
-from magic_pdf.pre_proc.ocr_detect_all_bboxes import \
-    ocr_prepare_bboxes_for_layout_split_v2
-from magic_pdf.pre_proc.ocr_dict_merge import (fill_spans_in_blocks,
-                                               fix_block_spans_v2,
-                                               fix_discarded_block)
-from magic_pdf.pre_proc.ocr_span_list_modify import (
-    get_qa_need_list_v2, remove_overlaps_low_confidence_spans,
-    remove_overlaps_min_spans)
+from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
+from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
+from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, remove_overlaps_min_spans
 
 
 def __replace_STX_ETX(text_str: str):
@@ -65,10 +57,18 @@ def __replace_STX_ETX(text_str: str):
     return text_str
 
 
+def __replace_0xfffd(text_str: str):
+    """Replace \ufffd, as these characters become garbled when extracted using pymupdf."""
+    if text_str:
+        s = text_str.replace('\ufffd', " ")
+        return s
+    return text_str
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
-        span['content'] = ''
+        pass
+        # span['content'] = ''
     else:
         # 先给chars按char['bbox']的中心点的x坐标排序
         span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
@@ -83,22 +83,24 @@ def chars_to_content(span):
             if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
                 content += ' '
             content += char['c']
-        span['content'] = __replace_STX_ETX(content)
+
+        span['content'] = __replace_0xfffd(content)
 
     del span['chars']
 
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
+LINE_START_FLAG = ('(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',)
+
+
 def fill_char_in_spans(spans, all_chars):
+
+    # 简单从上到下排一下序
+    spans = sorted(spans, key=lambda x: x['bbox'][1])
 
     for char in all_chars:
         for span in spans:
-            # 判断char是否属于LINE_STOP_FLAG
-            if char['c'] in LINE_STOP_FLAG:
-                char_is_line_stop_flag = True
-            else:
-                char_is_line_stop_flag = False
-            if calculate_char_in_span(char['bbox'], span['bbox'], char_is_line_stop_flag):
+            if calculate_char_in_span(char['bbox'], span['bbox'], char['c']):
                 span['chars'].append(char)
                 break
 
@@ -106,13 +108,16 @@ def fill_char_in_spans(spans, all_chars):
 
     for span in spans:
         chars_to_content(span)
-        if len(span['content']) == 0:
+        # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
+        if len(span['content']) * span['height'] < span['width'] * 0.5:
+            # logger.info(f"maybe empty span: {len(span['content'])}, {span['height']}, {span['width']}")
             empty_spans.append(span)
+        del span['height'], span['width']
     return empty_spans
 
 
 # 使用鲁棒性更强的中心点坐标判断
-def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
+def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
     char_center_x = (char_bbox[0] + char_bbox[2]) / 2
     char_center_y = (char_bbox[1] + char_bbox[3]) / 2
     span_center_y = (span_bbox[1] + span_bbox[3]) / 2
@@ -121,18 +126,26 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
     if (
         span_bbox[0] < char_center_x < span_bbox[2]
         and span_bbox[1] < char_center_y < span_bbox[3]
-        and abs(char_center_y - span_center_y) < span_height / 4  # 字符的中轴和span的中轴高度差不能超过1/4span高度
+        and abs(char_center_y - span_center_y) < span_height * span_height_radio  # 字符的中轴和span的中轴高度差不能超过1/4span高度
     ):
         return True
     else:
         # 如果char是LINE_STOP_FLAG，就不用中心点判定，换一种方案（左边界在span区域内，高度判定和之前逻辑一致）
         # 主要是给结尾符号一个进入span的机会，这个char还应该离span右边界较近
-        if char_is_line_stop_flag:
+        if char in LINE_STOP_FLAG:
             if (
                 (span_bbox[2] - span_height) < char_bbox[0] < span_bbox[2]
                 and char_center_x > span_bbox[0]
                 and span_bbox[1] < char_center_y < span_bbox[3]
-                and abs(char_center_y - span_center_y) < span_height / 4
+                and abs(char_center_y - span_center_y) < span_height * span_height_radio
+            ):
+                return True
+        elif char in LINE_START_FLAG:
+            if (
+                span_bbox[0] < char_bbox[2] < (span_bbox[0] + span_height)
+                and char_center_x < span_bbox[2]
+                and span_bbox[1] < char_center_y < span_bbox[3]
+                and abs(char_center_y - span_center_y) < span_height * span_height_radio
             ):
                 return True
         else:
@@ -141,12 +154,14 @@ def calculate_char_in_span(char_bbox, span_bbox, char_is_line_stop_flag):
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
-    # @todo: 拿到char之后把倾斜角度较大的先删一遍
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
+            cosine, sine = line['dir']
+            if abs (cosine) < 0.9 or abs(sine) > 0.1:
+                continue
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
 
@@ -157,6 +172,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             continue
         span_height = span['bbox'][3] - span['bbox'][1]
         span['height'] = span_height
+        span['width'] = span['bbox'][2] - span['bbox'][0]
         span_height_list.append(span_height)
     if len(span_height_list) == 0:
         return spans
@@ -174,14 +190,12 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             if block[7] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
                 continue
             if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                if span['height'] > median_span_height * 3 and span['height'] > (span['bbox'][2] - span['bbox'][0]) * 3:
+                if span['height'] > median_span_height * 3 and span['height'] > span['width'] * 3:
                     vertical_spans.append(span)
                 elif block in all_bboxes:
                     useful_spans.append(span)
                 else:
                     unuseful_spans.append(span)
-
-                del span['height']
 
                 break
 
@@ -232,6 +246,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
                     ocr_text, ocr_score = ocr_res[0][0]
+                    # logger.info(f"ocr_text: {ocr_text}, ocr_score: {ocr_score}")
                     if ocr_score > 0.5 and len(ocr_text) > 0:
                         span['content'] = ocr_text
                         span['score'] = ocr_score

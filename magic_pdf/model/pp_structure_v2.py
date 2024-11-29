@@ -18,11 +18,31 @@ def region_to_bbox(region):
 
 
 class CustomPaddleModel:
-    def __init__(self, ocr: bool = False, show_log: bool = False, lang=None):
+    def __init__(self,
+                 ocr: bool = False,
+                 show_log: bool = False,
+                 lang=None,
+                 det_db_box_thresh=0.3,
+                 use_dilation=True,
+                 det_db_unclip_ratio=1.8
+    ):
         if lang is not None:
-            self.model = PPStructure(table=False, ocr=ocr, show_log=show_log, lang=lang)
+            self.model = PPStructure(table=False,
+                                     ocr=True,
+                                     show_log=show_log,
+                                     lang=lang,
+                                     det_db_box_thresh=det_db_box_thresh,
+                                     use_dilation=use_dilation,
+                                     det_db_unclip_ratio=det_db_unclip_ratio,
+            )
         else:
-            self.model = PPStructure(table=False, ocr=ocr, show_log=show_log)
+            self.model = PPStructure(table=False,
+                                     ocr=True,
+                                     show_log=show_log,
+                                     det_db_box_thresh=det_db_box_thresh,
+                                     use_dilation=use_dilation,
+                                     det_db_unclip_ratio=det_db_unclip_ratio,
+            )
 
     def __call__(self, img):
         try:
