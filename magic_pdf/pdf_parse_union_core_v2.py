@@ -117,7 +117,7 @@ def fill_char_in_spans(spans, all_chars):
 
 
 # 使用鲁棒性更强的中心点坐标判断
-def calculate_char_in_span(char_bbox, span_bbox, char):
+def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
     char_center_x = (char_bbox[0] + char_bbox[2]) / 2
     char_center_y = (char_bbox[1] + char_bbox[3]) / 2
     span_center_y = (span_bbox[1] + span_bbox[3]) / 2
@@ -126,7 +126,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char):
     if (
         span_bbox[0] < char_center_x < span_bbox[2]
         and span_bbox[1] < char_center_y < span_bbox[3]
-        and abs(char_center_y - span_center_y) < span_height / 4  # 字符的中轴和span的中轴高度差不能超过1/4span高度
+        and abs(char_center_y - span_center_y) < span_height * span_height_radio  # 字符的中轴和span的中轴高度差不能超过1/4span高度
     ):
         return True
     else:
@@ -137,7 +137,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char):
                 (span_bbox[2] - span_height) < char_bbox[0] < span_bbox[2]
                 and char_center_x > span_bbox[0]
                 and span_bbox[1] < char_center_y < span_bbox[3]
-                and abs(char_center_y - span_center_y) < span_height / 4
+                and abs(char_center_y - span_center_y) < span_height * span_height_radio
             ):
                 return True
         elif char in LINE_START_FLAG:
@@ -145,7 +145,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char):
                 span_bbox[0] < char_bbox[2] < (span_bbox[0] + span_height)
                 and char_center_x < span_bbox[2]
                 and span_bbox[1] < char_center_y < span_bbox[3]
-                and abs(char_center_y - span_center_y) < span_height / 4
+                and abs(char_center_y - span_center_y) < span_height * span_height_radio
             ):
                 return True
         else:
