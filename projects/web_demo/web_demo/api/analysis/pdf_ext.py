@@ -15,7 +15,7 @@ from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.pipe.UNIPipe import UNIPipe
 
-from ..extensions import app, db
+from ..extentions import app, db
 from .ext import find_file
 from .models import AnalysisPdf, AnalysisTask
 
