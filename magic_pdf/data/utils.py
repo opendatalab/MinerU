@@ -20,8 +20,8 @@ def fitz_doc_to_image(doc, dpi=200) -> dict:
     mat = fitz.Matrix(dpi / 72, dpi / 72)
     pm = doc.get_pixmap(matrix=mat, alpha=False)
 
-    # If the width or height exceeds 9000 after scaling, do not scale further.
-    if pm.width > 9000 or pm.height > 9000:
+    # If the width or height exceeds 4500 after scaling, do not scale further.
+    if pm.width > 4500 or pm.height > 4500:
         pm = doc.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
 
     img = Image.frombytes('RGB', (pm.width, pm.height), pm.samples)
