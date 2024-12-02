@@ -9,3 +9,5 @@
     :caption: 教程
 
     tutorial/output_file_description
+    tutorial/pipeline
+
