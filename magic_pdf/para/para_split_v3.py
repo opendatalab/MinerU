@@ -112,8 +112,8 @@ def __is_list_or_index_block(block):
             line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
             block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
             if (
-                line['bbox'][0] - block['bbox_fs'][0] > 0.8 * line_height
-                and block['bbox_fs'][2] - line['bbox'][2] > 0.8 * line_height
+                line['bbox'][0] - block['bbox_fs'][0] > 0.7 * line_height
+                and block['bbox_fs'][2] - line['bbox'][2] > 0.7 * line_height
             ):
                 external_sides_not_close_num += 1
             if abs(line_mid_x - block_mid_x) < line_height / 2:

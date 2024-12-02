@@ -12,12 +12,12 @@ def ocr_cut_image_and_table(spans, page, page_id, pdf_bytes_md5, imageWriter):
     for span in spans:
         span_type = span['type']
         if span_type == ContentType.Image:
-            if not check_img_bbox(span['bbox']):
+            if not check_img_bbox(span['bbox']) or not imageWriter:
                 continue
             span['image_path'] = cut_image(span['bbox'], page_id, page, return_path=return_path('images'),
                                            imageWriter=imageWriter)
         elif span_type == ContentType.Table:
-            if not check_img_bbox(span['bbox']):
+            if not check_img_bbox(span['bbox']) or not imageWriter:
                 continue
             span['image_path'] = cut_image(span['bbox'], page_id, page, return_path=return_path('tables'),
                                            imageWriter=imageWriter)
