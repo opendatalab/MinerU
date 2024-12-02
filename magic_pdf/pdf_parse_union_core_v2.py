@@ -89,10 +89,7 @@ def chars_to_content(span):
 
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
-<<<<<<< HEAD
 LINE_START_FLAG = ('(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',)
-=======
->>>>>>> 731f4bf (feat: add function definitions)
 
 
 def fill_char_in_spans(spans, all_chars):
