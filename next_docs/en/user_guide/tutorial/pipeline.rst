@@ -1,10 +1,11 @@
 
-流水线管道
-===========
+
+Pipeline
+==========
 
 
-极简示例
-^^^^^^^^
+Minimal Example 
+^^^^^^^^^^^^^^^^^
 
 .. code:: python
 
@@ -39,8 +40,8 @@
 
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(md_writer, f"{name_without_suff}.md", image_dir)
 
+Running the above code will result in the following
 
-运行以上的代码，会得到如下的结果
 
 .. code:: bash 
 
@@ -49,9 +50,10 @@
     └── images
 
 
-除去初始化环境，如建立目录、导入依赖库等逻辑。真正将 ``pdf`` 转换为 ``markdown`` 的代码片段如下
+Excluding the setup of the environment, such as creating directories and importing dependencies, the actual code snippet for converting pdf to markdown is as follows
 
-.. code::
+
+.. code:: python 
 
     # read bytes
     reader1 = FileBasedDataReader("")
@@ -63,35 +65,35 @@
 
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(md_writer, f"{name_without_suff}.md", image_dir)
 
+``ds.apply(doc_analyze, ocr=True)`` generates an ``InferenceResult`` object. The ``InferenceResult`` object, when executing the ``pipe_ocr_mode`` method, produces a ``PipeResult`` object.
+The ``PipeResult`` object, upon executing ``dump_md``, generates a ``markdown`` file at the specified location.
 
-``ds.apply(doc_analyze, ocr=True)`` 会生成 ``InferenceResult`` 对象。 ``InferenceResult`` 对象执行 ``pipe_ocr_mode`` 方法会生成 ``PipeResult`` 对象。
-``PipeResult`` 对象执行 ``dump_md`` 会在指定位置生成 ``markdown`` 文件。
 
+The pipeline execution process is illustrated in the following diagram
 
-pipeline 的执行过程如下图所示
 
 .. image:: ../../_static/image/pipeline.drawio.svg 
 
-.. raw:: html 
+.. raw:: html
 
     <br> </br>
 
-目前划分出数据、推理、程序处理三个阶段，分别对应着图上的 ``Dataset``， ``InferenceResult``， ``PipeResult`` 这三个实体。通过 ``apply`` ， ``doc_analyze`` 或 ``pipe_ocr_mode`` 等方法链接在一起。
+Currently, the process is divided into three stages: data, inference, and processing, which correspond to the ``Dataset``, ``InferenceResult``, and ``PipeResult`` entities in the diagram.
+These stages are linked together through methods like ``apply``, ``doc_analyze``, or ``pipe_ocr_mode``
 
 
 .. admonition:: Tip
     :class: tip
 
-    要想获得更多有关 Dataset、InferenceResult、PipeResult 的使用示例子，请前往 :doc:`../quick_start/to_markdown`
+    For more examples on how to use ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../quick_start/to_markdown`
 
-    要想获得更多有关 Dataset、InferenceResult、PipeResult 的细节信息请前往英文版 MinerU 文档进行查看!
+    For more detailed information about ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../../api/dataset`, :doc:`../../api/model_operators`, :doc:`../../api/pipe_operators`
 
 
+Pipeline Composition
+^^^^^^^^^^^^^^^^^^^^^
 
-管道组合
-^^^^^^^^^
-
-.. code:: python
+.. code:: python 
 
     class Dataset(ABC):
         @abstractmethod
@@ -144,8 +146,10 @@ pipeline 的执行过程如下图所示
             """
             return proc(copy.deepcopy(self._pipe_res), *args, **kwargs)
 
-``Dataset`` 、 ``InferenceResult`` 和 ``PipeResult`` 类均有 ``apply`` method。可用于组合不同阶段的运算过程。
-如下所示，``MinerU`` 提供一套组合这些类的计算过程。
+
+The ``Dataset``, ``InferenceResult``, and ``PipeResult`` classes all have an ``apply`` method, which can be used to chain different stages of the computation. 
+As shown below, ``MinerU`` provides a set of methods to compose these classes.
+
 
 .. code:: python 
 
@@ -155,9 +159,11 @@ pipeline 的执行过程如下图所示
 
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(md_writer, f"{name_without_suff}.md", image_dir)
 
-用户可以根据的需求，自行实现一些组合用的函数。比如用户通过 ``apply`` 方法实现一个统计 ``pdf`` 文件页数的功能。
 
-.. code:: python 
+Users can implement their own functions for chaining as needed. For example, a user could use the ``apply`` method to create a function that counts the number of pages in a ``pdf`` file.
+
+
+.. code:: python
 
     from magic_pdf.data.data_reader_writer import  FileBasedDataReader
     from magic_pdf.data.dataset import PymuDocDataset
