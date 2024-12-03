@@ -187,8 +187,9 @@ def to_pdf(file_path):
 
 def get_concurrency_limit(vram_threshold=7.5):
     vram = get_vram(device = get_device())
-    concurrency_limit = int(vram // vram_threshold)
-    if concurrency_limit < 1:
+    if vram is not None and isinstance(vram, (int, float)):
+        concurrency_limit = max(1, int(vram // vram_threshold))
+    else:
         concurrency_limit = 1
     # logger.info(f'concurrency_limit: {concurrency_limit}')
     return concurrency_limit
