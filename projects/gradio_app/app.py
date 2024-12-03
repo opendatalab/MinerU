@@ -14,7 +14,9 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from magic_pdf.data.data_reader_writer import FileBasedDataReader
+from magic_pdf.libs.config_reader import get_device
 from magic_pdf.libs.hash_utils import compute_sha256
+from magic_pdf.model.sub_modules.model_utils import get_vram
 from magic_pdf.tools.common import do_parse, prepare_env
 
 
@@ -183,6 +185,15 @@ def to_pdf(file_path):
             return tmp_file_path
 
 
+def get_concurrency_limit(vram_threshold=7.5):
+    vram = get_vram(device = get_device())
+    concurrency_limit = int(vram // vram_threshold)
+    if concurrency_limit < 1:
+        concurrency_limit = 1
+    # logger.info(f'concurrency_limit: {concurrency_limit}')
+    return concurrency_limit
+
+
 if __name__ == '__main__':
     with gr.Blocks() as demo:
         gr.HTML(header)
@@ -219,7 +230,7 @@ if __name__ == '__main__':
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
         file.upload(fn=to_pdf, inputs=file, outputs=pdf_show)
         change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
-                        outputs=[md, md_text, output_file, pdf_show])
+                        outputs=[md, md_text, output_file, pdf_show], concurrency_limit=get_concurrency_limit())
         clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, table_enable, language])
 
     demo.launch(server_name='0.0.0.0')
