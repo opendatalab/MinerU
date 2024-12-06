@@ -37,6 +37,7 @@ class CustomPEKModel:
         """
         ======== model init ========
         """
+        self._lock = Lock()
         # 获取当前文件（即 pdf_extract_kit.py）的绝对路径
         current_file_path = os.path.abspath(__file__)
         # 获取当前文件所在的目录(model)
@@ -211,14 +212,13 @@ class CustomPEKModel:
         # ocr识别
         ocr_start = time.time()
         # Process each area that requires OCR processing
-        lock = Lock()
         for res in ocr_res_list:
             new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
 
             # OCR recognition
             new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
-            with lock:
+            with self._lock:
                 if self.apply_ocr:
                     ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
                 else:
