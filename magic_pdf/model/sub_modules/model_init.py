@@ -97,8 +97,7 @@ class AtomModelSingleton:
         key = (atom_model_name, layout_model_name, lang)
         if key not in self._models:
             self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
-        else:
-            return self._models[key]
+        return self._models[key]
 
 
 def atom_model_init(model_name: str, **kwargs):
