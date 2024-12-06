@@ -31,7 +31,7 @@ try:
 except ImportError:
     pass
 
-from magic_pdf.model.sub_modules.model_init import ocr_model_init
+from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.para.para_split_v3 import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
@@ -231,9 +231,10 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     if len(empty_spans) > 0:
 
         # 初始化ocr模型
-
-        ocr_model = ocr_model_init(
-            show_log=False,
+        atom_model_manager = AtomModelSingleton()
+        ocr_model = atom_model_manager.get_atom_model(
+            atom_model_name='ocr',
+            ocr_show_log=False,
             det_db_box_thresh=0.3,
             lang=lang
         )
