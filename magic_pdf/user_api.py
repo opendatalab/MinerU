@@ -10,6 +10,7 @@
 from loguru import logger
 
 from magic_pdf.data.data_reader_writer import DataWriter
+from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.version import __version__
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
@@ -19,13 +20,21 @@ PARSE_TYPE_TXT = 'txt'
 PARSE_TYPE_OCR = 'ocr'
 
 
-def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None, lang=None,
-                  *args, **kwargs):
+def parse_txt_pdf(
+    dataset: Dataset,
+    model_list: list,
+    imageWriter: DataWriter,
+    is_debug=False,
+    start_page_id=0,
+    end_page_id=None,
+    lang=None,
+    *args,
+    **kwargs
+):
     """解析文本类pdf."""
     pdf_info_dict = parse_pdf_by_txt(
-        pdf_bytes,
-        pdf_models,
+        dataset,
+        model_list,
         imageWriter,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -43,13 +52,21 @@ def parse_txt_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, i
     return pdf_info_dict
 
 
-def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, is_debug=False,
-                  start_page_id=0, end_page_id=None, lang=None,
-                  *args, **kwargs):
+def parse_ocr_pdf(
+    dataset: Dataset,
+    model_list: list,
+    imageWriter: DataWriter,
+    is_debug=False,
+    start_page_id=0,
+    end_page_id=None,
+    lang=None,
+    *args,
+    **kwargs
+):
     """解析ocr类pdf."""
     pdf_info_dict = parse_pdf_by_ocr(
-        pdf_bytes,
-        pdf_models,
+        dataset,
+        model_list,
         imageWriter,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -67,17 +84,24 @@ def parse_ocr_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, i
     return pdf_info_dict
 
 
-def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter, is_debug=False,
-                    input_model_is_empty: bool = False,
-                    start_page_id=0, end_page_id=None, lang=None,
-                    *args, **kwargs):
+def parse_union_pdf(
+    dataset: Dataset,
+    model_list: list,
+    imageWriter: DataWriter,
+    is_debug=False,
+    start_page_id=0,
+    end_page_id=None,
+    lang=None,
+    *args,
+    **kwargs
+):
     """ocr和文本混合的pdf，全部解析出来."""
 
     def parse_pdf(method):
         try:
             return method(
-                pdf_bytes,
-                pdf_models,
+                dataset,
+                model_list,
                 imageWriter,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
@@ -91,12 +115,12 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter,
     pdf_info_dict = parse_pdf(parse_pdf_by_txt)
     if pdf_info_dict is None or pdf_info_dict.get('_need_drop', False):
         logger.warning('parse_pdf_by_txt drop or error, switch to parse_pdf_by_ocr')
-        if input_model_is_empty:
+        if len(model_list) == 0:
             layout_model = kwargs.get('layout_model', None)
             formula_enable = kwargs.get('formula_enable', None)
             table_enable = kwargs.get('table_enable', None)
-            pdf_models = doc_analyze(
-                pdf_bytes,
+            infer_res = doc_analyze(
+                dataset,
                 ocr=True,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
@@ -105,6 +129,7 @@ def parse_union_pdf(pdf_bytes: bytes, pdf_models: list, imageWriter: DataWriter,
                 formula_enable=formula_enable,
                 table_enable=table_enable,
             )
+            model_list = infer_res.get_infer_res()
         pdf_info_dict = parse_pdf(parse_pdf_by_ocr)
         if pdf_info_dict is None:
             raise Exception('Both parse_pdf_by_txt and parse_pdf_by_ocr failed.')
