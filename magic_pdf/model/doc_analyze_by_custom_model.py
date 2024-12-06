@@ -143,10 +143,8 @@ def doc_analyze(pdf_bytes: bytes, ocr: bool = False, show_log: bool = False,
     if lang == "":
         lang = None
 
-    # model_manager = ModelSingleton()
-    # custom_model = model_manager.get_model(ocr, show_log, lang, layout_model, formula_enable, table_enable)
-
-    custom_model = custom_model_init(ocr, show_log, lang, layout_model, formula_enable, table_enable)
+    model_manager = ModelSingleton()
+    custom_model = model_manager.get_model(ocr, show_log, lang, layout_model, formula_enable, table_enable)
 
     with fitz.open("pdf", pdf_bytes) as doc:
         pdf_page_num = doc.page_count

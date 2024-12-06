@@ -57,11 +57,6 @@ def doclayout_yolo_model_init(weight, device='cpu'):
     return model
 
 
-import threading
-current_thread = threading.current_thread()
-current_thread_id = current_thread.ident
-
-
 def ocr_model_init(show_log: bool = False,
                    det_db_box_thresh=0.3,
                    lang=None,
@@ -103,7 +98,7 @@ class AtomModelSingleton:
         table_model_name = kwargs.get('table_model_name', None)
 
         if atom_model_name in [AtomicModel.OCR]:
-            key = (atom_model_name, lang, current_thread_id)
+            key = (atom_model_name, lang)
         elif atom_model_name in [AtomicModel.Layout]:
             key = (atom_model_name, layout_model_name)
         elif atom_model_name in [AtomicModel.Table]:

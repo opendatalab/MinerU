@@ -152,7 +152,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
             return False
 
 
-def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, ocr_model):
+def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
 
     text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
@@ -231,13 +231,13 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, ocr_
     if len(empty_spans) > 0:
 
         # 初始化ocr模型
-        # atom_model_manager = AtomModelSingleton()
-        # ocr_model = atom_model_manager.get_atom_model(
-        #     atom_model_name='ocr',
-        #     ocr_show_log=False,
-        #     det_db_box_thresh=0.3,
-        #     lang=lang
-        # )
+        atom_model_manager = AtomModelSingleton()
+        ocr_model = atom_model_manager.get_atom_model(
+            atom_model_name='ocr',
+            ocr_show_log=False,
+            det_db_box_thresh=0.3,
+            lang=lang
+        )
 
         for span in empty_spans:
             # 对span的bbox截图再ocr
@@ -613,7 +613,7 @@ def remove_outside_spans(spans, all_bboxes, all_discarded_blocks):
 
 
 def parse_page_core(
-    page_doc: PageableData, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, ocr_model
+    page_doc: PageableData, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
 ):
     need_drop = False
     drop_reason = []
@@ -682,7 +682,7 @@ def parse_page_core(
     if parse_mode == SupportedPdfParseMethod.TXT:
 
         """使用新版本的混合ocr方案"""
-        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, ocr_model)
+        spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
 
     elif parse_mode == SupportedPdfParseMethod.OCR:
         pass
@@ -772,12 +772,6 @@ def pdf_parse_union(
     lang=None,
 ):
 
-    ocr_model = ocr_model_init(
-        show_log=False,
-        det_db_box_thresh=0.3,
-        lang=lang
-    )
-
     pdf_bytes_md5 = compute_md5(dataset.data_bits())
 
     """初始化空的pdf_info_dict"""
@@ -813,7 +807,7 @@ def pdf_parse_union(
         """解析pdf中的每一页"""
         if start_page_id <= page_id <= end_page_id:
             page_info = parse_page_core(
-                page, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, ocr_model
+                page, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
             )
         else:
             page_info = page.get_page_info()
