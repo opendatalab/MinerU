@@ -22,7 +22,7 @@ except ImportError:
 
 from magic_pdf.config.constants import *
 from magic_pdf.model.model_list import AtomicModel
-from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
+from magic_pdf.model.sub_modules.model_init import AtomModelSingleton, ocr_model_init
 from magic_pdf.model.sub_modules.model_utils import (
     clean_vram, crop_img, get_res_list_from_layout_res)
 from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
@@ -37,6 +37,7 @@ class CustomPEKModel:
         """
         ======== model init ========
         """
+        self._lock = Lock()
         # 获取当前文件（即 pdf_extract_kit.py）的绝对路径
         current_file_path = os.path.abspath(__file__)
         # 获取当前文件所在的目录(model)
@@ -152,9 +153,14 @@ class CustomPEKModel:
                 device=self.device,
             )
         # 初始化ocr
-        self.ocr_model = atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.OCR,
-            ocr_show_log=show_log,
+        # self.ocr_model = atom_model_manager.get_atom_model(
+        #     atom_model_name=AtomicModel.OCR,
+        #     ocr_show_log=show_log,
+        #     det_db_box_thresh=0.3,
+        #     lang=self.lang
+        # )
+        self.ocr_model = ocr_model_init(
+            show_log=show_log,
             det_db_box_thresh=0.3,
             lang=self.lang
         )
@@ -211,18 +217,17 @@ class CustomPEKModel:
         # ocr识别
         ocr_start = time.time()
         # Process each area that requires OCR processing
-        lock = Lock()
         for res in ocr_res_list:
             new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
 
             # OCR recognition
             new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
-            with lock:
-                if self.apply_ocr:
-                    ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
-                else:
-                    ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res, rec=False)[0]
+            # with self._lock:
+            if self.apply_ocr:
+                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
+            else:
+                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res, rec=False)[0]
 
             # Integration results
             if ocr_res:
