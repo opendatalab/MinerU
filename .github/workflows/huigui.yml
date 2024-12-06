@@ -29,14 +29,14 @@ jobs:
         source activate mineru
         conda env list
         pip show coverage
-        # cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
+        cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
         cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
         cd $GITHUB_WORKSPACE && pytest -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
-    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
+    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure')}}
     needs: cli-test
     runs-on: pdf
     steps:
@@ -57,5 +57,5 @@ jobs:
 
     - name: notify
       run: |
-        echo ${{ secrets.USER_ID }}
-        curl -X POST -H "Content-Type: application/json" -d '{"msg_type":"post","content":{"post":{"zh_cn":{"title":"'${{ github.repository }}' GitHubAction Failed","content":[[{"tag":"text","text":""},{"tag":"a","text":"Please click here for details ","href":"https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"},{"tag":"at","user_id":"'${{ secrets.USER_ID }}'"}]]}}}}'  ${{ secrets.WEBHOOK_URL }}
+        #echo ${{ secrets.USER_ID }}
+        curl -X POST -H "Content-Type: application/json" -d '{"msg_type":"post","content":{"post":{"zh_cn":{"title":"'${{ github.repository }}' GitHubAction Failed","content":[[{"tag":"text","text":""},{"tag":"a","text":"Please click here for details ","href":"https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"},{"tag":"at","user_id":"'$USER_ID'"}]]}}}}'  $WEBHOOK_URL
