@@ -28,8 +28,6 @@ from magic_pdf.model.sub_modules.model_utils import (
 from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
 
-from threading import Lock
-
 
 class CustomPEKModel:
 
@@ -37,7 +35,6 @@ class CustomPEKModel:
         """
         ======== model init ========
         """
-        self._lock = Lock()
         # 获取当前文件（即 pdf_extract_kit.py）的绝对路径
         current_file_path = os.path.abspath(__file__)
         # 获取当前文件所在的目录(model)
@@ -153,12 +150,6 @@ class CustomPEKModel:
                 device=self.device,
             )
         # 初始化ocr
-        # self.ocr_model = atom_model_manager.get_atom_model(
-        #     atom_model_name=AtomicModel.OCR,
-        #     ocr_show_log=show_log,
-        #     det_db_box_thresh=0.3,
-        #     lang=self.lang
-        # )
         self.ocr_model = ocr_model_init(
             show_log=show_log,
             det_db_box_thresh=0.3,
@@ -223,7 +214,7 @@ class CustomPEKModel:
 
             # OCR recognition
             new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
-            # with self._lock:
+
             if self.apply_ocr:
                 ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
             else:
