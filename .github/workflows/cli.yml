@@ -37,7 +37,7 @@ jobs:
         cd $GITHUB_WORKSPACE && pytest -m P0 -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
-    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure') && (github.ref_name == 'master') }}
+    if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure')}}
     needs: cli-test
     runs-on: pdf
     steps:
