@@ -7,8 +7,11 @@ from lib import common
 import time
 import magic_pdf.model as model_config
 from magic_pdf.pipe.UNIPipe import UNIPipe
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
+import os
+from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+from magic_pdf.data.data_reader_writer import S3DataReader, S3DataWriter
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.pipe.OCRPipe import OCRPipe
 model_config.__use_inside_model__ = True
 pdf_res_path = conf.conf['pdf_res_path']
 code_path = conf.conf['code_path']
@@ -41,7 +44,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -77,7 +80,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': 'ocr', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -112,7 +115,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': 'txt', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -284,12 +287,13 @@ class TestCli:
         pdf_endpoint = os.environ.get('pdf_endpoint', "")
         s3_pdf_path = conf.conf["s3_pdf_path"]
         image_dir = "s3://" + pdf_bucket + "/mineru/test/output"
-        print (image_dir)
-        s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-        s3image_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint, parent_path=image_dir)
-        pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-        jso_useful_key = {"_pdf_type": "", "model_list": []}
-        pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
+        prefix = "mineru/test/output"
+        reader = S3DataReader(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        # = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        image_writer = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        pdf_bytes = reader.read(s3_pdf_path)
+        model_list = []
+        pipe = OCRPipe(pdf_bytes, model_list, image_writer)
         pipe.pipe_classify()
         pipe.pipe_analyze()
         pipe.pipe_parse()
@@ -427,3 +431,4 @@ class TestCli:
  
 if __name__ == '__main__':
     pytest.main()
+
