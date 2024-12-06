@@ -82,12 +82,9 @@ def ocr_model_init(show_log: bool = False,
     return model
 
 
-from threading import Lock
-
 class AtomModelSingleton:
     _instance = None
     _models = {}
-    _lock = Lock()
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -98,17 +95,10 @@ class AtomModelSingleton:
         lang = kwargs.get('lang', None)
         layout_model_name = kwargs.get('layout_model_name', None)
         key = (atom_model_name, layout_model_name, lang)
-        if atom_model_name == AtomicModel.OCR:
-            with self._lock:
-                if key not in self._models:
-                    self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
-                else:
-                    return self._models[key]
+        if key not in self._models:
+            self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
         else:
-            if key not in self._models:
-                self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
-            else:
-                return self._models[key]
+            return self._models[key]
 
 
 def atom_model_init(model_name: str, **kwargs):

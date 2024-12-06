@@ -28,6 +28,8 @@ from magic_pdf.model.sub_modules.model_utils import (
 from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
 
+from threading import Lock
+
 
 class CustomPEKModel:
 
@@ -209,16 +211,18 @@ class CustomPEKModel:
         # ocr识别
         ocr_start = time.time()
         # Process each area that requires OCR processing
+        lock = Lock()
         for res in ocr_res_list:
             new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
 
             # OCR recognition
             new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
-            if self.apply_ocr:
-                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
-            else:
-                ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res, rec=False)[0]
+            with lock:
+                if self.apply_ocr:
+                    ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
+                else:
+                    ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res, rec=False)[0]
 
             # Integration results
             if ocr_res:
