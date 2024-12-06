@@ -150,6 +150,12 @@ class CustomPEKModel:
                 device=self.device,
             )
         # 初始化ocr
+        # self.ocr_model = atom_model_manager.get_atom_model(
+        #     atom_model_name=AtomicModel.OCR,
+        #     ocr_show_log=show_log,
+        #     det_db_box_thresh=0.3,
+        #     lang=self.lang
+        # )
         self.ocr_model = ocr_model_init(
             show_log=show_log,
             det_db_box_thresh=0.3,
