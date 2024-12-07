@@ -15,9 +15,7 @@ from magic_pdf.libs.version import __version__
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.pdf_parse_by_ocr import parse_pdf_by_ocr
 from magic_pdf.pdf_parse_by_txt import parse_pdf_by_txt
-
-PARSE_TYPE_TXT = 'txt'
-PARSE_TYPE_OCR = 'ocr'
+from magic_pdf.config.constants import PARSE_TYPE_TXT, PARSE_TYPE_OCR
 
 
 def parse_txt_pdf(
