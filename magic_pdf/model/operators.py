@@ -6,12 +6,14 @@ from typing import Callable
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.data.dataset import Dataset
+from magic_pdf.libs.version import __version__
 from magic_pdf.filter import classify
 from magic_pdf.libs.draw_bbox import draw_model_bbox
 from magic_pdf.pdf_parse_union_core_v2 import pdf_parse_union
 from magic_pdf.pipe.operators import PipeResult
 from magic_pdf.model import InferenceResultBase
-
+from magic_pdf.libs.version import __version__
+from magic_pdf.config.constants import PARSE_TYPE_TXT, PARSE_TYPE_OCR
 
 class InferenceResult(InferenceResultBase):
     def __init__(self, inference_results: list, dataset: Dataset):
@@ -129,7 +131,7 @@ class InferenceResult(InferenceResultBase):
             res = pdf_parse_union(*args, **kwargs)
             return PipeResult(res, self._dataset)
 
-        return self.apply(
+        res = self.apply(
             proc,
             self._dataset,
             imageWriter,
@@ -139,6 +141,11 @@ class InferenceResult(InferenceResultBase):
             debug_mode=debug_mode,
             lang=lang,
         )
+        res['_parse_type'] = PARSE_TYPE_TXT
+        res['_version_name'] = __version__
+    
+        return res
+        
 
     def pipe_ocr_mode(
         self,
@@ -166,7 +173,7 @@ class InferenceResult(InferenceResultBase):
             res = pdf_parse_union(*args, **kwargs)
             return PipeResult(res, self._dataset)
 
-        return self.apply(
+        res = self.apply(
             proc,
             self._dataset,
             imageWriter,
@@ -176,3 +183,7 @@ class InferenceResult(InferenceResultBase):
             debug_mode=debug_mode,
             lang=lang,
         )
+        res['_parse_type'] = PARSE_TYPE_OCR
+
+        res['_version_name'] = __version__
+        return res
