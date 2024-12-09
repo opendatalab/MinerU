@@ -48,4 +48,16 @@ class DataWriter(ABC):
             path (str): the target file where to write
             data (str): the data want to write
         """
-        self.write(path, data.encode())
+
+        def safe_encode(data: str, method: str):
+            try:
+                bit_data = data.encode(encoding=method, errors='replace')
+                return bit_data, True
+            except:  # noqa
+                return None, False
+
+        for method in ['utf-8', 'ascii']:
+            bit_data, flag = safe_encode(data, method)
+            if flag:
+                self.write(path, bit_data)
+                break
