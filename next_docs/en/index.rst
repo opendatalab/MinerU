@@ -70,6 +70,12 @@ Key Features
 -  Supports both CPU and GPU environments.
 -  Compatible with Windows, Linux, and Mac platforms.
 
+
+.. tip::
+
+   Get started with MinerU by trying the `online demo <https://www.modelscope.cn/studios/OpenDataLab/MinerU>`_ or :doc:`installing it locally <user_guide/install/install>`.
+
+
 User Guide
 -------------
 .. toctree::

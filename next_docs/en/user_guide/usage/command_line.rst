@@ -57,6 +57,6 @@ directory. The output file list is as follows:
 
 .. admonition:: Tip
    :class: tip
+   
 
-   For more information about the output files, please refer to the :doc:`../tutorial/output_file_description`
-
+   For more information about the output files, please refer to the :doc:`TODO: modify link <../tutorial/output_file_description>`

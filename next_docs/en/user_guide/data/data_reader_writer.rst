@@ -125,16 +125,16 @@ Read Examples
 
     # s3 related
     s3_reader1 = S3DataReader(
-        default_prefix_without_bucket = "test_prefix"
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        "test_prefix",
+        "test_bucket",
+        "ak",
+        "sk",
+        "localhost"
     )
 
     ## will read s3://test_bucket/test_prefix/abc 
     s3_reader1.read('abc')
-   
+
     ## will read s3://test_bucket/efg
     s3_reader1.read('s3://test_bucket/efg')
 
@@ -188,11 +188,11 @@ Write Examples
 
     # s3 related
     s3_writer1 = S3DataWriter(
-        default_prefix_without_bucket = "test_prefix"
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        "test_prefix",
+        "test_bucket",
+        "ak",
+        "sk",
+        "localhost"
     )
 
     ## will write 123 to s3://test_bucket/test_prefix/abc 

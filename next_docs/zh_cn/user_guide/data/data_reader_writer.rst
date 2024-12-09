@@ -111,11 +111,11 @@ S3DataReader 基于 MultiBucketS3DataReader 构建，但仅支持单个桶。S3D
 
     # S3 相关的
     s3_reader1 = S3DataReader(
-        default_prefix_without_bucket = "test_prefix",
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        "test_prefix",
+        "test_bucket",
+        "ak",
+        "sk",
+        "localhost"
     )
 
     ## 将读取 s3://test_bucket/test_prefix/abc 
@@ -172,11 +172,11 @@ S3DataReader 基于 MultiBucketS3DataReader 构建，但仅支持单个桶。S3D
 
     # S3 相关的
     s3_writer1 = S3DataWriter(
-        default_prefix_without_bucket = "test_prefix",
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        "test_prefix",
+        "test_bucket",
+        "ak",
+        "sk",
+        "localhost"
     )
 
     ## 将写入 123 到 s3://test_bucket/test_prefix/abc 

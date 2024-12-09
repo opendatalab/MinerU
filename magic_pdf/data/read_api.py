@@ -59,17 +59,20 @@ def read_local_pdfs(path: str) -> list[PymuDocDataset]:
     """
     if os.path.isdir(path):
         reader = FileBasedDataReader(path)
-        return [
-            PymuDocDataset(reader.read(doc_path.name))
-            for doc_path in Path(path).glob('*.pdf')
-        ]
+        ret = []
+        for root, _, files in os.walk(path):
+            for file in files:
+                suffix = file.split('.')
+                if suffix[-1] == 'pdf':
+                    ret.append( PymuDocDataset(reader.read(os.path.join(root, file))))
+        return ret
     else:
         reader = FileBasedDataReader()
         bits = reader.read(path)
         return [PymuDocDataset(bits)]
 
 
-def read_local_images(path: str, suffixes: list[str]) -> list[ImageDataset]:
+def read_local_images(path: str, suffixes: list[str]=[]) -> list[ImageDataset]:
     """Read images from path or directory.
 
     Args:
@@ -87,7 +90,7 @@ def read_local_images(path: str, suffixes: list[str]) -> list[ImageDataset]:
             for file in files:
                 suffix = file.split('.')
                 if suffix[-1] in s_suffixes:
-                    imgs_bits.append(reader.read(file))
+                    imgs_bits.append(reader.read(os.path.join(root, file)))
         return [ImageDataset(bits) for bits in imgs_bits]
     else:
         reader = FileBasedDataReader()
