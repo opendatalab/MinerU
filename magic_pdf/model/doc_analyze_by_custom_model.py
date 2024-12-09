@@ -1,9 +1,20 @@
-
+import os
 import time
 
 import fitz
 import numpy as np
 from loguru import logger
+
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
+os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
+
+try:
+    import torchtext
+
+    if torchtext.__version__ >= '0.18.0':
+        torchtext.disable_torchtext_deprecation_warning()
+except ImportError:
+    pass
 
 import magic_pdf.model as model_config
 from magic_pdf.data.dataset import Dataset
