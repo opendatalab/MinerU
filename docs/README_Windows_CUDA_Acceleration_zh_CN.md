@@ -66,17 +66,8 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 **1.覆盖安装支持cuda的torch和torchvision**
 
 ```bash
-pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
-
-> [!IMPORTANT]
-> 务必在命令中指定以下版本
->
-> ```bash
-> torch==2.3.1 torchvision==0.18.1
-> ```
->
-> 这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
 
 **2.修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值**
 
