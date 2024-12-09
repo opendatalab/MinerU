@@ -80,10 +80,10 @@ Read images from path or directory
     from magic_pdf.data.read_api import *
 
     # read from image path 
-    datasets = read_local_images("tt.png")
+    datasets = read_local_images("tt.png")  # replace with real file path
 
     # read files from directory that endswith suffix in suffixes array 
-    datasets = read_local_images("images/", suffixes=["png", "jpg"])
+    datasets = read_local_images("images/", suffixes=["png", "jpg"])  # replace with real directory 
 
 
 Check :doc:`../../api/read_api` for more details

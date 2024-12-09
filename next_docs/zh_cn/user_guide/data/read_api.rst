@@ -61,10 +61,10 @@ read_local_pdfs
     from magic_pdf.data.read_api import *
 
     # 读取 PDF 路径
-    datasets = read_local_pdfs("tt.pdf")
+    datasets = read_local_pdfs("tt.pdf")  # 替换为有效的文件
 
     # 读取目录下的 PDF 文件
-    datasets = read_local_pdfs("pdfs/")
+    datasets = read_local_pdfs("pdfs/")   # 替换为有效的文件目录
 
 read_local_images
 ^^^^^^^^^^^^^^^^^^^
@@ -76,7 +76,7 @@ read_local_images
     from magic_pdf.data.read_api import *
 
     # 从图像路径读取
-    datasets = read_local_images("tt.png")
+    datasets = read_local_images("tt.png")  # 替换为有效的文件
 
     # 从目录读取以 suffixes 数组中指定后缀结尾的文件
-    datasets = read_local_images("images/", suffixes=["png", "jpg"])
+    datasets = read_local_images("images/", suffixes=["png", "jpg"])  # 替换为有效的文件目录
