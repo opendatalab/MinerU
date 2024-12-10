@@ -7,7 +7,7 @@ import base64
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
 
-from ppocr.utils.utility import check_and_read
+from paddleocr.ppocr.utils.utility import check_and_read
 
 
 def img_decode(content: bytes):
