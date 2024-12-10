@@ -89,7 +89,7 @@ Also you can try `online demo <https://www.modelscope.cn/studios/OpenDataLab/Min
 
 
 Create an environment
-~~~~~~~~~~~~~~~~~~~~~
+---------------------------
 
 .. code-block:: shell
 
@@ -99,7 +99,7 @@ Create an environment
 
 
 Download model weight files
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------
 
 .. code-block:: shell
 
@@ -108,6 +108,32 @@ Download model weight files
     python download_models_hf.py    
 
 
+
+Install LibreOffice[Optional]
+----------------------------------
+
+This section is required for handle **doc**, **docx**, **ppt**, **pptx** filetype, You can Skip this section if no need for those filetype processing.
+
+
+Linux/Macos Platform
+""""""""""""""""""""""
+
+.. code::
+
+    apt-get/yum/brew install libreoffice
+
+
+Windows Platform 
+""""""""""""""""""""
+
+.. code::
+
+    install libreoffice 
+    append "install_dir\LibreOffice\program" to ENVIRONMENT PATH
+
+
 .. tip::
 
     The MinerU is installed, Check out :doc:`../quick_start/command_line` to convert your first pdf **or** reading the following sections for more details about install
+
+

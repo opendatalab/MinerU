@@ -1,12 +1,14 @@
 import json
 import os
+import tempfile
+import shutil
 from pathlib import Path
 
 from magic_pdf.config.exceptions import EmptyData, InvalidParams
 from magic_pdf.data.data_reader_writer import (FileBasedDataReader,
                                                MultiBucketS3DataReader)
 from magic_pdf.data.dataset import ImageDataset, PymuDocDataset
-
+from magic_pdf.utils.office_to_pdf import convert_file_to_pdf, ConvertToPdfError
 
 def read_jsonl(
     s3_path_or_local: str, s3_client: MultiBucketS3DataReader | None = None
@@ -71,6 +73,36 @@ def read_local_pdfs(path: str) -> list[PymuDocDataset]:
         bits = reader.read(path)
         return [PymuDocDataset(bits)]
 
+def read_local_office(path: str) -> list[PymuDocDataset]:
+    """Read ms-office file (ppt, pptx, doc, docx) from path or directory.
+
+    Args:
+        path (str): ms-office file or directory that contains ms-office files
+
+    Returns:
+        list[PymuDocDataset]: each ms-office file will converted to a PymuDocDataset
+    """
+    suffixes = ['ppt', 'pptx', 'doc', 'docx']
+    fns = []
+    ret = []
+    if os.path.isdir(path):
+        for root, _, files in os.walk(path):
+            for file in files:
+                suffix = file.split('.')
+                if suffix[-1] in suffixes:
+                    fns.append((os.path.join(root, file)))
+    else:
+        fns.append(path)
+        
+    reader = FileBasedDataReader()
+    temp_dir = tempfile.mkdtemp()
+    for fn in fns:
+        convert_file_to_pdf(fn, temp_dir)
+        fn_path = Path(fn)
+        pdf_fn = f"{temp_dir}/{fn_path.stem}.pdf"
+        ret.append(PymuDocDataset(reader.read(pdf_fn)))
+    shutil.rmtree(temp_dir)
+    return ret
 
 def read_local_images(path: str, suffixes: list[str]=[]) -> list[ImageDataset]:
     """Read images from path or directory.
