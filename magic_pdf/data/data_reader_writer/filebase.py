@@ -55,7 +55,7 @@ class FileBasedDataWriter(DataWriter):
         if not os.path.isabs(fn_path) and len(self._parent_dir) > 0:
             fn_path = os.path.join(self._parent_dir, path)
 
-        if not os.path.exists(os.path.dirname(fn_path)):
+        if not os.path.exists(os.path.dirname(fn_path)) and os.path.dirname(fn_path) != "":
             os.makedirs(os.path.dirname(fn_path), exist_ok=True)
 
         with open(fn_path, 'wb') as f:
