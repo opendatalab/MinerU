@@ -4,10 +4,10 @@ import cv2
 import numpy as np
 
 from paddleocr import PaddleOCR
-from paddleocr.ppocr.utils.logging import get_logger
-from paddleocr.ppocr.utils.utility import alpha_to_color, binarize_img
-from paddleocr.tools.infer.predict_system import sorted_boxes
-from paddleocr.tools.infer.utility import get_rotate_crop_image, get_minarea_rect_crop
+from ppocr.utils.logging import get_logger
+from ppocr.utils.utility import alpha_to_color, binarize_img
+from tools.infer.predict_system import sorted_boxes
+from tools.infer.utility import get_rotate_crop_image, get_minarea_rect_crop
 
 from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import update_det_boxes, merge_det_boxes, check_img
 
