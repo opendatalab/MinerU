@@ -28,7 +28,6 @@ Minimal Example
     image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
         local_md_dir
     )
-    image_dir = str(os.path.basename(local_image_dir))
 
     # read bytes
     reader1 = FileBasedDataReader("")

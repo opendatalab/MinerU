@@ -104,7 +104,7 @@ def read_local_office(path: str) -> list[PymuDocDataset]:
     shutil.rmtree(temp_dir)
     return ret
 
-def read_local_images(path: str, suffixes: list[str]=[]) -> list[ImageDataset]:
+def read_local_images(path: str, suffixes: list[str]=['png', 'jpg']) -> list[ImageDataset]:
     """Read images from path or directory.
 
     Args:

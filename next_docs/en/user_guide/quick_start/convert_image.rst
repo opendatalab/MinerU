@@ -1,23 +1,15 @@
 
 
-Convert PPT 
-============
+Convert Image
+===============
 
-.. admonition:: Warning
-    :class: tip
-
-    When processing MS-Office files, we first use third-party software to convert the MS-Office files to PDF.
-    
-    For certain MS-Office files, the quality of the converted PDF files may not be very high, which can affect the quality of the final output.
-
-
-.. code:: python 
+.. code:: python
 
     import os
 
-    from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
+    from magic_pdf.data.data_reader_writer import FileBasedDataWriter
     from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-    from magic_pdf.data.read_api import read_local_office
+    from magic_pdf.data.read_api import read_local_images
 
     # prepare env
     local_image_dir, local_md_dir = "output/images", "output"
@@ -31,10 +23,10 @@ Convert PPT
 
     # proc
     ## Create Dataset Instance
-    input_file = "some_ppt.ppt"     # replace with real ms-office file
-    
+    input_file = "some_image.jpg"       # replace with real image file
+
     input_file_name = input_file.split(".")[0]
-    ds = read_local_office(input_file)[0]
+    ds = read_local_images(input_file)[0]
 
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir

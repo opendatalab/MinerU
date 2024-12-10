@@ -1,7 +1,6 @@
 
-
-Convert PPT 
-============
+Convert DocX
+=============
 
 .. admonition:: Warning
     :class: tip
@@ -31,7 +30,7 @@ Convert PPT
 
     # proc
     ## Create Dataset Instance
-    input_file = "some_ppt.ppt"     # replace with real ms-office file
+    input_file = "some_docx.docx"     # replace with real ms-office file
     
     input_file_name = input_file.split(".")[0]
     ds = read_local_office(input_file)[0]
@@ -39,3 +38,4 @@ Convert PPT
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
+

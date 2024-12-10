@@ -112,7 +112,7 @@ Download model weight files
 Install LibreOffice[Optional]
 ----------------------------------
 
-This section is required for handle **doc**, **docx**, **ppt**, **pptx** filetype, You can Skip this section if no need for those filetype processing.
+This section is required for handle **doc**, **docx**, **ppt**, **pptx** filetype, You can **skip** this section if no need for those filetype processing.
 
 
 Linux/Macos Platform

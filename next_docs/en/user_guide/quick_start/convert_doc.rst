@@ -1,7 +1,7 @@
 
 
-Convert PPT 
-============
+Convert Word 
+=============
 
 .. admonition:: Warning
     :class: tip
@@ -9,7 +9,6 @@ Convert PPT
     When processing MS-Office files, we first use third-party software to convert the MS-Office files to PDF.
     
     For certain MS-Office files, the quality of the converted PDF files may not be very high, which can affect the quality of the final output.
-
 
 .. code:: python 
 
@@ -31,7 +30,7 @@ Convert PPT
 
     # proc
     ## Create Dataset Instance
-    input_file = "some_ppt.ppt"     # replace with real ms-office file
+    input_file = "some_doc.doc"     # replace with real ms-office file
     
     input_file_name = input_file.split(".")[0]
     ds = read_local_office(input_file)[0]
@@ -39,3 +38,6 @@ Convert PPT
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
+
+
+
