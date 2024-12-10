@@ -825,7 +825,7 @@ def pdf_parse_union(
         'pdf_info': pdf_info_list,
     }
 
-    clean_memory()
+    # clean_memory()
 
     return new_pdf_info_dict
 
