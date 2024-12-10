@@ -8,7 +8,7 @@ from loguru import logger
 from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.libs.commons import get_top_percent_list, mymax
 from magic_pdf.libs.language import detect_lang
-from magic_pdf.libs.pdf_check import detect_invalid_chars_by_pymupdf
+from magic_pdf.libs.pdf_check import detect_invalid_chars_by_pymupdf, detect_invalid_chars
 
 scan_max_page = 50
 junk_limit_min = 10
@@ -323,7 +323,8 @@ def get_language(doc: fitz.Document):
 
 def check_invalid_chars(pdf_bytes):
     """乱码检测."""
-    return detect_invalid_chars_by_pymupdf(pdf_bytes)
+    # return detect_invalid_chars_by_pymupdf(pdf_bytes)
+    return detect_invalid_chars(pdf_bytes)
 
 
 def pdf_meta_scan(pdf_bytes: bytes):

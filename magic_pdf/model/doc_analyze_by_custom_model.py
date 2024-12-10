@@ -5,6 +5,10 @@ import fitz
 import numpy as np
 from loguru import logger
 
+# 关闭paddle的信号处理
+import paddle
+paddle.disable_signal_handler()
+
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
