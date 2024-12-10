@@ -58,7 +58,7 @@ def read_local_pdfs(path: str) -> list[PymuDocDataset]:
         list[PymuDocDataset]: each pdf file will converted to a PymuDocDataset
     """
     if os.path.isdir(path):
-        reader = FileBasedDataReader(path)
+        reader = FileBasedDataReader()
         ret = []
         for root, _, files in os.walk(path):
             for file in files:
@@ -85,7 +85,7 @@ def read_local_images(path: str, suffixes: list[str]=[]) -> list[ImageDataset]:
     if os.path.isdir(path):
         imgs_bits = []
         s_suffixes = set(suffixes)
-        reader = FileBasedDataReader(path)
+        reader = FileBasedDataReader()
         for root, _, files in os.walk(path):
             for file in files:
                 suffix = file.split('.')
