@@ -170,6 +170,7 @@ def do_parse(
             logger.error('need model list input')
             exit(2)
     else:
+        
         infer_result = InferenceResult(model_list, ds)
         if parse_method == 'ocr':
             pipe_result = infer_result.pipe_ocr_mode(
@@ -180,9 +181,15 @@ def do_parse(
                 image_writer, debug_mode=True, lang=lang
             )
         else:
-            pipe_result = infer_result.pipe_auto_mode(
-                image_writer, debug_mode=True, lang=lang
-            )
+            if ds.classify() == SupportedPdfParseMethod.TXT:
+                pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=lang
+                    )
+            else:
+                pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=lang
+                    )
+            
 
     if f_draw_model_bbox:
         infer_result.draw_model(
