@@ -123,6 +123,9 @@ def do_parse(
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
+                    pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=lang
+                    )
                 else:
                     infer_result = ds.apply(
                         doc_analyze,
@@ -132,9 +135,9 @@ def do_parse(
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
-                pipe_result = infer_result.pipe_auto_mode(
-                    image_writer, debug_mode=True, lang=lang
-                )
+                    pipe_result = infer_result.pipe_ocr_mode(
+                        image_writer, debug_mode=True, lang=lang
+                    )
 
             elif parse_method == 'txt':
                 infer_result = ds.apply(
