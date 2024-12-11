@@ -19,7 +19,7 @@ def test_read_local_pdfs():
 
 
 def test_read_local_images():
-    datasets = read_local_images('tests/unittest/test_data/assets/pngs', suffixes=['png'])
+    datasets = read_local_images('tests/unittest/test_data/assets/pngs', suffixes=['.png'])
     assert len(datasets) == 2
     assert len(datasets[0]) == 1
     assert len(datasets[1]) == 1
