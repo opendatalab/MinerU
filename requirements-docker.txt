@@ -8,6 +8,8 @@ fast-langdetect==0.2.0
 scikit-learn>=1.0.2
 pdfminer.six==20231228
 unimernet==0.2.2
+torch>=2.2.2,<=2.3.1
+torchvision>=0.17.2,<=0.18.1
 matplotlib
 ultralytics>=8.3.48
 paddleocr==2.7.3
