@@ -156,5 +156,5 @@ The version of config schema.
 .. admonition:: Tip
     :class: tip
     
-    Check `Config Schema <https://github.com/opendatalab/MinerU/blob/master/magic-pdf.template.json>`_ for the latest config schema.
+    Check `Config Schema <https://github.com/opendatalab/MinerU/blob/master/magic-pdf.template.json>`_ for the latest details
 

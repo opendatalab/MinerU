@@ -81,6 +81,11 @@ def read_local_office(path: str) -> list[PymuDocDataset]:
 
     Returns:
         list[PymuDocDataset]: each ms-office file will converted to a PymuDocDataset
+        
+    Raises:
+        ConvertToPdfError: Failed to convert ms-office file to pdf via libreoffice
+        FileNotFoundError: File not Found
+        Exception: Unknown Exception raised
     """
     suffixes = ['ppt', 'pptx', 'doc', 'docx']
     fns = []
@@ -97,7 +102,14 @@ def read_local_office(path: str) -> list[PymuDocDataset]:
     reader = FileBasedDataReader()
     temp_dir = tempfile.mkdtemp()
     for fn in fns:
-        convert_file_to_pdf(fn, temp_dir)
+        try:
+            convert_file_to_pdf(fn, temp_dir)
+        except ConvertToPdfError as e:
+            raise e
+        except FileNotFoundError as e:
+            raise e
+        except Exception as e:
+            raise e
         fn_path = Path(fn)
         pdf_fn = f"{temp_dir}/{fn_path.stem}.pdf"
         ret.append(PymuDocDataset(reader.read(pdf_fn)))

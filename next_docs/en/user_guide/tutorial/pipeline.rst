@@ -84,8 +84,6 @@ These stages are linked together through methods like ``apply``, ``doc_analyze``
 .. admonition:: Tip
     :class: tip
 
-    For more examples on how to use ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../quick_start/to_markdown`
-
     For more detailed information about ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../../api/dataset`, :doc:`../../api/model_operators`, :doc:`../../api/pipe_operators`
 
 
