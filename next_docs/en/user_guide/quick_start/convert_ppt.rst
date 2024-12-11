@@ -10,6 +10,17 @@ Convert PPT
     
     For certain MS-Office files, the quality of the converted PDF files may not be very high, which can affect the quality of the final output.
 
+Command Line
+^^^^^^^^^^^^^
+
+.. code:: python 
+
+    # make sure the file have correct suffix
+    magic-pdf -p a.ppt -o output -m auto
+
+
+API 
+^^^^^
 
 .. code:: python 
 

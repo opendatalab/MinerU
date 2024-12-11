@@ -3,6 +3,19 @@
 Convert Image
 ===============
 
+
+Command Line
+^^^^^^^^^^^^^
+
+.. code:: python 
+
+    # make sure the file have correct suffix
+    magic-pdf -p a.png -o output -m auto
+
+
+API 
+^^^^^^
+
 .. code:: python
 
     import os

@@ -134,6 +134,6 @@ Windows Platform
 
 .. tip::
 
-    The MinerU is installed, Check out :doc:`../quick_start/command_line` to convert your first pdf **or** reading the following sections for more details about install
+    The MinerU is installed, Check out :doc:`../usage/command_line` to convert your first pdf **or** reading the following sections for more details about install
 
 

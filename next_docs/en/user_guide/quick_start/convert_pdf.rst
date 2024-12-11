@@ -3,6 +3,17 @@
 Convert PDF 
 ============
 
+Command Line
+^^^^^^^^^^^^^
+
+.. code:: python 
+
+    # make sure the file have correct suffix
+    magic-pdf -p a.pdf -o output -m auto
+
+
+API
+^^^^^^
 .. code:: python
 
     import os

@@ -87,14 +87,14 @@ def read_local_office(path: str) -> list[PymuDocDataset]:
         FileNotFoundError: File not Found
         Exception: Unknown Exception raised
     """
-    suffixes = ['ppt', 'pptx', 'doc', 'docx']
+    suffixes = ['.ppt', '.pptx', '.doc', '.docx']
     fns = []
     ret = []
     if os.path.isdir(path):
         for root, _, files in os.walk(path):
             for file in files:
-                suffix = file.split('.')
-                if suffix[-1] in suffixes:
+                suffix = Path(file).suffix
+                if suffix in suffixes:
                     fns.append((os.path.join(root, file)))
     else:
         fns.append(path)
@@ -116,12 +116,12 @@ def read_local_office(path: str) -> list[PymuDocDataset]:
     shutil.rmtree(temp_dir)
     return ret
 
-def read_local_images(path: str, suffixes: list[str]=['png', 'jpg']) -> list[ImageDataset]:
+def read_local_images(path: str, suffixes: list[str]=['.png', '.jpg']) -> list[ImageDataset]:
     """Read images from path or directory.
 
     Args:
         path (str): image file path or directory that contains image files
-        suffixes (list[str]): the suffixes of the image files used to filter the files. Example: ['jpg', 'png']
+        suffixes (list[str]): the suffixes of the image files used to filter the files. Example: ['.jpg', '.png']
 
     Returns:
         list[ImageDataset]: each image file will converted to a ImageDataset
@@ -132,8 +132,8 @@ def read_local_images(path: str, suffixes: list[str]=['png', 'jpg']) -> list[Ima
         reader = FileBasedDataReader()
         for root, _, files in os.walk(path):
             for file in files:
-                suffix = file.split('.')
-                if suffix[-1] in s_suffixes:
+                suffix = Path(file).suffix
+                if suffix in s_suffixes:
                     imgs_bits.append(reader.read(os.path.join(root, file)))
         return [ImageDataset(bits) for bits in imgs_bits]
     else:

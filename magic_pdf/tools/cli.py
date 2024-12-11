@@ -97,7 +97,7 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
             fn = os.path.join(temp_dir, f"{path.stem}.pdf")
         elif path.suffix in image_suffixes:
             with open(str(path), 'rb') as f:
-                bits = f.read(_)
+                bits = f.read()
             pdf_bytes = fitz.open(stream=bits).convert_to_pdf()
             fn = os.path.join(temp_dir, f"{path.stem}.pdf")
             with open(fn, 'wb') as f:
@@ -134,7 +134,7 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
             if doc_path.suffix in pdf_suffixes + image_suffixes + ms_office_suffixes:
                 parse_doc(doc_path)
     else:
-        parse_doc(path)
+        parse_doc(Path(path))
 
     shutil.rmtree(temp_dir)
 

@@ -2,6 +2,10 @@
 Api Usage 
 ===========
 
+
+PDF
+----
+
 Local File Example
 ^^^^^^^^^^^^^^^^^^
 
@@ -109,6 +113,114 @@ S3 File Example
 
     ### dump markdown
     pipe_result.dump_md(writer, f'{name_without_suff}.md', "unittest/tmp/images")    # dump to remote s3
+
+
+
+MS-Office 
+----------
+
+.. code:: python 
+
+    import os
+
+    from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
+    from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+    from magic_pdf.data.read_api import read_local_office
+
+    # prepare env
+    local_image_dir, local_md_dir = "output/images", "output"
+    image_dir = str(os.path.basename(local_image_dir))
+
+    os.makedirs(local_image_dir, exist_ok=True)
+
+    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
+        local_md_dir
+    )
+
+    # proc
+    ## Create Dataset Instance
+    input_file = "some_ppt.ppt"     # replace with real ms-office file
+
+    input_file_name = input_file.split(".")[0]
+    ds = read_local_office(input_file)[0]
+
+    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir
+    )
+
+This code snippet can be used to manipulate **ppt**, **pptx**, **doc**, **docx** file
+
+
+Image
+---------
+
+Single Image File 
+^^^^^^^^^^^^^^^^^^^
+
+.. code:: python
+
+    import os
+
+    from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+    from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+    from magic_pdf.data.read_api import read_local_images
+
+    # prepare env
+    local_image_dir, local_md_dir = "output/images", "output"
+    image_dir = str(os.path.basename(local_image_dir))
+
+    os.makedirs(local_image_dir, exist_ok=True)
+
+    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
+        local_md_dir
+    )
+
+    # proc
+    ## Create Dataset Instance
+    input_file = "some_image.jpg"       # replace with real image file
+
+    input_file_name = input_file.split(".")[0]
+    ds = read_local_images(input_file)[0]
+
+    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir
+    )
+
+
+Directory That Contains Images 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code:: python
+
+    import os
+
+    from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+    from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+    from magic_pdf.data.read_api import read_local_images
+
+    # prepare env
+    local_image_dir, local_md_dir = "output/images", "output"
+    image_dir = str(os.path.basename(local_image_dir))
+
+    os.makedirs(local_image_dir, exist_ok=True)
+
+    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
+        local_md_dir
+    )
+
+    # proc
+    ## Create Dataset Instance
+    input_directory = "some_image_dir/"       # replace with real directory that contains images
+
+
+    dss = read_local_images(input_directory, suffixes=['.png', '.jpg'])[0]  
+
+    count = 0
+    for ds in dss:
+        ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+            md_writer, f"{count}.md", image_dir
+        )
+        count += 1
 
 
 Check :doc:`../data/data_reader_writer` for more [reader | writer] examples and check :doc:`../../api/pipe_operators` or :doc:`../../api/model_operators` for api details
