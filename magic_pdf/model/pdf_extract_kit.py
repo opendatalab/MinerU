@@ -179,7 +179,25 @@ class CustomPEKModel:
             layout_res = self.layout_model(image, ignore_catids=[])
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             # doclayout_yolo
-            layout_res = self.layout_model.predict(image)
+            img_pil = Image.fromarray(image)
+            width, height = img_pil.size
+            # logger.info(f'width: {width}, height: {height}')
+            input_res = {"poly":[0,0,width,0,width,height,0,height]}
+            new_image, useful_list = crop_img(input_res, img_pil, crop_paste_x=width//2, crop_paste_y=0)
+            paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
+            layout_res = self.layout_model.predict(new_image)
+            for res in layout_res:
+                p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
+                p1 = p1 - paste_x + xmin
+                p2 = p2 - paste_y + ymin
+                p3 = p3 - paste_x + xmin
+                p4 = p4 - paste_y + ymin
+                p5 = p5 - paste_x + xmin
+                p6 = p6 - paste_y + ymin
+                p7 = p7 - paste_x + xmin
+                p8 = p8 - paste_y + ymin
+                res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
+
         layout_cost = round(time.time() - layout_start, 2)
         logger.info(f'layout detection time: {layout_cost}')
 
@@ -215,6 +233,7 @@ class CustomPEKModel:
 
             # OCR recognition
             new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+
             if self.apply_ocr:
                 ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
             else:

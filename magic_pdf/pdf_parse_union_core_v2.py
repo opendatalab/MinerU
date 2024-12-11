@@ -4,8 +4,8 @@ import statistics
 import time
 from typing import List
 
-import torch
 import fitz
+import torch
 from loguru import logger
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
@@ -16,17 +16,13 @@ from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
-
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
 from magic_pdf.model.magic_model import MagicModel
-
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
 try:
     import torchtext
 
-    if torchtext.__version__ >= "0.18.0":
+    if torchtext.__version__ >= '0.18.0':
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass
@@ -38,6 +34,9 @@ from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
 from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, remove_overlaps_min_spans
+
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
+os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
 
 def __replace_STX_ETX(text_str: str):
@@ -233,7 +232,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
         # 初始化ocr模型
         atom_model_manager = AtomModelSingleton()
         ocr_model = atom_model_manager.get_atom_model(
-            atom_model_name="ocr",
+            atom_model_name='ocr',
             ocr_show_log=False,
             det_db_box_thresh=0.3,
             lang=lang
@@ -241,7 +240,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
 
         for span in empty_spans:
             # 对span的bbox截图再ocr
-            span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode="cv2")
+            span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode='cv2')
             ocr_res = ocr_model.ocr(span_img, det=False)
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
@@ -681,14 +680,13 @@ def parse_page_core(
     """根据parse_mode，构造spans，主要是文本类的字符填充"""
     if parse_mode == SupportedPdfParseMethod.TXT:
 
-        """使用新版本的混合ocr方案"""
+        """使用新版本的混合ocr方案."""
         spans = txt_spans_extract_v2(page_doc, spans, all_bboxes, all_discarded_blocks, lang)
 
     elif parse_mode == SupportedPdfParseMethod.OCR:
         pass
     else:
         raise Exception('parse_mode must be txt or ocr')
-
 
     """先处理不需要排版的discarded_blocks"""
     discarded_block_with_spans, spans = fill_spans_in_blocks(
@@ -762,8 +760,8 @@ def parse_page_core(
 
 
 def pdf_parse_union(
-    dataset: Dataset,
     model_list,
+    dataset: Dataset,
     imageWriter,
     parse_mode,
     start_page_id=0,
@@ -771,6 +769,7 @@ def pdf_parse_union(
     debug_mode=False,
     lang=None,
 ):
+
     pdf_bytes_md5 = compute_md5(dataset.data_bits())
 
     """初始化空的pdf_info_dict"""

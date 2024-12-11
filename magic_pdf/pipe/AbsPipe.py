@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import DataWriter
+from magic_pdf.data.dataset import Dataset
 from magic_pdf.dict2md.ocr_mkcontent import union_make
 from magic_pdf.filter.pdf_classify_by_type import classify
 from magic_pdf.filter.pdf_meta_scan import pdf_meta_scan
@@ -14,9 +15,9 @@ class AbsPipe(ABC):
     PIP_OCR = 'ocr'
     PIP_TXT = 'txt'
 
-    def __init__(self, pdf_bytes: bytes, model_list: list, image_writer: DataWriter, is_debug: bool = False,
+    def __init__(self, dataset: Dataset, model_list: list, image_writer: DataWriter, is_debug: bool = False,
                  start_page_id=0, end_page_id=None, lang=None, layout_model=None, formula_enable=None, table_enable=None):
-        self.pdf_bytes = pdf_bytes
+        self.dataset = Dataset
         self.model_list = model_list
         self.image_writer = image_writer
         self.pdf_mid_data = None  # 未压缩

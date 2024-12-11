@@ -165,8 +165,8 @@ def merge_para_with_text(para_block):
             if content:
                 langs = ['zh', 'ja', 'ko']
                 # logger.info(f'block_lang: {block_lang}, content: {content}')
-                if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔
-                    if j == len(line['spans']) - 1:
+                if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                    if j == len(line['spans']) - 1 and span_type not in [ContentType.InlineEquation]:
                         para_text += content
                     else:
                         para_text += f'{content} '
