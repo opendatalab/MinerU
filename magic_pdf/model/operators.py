@@ -71,40 +71,6 @@ class InferenceResult(InferenceResultBase):
         """
         return proc(copy.deepcopy(self._infer_res), *args, **kwargs)
 
-    def pipe_auto_mode(
-        self,
-        imageWriter: DataWriter,
-        start_page_id=0,
-        end_page_id=None,
-        debug_mode=False,
-        lang=None,
-    ) -> PipeResult:
-        """Post-proc the model inference result.
-            step1: classify the dataset type
-            step2: based the result of step1, using `pipe_txt_mode` or `pipe_ocr_mode`
-
-        Args:
-            imageWriter (DataWriter): the image writer handle
-            start_page_id (int, optional): Defaults to 0. Let user select some pages He/She want to process
-            end_page_id (int, optional):  Defaults to the last page index of dataset. Let user select some pages He/She want to process
-            debug_mode (bool, optional): Defaults to False. will dump more log if enabled
-            lang (str, optional): Defaults to None.
-
-        Returns:
-            PipeResult: the result
-        """
-
-        pdf_proc_method = classify(self._dataset.data_bits())
-
-        if pdf_proc_method == SupportedPdfParseMethod.TXT:
-            return self.pipe_txt_mode(
-                imageWriter, start_page_id, end_page_id, debug_mode, lang
-            )
-        else:
-            return self.pipe_ocr_mode(
-                imageWriter, start_page_id, end_page_id, debug_mode, lang
-            )
-
     def pipe_txt_mode(
         self,
         imageWriter: DataWriter,

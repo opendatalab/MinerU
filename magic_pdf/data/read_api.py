@@ -1,12 +1,14 @@
 import json
 import os
+import tempfile
+import shutil
 from pathlib import Path
 
 from magic_pdf.config.exceptions import EmptyData, InvalidParams
 from magic_pdf.data.data_reader_writer import (FileBasedDataReader,
                                                MultiBucketS3DataReader)
 from magic_pdf.data.dataset import ImageDataset, PymuDocDataset
-
+from magic_pdf.utils.office_to_pdf import convert_file_to_pdf, ConvertToPdfError
 
 def read_jsonl(
     s3_path_or_local: str, s3_client: MultiBucketS3DataReader | None = None
@@ -58,23 +60,68 @@ def read_local_pdfs(path: str) -> list[PymuDocDataset]:
         list[PymuDocDataset]: each pdf file will converted to a PymuDocDataset
     """
     if os.path.isdir(path):
-        reader = FileBasedDataReader(path)
-        return [
-            PymuDocDataset(reader.read(doc_path.name))
-            for doc_path in Path(path).glob('*.pdf')
-        ]
+        reader = FileBasedDataReader()
+        ret = []
+        for root, _, files in os.walk(path):
+            for file in files:
+                suffix = file.split('.')
+                if suffix[-1] == 'pdf':
+                    ret.append( PymuDocDataset(reader.read(os.path.join(root, file))))
+        return ret
     else:
         reader = FileBasedDataReader()
         bits = reader.read(path)
         return [PymuDocDataset(bits)]
 
+def read_local_office(path: str) -> list[PymuDocDataset]:
+    """Read ms-office file (ppt, pptx, doc, docx) from path or directory.
 
-def read_local_images(path: str, suffixes: list[str]) -> list[ImageDataset]:
+    Args:
+        path (str): ms-office file or directory that contains ms-office files
+
+    Returns:
+        list[PymuDocDataset]: each ms-office file will converted to a PymuDocDataset
+        
+    Raises:
+        ConvertToPdfError: Failed to convert ms-office file to pdf via libreoffice
+        FileNotFoundError: File not Found
+        Exception: Unknown Exception raised
+    """
+    suffixes = ['.ppt', '.pptx', '.doc', '.docx']
+    fns = []
+    ret = []
+    if os.path.isdir(path):
+        for root, _, files in os.walk(path):
+            for file in files:
+                suffix = Path(file).suffix
+                if suffix in suffixes:
+                    fns.append((os.path.join(root, file)))
+    else:
+        fns.append(path)
+        
+    reader = FileBasedDataReader()
+    temp_dir = tempfile.mkdtemp()
+    for fn in fns:
+        try:
+            convert_file_to_pdf(fn, temp_dir)
+        except ConvertToPdfError as e:
+            raise e
+        except FileNotFoundError as e:
+            raise e
+        except Exception as e:
+            raise e
+        fn_path = Path(fn)
+        pdf_fn = f"{temp_dir}/{fn_path.stem}.pdf"
+        ret.append(PymuDocDataset(reader.read(pdf_fn)))
+    shutil.rmtree(temp_dir)
+    return ret
+
+def read_local_images(path: str, suffixes: list[str]=['.png', '.jpg']) -> list[ImageDataset]:
     """Read images from path or directory.
 
     Args:
         path (str): image file path or directory that contains image files
-        suffixes (list[str]): the suffixes of the image files used to filter the files. Example: ['jpg', 'png']
+        suffixes (list[str]): the suffixes of the image files used to filter the files. Example: ['.jpg', '.png']
 
     Returns:
         list[ImageDataset]: each image file will converted to a ImageDataset
@@ -82,12 +129,12 @@ def read_local_images(path: str, suffixes: list[str]) -> list[ImageDataset]:
     if os.path.isdir(path):
         imgs_bits = []
         s_suffixes = set(suffixes)
-        reader = FileBasedDataReader(path)
+        reader = FileBasedDataReader()
         for root, _, files in os.walk(path):
             for file in files:
-                suffix = file.split('.')
-                if suffix[-1] in s_suffixes:
-                    imgs_bits.append(reader.read(file))
+                suffix = Path(file).suffix
+                if suffix in s_suffixes:
+                    imgs_bits.append(reader.read(os.path.join(root, file)))
         return [ImageDataset(bits) for bits in imgs_bits]
     else:
         reader = FileBasedDataReader()

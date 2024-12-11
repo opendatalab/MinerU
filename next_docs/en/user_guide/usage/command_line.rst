@@ -10,7 +10,8 @@ Command Line
 
    Options:
      -v, --version                display the version and exit
-     -p, --path PATH              local pdf filepath or directory  [required]
+     -p, --path PATH              local filepath or directory. support PDF, PPT,
+                                  PPTX, DOC, DOCX, PNG, JPG files  [required]
      -o, --output-dir PATH        output local directory  [required]
      -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
                                   technique to extract information from pdf. txt:
@@ -40,6 +41,20 @@ Command Line
    ## command line example
    magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
 
+
+.. admonition:: Important
+    :class: tip
+
+    The file must endswith with the following suffix.
+       .pdf 
+       .png
+       .jpg
+       .ppt
+       .pptx
+       .doc
+       .docx
+
+
 ``{some_pdf}`` can be a single PDF file or a directory containing
 multiple PDFs. The results will be saved in the ``{some_output_dir}``
 directory. The output file list is as follows:
@@ -57,6 +72,6 @@ directory. The output file list is as follows:
 
 .. admonition:: Tip
    :class: tip
+   
 
-   For more information about the output files, please refer to the :doc:`../tutorial/output_file_description`
-
+   For more information about the output files, please refer to the :doc:`../inference_result` or :doc:`../pipe_result`

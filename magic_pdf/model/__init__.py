@@ -66,31 +66,6 @@ class InferenceResultBase(ABC):
         pass
 
     @abstractmethod
-    def pipe_auto_mode(
-        self,
-        imageWriter: DataWriter,
-        start_page_id=0,
-        end_page_id=None,
-        debug_mode=False,
-        lang=None,
-    ) -> PipeResult:
-        """Post-proc the model inference result.
-            step1: classify the dataset type
-            step2: based the result of step1, using `pipe_txt_mode` or `pipe_ocr_mode`
-
-        Args:
-            imageWriter (DataWriter): the image writer handle
-            start_page_id (int, optional): Defaults to 0. Let user select some pages He/She want to process
-            end_page_id (int, optional):  Defaults to the last page index of dataset. Let user select some pages He/She want to process
-            debug_mode (bool, optional): Defaults to False. will dump more log if enabled
-            lang (str, optional): Defaults to None.
-
-        Returns:
-            PipeResult: the result
-        """
-        pass
-
-    @abstractmethod
     def pipe_txt_mode(
         self,
         imageWriter: DataWriter,

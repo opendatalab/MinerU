@@ -73,118 +73,146 @@ S3DataReader 基于 MultiBucketS3DataReader 构建，但仅支持单个桶。S3D
 ---------
 .. code:: python
 
-    from magic_pdf.data.data_reader_writer import * 
+    import os 
+    from magic_pdf.data.data_reader_writer import *
+    from magic_pdf.data.data_reader_writer import MultiBucketS3DataReader
+    from magic_pdf.data.schemas import S3Config
 
-    # 文件相关的
+    # 初始化 reader
     file_based_reader1 = FileBasedDataReader('')
 
-    ## 将读取文件 abc 
-    file_based_reader1.read('abc') 
+    ## 读本地文件 abc
+    file_based_reader1.read('abc')
 
     file_based_reader2 = FileBasedDataReader('/tmp')
 
-    ## 将读取 /tmp/abc
+    ## 读本地文件 /tmp/abc
     file_based_reader2.read('abc')
 
-    ## 将读取 /var/logs/message.txt
-    file_based_reader2.read('/var/logs/message.txt')
+    ## 读本地文件 /tmp/logs/message.txt
+    file_based_reader2.read('/tmp/logs/message.txt')
 
-    # 多桶 S3 相关的
-    multi_bucket_s3_reader1 = MultiBucketS3DataReader("test_bucket1/test_prefix", list[S3Config(
-            bucket_name=test_bucket1, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
+    # 初始化多桶 s3 reader
+    bucket = "bucket"               # 替换为有效的 bucket
+    ak = "ak"                       # 替换为有效的 access key
+    sk = "sk"                       # 替换为有效的 secret key
+    endpoint_url = "endpoint_url"   # 替换为有效的 endpoint_url
+
+    bucket_2 = "bucket_2"               # 替换为有效的 bucket
+    ak_2 = "ak_2"                       # 替换为有效的 access key
+    sk_2 = "sk_2"                       # 替换为有效的 secret key 
+    endpoint_url_2 = "endpoint_url_2"   # 替换为有效的 endpoint_url
+
+    test_prefix = 'test/unittest'
+    multi_bucket_s3_reader1 = MultiBucketS3DataReader(f"{bucket}/{test_prefix}", [S3Config(
+            bucket_name=bucket, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
         ),
         S3Config(
-            bucket_name=test_bucket_2,
+            bucket_name=bucket_2,
             access_key=ak_2,
             secret_key=sk_2,
             endpoint_url=endpoint_url_2,
         )])
 
-    ## 将读取 s3://test_bucket1/test_prefix/abc
+    ## 读文件 s3://{bucket}/{test_prefix}/abc
     multi_bucket_s3_reader1.read('abc')
 
-    ## 将读取 s3://test_bucket1/efg
-    multi_bucket_s3_reader1.read('s3://test_bucket1/efg')
+    ## 读文件 s3://{bucket}/{test_prefix}/efg
+    multi_bucket_s3_reader1.read(f's3://{bucket}/{test_prefix}/efg')
 
-    ## 将读取 s3://test_bucket2/abc
-    multi_bucket_s3_reader1.read('s3://test_bucket2/abc')
+    ## 读文件 s3://{bucket2}/{test_prefix}/abc
+    multi_bucket_s3_reader1.read(f's3://{bucket_2}/{test_prefix}/abc')
 
-    # S3 相关的
+    # 初始化 s3 reader
     s3_reader1 = S3DataReader(
-        default_prefix_without_bucket = "test_prefix",
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        test_prefix,
+        bucket,
+        ak,
+        sk,
+        endpoint_url
     )
 
-    ## 将读取 s3://test_bucket/test_prefix/abc 
+    ## 读文件 s3://{bucket}/{test_prefix}/abc
     s3_reader1.read('abc')
 
-    ## 将读取 s3://test_bucket/efg
-    s3_reader1.read('s3://test_bucket/efg')
+    ## 读文件 s3://{bucket}/efg
+    s3_reader1.read(f's3://{bucket}/efg')
+
 
 写入示例
 ----------
 .. code:: python
 
+    import os
     from magic_pdf.data.data_reader_writer import *
+    from magic_pdf.data.data_reader_writer import MultiBucketS3DataWriter
+    from magic_pdf.data.schemas import S3Config
 
-    # 文件相关的
-    file_based_writer1 = FileBasedDataWriter('')
+    # 初始化 reader
+    file_based_writer1 = FileBasedDataWriter("")
 
-    ## 将写入 123 到 abc
-    file_based_writer1.write('abc', '123'.encode()) 
+    ## 写数据 123 to abc
+    file_based_writer1.write("abc", "123".encode())
 
-    ## 将写入 123 到 abc
-    file_based_writer1.write_string('abc', '123') 
+    ## 写数据 123 to abc
+    file_based_writer1.write_string("abc", "123")
 
-    file_based_writer2 = FileBasedDataWriter('/tmp')
+    file_based_writer2 = FileBasedDataWriter("/tmp")
 
-    ## 将写入 123 到 /tmp/abc
-    file_based_writer2.write_string('abc', '123')
+    ## 写数据 123 to /tmp/abc
+    file_based_writer2.write_string("abc", "123")
 
-    ## 将写入 123 到 /var/logs/message.txt
-    file_based_writer2.write_string('/var/logs/message.txt', '123')
+    ## 写数据 123 to /tmp/logs/message.txt
+    file_based_writer2.write_string("/tmp/logs/message.txt", "123")
 
-    # 多桶 S3 相关的
-    multi_bucket_s3_writer1 = MultiBucketS3DataWriter("test_bucket1/test_prefix", list[S3Config(
-            bucket_name=test_bucket1, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
-        ),
-        S3Config(
-            bucket_name=test_bucket_2,
-            access_key=ak_2,
-            secret_key=sk_2,
-            endpoint_url=endpoint_url_2,
-        )])
+    # 初始化多桶 s3 writer
+    bucket = "bucket"               # 替换为有效的 bucket
+    ak = "ak"                       # 替换为有效的 access key
+    sk = "sk"                       # 替换为有效的 secret key
+    endpoint_url = "endpoint_url"   # 替换为有效的 endpoint_url
 
-    ## 将写入 123 到 s3://test_bucket1/test_prefix/abc
-    multi_bucket_s3_writer1.write_string('abc', '123')
+    bucket_2 = "bucket_2"               # 替换为有效的 bucket
+    ak_2 = "ak_2"                       # 替换为有效的 access key
+    sk_2 = "sk_2"                       # 替换为有效的 secret key 
+    endpoint_url_2 = "endpoint_url_2"   # 替换为有效的 endpoint_url
 
-    ## 将写入 123 到 s3://test_bucket1/test_prefix/abc
-    multi_bucket_s3_writer1.write('abc', '123'.encode())
-
-    ## 将写入 123 到 s3://test_bucket1/efg
-    multi_bucket_s3_writer1.write('s3://test_bucket1/efg', '123'.encode())
-
-    ## 将写入 123 到 s3://test_bucket2/abc
-    multi_bucket_s3_writer1.write('s3://test_bucket2/abc', '123'.encode())
-
-    # S3 相关的
-    s3_writer1 = S3DataWriter(
-        default_prefix_without_bucket = "test_prefix",
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+    test_prefix = "test/unittest"
+    multi_bucket_s3_writer1 = MultiBucketS3DataWriter(
+        f"{bucket}/{test_prefix}",
+        [
+            S3Config(
+                bucket_name=bucket, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
+            ),
+            S3Config(
+                bucket_name=bucket_2,
+                access_key=ak_2,
+                secret_key=sk_2,
+                endpoint_url=endpoint_url_2,
+            ),
+        ],
     )
 
-    ## 将写入 123 到 s3://test_bucket/test_prefix/abc 
-    s3_writer1.write('abc', '123'.encode())
+    ## 写数据 123 to s3://{bucket}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write_string("abc", "123")
 
-    ## 将写入 123 到 s3://test_bucket/test_prefix/abc 
-    s3_writer1.write_string('abc', '123')
+    ## 写数据 123 to s3://{bucket}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write("abc", "123".encode())
 
-    ## 将写入 123 到 s3://test_bucket/efg
-    s3_writer1.write('s3://test_bucket/efg', '123'.encode())
+    ## 写数据 123 to s3://{bucket}/{test_prefix}/efg
+    multi_bucket_s3_writer1.write(f"s3://{bucket}/{test_prefix}/efg", "123".encode())
+
+    ## 写数据 123 to s3://{bucket_2}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write(f's3://{bucket_2}/{test_prefix}/abc', '123'.encode())
+
+    # 初始化 s3 writer
+    s3_writer1 = S3DataWriter(test_prefix, bucket, ak, sk, endpoint_url)
+
+    ## 写数据 123 to s3://{bucket}/{test_prefix}/abc
+    s3_writer1.write("abc", "123".encode())
+
+    ## 写数据 123 to s3://{bucket}/{test_prefix}/abc
+    s3_writer1.write_string("abc", "123")
+
+    ## 写数据 123 to s3://{bucket}/efg
+    s3_writer1.write(f"s3://{bucket}/efg", "123".encode())
 

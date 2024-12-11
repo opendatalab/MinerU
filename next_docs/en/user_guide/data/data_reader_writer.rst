@@ -87,56 +87,70 @@ Read Examples
 
 .. code:: python
 
+    import os 
     from magic_pdf.data.data_reader_writer import *
+    from magic_pdf.data.data_reader_writer import MultiBucketS3DataReader
+    from magic_pdf.data.schemas import S3Config
 
-    # file based related 
+    # file based related
     file_based_reader1 = FileBasedDataReader('')
 
-    ## will read file abc 
-    file_based_reader1.read('abc') 
+    ## will read file abc
+    file_based_reader1.read('abc')
 
     file_based_reader2 = FileBasedDataReader('/tmp')
 
     ## will read /tmp/abc
     file_based_reader2.read('abc')
 
-    ## will read /var/logs/message.txt
-    file_based_reader2.read('/var/logs/message.txt')
+    ## will read /tmp/logs/message.txt
+    file_based_reader2.read('/tmp/logs/message.txt')
 
     # multi bucket s3 releated
-    multi_bucket_s3_reader1 = MultiBucketS3DataReader("test_bucket1/test_prefix", list[S3Config(
-            bucket_name=test_bucket1, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
+    bucket = "bucket"               # replace with real bucket
+    ak = "ak"                       # replace with real access key
+    sk = "sk"                       # replace with real secret key
+    endpoint_url = "endpoint_url"   # replace with real endpoint_url
+
+    bucket_2 = "bucket_2"               # replace with real bucket
+    ak_2 = "ak_2"                       # replace with real access key
+    sk_2 = "sk_2"                       # replace with real secret key 
+    endpoint_url_2 = "endpoint_url_2"   # replace with real endpoint_url
+
+    test_prefix = 'test/unittest'
+    multi_bucket_s3_reader1 = MultiBucketS3DataReader(f"{bucket}/{test_prefix}", [S3Config(
+            bucket_name=bucket, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
         ),
         S3Config(
-            bucket_name=test_bucket_2,
+            bucket_name=bucket_2,
             access_key=ak_2,
             secret_key=sk_2,
             endpoint_url=endpoint_url_2,
         )])
-    
-    ## will read s3://test_bucket1/test_prefix/abc
+
+    ## will read s3://{bucket}/{test_prefix}/abc
     multi_bucket_s3_reader1.read('abc')
 
-    ## will read s3://test_bucket1/efg
-    multi_bucket_s3_reader1.read('s3://test_bucket1/efg')
+    ## will read s3://{bucket}/{test_prefix}/efg
+    multi_bucket_s3_reader1.read(f's3://{bucket}/{test_prefix}/efg')
 
-    ## will read s3://test_bucket2/abc
-    multi_bucket_s3_reader1.read('s3://test_bucket2/abc')
+    ## will read s3://{bucket2}/{test_prefix}/abc
+    multi_bucket_s3_reader1.read(f's3://{bucket_2}/{test_prefix}/abc')
 
     # s3 related
     s3_reader1 = S3DataReader(
-        default_prefix_without_bucket = "test_prefix"
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+        test_prefix,
+        bucket,
+        ak,
+        sk,
+        endpoint_url
     )
 
-    ## will read s3://test_bucket/test_prefix/abc 
+    ## will read s3://{bucket}/{test_prefix}/abc
     s3_reader1.read('abc')
-   
-    ## will read s3://test_bucket/efg
-    s3_reader1.read('s3://test_bucket/efg')
+
+    ## will read s3://{bucket}/efg
+    s3_reader1.read(f's3://{bucket}/efg')
 
 
 Write Examples
@@ -144,65 +158,79 @@ Write Examples
 
 .. code:: python
 
+    import os
     from magic_pdf.data.data_reader_writer import *
+    from magic_pdf.data.data_reader_writer import MultiBucketS3DataWriter
+    from magic_pdf.data.schemas import S3Config
 
-    # file based related 
-    file_based_writer1 = FileBasedDataWriter('')
+    # file based related
+    file_based_writer1 = FileBasedDataWriter("")
 
     ## will write 123 to abc
-    file_based_writer1.write('abc', '123'.encode()) 
+    file_based_writer1.write("abc", "123".encode())
 
     ## will write 123 to abc
-    file_based_writer1.write_string('abc', '123') 
+    file_based_writer1.write_string("abc", "123")
 
-    file_based_writer2 = FileBasedDataWriter('/tmp')
+    file_based_writer2 = FileBasedDataWriter("/tmp")
 
     ## will write 123 to /tmp/abc
-    file_based_writer2.write_string('abc', '123')
+    file_based_writer2.write_string("abc", "123")
 
-    ## will write 123 to /var/logs/message.txt
-    file_based_writer2.write_string('/var/logs/message.txt', '123')
+    ## will write 123 to /tmp/logs/message.txt
+    file_based_writer2.write_string("/tmp/logs/message.txt", "123")
 
     # multi bucket s3 releated
-    multi_bucket_s3_writer1 = MultiBucketS3DataWriter("test_bucket1/test_prefix", list[S3Config(
-            bucket_name=test_bucket1, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
-        ),
-        S3Config(
-            bucket_name=test_bucket_2,
-            access_key=ak_2,
-            secret_key=sk_2,
-            endpoint_url=endpoint_url_2,
-        )])
-    
-    ## will write 123 to s3://test_bucket1/test_prefix/abc
-    multi_bucket_s3_writer1.write_string('abc', '123')
+    bucket = "bucket"               # replace with real bucket
+    ak = "ak"                       # replace with real access key
+    sk = "sk"                       # replace with real secret key
+    endpoint_url = "endpoint_url"   # replace with real endpoint_url
 
-    ## will write 123 to s3://test_bucket1/test_prefix/abc
-    multi_bucket_s3_writer1.write('abc', '123'.encode())
+    bucket_2 = "bucket_2"               # replace with real bucket
+    ak_2 = "ak_2"                       # replace with real access key
+    sk_2 = "sk_2"                       # replace with real secret key 
+    endpoint_url_2 = "endpoint_url_2"   # replace with real endpoint_url
 
-    ## will write 123 to s3://test_bucket1/efg
-    multi_bucket_s3_writer1.write('s3://test_bucket1/efg', '123'.encode())
-
-    ## will write 123 to s3://test_bucket2/abc
-    multi_bucket_s3_writer1.write('s3://test_bucket2/abc', '123'.encode())
-
-    # s3 related
-    s3_writer1 = S3DataWriter(
-        default_prefix_without_bucket = "test_prefix"
-        bucket: "test_bucket",
-        ak: "ak",
-        sk: "sk",
-        endpoint_url: "localhost"
+    test_prefix = "test/unittest"
+    multi_bucket_s3_writer1 = MultiBucketS3DataWriter(
+        f"{bucket}/{test_prefix}",
+        [
+            S3Config(
+                bucket_name=bucket, access_key=ak, secret_key=sk, endpoint_url=endpoint_url
+            ),
+            S3Config(
+                bucket_name=bucket_2,
+                access_key=ak_2,
+                secret_key=sk_2,
+                endpoint_url=endpoint_url_2,
+            ),
+        ],
     )
 
-    ## will write 123 to s3://test_bucket/test_prefix/abc 
-    s3_writer1.write('abc', '123'.encode())
+    ## will write 123 to s3://{bucket}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write_string("abc", "123")
 
-    ## will write 123 to s3://test_bucket/test_prefix/abc 
-    s3_writer1.write_string('abc', '123')
+    ## will write 123 to s3://{bucket}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write("abc", "123".encode())
 
-    ## will write 123 to s3://test_bucket/efg
-    s3_writer1.write('s3://test_bucket/efg', '123'.encode())
+    ## will write 123 to s3://{bucket}/{test_prefix}/efg
+    multi_bucket_s3_writer1.write(f"s3://{bucket}/{test_prefix}/efg", "123".encode())
+
+    ## will write 123 to s3://{bucket_2}/{test_prefix}/abc
+    multi_bucket_s3_writer1.write(f's3://{bucket_2}/{test_prefix}/abc', '123'.encode())
+
+    # s3 related
+    s3_writer1 = S3DataWriter(test_prefix, bucket, ak, sk, endpoint_url)
+
+    ## will write 123 to s3://{bucket}/{test_prefix}/abc
+    s3_writer1.write("abc", "123".encode())
+
+    ## will write 123 to s3://{bucket}/{test_prefix}/abc
+    s3_writer1.write_string("abc", "123")
+
+    ## will write 123 to s3://{bucket}/efg
+    s3_writer1.write(f"s3://{bucket}/efg", "123".encode())
+
 
 
 Check :doc:`../../api/data_reader_writer` for more details
