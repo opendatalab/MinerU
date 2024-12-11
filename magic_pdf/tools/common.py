@@ -186,7 +186,7 @@ def do_parse(
                         image_writer, debug_mode=True, lang=lang
                     )
             else:
-                pipe_result = infer_result.pipe_txt_mode(
+                pipe_result = infer_result.pipe_ocr_mode(
                         image_writer, debug_mode=True, lang=lang
                     )
             
