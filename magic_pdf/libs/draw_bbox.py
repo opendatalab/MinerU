@@ -391,7 +391,7 @@ def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
     for i, page in enumerate(pdf_docs):
         draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
 
-    pdf_docs.save(f'{out_path}/{filename}_line_sort.pdf')
+    pdf_docs.save(f'{out_path}/{filename}')
 
 
 def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):

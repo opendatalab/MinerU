@@ -27,7 +27,7 @@ try:
 except ImportError:
     pass
 
-from magic_pdf.model.sub_modules.model_init import AtomModelSingleton, ocr_model_init
+from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.para.para_split_v3 import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
