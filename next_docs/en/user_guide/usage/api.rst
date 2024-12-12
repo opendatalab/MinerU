@@ -202,7 +202,7 @@ Single Image File
     input_file_name = input_file.split(".")[0]
     ds = read_local_images(input_file)[0]
 
-    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
+    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
 
@@ -237,7 +237,7 @@ Directory That Contains Images
 
     count = 0
     for ds in dss:
-        ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
+        ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
             md_writer, f"{count}.md", image_dir
         )
         count += 1
