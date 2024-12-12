@@ -7,13 +7,13 @@ Convert Image
 Command Line
 ^^^^^^^^^^^^^
 
-.. code:: python 
+.. code:: python
 
     # make sure the file have correct suffix
     magic-pdf -p a.png -o output -m auto
 
 
-API 
+API
 ^^^^^^
 
 .. code:: python
@@ -41,6 +41,12 @@ API
     input_file_name = input_file.split(".")[0]
     ds = read_local_images(input_file)[0]
 
+    # ocr mode
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir
+    )
+
+    # txt mode
+    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
