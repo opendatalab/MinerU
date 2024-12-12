@@ -286,10 +286,6 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 
 [Using MinerU via Python API](https://mineru.readthedocs.io/en/latest/user_guide/quick_start/to_markdown.html)
 
-For detailed implementation, refer to:
-
-- [demo.py Simplest Processing Method](demo/demo.py)
-- [magic_pdf_parse_main.py More Detailed Processing Workflow](demo/magic_pdf_parse_main.py)
 
 ### Deploy Derived Projects
 
