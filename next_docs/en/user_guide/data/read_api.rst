@@ -83,7 +83,24 @@ Read images from path or directory
     datasets = read_local_images("tt.png")  # replace with real file path
 
     # read files from directory that endswith suffix in suffixes array 
-    datasets = read_local_images("images/", suffixes=["png", "jpg"])  # replace with real directory 
+    datasets = read_local_images("images/", suffixes=[".png", ".jpg"])  # replace with real directory 
+
+
+read_local_office
+^^^^^^^^^^^^^^^^^^^^
+Read MS-Office files from path or directory
+
+.. code:: python 
+
+    from magic_pdf.data.read_api import *
+
+    # read from image path 
+    datasets = read_local_office("tt.doc")  # replace with real file path
+
+    # read files from directory that endswith suffix in suffixes array 
+    datasets = read_local_office("docs/")  # replace with real directory 
+
+
 
 
 Check :doc:`../../api/read_api` for more details

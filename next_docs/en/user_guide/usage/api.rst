@@ -213,7 +213,7 @@ Directory That Contains Images
     input_directory = "some_image_dir/"       # replace with real directory that contains images
 
 
-    dss = read_local_images(input_directory, suffixes=['.png', '.jpg'])[0]  
+    dss = read_local_images(input_directory, suffixes=['.png', '.jpg'])
 
     count = 0
     for ds in dss:
