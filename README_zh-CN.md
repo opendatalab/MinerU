@@ -293,10 +293,6 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 [通过Python代码调用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/to_markdown.html)
 
-详细实现可参考
-
-- [demo.py 最简单的处理方式](demo/demo.py)
-- [magic_pdf_parse_main.py 能够更清晰看到处理流程](demo/magic_pdf_parse_main.py)
 
 ### 部署衍生项目
 
