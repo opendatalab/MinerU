@@ -34,15 +34,15 @@ class BatchAnalyze:
         self.batch_ratio = batch_ratio
 
     def __call__(self, images: list) -> list:
+        images_layout_res = []
         if self.model.layout_model_name == MODEL_NAME.LAYOUTLMv3:
             # layoutlmv3
-            images_layout_res = []
             for image in images:
                 layout_res = self.model.layout_model(image, ignore_catids=[])
                 images_layout_res.append(layout_res)
         elif self.model.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             # doclayout_yolo
-            images_layout_res = self.model.layout_model.batch_predict(
+            images_layout_res += self.model.layout_model.batch_predict(
                 images, self.batch_ratio * YOLO_LAYOUT_BASE_BATCH_SIZE
             )
 
@@ -147,6 +147,8 @@ class BatchAnalyze:
                             "table recognition processing fails, not get html return"
                         )
                 logger.info(f"table time: {round(time.time() - table_start, 2)}")
+
+        return images_layout_res
 
 
 def doc_batch_analyze(

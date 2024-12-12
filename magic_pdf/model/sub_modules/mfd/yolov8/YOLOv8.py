@@ -15,14 +15,17 @@ class YOLOv8MFDModel(object):
     def batch_predict(self, images: list, batch_size: int) -> list:
         images_mfd_res = []
         for index in range(0, len(images), batch_size):
-            mfd_res = self.mfd_model.predict(
-                images[index : index + batch_size],
-                imgsz=1888,
-                conf=0.25,
-                iou=0.45,
-                verbose=True,
-                device=self.device,
-            ).cpu()
+            mfd_res = [
+                image_res.cpu()
+                for image_res in self.mfd_model.predict(
+                    images[index : index + batch_size],
+                    imgsz=1888,
+                    conf=0.25,
+                    iou=0.45,
+                    verbose=True,
+                    device=self.device,
+                )
+            ]
             for image_res in mfd_res:
                 images_mfd_res.append(image_res)
         return images_mfd_res
