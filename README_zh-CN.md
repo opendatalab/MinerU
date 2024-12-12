@@ -20,7 +20,6 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
 [![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/abs/2409.18839)
 
-
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- language -->
@@ -42,6 +41,7 @@
 </div>
 
 # 更新记录
+
 - 2024/11/22 0.10.0发布，通过引入混合OCR文本提取能力，
   - 在公式密集、span区域不规范、部分文本使用图像表现等复杂文本分布场景下获得解析效果的显著提升
   - 同时具备文本模式内容提取准确、速度更快与OCR模式span/line区域识别更准的双重优势
@@ -142,10 +142,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
 - [Linux/Windows + CUDA](#使用gpu)
 
-
-> [!WARNING]
+> \[!WARNING\]
 > **安装前必看——软硬件环境支持说明**
-> 
+>
 > 为了确保项目的稳定性和可靠性，我们在开发过程中仅对特定的软硬件环境进行优化和测试。这样当用户在推荐的系统配置上部署和运行项目时，能够获得最佳的性能表现和最少的兼容性问题。
 >
 > 通过集中资源和精力于主线环境，我们团队能够更高效地解决潜在的BUG，及时开发新功能。
@@ -199,6 +198,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 </table>
 
 ### 在线体验
+
 稳定版(经过QA验证的稳定版本)：
 
 [![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
@@ -212,7 +212,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 #### 1. 安装magic-pdf
 
-> [!NOTE]
+> \[!NOTE\]
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
@@ -230,13 +230,13 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 完成[2. 下载模型权重文件](#2-下载模型权重文件)步骤后，脚本会自动生成用户目录下的magic-pdf.json文件，并自动配置默认模型路径。
 您可在【用户目录】下找到magic-pdf.json文件。
 
-> [!TIP]
+> \[!TIP\]
 > windows的用户目录为 "C:\\Users\\用户名", linux用户目录为 "/home/用户名", macOS用户目录为 "/Users/用户名"
 
 您可修改该文件中的部分配置实现功能的开关，如表格识别功能：
 
-> [!NOTE]
->如json内没有如下项目，请手动添加需要的项目，并删除注释内容（标准json不支持注释）
+> \[!NOTE\]
+> 如json内没有如下项目，请手动添加需要的项目，并删除注释内容（标准json不支持注释）
 
 ```json
 {
@@ -264,21 +264,22 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 - [Ubuntu22.04LTS + GPU](docs/README_Ubuntu_CUDA_Acceleration_zh_CN.md)
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
-> [!IMPORTANT]
+
+> \[!IMPORTANT\]
 > Docker 需设备gpu显存大于等于8GB，默认开启所有加速功能
-> 
+>
 > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
-> 
+>
 > ```bash
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
-  ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-  docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
-  magic-pdf --help
-  ```
-    
+
+```bash
+wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+docker build -t mineru:latest .
+docker run --rm -it --gpus=all mineru:latest /bin/bash
+magic-pdf --help
+```
 
 ## 使用
 
@@ -286,17 +287,12 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 [通过命令行使用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/command_line.html)
 
-> [!TIP]
+> \[!TIP\]
 > 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
 ### API
 
 [通过Python代码调用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/to_markdown.html)
-
-详细实现可参考
-
-- [demo.py 最简单的处理方式](demo/demo.py)
-- [magic_pdf_parse_main.py 能够更清晰看到处理流程](demo/magic_pdf_parse_main.py)
 
 ### 部署衍生项目
 
@@ -305,15 +301,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 这些项目可能会提供更多的功能和更好的用户体验。
 具体部署方式请参考 [衍生项目readme](projects/README_zh-CN.md)
 
-
 ### 二次开发
 
 TODO
 
 # TODO
 
-- [x] 基于模型的阅读顺序  
-- [x] 正文中目录、列表识别  
+- [x] 基于模型的阅读顺序
+- [x] 正文中目录、列表识别
 - [x] 表格识别
 - [ ] 正文中代码块识别
 - [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
@@ -334,7 +329,6 @@ TODO
 # FAQ
 
 [常见问题](docs/FAQ_zh_cn.md)
-
 
 [FAQ](docs/FAQ_en_us.md)
 
@@ -366,13 +360,13 @@ TODO
 
 ```bibtex
 @misc{wang2024mineruopensourcesolutionprecise,
-      title={MinerU: An Open-Source Solution for Precise Document Content Extraction}, 
+      title={MinerU: An Open-Source Solution for Precise Document Content Extraction},
       author={Bin Wang and Chao Xu and Xiaomeng Zhao and Linke Ouyang and Fan Wu and Zhiyuan Zhao and Rui Xu and Kaiwen Liu and Yuan Qu and Fukai Shang and Bo Zhang and Liqun Wei and Zhihao Sui and Wei Li and Botian Shi and Yu Qiao and Dahua Lin and Conghui He},
       year={2024},
       eprint={2409.18839},
       archivePrefix={arXiv},
       primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2409.18839}, 
+      url={https://arxiv.org/abs/2409.18839},
 }
 
 @article{he2024opendatalab,
