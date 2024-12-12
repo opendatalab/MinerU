@@ -1,7 +1,7 @@
+import copy
 import json
 import os
 from typing import Callable
-import copy
 
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import DataWriter
@@ -23,6 +23,26 @@ class PipeResult:
         self._pipe_res = pipe_res
         self._dataset = dataset
 
+    def get_markdown(self,
+                    img_dir_or_bucket_prefix: str,
+                    drop_mode=DropMode.WHOLE_PDF,
+                    md_make_mode=MakeMode.MM_MD) -> str:
+        """Get markdown content.
+
+        Args:
+            img_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
+            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.WHOLE_PDF.
+            md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.MM_MD.
+
+        Returns:
+            str: return markdown content
+        """
+        pdf_info_list = self._pipe_res['pdf_info']
+        md_content = union_make(
+            pdf_info_list, md_make_mode, drop_mode, img_dir_or_bucket_prefix
+        )
+        return md_content
+
     def dump_md(
         self,
         writer: DataWriter,
@@ -40,14 +60,40 @@ class PipeResult:
             drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.WHOLE_PDF.
             md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.MM_MD.
         """
-        pdf_info_list = self._pipe_res['pdf_info']
-        md_content = union_make(
-            pdf_info_list, md_make_mode, drop_mode, img_dir_or_bucket_prefix
-        )
+
+        md_content = self.get_markdown(img_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode)
         writer.write_string(file_path, md_content)
 
+    def get_content_list(self,
+                        image_dir_or_bucket_prefix: str,
+                        drop_mode=DropMode.NONE,
+                        md_make_mode=MakeMode.STANDARD_FORMAT) -> str:
+        """Get Content List.
+
+        Args:
+            image_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
+            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
+            md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.STANDARD_FORMAT.
+
+        Returns:
+            str: content list content
+        """
+        pdf_info_list = self._pipe_res['pdf_info']
+        content_list = union_make(
+            pdf_info_list,
+            md_make_mode,
+            drop_mode,
+            image_dir_or_bucket_prefix,
+        )
+        return content_list
+
     def dump_content_list(
-        self, writer: DataWriter, file_path: str, image_dir_or_bucket_prefix: str
+        self,
+        writer: DataWriter,
+        file_path: str,
+        image_dir_or_bucket_prefix: str,
+        drop_mode=DropMode.NONE,
+        md_make_mode=MakeMode.STANDARD_FORMAT
     ):
         """Dump Content List.
 
@@ -55,14 +101,10 @@ class PipeResult:
             writer (DataWriter): File writer handle
             file_path (str): The file location of content list
             image_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
+            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
+            md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.STANDARD_FORMAT.
         """
-        pdf_info_list = self._pipe_res['pdf_info']
-        content_list = union_make(
-            pdf_info_list,
-            MakeMode.STANDARD_FORMAT,
-            DropMode.NONE,
-            image_dir_or_bucket_prefix,
-        )
+        content_list = self.get_content_list(image_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode)
         writer.write_string(
             file_path, json.dumps(content_list, ensure_ascii=False, indent=4)
         )
@@ -123,7 +165,7 @@ class PipeResult:
         Returns:
             str: compress the pipeline result and return
         """
-        return JsonCompressor.compress_json(self.pdf_mid_data)
+        return JsonCompressor.compress_json(self._pipe_res)
 
     def apply(self, proc: Callable, *args, **kwargs):
         """Apply callable method which.

@@ -7,14 +7,14 @@ Convert PPTX
     :class: tip
 
     When processing MS-Office files, we first use third-party software to convert the MS-Office files to PDF.
-    
+
     For certain MS-Office files, the quality of the converted PDF files may not be very high, which can affect the quality of the final output.
 
 
 Command Line
 ^^^^^^^^^^^^^
 
-.. code:: python 
+.. code:: python
 
     # make sure the file have correct suffix
     magic-pdf -p a.pptx -o output -m auto
@@ -22,10 +22,10 @@ Command Line
 
 
 
-API 
+API
 ^^^^^^
 
-.. code:: python 
+.. code:: python
 
     import os
 
@@ -46,10 +46,16 @@ API
     # proc
     ## Create Dataset Instance
     input_file = "some_pptx.pptx"     # replace with real ms-office file
-    
+
     input_file_name = input_file.split(".")[0]
     ds = read_local_office(input_file)[0]
 
+    # ocr mode
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir
+    )
+
+    # txt mode
+    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )

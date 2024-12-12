@@ -5,6 +5,14 @@ Config
 
 File **magic-pdf.json** is typically located in the **${HOME}** directory under a Linux system or in the **C:\Users\{username}** directory under a Windows system.
 
+.. admonition:: Tip 
+    :class: tip
+
+    You can override the default location of config file via the following command:
+    
+    export MINERU_TOOLS_CONFIG_JSON=new_magic_pdf.json
+
+
 
 magic-pdf.json
 ----------------

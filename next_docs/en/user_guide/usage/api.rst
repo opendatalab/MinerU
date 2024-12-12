@@ -1,5 +1,5 @@
 
-Api Usage 
+Api Usage
 ===========
 
 
@@ -16,6 +16,7 @@ Local File Example
     from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
     from magic_pdf.data.dataset import PymuDocDataset
     from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+    from magic_pdf.config.enums import SupportedPdfParseMethod
 
     # args
     pdf_file_name = "abc.pdf"  # replace with the real pdf path
@@ -40,14 +41,21 @@ Local File Example
     ## Create Dataset Instance
     ds = PymuDocDataset(pdf_bytes)
 
-    ## inference 
-    infer_result = ds.apply(doc_analyze, ocr=True)
+    ## inference
+    if ds.classify() == SupportedPdfParseMethod.OCR:
+        infer_result = ds.apply(doc_analyze, ocr=True)
+
+        ## pipeline
+        pipe_result = infer_result.pipe_ocr_mode(image_writer)
+
+    else:
+        infer_result = ds.apply(doc_analyze, ocr=False)
+
+        ## pipeline
+        pipe_result = infer_result.pipe_txt_mode(image_writer)
 
     ### draw model result on each page
     infer_result.draw_model(os.path.join(local_md_dir, f"{name_without_suff}_model.pdf"))
-
-    ## pipeline
-    pipe_result = infer_result.pipe_ocr_mode(image_writer)
 
     ### draw layout result on each page
     pipe_result.draw_layout(os.path.join(local_md_dir, f"{name_without_suff}_layout.pdf"))
@@ -57,6 +65,9 @@ Local File Example
 
     ### dump markdown
     pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
+
+    ### dump content list
+    pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
 
 
 S3 File Example
@@ -96,30 +107,39 @@ S3 File Example
     ## Create Dataset Instance
     ds = PymuDocDataset(pdf_bytes)
 
-    ## inference 
-    infer_result = ds.apply(doc_analyze, ocr=True)
+    ## inference
+    if ds.classify() == SupportedPdfParseMethod.OCR:
+        infer_result = ds.apply(doc_analyze, ocr=True)
+
+        ## pipeline
+        pipe_result = infer_result.pipe_ocr_mode(image_writer)
+
+    else:
+        infer_result = ds.apply(doc_analyze, ocr=False)
+
+        ## pipeline
+        pipe_result = infer_result.pipe_txt_mode(image_writer)
 
     ### draw model result on each page
-    infer_result.draw_model(os.path.join(local_dir, f'{name_without_suff}_model.pdf'))  # dump to local
-
-    ## pipeline
-    pipe_result = infer_result.pipe_ocr_mode(image_writer)
+    infer_result.draw_model(os.path.join(local_md_dir, f"{name_without_suff}_model.pdf"))
 
     ### draw layout result on each page
-    pipe_result.draw_layout(os.path.join(local_dir, f'{name_without_suff}_layout.pdf'))  # dump to local
+    pipe_result.draw_layout(os.path.join(local_md_dir, f"{name_without_suff}_layout.pdf"))
 
     ### draw spans result on each page
-    pipe_result.draw_span(os.path.join(local_dir, f'{name_without_suff}_spans.pdf'))   # dump to local 
+    pipe_result.draw_span(os.path.join(local_md_dir, f"{name_without_suff}_spans.pdf"))
 
     ### dump markdown
-    pipe_result.dump_md(writer, f'{name_without_suff}.md', "unittest/tmp/images")    # dump to remote s3
+    pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
+
+    ### dump content list
+    pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
 
 
-
-MS-Office 
+MS-Office
 ----------
 
-.. code:: python 
+.. code:: python
 
     import os
 
@@ -144,7 +164,7 @@ MS-Office
     input_file_name = input_file.split(".")[0]
     ds = read_local_office(input_file)[0]
 
-    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
 
@@ -154,7 +174,7 @@ This code snippet can be used to manipulate **ppt**, **pptx**, **doc**, **docx**
 Image
 ---------
 
-Single Image File 
+Single Image File
 ^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
@@ -187,7 +207,7 @@ Single Image File
     )
 
 
-Directory That Contains Images 
+Directory That Contains Images
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code:: python
@@ -213,7 +233,7 @@ Directory That Contains Images
     input_directory = "some_image_dir/"       # replace with real directory that contains images
 
 
-    dss = read_local_images(input_directory, suffixes=['.png', '.jpg'])[0]  
+    dss = read_local_images(input_directory, suffixes=['.png', '.jpg'])
 
     count = 0
     for ds in dss:

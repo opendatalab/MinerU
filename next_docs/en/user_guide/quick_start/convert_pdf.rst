@@ -1,12 +1,12 @@
 
 
-Convert PDF 
+Convert PDF
 ============
 
 Command Line
 ^^^^^^^^^^^^^
 
-.. code:: python 
+.. code:: python
 
     # make sure the file have correct suffix
     magic-pdf -p a.pdf -o output -m auto
@@ -44,6 +44,12 @@ API
     ## Create Dataset Instance
     ds = PymuDocDataset(pdf_bytes)
 
-    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(md_writer, f"{name_without_suff}.md", image_dir)
+    # ocr mode
+    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{name_without_suff}.md", image_dir
+    )
 
-
+    # txt mode
+    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
+        md_writer, f"{name_without_suff}.md", image_dir
+    )
