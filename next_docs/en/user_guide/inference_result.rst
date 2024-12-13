@@ -137,7 +137,7 @@ Inference Result
 some_model.pdf
 ^^^^^^^^^^^^^^^^^^^^
 
-.. figure:: ../_static/image/Inference_result.png
+.. figure:: ../_static/image/inference_result.png
 
 
 
