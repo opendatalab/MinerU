@@ -191,6 +191,8 @@ class BatchAnalyze:
 
         if self.model.apply_ocr:
             logger.info(f"ocr time: {round(ocr_time, 2)}, image num: {ocr_count}")
+        else:
+            logger.info(f"det time: {round(ocr_time, 2)}, image num: {ocr_count}")
         if self.model.apply_table:
             logger.info(f"table time: {round(table_time, 2)}, image num: {table_count}")
 
