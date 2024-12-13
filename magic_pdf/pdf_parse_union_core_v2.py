@@ -1,5 +1,6 @@
 import copy
 import os
+import re
 import statistics
 import time
 from typing import List
@@ -63,6 +64,15 @@ def __replace_0xfffd(text_str: str):
         return s
     return text_str
 
+
+# 连写字符拆分
+def __replace_ligatures(text: str):
+    ligatures = {
+        'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st'
+    }
+    return re.sub('|'.join(map(re.escape, ligatures.keys())), lambda m: ligatures[m.group()], text)
+
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
@@ -83,6 +93,7 @@ def chars_to_content(span):
                 content += ' '
             content += char['c']
 
+        content = __replace_ligatures(content)
         span['content'] = __replace_0xfffd(content)
 
     del span['chars']
@@ -152,9 +163,11 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
 
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
+    # cid用0xfffd表示，连字符拆开
+    # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
-
+    # cid用0xfffd表示，连字符不拆开
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
@@ -253,10 +266,6 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
                         spans.remove(span)
 
     return spans
-
-
-def replace_text_span(pymu_spans, ocr_spans):
-    return list(filter(lambda x: x['type'] != ContentType.Text, ocr_spans)) + pymu_spans
 
 
 def model_init(model_name: str):
