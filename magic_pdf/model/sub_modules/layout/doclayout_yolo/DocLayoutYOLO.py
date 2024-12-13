@@ -28,14 +28,17 @@ class DocLayoutYOLOModel(object):
     def batch_predict(self, images: list, batch_size: int) -> list:
         images_layout_res = []
         for index in range(0, len(images), batch_size):
-            doclayout_yolo_res = self.model.predict(
-                images[index : index + batch_size],
-                imgsz=1024,
-                conf=0.25,
-                iou=0.45,
-                verbose=True,
-                device=self.device,
-            ).cpu()
+            doclayout_yolo_res = [
+                image_res.cpu()
+                for image_res in self.model.predict(
+                    images[index : index + batch_size],
+                    imgsz=1024,
+                    conf=0.25,
+                    iou=0.45,
+                    verbose=True,
+                    device=self.device,
+                )
+            ]
             for image_res in doclayout_yolo_res:
                 layout_res = []
                 for xyxy, conf, cla in zip(
