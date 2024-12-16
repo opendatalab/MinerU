@@ -8,7 +8,7 @@ class YOLOv8MFDModel(object):
 
     def predict(self, image):
         mfd_res = self.mfd_model.predict(
-            image, imgsz=1888, conf=0.25, iou=0.45, verbose=True, device=self.device
+            image, imgsz=1888, conf=0.25, iou=0.45, verbose=False, device=self.device
         )[0]
         return mfd_res
 
@@ -22,7 +22,7 @@ class YOLOv8MFDModel(object):
                     imgsz=1888,
                     conf=0.25,
                     iou=0.45,
-                    verbose=True,
+                    verbose=False,
                     device=self.device,
                 )
             ]

@@ -10,7 +10,6 @@ from loguru import logger
 from PIL import Image
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
 try:
     import torchtext
