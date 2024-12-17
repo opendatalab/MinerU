@@ -17,7 +17,7 @@ class AbsPipe(ABC):
 
     def __init__(self, dataset: Dataset, model_list: list, image_writer: DataWriter, is_debug: bool = False,
                  start_page_id=0, end_page_id=None, lang=None, layout_model=None, formula_enable=None, table_enable=None):
-        self.dataset = Dataset
+        self.dataset = dataset
         self.model_list = model_list
         self.image_writer = image_writer
         self.pdf_mid_data = None  # 未压缩
