@@ -23,10 +23,12 @@ class PipeResult:
         self._pipe_res = pipe_res
         self._dataset = dataset
 
-    def get_markdown(self,
-                    img_dir_or_bucket_prefix: str,
-                    drop_mode=DropMode.WHOLE_PDF,
-                    md_make_mode=MakeMode.MM_MD) -> str:
+    def get_markdown(
+        self,
+        img_dir_or_bucket_prefix: str,
+        drop_mode=DropMode.WHOLE_PDF,
+        md_make_mode=MakeMode.MM_MD,
+    ) -> str:
         """Get markdown content.
 
         Args:
@@ -61,13 +63,17 @@ class PipeResult:
             md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.MM_MD.
         """
 
-        md_content = self.get_markdown(img_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode)
+        md_content = self.get_markdown(
+            img_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode
+        )
         writer.write_string(file_path, md_content)
 
-    def get_content_list(self,
-                        image_dir_or_bucket_prefix: str,
-                        drop_mode=DropMode.NONE,
-                        md_make_mode=MakeMode.STANDARD_FORMAT) -> str:
+    def get_content_list(
+        self,
+        image_dir_or_bucket_prefix: str,
+        drop_mode=DropMode.NONE,
+        md_make_mode=MakeMode.STANDARD_FORMAT,
+    ) -> str:
         """Get Content List.
 
         Args:
@@ -93,7 +99,7 @@ class PipeResult:
         file_path: str,
         image_dir_or_bucket_prefix: str,
         drop_mode=DropMode.NONE,
-        md_make_mode=MakeMode.STANDARD_FORMAT
+        md_make_mode=MakeMode.STANDARD_FORMAT,
     ):
         """Dump Content List.
 
@@ -104,10 +110,20 @@ class PipeResult:
             drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
             md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.STANDARD_FORMAT.
         """
-        content_list = self.get_content_list(image_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode)
+        content_list = self.get_content_list(
+            image_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode
+        )
         writer.write_string(
             file_path, json.dumps(content_list, ensure_ascii=False, indent=4)
         )
+
+    def get_middle_json(self) -> str:
+        """Get middle json.
+
+        Returns:
+            str: The content of middle json
+        """
+        return json.dumps(self._pipe_res, ensure_ascii=False, indent=4)
 
     def dump_middle_json(self, writer: DataWriter, file_path: str):
         """Dump the result of pipeline.
@@ -116,9 +132,8 @@ class PipeResult:
             writer (DataWriter): File writer handler
             file_path (str): The file location of middle json
         """
-        writer.write_string(
-            file_path, json.dumps(self._pipe_res, ensure_ascii=False, indent=4)
-        )
+        middle_json = self.get_middle_json()
+        writer.write_string(file_path, middle_json)
 
     def draw_layout(self, file_path: str) -> None:
         """Draw the layout.
