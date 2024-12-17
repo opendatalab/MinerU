@@ -95,9 +95,6 @@ def do_parse(
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
 
-    if lang == '':
-        lang = None
-
     pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
         pdf_bytes, start_page_id, end_page_id
     )
@@ -109,7 +106,7 @@ def do_parse(
     )
     image_dir = str(os.path.basename(local_image_dir))
 
-    ds = PymuDocDataset(pdf_bytes)
+    ds = PymuDocDataset(pdf_bytes, lang=lang)
 
     if len(model_list) == 0:
         if model_config.__use_inside_model__:
@@ -118,50 +115,50 @@ def do_parse(
                     infer_result = ds.apply(
                         doc_analyze,
                         ocr=False,
-                        lang=lang,
+                        lang=ds._lang,
                         layout_model=layout_model,
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
                     pipe_result = infer_result.pipe_txt_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
                 else:
                     infer_result = ds.apply(
                         doc_analyze,
                         ocr=True,
-                        lang=lang,
+                        lang=ds._lang,
                         layout_model=layout_model,
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
                     pipe_result = infer_result.pipe_ocr_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
 
             elif parse_method == 'txt':
                 infer_result = ds.apply(
                     doc_analyze,
                     ocr=False,
-                    lang=lang,
+                    lang=ds._lang,
                     layout_model=layout_model,
                     formula_enable=formula_enable,
                     table_enable=table_enable,
                 )
                 pipe_result = infer_result.pipe_txt_mode(
-                    image_writer, debug_mode=True, lang=lang
+                    image_writer, debug_mode=True, lang=ds._lang
                 )
             elif parse_method == 'ocr':
                 infer_result = ds.apply(
                     doc_analyze,
                     ocr=True,
-                    lang=lang,
+                    lang=ds._lang,
                     layout_model=layout_model,
                     formula_enable=formula_enable,
                     table_enable=table_enable,
                 )
                 pipe_result = infer_result.pipe_ocr_mode(
-                    image_writer, debug_mode=True, lang=lang
+                    image_writer, debug_mode=True, lang=ds._lang
                 )
             else:
                 logger.error('unknown parse method')
@@ -174,20 +171,20 @@ def do_parse(
         infer_result = InferenceResult(model_list, ds)
         if parse_method == 'ocr':
             pipe_result = infer_result.pipe_ocr_mode(
-                image_writer, debug_mode=True, lang=lang
+                image_writer, debug_mode=True, lang=ds._lang
             )
         elif parse_method == 'txt':
             pipe_result = infer_result.pipe_txt_mode(
-                image_writer, debug_mode=True, lang=lang
+                image_writer, debug_mode=True, lang=ds._lang
             )
         else:
             if ds.classify() == SupportedPdfParseMethod.TXT:
                 pipe_result = infer_result.pipe_txt_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
             else:
                 pipe_result = infer_result.pipe_ocr_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
             
 

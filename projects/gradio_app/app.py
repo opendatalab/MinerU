@@ -159,7 +159,7 @@ devanagari_lang = [
 ]
 other_lang = ['ch', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
 
-all_lang = ['']
+all_lang = ['', 'auto']
 all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
 
 
