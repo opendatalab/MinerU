@@ -5,9 +5,6 @@ from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.operators.pipes import PipeResult
 
-__use_inside_model__ = True
-__model_mode__ = 'full'
-
 
 class InferenceResultBase(ABC):
 
