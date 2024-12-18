@@ -7,15 +7,13 @@ from magic_pdf.config.constants import PARSE_TYPE_OCR, PARSE_TYPE_TXT
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.data.dataset import Dataset
-from magic_pdf.filter import classify
 from magic_pdf.libs.draw_bbox import draw_model_bbox
 from magic_pdf.libs.version import __version__
-from magic_pdf.model import InferenceResultBase
+from magic_pdf.operators.pipes import PipeResult
 from magic_pdf.pdf_parse_union_core_v2 import pdf_parse_union
-from magic_pdf.pipe.operators import PipeResult
 
 
-class InferenceResult(InferenceResultBase):
+class InferenceResult:
     def __init__(self, inference_results: list, dataset: Dataset):
         """Initialized method.
 

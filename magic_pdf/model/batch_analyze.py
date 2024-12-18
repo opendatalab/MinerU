@@ -11,17 +11,12 @@ from magic_pdf.config.exceptions import CUDA_NOT_AVAILABLE
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
-from magic_pdf.model.operators import InferenceResult
 from magic_pdf.model.pdf_extract_kit import CustomPEKModel
 from magic_pdf.model.sub_modules.model_utils import (
-    clean_vram,
-    crop_img,
-    get_res_list_from_layout_res,
-)
+    clean_vram, crop_img, get_res_list_from_layout_res)
 from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
-    get_adjusted_mfdetrec_res,
-    get_ocr_result_list,
-)
+    get_adjusted_mfdetrec_res, get_ocr_result_list)
+from magic_pdf.operators.models import InferenceResult
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 4
 MFD_BASE_BATCH_SIZE = 1
@@ -50,7 +45,7 @@ class BatchAnalyze:
                 pil_img = Image.fromarray(image)
                 width, height = pil_img.size
                 if height > width:
-                    input_res = {"poly": [0, 0, width, 0, width, height, 0, height]}
+                    input_res = {'poly': [0, 0, width, 0, width, height, 0, height]}
                     new_image, useful_list = crop_img(
                         input_res, pil_img, crop_paste_x=width // 2, crop_paste_y=0
                     )
@@ -65,17 +60,17 @@ class BatchAnalyze:
 
             for image_index, useful_list in modified_images:
                 for res in images_layout_res[image_index]:
-                    for i in range(len(res["poly"])):
+                    for i in range(len(res['poly'])):
                         if i % 2 == 0:
-                            res["poly"][i] = (
-                                res["poly"][i] - useful_list[0] + useful_list[2]
+                            res['poly'][i] = (
+                                res['poly'][i] - useful_list[0] + useful_list[2]
                             )
                         else:
-                            res["poly"][i] = (
-                                res["poly"][i] - useful_list[1] + useful_list[3]
+                            res['poly'][i] = (
+                                res['poly'][i] - useful_list[1] + useful_list[3]
                             )
         logger.info(
-            f"layout time: {round(time.time() - layout_start_time, 2)}, image num: {len(images)}"
+            f'layout time: {round(time.time() - layout_start_time, 2)}, image num: {len(images)}'
         )
 
         if self.model.apply_formula:
@@ -85,7 +80,7 @@ class BatchAnalyze:
                 images, self.batch_ratio * MFD_BASE_BATCH_SIZE
             )
             logger.info(
-                f"mfd time: {round(time.time() - mfd_start_time, 2)}, image num: {len(images)}"
+                f'mfd time: {round(time.time() - mfd_start_time, 2)}, image num: {len(images)}'
             )
 
             # 公式识别
@@ -98,7 +93,7 @@ class BatchAnalyze:
             for image_index in range(len(images)):
                 images_layout_res[image_index] += images_formula_list[image_index]
             logger.info(
-                f"mfr time: {round(time.time() - mfr_start_time, 2)}, image num: {len(images)}"
+                f'mfr time: {round(time.time() - mfr_start_time, 2)}, image num: {len(images)}'
             )
 
         # 清理显存
@@ -156,7 +151,7 @@ class BatchAnalyze:
                     if self.model.table_model_name == MODEL_NAME.STRUCT_EQTABLE:
                         with torch.no_grad():
                             table_result = self.model.table_model.predict(
-                                new_image, "html"
+                                new_image, 'html'
                             )
                             if len(table_result) > 0:
                                 html_code = table_result[0]
@@ -169,32 +164,32 @@ class BatchAnalyze:
                     run_time = time.time() - single_table_start_time
                     if run_time > self.model.table_max_time:
                         logger.warning(
-                            f"table recognition processing exceeds max time {self.model.table_max_time}s"
+                            f'table recognition processing exceeds max time {self.model.table_max_time}s'
                         )
                     # 判断是否返回正常
                     if html_code:
                         expected_ending = html_code.strip().endswith(
-                            "</html>"
-                        ) or html_code.strip().endswith("</table>")
+                            '</html>'
+                        ) or html_code.strip().endswith('</table>')
                         if expected_ending:
-                            res["html"] = html_code
+                            res['html'] = html_code
                         else:
                             logger.warning(
-                                "table recognition processing fails, not found expected HTML table end"
+                                'table recognition processing fails, not found expected HTML table end'
                             )
                     else:
                         logger.warning(
-                            "table recognition processing fails, not get html return"
+                            'table recognition processing fails, not get html return'
                         )
                 table_time += time.time() - table_start
                 table_count += len(table_res_list)
 
         if self.model.apply_ocr:
-            logger.info(f"ocr time: {round(ocr_time, 2)}, image num: {ocr_count}")
+            logger.info(f'ocr time: {round(ocr_time, 2)}, image num: {ocr_count}')
         else:
-            logger.info(f"det time: {round(ocr_time, 2)}, image num: {ocr_count}")
+            logger.info(f'det time: {round(ocr_time, 2)}, image num: {ocr_count}')
         if self.model.apply_table:
-            logger.info(f"table time: {round(table_time, 2)}, image num: {table_count}")
+            logger.info(f'table time: {round(table_time, 2)}, image num: {table_count}')
 
         return images_layout_res
 
@@ -211,8 +206,7 @@ def doc_batch_analyze(
     table_enable=None,
     batch_ratio: int | None = None,
 ) -> InferenceResult:
-    """
-    Perform batch analysis on a document dataset.
+    """Perform batch analysis on a document dataset.
 
     Args:
         dataset (Dataset): The dataset containing document pages to be analyzed.
@@ -234,9 +228,9 @@ def doc_batch_analyze(
     """
 
     if not torch.cuda.is_available():
-        raise CUDA_NOT_AVAILABLE("batch analyze not support in CPU mode")
+        raise CUDA_NOT_AVAILABLE('batch analyze not support in CPU mode')
 
-    lang = None if lang == "" else lang
+    lang = None if lang == '' else lang
     # TODO: auto detect batch size
     batch_ratio = 1 if batch_ratio is None else batch_ratio
     end_page_id = end_page_id if end_page_id else len(dataset)
@@ -255,26 +249,26 @@ def doc_batch_analyze(
         if start_page_id <= index <= end_page_id:
             page_data = dataset.get_page(index)
             img_dict = page_data.get_image()
-            images.append(img_dict["img"])
+            images.append(img_dict['img'])
     analyze_result = batch_model(images)
 
     for index in range(len(dataset)):
         page_data = dataset.get_page(index)
         img_dict = page_data.get_image()
-        page_width = img_dict["width"]
-        page_height = img_dict["height"]
+        page_width = img_dict['width']
+        page_height = img_dict['height']
         if start_page_id <= index <= end_page_id:
             result = analyze_result.pop(0)
         else:
             result = []
 
-        page_info = {"page_no": index, "height": page_height, "width": page_width}
-        page_dict = {"layout_dets": result, "page_info": page_info}
+        page_info = {'page_no': index, 'height': page_height, 'width': page_width}
+        page_dict = {'layout_dets': result, 'page_info': page_info}
         model_json.append(page_dict)
 
     # TODO: clean memory when gpu memory is not enough
     clean_memory_start_time = time.time()
     clean_memory()
-    logger.info(f"clean memory time: {round(time.time() - clean_memory_start_time, 2)}")
+    logger.info(f'clean memory time: {round(time.time() - clean_memory_start_time, 2)}')
 
     return InferenceResult(model_json, dataset)

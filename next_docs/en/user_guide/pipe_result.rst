@@ -1,6 +1,6 @@
 
 
-Pipe Result 
+Pipe Result
 ==============
 
 .. admonition:: Tip
@@ -9,7 +9,7 @@ Pipe Result
     Please first navigate to :doc:`tutorial/pipeline` to get an initial understanding of how the pipeline works; this will help in understanding the content of this section.
 
 
-The **PipeResult** class is a container for storing pipeline processing results and implements a series of methods related to these results, such as draw_layout, draw_span. 
+The **PipeResult** class is a container for storing pipeline processing results and implements a series of methods related to these results, such as draw_layout, draw_span.
 Checkout :doc:`../api/pipe_operators` for more details about **PipeResult**
 
 
@@ -288,14 +288,14 @@ example
    }
 
 
-Pipeline Result 
+Pipeline Result
 ------------------
 
-.. code:: python 
+.. code:: python
 
     from magic_pdf.pdf_parse_union_core_v2 import pdf_parse_union
-    from magic_pdf.pipe.operators import PipeResult
-    from magic_pdf.data.dataset import Dataset 
+    from magic_pdf.operators.pipes import PipeResult
+    from magic_pdf.data.dataset import Dataset
 
     res = pdf_parse_union(*args, **kwargs)
     res['_parse_type'] = PARSE_TYPE_OCR
