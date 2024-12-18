@@ -9,7 +9,6 @@ from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.schemas import PageInfo
 from magic_pdf.data.utils import fitz_doc_to_image
 from magic_pdf.filter import classify
-from magic_pdf.model.sub_modules.language_detection.utils import auto_detect_lang
 
 
 class PageableData(ABC):
@@ -149,6 +148,7 @@ class PymuDocDataset(Dataset):
         if lang == '':
             self._lang = None
         elif lang == 'auto':
+            from magic_pdf.model.sub_modules.language_detection.utils import auto_detect_lang
             self._lang = auto_detect_lang(bits)
             logger.info(f"lang: {lang}, detect_lang: {self._lang}")
         else:
