@@ -1,14 +1,12 @@
-from typing import Callable
-
 from abc import ABC, abstractmethod
+from typing import Callable
 
 from magic_pdf.data.data_reader_writer import DataWriter
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.operators.pipes import PipeResult
 
-
 __use_inside_model__ = True
-__model_mode__ = "full"
+__model_mode__ = 'full'
 
 
 class InferenceResultBase(ABC):
@@ -22,7 +20,7 @@ class InferenceResultBase(ABC):
             dataset (Dataset): the dataset related with model inference result
         """
         pass
-    
+
     @abstractmethod
     def draw_model(self, file_path: str) -> None:
         """Draw model inference result.
@@ -64,32 +62,6 @@ class InferenceResultBase(ABC):
         """
         pass
 
-    @abstractmethod
-    def pipe_auto_mode(
-        self,
-        imageWriter: DataWriter,
-        start_page_id=0,
-        end_page_id=None,
-        debug_mode=False,
-        lang=None,
-    ) -> PipeResult:
-        """Post-proc the model inference result.
-            step1: classify the dataset type
-            step2: based the result of step1, using `pipe_txt_mode` or `pipe_ocr_mode`
-
-        Args:
-            imageWriter (DataWriter): the image writer handle
-            start_page_id (int, optional): Defaults to 0. Let user select some pages He/She want to process
-            end_page_id (int, optional):  Defaults to the last page index of dataset. Let user select some pages He/She want to process
-            debug_mode (bool, optional): Defaults to False. will dump more log if enabled
-            lang (str, optional): Defaults to None.
-
-        Returns:
-            PipeResult: the result
-        """
-        pass
-
-    @abstractmethod
     def pipe_txt_mode(
         self,
         imageWriter: DataWriter,
