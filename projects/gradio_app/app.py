@@ -97,6 +97,7 @@ def replace_image_with_base64(markdown_text, image_dir_path):
 
 
 def to_markdown(file_path, end_pages, is_ocr, layout_mode, formula_enable, table_enable, language):
+    file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
     local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr,
                                         layout_mode, formula_enable, table_enable, language)
@@ -182,14 +183,13 @@ def to_pdf(file_path):
 
             return tmp_file_path
 
-
 if __name__ == '__main__':
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
-                max_pages = gr.Slider(1, 10, 5, step=1, label='Max convert pages')
+                max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
                     layout_mode = gr.Dropdown(['layoutlmv3', 'doclayout_yolo'], label='Layout model', value='layoutlmv3')
                     language = gr.Dropdown(all_lang, label='Language', value='')
@@ -200,25 +200,25 @@ if __name__ == '__main__':
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
-                pdf_show = PDF(label='PDF preview', interactive=True, height=800)
+                pdf_show = PDF(label='PDF preview', interactive=False, visible=True, height=800)
                 with gr.Accordion('Examples:'):
                     example_root = os.path.join(os.path.dirname(__file__), 'examples')
                     gr.Examples(
                         examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
                                   _.endswith('pdf')],
-                        inputs=pdf_show
+                        inputs=file
                     )
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label='convert result', interactive=False)
                 with gr.Tabs():
                     with gr.Tab('Markdown rendering'):
-                        md = gr.Markdown(label='Markdown rendering', height=900, show_copy_button=True,
+                        md = gr.Markdown(label='Markdown rendering', height=1100, show_copy_button=True,
                                          latex_delimiters=latex_delimiters, line_breaks=True)
                     with gr.Tab('Markdown text'):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
-        file.upload(fn=to_pdf, inputs=file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[pdf_show, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
+        file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
+        change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show])
         clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, table_enable, language])
 
