@@ -2,7 +2,7 @@
 Model Api
 ==========
 
-.. autoclass:: magic_pdf.model.InferenceResultBase
+.. autoclass:: magic_pdf.operators.models.InferenceResult
    :members:
    :inherited-members:
    :show-inheritance:

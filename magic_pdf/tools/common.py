@@ -10,7 +10,7 @@ from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.model.operators import InferenceResult
+from magic_pdf.operators.models import InferenceResult
 
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
@@ -167,7 +167,7 @@ def do_parse(
             logger.error('need model list input')
             exit(2)
     else:
-        
+
         infer_result = InferenceResult(model_list, ds)
         if parse_method == 'ocr':
             pipe_result = infer_result.pipe_ocr_mode(
@@ -186,7 +186,7 @@ def do_parse(
                 pipe_result = infer_result.pipe_ocr_mode(
                         image_writer, debug_mode=True, lang=ds._lang
                     )
-            
+
 
     if f_draw_model_bbox:
         infer_result.draw_model(

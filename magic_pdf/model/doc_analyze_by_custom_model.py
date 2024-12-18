@@ -1,10 +1,10 @@
 import os
 import time
 
-from loguru import logger
-
 # 关闭paddle的信号处理
 import paddle
+from loguru import logger
+
 paddle.disable_signal_handler()
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
@@ -25,7 +25,7 @@ from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_local_models_dir,
                                           get_table_recog_config)
 from magic_pdf.model.model_list import MODEL
-from magic_pdf.model.operators import InferenceResult
+from magic_pdf.operators.models import InferenceResult
 
 
 def dict_compare(d1, d2):

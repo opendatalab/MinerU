@@ -1,5 +1,5 @@
 
-Inference Result 
+Inference Result
 ==================
 
 .. admonition:: Tip
@@ -7,7 +7,7 @@ Inference Result
 
     Please first navigate to :doc:`tutorial/pipeline` to get an initial understanding of how the pipeline works; this will help in understanding the content of this section.
 
-The **InferenceResult** class is a container for storing model inference results and implements a series of methods related to these results, such as draw_model, dump_model. 
+The **InferenceResult** class is a container for storing model inference results and implements a series of methods related to these results, such as draw_model, dump_model.
 Checkout :doc:`../api/model_operators` for more details about **InferenceResult**
 
 
@@ -56,7 +56,7 @@ Structure Definition
             page_info: PageInfo = Field(description="Page metadata")
 
 
-Example 
+Example
 ^^^^^^^^^^^
 
 .. code:: json
@@ -116,15 +116,15 @@ and bottom-left points respectively. |Poly Coordinate Diagram|
 
 
 
-Inference Result 
+Inference Result
 -------------------------
 
 
 .. code:: python
 
-    from magic_pdf.model.operators import InferenceResult
-    from magic_pdf.data.dataset import Dataset 
-    
+    from magic_pdf.operators.models import InferenceResult
+    from magic_pdf.data.dataset import Dataset
+
     dataset : Dataset = some_data_set    # not real dataset
 
     # The inference results of all pages, ordered by page number, are stored in a list as the inference results of MinerU
@@ -142,4 +142,3 @@ some_model.pdf
 
 
 .. |Poly Coordinate Diagram| image:: ../_static/image/poly.png
-
