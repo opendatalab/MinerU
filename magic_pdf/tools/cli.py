@@ -14,7 +14,7 @@ from magic_pdf.utils.office_to_pdf import convert_file_to_pdf
 
 pdf_suffixes = ['.pdf']
 ms_office_suffixes = ['.ppt', '.pptx', '.doc', '.docx']
-image_suffixes = ['.png', '.jpg']
+image_suffixes = ['.png', '.jpeg', '.jpg']
 
 
 @click.command()
