@@ -108,6 +108,10 @@ def fill_char_in_spans(spans, all_chars):
     spans = sorted(spans, key=lambda x: x['bbox'][1])
 
     for char in all_chars:
+        # 跳过非法bbox的char
+        x1, y1, x2, y2 = char['bbox']
+        if abs(x1 - x2) <= 0.01 or abs(y1 - y2) <= 0.01:
+            continue
         for span in spans:
             if calculate_char_in_span(char['bbox'], span['bbox'], char['c']):
                 span['chars'].append(char)
