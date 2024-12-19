@@ -34,7 +34,8 @@ from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
-from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, remove_overlaps_min_spans
+from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, \
+    remove_overlaps_min_spans, remove_overlaps_chars
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
@@ -120,6 +121,10 @@ def fill_char_in_spans(spans, all_chars):
     empty_spans = []
 
     for span in spans:
+
+        # 移除同一个span中重叠的char
+        span['chars'] = remove_overlaps_chars(span['chars'])
+
         chars_to_content(span)
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if len(span['content']) * span['height'] < span['width'] * 0.5:
