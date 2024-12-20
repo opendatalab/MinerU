@@ -33,29 +33,12 @@ def remove_overlaps_low_confidence_spans(spans):
     return spans, dropped_spans
 
 
-def remove_overlaps_chars(chars):
-    dropped_chars = []
-    #  删除重叠的char
-    for char1 in chars:
-        for char2 in chars:
-            if char1 != char2:
-                # char1 或 char2 任何一个都不应该在 dropped_chars 中
-                if char1 in dropped_chars or char2 in dropped_chars:
-                    continue
-                else:
-                    if calculate_iou(char1['bbox'], char2['bbox']) > 0.95:
-                        char_need_remove = char1
-                        if (
-                            char_need_remove is not None
-                            and char_need_remove not in dropped_chars
-                        ):
-                            dropped_chars.append(char_need_remove)
-
-    if len(dropped_chars) > 0:
-        for char_need_remove in dropped_chars:
-            chars.remove(char_need_remove)
-
-    return chars
+def check_chars_is_overlap_in_span(chars):
+    for i in range(len(chars)):
+        for j in range(i + 1, len(chars)):
+            if calculate_iou(chars[i]['bbox'], chars[j]['bbox']) > 0.9:
+                return True
+    return False
 
 
 def remove_overlaps_min_spans(spans):
