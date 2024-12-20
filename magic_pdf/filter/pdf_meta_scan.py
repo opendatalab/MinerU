@@ -1,6 +1,6 @@
 """输入： s3路径，每行一个 输出： pdf文件元信息，包括每一页上的所有图片的长宽高，bbox位置."""
 
-from collections import Counter
+from collections import Counter, OrderedDict
 
 import fitz
 from loguru import logger
@@ -9,6 +9,7 @@ from magic_pdf.config.drop_reason import DropReason
 from magic_pdf.libs.commons import get_top_percent_list, mymax
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.pdf_check import detect_invalid_chars_by_pymupdf, detect_invalid_chars
+from magic_pdf.libs.boxbase import calculate_iou, calculate_overlap_area_in_bbox1_area_ratio
 
 scan_max_page = 50
 junk_limit_min = 10
@@ -327,6 +328,63 @@ def check_invalid_chars(pdf_bytes):
     return detect_invalid_chars(pdf_bytes)
 
 
+def if_exist_char_overlap(span_list, iou_threshold=0.3):
+    """检查span中的char是否存在重叠"""
+    for i, span_i in enumerate(span_list):
+        for j in range(i+1, len(span_list)):
+            span_j = span_list[j]
+            iou = calculate_iou(span_i['bbox'], span_j['bbox'])
+            overlap_area_in_i = calculate_overlap_area_in_bbox1_area_ratio(span_i['bbox'], span_j['bbox'])
+            overlap_area_in_j= calculate_overlap_area_in_bbox1_area_ratio(span_j['bbox'], span_i['bbox'])
+            if iou >= iou_threshold or overlap_area_in_i >= iou_threshold or overlap_area_in_j >= iou_threshold:
+                return True
+    return False
+
+
+def is_chinese_char(char):
+    """判断中文和非中文"""
+    return detect_lang(char) == 'ZH'
+
+
+def get_char_overlap_per_page(pdf_bytes):
+    all_page_info = fitz.open('pdf', pdf_bytes)
+    char_overlap_count_per_page = OrderedDict()
+    chinese_iou_threshold = 0.3
+    non_chinese_iou_threshold = 0.5
+    for page_index, page_info in enumerate(all_page_info):
+        text_blocks_raw = page_info.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
+        all_pymu_chars = []
+        for block in text_blocks_raw:
+            for line in block['lines']:
+                cosine, sine = line['dir']
+                if abs(cosine) < 0.9 or abs(sine) > 0.1:
+                    continue
+                for span in line['spans']:
+                    all_pymu_chars.extend(span['chars'])
+
+        # 按char对span进行聚合
+        agg_span = {}
+        for span in all_pymu_chars:
+            key = span.get('c', '')
+            if key == '':
+                continue
+            if key not in agg_span:
+                agg_span[key] = []
+            agg_span[key].append(span)
+
+        count_exist_overlap = 0
+        count_not_exists_overlap = 0
+        for k, v in agg_span.items():
+            iou_threshold = chinese_iou_threshold if is_chinese_char(k) else non_chinese_iou_threshold
+            if len(v) > 1 and if_exist_char_overlap(v, iou_threshold=iou_threshold):
+                count_exist_overlap += 1
+            else:
+                count_not_exists_overlap += 1
+        total_char = count_exist_overlap + count_not_exists_overlap
+        char_overlap_count_per_page[page_index] = count_exist_overlap / total_char if total_char else 0.0
+    return list(char_overlap_count_per_page.values())
+
+
 def pdf_meta_scan(pdf_bytes: bytes):
     """
     :param s3_pdf_path:
@@ -362,6 +420,8 @@ def pdf_meta_scan(pdf_bytes: bytes):
         # logger.info(f"text_language: {text_language}")
         invalid_chars = check_invalid_chars(pdf_bytes)
         # logger.info(f"invalid_chars: {invalid_chars}")
+        # 是否存在PyMuPDF解析出来的正文内容重复的情况
+        char_overlap_counter = get_char_overlap_per_page(pdf_bytes)
 
         # 最后输出一条json
         res = {
@@ -378,6 +438,7 @@ def pdf_meta_scan(pdf_bytes: bytes):
             'imgs_per_page': imgs_per_page,  # 增加每页img数量list
             'junk_img_bojids': junk_img_bojids,  # 增加垃圾图片的bojid list
             'invalid_chars': invalid_chars,
+            'char_overlap_counter': char_overlap_counter,  # 正文内容char bbox重叠数量
             'metadata': doc.metadata,
         }
         # logger.info(json.dumps(res, ensure_ascii=False))

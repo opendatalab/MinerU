@@ -304,8 +304,31 @@ def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
     return narrow_strip_pages_ratio < 0.5
 
 
+def classify_by_char_overlap_counter(char_overlap_counter):
+    if not char_overlap_counter:
+        return True  # 空列表默认返回True
+
+    # 检查是否有任意一页的重叠占比超过30%
+    if any(element > 0.1 for element in char_overlap_counter):
+        return False
+
+    # 检查文档页数在3页以内，且有少量重叠
+    if len(char_overlap_counter) <= 3 and any(element >= 0.05 for element in char_overlap_counter):
+        return False
+
+    # 检查重叠率大于0.05的页面是否超过3张
+    if sum(1 for x in char_overlap_counter if x > 0.05) > 3:
+        return False
+
+    # 检查重叠率大于0.025的页面是否超过5张
+    if sum(1 for x in char_overlap_counter if x > 0.025) > 5:
+        return False
+
+    return True
+
+
 def classify(total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list,
-             text_layout_list: list, invalid_chars: bool):
+             text_layout_list: list, invalid_chars: bool, char_overlap_counter: list):
     """
     这里的图片和页面长度单位是pts
     :param total_page:
@@ -324,6 +347,7 @@ def classify(total_page: int, page_width, page_height, img_sz_list: list, text_l
         'by_text_layout': classify_by_text_layout(text_layout_list),
         'by_img_narrow_strips': classify_by_img_narrow_strips(page_width, page_height, img_sz_list),
         'by_invalid_chars': invalid_chars,
+        'by_char_overlap_counter': classify_by_char_overlap_counter(char_overlap_counter)
     }
 
     if all(results.values()):
@@ -336,6 +360,7 @@ def classify(total_page: int, page_width, page_height, img_sz_list: list, text_l
             f" by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']},"
             f" by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']},"
             f" by_invalid_chars: {results['by_invalid_chars']}",
+            f" by_char_overlap_counter: {results['by_char_overlap_counter']}",
             file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
         return False, results
 
