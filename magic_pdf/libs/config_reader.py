@@ -116,6 +116,15 @@ def get_formula_config():
     else:
         return formula_config
 
+def get_llm_aided_config():
+    config = read_config()
+    llm_aided_config = config.get('llm-aided-config')
+    if llm_aided_config is None:
+        logger.warning(f"'llm-aided-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
+        return None
+    else:
+        return llm_aided_config
+
 
 if __name__ == '__main__':
     ak, sk, endpoint = get_s3_config('llm-raw')
