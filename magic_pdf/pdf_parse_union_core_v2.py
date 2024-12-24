@@ -14,11 +14,12 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
+from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
 from magic_pdf.model.magic_model import MagicModel
+from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text
 
 try:
     import torchtext
@@ -29,7 +30,7 @@ except ImportError:
     pass
 
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
-from magic_pdf.para.para_split_v3 import para_split
+from magic_pdf.post_proc.para_split_v3 import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
@@ -827,6 +828,18 @@ def pdf_parse_union(
 
     """分段"""
     para_split(pdf_info_dict)
+
+    """llm优化"""
+    llm_aided_config = get_llm_aided_config()
+    if llm_aided_config is not None:
+        """公式优化"""
+        formula_aided_config = llm_aided_config.get('formula_aided', None)
+        if formula_aided_config is not None:
+            llm_aided_formula(pdf_info_dict, formula_aided_config)
+        """文本优化"""
+        text_aided_config = llm_aided_config.get('text_aided', None)
+        if text_aided_config is not None:
+            llm_aided_text(pdf_info_dict, text_aided_config)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
