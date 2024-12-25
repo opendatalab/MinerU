@@ -52,6 +52,7 @@ if __name__ == '__main__':
                      "rapidocr-paddle",  # rapidocr-paddle
                      "rapid_table",  # rapid_table
                      "PyYAML",  # yaml
+                     "openai",  # openai SDK
                      "detectron2"
                      ],
             "old_linux":[

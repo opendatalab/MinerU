@@ -19,7 +19,7 @@ from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
 from magic_pdf.model.magic_model import MagicModel
-from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text
+from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text, llm_aided_title
 
 try:
     import torchtext
@@ -846,6 +846,10 @@ def pdf_parse_union(
         text_aided_config = llm_aided_config.get('text_aided', None)
         if text_aided_config is not None:
             llm_aided_text(pdf_info_dict, text_aided_config)
+        """标题优化"""
+        title_aided_config = llm_aided_config.get('title_aided', None)
+        if title_aided_config is not None:
+            llm_aided_title(pdf_info_dict, title_aided_config)
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
