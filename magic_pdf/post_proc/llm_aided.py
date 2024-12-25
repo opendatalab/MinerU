@@ -84,7 +84,7 @@ def llm_aided_title(pdf_info_dict, title_aided_config):
                 title_text = merge_para_with_text(block)
                 title_dict[f"{i}"] = title_text
                 i += 1
-    logger.info(f"Title list: {title_dict}")
+    # logger.info(f"Title list: {title_dict}")
 
     title_optimize_prompt = f"""输入的内容是一篇文档中所有标题组成的字典，请根据以下指南优化标题的结果，使结果符合正常文档的层次结构：
 
@@ -118,9 +118,9 @@ Corrected title list:
 
     json_completion = json.loads(completion.choices[0].message.content)
 
-    logger.info(f"Title completion: {json_completion}")
+    # logger.info(f"Title completion: {json_completion}")
 
-    logger.info(f"len(json_completion): {len(json_completion)}, len(title_dict): {len(title_dict)}")
+    # logger.info(f"len(json_completion): {len(json_completion)}, len(title_dict): {len(title_dict)}")
     if len(json_completion) == len(title_dict):
         try:
             for i, origin_title_block in enumerate(origin_title_list):
