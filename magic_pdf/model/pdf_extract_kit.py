@@ -170,7 +170,7 @@ class CustomPEKModel:
                 table_model_path=str(os.path.join(models_dir, table_model_dir)),
                 table_max_time=self.table_max_time,
                 device=self.device,
-                lang=self.lang,
+                ocr_engine=self.ocr_model,
             )
 
         logger.info('DocAnalysis init done!')

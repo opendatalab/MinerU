@@ -21,7 +21,7 @@ from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
     TableMasterPaddleModel
 
 
-def table_model_init(table_model_type, model_path, max_time, _device_='cpu', lang=None):
+def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
         table_model = StructTableModel(model_path, max_new_tokens=2048, max_time=max_time)
     elif table_model_type == MODEL_NAME.TABLE_MASTER:
@@ -31,7 +31,7 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu', lan
         }
         table_model = TableMasterPaddleModel(config)
     elif table_model_type == MODEL_NAME.RAPID_TABLE:
-        table_model = RapidTableModel(lang)
+        table_model = RapidTableModel(ocr_engine)
     else:
         logger.error('table model type not allow')
         exit(1)
@@ -160,7 +160,6 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('table_model_path'),
             kwargs.get('table_max_time'),
             kwargs.get('device'),
-            kwargs.get('lang'),
         )
     else:
         logger.error('model name not allow')

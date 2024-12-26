@@ -10,6 +10,7 @@ from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.config.exceptions import CUDA_NOT_AVAILABLE
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.clean_memory import clean_memory
+from magic_pdf.libs.config_reader import get_device
 from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
 from magic_pdf.model.pdf_extract_kit import CustomPEKModel
 from magic_pdf.model.sub_modules.model_utils import (
@@ -268,7 +269,7 @@ def doc_batch_analyze(
 
     # TODO: clean memory when gpu memory is not enough
     clean_memory_start_time = time.time()
-    clean_memory()
+    clean_memory(get_device())
     logger.info(f'clean memory time: {round(time.time() - clean_memory_start_time, 2)}')
 
     return InferenceResult(model_json, dataset)

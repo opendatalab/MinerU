@@ -3,11 +3,14 @@ import torch
 import gc
 
 
-def clean_memory():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-    elif torch.npu.is_available():
-        torch.npu.empty_cache()
-        torch.npu.ipc_collect()
+def clean_memory(device='cuda'):
+    if device == 'cuda':
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    elif str(device).startswith("npu"):
+        import torch_npu
+        if torch.npu.is_available():
+            torch_npu.empty_cache()
+            torch_npu.ipc_collect()
     gc.collect()

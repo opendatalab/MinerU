@@ -14,7 +14,7 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config
+from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config, get_device
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
@@ -277,21 +277,24 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
 
 def model_init(model_name: str):
     from transformers import LayoutLMv3ForTokenClassification
-
+    device = get_device()
     if torch.cuda.is_available():
         device = torch.device('cuda')
         if torch.cuda.is_bf16_supported():
             supports_bfloat16 = True
         else:
             supports_bfloat16 = False
-
-    elif torch.npu.is_available():
-        device = torch.device('npu')
-        if torch.npu.is_bf16_supported():
-            supports_bfloat16 = True
+    elif str(device).startswith("npu"):
+        import torch_npu
+        if torch.npu.is_available():
+            device = torch.device('npu')
+            if torch.npu.is_bf16_supported():
+                supports_bfloat16 = True
+            else:
+                supports_bfloat16 = False
         else:
+            device = torch.device('cpu')
             supports_bfloat16 = False
-
     else:
         device = torch.device('cpu')
         supports_bfloat16 = False
@@ -865,7 +868,7 @@ def pdf_parse_union(
         'pdf_info': pdf_info_list,
     }
 
-    clean_memory()
+    clean_memory(get_device())
 
     return new_pdf_info_dict
 
