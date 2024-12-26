@@ -284,6 +284,14 @@ def model_init(model_name: str):
             supports_bfloat16 = True
         else:
             supports_bfloat16 = False
+
+    elif torch.npu.is_available():
+        device = torch.device('npu')
+        if torch.npu.is_bf16_supported():
+            supports_bfloat16 = True
+        else:
+            supports_bfloat16 = False
+
     else:
         device = torch.device('cpu')
         supports_bfloat16 = False

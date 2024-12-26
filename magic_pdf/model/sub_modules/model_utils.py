@@ -54,4 +54,7 @@ def get_vram(device):
     if torch.cuda.is_available() and device != 'cpu':
         total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)  # 将字节转换为 GB
         return total_memory
+    elif torch.npu.is_available() and device != 'cpu':
+        total_memory = torch.npu.get_device_properties(device).total_memory / (1024 ** 3)  # 转为 GB
+        return total_memory
     return None

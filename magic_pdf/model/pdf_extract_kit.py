@@ -87,6 +87,12 @@ class CustomPEKModel:
         )
         # 初始化解析方案
         self.device = kwargs.get('device', 'cpu')
+
+        if str(self.device).startswith("npu"):
+            import torch_npu
+            os.environ['FLAGS_npu_jit_compile'] = '0'
+            os.environ['FLAGS_use_stride_kernel'] = '0'
+
         logger.info('using device: {}'.format(self.device))
         models_dir = kwargs.get(
             'models_dir', os.path.join(root_dir, 'resources', 'models')
@@ -164,6 +170,7 @@ class CustomPEKModel:
                 table_model_path=str(os.path.join(models_dir, table_model_dir)),
                 table_max_time=self.table_max_time,
                 device=self.device,
+                lang=self.lang,
             )
 
         logger.info('DocAnalysis init done!')
