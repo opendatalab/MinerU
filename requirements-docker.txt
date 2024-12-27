@@ -21,4 +21,5 @@ doclayout_yolo==0.0.2
 rapidocr-paddle
 rapid_table
 doclayout-yolo==0.0.2
+openai
 detectron2
