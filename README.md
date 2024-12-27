@@ -42,6 +42,10 @@
 </div>
 
 # Changelog
+
+- 2024/11/22 0.10.0 released. Introducing hybrid OCR text extraction capabilities,
+  - Significantly improved parsing performance in complex text distribution scenarios such as dense formulas, irregular span regions, and text represented by images.
+  - Combines the dual advantages of accurate content extraction and faster speed in text mode, and more precise span/line region recognition in OCR mode.
 - 2024/11/20 add fastapi, via: [https://github.com/lztiancn/lzmineru.git](https://github.com/lztiancn/lzmineru.git)
 - 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
@@ -280,93 +284,15 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 
 ### Command Line
 
-```bash
-magic-pdf --help
-Usage: magic-pdf [OPTIONS]
+[Using MinerU via Command Line](https://mineru.readthedocs.io/en/latest/user_guide/quick_start/command_line.html)
 
-Options:
-  -v, --version                display the version and exit
-  -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir PATH        output local directory  [required]
-  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
-                               technique to extract information from pdf. txt:
-                               suitable for the text-based pdf only and
-                               outperform ocr. auto: automatically choose the
-                               best method for parsing pdf from ocr and txt.
-                               without method specified, auto will be used by
-                               default.
-  -l, --lang TEXT              Input the languages in the pdf (if known) to
-                               improve OCR accuracy.  Optional. You should
-                               input "Abbreviation" with language form url: ht
-                               tps://paddlepaddle.github.io/PaddleOCR/latest/en
-                               /ppocr/blog/multi_languages.html#5-support-languages-
-                               and-abbreviations
-  -d, --debug BOOLEAN          Enables detailed debugging information during
-                               the execution of the CLI commands.
-  -s, --start INTEGER          The starting page for PDF parsing, beginning
-                               from 0.
-  -e, --end INTEGER            The ending page for PDF parsing, beginning from
-                               0.
-  --help                       Show this message and exit.
-
-
-## show version
-magic-pdf -v
-
-## command line example
-magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
-```
-
-`{some_pdf}` can be a single PDF file or a directory containing multiple PDFs.
-The results will be saved in the `{some_output_dir}` directory. The output file list is as follows:
-
-```text
-├── some_pdf.md                          # markdown file
-├── images                               # directory for storing images
-├── some_pdf_layout.pdf                  # layout diagram (Include layout reading order)
-├── some_pdf_middle.json                 # MinerU intermediate processing result
-├── some_pdf_model.json                  # model inference result
-├── some_pdf_origin.pdf                  # original PDF file
-├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
-└── some_pdf_content_list.json           # Rich text JSON arranged in reading order
-```
 > [!TIP]
 > For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
 
 ### API
 
-Processing files from local disk
+[Using MinerU via Python API](https://mineru.readthedocs.io/en/latest/user_guide/quick_start/to_markdown.html)
 
-```python
-image_writer = DiskReaderWriter(local_image_dir)
-image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
-
-Processing files from object storage
-
-```python
-s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-image_dir = "s3://img_bucket/"
-s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
-pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
-
-For detailed implementation, refer to:
-
-- [demo.py Simplest Processing Method](demo/demo.py)
-- [magic_pdf_parse_main.py More Detailed Processing Workflow](demo/magic_pdf_parse_main.py)
 
 
 ### FAST API

@@ -2,21 +2,20 @@ import re
 
 from loguru import logger
 
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
 from magic_pdf.para.para_split_v3 import ListLineTag
 
 
 def __is_hyphen_at_line_end(line):
-    """
-    Check if a line ends with one or more letters followed by a hyphen.
-    
+    """Check if a line ends with one or more letters followed by a hyphen.
+
     Args:
     line (str): The line of text to check.
-    
+
     Returns:
     bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
     """
@@ -31,6 +30,13 @@ def ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_dict: list,
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
         if not paras_of_layout:
+            markdown_with_para_and_pagination.append({
+                'page_no':
+                    page_no,
+                'md_content':
+                    '',
+            })
+            page_no += 1
             continue
         page_markdown = ocr_mk_markdown_with_para_core_v2(
             paras_of_layout, 'mm', img_buket_path)
@@ -130,21 +136,20 @@ def __replace_ligatures(text: str):
 
 
 def merge_para_with_text(para_block):
+    block_text = ''
+    for line in para_block['lines']:
+        for span in line['spans']:
+            if span['type'] in [ContentType.Text]:
+                block_text += span['content']
+    block_lang = detect_lang(block_text)
+
     para_text = ''
     for i, line in enumerate(para_block['lines']):
 
         if i >= 1 and line.get(ListLineTag.IS_LIST_START_LINE, False):
             para_text += '  \n'
 
-        line_text = ''
-        line_lang = ''
-        for span in line['spans']:
-            span_type = span['type']
-            if span_type == ContentType.Text:
-                line_text += span['content'].strip()
-        if line_text != '':
-            line_lang = detect_lang(line_text)
-        for span in line['spans']:
+        for j, span in enumerate(line['spans']):
 
             span_type = span['type']
             content = ''
@@ -156,28 +161,28 @@ def merge_para_with_text(para_block):
                 content = f"\n$$\n{span['content']}\n$$\n"
 
             content = content.strip()
-            if content != '':
+
+            if content:
                 langs = ['zh', 'ja', 'ko']
-                if line_lang in langs:  # 遇到一些一个字一个span的文档，这种单字语言判断不准，需要用整行文本判断
-                    if span_type in [ContentType.Text, ContentType.InterlineEquation]:
-                        para_text += content  # 中文/日语/韩文语境下，content间不需要空格分隔
-                    elif span_type == ContentType.InlineEquation:
-                        para_text += f" {content} "
+                # logger.info(f'block_lang: {block_lang}, content: {content}')
+                if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                    if j == len(line['spans']) - 1 and span_type not in [ContentType.InlineEquation]:
+                        para_text += content
+                    else:
+                        para_text += f'{content} '
                 else:
                     if span_type in [ContentType.Text, ContentType.InlineEquation]:
-                        # 如果是前一行带有-连字符，那么末尾不应该加空格
-                        if __is_hyphen_at_line_end(content):
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if j == len(line['spans'])-1 and span_type == ContentType.Text and __is_hyphen_at_line_end(content):
                             para_text += content[:-1]
-                        elif len(content) == 1 and content not in ['A', 'I', 'a', 'i'] and not content.isdigit():
-                            para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
-                            para_text += f"{content} "
+                            para_text += f'{content} '
                     elif span_type == ContentType.InterlineEquation:
                         para_text += content
             else:
                 continue
     # 连写字符拆分
-    para_text = __replace_ligatures(para_text)
+    # para_text = __replace_ligatures(para_text)
 
     return para_text
 

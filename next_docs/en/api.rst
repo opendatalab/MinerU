@@ -7,3 +7,5 @@
    api/read_api
    api/schemas
    api/io
+   api/pipe_operators
+   api/model_operators

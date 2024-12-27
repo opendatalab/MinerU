@@ -3,6 +3,15 @@ import os
 import shutil
 import re
 import json
+import torch
+
+def clear_gpu_memory():
+    '''
+    clear GPU memory
+    '''
+    torch.cuda.empty_cache()
+    print("GPU memory cleared.")
+
 def check_shell(cmd):
     """shell successful."""
     res = os.system(cmd)
@@ -10,11 +19,12 @@ def check_shell(cmd):
 
 def update_config_file(file_path, key, value):
     """update config file."""
-    with open(file_path, 'r', encoding="utf-8") as f:
-        config  = json.loads(f.read())
+    with open(file_path, 'r', encoding="utf-8") as fr:
+        config  = json.loads(fr.read())
     config[key] = value
-    with open(file_path, 'w', encoding="utf-8") as f:
-        f.write(json.dumps(config))
+        # 保存修改后的内容
+    with open(file_path, 'w', encoding='utf-8') as fw:
+        json.dump(config, fw, ensure_ascii=False, indent=4)
 
 def cli_count_folders_and_check_contents(file_path):
     """" count cli files."""
@@ -31,6 +41,7 @@ def sdk_count_folders_and_check_contents(file_path):
         assert file_count > 0
     else:
         exit(1)
+
 
 
 def delete_file(path):

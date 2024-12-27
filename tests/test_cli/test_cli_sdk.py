@@ -7,16 +7,28 @@ from lib import common
 import time
 import magic_pdf.model as model_config
 from magic_pdf.pipe.UNIPipe import UNIPipe
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
+import os
+from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+from magic_pdf.data.data_reader_writer import S3DataReader, S3DataWriter
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.pipe.OCRPipe import OCRPipe
 model_config.__use_inside_model__ = True
 pdf_res_path = conf.conf['pdf_res_path']
 code_path = conf.conf['code_path']
 pdf_dev_path = conf.conf['pdf_dev_path']
-
+magic_pdf_config = "/home/quyuan/magic-pdf.json"
 
 class TestCli:
     """test cli."""
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """
+        init
+        """
+        common.clear_gpu_memory()
+        common.update_config_file(magic_pdf_config, "device-mode", "cuda")
+        # 这里可以添加任何前置操作
+        yield
 
     @pytest.mark.P0
     def test_pdf_auto_sdk(self):
@@ -32,7 +44,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -68,7 +80,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': 'ocr', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -103,7 +115,7 @@ class TestCli:
             pdf_bytes = open(pdf_path, 'rb').read()
             local_image_dir = os.path.join(pdf_dev_path, 'pdf', 'images')
             image_dir = str(os.path.basename(local_image_dir))
-            image_writer = DiskReaderWriter(local_image_dir)
+            image_writer = FileBasedDataWriter(local_image_dir)
             model_json = list()
             jso_useful_key = {'_pdf_type': 'txt', 'model_list': model_json}
             pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
@@ -275,12 +287,13 @@ class TestCli:
         pdf_endpoint = os.environ.get('pdf_endpoint', "")
         s3_pdf_path = conf.conf["s3_pdf_path"]
         image_dir = "s3://" + pdf_bucket + "/mineru/test/output"
-        print (image_dir)
-        s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-        s3image_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint, parent_path=image_dir)
-        pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-        jso_useful_key = {"_pdf_type": "", "model_list": []}
-        pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
+        prefix = "mineru/test/output"
+        reader = S3DataReader(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        # = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        image_writer = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
+        pdf_bytes = reader.read(s3_pdf_path)
+        model_list = []
+        pipe = OCRPipe(pdf_bytes, model_list, image_writer)
         pipe.pipe_classify()
         pipe.pipe_analyze()
         pipe.pipe_parse()
@@ -291,22 +304,32 @@ class TestCli:
     def test_local_magic_pdf_open_st_table(self):
         """magic pdf cli open st table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_st.json ~/magic-pdf.json"
-        print (pre_cmd)
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_st.json ~/magic-pdf.json"
+        value = {
+        "model": "struct_eqtable",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
-        res = common.check_latex_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
         assert res is True
   
     @pytest.mark.P1
-    def test_local_magic_pdf_open_html_table(self):
-        """magic pdf cli open html table."""
+    def test_local_magic_pdf_open_tablemaster_cuda(self):
+        """magic pdf cli open table master html table cuda mode."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
@@ -315,24 +338,88 @@ class TestCli:
         assert res is True
     
     @pytest.mark.P1
-    def test_magic_pdf_close_html_table_cpu(self):
-        """magic pdf cli close html table cpu mode."""
+    def test_local_magic_pdf_open_rapidai_table(self):
+        """magic pdf cli open rapid ai table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "rapid_table",
+        "enable": True,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
         os.system(cli_cmd)
         res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
-        assert res is  True
+        assert res is True
+    
+    
+    @pytest.mark.P1
+    def test_local_magic_pdf_doclayout_yolo(self):
+        """magic pdf cli open doclyaout yolo."""
+        time.sleep(2)
+        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "doclayout_yolo"
+        }   
+        common.update_config_file(magic_pdf_config, "layout-config", value)
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+
+    @pytest.mark.P1
+    def test_local_magic_pdf_layoutlmv3_yolo(self):
+        """magic pdf cli open layoutlmv3."""
+        time.sleep(2)
+        value = {
+        "model": "layoutlmv3"
+        }   
+        common.update_config_file(magic_pdf_config, "layout-config", value)
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+        #res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
+
+    @pytest.mark.P1
+    def test_magic_pdf_cpu(self):
+        """magic pdf cli cpu mode."""
+        time.sleep(2)
+        #pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": False,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
+        common.update_config_file(magic_pdf_config, "device-mode", "cpu")
+        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
+        common.delete_file(pdf_res_path)
+        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
+        os.system(cli_cmd)
+        common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
+
 
     @pytest.mark.P1
     def test_local_magic_pdf_close_html_table(self):
         """magic pdf cli close table."""
         time.sleep(2)
-        pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic-pdf.json"
-        os.system(pre_cmd)
+        #pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic-pdf.json"
+        #os.system(pre_cmd)
+        value = {
+        "model": "tablemaster",
+        "enable": False,
+        "max_time": 400
+        }   
+        common.update_config_file(magic_pdf_config, "table-config", value)
         pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
         common.delete_file(pdf_res_path)
         cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
@@ -344,3 +431,4 @@ class TestCli:
  
 if __name__ == '__main__':
     pytest.main()
+
