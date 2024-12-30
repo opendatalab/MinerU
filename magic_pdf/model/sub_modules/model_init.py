@@ -70,10 +70,10 @@ def ocr_model_init(show_log: bool = False,
                    det_db_unclip_ratio=1.8,
                    ):
 
-    use_npu = False
-    device = get_device()
-    if str(device).startswith("npu"):
-        use_npu = True
+    # use_npu = False
+    # device = get_device()
+    # if str(device).startswith("npu"):
+    #     use_npu = True
 
     if lang is not None and lang != '':
         model = ModifiedPaddleOCR(
@@ -82,7 +82,7 @@ def ocr_model_init(show_log: bool = False,
             lang=lang,
             use_dilation=use_dilation,
             det_db_unclip_ratio=det_db_unclip_ratio,
-            use_npu=use_npu,
+            # use_npu=use_npu,
         )
     else:
         model = ModifiedPaddleOCR(
@@ -90,7 +90,7 @@ def ocr_model_init(show_log: bool = False,
             det_db_box_thresh=det_db_box_thresh,
             use_dilation=use_dilation,
             det_db_unclip_ratio=det_db_unclip_ratio,
-            use_npu=use_npu,
+            # use_npu=use_npu,
         )
     return model
 
