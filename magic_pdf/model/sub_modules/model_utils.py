@@ -56,8 +56,8 @@ def get_vram(device):
         return total_memory
     elif str(device).startswith("npu"):
         import torch_npu
-        if torch.npu.is_available():
-            total_memory = torch.npu.get_device_properties(device).total_memory / (1024 ** 3)  # 转为 GB
+        if torch_npu.npu.is_available():
+            total_memory = torch_npu.npu.get_device_properties(device).total_memory / (1024 ** 3)  # 转为 GB
             return total_memory
     else:
         return None

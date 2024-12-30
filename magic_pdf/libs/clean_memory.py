@@ -10,7 +10,6 @@ def clean_memory(device='cuda'):
             torch.cuda.ipc_collect()
     elif str(device).startswith("npu"):
         import torch_npu
-        if torch.npu.is_available():
-            torch_npu.empty_cache()
-            torch_npu.ipc_collect()
+        if torch_npu.npu.is_available():
+            torch_npu.npu.empty_cache()
     gc.collect()
