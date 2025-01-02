@@ -92,9 +92,12 @@ def chars_to_content(span):
         content = ''
         for char in span['chars']:
             # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
-            if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
-                content += ' '
-            content += char['c']
+            char1 = char
+            char2 = span['chars'][span['chars'].index(char) + 1] if span['chars'].index(char) + 1 < len(span['chars']) else None
+            if char2 and char2['bbox'][0] - char1['bbox'][2] > char_avg_width * 0.25  and char['c'] != ' ' and char2['c'] != ' ':
+                content += f"{char['c']} "
+            else:
+                content += char['c']
 
         content = __replace_ligatures(content)
         span['content'] = __replace_0xfffd(content)
