@@ -45,6 +45,7 @@ class PipeResult:
             pdf_info_list, md_make_mode, drop_mode, img_dir_or_bucket_prefix
         )
         writer.write_string(file_path, md_content)
+        return md_content
 
     def dump_content_list(
         self, writer: DataWriter, file_path: str, image_dir_or_bucket_prefix: str
@@ -66,6 +67,7 @@ class PipeResult:
         writer.write_string(
             file_path, json.dumps(content_list, ensure_ascii=False, indent=4)
         )
+        return content_list
 
     def dump_middle_json(self, writer: DataWriter, file_path: str):
         """Dump the result of pipeline.
