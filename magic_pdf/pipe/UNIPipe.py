@@ -58,7 +58,7 @@ class UNIPipe(AbsPipe):
                 layout_model=self.layout_model,
                 formula_enable=self.formula_enable,
                 table_enable=self.table_enable,
-            )
+            ).get_infer_res()
         elif self.pdf_type == self.PIP_OCR:
             self.model_list = doc_analyze(
                 self.dataset,
@@ -69,7 +69,7 @@ class UNIPipe(AbsPipe):
                 layout_model=self.layout_model,
                 formula_enable=self.formula_enable,
                 table_enable=self.table_enable,
-            )
+            ).get_infer_res()
 
     def pipe_parse(self):
         if self.pdf_type == self.PIP_TXT:
