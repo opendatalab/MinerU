@@ -50,6 +50,7 @@ if __name__ == '__main__':
                      "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2",  # doclayout_yolo
                      "rapidocr-paddle",  # rapidocr-paddle
+                     "rapidocr_onnxruntime",
                      "rapid_table",  # rapid_table
                      "PyYAML",  # yaml
                      "openai",  # openai SDK

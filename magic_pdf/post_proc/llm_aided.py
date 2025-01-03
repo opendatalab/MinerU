@@ -5,6 +5,7 @@ from magic_pdf.dict2md.ocr_mkcontent import merge_para_with_text
 from openai import OpenAI
 
 
+#@todo: 有的公式以"\"结尾，这样会导致尾部拼接的"$"被转义，也需要修复
 formula_optimize_prompt = """请根据以下指南修正LaTeX公式的错误，确保公式能够渲染且符合原始内容：
 
 1. 修正渲染或编译错误：

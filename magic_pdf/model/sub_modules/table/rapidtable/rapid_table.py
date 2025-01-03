@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
+import torch
 from loguru import logger
 from rapid_table import RapidTable
-from rapidocr_paddle import RapidOCR
 
 
 class RapidTableModel(object):
@@ -10,7 +10,12 @@ class RapidTableModel(object):
         self.table_model = RapidTable()
         if ocr_engine is None:
             self.ocr_model_name = "RapidOCR"
-            self.ocr_engine = RapidOCR(det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True)
+            if torch.cuda.is_available():
+                from rapidocr_paddle import RapidOCR
+                self.ocr_engine = RapidOCR(det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True)
+            else:
+                from rapidocr_onnxruntime import RapidOCR
+                self.ocr_engine = RapidOCR()
         else:
             self.ocr_model_name = "PaddleOCR"
             self.ocr_engine = ocr_engine
