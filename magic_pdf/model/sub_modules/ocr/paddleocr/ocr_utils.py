@@ -342,7 +342,7 @@ def onnx_model_init(key):
         "use_dilation": key[2],
         "det_db_unclip_ratio": key[3],
     }
-    logger.info(f"additional_ocr_params: {additional_ocr_params}")
+    # logger.info(f"additional_ocr_params: {additional_ocr_params}")
     if key[0] is not None:
         additional_ocr_params["lang"] = key[0]
 
