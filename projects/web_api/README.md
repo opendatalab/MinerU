@@ -42,3 +42,7 @@
 
 > dockerhub地址：docker pull quincyqiang/mineru:0.1-models
 
+## 构建方式:
+
+1. 拷贝`hantian/layoutreader`,`opendatalab/PDF-Extract-Kit-1.0`,`paddleocr`模型到当前目录。
+2. `docker build --build-arg http_proxy=http://127.0.0.1:7890 --build-arg https_proxy=http://127.0.0.1:7890 -t mineru-api .`
