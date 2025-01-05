@@ -94,7 +94,7 @@ def chars_to_content(span):
             # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
             char1 = char
             char2 = span['chars'][span['chars'].index(char) + 1] if span['chars'].index(char) + 1 < len(span['chars']) else None
-            if char2 and char2['bbox'][0] - char1['bbox'][2] > char_avg_width * 0.25  and char['c'] != ' ' and char2['c'] != ' ':
+            if char2 and char2['bbox'][0] - char1['bbox'][2] > char_avg_width * 0.25 and char['c'] != ' ' and char2['c'] != ' ':
                 content += f"{char['c']} "
             else:
                 content += char['c']
@@ -182,7 +182,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     for block in text_blocks_raw:
         for line in block['lines']:
             cosine, sine = line['dir']
-            if abs (cosine) < 0.9 or abs(sine) > 0.1:
+            if abs(cosine) < 0.9 or abs(sine) > 0.1:
                 continue
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
