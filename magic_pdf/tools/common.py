@@ -9,6 +9,7 @@ from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.libs.draw_bbox import draw_char_bbox
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.operators.models import InferenceResult
 
@@ -83,6 +84,7 @@ def do_parse(
     f_make_md_mode=MakeMode.MM_MD,
     f_draw_model_bbox=False,
     f_draw_line_sort_bbox=False,
+    f_draw_char_bbox=False,
     start_page_id=0,
     end_page_id=None,
     lang=None,
@@ -94,6 +96,7 @@ def do_parse(
         logger.warning('debug mode is on')
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
+        # f_draw_char_bbox = True
 
     pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
         pdf_bytes, start_page_id, end_page_id
@@ -204,6 +207,9 @@ def do_parse(
         pipe_result.draw_line_sort(
             os.path.join(local_md_dir, f'{pdf_file_name}_line_sort.pdf')
         )
+
+    if f_draw_char_bbox:
+        draw_char_bbox(pdf_bytes, local_md_dir, f'{pdf_file_name}_char_bbox.pdf')
 
     if f_dump_md:
         pipe_result.dump_md(
