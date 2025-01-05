@@ -1,157 +1,209 @@
-import copy
 import json
 import os
-from tempfile import NamedTemporaryFile
-
+from io import StringIO
+from typing import Tuple, Union
 import uvicorn
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from loguru import logger
 
+from magic_pdf.config.enums import SupportedPdfParseMethod
+from magic_pdf.data.dataset import PymuDocDataset
 import magic_pdf.model as model_config
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-from magic_pdf.pipe.OCRPipe import OCRPipe
-from magic_pdf.pipe.TXTPipe import TXTPipe
-from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+from magic_pdf.model.operators import InferenceResult
+from magic_pdf.data.data_reader_writer.s3 import S3DataReader, S3DataWriter
+from magic_pdf.pipe.operators import PipeResult
+from magic_pdf.data.data_reader_writer import DataWriter
+from magic_pdf.libs.config_reader import get_s3_config, get_bucket_name
+from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 
 model_config.__use_inside_model__ = True
 
 app = FastAPI()
 
 
-def json_md_dump(
-    pipe,
-    md_writer,
-    pdf_name,
-    content_list,
-    md_content,
-):
-    # Write model results to model.json
-    orig_model_list = copy.deepcopy(pipe.model_list)
-    md_writer.write_string(
-        f'{pdf_name}_model.json',
-        json.dumps(orig_model_list, ensure_ascii=False, indent=4),
-    )
 
-    # Write intermediate results to middle.json
-    md_writer.write_string(
-        f'{pdf_name}_middle.json',
-        json.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
-    )
+class MemoryDataWriter(DataWriter):
+    def __init__(self):
+        self.buffer = StringIO()
+        
+    def write(self, path: str, data: bytes) -> None:
+        if isinstance(data, str):
+            self.buffer.write(data)
+        else:
+            self.buffer.write(data.decode('utf-8'))
+            
+    def write_string(self, path: str, data: str) -> None:
+        self.buffer.write(data)
+        
+    def get_value(self) -> str:
+        return self.buffer.getvalue()
+        
+    def close(self):
+        self.buffer.close()
 
-    # Write text content results to content_list.json
-    md_writer.write_string(
-        f'{pdf_name}_content_list.json',
-        json.dumps(content_list, ensure_ascii=False, indent=4),
-    )
+def init_writers(
+    pdf_path: str = None,
+    pdf_file: UploadFile = None,
+    output_path: str = None,
+    output_image_path: str = None,
+) -> Tuple[Union[S3DataWriter, FileBasedDataWriter], Union[S3DataWriter, FileBasedDataWriter], bytes]:
+    """
+    Initialize writers based on path type
+    
+    Args:
+        pdf_path: PDF file path (local path or S3 path)
+        pdf_file: Uploaded PDF file object
+        output_path: Output directory path
+        output_image_path: Image output directory path
+        
+    Returns:
+        Tuple[writer, image_writer, pdf_bytes]: Returns initialized writer tuple and PDF file content
+    """
+    if pdf_path:
+        is_s3_path = pdf_path.startswith('s3://')
+        if is_s3_path:
+            bucket = get_bucket_name(pdf_path)
+            ak, sk, endpoint = get_s3_config(bucket)
+            
+            writer = S3DataWriter(output_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint)
+            image_writer = S3DataWriter(output_image_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint)
+            # 临时创建reader读取文件内容
+            temp_reader = S3DataReader("", bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint)
+            pdf_bytes = temp_reader.read(pdf_path)
+        else:
+            writer = FileBasedDataWriter(output_path)
+            image_writer = FileBasedDataWriter(output_image_path)
+            os.makedirs(output_image_path, exist_ok=True)
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+    else:
+        # 处理上传的文件
+        pdf_bytes = pdf_file.file.read()
+        writer = FileBasedDataWriter(output_path)
+        image_writer = FileBasedDataWriter(output_image_path)
+        os.makedirs(output_image_path, exist_ok=True)
+        
+    return writer, image_writer, pdf_bytes
 
-    # Write results to .md file
-    md_writer.write_string(
-        f'{pdf_name}.md',
-        md_content,
-    )
+def process_pdf(
+    pdf_bytes: bytes,
+    parse_method: str,
+    image_writer: Union[S3DataWriter, FileBasedDataWriter]
+) -> Tuple[InferenceResult, PipeResult]:
+    """
+    Process PDF file content
+    
+    Args:
+        pdf_bytes: Binary content of PDF file
+        parse_method: Parse method ('ocr', 'txt', 'auto')
+        image_writer: Image writer
+        
+    Returns:
+        Tuple[InferenceResult, PipeResult]: Returns inference result and pipeline result
+    """
+    ds = PymuDocDataset(pdf_bytes)
+    infer_result : InferenceResult = None
+    pipe_result : PipeResult = None
 
+    if parse_method == 'ocr':
+        infer_result = ds.apply(doc_analyze, ocr=True)
+        pipe_result = infer_result.pipe_ocr_mode(image_writer)
+    elif parse_method == 'txt':
+        infer_result = ds.apply(doc_analyze, ocr=False)
+        pipe_result = infer_result.pipe_txt_mode(image_writer)
+    else:  # auto
+        if ds.classify() == SupportedPdfParseMethod.OCR:
+            infer_result = ds.apply(doc_analyze, ocr=True)
+            pipe_result = infer_result.pipe_ocr_mode(image_writer)
+        else:
+            infer_result = ds.apply(doc_analyze, ocr=False)
+            pipe_result = infer_result.pipe_txt_mode(image_writer)
+            
+    return infer_result, pipe_result
 
-@app.post('/pdf_parse', tags=['projects'], summary='Parse PDF file')
-async def pdf_parse_main(
-    pdf_file: UploadFile = File(...),
+@app.post('/pdf_parse', tags=['projects'], summary='Parse PDF files (supports local files and S3)')
+async def pdf_parse(
+    pdf_file: UploadFile = None,
+    pdf_path: str = None,
     parse_method: str = 'auto',
-    model_json_path: str = None,
     is_json_md_dump: bool = True,
     output_dir: str = 'output',
+    return_layout: bool = False,
+    return_info: bool = False,
+    return_content_list: bool = False,
 ):
-    """Execute the process of converting PDF to JSON and MD, outputting MD and
-    JSON files to the specified directory.
-
-    :param pdf_file: The PDF file to be parsed
-    :param parse_method: Parsing method, can be auto, ocr, or txt. Default is auto. If results are not satisfactory, try ocr
-    :param model_json_path: Path to existing model data file. If empty, use built-in model. PDF and model_json must correspond
-    :param is_json_md_dump: Whether to write parsed data to .json and .md files. Default is True. Different stages of data will be written to different .json files (3 in total), md content will be saved to .md file  # noqa E501
-    :param output_dir: Output directory for results. A folder named after the PDF file will be created to store all results
-    """
     try:
-        # Create a temporary file to store the uploaded PDF
-        with NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-            temp_pdf.write(await pdf_file.read())
-            temp_pdf_path = temp_pdf.name
+        if pdf_file is None and pdf_path is None:
+            raise HTTPException(status_code=400, detail="Must provide either pdf_file or pdf_path")
 
-        pdf_name = os.path.basename(pdf_file.filename).split('.')[0]
+        # Get PDF filename
+        pdf_name = os.path.basename(pdf_path if pdf_path else pdf_file.filename).split('.')[0]
+        output_path = f"{output_dir}/{pdf_name}"
+        output_image_path = f"{output_path}/images"
 
-        if output_dir:
-            output_path = os.path.join(output_dir, pdf_name)
-        else:
-            output_path = os.path.join(os.path.dirname(temp_pdf_path), pdf_name)
+        # Initialize readers/writers and get PDF content
+        writer, image_writer, pdf_bytes = init_writers(
+            pdf_path=pdf_path,
+            pdf_file=pdf_file,
+            output_path=output_path,
+            output_image_path=output_image_path
+        )
+        
+        # Process PDF
+        infer_result, pipe_result = process_pdf(pdf_bytes, parse_method, image_writer)
+        
+        # Use MemoryDataWriter to get results
+        content_list_writer = MemoryDataWriter()
+        md_content_writer = MemoryDataWriter()
+        middle_json_writer = MemoryDataWriter()
+        
+        # Use PipeResult's dump method to get data
+        pipe_result.dump_content_list(content_list_writer, "", "images")
+        pipe_result.dump_md(md_content_writer, "", "images")
+        pipe_result.dump_middle_json(middle_json_writer, "")
+        
+        # Get content
+        content_list = json.loads(content_list_writer.get_value())
+        md_content = md_content_writer.get_value()
+        middle_json = json.loads(middle_json_writer.get_value())
+        model_json = infer_result.get_infer_res()
 
-        output_image_path = os.path.join(output_path, 'images')
-
-        # Get parent path of images for relative path in .md and content_list.json
-        image_path_parent = os.path.basename(output_image_path)
-
-        pdf_bytes = open(temp_pdf_path, 'rb').read()  # Read binary data of PDF file
-
-        if model_json_path:
-            # Read original JSON data of PDF file parsed by model, list type
-            model_json = json.loads(open(model_json_path, 'r', encoding='utf-8').read())
-        else:
-            model_json = []
-
-        # Execute parsing steps
-        image_writer, md_writer = FileBasedDataWriter(
-            output_image_path
-        ), FileBasedDataWriter(output_path)
-
-        # Choose parsing method
-        if parse_method == 'auto':
-            jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
-            pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
-        elif parse_method == 'txt':
-            pipe = TXTPipe(pdf_bytes, model_json, image_writer)
-        elif parse_method == 'ocr':
-            pipe = OCRPipe(pdf_bytes, model_json, image_writer)
-        else:
-            logger.error('Unknown parse method, only auto, ocr, txt allowed')
-            return JSONResponse(
-                content={'error': 'Invalid parse method'}, status_code=400
-            )
-
-        # Execute classification
-        pipe.pipe_classify()
-
-        # If no model data is provided, use built-in model for parsing
-        if not model_json:
-            if model_config.__use_inside_model__:
-                pipe.pipe_analyze()  # Parse
-            else:
-                logger.error('Need model list input')
-                return JSONResponse(
-                    content={'error': 'Model list input required'}, status_code=400
-                )
-
-        # Execute parsing
-        pipe.pipe_parse()
-
-        # Save results in text and md format
-        content_list = pipe.pipe_mk_uni_format(image_path_parent, drop_mode='none')
-        md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode='none')
-
+        # If results need to be saved
         if is_json_md_dump:
-            json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
-        data = {
-            'layout': copy.deepcopy(pipe.model_list),
-            'info': pipe.pdf_mid_data,
-            'content_list': content_list,
-            'md_content': md_content,
-        }
+            writer.write_string(f"{pdf_name}_content_list.json", content_list_writer.get_value())
+            writer.write_string(f"{pdf_name}.md", md_content)
+            writer.write_string(f"{pdf_name}_middle.json", middle_json_writer.get_value())
+            writer.write_string(f"{pdf_name}_model.json", json.dumps(model_json, indent=4, ensure_ascii=False))
+            # Save visualization results
+            pipe_result.draw_layout(os.path.join(output_path, f'{pdf_name}_layout.pdf'))
+            pipe_result.draw_span(os.path.join(output_path, f'{pdf_name}_spans.pdf'))
+            pipe_result.draw_line_sort(os.path.join(output_path, f'{pdf_name}_line_sort.pdf'))
+            infer_result.draw_model(os.path.join(output_path, f'{pdf_name}_model.pdf'))
+        
+        # Build return data
+        data = {}
+        if return_layout:
+            data['layout'] = model_json
+        if return_info:
+            data['info'] = middle_json
+        if return_content_list:
+            data['content_list'] = content_list
+        data['md_content'] = md_content  # md_content is always returned
+        
+        # Clean up memory writers
+        content_list_writer.close()
+        md_content_writer.close()
+        middle_json_writer.close()
+        
         return JSONResponse(data, status_code=200)
-
+        
     except Exception as e:
         logger.exception(e)
         return JSONResponse(content={'error': str(e)}, status_code=500)
-    finally:
-        # Clean up the temporary file
-        if 'temp_pdf_path' in locals():
-            os.unlink(temp_pdf_path)
-
+    
 
 if __name__ == '__main__':
     uvicorn.run(app, host='0.0.0.0', port=8888)
