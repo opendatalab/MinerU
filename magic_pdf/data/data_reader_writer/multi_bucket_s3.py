@@ -1,4 +1,4 @@
-import os
+
 from magic_pdf.config.exceptions import InvalidConfig, InvalidParams
 from magic_pdf.data.data_reader_writer.base import DataReader, DataWriter
 from magic_pdf.data.io.s3 import S3Reader, S3Writer
@@ -22,10 +22,10 @@ class MultiS3Mixin:
         """
         if len(default_prefix) == 0:
             raise InvalidConfig('default_prefix must be provided')
-    
-        arr = default_prefix.strip("/").split("/")
+
+        arr = default_prefix.strip('/').split('/')
         self.default_bucket = arr[0]
-        self.default_prefix = "/".join(arr[1:])
+        self.default_prefix = '/'.join(arr[1:])
 
         found_default_bucket_config = False
         for conf in s3_configs:
@@ -103,7 +103,8 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
             s3_reader = self.__get_s3_client(bucket_name)
         else:
             s3_reader = self.__get_s3_client(self.default_bucket)
-            path = os.path.join(self.default_prefix, path)
+            if self.default_prefix:
+                path = self.default_prefix + '/' + path
         return s3_reader.read_at(path, offset, limit)
 
 
@@ -139,5 +140,6 @@ class MultiBucketS3DataWriter(DataWriter, MultiS3Mixin):
             s3_writer = self.__get_s3_client(bucket_name)
         else:
             s3_writer = self.__get_s3_client(self.default_bucket)
-            path = os.path.join(self.default_prefix, path)
+            if self.default_prefix:
+                path = self.default_prefix + '/' + path
         return s3_writer.write(path, data)
