@@ -183,6 +183,7 @@ def to_pdf(file_path):
 
             return tmp_file_path
 
+
 if __name__ == '__main__':
     with gr.Blocks() as demo:
         gr.HTML(header)

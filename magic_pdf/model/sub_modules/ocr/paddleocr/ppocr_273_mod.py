@@ -27,6 +27,8 @@ class ModifiedPaddleOCR(PaddleOCR):
             self.use_onnx = True
             onnx_model_manager = ONNXModelSingleton()
             self.additional_ocr = onnx_model_manager.get_onnx_model(**kwargs)
+        else:
+            self.use_onnx = False
 
     def ocr(self,
             img,
