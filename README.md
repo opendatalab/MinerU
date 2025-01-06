@@ -288,7 +288,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/docker/global/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
+  docker run --rm -it --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
   magic-pdf --help
   ```
 
