@@ -19,6 +19,7 @@ einops
 accelerate
 doclayout_yolo==0.0.2
 rapidocr-paddle
+rapidocr-onnxruntime
 rapid_table
 doclayout-yolo==0.0.2
 openai
