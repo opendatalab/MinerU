@@ -1,10 +1,8 @@
-import pytest
+
 import os
 from conf import conf
 import os
 import json
-from magic_pdf.pipe.UNIPipe import UNIPipe
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from lib import calculate_score
 import shutil
 pdf_res_path = conf.conf["pdf_res_path"]
