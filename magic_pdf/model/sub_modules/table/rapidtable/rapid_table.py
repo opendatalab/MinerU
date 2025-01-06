@@ -27,8 +27,11 @@ class RapidTableModel(object):
         elif self.ocr_model_name == "PaddleOCR":
             bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
             ocr_result = self.ocr_engine.ocr(bgr_image)[0]
-            ocr_result = [[item[0], item[1][0], item[1][1]] for item in ocr_result if
+            if ocr_result:
+                ocr_result = [[item[0], item[1][0], item[1][1]] for item in ocr_result if
                           len(item) == 2 and isinstance(item[1], tuple)]
+            else:
+                ocr_result = None
         else:
             logger.error("OCR model not supported")
             ocr_result = None
