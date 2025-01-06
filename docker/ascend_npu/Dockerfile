@@ -16,8 +16,8 @@ RUN apt-get update && \
         python3.10 \
         python3.10-venv \
         python3.10-distutils \
-	python3.10-dev \
-	python3-pip \
+        python3.10-dev \
+        python3-pip \
         wget \
         git \
         libgl1 \
