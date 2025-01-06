@@ -6,12 +6,10 @@ from conf import conf
 from lib import common
 import time
 import magic_pdf.model as model_config
-from magic_pdf.pipe.UNIPipe import UNIPipe
 import os
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.data_reader_writer import S3DataReader, S3DataWriter
 from magic_pdf.config.make_content_config import DropMode, MakeMode
-from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
