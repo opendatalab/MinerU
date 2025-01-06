@@ -10,6 +10,8 @@ OS：openEuler 22.03 (LTS-SP3)
 ```
 由于适配 Ascend NPU 的环境较为复杂，建议使用 Docker 容器运行 MinerU。
 
+通过docker运行MinerU前需确保物理机已安装支持CANN 8.0.RC2的驱动和固件。
+
 
 ## 构建镜像
 请保持网络状况良好，并执行以下代码构建镜像。    
