@@ -284,7 +284,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/docker/china/Dockerfile -O Dockerfile
+  wget https://gitee.com/myhloli/MinerU/raw/master/docker/china/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
   docker run --rm -it --gpus=all mineru:latest /bin/bash
   magic-pdf --help
@@ -292,6 +292,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 ### 使用NPU
 
 如果您的设备存在NPU加速硬件，则可以通过以下教程使用NPU加速：
+[NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
 
 ## 使用
 
