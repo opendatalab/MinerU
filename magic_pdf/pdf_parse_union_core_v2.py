@@ -14,7 +14,7 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config
+from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config, get_device
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
@@ -91,6 +91,7 @@ def chars_to_content(span):
 
         content = ''
         for char in span['chars']:
+
             # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
             char1 = char
             char2 = span['chars'][span['chars'].index(char) + 1] if span['chars'].index(char) + 1 < len(span['chars']) else None
@@ -182,7 +183,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     for block in text_blocks_raw:
         for line in block['lines']:
             cosine, sine = line['dir']
-            if abs (cosine) < 0.9 or abs(sine) > 0.1:
+            if abs(cosine) < 0.9 or abs(sine) > 0.1:
                 continue
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
@@ -280,12 +281,20 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
 
 def model_init(model_name: str):
     from transformers import LayoutLMv3ForTokenClassification
-
+    device = get_device()
     if torch.cuda.is_available():
         device = torch.device('cuda')
         if torch.cuda.is_bf16_supported():
             supports_bfloat16 = True
         else:
+            supports_bfloat16 = False
+    elif str(device).startswith("npu"):
+        import torch_npu
+        if torch_npu.npu.is_available():
+            device = torch.device('npu')
+            supports_bfloat16 = False
+        else:
+            device = torch.device('cpu')
             supports_bfloat16 = False
     else:
         device = torch.device('cpu')
@@ -860,7 +869,7 @@ def pdf_parse_union(
         'pdf_info': pdf_info_list,
     }
 
-    clean_memory()
+    clean_memory(get_device())
 
     return new_pdf_info_dict
 

@@ -304,3 +304,53 @@ def calculate_is_angle(poly):
     else:
         # logger.info((p3[1] - p1[1])/height)
         return True
+
+
+class ONNXModelSingleton:
+    _instance = None
+    _models = {}
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def get_onnx_model(self, **kwargs):
+
+        lang = kwargs.get('lang', None)
+        det_db_box_thresh = kwargs.get('det_db_box_thresh', 0.3)
+        use_dilation = kwargs.get('use_dilation', True)
+        det_db_unclip_ratio = kwargs.get('det_db_unclip_ratio', 1.8)
+        key = (lang, det_db_box_thresh, use_dilation, det_db_unclip_ratio)
+        if key not in self._models:
+            self._models[key] = onnx_model_init(key)
+        return self._models[key]
+
+def onnx_model_init(key):
+
+    import importlib.resources
+
+    resource_path = importlib.resources.path('rapidocr_onnxruntime.models','')
+
+    onnx_model = None
+    additional_ocr_params = {
+        "use_onnx": True,
+        "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
+        "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
+        "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
+        "det_db_box_thresh": key[1],
+        "use_dilation": key[2],
+        "det_db_unclip_ratio": key[3],
+    }
+    # logger.info(f"additional_ocr_params: {additional_ocr_params}")
+    if key[0] is not None:
+        additional_ocr_params["lang"] = key[0]
+
+    from paddleocr import PaddleOCR
+    onnx_model = PaddleOCR(**additional_ocr_params)
+
+    if onnx_model is None:
+        logger.error('model init failed')
+        exit(1)
+    else:
+        return onnx_model

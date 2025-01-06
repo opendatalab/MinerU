@@ -81,6 +81,7 @@
             <li><a href="#在线体验">在线体验</a></li>
             <li><a href="#使用CPU快速体验">使用CPU快速体验</a></li>
             <li><a href="#使用GPU">使用GPU</a></li>
+            <li><a href="#使用NPU">使用NPU</a></li>
             </ul>
         </li>
         <li><a href="#使用">使用方式</a>
@@ -129,7 +130,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR支持84种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
-- 支持CPU和GPU环境
+- 支持纯CPU环境运行，并支持GPU/NPU加速
 - 兼容Windows、Linux和Mac平台
 
 ## 快速开始
@@ -141,6 +142,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
 - [Linux/Windows + CUDA](#使用gpu)
+- [Linux + CANN](#使用NPU)
 
 
 > [!WARNING]
@@ -157,19 +159,23 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td colspan="3" rowspan="2">操作系统</td>
     </tr>
     <tr>
-        <td>Ubuntu 22.04 LTS</td>
+        <td>Linux after 2019</td>
         <td>Windows 10 / 11</td>
         <td>macOS 11+</td>
     </tr>
     <tr>
         <td colspan="3">CPU</td>
-        <td>x86_64(暂不支持ARM Linux)</td>
+        <td>x86_64 / arm64</td>
         <td>x86_64(暂不支持ARM Windows)</td>
         <td>x86_64 / arm64</td>
     </tr>
     <tr>
         <td colspan="3">内存</td>
         <td colspan="3">大于等于16GB，推荐32G以上</td>
+    </tr>
+    <tr>
+        <td colspan="3">存储空间</td>
+        <td colspan="3">大于等于20GB，推荐使用SSD以获得最佳性能</td>
     </tr>
     <tr>
         <td colspan="3">python版本</td>
@@ -188,6 +194,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>None</td>
     </tr>
     <tr>
+        <td colspan="3">CANN环境(NPU支持)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
+        <td>None</td>
+    </tr>
+    <tr>
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">显存8G以上</td>
         <td colspan="2">
@@ -195,7 +207,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         8G显存及以上可开启全部加速功能</td>
         <td rowspan="2">None</td>
     </tr>
-
 </table>
 
 ### 在线体验
@@ -273,12 +284,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  wget https://github.com/opendatalab/MinerU/raw/master/docker/china/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
   docker run --rm -it --gpus=all mineru:latest /bin/bash
   magic-pdf --help
   ```
-    
+### 使用NPU
+
+如果您的设备存在NPU加速硬件，则可以通过以下教程使用NPU加速：
 
 ## 使用
 

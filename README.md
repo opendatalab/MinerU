@@ -81,6 +81,7 @@
             <li><a href="#online-demo">Online Demo</a></li>
             <li><a href="#quick-cpu-demo">Quick CPU Demo</a></li>
             <li><a href="#using-gpu">Using GPU</a></li>
+            <li><a href="#using-npu">Using NPU</a></li>
             </ul>
         </li>
         <li><a href="#usage">Usage</a>
@@ -129,7 +130,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR supports detection and recognition of 84 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
-- Supports both CPU and GPU environments.
+- Supports running in a pure CPU environment, and also supports GPU/NPU acceleration
 - Compatible with Windows, Linux, and Mac platforms.
 
 ## Quick Start
@@ -141,6 +142,7 @@ There are three different ways to experience MinerU:
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
 - [Linux/Windows + CUDA](#Using-GPU)
+- [Linux + CANN](#using-npu)
 
 > [!WARNING]
 > **Pre-installation Notice—Hardware and Software Environment Support**
@@ -156,19 +158,23 @@ There are three different ways to experience MinerU:
         <td colspan="3" rowspan="2">Operating System</td>
     </tr>
     <tr>
-        <td>Ubuntu 22.04 LTS</td>
+        <td>Linux after 2019</td>
         <td>Windows 10 / 11</td>
         <td>macOS 11+</td>
     </tr>
     <tr>
         <td colspan="3">CPU</td>
-        <td>x86_64(unsupported ARM Linux)</td>
+        <td>x86_64 / arm64</td>
         <td>x86_64(unsupported ARM Windows)</td>
         <td>x86_64 / arm64</td>
     </tr>
     <tr>
-        <td colspan="3">Memory</td>
+        <td colspan="3">Memory Requirements</td>
         <td colspan="3">16GB or more, recommended 32GB+</td>
+    </tr>
+    <tr>
+        <td colspan="3">Storage Requirements</td>
+        <td colspan="3">20GB or more, with a preference for SSD</td>
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
@@ -184,6 +190,12 @@ There are three different ways to experience MinerU:
         <td colspan="3">CUDA Environment</td>
         <td>Automatic installation [12.1 (pytorch) + 11.8 (paddle)]</td>
         <td>11.8 (manual installation) + cuDNN v8.7.0 (manual installation)</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CANN Environment(NPU support)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
         <td>None</td>
     </tr>
     <tr>
@@ -267,11 +279,16 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  wget https://github.com/opendatalab/MinerU/raw/master/docker/global/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
   docker run --rm -it --gpus=all mineru:latest /bin/bash
   magic-pdf --help
   ```
+
+### Using NPU
+
+If your device has NPU acceleration hardware, you can follow the tutorial below to use NPU acceleration:
+
 
 ## Usage
 

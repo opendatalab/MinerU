@@ -183,7 +183,7 @@ def doc_analyze(
         model_json.append(page_dict)
 
     gc_start = time.time()
-    clean_memory()
+    clean_memory(get_device())
     gc_time = round(time.time() - gc_start, 2)
     logger.info(f'gc time: {gc_time}')
 
