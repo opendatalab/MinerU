@@ -288,7 +288,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 ### Using NPU
 
 If your device has NPU acceleration hardware, you can follow the tutorial below to use NPU acceleration:
-
+[Ascend NPU Acceleration](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
 
 ## Usage
 
