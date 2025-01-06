@@ -47,7 +47,7 @@
     - For the data-side API, we have introduced the Dataset class, designed to provide a robust and flexible data processing framework. This framework currently supports a variety of document formats, including images (.jpg and .png), PDFs, Word documents (.doc and .docx), and PowerPoint presentations (.ppt and .pptx). It ensures effective support for data processing tasks ranging from simple to complex.
     - For the user-side API, we have meticulously designed the MinerU processing workflow as a series of composable Stages. Each Stage represents a specific processing step, allowing users to define new Stages according to their needs and creatively combine these stages to customize their data processing workflows.
   - Enhanced Compatibility
-    - By optimized the dependency environment, we ensure stable and efficient operation on ARM architecture Linux systems.
+    - By optimizing the dependency environment and configuration items, we ensure stable and efficient operation on ARM architecture Linux systems.
     - We have deeply integrated with Huawei Ascend NPU acceleration, providing autonomous and controllable high-performance computing capabilities. This supports the localization and development of AI application platforms in China.
 - 2024/11/22 0.10.0 released. Introducing hybrid OCR text extraction capabilities,
   - Significantly improved parsing performance in complex text distribution scenarios such as dense formulas, irregular span regions, and text represented by images.
