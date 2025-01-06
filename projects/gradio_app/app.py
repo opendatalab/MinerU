@@ -192,12 +192,12 @@ if __name__ == '__main__':
                 file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
                 max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
-                    layout_mode = gr.Dropdown(['layoutlmv3', 'doclayout_yolo'], label='Layout model', value='layoutlmv3')
+                    layout_mode = gr.Dropdown(['layoutlmv3', 'doclayout_yolo'], label='Layout model', value='doclayout_yolo')
                     language = gr.Dropdown(all_lang, label='Language', value='')
                 with gr.Row():
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                     is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
-                    table_enable = gr.Checkbox(label='Enable table recognition(test)', value=False)
+                    table_enable = gr.Checkbox(label='Enable table recognition(test)', value=True)
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
