@@ -30,7 +30,7 @@ RUN python3 -m venv /opt/mineru_venv
 # Activate the virtual environment and install necessary Python packages
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip && \
-    wget https://github.com/opendatalab/MinerU/raw/master/docker/global/requirements.txt && \
+    wget https://github.com/opendatalab/MinerU/raw/master/docker/global/requirements.txt -O requirements.txt && \
     pip3 install -r requirements.txt --extra-index-url https://wheels.myhloli.com && \
     pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
 

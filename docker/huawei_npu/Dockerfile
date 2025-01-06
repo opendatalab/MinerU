@@ -30,7 +30,7 @@ RUN python3 -m venv /opt/mineru_venv
 # Activate the virtual environment and install necessary Python packages
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip && \
-    wget https://gitee.com/myhloli/MinerU/raw/dev/docker/huawei_npu/requirements.txt && \
+    wget https://gitee.com/myhloli/MinerU/raw/dev/docker/huawei_npu/requirements.txt -O requirements.txt && \
     pip3 install -r requirements.txt --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple"
 
 # Copy the configuration file template and install magic-pdf latest
@@ -41,7 +41,7 @@ RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.tem
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
-    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py && \
+    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|npu|g' /root/magic-pdf.json"
 
