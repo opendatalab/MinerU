@@ -26,14 +26,14 @@ class PipeResult:
     def get_markdown(
         self,
         img_dir_or_bucket_prefix: str,
-        drop_mode=DropMode.WHOLE_PDF,
+        drop_mode=DropMode.NONE,
         md_make_mode=MakeMode.MM_MD,
     ) -> str:
         """Get markdown content.
 
         Args:
             img_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
-            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.WHOLE_PDF.
+            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
             md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.MM_MD.
 
         Returns:
@@ -50,7 +50,7 @@ class PipeResult:
         writer: DataWriter,
         file_path: str,
         img_dir_or_bucket_prefix: str,
-        drop_mode=DropMode.WHOLE_PDF,
+        drop_mode=DropMode.NONE,
         md_make_mode=MakeMode.MM_MD,
     ):
         """Dump The Markdown.
@@ -59,7 +59,7 @@ class PipeResult:
             writer (DataWriter): File writer handle
             file_path (str): The file location of markdown
             img_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
-            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.WHOLE_PDF.
+            drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
             md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.MM_MD.
         """
 
@@ -72,14 +72,12 @@ class PipeResult:
         self,
         image_dir_or_bucket_prefix: str,
         drop_mode=DropMode.NONE,
-        md_make_mode=MakeMode.STANDARD_FORMAT,
     ) -> str:
         """Get Content List.
 
         Args:
             image_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
             drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
-            md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.STANDARD_FORMAT.
 
         Returns:
             str: content list content
@@ -87,7 +85,7 @@ class PipeResult:
         pdf_info_list = self._pipe_res['pdf_info']
         content_list = union_make(
             pdf_info_list,
-            md_make_mode,
+            MakeMode.STANDARD_FORMAT,
             drop_mode,
             image_dir_or_bucket_prefix,
         )
@@ -99,7 +97,6 @@ class PipeResult:
         file_path: str,
         image_dir_or_bucket_prefix: str,
         drop_mode=DropMode.NONE,
-        md_make_mode=MakeMode.STANDARD_FORMAT,
     ):
         """Dump Content List.
 
@@ -108,10 +105,9 @@ class PipeResult:
             file_path (str): The file location of content list
             image_dir_or_bucket_prefix (str): The s3 bucket prefix or local file directory which used to store the figure
             drop_mode (str, optional): Drop strategy when some page which is corrupted or inappropriate. Defaults to DropMode.NONE.
-            md_make_mode (str, optional): The content Type of Markdown be made. Defaults to MakeMode.STANDARD_FORMAT.
         """
         content_list = self.get_content_list(
-            image_dir_or_bucket_prefix, drop_mode=drop_mode, md_make_mode=md_make_mode
+            image_dir_or_bucket_prefix, drop_mode=drop_mode,
         )
         writer.write_string(
             file_path, json.dumps(content_list, ensure_ascii=False, indent=4)

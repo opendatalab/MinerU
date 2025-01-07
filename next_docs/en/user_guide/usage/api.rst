@@ -17,7 +17,6 @@ Local File Example
     from magic_pdf.data.dataset import PymuDocDataset
     from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
     from magic_pdf.config.enums import SupportedPdfParseMethod
-    from magic_pdf.config.make_content_config import DropMode, MakeMode
 
     # args
     pdf_file_name = "abc.pdf"  # replace with the real pdf path
@@ -66,20 +65,23 @@ Local File Example
     ### draw spans result on each page
     pipe_result.draw_span(os.path.join(local_md_dir, f"{name_without_suff}_spans.pdf"))
 
+    ### get markdown content
+    md_content = pipe_result.get_markdown(image_dir)
+
     ### dump markdown
     pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
+
+    ### get content list content
+    content_list_content = pipe_result.get_content_list(image_dir)
 
     ### dump content list
     pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
 
-    ### get markdown content
-    md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD)
-
-    ### get content list content
-    content_list_content = pipe_result.get_content_list(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.STANDARD_FORMAT) 
-
     ### get middle json
     middle_json_content = pipe_result.get_middle_json()
+
+    ### dump middle json
+    pipe_result.dump_middle_json(md_writer, f'{name_without_suff}_middle.json')
 
 
 
@@ -93,7 +95,6 @@ S3 File Example
     from magic_pdf.data.data_reader_writer import S3DataReader, S3DataWriter
     from magic_pdf.data.dataset import PymuDocDataset
     from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-    from magic_pdf.config.make_content_config import DropMode, MakeMode
     from magic_pdf.config.enums import SupportedPdfParseMethod
 
     bucket_name = "{Your S3 Bucket Name}"  # replace with real bucket name
@@ -157,15 +158,16 @@ S3 File Example
     pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
 
     ### get markdown content
-    md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD)
+    md_content = pipe_result.get_markdown(image_dir)
 
     ### get content list content
-    content_list_content = pipe_result.get_content_list(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.STANDARD_FORMAT) 
+    content_list_content = pipe_result.get_content_list(image_dir)
 
     ### get middle json
     middle_json_content = pipe_result.get_middle_json()
 
-
+    ### dump middle json
+    pipe_result.dump_middle_json(md_writer, f'{name_without_suff}_middle.json')
 
 MS-Office
 ----------
