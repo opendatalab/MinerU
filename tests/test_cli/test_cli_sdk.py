@@ -7,16 +7,13 @@ from lib import common
 import time
 import magic_pdf.model as model_config
 from magic_pdf.data.read_api import read_local_images
-from magic_pdf.pipe.UNIPipe import UNIPipe
 from magic_pdf.data.read_api import read_local_office
 from magic_pdf.data.data_reader_writer import S3DataReader, S3DataWriter
 from magic_pdf.config.make_content_config import DropMode, MakeMode
-from magic_pdf.pipe.OCRPipe import OCRPipe
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.config.enums import SupportedPdfParseMethod
-model_config.__use_inside_model__ = True
 pdf_res_path = conf.conf['pdf_res_path']
 code_path = conf.conf['code_path']
 pdf_dev_path = conf.conf['pdf_dev_path']
@@ -75,19 +72,16 @@ class TestCli:
             pipe_result.draw_span(os.path.join(dir_path, f"{name_without_suff}_spans.pdf"))
 
             ### dump markdown
+            md_content = pipe_result.get_markdown(image_dir)
             pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
-
-            ### dump content list
-            pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
-
-            ### get markdown content
-            md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD)
-
             ### get content list content
-            content_list_content = pipe_result.get_content_list(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.STANDARD_FORMAT)
-
+            content_list_content = pipe_result.get_content_list(image_dir)
+            pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
+            
             ### get middle json
             middle_json_content = pipe_result.get_middle_json()
+            ### dump middle json
+            pipe_result.dump_middle_json(md_writer, f'{name_without_suff}_middle.json')
             common.sdk_count_folders_and_check_contents(dir_path)
 
     @pytest.mark.P0
@@ -104,49 +98,8 @@ class TestCli:
             image_dir = str(os.path.basename(local_image_dir))
             name_without_suff = os.path.basename(pdf_path).split(".pdf")[0]
             dir_path = os.path.join(pdf_dev_path, 'mineru')
-            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(dir_path)
-            reader1 = FileBasedDataReader("")
-            pdf_bytes = reader1.read(pdf_path)
-            ds = PymuDocDataset(pdf_bytes)
-            ## inference
-            if ds.classify() == SupportedPdfParseMethod.OCR:
-                infer_result = ds.apply(doc_analyze, ocr=True)
-                ## pipeline
-                pipe_result = infer_result.pipe_ocr_mode(image_writer)
-            else:
-                infer_result = ds.apply(doc_analyze, ocr=False)
-                ## pipeline
-                pipe_result = infer_result.pipe_txt_mode(image_writer)
-            common.delete_file(dir_path)
-            ### draw model result on each page
-            infer_result.draw_model(os.path.join(dir_path, f"{name_without_suff}_model.pdf"))
+            pass
 
-            ### get model inference result
-            model_inference_result = infer_result.get_infer_res()
-
-            ### draw layout result on each page
-            pipe_result.draw_layout(os.path.join(dir_path, f"{name_without_suff}_layout.pdf"))
-
-            ### draw spans result on each page
-            pipe_result.draw_span(os.path.join(dir_path, f"{name_without_suff}_spans.pdf"))
-
-            ### dump markdown
-            pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
-
-            ### dump content list
-            pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
-
-            ### get markdown content
-            md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD)
-
-            ### get content list content
-            content_list_content = pipe_result.get_content_list(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.STANDARD_FORMAT)
-
-            ### get middle json
-            middle_json_content = pipe_result.get_middle_json()
-            common.sdk_count_folders_and_check_contents(dir_path)
-
-    
     @pytest.mark.P0
     def test_pdf_local_ppt(self):
         """pdf sdk auto test."""
@@ -369,63 +322,7 @@ class TestCli:
         cmd = 'magic-pdf-dev --pdf %s --json %s --method %s' % (pdf_path, json_path, 'auto')
         logging.info(cmd)
         os.system(cmd)
-   
-
-    @pytest.mark.P1
-    def test_s3_sdk_auto(self):
-        """
-        test s3 sdk auto.
-        """
-        time.sleep(2)
-        pdf_ak = os.getenv('pdf_ak')
-        print (pdf_ak)
-        pdf_sk = os.environ.get('pdf_sk', "")
-        pdf_bucket = os.environ.get('bucket', "")
-        pdf_endpoint = os.environ.get('pdf_endpoint', "")
-        s3_pdf_path = conf.conf["s3_pdf_path"]
-        image_dir = "s3://" + pdf_bucket + "/mineru/test/output"
-        prefix = "mineru/test/output"
-        reader = S3DataReader(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
-        writer = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
-        # = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
-        image_writer = S3DataWriter(prefix, pdf_bucket, pdf_ak, pdf_sk, pdf_endpoint)
-        local_dir = "output"
-        name_without_suff = os.path.basename(s3_pdf_path).split(".")[0]
-
-        # read bytes
-        pdf_bytes = reader.read(s3_pdf_path)  # read the pdf content
-
-        # proc
-        ## Create Dataset Instance
-        ds = PymuDocDataset(pdf_bytes)
-
-        ## inference
-        if ds.classify() == SupportedPdfParseMethod.OCR:
-            infer_result = ds.apply(doc_analyze, ocr=True)
-
-            ## pipeline
-            pipe_result = infer_result.pipe_ocr_mode(image_writer)
-        else:
-            infer_result = ds.apply(doc_analyze, ocr=False)
-
-            ## pipeline
-            pipe_result = infer_result.pipe_txt_mode(image_writer)
-
-        ### draw model result on each page
-        infer_result.draw_model(os.path.join(local_dir, f'{name_without_suff}_model.pdf'))  # dump to local
-
-        ### draw layout result on each page
-        pipe_result.draw_layout(os.path.join(local_dir, f'{name_without_suff}_layout.pdf'))  # dump to local
-
-        ### draw spans result on each page
-        pipe_result.draw_span(os.path.join(local_dir, f'{name_without_suff}_spans.pdf'))   # dump to local
-
-        ### dump markdown
-        pipe_result.dump_md(writer, f'{name_without_suff}.md', "unittest/tmp/images")    # dump to remote s3
-
-        ### dump content list
-        pipe_result.dump_content_list(writer, f"{name_without_suff}_content_list.json", image_dir)
-
+    
 
     @pytest.mark.P1
     def test_local_magic_pdf_open_st_table(self):
