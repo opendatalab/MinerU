@@ -221,6 +221,6 @@ if __name__ == '__main__':
         file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
         change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, table_enable, language])
+        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, language])
 
     demo.launch(server_name='0.0.0.0')
