@@ -61,7 +61,7 @@ pipe_result.dump_md(md_writer, f"{name_without_suff}.md", image_dir)
 pipe_result.dump_content_list(md_writer, f"{name_without_suff}_content_list.json", image_dir)
 
 ### get markdown content
-md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.WHOLE_PDF, md_make_mode=MakeMode.MM_MD)
+md_content = pipe_result.get_markdown(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.MM_MD)
 
 ### get content list content
 content_list_content = pipe_result.get_content_list(image_dir, drop_mode=DropMode.NONE, md_make_mode=MakeMode.STANDARD_FORMAT)
