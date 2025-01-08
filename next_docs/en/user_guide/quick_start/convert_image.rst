@@ -45,8 +45,3 @@ API
     ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{input_file_name}.md", image_dir
     )
-
-    # txt mode
-    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
-        md_writer, f"{input_file_name}.md", image_dir
-    )

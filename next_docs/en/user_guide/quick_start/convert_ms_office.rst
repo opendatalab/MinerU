@@ -1,7 +1,7 @@
 
 
-Convert PPT
-============
+Convert Doc
+=============
 
 .. admonition:: Warning
     :class: tip
@@ -10,18 +10,19 @@ Convert PPT
 
     For certain MS-Office files, the quality of the converted PDF files may not be very high, which can affect the quality of the final output.
 
+
+
 Command Line
 ^^^^^^^^^^^^^
 
 .. code:: python
 
-    # make sure the file have correct suffix
-    magic-pdf -p a.ppt -o output -m auto
+    # replace with real ms-office file, we support MS-DOC, MS-DOCX, MS-PPT, MS-PPTX now
+    magic-pdf -p a.doc -o output -m auto
 
 
 API
-^^^^^
-
+^^^^^^^^
 .. code:: python
 
     import os
@@ -29,6 +30,8 @@ API
     from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
     from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
     from magic_pdf.data.read_api import read_local_office
+    from magic_pdf.config.enums import SupportedPdfParseMethod
+
 
     # prepare env
     local_image_dir, local_md_dir = "output/images", "output"
@@ -42,17 +45,16 @@ API
 
     # proc
     ## Create Dataset Instance
-    input_file = "some_ppt.ppt"     # replace with real ms-office file
+    input_file = "some_doc.doc"     # replace with real ms-office file, we support MS-DOC, MS-DOCX, MS-PPT, MS-PPTX now
 
     input_file_name = input_file.split(".")[0]
     ds = read_local_office(input_file)[0]
 
-    # ocr mode
-    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
-        md_writer, f"{input_file_name}.md", image_dir
-    )
 
-    # txt mode
-    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
-        md_writer, f"{input_file_name}.md", image_dir
-    )
+    ## inference
+    if ds.classify() == SupportedPdfParseMethod.OCR:
+        ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir)
+    else:
+        ds.apply(doc_analyze, ocr=False).pipe_txt_mode(image_writer).dump_md(
+        md_writer, f"{input_file_name}.md", image_dir)
