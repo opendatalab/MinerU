@@ -44,12 +44,13 @@ API
     ## Create Dataset Instance
     ds = PymuDocDataset(pdf_bytes)
 
-    # ocr mode
-    ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
+    ## inference
+    if ds.classify() == SupportedPdfParseMethod.OCR:
+        ds.apply(doc_analyze, ocr=True).pipe_ocr_mode(image_writer).dump_md(
         md_writer, f"{name_without_suff}.md", image_dir
     )
 
-    # txt mode
-    ds.apply(doc_analyze, ocr=True).pipe_txt_mode(image_writer).dump_md(
+    else:
+        ds.apply(doc_analyze, ocr=False).pipe_txt_mode(image_writer).dump_md(
         md_writer, f"{name_without_suff}.md", image_dir
     )
