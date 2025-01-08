@@ -373,6 +373,8 @@ def cal_block_index(fix_blocks, sorted_bboxes):
         # 使用xycut排序
         block_bboxes = []
         for block in fix_blocks:
+            # 如果block['bbox']任意值小于0，将其置为0
+            block['bbox'] = [max(0, x) for x in block['bbox']]
             block_bboxes.append(block['bbox'])
 
             # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
