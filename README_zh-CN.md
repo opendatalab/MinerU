@@ -150,8 +150,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
-- [Linux/Windows + CUDA](#使用gpu)
-- [Linux + CANN](#使用NPU)
+- 使用 CUDA/CANN 加速推理 
+  - [Linux/Windows + CUDA](#使用gpu)
+  - [Linux + CANN](#使用NPU)
 
 
 > [!WARNING]
