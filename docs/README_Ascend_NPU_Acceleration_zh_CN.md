@@ -51,6 +51,7 @@ magic-pdf --help
 
 ## 已知问题
 
-- paddleocr使用内嵌onnx模型，仅支持中英文ocr，不支持其他语言ocr
+- paddleocr使用内嵌onnx模型，仅在默认语言配置下能以较快速度对中英文进行识别
+- 自定义lang参数时，paddleocr速度会存在明显下降情况
 - layout模型使用layoutlmv3时会发生间歇性崩溃，建议使用默认配置的doclayout_yolo模型
 - 表格解析仅适配了rapid_table模型，其他模型可能会无法使用

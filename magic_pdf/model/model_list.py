@@ -9,3 +9,4 @@ class AtomicModel:
     MFR = "mfr"
     OCR = "ocr"
     Table = "table"
+    LangDetect = "langdetect"
