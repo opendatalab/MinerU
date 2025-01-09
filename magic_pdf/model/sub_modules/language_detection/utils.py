@@ -12,7 +12,6 @@ from magic_pdf.data.utils import load_images_from_pdf
 from magic_pdf.libs.config_reader import get_local_models_dir, get_device
 from magic_pdf.libs.pdf_check import extract_pages
 from magic_pdf.model.model_list import AtomicModel
-from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 
 
@@ -59,15 +58,29 @@ def get_text_images(simple_images):
 def auto_detect_lang(pdf_bytes: bytes):
     sample_docs = extract_pages(pdf_bytes)
     sample_pdf_bytes = sample_docs.tobytes()
-    simple_images = load_images_from_pdf(sample_pdf_bytes, dpi=96)
+    simple_images = load_images_from_pdf(sample_pdf_bytes, dpi=200)
     text_images = get_text_images(simple_images)
-    local_models_dir, device, configs = get_model_config()
-    # 用yolo11做语言分类
-    langdetect_model_weights = str(
-        os.path.join(
-            local_models_dir, configs['weights'][MODEL_NAME.YOLO_V11_LangDetect]
-        )
-    )
-    langdetect_model = YOLOv11LangDetModel(langdetect_model_weights, device)
+    langdetect_model = model_init(MODEL_NAME.YOLO_V11_LangDetect)
     lang = langdetect_model.do_detect(text_images)
     return lang
+
+
+def model_init(model_name: str):
+    atom_model_manager = AtomModelSingleton()
+
+    if model_name == MODEL_NAME.YOLO_V11_LangDetect:
+        local_models_dir, device, configs = get_model_config()
+        model = atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.LangDetect,
+            langdetect_model_name=MODEL_NAME.YOLO_V11_LangDetect,
+            langdetect_model_weight=str(
+                os.path.join(
+                    local_models_dir, configs['weights'][MODEL_NAME.YOLO_V11_LangDetect]
+                )
+            ),
+            device=device,
+        )
+    else:
+        raise ValueError(f"model_name {model_name} not found")
+    return model
+

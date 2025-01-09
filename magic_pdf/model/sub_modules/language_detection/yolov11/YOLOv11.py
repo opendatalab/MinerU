@@ -2,6 +2,7 @@
 from collections import Counter
 from uuid import uuid4
 
+import torch
 from PIL import Image
 from loguru import logger
 from ultralytics import YOLO
@@ -83,10 +84,14 @@ def resize_images_to_224(image):
 
 
 class YOLOv11LangDetModel(object):
-    def __init__(self, weight, device):
-        self.model = YOLO(weight)
-        self.device = device
+    def __init__(self, langdetect_model_weight, device):
 
+        self.model = YOLO(langdetect_model_weight)
+
+        if str(device).startswith("npu"):
+            self.device = torch.device(device)
+        else:
+            self.device = device
     def do_detect(self, images: list):
         all_images = []
         for image in images:
@@ -99,14 +104,13 @@ class YOLOv11LangDetModel(object):
                 all_images.append(resize_images_to_224(temp_image))
 
         images_lang_res = self.batch_predict(all_images, batch_size=8)
-        logger.info(f"images_lang_res: {images_lang_res}")
+        # logger.info(f"images_lang_res: {images_lang_res}")
         if len(images_lang_res) > 0:
             count_dict = Counter(images_lang_res)
             language = max(count_dict, key=count_dict.get)
         else:
             language = None
         return language
-
 
     def predict(self, image):
         results = self.model.predict(image, verbose=False, device=self.device)
@@ -117,6 +121,7 @@ class YOLOv11LangDetModel(object):
 
     def batch_predict(self, images: list, batch_size: int) -> list:
         images_lang_res = []
+
         for index in range(0, len(images), batch_size):
             lang_res = [
                 image_res.cpu()
