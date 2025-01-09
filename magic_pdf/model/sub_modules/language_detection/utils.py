@@ -24,11 +24,11 @@ def get_model_config():
     config_path = os.path.join(model_config_dir, 'model_configs.yaml')
     with open(config_path, 'r', encoding='utf-8') as f:
         configs = yaml.load(f, Loader=yaml.FullLoader)
-    return local_models_dir, device, configs
+    return root_dir, local_models_dir, device, configs
 
 
 def get_text_images(simple_images):
-    local_models_dir, device, configs = get_model_config()
+    _, local_models_dir, device, configs = get_model_config()
     atom_model_manager = AtomModelSingleton()
     temp_layout_model = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.Layout,
@@ -69,15 +69,11 @@ def model_init(model_name: str):
     atom_model_manager = AtomModelSingleton()
 
     if model_name == MODEL_NAME.YOLO_V11_LangDetect:
-        local_models_dir, device, configs = get_model_config()
+        root_dir, _, device, _ = get_model_config()
         model = atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.LangDetect,
             langdetect_model_name=MODEL_NAME.YOLO_V11_LangDetect,
-            langdetect_model_weight=str(
-                os.path.join(
-                    local_models_dir, configs['weights'][MODEL_NAME.YOLO_V11_LangDetect]
-                )
-            ),
+            langdetect_model_weight=str(os.path.join(root_dir, 'resources', 'yolov11-langdetect', 'yolo_v11_ft.pt')),
             device=device,
         )
     else:
