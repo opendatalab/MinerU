@@ -6,4 +6,3 @@ weights:
   struct_eqtable: TabRec/StructEqTable
   tablemaster: TabRec/TableMaster
   rapid_table: TabRec/RapidTable
-  yolo_v11n_langdetect: LangDetect/YOLO/yolo_v11_ft.pt
