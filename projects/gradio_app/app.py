@@ -193,7 +193,7 @@ if __name__ == '__main__':
                 max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
                     layout_mode = gr.Dropdown(['layoutlmv3', 'doclayout_yolo'], label='Layout model', value='doclayout_yolo')
-                    language = gr.Dropdown(all_lang, label='Language', value='')
+                    language = gr.Dropdown(all_lang, label='Language', value='auto')
                 with gr.Row():
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                     is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
@@ -221,6 +221,6 @@ if __name__ == '__main__':
         file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
         change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr, language])
+        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
 
     demo.launch(server_name='0.0.0.0')
