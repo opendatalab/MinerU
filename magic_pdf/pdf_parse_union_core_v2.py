@@ -373,6 +373,8 @@ def cal_block_index(fix_blocks, sorted_bboxes):
         # 使用xycut排序
         block_bboxes = []
         for block in fix_blocks:
+            # 如果block['bbox']任意值小于0，将其置为0
+            block['bbox'] = [max(0, x) for x in block['bbox']]
             block_bboxes.append(block['bbox'])
 
             # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
@@ -765,6 +767,11 @@ def parse_page_core(
 
     """重排block"""
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
+
+    """block内重排(img和table的block内多个caption或footnote的排序)"""
+    for block in sorted_blocks:
+        if block['type'] in [BlockType.Image, BlockType.Table]:
+            block['blocks'] = sorted(block['blocks'], key=lambda b: b['index'])
 
     """获取QA需要外置的list"""
     images, tables, interline_equations = get_qa_need_list_v2(sorted_blocks)

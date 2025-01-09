@@ -2,8 +2,8 @@ import torch
 from loguru import logger
 
 from magic_pdf.config.constants import MODEL_NAME
-from magic_pdf.libs.config_reader import get_device
 from magic_pdf.model.model_list import AtomicModel
+from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
 from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
     DocLayoutYOLOModel
 from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
@@ -60,6 +60,13 @@ def doclayout_yolo_model_init(weight, device='cpu'):
     if str(device).startswith("npu"):
         device = torch.device(device)
     model = DocLayoutYOLOModel(weight, device)
+    return model
+
+
+def langdetect_model_init(langdetect_model_weight, device='cpu'):
+    if str(device).startswith("npu"):
+        device = torch.device(device)
+    model = YOLOv11LangDetModel(langdetect_model_weight, device)
     return model
 
 
@@ -130,6 +137,9 @@ def atom_model_init(model_name: str, **kwargs):
                 kwargs.get('doclayout_yolo_weights'),
                 kwargs.get('device')
             )
+        else:
+            logger.error('layout model name not allow')
+            exit(1)
     elif model_name == AtomicModel.MFD:
         atom_model = mfd_model_init(
             kwargs.get('mfd_weights'),
@@ -155,6 +165,15 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('device'),
             kwargs.get('ocr_engine')
         )
+    elif model_name == AtomicModel.LangDetect:
+        if kwargs.get('langdetect_model_name') == MODEL_NAME.YOLO_V11_LangDetect:
+            atom_model = langdetect_model_init(
+                kwargs.get('langdetect_model_weight'),
+                kwargs.get('device')
+            )
+        else:
+            logger.error('langdetect model name not allow')
+            exit(1)
     else:
         logger.error('model name not allow')
         exit(1)

@@ -21,7 +21,7 @@ class ModifiedPaddleOCR(PaddleOCR):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-
+        self.lang = kwargs.get('lang', 'ch')
         # 在cpu架构为arm且不支持cuda时调用onnx、
         if not torch.cuda.is_available() and platform.machine() in ['arm64', 'aarch64']:
             self.use_onnx = True
@@ -94,7 +94,7 @@ class ModifiedPaddleOCR(PaddleOCR):
             ocr_res = []
             for img in imgs:
                 img = preprocess_image(img)
-                if self.use_onnx:
+                if self.lang in ['ch'] and self.use_onnx:
                     dt_boxes, elapse = self.additional_ocr.text_detector(img)
                 else:
                     dt_boxes, elapse = self.text_detector(img)
@@ -124,7 +124,7 @@ class ModifiedPaddleOCR(PaddleOCR):
                     img, cls_res_tmp, elapse = self.text_classifier(img)
                     if not rec:
                         cls_res.append(cls_res_tmp)
-                if self.use_onnx:
+                if self.lang in ['ch'] and self.use_onnx:
                     rec_res, elapse = self.additional_ocr.text_recognizer(img)
                 else:
                     rec_res, elapse = self.text_recognizer(img)
@@ -142,7 +142,7 @@ class ModifiedPaddleOCR(PaddleOCR):
 
         start = time.time()
         ori_im = img.copy()
-        if self.use_onnx:
+        if self.lang in ['ch'] and self.use_onnx:
             dt_boxes, elapse = self.additional_ocr.text_detector(img)
         else:
             dt_boxes, elapse = self.text_detector(img)
@@ -183,7 +183,7 @@ class ModifiedPaddleOCR(PaddleOCR):
             time_dict['cls'] = elapse
             logger.debug("cls num  : {}, elapsed : {}".format(
                 len(img_crop_list), elapse))
-        if self.use_onnx:
+        if self.lang in ['ch'] and self.use_onnx:
             rec_res, elapse = self.additional_ocr.text_recognizer(img_crop_list)
         else:
             rec_res, elapse = self.text_recognizer(img_crop_list)
