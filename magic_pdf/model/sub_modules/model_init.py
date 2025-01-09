@@ -63,10 +63,10 @@ def doclayout_yolo_model_init(weight, device='cpu'):
     return model
 
 
-def langdetect_model_init(langdetect_model_weights_dir, device='cpu'):
+def langdetect_model_init(langdetect_model_weight, device='cpu'):
     if str(device).startswith("npu"):
         device = torch.device(device)
-    model = YOLOv11LangDetModel(langdetect_model_weights_dir, device)
+    model = YOLOv11LangDetModel(langdetect_model_weight, device)
     return model
 
 
@@ -168,7 +168,7 @@ def atom_model_init(model_name: str, **kwargs):
     elif model_name == AtomicModel.LangDetect:
         if kwargs.get('langdetect_model_name') == MODEL_NAME.YOLO_V11_LangDetect:
             atom_model = langdetect_model_init(
-                kwargs.get('langdetect_model_weights_dir'),
+                kwargs.get('langdetect_model_weight'),
                 kwargs.get('device')
             )
         else:

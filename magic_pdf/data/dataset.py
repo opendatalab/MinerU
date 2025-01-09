@@ -153,6 +153,7 @@ class PymuDocDataset(Dataset):
             logger.info(f"lang: {lang}, detect_lang: {self._lang}")
         else:
             self._lang = lang
+            logger.info(f"lang: {lang}")
     def __len__(self) -> int:
         """The page number of the pdf."""
         return len(self._records)
