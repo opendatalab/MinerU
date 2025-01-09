@@ -768,6 +768,11 @@ def parse_page_core(
     """重排block"""
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
 
+    """block内重排(img和table的block内多个caption或footnote的排序)"""
+    for block in sorted_blocks:
+        if block['type'] in [BlockType.Image, BlockType.Table]:
+            block['blocks'] = sorted(block['blocks'], key=lambda b: b['index'])
+
     """获取QA需要外置的list"""
     images, tables, interline_equations = get_qa_need_list_v2(sorted_blocks)
 
