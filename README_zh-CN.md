@@ -139,7 +139,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR支持84种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
-- 支持纯CPU环境运行，并支持GPU/NPU加速
+- 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
 - 兼容Windows、Linux和Mac平台
 
 ## 快速开始
@@ -152,7 +152,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
 - 使用 CUDA/CANN 加速推理 
   - [Linux/Windows + CUDA](#使用gpu)
-  - [Linux + CANN](#使用NPU)
+  - [Linux + CANN](#使用npu)
+  - [MacOS + MPS](#使用mps)
 
 
 > [!WARNING]
@@ -304,6 +305,24 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 如果您的设备存在NPU加速硬件，则可以通过以下教程使用NPU加速：
 
 [NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+
+### 使用MPS
+如果您的设备使用Apple silicon 芯片，您可以在部分支持的任务（layout检测/公式检测）中开启mps加速：
+
+您可以通过在 `magic-pdf.json` 配置文件中将 `device-mode` 参数设置为 `mps` 来启用 MPS 加速。
+
+```json
+{
+    // other config
+    "device-mode": "mps"
+}
+```
+
+> [!TIP]
+> 由于公式识别任务无法开启mps加速，您可在不需要识别公式的任务关闭公式识别功能以获得最佳性能。
+>
+> 您可以通过将 `formula-config` 部分中的 `enable` 参数设置为 `false` 来禁用公式识别功能。
+
 
 ## 使用
 

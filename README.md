@@ -139,7 +139,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR supports detection and recognition of 84 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
-- Supports running in a pure CPU environment, and also supports GPU/NPU acceleration
+- Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
 - Compatible with Windows, Linux, and Mac platforms.
 
 ## Quick Start
@@ -150,9 +150,10 @@ There are three different ways to experience MinerU:
 
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
-- Accelerate inference by using CUDA/CANN
+- Accelerate inference by using CUDA/CANN/MPS
   - [Linux/Windows + CUDA](#Using-GPU)
   - [Linux + CANN](#using-npu)
+  - [MacOS + MPS](#using-mps)
 
 > [!WARNING]
 > **Pre-installation Notice—Hardware and Software Environment Support**
@@ -300,6 +301,24 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 If your device has NPU acceleration hardware, you can follow the tutorial below to use NPU acceleration:
 
 [Ascend NPU Acceleration](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+
+### Using MPS
+
+If your device uses Apple silicon chips, you can enable MPS acceleration for certain supported tasks (such as layout detection and formula detection).
+
+You can enable MPS acceleration by setting the `device-mode` parameter to `mps` in the `magic-pdf.json` configuration file.
+
+```json
+{
+    // other config
+    "device-mode": "mps"
+}
+```
+
+> [!TIP]
+> Since the formula recognition task cannot utilize MPS acceleration, you can disable the formula recognition feature in tasks where it is not needed to achieve optimal performance.
+>
+> You can disable the formula recognition feature by setting the `enable` parameter in the `formula-config` section to `false`.
 
 ## Usage
 
