@@ -2,12 +2,11 @@
 Quick Start 
 ==============
 
-Eager to get started? This page gives a good introduction to MinerU. Follow Installation to set up a project and install MinerU first.
-
+Want to learn about the usage methods under different scenarios ? This page gives good examples about multiple usage cases match your needs.
 
 .. toctree::
     :maxdepth: 1
 
-    quick_start/command_line
-    quick_start/to_markdown
-
+    quick_start/convert_pdf 
+    quick_start/convert_image
+    quick_start/convert_ms_office

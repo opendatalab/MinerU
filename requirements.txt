@@ -1,10 +1,10 @@
 boto3>=1.28.43
 Brotli>=1.1.0
 click>=8.1.7
-fast-langdetect==0.2.0
+fast-langdetect>=0.2.3
 loguru>=0.6.0
 numpy>=1.21.6,<2.0.0
-pydantic>=2.7.2,<2.8.0
+pydantic>=2.7.2
 PyMuPDF>=1.24.9
 scikit-learn>=1.0.2
 torch>=2.2.2

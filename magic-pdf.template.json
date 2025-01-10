@@ -7,7 +7,7 @@
     "layoutreader-model-dir":"/tmp/layoutreader",
     "device-mode":"cpu",
     "layout-config": {
-        "model": "layoutlmv3"
+        "model": "doclayout_yolo"
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -16,8 +16,28 @@
     },
     "table-config": {
         "model": "rapid_table",
-        "enable": false,
+        "enable": true,
         "max_time": 400
     },
-    "config_version": "1.0.0"
+    "llm-aided-config": {
+        "formula_aided": {
+            "api_key": "your_api_key",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen2.5-7b-instruct",
+            "enable": false
+        },
+        "text_aided": {
+            "api_key": "your_api_key",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen2.5-7b-instruct",
+            "enable": false
+        },
+        "title_aided": {
+            "api_key": "your_api_key",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen2.5-32b-instruct",
+            "enable": false
+        }
+    },
+    "config_version": "1.1.0"
 }

@@ -9,8 +9,9 @@ from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.libs.draw_bbox import draw_char_bbox
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.model.operators import InferenceResult
+from magic_pdf.operators.models import InferenceResult
 
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
@@ -83,6 +84,7 @@ def do_parse(
     f_make_md_mode=MakeMode.MM_MD,
     f_draw_model_bbox=False,
     f_draw_line_sort_bbox=False,
+    f_draw_char_bbox=False,
     start_page_id=0,
     end_page_id=None,
     lang=None,
@@ -94,9 +96,7 @@ def do_parse(
         logger.warning('debug mode is on')
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
-
-    if lang == '':
-        lang = None
+        # f_draw_char_bbox = True
 
     pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
         pdf_bytes, start_page_id, end_page_id
@@ -109,7 +109,7 @@ def do_parse(
     )
     image_dir = str(os.path.basename(local_image_dir))
 
-    ds = PymuDocDataset(pdf_bytes)
+    ds = PymuDocDataset(pdf_bytes, lang=lang)
 
     if len(model_list) == 0:
         if model_config.__use_inside_model__:
@@ -118,50 +118,50 @@ def do_parse(
                     infer_result = ds.apply(
                         doc_analyze,
                         ocr=False,
-                        lang=lang,
+                        lang=ds._lang,
                         layout_model=layout_model,
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
                     pipe_result = infer_result.pipe_txt_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
                 else:
                     infer_result = ds.apply(
                         doc_analyze,
                         ocr=True,
-                        lang=lang,
+                        lang=ds._lang,
                         layout_model=layout_model,
                         formula_enable=formula_enable,
                         table_enable=table_enable,
                     )
                     pipe_result = infer_result.pipe_ocr_mode(
-                        image_writer, debug_mode=True, lang=lang
+                        image_writer, debug_mode=True, lang=ds._lang
                     )
 
             elif parse_method == 'txt':
                 infer_result = ds.apply(
                     doc_analyze,
                     ocr=False,
-                    lang=lang,
+                    lang=ds._lang,
                     layout_model=layout_model,
                     formula_enable=formula_enable,
                     table_enable=table_enable,
                 )
                 pipe_result = infer_result.pipe_txt_mode(
-                    image_writer, debug_mode=True, lang=lang
+                    image_writer, debug_mode=True, lang=ds._lang
                 )
             elif parse_method == 'ocr':
                 infer_result = ds.apply(
                     doc_analyze,
                     ocr=True,
-                    lang=lang,
+                    lang=ds._lang,
                     layout_model=layout_model,
                     formula_enable=formula_enable,
                     table_enable=table_enable,
                 )
                 pipe_result = infer_result.pipe_ocr_mode(
-                    image_writer, debug_mode=True, lang=lang
+                    image_writer, debug_mode=True, lang=ds._lang
                 )
             else:
                 logger.error('unknown parse method')
@@ -170,19 +170,26 @@ def do_parse(
             logger.error('need model list input')
             exit(2)
     else:
+
         infer_result = InferenceResult(model_list, ds)
         if parse_method == 'ocr':
             pipe_result = infer_result.pipe_ocr_mode(
-                image_writer, debug_mode=True, lang=lang
+                image_writer, debug_mode=True, lang=ds._lang
             )
         elif parse_method == 'txt':
             pipe_result = infer_result.pipe_txt_mode(
-                image_writer, debug_mode=True, lang=lang
+                image_writer, debug_mode=True, lang=ds._lang
             )
         else:
-            pipe_result = infer_result.pipe_auto_mode(
-                image_writer, debug_mode=True, lang=lang
-            )
+            if ds.classify() == SupportedPdfParseMethod.TXT:
+                pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+            else:
+                pipe_result = infer_result.pipe_ocr_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+
 
     if f_draw_model_bbox:
         infer_result.draw_model(
@@ -200,6 +207,9 @@ def do_parse(
         pipe_result.draw_line_sort(
             os.path.join(local_md_dir, f'{pdf_file_name}_line_sort.pdf')
         )
+
+    if f_draw_char_bbox:
+        draw_char_bbox(pdf_bytes, local_md_dir, f'{pdf_file_name}_char_bbox.pdf')
 
     if f_dump_md:
         pipe_result.dump_md(

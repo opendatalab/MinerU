@@ -30,3 +30,10 @@ class EmptyData(Exception):
 
     def __str__(self):
         return f'Empty data: {self.msg}'
+
+class CUDA_NOT_AVAILABLE(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return f'CUDA not available: {self.msg}'
