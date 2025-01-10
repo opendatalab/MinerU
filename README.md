@@ -34,7 +34,7 @@
 <br>
 <br>
 <a href="https://mineru.org.cn/client?source=github">
-A more convenient way to use: MinerU Desktop. No programming required, no login needed, graphical interface, simple interaction, and hassle-free experience.</a>🚀🚀🚀
+Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple interface and smooth interactions. Enjoy it without any fuss!</a>🚀🚀🚀
 
 </p>
 
