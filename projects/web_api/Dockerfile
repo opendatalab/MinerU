@@ -1,32 +1,19 @@
 # Use the official Ubuntu base image
-FROM ubuntu:latest
-
-# ENV http_proxy http://127.0.0.1:7890
-# ENV https_proxy http://127.0.0.1:7890
+FROM ubuntu:22.04
 
 # Set environment variables to non-interactive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG C.UTF-8
 
-# ADD sources.list /etc/apt
-# RUN apt-get clean
-
-
-
 # Update the package list and install necessary packages
-RUN apt-get -q update \
-    && apt-get -q install -y --no-install-recommends \
-        apt-utils \
-        bats \
-        build-essential
-RUN apt-get update && apt-get install -y vim net-tools procps lsof curl wget iputils-ping telnet lrzsz git
-
-RUN apt-get update && \
-    apt-get install -y \
-        software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y \
+RUN apt-get -q update && \
+    apt-get -q install -y --no-install-recommends \
+        build-essential \
+        software-properties-common \
+        # gpg \
+    # && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y \
         python3.10 \
         python3.10-venv \
         python3.10-distutils \
@@ -35,41 +22,31 @@ RUN apt-get update && \
         git \
         libgl1 \
         libglib2.0-0 \
-        && rm -rf /var/lib/apt/lists/*
-        
-# RUN unset http_proxy && unset https_proxy
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as the default python3
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
-# Create a virtual environment for MinerU
-RUN python3 -m venv /opt/mineru_venv
-RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
-# Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
+# Create a virtual environment for MinerU and install packages
+RUN python3 -m venv /opt/mineru_venv && \
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
+    /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip install --upgrade pip && \
-    pip install magic-pdf[full] --extra-index-url https://myhloli.github.io/wheels/ --no-cache-dir"
-
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip install fastapi uvicorn python-multipart --no-cache-dir"
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip uninstall  paddlepaddle -y"
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ --no-cache-dir"
+    pip install magic-pdf[full] --extra-index-url https://myhloli.github.io/wheels/ --no-cache-dir && \
+    pip install fastapi uvicorn python-multipart --no-cache-dir && \
+    pip uninstall paddlepaddle -y && \
+    pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ --no-cache-dir"
 
 # Copy the configuration file template and set up the model directory
-COPY magic-pdf.template.json /root/magic-pdf.json
-ADD models /opt/models
-ADD .paddleocr /root/.paddleocr 
-ADD app.py /root/app.py
+COPY models/models /opt/models
+COPY layoutreader /opt/layoutreader
+COPY .paddleocr /root/.paddleocr 
+COPY app.py /root/app.py
+COPY magic-pdf.json /root/magic-pdf.json
 
 WORKDIR /root
 
-# Set the models directory in the configuration file (adjust the path as needed)
-RUN sed -i 's|/tmp/models|/opt/models|g' /root/magic-pdf.json
 
 # Create the models directory
 # RUN mkdir -p /opt/models
