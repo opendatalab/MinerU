@@ -233,7 +233,7 @@ Test Version (Synced with dev branch updates, testing new features):
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
 ```
 
 #### 2. Download model weight files
