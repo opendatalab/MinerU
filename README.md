@@ -273,7 +273,7 @@ You can modify certain configurations in this file to enable or disable features
     },
     "table-config": {
         "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
-        "enable": false, // The table recognition feature is disabled by default. If you need to enable it, please change the value here to "true".
+        "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
         "max_time": 400
     }
 }

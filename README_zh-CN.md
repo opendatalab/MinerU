@@ -154,7 +154,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
-- 使用 CUDA/CANN 加速推理 
+- 使用 CUDA/CANN/MPS 加速推理 
   - [Linux/Windows + CUDA](#使用gpu)
   - [Linux + CANN](#使用npu)
   - [MacOS + MPS](#使用mps)
@@ -277,7 +277,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
     },
     "table-config": {
         "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
-        "enable": false, // 表格识别功能默认是关闭的，如果需要开启请修改此处的值为"true"
+        "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
         "max_time": 400
     }
 }
