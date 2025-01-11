@@ -16,7 +16,7 @@ OS：openEuler 22.03 (LTS-SP3)
 ## 构建镜像
 请保持网络状况良好，并执行以下代码构建镜像。    
 ```bash
-wget https://gitee.com/myhloli/MinerU/raw/master/docker/ascend_npu/Dockerfile -O Dockerfile
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/ascend_npu/Dockerfile -O Dockerfile
 docker build -t mineru_npu:latest .
 ```
 如果构建过程中未发生报错则说明镜像构建成功。
