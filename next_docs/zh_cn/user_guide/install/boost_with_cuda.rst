@@ -136,7 +136,7 @@ Ubuntu 22.04 LTS
 
 .. code:: bash
 
-   wget https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf
+   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/small_ocr.pdf
    magic-pdf -p small_ocr.pdf -o ./output
 
 9. 测试CUDA加速

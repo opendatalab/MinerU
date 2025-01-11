@@ -299,7 +299,7 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://gitee.com/myhloli/MinerU/raw/master/docker/china/Dockerfile -O Dockerfile
+  wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
   docker run --rm -it --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
   magic-pdf --help

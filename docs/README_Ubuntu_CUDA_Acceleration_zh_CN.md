@@ -93,7 +93,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 从仓库中下载样本文件，并测试
 
 ```bash
-wget https://gitee.com/myhloli/MinerU/raw/master/demo/small_ocr.pdf
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/small_ocr.pdf
 magic-pdf -p small_ocr.pdf -o ./output
 ```
 
