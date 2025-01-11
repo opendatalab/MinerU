@@ -90,7 +90,7 @@
 .. code-block:: shell
 
     pip install huggingface_hub
-    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models_hf.py -O download_models_hf.py
     python download_models_hf.py
 
 

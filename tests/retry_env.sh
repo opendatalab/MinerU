@@ -10,7 +10,7 @@ while true; do
     pip install -e .
     python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
     pip install modelscope
-    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py
     python download_models.py
     exit_code=$?
     if [ $exit_code -eq 0 ]; then

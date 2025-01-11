@@ -30,19 +30,19 @@ RUN python3 -m venv /opt/mineru_venv
 # Activate the virtual environment and install necessary Python packages
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple && \
-    wget https://gitee.com/myhloli/MinerU/raw/master/docker/china/requirements.txt -O requirements.txt && \
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/requirements.txt -O requirements.txt && \
     pip3 install -r requirements.txt --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple && \
     pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
 
 # Copy the configuration file template and install magic-pdf latest
-RUN /bin/bash -c "wget https://gitee.com/myhloli/MinerU/raw/master/magic-pdf.template.json && \
+RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/magic-pdf.template.json && \
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
     pip3 install -U magic-pdf -i https://mirrors.aliyun.com/pypi/simple"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
-    wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py && \
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
