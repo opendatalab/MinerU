@@ -31,7 +31,7 @@ python server.py
 ### 2. 启动客户端
 以下代码展示了客户端的使用方式，可根据需求修改配置：
 ```python
-files = ['demo/small_ocr.pdf']  # 替换为文件路径，支持 jpg/jpeg、png、pdf 文件
+files = ['demo/small_ocr.pdf']  # 替换为文件路径，支持 pdf、jpg/jpeg、png、doc、docx、ppt、pptx 文件
 n_jobs = np.clip(len(files), 1, 8)  # 设置并发线程数，此处最大为 8，可根据自身修改
 results = Parallel(n_jobs, prefer='threads', verbose=10)(
     delayed(do_parse)(p) for p in files
