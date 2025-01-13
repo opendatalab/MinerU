@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag jianjungki/mineru:latest
+      run: docker build . --file docker/global/Dockerfile --tag jianjungki/mineru:latest
       
    # 设置 Docker Hub 凭据
     - name: Log in to Docker Hub
