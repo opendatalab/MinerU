@@ -16,7 +16,7 @@ from magic_pdf.data.data_reader_writer import FileBasedDataWriter
 from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.libs.json_compressor import JsonCompressor
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.model.operators import InferenceResult
+from magic_pdf.operators.models import InferenceResult
 
 from ..extentions import app, db
 from .ext import find_file
