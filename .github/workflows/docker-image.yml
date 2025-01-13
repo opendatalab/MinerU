@@ -26,4 +26,4 @@ jobs:
 
     # 推送 Docker 镜像到 Docker Hub
     - name: Push Docker image for mineru
-      run: docker push docker.io/jianjungki/jianjungki/mineru:latest
+      run: docker push docker.io/jianjungki/mineru:latest
