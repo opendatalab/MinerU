@@ -10,8 +10,6 @@ import filetype
 import litserve as ls
 from pathlib import Path
 from fastapi import HTTPException
-from magic_pdf.tools.cli import do_parse, convert_file_to_pdf
-from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
 
 
 class MinerUAPI(ls.LitAPI):
@@ -23,6 +21,12 @@ class MinerUAPI(ls.LitAPI):
             os.environ['CUDA_VISIBLE_DEVICES'] = device.split(':')[-1]
             if torch.cuda.device_count() > 1:
                 raise RuntimeError("Remove any CUDA actions before setting 'CUDA_VISIBLE_DEVICES'.")
+
+        from magic_pdf.tools.cli import do_parse, convert_file_to_pdf
+        from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
+
+        self.do_parse = do_parse
+        self.convert_file_to_pdf = convert_file_to_pdf
 
         model_manager = ModelSingleton()
         model_manager.get_model(True, False)
@@ -41,7 +45,7 @@ class MinerUAPI(ls.LitAPI):
         try:
             pdf_name = str(uuid.uuid4())
             output_dir = self.output_dir.joinpath(pdf_name)
-            do_parse(self.output_dir, pdf_name, inputs[0], [], **inputs[1])
+            self.do_parse(self.output_dir, pdf_name, inputs[0], [], **inputs[1])
             return output_dir
         except Exception as e:
             shutil.rmtree(output_dir, ignore_errors=True)
@@ -73,7 +77,7 @@ class MinerUAPI(ls.LitAPI):
                         return f.convert_to_pdf()
                 else:
                     temp_file.write_bytes(file_bytes)
-                    convert_file_to_pdf(temp_file, temp_dir)
+                    self.convert_file_to_pdf(temp_file, temp_dir)
                     return temp_file.with_suffix('.pdf').read_bytes()
             else:
                 raise Exception('Unsupported file format')
