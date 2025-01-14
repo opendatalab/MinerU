@@ -5,7 +5,7 @@ fast-langdetect>=0.2.3
 loguru>=0.6.0
 numpy>=1.21.6,<2.0.0
 pydantic>=2.7.2
-PyMuPDF>=1.24.9
+PyMuPDF>=1.24.9,<=1.24.14
 scikit-learn>=1.0.2
 torch>=2.2.2
 transformers
