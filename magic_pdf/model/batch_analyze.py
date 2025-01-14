@@ -44,16 +44,16 @@ class BatchAnalyze:
             modified_images = []
             for image_index, image in enumerate(images):
                 pil_img = Image.fromarray(image)
-                width, height = pil_img.size
-                if height > width:
-                    input_res = {'poly': [0, 0, width, 0, width, height, 0, height]}
-                    new_image, useful_list = crop_img(
-                        input_res, pil_img, crop_paste_x=width // 2, crop_paste_y=0
-                    )
-                    layout_images.append(new_image)
-                    modified_images.append([image_index, useful_list])
-                else:
-                    layout_images.append(pil_img)
+                # width, height = pil_img.size
+                # if height > width:
+                #     input_res = {'poly': [0, 0, width, 0, width, height, 0, height]}
+                #     new_image, useful_list = crop_img(
+                #         input_res, pil_img, crop_paste_x=width // 2, crop_paste_y=0
+                #     )
+                #     layout_images.append(new_image)
+                #     modified_images.append([image_index, useful_list])
+                # else:
+                layout_images.append(pil_img)
 
             images_layout_res += self.model.layout_model.batch_predict(
                 layout_images, self.batch_ratio * YOLO_LAYOUT_BASE_BATCH_SIZE
