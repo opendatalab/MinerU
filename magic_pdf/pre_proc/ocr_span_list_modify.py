@@ -36,7 +36,7 @@ def remove_overlaps_low_confidence_spans(spans):
 def check_chars_is_overlap_in_span(chars):
     for i in range(len(chars)):
         for j in range(i + 1, len(chars)):
-            if calculate_iou(chars[i]['bbox'], chars[j]['bbox']) > 0.9:
+            if calculate_iou(chars[i]['bbox'], chars[j]['bbox']) > 0.35:
                 return True
     return False
 
