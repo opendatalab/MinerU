@@ -116,7 +116,9 @@ def llm_aided_title(pdf_info_dict, title_aided_config):
     - 优化后的标题只保留代表该标题的层级的整数，不要保留其他信息
     
 IMPORTANT: 
-请直接返回优化过的由标题层级组成的json，返回的json不需要格式化。
+请直接返回优化过的由标题层级组成的json，格式如下：
+{{"0":1,"1":2,"2":2,"3":3}}
+返回的json不需要格式化。
 
 Input title list:
 {title_dict}
