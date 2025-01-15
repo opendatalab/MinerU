@@ -228,7 +228,7 @@ class CustomPEKModel:
             logger.info(f'formula nums: {len(formula_list)}, mfr time: {mfr_cost}')
 
         # 清理显存
-        clean_vram(self.device, vram_threshold=8)
+        clean_vram(self.device, vram_threshold=6)
 
         # 从layout_res中获取ocr区域、表格区域、公式区域
         ocr_res_list, table_res_list, single_page_mfdetrec_res = (
