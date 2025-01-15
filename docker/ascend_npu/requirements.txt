@@ -17,10 +17,9 @@ paddlepaddle==3.0.0b1
 struct-eqtable==0.3.2
 einops
 accelerate
-doclayout_yolo==0.0.2b1
 rapidocr-paddle
 rapidocr-onnxruntime
 rapid_table==0.3.0
-doclayout-yolo==0.0.2
+doclayout-yolo==0.0.2b1
 openai
 detectron2
