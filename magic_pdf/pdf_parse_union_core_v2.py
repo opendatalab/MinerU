@@ -674,38 +674,48 @@ def parse_page_core(
     page_w, page_h = magic_model.get_page_size(page_id)
 
     def merge_title_blocks(blocks, x_distance_threshold=0.1*page_w):
-        def merge_two_blocks(b1, b2):
-            # 合并两个标题块的边界框
+        def merge_two_bbox(b1, b2):
             x_min = min(b1['bbox'][0], b2['bbox'][0])
             y_min = min(b1['bbox'][1], b2['bbox'][1])
             x_max = max(b1['bbox'][2], b2['bbox'][2])
             y_max = max(b1['bbox'][3], b2['bbox'][3])
-            merged_bbox = (x_min, y_min, x_max, y_max)
+            return x_min, y_min, x_max, y_max
+
+        def merge_two_blocks(b1, b2):
+            # 合并两个标题块的边界框
+            b1['bbox'] = merge_two_bbox(b1, b2)
 
             # 合并两个标题块的文本内容
-            merged_score = (b1['score'] + b2['score']) / 2
+            line1 = b1['lines'][0]
+            line2 = b2['lines'][0]
+            line1['bbox'] = merge_two_bbox(line1, line2)
+            line1['spans'].extend(line2['spans'])
 
-            return {'bbox': merged_bbox, 'score': merged_score}
+            return b1, b2
 
         # 按 y 轴重叠度聚集标题块
         y_overlapping_blocks = []
-        while blocks:
-            block1 = blocks.pop(0)
+        title_bs = [b for b in blocks if b['type'] == BlockType.Title]
+        while title_bs:
+            block1 = title_bs.pop(0)
             current_row = [block1]
             to_remove = []
-            for block2 in blocks:
-                if __is_overlaps_y_exceeds_threshold(block1['bbox'], block2['bbox'], 0.9):
+            for block2 in title_bs:
+                if (
+                    __is_overlaps_y_exceeds_threshold(block1['bbox'], block2['bbox'], 0.9)
+                    and len(block1['lines']) == 1
+                    and len(block2['lines']) == 1
+                ):
                     current_row.append(block2)
                     to_remove.append(block2)
             for b in to_remove:
-                blocks.remove(b)
+                title_bs.remove(b)
             y_overlapping_blocks.append(current_row)
 
         # 按x轴坐标排序并合并标题块
-        merged_blocks = []
+        to_remove_blocks = []
         for row in y_overlapping_blocks:
             if len(row) == 1:
-                merged_blocks.append(row[0])
                 continue
 
             # 按x轴坐标排序
@@ -719,18 +729,17 @@ def parse_page_core(
                 left_height = left_block['bbox'][3] - left_block['bbox'][1]
                 right_height = right_block['bbox'][3] - right_block['bbox'][1]
 
-                if right_block['bbox'][0] - left_block['bbox'][2] < x_distance_threshold and left_height * 0.95 < right_height < left_height * 1.05:
-                    merged_block = merge_two_blocks(merged_block, right_block)
+                if (
+                    right_block['bbox'][0] - left_block['bbox'][2] < x_distance_threshold
+                    and left_height * 0.95 < right_height < left_height * 1.05
+                ):
+                    merged_block, to_remove_block = merge_two_blocks(merged_block, right_block)
+                    to_remove_blocks.append(to_remove_block)
                 else:
-                    merged_blocks.append(merged_block)
                     merged_block = right_block
 
-            merged_blocks.append(merged_block)
-
-        return merged_blocks
-
-    """同一行被断开的titile合并"""
-    title_blocks = merge_title_blocks(title_blocks)
+        for b in to_remove_blocks:
+            blocks.remove(b)
 
     """将所有区块的bbox整理到一起"""
     # interline_equation_blocks参数不够准，后面切换到interline_equations上
@@ -815,6 +824,9 @@ def parse_page_core(
 
     """对block进行fix操作"""
     fix_blocks = fix_block_spans_v2(block_with_spans)
+
+    """同一行被断开的titile合并"""
+    merge_title_blocks(fix_blocks)
 
     """获取所有line并计算正文line的高度"""
     line_height = get_line_height(fix_blocks)
