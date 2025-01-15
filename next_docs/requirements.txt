@@ -8,6 +8,7 @@ myst-parser
 Pillow==8.4.0
 pydantic>=2.7.2,<2.8.0
 PyMuPDF>=1.24.9
+pdfminer.six==20231228
 sphinx
 sphinx-argparse>=0.5.2
 sphinx-book-theme>=1.1.3

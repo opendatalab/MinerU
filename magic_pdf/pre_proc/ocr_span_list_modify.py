@@ -33,6 +33,14 @@ def remove_overlaps_low_confidence_spans(spans):
     return spans, dropped_spans
 
 
+def check_chars_is_overlap_in_span(chars):
+    for i in range(len(chars)):
+        for j in range(i + 1, len(chars)):
+            if calculate_iou(chars[i]['bbox'], chars[j]['bbox']) > 0.9:
+                return True
+    return False
+
+
 def remove_overlaps_min_spans(spans):
     dropped_spans = []
     #  删除重叠spans中较小的那些

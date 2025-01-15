@@ -7,7 +7,7 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
-from magic_pdf.para.para_split_v3 import ListLineTag
+from magic_pdf.post_proc.para_split_v3 import ListLineTag
 
 
 def __is_hyphen_at_line_end(line):
@@ -61,7 +61,8 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
         if para_type in [BlockType.Text, BlockType.List, BlockType.Index]:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.Title:
-            para_text = f'# {merge_para_with_text(para_block)}'
+            title_level = get_title_level(para_block)
+            para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
         elif para_type == BlockType.InterlineEquation:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.Image:
@@ -125,16 +126,6 @@ def detect_language(text):
         return 'empty'
 
 
-# 连写字符拆分
-def __replace_ligatures(text: str):
-    text = re.sub(r'ﬁ', 'fi', text)  # 替换 fi 连写符
-    text = re.sub(r'ﬂ', 'fl', text)  # 替换 fl 连写符
-    text = re.sub(r'ﬀ', 'ff', text)  # 替换 ff 连写符
-    text = re.sub(r'ﬃ', 'ffi', text)  # 替换 ffi 连写符
-    text = re.sub(r'ﬄ', 'ffl', text)  # 替换 ffl 连写符
-    return text
-
-
 def merge_para_with_text(para_block):
     block_text = ''
     for line in para_block['lines']:
@@ -196,10 +187,11 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason
             'text': merge_para_with_text(para_block),
         }
     elif para_type == BlockType.Title:
+        title_level = get_title_level(para_block)
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block),
-            'text_level': 1,
+            'text_level': title_level,
         }
     elif para_type == BlockType.InterlineEquation:
         para_content = {
@@ -299,3 +291,12 @@ def union_make(pdf_info_dict: list,
         return '\n\n'.join(output_content)
     elif make_mode == MakeMode.STANDARD_FORMAT:
         return output_content
+
+
+def get_title_level(block):
+    title_level = block.get('level', 1)
+    if title_level > 4:
+        title_level = 4
+    elif title_level < 1:
+        title_level = 1
+    return title_level

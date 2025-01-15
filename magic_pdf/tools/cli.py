@@ -1,13 +1,20 @@
 import os
-from pathlib import Path
-
+import shutil
+import tempfile
 import click
+import fitz
 from loguru import logger
+from pathlib import Path
 
 import magic_pdf.model as model_config
 from magic_pdf.data.data_reader_writer import FileBasedDataReader
 from magic_pdf.libs.version import __version__
 from magic_pdf.tools.common import do_parse, parse_pdf_methods
+from magic_pdf.utils.office_to_pdf import convert_file_to_pdf
+
+pdf_suffixes = ['.pdf']
+ms_office_suffixes = ['.ppt', '.pptx', '.doc', '.docx']
+image_suffixes = ['.png', '.jpeg', '.jpg']
 
 
 @click.command()
@@ -21,7 +28,7 @@ from magic_pdf.tools.common import do_parse, parse_pdf_methods
     'path',
     type=click.Path(exists=True),
     required=True,
-    help='local pdf filepath or directory',
+    help='local filepath or directory. support PDF, PPT, PPTX, DOC, DOCX, PNG, JPG files',
 )
 @click.option(
     '-o',
@@ -83,12 +90,27 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
     model_config.__use_inside_model__ = True
     model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
+    temp_dir = tempfile.mkdtemp()
+    def read_fn(path: Path):
+        if path.suffix in ms_office_suffixes:
+            convert_file_to_pdf(str(path), temp_dir)
+            fn = os.path.join(temp_dir, f"{path.stem}.pdf")
+        elif path.suffix in image_suffixes:
+            with open(str(path), 'rb') as f:
+                bits = f.read()
+            pdf_bytes = fitz.open(stream=bits).convert_to_pdf()
+            fn = os.path.join(temp_dir, f"{path.stem}.pdf")
+            with open(fn, 'wb') as f:
+                f.write(pdf_bytes)
+        elif path.suffix in pdf_suffixes:
+            fn = str(path)
+        else:
+            raise Exception(f"Unknown file suffix: {path.suffix}")
+        
+        disk_rw = FileBasedDataReader(os.path.dirname(fn))
+        return disk_rw.read(os.path.basename(fn))
 
-    def read_fn(path):
-        disk_rw = FileBasedDataReader(os.path.dirname(path))
-        return disk_rw.read(os.path.basename(path))
-
-    def parse_doc(doc_path: str):
+    def parse_doc(doc_path: Path):
         try:
             file_name = str(Path(doc_path).stem)
             pdf_data = read_fn(doc_path)
@@ -108,10 +130,13 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
             logger.exception(e)
 
     if os.path.isdir(path):
-        for doc_path in Path(path).glob('*.pdf'):
-            parse_doc(doc_path)
+        for doc_path in Path(path).glob('*'):
+            if doc_path.suffix in pdf_suffixes + image_suffixes + ms_office_suffixes:
+                parse_doc(doc_path)
     else:
-        parse_doc(path)
+        parse_doc(Path(path))
+
+    shutil.rmtree(temp_dir)
 
 
 if __name__ == '__main__':

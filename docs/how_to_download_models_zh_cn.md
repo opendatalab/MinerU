@@ -8,7 +8,7 @@
   <summary>方法一：从 Hugging Face 下载模型</summary>
   <p>使用python脚本 从Hugging Face下载模型文件</p>
   <pre><code>pip install huggingface_hub
-wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models_hf.py -O download_models_hf.py
 python download_models_hf.py</code></pre>
   <p>python脚本会自动下载模型文件并配置好配置文件中的模型目录</p>
 </details>
@@ -19,7 +19,7 @@ python download_models_hf.py</code></pre>
 
 ```bash
 pip install modelscope
-wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py
 python download_models.py
 ```
 python脚本会自动下载模型文件并配置好配置文件中的模型目录

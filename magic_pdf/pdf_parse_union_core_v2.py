@@ -1,5 +1,6 @@
 import copy
 import os
+import re
 import statistics
 import time
 from typing import List
@@ -13,11 +14,12 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir
+from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config, get_device
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
 from magic_pdf.model.magic_model import MagicModel
+from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text, llm_aided_title
 
 try:
     import torchtext
@@ -28,15 +30,15 @@ except ImportError:
     pass
 
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
-from magic_pdf.para.para_split_v3 import para_split
+from magic_pdf.post_proc.para_split_v3 import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
 from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
-from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, remove_overlaps_min_spans
+from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, \
+    remove_overlaps_min_spans, check_chars_is_overlap_in_span
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
 
 def __replace_STX_ETX(text_str: str):
@@ -63,11 +65,22 @@ def __replace_0xfffd(text_str: str):
         return s
     return text_str
 
+
+# 连写字符拆分
+def __replace_ligatures(text: str):
+    ligatures = {
+        'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st'
+    }
+    return re.sub('|'.join(map(re.escape, ligatures.keys())), lambda m: ligatures[m.group()], text)
+
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
         pass
         # span['content'] = ''
+    elif check_chars_is_overlap_in_span(span['chars']):
+        pass
     else:
         # 先给chars按char['bbox']的中心点的x坐标排序
         span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
@@ -78,11 +91,16 @@ def chars_to_content(span):
 
         content = ''
         for char in span['chars']:
-            # 如果下一个char的x0和上一个char的x1距离超过一个字符宽度，则需要在中间插入一个空格
-            if char['bbox'][0] - span['chars'][span['chars'].index(char) - 1]['bbox'][2] > char_avg_width:
-                content += ' '
-            content += char['c']
 
+            # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
+            char1 = char
+            char2 = span['chars'][span['chars'].index(char) + 1] if span['chars'].index(char) + 1 < len(span['chars']) else None
+            if char2 and char2['bbox'][0] - char1['bbox'][2] > char_avg_width * 0.25 and char['c'] != ' ' and char2['c'] != ' ':
+                content += f"{char['c']} "
+            else:
+                content += char['c']
+
+        content = __replace_ligatures(content)
         span['content'] = __replace_0xfffd(content)
 
     del span['chars']
@@ -98,6 +116,10 @@ def fill_char_in_spans(spans, all_chars):
     spans = sorted(spans, key=lambda x: x['bbox'][1])
 
     for char in all_chars:
+        # 跳过非法bbox的char
+        x1, y1, x2, y2 = char['bbox']
+        if abs(x1 - x2) <= 0.01 or abs(y1 - y2) <= 0.01:
+            continue
         for span in spans:
             if calculate_char_in_span(char['bbox'], span['bbox'], char['c']):
                 span['chars'].append(char)
@@ -152,14 +174,16 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
 
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
+    # cid用0xfffd表示，连字符拆开
+    # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
-
+    # cid用0xfffd表示，连字符不拆开
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
             cosine, sine = line['dir']
-            if abs (cosine) < 0.9 or abs(sine) > 0.1:
+            if abs(cosine) < 0.9 or abs(sine) > 0.1:
                 continue
             for span in line['spans']:
                 all_pymu_chars.extend(span['chars'])
@@ -255,18 +279,22 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     return spans
 
 
-def replace_text_span(pymu_spans, ocr_spans):
-    return list(filter(lambda x: x['type'] != ContentType.Text, ocr_spans)) + pymu_spans
-
-
 def model_init(model_name: str):
     from transformers import LayoutLMv3ForTokenClassification
-
+    device = get_device()
     if torch.cuda.is_available():
         device = torch.device('cuda')
         if torch.cuda.is_bf16_supported():
             supports_bfloat16 = True
         else:
+            supports_bfloat16 = False
+    elif str(device).startswith("npu"):
+        import torch_npu
+        if torch_npu.npu.is_available():
+            device = torch.device('npu')
+            supports_bfloat16 = False
+        else:
+            device = torch.device('cpu')
             supports_bfloat16 = False
     else:
         device = torch.device('cpu')
@@ -345,6 +373,8 @@ def cal_block_index(fix_blocks, sorted_bboxes):
         # 使用xycut排序
         block_bboxes = []
         for block in fix_blocks:
+            # 如果block['bbox']任意值小于0，将其置为0
+            block['bbox'] = [max(0, x) for x in block['bbox']]
             block_bboxes.append(block['bbox'])
 
             # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
@@ -738,6 +768,11 @@ def parse_page_core(
     """重排block"""
     sorted_blocks = sorted(fix_blocks, key=lambda b: b['index'])
 
+    """block内重排(img和table的block内多个caption或footnote的排序)"""
+    for block in sorted_blocks:
+        if block['type'] in [BlockType.Image, BlockType.Table]:
+            block['blocks'] = sorted(block['blocks'], key=lambda b: b['index'])
+
     """获取QA需要外置的list"""
     images, tables, interline_equations = get_qa_need_list_v2(sorted_blocks)
 
@@ -819,13 +854,32 @@ def pdf_parse_union(
     """分段"""
     para_split(pdf_info_dict)
 
+    """llm优化"""
+    llm_aided_config = get_llm_aided_config()
+    if llm_aided_config is not None:
+        """公式优化"""
+        formula_aided_config = llm_aided_config.get('formula_aided', None)
+        if formula_aided_config is not None:
+            if formula_aided_config.get('enable', False):
+                llm_aided_formula(pdf_info_dict, formula_aided_config)
+        """文本优化"""
+        text_aided_config = llm_aided_config.get('text_aided', None)
+        if text_aided_config is not None:
+            if text_aided_config.get('enable', False):
+                llm_aided_text(pdf_info_dict, text_aided_config)
+        """标题优化"""
+        title_aided_config = llm_aided_config.get('title_aided', None)
+        if title_aided_config is not None:
+            if title_aided_config.get('enable', False):
+                llm_aided_title(pdf_info_dict, title_aided_config)
+
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
     new_pdf_info_dict = {
         'pdf_info': pdf_info_list,
     }
 
-    clean_memory()
+    clean_memory(get_device())
 
     return new_pdf_info_dict
 

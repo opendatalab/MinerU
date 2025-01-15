@@ -1,7 +1,9 @@
+import torch
 from loguru import logger
 
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.model_list import AtomicModel
+from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
 from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
     DocLayoutYOLOModel
 from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
@@ -19,7 +21,7 @@ from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
     TableMasterPaddleModel
 
 
-def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
+def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
         table_model = StructTableModel(model_path, max_new_tokens=2048, max_time=max_time)
     elif table_model_type == MODEL_NAME.TABLE_MASTER:
@@ -29,7 +31,7 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
         }
         table_model = TableMasterPaddleModel(config)
     elif table_model_type == MODEL_NAME.RAPID_TABLE:
-        table_model = RapidTableModel()
+        table_model = RapidTableModel(ocr_engine)
     else:
         logger.error('table model type not allow')
         exit(1)
@@ -38,6 +40,8 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu'):
 
 
 def mfd_model_init(weight, device='cpu'):
+    if str(device).startswith("npu"):
+        device = torch.device(device)
     mfd_model = YOLOv8MFDModel(weight, device)
     return mfd_model
 
@@ -53,7 +57,16 @@ def layout_model_init(weight, config_file, device):
 
 
 def doclayout_yolo_model_init(weight, device='cpu'):
+    if str(device).startswith("npu"):
+        device = torch.device(device)
     model = DocLayoutYOLOModel(weight, device)
+    return model
+
+
+def langdetect_model_init(langdetect_model_weight, device='cpu'):
+    if str(device).startswith("npu"):
+        device = torch.device(device)
+    model = YOLOv11LangDetModel(langdetect_model_weight, device)
     return model
 
 
@@ -63,6 +76,7 @@ def ocr_model_init(show_log: bool = False,
                    use_dilation=True,
                    det_db_unclip_ratio=1.8,
                    ):
+
     if lang is not None and lang != '':
         model = ModifiedPaddleOCR(
             show_log=show_log,
@@ -77,7 +91,6 @@ def ocr_model_init(show_log: bool = False,
             det_db_box_thresh=det_db_box_thresh,
             use_dilation=use_dilation,
             det_db_unclip_ratio=det_db_unclip_ratio,
-            # use_angle_cls=True,
         )
     return model
 
@@ -124,6 +137,9 @@ def atom_model_init(model_name: str, **kwargs):
                 kwargs.get('doclayout_yolo_weights'),
                 kwargs.get('device')
             )
+        else:
+            logger.error('layout model name not allow')
+            exit(1)
     elif model_name == AtomicModel.MFD:
         atom_model = mfd_model_init(
             kwargs.get('mfd_weights'),
@@ -146,8 +162,18 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('table_model_name'),
             kwargs.get('table_model_path'),
             kwargs.get('table_max_time'),
-            kwargs.get('device')
+            kwargs.get('device'),
+            kwargs.get('ocr_engine')
         )
+    elif model_name == AtomicModel.LangDetect:
+        if kwargs.get('langdetect_model_name') == MODEL_NAME.YOLO_V11_LangDetect:
+            atom_model = langdetect_model_init(
+                kwargs.get('langdetect_model_weight'),
+                kwargs.get('device')
+            )
+        else:
+            logger.error('langdetect model name not allow')
+            exit(1)
     else:
         logger.error('model name not allow')
         exit(1)

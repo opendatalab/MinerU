@@ -10,7 +10,6 @@ from loguru import logger
 from PIL import Image
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-os.environ['YOLO_VERBOSE'] = 'False'  # disable yolo logger
 
 try:
     import torchtext
@@ -88,6 +87,14 @@ class CustomPEKModel:
         )
         # 初始化解析方案
         self.device = kwargs.get('device', 'cpu')
+
+        if str(self.device).startswith("npu"):
+            import torch_npu
+            os.environ['FLAGS_npu_jit_compile'] = '0'
+            os.environ['FLAGS_use_stride_kernel'] = '0'
+        elif str(self.device).startswith("mps"):
+            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+
         logger.info('using device: {}'.format(self.device))
         models_dir = kwargs.get(
             'models_dir', os.path.join(root_dir, 'resources', 'models')
@@ -114,11 +121,12 @@ class CustomPEKModel:
                 os.path.join(models_dir, self.configs['weights'][self.mfr_model_name])
             )
             mfr_cfg_path = str(os.path.join(model_config_dir, 'UniMERNet', 'demo.yaml'))
+
             self.mfr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFR,
                 mfr_weight_dir=mfr_weight_dir,
                 mfr_cfg_path=mfr_cfg_path,
-                device=self.device,
+                device='cpu' if str(self.device).startswith("mps") else self.device,
             )
 
         # 初始化layout模型
@@ -165,11 +173,16 @@ class CustomPEKModel:
                 table_model_path=str(os.path.join(models_dir, table_model_dir)),
                 table_max_time=self.table_max_time,
                 device=self.device,
+                ocr_engine=self.ocr_model,
             )
 
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
+
+        pil_img = Image.fromarray(image)
+        width, height = pil_img.size
+        # logger.info(f'width: {width}, height: {height}')
 
         # layout检测
         layout_start = time.time()
@@ -179,29 +192,27 @@ class CustomPEKModel:
             layout_res = self.layout_model(image, ignore_catids=[])
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             # doclayout_yolo
-            img_pil = Image.fromarray(image)
-            width, height = img_pil.size
-            # logger.info(f'width: {width}, height: {height}')
-            input_res = {"poly":[0,0,width,0,width,height,0,height]}
-            new_image, useful_list = crop_img(input_res, img_pil, crop_paste_x=width//2, crop_paste_y=0)
-            paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
-            layout_res = self.layout_model.predict(new_image)
-            for res in layout_res:
-                p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
-                p1 = p1 - paste_x + xmin
-                p2 = p2 - paste_y + ymin
-                p3 = p3 - paste_x + xmin
-                p4 = p4 - paste_y + ymin
-                p5 = p5 - paste_x + xmin
-                p6 = p6 - paste_y + ymin
-                p7 = p7 - paste_x + xmin
-                p8 = p8 - paste_y + ymin
-                res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
+            if height > width:
+                input_res = {"poly":[0,0,width,0,width,height,0,height]}
+                new_image, useful_list = crop_img(input_res, pil_img, crop_paste_x=width//2, crop_paste_y=0)
+                paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
+                layout_res = self.layout_model.predict(new_image)
+                for res in layout_res:
+                    p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
+                    p1 = p1 - paste_x + xmin
+                    p2 = p2 - paste_y + ymin
+                    p3 = p3 - paste_x + xmin
+                    p4 = p4 - paste_y + ymin
+                    p5 = p5 - paste_x + xmin
+                    p6 = p6 - paste_y + ymin
+                    p7 = p7 - paste_x + xmin
+                    p8 = p8 - paste_y + ymin
+                    res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
+            else:
+                layout_res = self.layout_model.predict(image)
 
         layout_cost = round(time.time() - layout_start, 2)
         logger.info(f'layout detection time: {layout_cost}')
-
-        pil_img = Image.fromarray(image)
 
         if self.apply_formula:
             # 公式检测

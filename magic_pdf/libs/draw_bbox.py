@@ -394,17 +394,13 @@ def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
     pdf_docs.save(f'{out_path}/{filename}')
 
 
-def draw_layout_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
-    layout_bbox_list = []
-
-    for page in pdf_info:
-        page_block_list = []
-        for block in page['para_blocks']:
-            bbox = block['bbox']
-            page_block_list.append(bbox)
-        layout_bbox_list.append(page_block_list)
+def draw_char_bbox(pdf_bytes, out_path, filename):
     pdf_docs = fitz.open('pdf', pdf_bytes)
     for i, page in enumerate(pdf_docs):
-        draw_bbox_with_number(i, layout_bbox_list, page, [255, 0, 0], False)
-
-    pdf_docs.save(f'{out_path}/{filename}_layout_sort.pdf')
+        for block in page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']:
+            for line in block['lines']:
+                for span in line['spans']:
+                    for char in span['chars']:
+                        char_bbox = char['bbox']
+                        page.draw_rect(char_bbox, color=[1, 0, 0], fill=None, fill_opacity=1, width=0.3, overlay=True,)
+    pdf_docs.save(f'{out_path}/{filename}')

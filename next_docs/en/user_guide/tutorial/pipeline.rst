@@ -28,7 +28,6 @@ Minimal Example
     image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
         local_md_dir
     )
-    image_dir = str(os.path.basename(local_image_dir))
 
     # read bytes
     reader1 = FileBasedDataReader("")
@@ -84,8 +83,6 @@ These stages are linked together through methods like ``apply``, ``doc_analyze``
 
 .. admonition:: Tip
     :class: tip
-
-    For more examples on how to use ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../quick_start/to_markdown`
 
     For more detailed information about ``Dataset``, ``InferenceResult``, and ``PipeResult``, please refer to :doc:`../../api/dataset`, :doc:`../../api/model_operators`, :doc:`../../api/pipe_operators`
 
