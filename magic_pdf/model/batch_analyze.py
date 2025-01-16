@@ -161,7 +161,7 @@ class BatchAnalyze:
                     elif self.model.table_model_name == MODEL_NAME.TABLE_MASTER:
                         html_code = self.model.table_model.img2html(new_image)
                     elif self.model.table_model_name == MODEL_NAME.RAPID_TABLE:
-                        html_code, table_cell_bboxes, elapse = (
+                        html_code, table_cell_bboxes, logic_points, elapse = (
                             self.model.table_model.predict(new_image)
                         )
                     run_time = time.time() - single_table_start_time

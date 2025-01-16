@@ -51,7 +51,7 @@ if __name__ == '__main__':
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
                      "rapidocr-paddle",  # rapidocr-paddle
                      "rapidocr_onnxruntime",
-                     "rapid_table==0.3.0",  # rapid_table
+                     "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
                      "openai",  # openai SDK
                      "detectron2"
