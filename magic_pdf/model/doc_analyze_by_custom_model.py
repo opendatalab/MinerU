@@ -158,7 +158,7 @@ def doc_analyze(
     table_enable=None,
 ) -> InferenceResult:
 
-    end_page_id = end_page_id if end_page_id else len(dataset)
+    end_page_id = end_page_id if end_page_id else len(dataset) - 1
 
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(
