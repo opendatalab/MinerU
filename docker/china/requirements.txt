@@ -18,7 +18,7 @@ einops
 accelerate
 rapidocr-paddle
 rapidocr-onnxruntime
-rapid_table==0.3.0
+rapid-table>=1.0.3,<2.0.0
 doclayout-yolo==0.0.2b1
 openai
 detectron2
