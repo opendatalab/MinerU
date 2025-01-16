@@ -69,6 +69,7 @@ class CustomPEKModel:
         self.apply_table = self.table_config.get('enable', False)
         self.table_max_time = self.table_config.get('max_time', TABLE_MAX_TIME_VALUE)
         self.table_model_name = self.table_config.get('model', MODEL_NAME.RAPID_TABLE)
+        self.table_sub_model_name = self.table_config.get('sub_model', None)
 
         # ocr config
         self.apply_ocr = ocr
@@ -174,6 +175,7 @@ class CustomPEKModel:
                 table_max_time=self.table_max_time,
                 device=self.device,
                 ocr_engine=self.ocr_model,
+                table_sub_model_name=self.table_sub_model_name
             )
 
         logger.info('DocAnalysis init done!')
@@ -276,7 +278,7 @@ class CustomPEKModel:
                 elif self.table_model_name == MODEL_NAME.TABLE_MASTER:
                     html_code = self.table_model.img2html(new_image)
                 elif self.table_model_name == MODEL_NAME.RAPID_TABLE:
-                    html_code, table_cell_bboxes, elapse = self.table_model.predict(
+                    html_code, table_cell_bboxes, logic_points, elapse = self.table_model.predict(
                         new_image
                     )
                 run_time = time.time() - single_table_start_time
