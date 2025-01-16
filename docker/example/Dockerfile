@@ -50,7 +50,7 @@ RUN git clone https://www.modelscope.cn/studios/OpenDataLab/MinerU /opt/mineru/M
 
 WORKDIR /opt/mineru/MinerU
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install -r requirements.txt"
+    pip3 install -r requirements.txt && pip3 install modelscope"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && python3 app.py"]
