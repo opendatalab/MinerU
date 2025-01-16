@@ -46,11 +46,13 @@ RUN /bin/bash -c "pip3 install huggingface_hub && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
 
-RUN git clone https://www.modelscope.cn/studios/OpenDataLab/MinerU /opt/mineru/MinerU
+COPY example /tmp/example
 
-WORKDIR /opt/mineru/MinerU
+ENV GRADIO_SERVER_NAME=0.0.0.0
+
+WORKDIR /tmp/example
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install modelscope gradio-pdf gradio"
 
 # Set the entry point to activate the virtual environment and run the command line tool
-ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && GRADIO_SERVER_NAME=0.0.0.0 python3 app.py"]
+ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && python3 app.py"]
