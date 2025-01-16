@@ -151,7 +151,7 @@ Corrected title list:
                 logger.warning("The number of titles in the optimized result is not equal to the number of titles in the input.")
                 retry_count += 1
         except Exception as e:
-            if e is json.JSONDecodeError:
+            if isinstance(e, json.decoder.JSONDecodeError):
                 logger.warning(f"JSON decode error on attempt {retry_count + 1}: {e}")
             else:
                 logger.exception(e)
