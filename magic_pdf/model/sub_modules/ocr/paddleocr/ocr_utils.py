@@ -330,19 +330,19 @@ def onnx_model_init(key):
 
     import importlib.resources
 
-    resource_path = importlib.resources.path('rapidocr_onnxruntime.models','')
+    with importlib.resources.path('rapidocr_onnxruntime.models','') as resource_path:
+        onnx_model = None
+        additional_ocr_params = {
+            "use_onnx": True,
+            "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
+            "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
+            "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
+            "det_db_box_thresh": key[1],
+            "use_dilation": key[2],
+            "det_db_unclip_ratio": key[3],
+        }
+        # logger.info(f"additional_ocr_params: {additional_ocr_params}")
 
-    onnx_model = None
-    additional_ocr_params = {
-        "use_onnx": True,
-        "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
-        "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
-        "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
-        "det_db_box_thresh": key[1],
-        "use_dilation": key[2],
-        "det_db_unclip_ratio": key[3],
-    }
-    # logger.info(f"additional_ocr_params: {additional_ocr_params}")
     if key[0] is not None:
         additional_ocr_params["lang"] = key[0]
 
