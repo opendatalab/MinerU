@@ -1,0 +1,4 @@
+aiofiles==24.1.0
+fastapi==0.115.6
+gotenberg_client==0.9.0
+pydantic==2.10.5
