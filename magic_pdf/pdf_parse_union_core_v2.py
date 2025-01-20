@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import re
 import statistics
@@ -173,6 +174,21 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
             return False
 
 
+def remove_tilted_line(text_blocks):
+    for block in text_blocks:
+        remove_lines = []
+        for line in block['lines']:
+            cosine, sine = line['dir']
+            # 计算弧度值
+            angle_radians = math.atan2(sine, cosine)
+            # 将弧度值转换为角度值
+            angle_degrees = math.degrees(angle_radians)
+            if 2 < abs(angle_degrees) < 88:
+                remove_lines.append(line)
+        for line in remove_lines:
+            block['lines'].remove(line)
+
+
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
     # cid用0xfffd表示，连字符拆开
     # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
@@ -183,6 +199,10 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     # 自定义flags出现较多0xfffd，可能是pymupdf可以自行处理内置字典的pdf，不再使用
     text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
     # text_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+
+    # 移除所有角度不为0或90的line
+    remove_tilted_line(text_blocks_raw)
+
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
