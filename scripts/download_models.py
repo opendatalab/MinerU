@@ -35,7 +35,7 @@ if __name__ == '__main__':
         "models/Layout/LayoutLMv3/*",
         "models/Layout/YOLO/*",
         "models/MFD/YOLO/*",
-        "models/MFR/unimernet_small/*",
+        "models/MFR/unimernet_small_2501/*",
         "models/TabRec/TableMaster/*",
         "models/TabRec/StructEqTable/*",
     ]
