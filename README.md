@@ -88,6 +88,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
     <li>
       <a href="#mineru">MinerU</a>
       <ul>
+        <li><a href="#updates">Updates</a></li>
         <li><a href="#project-introduction">Project Introduction</a></li>
         <li><a href="#key-features">Key Features</a></li>
         <li><a href="#quick-start">Quick Start</a>
@@ -119,10 +120,20 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
     <li><a href="#magic-doc">Magic-doc</a></li>
     <li><a href="#magic-html">Magic-html</a></li>
     <li><a href="#links">Links</a></li>
+    
   </ol>
 </details>
 
 # MinerU
+
+## Updates
+
+add webui and api for mineru for testing, and have been generate the docker image.
+use it like this:
+  ```
+    docker run --rm -it -p 3000:3000 -p 7860:7860 --gpus=all mineru:latest
+  ```
+
 
 ## Project Introduction
 
