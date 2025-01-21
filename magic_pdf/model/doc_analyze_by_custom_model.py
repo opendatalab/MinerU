@@ -163,7 +163,7 @@ def doc_analyze(
     doc_analyze_start = time.time()
 
     if end_page_id is None:
-        end_page_id = len(dataset)
+        end_page_id = len(dataset) - 1
 
     for index in range(len(dataset)):
         page_data = dataset.get_page(index)
@@ -190,7 +190,7 @@ def doc_analyze(
     doc_analyze_time = round(time.time() - doc_analyze_start, 2)
     doc_analyze_speed = round((end_page_id + 1 - start_page_id) / doc_analyze_time, 2)
     logger.info(
-        f'doc analyze time: {round(time.time() - doc_analyze_start, 2)},'
+        f'doc analyze time: {doc_analyze_time} seconds,'
         f' speed: {doc_analyze_speed} pages/second'
     )
 
