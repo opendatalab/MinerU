@@ -19,7 +19,7 @@ from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
 # from magic_pdf.operators.models import InferenceResult
 
-YOLO_LAYOUT_BASE_BATCH_SIZE = 4
+YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 
@@ -56,7 +56,8 @@ class BatchAnalyze:
                 layout_images.append(pil_img)
 
             images_layout_res += self.model.layout_model.batch_predict(
-                layout_images, self.batch_ratio * YOLO_LAYOUT_BASE_BATCH_SIZE
+                # layout_images, self.batch_ratio * YOLO_LAYOUT_BASE_BATCH_SIZE
+                layout_images, YOLO_LAYOUT_BASE_BATCH_SIZE
             )
 
             for image_index, useful_list in modified_images:
@@ -78,7 +79,8 @@ class BatchAnalyze:
             # 公式检测
             mfd_start_time = time.time()
             images_mfd_res = self.model.mfd_model.batch_predict(
-                images, self.batch_ratio * MFD_BASE_BATCH_SIZE
+                # images, self.batch_ratio * MFD_BASE_BATCH_SIZE
+                images, MFD_BASE_BATCH_SIZE
             )
             logger.info(
                 f'mfd time: {round(time.time() - mfd_start_time, 2)}, image num: {len(images)}'
