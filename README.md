@@ -131,7 +131,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 add webui and api for mineru for testing, and have been generate the docker image.
 use it like this:
   ```
-    docker run --rm -it -p 3000:3000 -p 7860:7860 --gpus=all jianjungkimineru:latest
+    docker run --rm -it -p 3000:3000 -p 7860:7860 --gpus=all jianjungki/mineru:latest
   ```
 
 
