@@ -175,7 +175,7 @@ def doc_analyze(
             npu_support = True
 
     if torch.cuda.is_available() and device != 'cpu' or npu_support:
-        gpu_memory = int(os.getenv("virtual_vram_size", round(get_vram(device))))
+        gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
             batch_ratio = int(gpu_memory-5)
             if batch_ratio >= 1:
