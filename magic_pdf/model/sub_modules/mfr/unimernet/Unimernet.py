@@ -89,7 +89,7 @@ class UnimernetModel(object):
             mf_image_list.append(bbox_img)
 
         dataset = MathDataset(mf_image_list, transform=self.mfr_transform)
-        dataloader = DataLoader(dataset, batch_size=64, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=32, num_workers=0)
         mfr_res = []
         for mf_img in dataloader:
             mf_img = mf_img.to(self.device)
