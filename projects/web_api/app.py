@@ -9,10 +9,11 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-from magic_pdf.pipe.OCRPipe import OCRPipe
-from magic_pdf.pipe.TXTPipe import TXTPipe
-from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+from magic_pdf.operators.models import InferenceResult
 
 model_config.__use_inside_model__ = True
 
@@ -20,14 +21,15 @@ app = FastAPI()
 
 
 def json_md_dump(
-    pipe,
+    model_json,
+    middle_json,
     md_writer,
     pdf_name,
     content_list,
     md_content,
 ):
     # Write model results to model.json
-    orig_model_list = copy.deepcopy(pipe.model_list)
+    orig_model_list = copy.deepcopy(model_json)
     md_writer.write_string(
         f'{pdf_name}_model.json',
         json.dumps(orig_model_list, ensure_ascii=False, indent=4),
@@ -36,7 +38,7 @@ def json_md_dump(
     # Write intermediate results to middle.json
     md_writer.write_string(
         f'{pdf_name}_middle.json',
-        json.dumps(pipe.pdf_mid_data, ensure_ascii=False, indent=4),
+        json.dumps(middle_json, ensure_ascii=False, indent=4),
     )
 
     # Write text content results to content_list.json
@@ -100,45 +102,49 @@ async def pdf_parse_main(
             output_image_path
         ), FileBasedDataWriter(output_path)
 
+        ds = PymuDocDataset(pdf_bytes)
         # Choose parsing method
         if parse_method == 'auto':
-            jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
-            pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
-        elif parse_method == 'txt':
-            pipe = TXTPipe(pdf_bytes, model_json, image_writer)
-        elif parse_method == 'ocr':
-            pipe = OCRPipe(pdf_bytes, model_json, image_writer)
-        else:
+            if ds.classify() == SupportedPdfParseMethod.OCR:
+                parse_method = 'ocr'
+            else:
+                parse_method = 'txt'
+
+        if parse_method not in ['txt', 'ocr']:
             logger.error('Unknown parse method, only auto, ocr, txt allowed')
             return JSONResponse(
                 content={'error': 'Invalid parse method'}, status_code=400
             )
 
-        # Execute classification
-        pipe.pipe_classify()
-
-        # If no model data is provided, use built-in model for parsing
-        if not model_json:
-            if model_config.__use_inside_model__:
-                pipe.pipe_analyze()  # Parse
+        if len(model_json) == 0:
+            if parse_method == 'ocr':
+                infer_result = ds.apply(doc_analyze, ocr=True)
             else:
+                infer_result = ds.apply(doc_analyze, ocr=False)
+
+        else:
+            infer_result = InferenceResult(model_json, ds)
+
+        if len(model_json) == 0 and not model_config.__use_inside_model__:
                 logger.error('Need model list input')
                 return JSONResponse(
                     content={'error': 'Model list input required'}, status_code=400
                 )
+        if parse_method == 'ocr':
+            pipe_res = infer_result.pipe_ocr_mode(image_writer)
+        else:
+            pipe_res = infer_result.pipe_txt_mode(image_writer)
 
-        # Execute parsing
-        pipe.pipe_parse()
 
         # Save results in text and md format
-        content_list = pipe.pipe_mk_uni_format(image_path_parent, drop_mode='none')
-        md_content = pipe.pipe_mk_markdown(image_path_parent, drop_mode='none')
+        content_list = pipe_res.get_content_list(image_path_parent, drop_mode='none')
+        md_content = pipe_res.get_markdown(image_path_parent, drop_mode='none')
 
         if is_json_md_dump:
-            json_md_dump(pipe, md_writer, pdf_name, content_list, md_content)
+            json_md_dump(infer_result._infer_res, pipe_res._pipe_res, md_writer, pdf_name, content_list, md_content)
         data = {
-            'layout': copy.deepcopy(pipe.model_list),
-            'info': pipe.pdf_mid_data,
+            'layout': copy.deepcopy(infer_result._infer_res),
+            'info': pipe_res._pipe_res,
             'content_list': content_list,
             'md_content': md_content,
         }

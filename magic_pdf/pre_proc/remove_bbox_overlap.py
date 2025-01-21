@@ -70,7 +70,7 @@ def _remove_overlap_between_bboxes(arr):
                     res[i] = None
                 else:
                     keeps[idx] = False
-                drop_reasons.append(drop_reasons)
+                drop_reasons.append(drop_reason)
         if keeps[idx]:
             res[idx] = v
     return res, drop_reasons

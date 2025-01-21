@@ -17,7 +17,7 @@
 .. code:: bash
 
    pip install huggingface_hub
-   wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models_hf.py -O download_models_hf.py
+   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models_hf.py -O download_models_hf.py
    python download_models_hf.py
 
 python脚本会自动下载模型文件并配置好配置文件中的模型目录
@@ -31,7 +31,7 @@ python脚本会自动下载模型文件并配置好配置文件中的模型目�
 .. code:: bash
 
    pip install modelscope
-   wget https://gitee.com/myhloli/MinerU/raw/master/scripts/download_models.py -O download_models.py
+   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py
    python download_models.py
 
 python脚本会自动下载模型文件并配置好配置文件中的模型目录

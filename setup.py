@@ -36,7 +36,7 @@ if __name__ == '__main__':
                      "paddlepaddle==3.0.0b1;platform_system=='Linux'",
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
                      ],
-            "full": ["unimernet==0.2.2",  # unimernet升级0.2.2,移除torchtext的依赖
+            "full": ["unimernet==0.2.3",  # unimernet升级0.2.3,移除torchtext/eva-decord的依赖
                      "torch>=2.2.2,<=2.3.1",  # torch2.4.0及之后版本未测试，先卡住版本上限
                      "torchvision>=0.17.2,<=0.18.1",  # torchvision 受torch版本约束
                      "matplotlib<=3.9.0;platform_system=='Windows'",  # 3.9.1及之后不提供windows的预编译包，避免一些没有编译环境的windows设备安装失败
@@ -50,8 +50,10 @@ if __name__ == '__main__':
                      "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2",  # doclayout_yolo
                      "rapidocr-paddle",  # rapidocr-paddle
-                     "rapid_table",  # rapid_table
+                     "rapidocr_onnxruntime",
+                     "rapid_table==0.3.0",  # rapid_table
                      "PyYAML",  # yaml
+                     "openai",  # openai SDK
                      "detectron2"
                      ],
             "old_linux":[

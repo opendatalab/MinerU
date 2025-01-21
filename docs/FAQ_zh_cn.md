@@ -57,7 +57,6 @@ cuda11对新显卡的兼容性不好，需要升级paddle使用的cuda版本
 ```bash
 pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu123/
 ```
-
 参考：https://github.com/opendatalab/MinerU/issues/558
 
 ### 7.在部分Linux服务器上，程序一运行就报错 `非法指令 (核心已转储)` 或 `Illegal instruction (core dumped)`
@@ -74,3 +73,25 @@ pip install -U magic-pdf[full,old_linux] --extra-index-url https://wheels.myhlol
 ```
 
 参考：https://github.com/opendatalab/MinerU/issues/1004
+
+### 9. 旧显卡如M40出现 "RuntimeError: CUDA error: CUBLAS_STATUS_NOT_SUPPORTED"
+
+在运行过程中（使用CUDA）出现以下错误：
+```
+RuntimeError: CUDA error: CUBLAS_STATUS_NOT_SUPPORTED when calling cublasGemmStridedBatchedEx(handle, opa, opb, (int)m, (int)n, (int)k, (void*)&falpha, a, CUDA_R_16BF, (int)lda, stridea, b, CUDA_R_16BF, (int)ldb, strideb, (void*)&fbeta, c, CUDA_R_16BF, (int)ldc, stridec, (int)num_batches, compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP)
+```
+由于Turing架构之前的显卡不支持BF16精度，并且部分显卡未能被PyTorch正确识别，因此需要手动关闭BF16精度。
+
+请找到并修改`pdf_parse_union_core_v2.py`文件中的第287至290行代码（注意：不同版本中位置可能有所不同），原代码如下：
+```python
+if torch.cuda.is_bf16_supported():
+    supports_bfloat16 = True
+else:
+    supports_bfloat16 = False
+```
+将其修改为：
+```python
+supports_bfloat16 = False
+```
+
+参考：https://github.com/opendatalab/MinerU/issues/1508

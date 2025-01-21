@@ -11,9 +11,12 @@ from flask import current_app, url_for
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+from magic_pdf.data.dataset import PymuDocDataset
 from magic_pdf.libs.json_compressor import JsonCompressor
-from magic_pdf.pipe.UNIPipe import UNIPipe
+from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+from magic_pdf.operators.models import InferenceResult
 
 from ..extentions import app, db
 from .ext import find_file
@@ -25,25 +28,28 @@ model_config.__use_inside_model__ = True
 def analysis_pdf(image_url_prefix, image_dir, pdf_bytes, is_ocr=False):
     try:
         model_json = []  # model_json传空list使用内置模型解析
+        image_writer = FileBasedDataWriter(image_dir)
         logger.info(f'is_ocr: {is_ocr}')
+        parse_method = 'ocr'
+        ds = PymuDocDataset(pdf_bytes)
+        # Choose parsing method
         if not is_ocr:
-            jso_useful_key = {'_pdf_type': '', 'model_list': model_json}
-            image_writer = FileBasedDataWriter(image_dir)
-            pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True)
-            pipe.pipe_classify()
-        else:
-            jso_useful_key = {'_pdf_type': 'ocr', 'model_list': model_json}
-            image_writer = FileBasedDataWriter(image_dir)
-            pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True)
-        """如果没有传入有效的模型数据，则使用内置model解析"""
-        if len(model_json) == 0:
-            if model_config.__use_inside_model__:
-                pipe.pipe_analyze()
+            if ds.classify() == SupportedPdfParseMethod.OCR:
+                parse_method = 'ocr'
             else:
-                logger.error('need model list input')
-                exit(1)
-        pipe.pipe_parse()
-        pdf_mid_data = JsonCompressor.decompress_json(pipe.get_compress_pdf_mid_data())
+                parse_method = 'txt'
+
+        if parse_method == 'ocr':
+            infer_result = ds.apply(doc_analyze, ocr=True)
+        else:
+            infer_result = ds.apply(doc_analyze, ocr=False)
+
+        if parse_method == 'ocr':
+            pipe_res = infer_result.pipe_ocr_mode(image_writer)
+        else:
+            pipe_res = infer_result.pipe_txt_mode(image_writer)
+
+        pdf_mid_data = pipe_res._pipe_res
         pdf_info_list = pdf_mid_data['pdf_info']
         md_content = json.dumps(ocr_mk_mm_markdown_with_para_and_pagination(pdf_info_list, image_url_prefix),
                                 ensure_ascii=False)
@@ -51,7 +57,6 @@ def analysis_pdf(image_url_prefix, image_dir, pdf_bytes, is_ocr=False):
         return md_content, bbox_info
     except Exception as e:  # noqa: F841
         logger.error(traceback.format_exc())
-
 
 def get_bbox_info(data):
     bbox_info = []

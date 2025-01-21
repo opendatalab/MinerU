@@ -14,7 +14,7 @@
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
-[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://mineru.org.cn/OpenSourceTools/Extractor?source=github)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAF8AAABYCAMAAACkl9t/AAAAk1BMVEVHcEz/nQv/nQv/nQr/nQv/nQr/nQv/nQv/nQr/wRf/txT/pg7/yRr/rBD/zRz/ngv/oAz/zhz/nwv/txT/ngv/0B3+zBz/nQv/0h7/wxn/vRb/thXkuiT/rxH/pxD/ogzcqyf/nQvTlSz/czCxky7/SjifdjT/Mj3+Mj3wMj15aTnDNz+DSD9RTUBsP0FRO0Q6O0WyIxEIAAAAGHRSTlMADB8zSWF3krDDw8TJ1NbX5efv8ff9/fxKDJ9uAAAGKklEQVR42u2Z63qjOAyGC4RwCOfB2JAGqrSb2WnTw/1f3UaWcSGYNKTdf/P+mOkTrE+yJBulvfvLT2A5ruenaVHyIks33npl/6C4s/ZLAM45SOi/1FtZPyFur1OYofBX3w7d54Bxm+E8db+nDr12ttmESZ4zludJEG5S7TO72YPlKZFyE+YCYUJTBZsMiNS5Sd7NlDmKM2Eg2JQg8awbglfqgbhArjxkS7dgp2RH6hc9AMLdZYUtZN5DJr4molC8BfKrEkPKEnEVjLbgW1fLy77ZVOJagoIcLIl+IxaQZGjiX597HopF5CkaXVMDO9Pyix3AFV3kw4lQLCbHuMovz8FallbcQIJ5Ta0vks9RnolbCK84BtjKRS5uA43hYoZcOBGIG2Epbv6CvFVQ8m8loh66WNySsnN7htL58LNp+NXT8/PhXiBXPMjLSxtwp8W9f/1AngRierBkA+kk/IpUSOeKByzn8y3kAAAfh//0oXgV4roHm/kz4E2z//zRc3/lgwBzbM2mJxQEa5pqgX7d1L0htrhx7LKxOZlKbwcAWyEOWqYSI8YPtgDQVjpB5nvaHaSnBaQSD6hweDi8PosxD6/PT09YY3xQA7LTCTKfYX+QHpA0GCcqmEHvr/cyfKQTEuwgbs2kPxJEB0iNjfJcCTPyocx+A0griHSmADiC91oNGVwJ69RudYe65vJmoqfpul0lrqXadW0jFKH5BKwAeCq+Den7s+3zfRJzA61/Uj/9H/VzLKTx9jFPPdXeeP+L7WEvDLAKAIoF8bPTKT0+TM7W8ePj3Rz/Yn3kOAp2f1Kf0Weony7pn/cPydvhQYV+eFOfmOu7VB/ViPe34/EN3RFHY/yRuT8ddCtMPH/McBAT5s+vRde/gf2c/sPsjLK+m5IBQF5tO+h2tTlBGnP6693JdsvofjOPnnEHkh2TnV/X1fBl9S5zrwuwF8NFrAVJVwCAPTe8gaJlomqlp0pv4Pjn98tJ/t/fL++6unpR1YGC2n/KCoa0tTLoKiEeUPDl94nj+5/Tv3/eT5vBQ60X1S0oZr+IWRR8Ldhu7AlLjPISlJcO9vrFotky9SpzDequlwEir5beYAc0R7D9KS1DXva0jhYRDXoExPdc6yw5GShkZXe9QdO/uOvHofxjrV/TNS6iMJS+4TcSTgk9n5agJdBQbB//IfF/HpvPt3Tbi7b6I6K0R72p6ajryEJrENW2bbeVUGjfgoals4L443c7BEE4mJO2SpbRngxQrAKRudRzGQ8jVOL2qDVjjI8K1gc3TIJ5KiFZ1q+gdsARPB4NQS4AjwVSt72DSoXNyOWUrU5mQ9nRYyjp89Xo7oRI6Bga9QNT1mQ/ptaJq5T/7WcgAZywR/XlPGAUDdet3LE+qS0TI+g+aJU8MIqjo0Kx8Ly+maxLjJmjQ18rA0YCkxLQbUZP1WqdmyQGJLUm7VnQFqodmXSqmRrdVpqdzk5LvmvgtEcW8PMGdaS23EOWyDVbACZzUJPaqMbjDxpA3Qrgl0AikimGDbqmyT8P8NOYiqrldF8rX+YN7TopX4UoHuSCYY7cgX4gHwclQKl1zhx0THf+tCAUValzjI7Wg9EhptrkIcfIJjA94evOn8B2eHaVzvBrnl2ig0So6hvPaz0IGcOvTHvUIlE2+prqAxLSQxZlU2stql1NqCCLdIiIN/i1DBEHUoElM9dBravbiAnKqgpi4IBkw+utSPIoBijDXJipSVV7MpOEJUAc5Qmm3BnUN+w3hteEieYKfRZSIUcXKMVf0u5wD4EwsUNVvZOtUT7A2GkffHjByWpHqvRBYrTV72a6j8zZ6W0DTE86Hn04bmyWX3Ri9WH7ZU6Q7h+ZHo0nHUAcsQvVhXRDZHChwiyi/hnPuOsSEF6Exk3o6Y9DT1eZ+6cASXk2Y9k+6EOQMDGm6WBK10wOQJCBwren86cPPWUcRAnTVjGcU1LBgs9FURiX/e6479yZcLwCBmTxiawEwrOcleuu12t3tbLv/N4RLYIBhYexm7Fcn4OJcn0+zc+s8/VfPeddZHAGN6TT8eGczHdR/Gts1/MzDkThr23zqrVfAMFT33Nx1RJsx1k5zuWILLnG/vsH+Fv5D4NTVcp1Gzo8AAAAAElFTkSuQmCC&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
@@ -31,6 +31,10 @@
 
 <p align="center">
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
+<br>
+<br>
+<a href="https://mineru.org.cn/client?source=github">更便捷的使用方式：MinerU桌面端。无需编程，无需登录，图形界面，简单交互，畅用无忧。</a>🚀🚀🚀
+
 </p>
 
 <!-- join us -->
@@ -42,6 +46,15 @@
 </div>
 
 # 更新记录
+- 2025/01/10 1.0.1 发布，这是我们的第一个正式版本，在这个版本中，我们通过大量重构带来了全新的API接口和更广泛的兼容性，以及全新的自动语言识别功能：
+  - 全新API接口 
+    - 对于数据侧API，我们引入了Dataset类，旨在提供一个强大而灵活的数据处理框架。该框架当前支持包括图像（.jpg及.png）、PDF、Word（.doc及.docx）、以及PowerPoint（.ppt及.pptx）在内的多种文档格式，确保了从简单到复杂的数据处理任务都能得到有效的支持。
+    - 针对用户侧API，我们将MinerU的处理流程精心设计为一系列可组合的Stage阶段。每个Stage代表了一个特定的处理步骤，用户可以根据自身需求自由地定义新的Stage，并通过创造性地组合这些阶段来定制专属的数据处理流程。
+  - 更广泛的兼容性适配
+    - 通过优化依赖环境和配置项，确保在ARM架构的Linux系统上能够稳定高效运行。
+    - 深度适配华为昇腾NPU加速，积极响应信创要求，提供自主可控的高性能计算能力，助力人工智能应用平台的国产化应用与发展。[NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+  - 自动语言识别
+    - 通过引入全新的语言识别模型， 在文档解析中将`lang`配置为`auto`，即可自动选择合适的OCR语言模型，提升扫描类文档解析的准确性。
 - 2024/11/22 0.10.0发布，通过引入混合OCR文本提取能力，
   - 在公式密集、span区域不规范、部分文本使用图像表现等复杂文本分布场景下获得解析效果的显著提升
   - 同时具备文本模式内容提取准确、速度更快与OCR模式span/line区域识别更准的双重优势
@@ -81,6 +94,7 @@
             <li><a href="#在线体验">在线体验</a></li>
             <li><a href="#使用CPU快速体验">使用CPU快速体验</a></li>
             <li><a href="#使用GPU">使用GPU</a></li>
+            <li><a href="#使用NPU">使用NPU</a></li>
             </ul>
         </li>
         <li><a href="#使用">使用方式</a>
@@ -129,7 +143,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR支持84种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
-- 支持CPU和GPU环境
+- 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
 - 兼容Windows、Linux和Mac平台
 
 ## 快速开始
@@ -140,7 +154,10 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 - [在线体验(无需任何安装)](#在线体验)
 - [使用CPU快速体验（Windows，Linux，Mac）](#使用cpu快速体验)
-- [Linux/Windows + CUDA](#使用gpu)
+- 使用 CUDA/CANN/MPS 加速推理 
+  - [Linux/Windows + CUDA](#使用gpu)
+  - [Linux + CANN](#使用npu)
+  - [MacOS + MPS](#使用mps)
 
 
 > [!WARNING]
@@ -157,19 +174,23 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td colspan="3" rowspan="2">操作系统</td>
     </tr>
     <tr>
-        <td>Ubuntu 22.04 LTS</td>
+        <td>Linux after 2019</td>
         <td>Windows 10 / 11</td>
         <td>macOS 11+</td>
     </tr>
     <tr>
         <td colspan="3">CPU</td>
-        <td>x86_64(暂不支持ARM Linux)</td>
+        <td>x86_64 / arm64</td>
         <td>x86_64(暂不支持ARM Windows)</td>
         <td>x86_64 / arm64</td>
     </tr>
     <tr>
         <td colspan="3">内存</td>
         <td colspan="3">大于等于16GB，推荐32G以上</td>
+    </tr>
+    <tr>
+        <td colspan="3">存储空间</td>
+        <td colspan="3">大于等于20GB，推荐使用SSD以获得最佳性能</td>
     </tr>
     <tr>
         <td colspan="3">python版本</td>
@@ -188,6 +209,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>None</td>
     </tr>
     <tr>
+        <td colspan="3">CANN环境(NPU支持)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
+        <td>None</td>
+    </tr>
+    <tr>
         <td rowspan="2">GPU硬件支持列表</td>
         <td colspan="2">显存8G以上</td>
         <td colspan="2">
@@ -195,13 +222,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         8G显存及以上可开启全部加速功能</td>
         <td rowspan="2">None</td>
     </tr>
-
 </table>
 
 ### 在线体验
 稳定版(经过QA验证的稳定版本)：
 
-[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://mineru.org.cn/OpenSourceTools/Extractor?source=github)
 
 测试版(同步dev分支更新，测试新特性)：
 
@@ -218,7 +244,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 #### 2. 下载模型权重文件
@@ -242,7 +268,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 {
     // other config
     "layout-config": {
-        "model": "layoutlmv3" // 使用doclayout_yolo请修改为“doclayout_yolo"
+        "model": "doclayout_yolo" // 使用layoutlmv3请修改为“layoutlmv3"
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -251,7 +277,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
     },
     "table-config": {
         "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
-        "enable": false, // 表格识别功能默认是关闭的，如果需要开启请修改此处的值为"true"
+        "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
         "max_time": 400
     }
 }
@@ -273,25 +299,47 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
+  docker run --rm -it --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
   magic-pdf --help
   ```
-    
+### 使用NPU
+
+如果您的设备存在NPU加速硬件，则可以通过以下教程使用NPU加速：
+
+[NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+
+### 使用MPS
+如果您的设备使用Apple silicon 芯片，您可以在部分支持的任务（layout检测/公式检测）中开启mps加速：
+
+您可以通过在 `magic-pdf.json` 配置文件中将 `device-mode` 参数设置为 `mps` 来启用 MPS 加速。
+
+```json
+{
+    // other config
+    "device-mode": "mps"
+}
+```
+
+> [!TIP]
+> 由于公式识别任务无法开启mps加速，您可在不需要识别公式的任务关闭公式识别功能以获得最佳性能。
+>
+> 您可以通过将 `formula-config` 部分中的 `enable` 参数设置为 `false` 来禁用公式识别功能。
+
 
 ## 使用
 
 ### 命令行
 
-[通过命令行使用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/command_line.html)
+[通过命令行使用MinerU](https://mineru.readthedocs.io/en/latest/user_guide/usage/command_line.html)
 
 > [!TIP]
 > 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
 ### API
 
-[通过Python代码调用MinerU](https://mineru.readthedocs.io/zh-cn/latest/user_guide/quick_start/to_markdown.html)
+[通过Python代码调用MinerU](https://mineru.readthedocs.io/en/latest/user_guide/usage/api.html)
 
 
 ### 部署衍生项目
