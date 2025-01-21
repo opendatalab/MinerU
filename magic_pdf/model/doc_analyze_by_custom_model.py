@@ -177,7 +177,7 @@ def doc_analyze(
     if torch.cuda.is_available() and device != 'cpu' or npu_support:
         gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
-            batch_ratio = int(gpu_memory-5)
+            batch_ratio = int(gpu_memory-6)
             if batch_ratio >= 1:
                 logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
                 batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
