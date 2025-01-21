@@ -55,7 +55,7 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install -r requirements.txt"
 
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    uvicorn api:app --host 0.0.0.0 --port 3000 --workers 1 --reload"
+    nohup uvicorn api:app --host 0.0.0.0 --port 3000 --workers 1 --reload &"
 
 COPY example /tmp/example
 
