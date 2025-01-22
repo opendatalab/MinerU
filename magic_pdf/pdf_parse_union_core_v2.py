@@ -957,17 +957,23 @@ def pdf_parse_union(
         formula_aided_config = llm_aided_config.get('formula_aided', None)
         if formula_aided_config is not None:
             if formula_aided_config.get('enable', False):
+                llm_aided_formula_start_time = time.time()
                 llm_aided_formula(pdf_info_dict, formula_aided_config)
+                logger.info(f'llm aided formula time: {round(time.time() - llm_aided_formula_start_time, 2)}')
         """文本优化"""
         text_aided_config = llm_aided_config.get('text_aided', None)
         if text_aided_config is not None:
             if text_aided_config.get('enable', False):
+                llm_aided_text_start_time = time.time()
                 llm_aided_text(pdf_info_dict, text_aided_config)
+                logger.info(f'llm aided text time: {round(time.time() - llm_aided_text_start_time, 2)}')
         """标题优化"""
         title_aided_config = llm_aided_config.get('title_aided', None)
         if title_aided_config is not None:
             if title_aided_config.get('enable', False):
+                llm_aided_title_start_time = time.time()
                 llm_aided_title(pdf_info_dict, title_aided_config)
+                logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)
