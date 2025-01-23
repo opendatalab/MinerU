@@ -123,4 +123,5 @@ jobs:
       - name: Publish distribution to PyPI
         run: |
           pip install twine
+          twine check dist/*
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
