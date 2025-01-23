@@ -53,7 +53,7 @@
   - 性能优化
     - 在配置满足一定条件（显存16GB+）的设备上，通过优化资源占用和重构处理流水线，整体解析速度提升50%以上
   - 解析效果优化
-    - 在线demo（mineru.net/huggingface/modelscope）上新增标题分级功能（测试版本，默认开启），支持对标题进行分级，提升文档结构化程度
+    - 在线demo（[mineru.net](https://mineru.net/OpenSourceTools/Extractor)/[huggingface](https://huggingface.co/spaces/opendatalab/MinerU)/[modelscope](https://www.modelscope.cn/studios/OpenDataLab/MinerU)）上新增标题分级功能（测试版本，默认开启），支持对标题进行分级，提升文档结构化程度
 - 2025/01/10 1.0.1 发布，这是我们的第一个正式版本，在这个版本中，我们通过大量重构带来了全新的API接口和更广泛的兼容性，以及全新的自动语言识别功能：
   - 全新API接口 
     - 对于数据侧API，我们引入了Dataset类，旨在提供一个强大而灵活的数据处理框架。该框架当前支持包括图像（.jpg及.png）、PDF、Word（.doc及.docx）、以及PowerPoint（.ppt及.pptx）在内的多种文档格式，确保了从简单到复杂的数据处理任务都能得到有效的支持。
