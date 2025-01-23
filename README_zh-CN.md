@@ -283,6 +283,7 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
     },
     "table-config": {
         "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
+        "sub_model": "slanet_plus",  // 当model为"rapid_table"时，可以自选sub_model，可选项为"slanet_plus"和"unitable"
         "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
         "max_time": 400
     }
