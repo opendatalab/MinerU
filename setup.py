@@ -48,10 +48,10 @@ if __name__ == '__main__':
                      "struct-eqtable==0.3.2",  # 表格解析
                      "einops",  # struct-eqtable依赖
                      "accelerate",  # struct-eqtable依赖
-                     "doclayout_yolo==0.0.2",  # doclayout_yolo
+                     "doclayout_yolo==0.0.2b1",  # doclayout_yolo
                      "rapidocr-paddle",  # rapidocr-paddle
                      "rapidocr_onnxruntime",
-                     "rapid_table==0.3.0",  # rapid_table
+                     "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
                      "openai",  # openai SDK
                      "detectron2"

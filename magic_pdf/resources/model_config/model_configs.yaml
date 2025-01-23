@@ -1,8 +1,8 @@
 weights:
   layoutlmv3: Layout/LayoutLMv3/model_final.pth
-  doclayout_yolo: Layout/YOLO/doclayout_yolo_ft.pt
+  doclayout_yolo: Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt
   yolo_v8_mfd: MFD/YOLO/yolo_v8_ft.pt
-  unimernet_small: MFR/unimernet_small
+  unimernet_small: MFR/unimernet_small_2501
   struct_eqtable: TabRec/StructEqTable
   tablemaster: TabRec/TableMaster
   rapid_table: TabRec/RapidTable

@@ -1,7 +1,7 @@
 boto3>=1.28.43
 Brotli>=1.1.0
 click>=8.1.7
-PyMuPDF>=1.24.9
+PyMuPDF>=1.24.9,<=1.24.14
 loguru>=0.6.0
 numpy>=1.21.6,<2.0.0
 fast-langdetect>=0.2.3,<0.3.0
@@ -16,10 +16,9 @@ paddleocr==2.7.3
 struct-eqtable==0.3.2
 einops
 accelerate
-doclayout_yolo==0.0.2
 rapidocr-paddle
 rapidocr-onnxruntime
-rapid_table==0.3.0
-doclayout-yolo==0.0.2
+rapid-table>=1.0.3,<2.0.0
+doclayout-yolo==0.0.2b1
 openai
 detectron2

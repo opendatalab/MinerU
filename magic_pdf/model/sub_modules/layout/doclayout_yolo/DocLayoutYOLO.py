@@ -9,7 +9,11 @@ class DocLayoutYOLOModel(object):
     def predict(self, image):
         layout_res = []
         doclayout_yolo_res = self.model.predict(
-            image, imgsz=1024, conf=0.25, iou=0.45, verbose=False, device=self.device
+            image,
+            imgsz=1280,
+            conf=0.10,
+            iou=0.45,
+            verbose=False, device=self.device
         )[0]
         for xyxy, conf, cla in zip(
             doclayout_yolo_res.boxes.xyxy.cpu(),
@@ -32,8 +36,8 @@ class DocLayoutYOLOModel(object):
                 image_res.cpu()
                 for image_res in self.model.predict(
                     images[index : index + batch_size],
-                    imgsz=1024,
-                    conf=0.25,
+                    imgsz=1280,
+                    conf=0.10,
                     iou=0.45,
                     verbose=False,
                     device=self.device,

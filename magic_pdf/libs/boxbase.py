@@ -185,10 +185,13 @@ def calculate_iou(bbox1, bbox2):
     bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
     bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
 
+    if any([bbox1_area == 0, bbox2_area == 0]):
+        return 0
+
     # Compute the intersection over union by taking the intersection area
     # and dividing it by the sum of both areas minus the intersection area
-    iou = intersection_area / float(bbox1_area + bbox2_area -
-                                    intersection_area)
+    iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
+
     return iou
 
 

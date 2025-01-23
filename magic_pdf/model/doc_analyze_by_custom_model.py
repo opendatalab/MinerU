@@ -3,7 +3,11 @@ import time
 
 # 关闭paddle的信号处理
 import paddle
+import torch
 from loguru import logger
+
+from magic_pdf.model.batch_analyze import BatchAnalyze
+from magic_pdf.model.sub_modules.model_utils import get_vram
 
 paddle.disable_signal_handler()
 
@@ -154,33 +158,88 @@ def doc_analyze(
     table_enable=None,
 ) -> InferenceResult:
 
+    end_page_id = end_page_id if end_page_id else len(dataset) - 1
+
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(
         ocr, show_log, lang, layout_model, formula_enable, table_enable
     )
 
+    batch_analyze = False
+    device = get_device()
+
+    npu_support = False
+    if str(device).startswith("npu"):
+        import torch_npu
+        if torch_npu.npu.is_available():
+            npu_support = True
+
+    if torch.cuda.is_available() and device != 'cpu' or npu_support:
+        gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
+        if gpu_memory is not None and gpu_memory >= 8:
+
+            if 8 <= gpu_memory < 10:
+                batch_ratio = 2
+            elif 10 <= gpu_memory <= 12:
+                batch_ratio = 4
+            elif 12 < gpu_memory <= 16:
+                batch_ratio = 8
+            elif 16 < gpu_memory <= 24:
+                batch_ratio = 16
+            else:
+                batch_ratio = 32
+
+            if batch_ratio >= 1:
+                logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
+                batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
+                batch_analyze = True
+
     model_json = []
     doc_analyze_start = time.time()
 
-    if end_page_id is None:
-        end_page_id = len(dataset)
+    if batch_analyze:
+        # batch analyze
+        images = []
+        for index in range(len(dataset)):
+            if start_page_id <= index <= end_page_id:
+                page_data = dataset.get_page(index)
+                img_dict = page_data.get_image()
+                images.append(img_dict['img'])
+        analyze_result = batch_model(images)
 
-    for index in range(len(dataset)):
-        page_data = dataset.get_page(index)
-        img_dict = page_data.get_image()
-        img = img_dict['img']
-        page_width = img_dict['width']
-        page_height = img_dict['height']
-        if start_page_id <= index <= end_page_id:
-            page_start = time.time()
-            result = custom_model(img)
-            logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
-        else:
-            result = []
+        for index in range(len(dataset)):
+            page_data = dataset.get_page(index)
+            img_dict = page_data.get_image()
+            page_width = img_dict['width']
+            page_height = img_dict['height']
+            if start_page_id <= index <= end_page_id:
+                result = analyze_result.pop(0)
+            else:
+                result = []
 
-        page_info = {'page_no': index, 'height': page_height, 'width': page_width}
-        page_dict = {'layout_dets': result, 'page_info': page_info}
-        model_json.append(page_dict)
+            page_info = {'page_no': index, 'height': page_height, 'width': page_width}
+            page_dict = {'layout_dets': result, 'page_info': page_info}
+            model_json.append(page_dict)
+
+    else:
+        # single analyze
+
+        for index in range(len(dataset)):
+            page_data = dataset.get_page(index)
+            img_dict = page_data.get_image()
+            img = img_dict['img']
+            page_width = img_dict['width']
+            page_height = img_dict['height']
+            if start_page_id <= index <= end_page_id:
+                page_start = time.time()
+                result = custom_model(img)
+                logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
+            else:
+                result = []
+
+            page_info = {'page_no': index, 'height': page_height, 'width': page_width}
+            page_dict = {'layout_dets': result, 'page_info': page_info}
+            model_json.append(page_dict)
 
     gc_start = time.time()
     clean_memory(get_device())

@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import re
 import statistics
@@ -12,7 +13,7 @@ from loguru import logger
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
-from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, __is_overlaps_y_exceeds_threshold
 from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config, get_device
 from magic_pdf.libs.convert_utils import dict_to_list
@@ -117,9 +118,10 @@ def fill_char_in_spans(spans, all_chars):
 
     for char in all_chars:
         # 跳过非法bbox的char
-        x1, y1, x2, y2 = char['bbox']
-        if abs(x1 - x2) <= 0.01 or abs(y1 - y2) <= 0.01:
-            continue
+        # x1, y1, x2, y2 = char['bbox']
+        # if abs(x1 - x2) <= 0.01 or abs(y1 - y2) <= 0.01:
+        #     continue
+
         for span in spans:
             if calculate_char_in_span(char['bbox'], span['bbox'], char['c']):
                 span['chars'].append(char)
@@ -173,12 +175,35 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
             return False
 
 
+def remove_tilted_line(text_blocks):
+    for block in text_blocks:
+        remove_lines = []
+        for line in block['lines']:
+            cosine, sine = line['dir']
+            # 计算弧度值
+            angle_radians = math.atan2(sine, cosine)
+            # 将弧度值转换为角度值
+            angle_degrees = math.degrees(angle_radians)
+            if 2 < abs(angle_degrees) < 88:
+                remove_lines.append(line)
+        for line in remove_lines:
+            block['lines'].remove(line)
+
+
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
     # cid用0xfffd表示，连字符拆开
     # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
 
     # cid用0xfffd表示，连字符不拆开
-    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
+    #text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_LIGATURES | fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
+
+    # 自定义flags出现较多0xfffd，可能是pymupdf可以自行处理内置字典的pdf，不再使用
+    text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+    # text_blocks = pdf_page.get_text('dict', flags=fitz.TEXTFLAGS_TEXT)['blocks']
+
+    # 移除所有角度不为0或90的line
+    remove_tilted_line(text_blocks_raw)
+
     all_pymu_chars = []
     for block in text_blocks_raw:
         for line in block['lines']:
@@ -365,10 +390,11 @@ def cal_block_index(fix_blocks, sorted_bboxes):
                 block['index'] = median_value
 
             # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
-            if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
-                block['virtual_lines'] = copy.deepcopy(block['lines'])
-                block['lines'] = copy.deepcopy(block['real_lines'])
-                del block['real_lines']
+            if block['type'] in [BlockType.ImageBody, BlockType.TableBody, BlockType.Title, BlockType.InterlineEquation]:
+                if 'real_lines' in block:
+                    block['virtual_lines'] = copy.deepcopy(block['lines'])
+                    block['lines'] = copy.deepcopy(block['real_lines'])
+                    del block['real_lines']
     else:
         # 使用xycut排序
         block_bboxes = []
@@ -417,7 +443,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
     block_weight = x1 - x0
 
     # 如果block高度小于n行正文，则直接返回block的bbox
-    if line_height * 3 < block_height:
+    if line_height * 2 < block_height:
         if (
             block_height > page_h * 0.25 and page_w * 0.5 > block_weight > page_w * 0.25
         ):  # 可能是双列结构，可以切细点
@@ -425,16 +451,16 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
         else:
             # 如果block的宽度超过0.4页面宽度，则将block分成3行(是一种复杂布局，图不能切的太细)
             if block_weight > page_w * 0.4:
-                line_height = (y1 - y0) / 3
                 lines = 3
+                line_height = (y1 - y0) / lines
             elif block_weight > page_w * 0.25:  # （可能是三列结构，也切细点）
                 lines = int(block_height / line_height) + 1
             else:  # 判断长宽比
                 if block_height / block_weight > 1.2:  # 细长的不分
                     return [[x0, y0, x1, y1]]
                 else:  # 不细长的还是分成两行
-                    line_height = (y1 - y0) / 2
                     lines = 2
+                    line_height = (y1 - y0) / lines
 
         # 确定从哪个y位置开始绘制线条
         current_y = y0
@@ -453,30 +479,32 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
 
 def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
+
+    def add_lines_to_block(b):
+        line_bboxes = insert_lines_into_block(b['bbox'], line_height, page_w, page_h)
+        b['lines'] = []
+        for line_bbox in line_bboxes:
+            b['lines'].append({'bbox': line_bbox, 'spans': []})
+        page_line_list.extend(line_bboxes)
+
     for block in fix_blocks:
         if block['type'] in [
-            BlockType.Text, BlockType.Title, BlockType.InterlineEquation,
+            BlockType.Text, BlockType.Title,
             BlockType.ImageCaption, BlockType.ImageFootnote,
             BlockType.TableCaption, BlockType.TableFootnote
         ]:
             if len(block['lines']) == 0:
-                bbox = block['bbox']
-                lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
-                for line in lines:
-                    block['lines'].append({'bbox': line, 'spans': []})
-                page_line_list.extend(lines)
+                add_lines_to_block(block)
+            elif block['type'] in [BlockType.Title] and len(block['lines']) == 1 and (block['bbox'][3] - block['bbox'][1]) > line_height * 2:
+                block['real_lines'] = copy.deepcopy(block['lines'])
+                add_lines_to_block(block)
             else:
                 for line in block['lines']:
                     bbox = line['bbox']
                     page_line_list.append(bbox)
-        elif block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
-            bbox = block['bbox']
+        elif block['type'] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
             block['real_lines'] = copy.deepcopy(block['lines'])
-            lines = insert_lines_into_block(bbox, line_height, page_w, page_h)
-            block['lines'] = []
-            for line in lines:
-                block['lines'].append({'bbox': line, 'spans': []})
-            page_line_list.extend(lines)
+            add_lines_to_block(block)
 
     if len(page_line_list) > 200:  # layoutreader最高支持512line
         return None
@@ -663,11 +691,76 @@ def parse_page_core(
     discarded_blocks = magic_model.get_discarded(page_id)
     text_blocks = magic_model.get_text_blocks(page_id)
     title_blocks = magic_model.get_title_blocks(page_id)
-    inline_equations, interline_equations, interline_equation_blocks = (
-        magic_model.get_equations(page_id)
-    )
-
+    inline_equations, interline_equations, interline_equation_blocks = magic_model.get_equations(page_id)
     page_w, page_h = magic_model.get_page_size(page_id)
+
+    def merge_title_blocks(blocks, x_distance_threshold=0.1*page_w):
+        def merge_two_bbox(b1, b2):
+            x_min = min(b1['bbox'][0], b2['bbox'][0])
+            y_min = min(b1['bbox'][1], b2['bbox'][1])
+            x_max = max(b1['bbox'][2], b2['bbox'][2])
+            y_max = max(b1['bbox'][3], b2['bbox'][3])
+            return x_min, y_min, x_max, y_max
+
+        def merge_two_blocks(b1, b2):
+            # 合并两个标题块的边界框
+            b1['bbox'] = merge_two_bbox(b1, b2)
+
+            # 合并两个标题块的文本内容
+            line1 = b1['lines'][0]
+            line2 = b2['lines'][0]
+            line1['bbox'] = merge_two_bbox(line1, line2)
+            line1['spans'].extend(line2['spans'])
+
+            return b1, b2
+
+        # 按 y 轴重叠度聚集标题块
+        y_overlapping_blocks = []
+        title_bs = [b for b in blocks if b['type'] == BlockType.Title]
+        while title_bs:
+            block1 = title_bs.pop(0)
+            current_row = [block1]
+            to_remove = []
+            for block2 in title_bs:
+                if (
+                    __is_overlaps_y_exceeds_threshold(block1['bbox'], block2['bbox'], 0.9)
+                    and len(block1['lines']) == 1
+                    and len(block2['lines']) == 1
+                ):
+                    current_row.append(block2)
+                    to_remove.append(block2)
+            for b in to_remove:
+                title_bs.remove(b)
+            y_overlapping_blocks.append(current_row)
+
+        # 按x轴坐标排序并合并标题块
+        to_remove_blocks = []
+        for row in y_overlapping_blocks:
+            if len(row) == 1:
+                continue
+
+            # 按x轴坐标排序
+            row.sort(key=lambda x: x['bbox'][0])
+
+            merged_block = row[0]
+            for i in range(1, len(row)):
+                left_block = merged_block
+                right_block = row[i]
+
+                left_height = left_block['bbox'][3] - left_block['bbox'][1]
+                right_height = right_block['bbox'][3] - right_block['bbox'][1]
+
+                if (
+                    right_block['bbox'][0] - left_block['bbox'][2] < x_distance_threshold
+                    and left_height * 0.95 < right_height < left_height * 1.05
+                ):
+                    merged_block, to_remove_block = merge_two_blocks(merged_block, right_block)
+                    to_remove_blocks.append(to_remove_block)
+                else:
+                    merged_block = right_block
+
+        for b in to_remove_blocks:
+            blocks.remove(b)
 
     """将所有区块的bbox整理到一起"""
     # interline_equation_blocks参数不够准，后面切换到interline_equations上
@@ -752,6 +845,9 @@ def parse_page_core(
 
     """对block进行fix操作"""
     fix_blocks = fix_block_spans_v2(block_with_spans)
+
+    """同一行被断开的titile合并"""
+    merge_title_blocks(fix_blocks)
 
     """获取所有line并计算正文line的高度"""
     line_height = get_line_height(fix_blocks)
@@ -861,17 +957,23 @@ def pdf_parse_union(
         formula_aided_config = llm_aided_config.get('formula_aided', None)
         if formula_aided_config is not None:
             if formula_aided_config.get('enable', False):
+                llm_aided_formula_start_time = time.time()
                 llm_aided_formula(pdf_info_dict, formula_aided_config)
+                logger.info(f'llm aided formula time: {round(time.time() - llm_aided_formula_start_time, 2)}')
         """文本优化"""
         text_aided_config = llm_aided_config.get('text_aided', None)
         if text_aided_config is not None:
             if text_aided_config.get('enable', False):
+                llm_aided_text_start_time = time.time()
                 llm_aided_text(pdf_info_dict, text_aided_config)
+                logger.info(f'llm aided text time: {round(time.time() - llm_aided_text_start_time, 2)}')
         """标题优化"""
         title_aided_config = llm_aided_config.get('title_aided', None)
         if title_aided_config is not None:
             if title_aided_config.get('enable', False):
+                llm_aided_title_start_time = time.time()
                 llm_aided_title(pdf_info_dict, title_aided_config)
+                logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
     """dict转list"""
     pdf_info_list = dict_to_list(pdf_info_dict)

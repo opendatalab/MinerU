@@ -69,6 +69,7 @@ class CustomPEKModel:
         self.apply_table = self.table_config.get('enable', False)
         self.table_max_time = self.table_config.get('max_time', TABLE_MAX_TIME_VALUE)
         self.table_model_name = self.table_config.get('model', MODEL_NAME.RAPID_TABLE)
+        self.table_sub_model_name = self.table_config.get('sub_model', None)
 
         # ocr config
         self.apply_ocr = ocr
@@ -144,7 +145,7 @@ class CustomPEKModel:
                         model_config_dir, 'layoutlmv3', 'layoutlmv3_base_inference.yaml'
                     )
                 ),
-                device=self.device,
+                device='cpu' if str(self.device).startswith("mps") else self.device,
             )
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             self.layout_model = atom_model_manager.get_atom_model(
@@ -174,6 +175,7 @@ class CustomPEKModel:
                 table_max_time=self.table_max_time,
                 device=self.device,
                 ocr_engine=self.ocr_model,
+                table_sub_model_name=self.table_sub_model_name
             )
 
         logger.info('DocAnalysis init done!')
@@ -192,24 +194,24 @@ class CustomPEKModel:
             layout_res = self.layout_model(image, ignore_catids=[])
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
             # doclayout_yolo
-            if height > width:
-                input_res = {"poly":[0,0,width,0,width,height,0,height]}
-                new_image, useful_list = crop_img(input_res, pil_img, crop_paste_x=width//2, crop_paste_y=0)
-                paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
-                layout_res = self.layout_model.predict(new_image)
-                for res in layout_res:
-                    p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
-                    p1 = p1 - paste_x + xmin
-                    p2 = p2 - paste_y + ymin
-                    p3 = p3 - paste_x + xmin
-                    p4 = p4 - paste_y + ymin
-                    p5 = p5 - paste_x + xmin
-                    p6 = p6 - paste_y + ymin
-                    p7 = p7 - paste_x + xmin
-                    p8 = p8 - paste_y + ymin
-                    res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
-            else:
-                layout_res = self.layout_model.predict(image)
+            # if height > width:
+            #     input_res = {"poly":[0,0,width,0,width,height,0,height]}
+            #     new_image, useful_list = crop_img(input_res, pil_img, crop_paste_x=width//2, crop_paste_y=0)
+            #     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
+            #     layout_res = self.layout_model.predict(new_image)
+            #     for res in layout_res:
+            #         p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
+            #         p1 = p1 - paste_x + xmin
+            #         p2 = p2 - paste_y + ymin
+            #         p3 = p3 - paste_x + xmin
+            #         p4 = p4 - paste_y + ymin
+            #         p5 = p5 - paste_x + xmin
+            #         p6 = p6 - paste_y + ymin
+            #         p7 = p7 - paste_x + xmin
+            #         p8 = p8 - paste_y + ymin
+            #         res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
+            # else:
+            layout_res = self.layout_model.predict(image)
 
         layout_cost = round(time.time() - layout_start, 2)
         logger.info(f'layout detection time: {layout_cost}')
@@ -228,7 +230,7 @@ class CustomPEKModel:
             logger.info(f'formula nums: {len(formula_list)}, mfr time: {mfr_cost}')
 
         # 清理显存
-        clean_vram(self.device, vram_threshold=8)
+        clean_vram(self.device, vram_threshold=6)
 
         # 从layout_res中获取ocr区域、表格区域、公式区域
         ocr_res_list, table_res_list, single_page_mfdetrec_res = (
@@ -276,7 +278,7 @@ class CustomPEKModel:
                 elif self.table_model_name == MODEL_NAME.TABLE_MASTER:
                     html_code = self.table_model.img2html(new_image)
                 elif self.table_model_name == MODEL_NAME.RAPID_TABLE:
-                    html_code, table_cell_bboxes, elapse = self.table_model.predict(
+                    html_code, table_cell_bboxes, logic_points, elapse = self.table_model.predict(
                         new_image
                     )
                 run_time = time.time() - single_table_start_time
