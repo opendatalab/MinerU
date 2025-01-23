@@ -48,10 +48,13 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 
 # Changelog
 - 2025/01/22 1.1.0 released. In this version we have focused on improving parsing accuracy and efficiency:
-  - Upgraded to the latest doclayout_yolo(2501) model, enhancing layout recognition accuracy.
-  - Upgraded to the latest unimernet(2501) model, improving formula recognition accuracy.
-  - On devices that meet certain configuration requirements (16GB+ VRAM), by optimizing resource usage and restructuring the processing pipeline, overall parsing speed has been increased by more than 50%.
-  - Added a new heading classification feature (testing version, enabled by default) to the online demo, which supports hierarchical classification of headings, thereby enhancing document structuring.
+  - Model capability upgrade (requires re-executing the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files)
+    - The layout recognition model has been upgraded to the latest `doclayout_yolo(2501)` model, improving layout recognition accuracy.
+    - The formula parsing model has been upgraded to the latest `unimernet(2501)` model, improving formula recognition accuracy.
+  - Performance optimization
+    - On devices that meet certain configuration requirements (16GB+ VRAM), by optimizing resource usage and restructuring the processing pipeline, overall parsing speed has been increased by more than 50%.
+  - Parsing effect optimization
+    - Added a new heading classification feature (testing version, enabled by default) to the online demo([mineru.net](https://mineru.net/OpenSourceTools/Extractor)/[huggingface](https://huggingface.co/spaces/opendatalab/MinerU)/[modelscope](https://www.modelscope.cn/studios/OpenDataLab/MinerU)), which supports hierarchical classification of headings, thereby enhancing document structuring.
 - 2025/01/10 1.0.1 released. This is our first official release, where we have introduced a completely new API interface and enhanced compatibility through extensive refactoring, as well as a brand new automatic language identification feature:
   - New API Interface
     - For the data-side API, we have introduced the Dataset class, designed to provide a robust and flexible data processing framework. This framework currently supports a variety of document formats, including images (.jpg and .png), PDFs, Word documents (.doc and .docx), and PowerPoint presentations (.ppt and .pptx). It ensures effective support for data processing tasks ranging from simple to complex.
