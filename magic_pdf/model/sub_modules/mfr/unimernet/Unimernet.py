@@ -50,6 +50,9 @@ def latex_rm_whitespace(s: str):
 
 class UnimernetModel(object):
     def __init__(self, weight_dir, cfg_path, _device_="cpu"):
+        device_map = {'cpu': 'cpu', 'gpu': 'cuda'}
+        _device_ = device_map[_device_]
+
         args = argparse.Namespace(cfg_path=cfg_path, options=None)
         cfg = Config(args)
         cfg.config.model.pretrained = os.path.join(weight_dir, "pytorch_model.pth")
