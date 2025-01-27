@@ -182,9 +182,9 @@ def doc_analyze(
                 batch_ratio = 2
             elif 10 <= gpu_memory <= 12:
                 batch_ratio = 4
-            elif 12 < gpu_memory <= 16:
+            elif 12 < gpu_memory <= 20:
                 batch_ratio = 8
-            elif 16 < gpu_memory <= 32:
+            elif 20 < gpu_memory <= 32:
                 batch_ratio = 16
             else:
                 batch_ratio = 32
