@@ -174,20 +174,26 @@ def doc_analyze(
         if torch_npu.npu.is_available():
             npu_support = True
 
+    override_batch_ratio = int(os.getenv("MINERU_OVERRIDE_BATCH_RATIO", 0))
+
     if torch.cuda.is_available() and device != 'cpu' or npu_support:
         gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
+            batch_ratio = 0
 
-            if 8 <= gpu_memory < 10:
-                batch_ratio = 2
-            elif 10 <= gpu_memory <= 12:
-                batch_ratio = 4
-            elif 12 < gpu_memory <= 16:
-                batch_ratio = 8
-            elif 16 < gpu_memory <= 24:
-                batch_ratio = 16
+            if override_batch_ratio > 0:
+                batch_ratio = override_batch_ratio 
             else:
-                batch_ratio = 32
+                if 8 <= gpu_memory < 10:
+                    batch_ratio = 2
+                elif 10 <= gpu_memory <= 12:
+                    batch_ratio = 4
+                elif 12 < gpu_memory <= 16:
+                    batch_ratio = 8
+                elif 16 < gpu_memory <= 24:
+                    batch_ratio = 16
+                else:
+                    batch_ratio = 32
 
             if batch_ratio >= 1:
                 logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
