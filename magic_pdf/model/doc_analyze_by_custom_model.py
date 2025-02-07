@@ -178,21 +178,20 @@ def doc_analyze(
         gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
 
-            if 8 <= gpu_memory < 10:
-                batch_ratio = 2
-            elif 10 <= gpu_memory <= 12:
-                batch_ratio = 4
-            elif 12 < gpu_memory <= 20:
-                batch_ratio = 8
-            elif 20 < gpu_memory <= 32:
-                batch_ratio = 16
-            else:
+            if gpu_memory >= 40:
                 batch_ratio = 32
+            elif gpu_memory >=20:
+                batch_ratio = 16
+            elif gpu_memory >= 16:
+                batch_ratio = 8
+            elif gpu_memory >= 10:
+                batch_ratio = 4
+            else:
+                batch_ratio = 2
 
-            if batch_ratio >= 1:
-                logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
-                batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
-                batch_analyze = True
+            logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
+            batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
+            batch_analyze = True
 
     model_json = []
     doc_analyze_start = time.time()
