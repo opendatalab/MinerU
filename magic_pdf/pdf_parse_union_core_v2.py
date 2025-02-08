@@ -6,8 +6,10 @@ import statistics
 import time
 from typing import List
 
+import cv2
 import fitz
 import torch
+import numpy as np
 from loguru import logger
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
@@ -127,17 +129,15 @@ def fill_char_in_spans(spans, all_chars):
                 span['chars'].append(char)
                 break
 
-    empty_spans = []
-
+    need_ocr_spans = []
     for span in spans:
         chars_to_content(span)
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if len(span['content']) * span['height'] < span['width'] * 0.5:
             # logger.info(f"maybe empty span: {len(span['content'])}, {span['height']}, {span['width']}")
-            empty_spans.append(span)
+            need_ocr_spans.append(span)
         del span['height'], span['width']
-    return empty_spans
-
+    return need_ocr_spans
 
 # 使用鲁棒性更强的中心点坐标判断
 def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
@@ -188,6 +188,28 @@ def remove_tilted_line(text_blocks):
                 remove_lines.append(line)
         for line in remove_lines:
             block['lines'].remove(line)
+
+
+def calculate_contrast(img) -> float:
+    """
+    计算给定BGR图像的对比度。
+
+    :param img: BGR格式的图像，类型为numpy.ndarray
+    :return: 图像的对比度值
+    """
+    # 将BGR图像转换为灰度图
+    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 计算均值和标准差
+    mean_value = np.mean(gray_img)
+    std_dev = np.std(gray_img)
+
+    # 对比度定义为标准差除以平均值（加上小常数避免除零错误）
+    contrast = std_dev / (mean_value + 1e-6)
+
+    # logger.info(f"contrast: {contrast}")
+
+    return round(contrast, 2)
 
 
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
@@ -274,9 +296,9 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             span['chars'] = []
             new_spans.append(span)
 
-    empty_spans = fill_char_in_spans(new_spans, all_pymu_chars)
+    need_ocr_spans = fill_char_in_spans(new_spans, all_pymu_chars)
 
-    if len(empty_spans) > 0:
+    if len(need_ocr_spans) > 0:
 
         # 初始化ocr模型
         atom_model_manager = AtomModelSingleton()
@@ -287,9 +309,15 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             lang=lang
         )
 
-        for span in empty_spans:
+        for span in need_ocr_spans:
             # 对span的bbox截图再ocr
             span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode='cv2')
+
+            # 计算span的对比度，低于0.20的span不进行ocr
+            if calculate_contrast(span_img) <= 0.20:
+                spans.remove(span)
+                continue
+
             ocr_res = ocr_model.ocr(span_img, det=False)
             if ocr_res and len(ocr_res) > 0:
                 if len(ocr_res[0]) > 0:
