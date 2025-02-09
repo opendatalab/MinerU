@@ -305,7 +305,8 @@ def classify_by_img_narrow_strips(page_width, page_height, img_sz_list):
 
 
 def classify(total_page: int, page_width, page_height, img_sz_list: list, text_len_list: list, img_num_list: list,
-             text_layout_list: list, invalid_chars: bool):
+             # text_layout_list: list,
+             invalid_chars: bool):
     """
     这里的图片和页面长度单位是pts
     :param total_page:
@@ -321,7 +322,7 @@ def classify(total_page: int, page_width, page_height, img_sz_list: list, text_l
         'by_text_len': classify_by_text_len(text_len_list, total_page),
         'by_avg_words': classify_by_avg_words(text_len_list),
         'by_img_num': classify_by_img_num(img_sz_list, img_num_list),
-        'by_text_layout': classify_by_text_layout(text_layout_list),
+        # 'by_text_layout': classify_by_text_layout(text_layout_list),
         'by_img_narrow_strips': classify_by_img_narrow_strips(page_width, page_height, img_sz_list),
         'by_invalid_chars': invalid_chars,
     }
@@ -332,9 +333,10 @@ def classify(total_page: int, page_width, page_height, img_sz_list: list, text_l
         return False, results
     else:
         logger.warning(
-            f"pdf is not classified by area and text_len, by_image_area: {results['by_image_area']},"
+            f"OCR needed based on classification result, by_image_area: {results['by_image_area']},"
             f" by_text: {results['by_text_len']}, by_avg_words: {results['by_avg_words']}, by_img_num: {results['by_img_num']},"
-            f" by_text_layout: {results['by_text_layout']}, by_img_narrow_strips: {results['by_img_narrow_strips']},"
+            # f" by_text_layout: {results['by_text_layout']},"
+            f" by_img_narrow_strips: {results['by_img_narrow_strips']},"
             f" by_invalid_chars: {results['by_invalid_chars']}",
             file=sys.stderr)  # 利用这种情况可以快速找出来哪些pdf比较特殊，针对性修正分类算法
         return False, results
