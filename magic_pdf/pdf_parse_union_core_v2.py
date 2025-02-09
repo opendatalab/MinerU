@@ -139,6 +139,7 @@ def fill_char_in_spans(spans, all_chars):
         del span['height'], span['width']
     return need_ocr_spans
 
+
 # 使用鲁棒性更强的中心点坐标判断
 def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
     char_center_x = (char_bbox[0] + char_bbox[2]) / 2
@@ -190,25 +191,28 @@ def remove_tilted_line(text_blocks):
             block['lines'].remove(line)
 
 
-def calculate_contrast(img) -> float:
+def calculate_contrast(img, img_mode) -> float:
     """
-    计算给定BGR图像的对比度。
-
-    :param img: BGR格式的图像，类型为numpy.ndarray
+    计算给定图像的对比度。
+    :param img: 图像，类型为numpy.ndarray
+    :Param img_mode = 图像的色彩通道，'rgb' 或 'bgr'
     :return: 图像的对比度值
     """
-    # 将BGR图像转换为灰度图
-    gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if img_mode == 'rgb':
+        # 将RGB图像转换为灰度图
+        gray_img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+    elif img_mode == 'bgr':
+        # 将BGR图像转换为灰度图
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        raise ValueError("Invalid image mode. Please provide 'rgb' or 'bgr'.")
 
     # 计算均值和标准差
     mean_value = np.mean(gray_img)
     std_dev = np.std(gray_img)
-
     # 对比度定义为标准差除以平均值（加上小常数避免除零错误）
     contrast = std_dev / (mean_value + 1e-6)
-
     # logger.info(f"contrast: {contrast}")
-
     return round(contrast, 2)
 
 
@@ -314,7 +318,7 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
             span_img = cut_image_to_pil_image(span['bbox'], pdf_page, mode='cv2')
 
             # 计算span的对比度，低于0.20的span不进行ocr
-            if calculate_contrast(span_img) <= 0.20:
+            if calculate_contrast(span_img, img_mode='bgr') <= 0.20:
                 spans.remove(span)
                 continue
 
