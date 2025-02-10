@@ -4,21 +4,22 @@ from loguru import logger
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.model_list import AtomicModel
 from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
-from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
-    DocLayoutYOLOModel
-from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
-    Layoutlmv3_Predictor
+from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import DocLayoutYOLOModel
+from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import Layoutlmv3_Predictor
 from magic_pdf.model.sub_modules.mfd.yolov8.YOLOv8 import YOLOv8MFDModel
 from magic_pdf.model.sub_modules.mfr.unimernet.Unimernet import UnimernetModel
-from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import \
-    ModifiedPaddleOCR
-from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import \
-    RapidTableModel
-# from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
-from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import \
-    StructTableModel
-from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
-    TableMasterPaddleModel
+
+from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import StructTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
+
+try:
+    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
+    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
+    logger.info('Using Ascend Plugin')
+except ImportError:
+    from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import ModifiedPaddleOCR
+    # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
+    from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
 
 def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None, table_sub_model_name=None):
@@ -76,7 +77,6 @@ def ocr_model_init(show_log: bool = False,
                    use_dilation=True,
                    det_db_unclip_ratio=1.8,
                    ):
-
     if lang is not None and lang != '':
         model = ModifiedPaddleOCR(
             show_log=show_log,

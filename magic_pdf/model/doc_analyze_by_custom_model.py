@@ -32,20 +32,6 @@ from magic_pdf.model.model_list import MODEL
 from magic_pdf.operators.models import InferenceResult
 
 
-def dict_compare(d1, d2):
-    return d1.items() == d2.items()
-
-
-def remove_duplicates_dicts(lst):
-    unique_dicts = []
-    for dict_item in lst:
-        if not any(
-            dict_compare(dict_item, existing_dict) for existing_dict in unique_dicts
-        ):
-            unique_dicts.append(dict_item)
-    return unique_dicts
-
-
 class ModelSingleton:
     _instance = None
     _models = {}
