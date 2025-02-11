@@ -1,8 +1,11 @@
 import os
 import time
-
 import torch
 
+os.environ['FLAGS_npu_jit_compile'] = '0'  # 关闭paddle的jit编译
+os.environ['FLAGS_use_stride_kernel'] = '0'
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 # 关闭paddle的信号处理
 import paddle
 paddle.disable_signal_handler()
@@ -12,11 +15,8 @@ from loguru import logger
 from magic_pdf.model.batch_analyze import BatchAnalyze
 from magic_pdf.model.sub_modules.model_utils import get_vram
 
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-
 try:
     import torchtext
-
     if torchtext.__version__ >= '0.18.0':
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
