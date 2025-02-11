@@ -1,21 +1,22 @@
 import os
 import time
+import torch
 
+os.environ['FLAGS_npu_jit_compile'] = '0'  # 关闭paddle的jit编译
+os.environ['FLAGS_use_stride_kernel'] = '0'
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 # 关闭paddle的信号处理
 import paddle
-import torch
+paddle.disable_signal_handler()
+
 from loguru import logger
 
 from magic_pdf.model.batch_analyze import BatchAnalyze
 from magic_pdf.model.sub_modules.model_utils import get_vram
 
-paddle.disable_signal_handler()
-
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-
 try:
     import torchtext
-
     if torchtext.__version__ >= '0.18.0':
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
@@ -30,20 +31,6 @@ from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_table_recog_config)
 from magic_pdf.model.model_list import MODEL
 from magic_pdf.operators.models import InferenceResult
-
-
-def dict_compare(d1, d2):
-    return d1.items() == d2.items()
-
-
-def remove_duplicates_dicts(lst):
-    unique_dicts = []
-    for dict_item in lst:
-        if not any(
-            dict_compare(dict_item, existing_dict) for existing_dict in unique_dicts
-        ):
-            unique_dicts.append(dict_item)
-    return unique_dicts
 
 
 class ModelSingleton:
