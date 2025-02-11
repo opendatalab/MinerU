@@ -1,15 +1,16 @@
 import os
 import time
 
+import torch
+
 # 关闭paddle的信号处理
 import paddle
-import torch
+paddle.disable_signal_handler()
+
 from loguru import logger
 
 from magic_pdf.model.batch_analyze import BatchAnalyze
 from magic_pdf.model.sub_modules.model_utils import get_vram
-
-paddle.disable_signal_handler()
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
