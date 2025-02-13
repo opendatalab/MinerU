@@ -43,14 +43,14 @@ if __name__ == '__main__':
                      "matplotlib;platform_system=='Linux' or platform_system=='Darwin'",  # linux 和 macos 不应限制matplotlib的最高版本，以避免无法更新导致的一些bug
                      "ultralytics>=8.3.48",  # yolov8,公式检测
                      "paddleocr==2.7.3",  # 2.8.0及2.8.1版本与detectron2有冲突，需锁定2.7.3
-                     "paddlepaddle==3.0.0b1;platform_system=='Linux'",  # 解决linux的段异常问题
-                     "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",  # windows版本3.0.0b1效率下降，需锁定2.6.1
+                     "paddlepaddle==3.0.0rc1;platform_system=='Linux' or platform_system=='Darwin'",  # 解决linux的段异常问题
+                     "paddlepaddle==2.6.1;platform_system=='Windows'",  # windows版本3.0.0效率下降，需锁定2.6.1
                      "struct-eqtable==0.3.2",  # 表格解析
                      "einops",  # struct-eqtable依赖
                      "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
-                     "rapidocr-paddle",  # rapidocr-paddle
-                     "rapidocr_onnxruntime",
+                     "rapidocr-paddle>=1.4.5,<2.0.0",  # rapidocr-paddle
+                     "rapidocr_onnxruntime>=1.4.4,<2.0.0",
                      "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
                      "openai",  # openai SDK
