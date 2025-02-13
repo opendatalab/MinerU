@@ -25,7 +25,7 @@ docker build -t mineru_npu:latest .
 ## 运行容器
 
 ```bash
-docker run --rm -it -u root --privileged=true \
+docker run -it -u root --name mineru-npu --privileged=true \
     --ipc=host \
     --network=host \
     --device=/dev/davinci0 \
