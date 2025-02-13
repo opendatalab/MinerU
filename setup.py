@@ -49,8 +49,8 @@ if __name__ == '__main__':
                      "einops",  # struct-eqtable依赖
                      "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
-                     "rapidocr-paddle",  # rapidocr-paddle
-                     "rapidocr_onnxruntime",
+                     "rapidocr-paddle>=1.4.5,<2.0.0",  # rapidocr-paddle
+                     "rapidocr_onnxruntime>=1.4.4,<2.0.0",
                      "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
                      "openai",  # openai SDK
