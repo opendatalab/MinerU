@@ -1,5 +1,7 @@
 import json
 import os
+from base64 import b64encode
+from glob import glob
 from io import StringIO
 from typing import Tuple, Union
 
@@ -136,6 +138,12 @@ def process_pdf(
     return infer_result, pipe_result
 
 
+def encode_image(image_path: str) -> str:
+    """Encode image using base64"""
+    with open(image_path, "rb") as f:
+        return b64encode(f.read()).decode()
+
+
 @app.post(
     "/pdf_parse",
     tags=["projects"],
@@ -150,6 +158,7 @@ async def pdf_parse(
     return_layout: bool = False,
     return_info: bool = False,
     return_content_list: bool = False,
+    return_images: bool = False,
 ):
     """
     Execute the process of converting PDF to JSON and MD, outputting MD and JSON files
@@ -243,6 +252,14 @@ async def pdf_parse(
             data["info"] = middle_json
         if return_content_list:
             data["content_list"] = content_list
+        if return_images:
+            image_paths = glob(f"{output_image_path}/*.jpg")
+            data["images"] = {
+                os.path.basename(
+                    image_path
+                ): f"data:image/jpeg;base64,{encode_image(image_path)}"
+                for image_path in image_paths
+            }
         data["md_content"] = md_content  # md_content is always returned
 
         # Clean up memory writers
