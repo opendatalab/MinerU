@@ -73,10 +73,10 @@ def pdf_parse(
         model_inference_result = infer_result.get_infer_res()
 
         ### get markdown content
-        md_content = pipe_result.get_markdown(image_dir)
+        md_content = pipe_result.get_markdown(output_image_path)
 
         ### get content list content
-        content_list = pipe_result.get_content_list(image_dir)
+        content_list = pipe_result.get_content_list(output_image_path)
 
         # delete fold
         shutil.rmtree(output_path)
