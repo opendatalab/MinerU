@@ -145,7 +145,7 @@ async def pdf_parse(
     pdf_file: UploadFile = None,
     pdf_path: str = None,
     parse_method: str = "auto",
-    is_json_md_dump: bool = True,
+    is_json_md_dump: bool = False,
     output_dir: str = "output",
     return_layout: bool = False,
     return_info: bool = False,
@@ -162,8 +162,8 @@ async def pdf_parse(
     :param parse_method: Parsing method, can be auto, ocr, or txt. Default is auto. If
         results are not satisfactory, try ocr
     :param is_json_md_dump: Whether to write parsed data to .json and .md files. Default
-        is True. Different stages of data will be written to different .json files (3 in
-        total), md content will be saved to .md file
+        to False. Different stages of data will be written to different .json files (3
+        in total), md content will be saved to .md file
     :param output_dir: Output directory for results. A folder named after the PDF file
         will be created to store all results
     :param return_layout: Whether to return parsed PDF layout. Default to False
