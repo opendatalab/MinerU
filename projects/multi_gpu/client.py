@@ -31,7 +31,7 @@ def do_parse(file_path, url='http://127.0.0.1:8000/predict', **kwargs):
 
 
 if __name__ == '__main__':
-    files = ['small_ocr.pdf']
+    files = ['demo/small_ocr.pdf']
     n_jobs = np.clip(len(files), 1, 8)
     results = Parallel(n_jobs, prefer='threads', verbose=10)(
         delayed(do_parse)(p) for p in files

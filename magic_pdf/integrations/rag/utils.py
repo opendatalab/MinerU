@@ -5,14 +5,13 @@ from pathlib import Path
 from loguru import logger
 
 import magic_pdf.model as model_config
+from magic_pdf.config.ocr_content_type import BlockType, ContentType
+from magic_pdf.data.data_reader_writer import FileBasedDataReader
 from magic_pdf.dict2md.ocr_mkcontent import merge_para_with_text
 from magic_pdf.integrations.rag.type import (CategoryType, ContentObject,
                                              ElementRelation, ElementRelType,
                                              LayoutElements,
                                              LayoutElementsExtra, PageInfo)
-from magic_pdf.libs.ocr_content_type import BlockType, ContentType
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
 from magic_pdf.tools.common import do_parse, prepare_env
 
 
@@ -224,8 +223,8 @@ def inference(path, output_dir, method):
                                                 str(Path(path).stem), method)
 
     def read_fn(path):
-        disk_rw = DiskReaderWriter(os.path.dirname(path))
-        return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
+        disk_rw = FileBasedDataReader(os.path.dirname(path))
+        return disk_rw.read(os.path.basename(path))
 
     def parse_doc(doc_path: str):
         try:

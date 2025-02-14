@@ -5,13 +5,11 @@ from pathlib import Path
 import click
 
 import magic_pdf.model as model_config
+from magic_pdf.data.data_reader_writer import FileBasedDataReader, S3DataReader
 from magic_pdf.libs.config_reader import get_s3_config
 from magic_pdf.libs.path_utils import (parse_s3_range_params, parse_s3path,
                                        remove_non_official_s3_args)
 from magic_pdf.libs.version import __version__
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
-from magic_pdf.rw.S3ReaderWriter import S3ReaderWriter
 from magic_pdf.tools.common import do_parse, parse_pdf_methods
 
 
@@ -19,15 +17,14 @@ def read_s3_path(s3path):
     bucket, key = parse_s3path(s3path)
 
     s3_ak, s3_sk, s3_endpoint = get_s3_config(bucket)
-    s3_rw = S3ReaderWriter(s3_ak, s3_sk, s3_endpoint, 'auto',
-                           remove_non_official_s3_args(s3path))
+    s3_rw = S3DataReader('', bucket, s3_ak, s3_sk, s3_endpoint, 'auto')
     may_range_params = parse_s3_range_params(s3path)
     if may_range_params is None or 2 != len(may_range_params):
-        byte_start, byte_end = 0, None
+        byte_start, byte_end = 0, -1
     else:
         byte_start, byte_end = int(may_range_params[0]), int(
             may_range_params[1])
-    return s3_rw.read_offset(
+    return s3_rw.read_at(
         remove_non_official_s3_args(s3path),
         byte_start,
         byte_end,
@@ -129,8 +126,8 @@ def pdf(pdf, json_data, output_dir, method):
     os.makedirs(output_dir, exist_ok=True)
 
     def read_fn(path):
-        disk_rw = DiskReaderWriter(os.path.dirname(path))
-        return disk_rw.read(os.path.basename(path), AbsReaderWriter.MODE_BIN)
+        disk_rw = FileBasedDataReader(os.path.dirname(path))
+        return disk_rw.read(os.path.basename(path))
 
     model_json_list = json_parse.loads(read_fn(json_data).decode('utf-8'))
 

@@ -64,3 +64,32 @@ This might be because the server's CPU does not support the AVX/AVX2 instruction
 
 References: https://github.com/opendatalab/MinerU/issues/591 , https://github.com/opendatalab/MinerU/issues/736
 
+
+### 8. Error when installing MinerU on CentOS 7 or Ubuntu 18: `ERROR: Failed building wheel for simsimd`
+
+The new version of albumentations (1.4.21) introduces a dependency on simsimd. Since the pre-built package of simsimd for Linux requires a glibc version greater than or equal to 2.28, this causes installation issues on some Linux distributions released before 2019. You can resolve this issue by using the following command:
+```
+pip install -U magic-pdf[full,old_linux] --extra-index-url https://wheels.myhloli.com
+```
+
+Reference: https://github.com/opendatalab/MinerU/issues/1004
+
+### 9. Old Graphics Cards Such as M40 Encounter "RuntimeError: CUDA error: CUBLAS_STATUS_NOT_SUPPORTED"
+
+An error occurs during operation (cuda):
+```
+RuntimeError: CUDA error: CUBLAS_STATUS_NOT_SUPPORTED when calling cublasGemmStridedBatchedEx(handle, opa, opb, (int)m, (int)n, (int)k, (void*)&falpha, a, CUDA_R_16BF, (int)lda, stridea, b, CUDA_R_16BF, (int)ldb, strideb, (void*)&fbeta, c, CUDA_R_16BF, (int)ldc, stridec, (int)num_batches, compute_type, CUBLAS_GEMM_DEFAULT_TENSOR_OP)
+```
+Because BF16 precision is not supported on graphics cards before the Turing architecture and some graphics cards are not recognized by torch, it is necessary to manually disable BF16 precision.
+Modify the code in lines 287-290 of the "pdf_parse_union_core_v2.py" file (note that the location may vary in different versions):
+```
+if torch.cuda.is_bf16_supported():
+    supports_bfloat16 = True
+else:
+    supports_bfloat16 = False
+```
+Change it to:
+```
+supports_bfloat16 = False
+```
+Reference: https://github.com/opendatalab/MinerU/issues/1508

@@ -1,14 +1,15 @@
 services:
-  mineru-gw:
+  gateway:
     build:
-      context: .
+      context: ./docker/china
     depends_on:
       - redis
-    container_name: mineru-gw
+    container_name: mineru-gateway
     ports:
       - "8910:80"
     volumes:
-      - ./services/fastapi/app:/minerugw/app:rw
+      - ./services/fastapi/app:/gateway/app:rw
+      - ./services/fastapi/tmp:/gateway/tmp:rw
     deploy:
       resources:
         reservations:
@@ -18,19 +19,19 @@ services:
               capabilities: [gpu]
     environment:
       TZ: Asia/Shanghai
-    command: ["/minerugw/app/start.sh"]
+    command: ["/gateway/app/start.sh"]
     restart: always
     networks:
       - default
 
   redis:
     image: redis:7.2.4
-    container_name: redis
+    container_name: mineru-redis
     ports:
       - "6380:6379"
     volumes:
       - ./services/redis/conf/redis.conf:/etc/redis.conf
-      - ./services/redis/conf/:/data/
+      - ./services/redis/data/:/data/
     restart: always
     entrypoint: ["redis-server", "/etc/redis.conf"]
     environment:

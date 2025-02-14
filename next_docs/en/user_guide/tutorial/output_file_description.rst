@@ -141,60 +141,60 @@ example
 some_pdf_middle.json
 ~~~~~~~~~~~~~~~~~~~~
 
-+-------+--------------------------------------------------------------+
-| Field | Description                                                  |
-| Name  |                                                              |
-+=======+==============================================================+
-| pdf   | list, each element is a dict representing the parsing result |
-| _info | of each PDF page, see the table below for details            |
-+-------+--------------------------------------------------------------+
-| \_    | ocr \| txt, used to indicate the mode used in this           |
-| parse | intermediate parsing state                                   |
-| _type |                                                              |
-+-------+--------------------------------------------------------------+
-| \_ve  | string, indicates the version of magic-pdf used in this      |
-| rsion | parsing                                                      |
-| _name |                                                              |
-+-------+--------------------------------------------------------------+
++----------------+--------------------------------------------------------------+
+| Field Name     | Description                                                  |
+|                |                                                              |
++================+==============================================================+
+| pdf_info       | list, each element is a dict representing the parsing result |
+|                | of each PDF page, see the table below for details            |
++----------------+--------------------------------------------------------------+
+| \_             | ocr \| txt, used to indicate the mode used in this           |
+| parse_type     | intermediate parsing state                                   |
+|                |                                                              |
++----------------+--------------------------------------------------------------+
+| \_version_name | string, indicates the version of magic-pdf used in this      |
+|                | parsing                                                      |
+|                |                                                              |
++----------------+--------------------------------------------------------------+
 
 **pdf_info**
 
 Field structure description
 
-+---------+------------------------------------------------------------+
-| Field   | Description                                                |
-| Name    |                                                            |
-+=========+============================================================+
-| preproc | Intermediate result after PDF preprocessing, not yet       |
-| _blocks | segmented                                                  |
-+---------+------------------------------------------------------------+
-| layout  | Layout segmentation results, containing layout direction   |
-| _bboxes | (vertical, horizontal), and bbox, sorted by reading order  |
-+---------+------------------------------------------------------------+
-| p       | Page number, starting from 0                               |
-| age_idx |                                                            |
-+---------+------------------------------------------------------------+
-| pa      | Page width and height                                      |
-| ge_size |                                                            |
-+---------+------------------------------------------------------------+
-| \_layo  | Layout tree structure                                      |
-| ut_tree |                                                            |
-+---------+------------------------------------------------------------+
-| images  | list, each element is a dict representing an img_block     |
-+---------+------------------------------------------------------------+
-| tables  | list, each element is a dict representing a table_block    |
-+---------+------------------------------------------------------------+
-| inter   | list, each element is a dict representing an               |
-| line_eq | interline_equation_block                                   |
-| uations |                                                            |
-+---------+------------------------------------------------------------+
-| di      | List, block information returned by the model that needs   |
-| scarded | to be dropped                                              |
-| _blocks |                                                            |
-+---------+------------------------------------------------------------+
-| para    | Result after segmenting preproc_blocks                     |
-| _blocks |                                                            |
-+---------+------------------------------------------------------------+
++-------------------------+------------------------------------------------------------+
+| Field                   | Description                                                |
+| Name                    |                                                            |
++=========================+============================================================+
+| preproc_blocks          | Intermediate result after PDF preprocessing, not yet       |
+|                         | segmented                                                  |
++-------------------------+------------------------------------------------------------+
+| layout_bboxes           | Layout segmentation results, containing layout direction   |
+|                         | (vertical, horizontal), and bbox, sorted by reading order  |
++-------------------------+------------------------------------------------------------+
+| page_idx                | Page number, starting from 0                               |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
+| page_size               | Page width and height                                      |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
+| \_layout_tree           | Layout tree structure                                      |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
+| images                  | list, each element is a dict representing an img_block     |
++-------------------------+------------------------------------------------------------+
+| tables                  | list, each element is a dict representing a table_block    |
++-------------------------+------------------------------------------------------------+
+| interline_equation      | list, each element is a dict representing an               |
+|                         | interline_equation_block                                   |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
+| discarded_blocks        | List, block information returned by the model that needs   |
+|                         | to be dropped                                              |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
+| para_blocks             | Result after segmenting preproc_blocks                     |
+|                         |                                                            |
++-------------------------+------------------------------------------------------------+
 
 In the above table, ``para_blocks`` is an array of dicts, each dict
 representing a block structure. A block can support up to one level of
@@ -205,38 +205,36 @@ nesting.
 The outer block is referred to as a first-level block, and the fields in
 the first-level block include:
 
-+---------+-------------------------------------------------------------+
-| Field   | Description                                                 |
-| Name    |                                                             |
-+=========+=============================================================+
-| type    | Block type (table|image)                                    |
-+---------+-------------------------------------------------------------+
-| bbox    | Block bounding box coordinates                              |
-+---------+-------------------------------------------------------------+
-| blocks  | list, each element is a dict representing a second-level    |
-|         | block                                                       |
-+---------+-------------------------------------------------------------+
++------------------------+-------------------------------------------------------------+
+| Field                  | Description                                                 |
+| Name                   |                                                             |
++========================+=============================================================+
+| type                   | Block type (table|image)                                    |
++------------------------+-------------------------------------------------------------+
+| bbox                   | Block bounding box coordinates                              |
++------------------------+-------------------------------------------------------------+
+| blocks                 | list, each element is a dict representing a second-level    |
+|                        | block                                                       |
++------------------------+-------------------------------------------------------------+
 
 There are only two types of first-level blocks: “table” and “image”. All
 other blocks are second-level blocks.
 
 The fields in a second-level block include:
 
-+-----+----------------------------------------------------------------+
-| Fi  | Description                                                    |
-| eld |                                                                |
-| N   |                                                                |
-| ame |                                                                |
-+=====+================================================================+
-| t   | Block type                                                     |
-| ype |                                                                |
-+-----+----------------------------------------------------------------+
-| b   | Block bounding box coordinates                                 |
-| box |                                                                |
-+-----+----------------------------------------------------------------+
-| li  | list, each element is a dict representing a line, used to      |
-| nes | describe the composition of a line of information              |
-+-----+----------------------------------------------------------------+
++----------------------+----------------------------------------------------------------+
+| Field                | Description                                                    |
+| Name                 |                                                                |
++======================+================================================================+
+|                      | Block type                                                     |
+| type                 |                                                                |
++----------------------+----------------------------------------------------------------+
+|                      | Block bounding box coordinates                                 |
+| bbox                 |                                                                |
++----------------------+----------------------------------------------------------------+
+|                      | list, each element is a dict representing a line, used to      |
+| lines                | describe the composition of a line of information              |
++----------------------+----------------------------------------------------------------+
 
 Detailed explanation of second-level block types
 
@@ -257,33 +255,31 @@ interline_equation Block formula
 
 The field format of a line is as follows:
 
-+-----+----------------------------------------------------------------+
-| Fi  | Description                                                    |
-| eld |                                                                |
-| N   |                                                                |
-| ame |                                                                |
-+=====+================================================================+
-| b   | Bounding box coordinates of the line                           |
-| box |                                                                |
-+-----+----------------------------------------------------------------+
-| sp  | list, each element is a dict representing a span, used to      |
-| ans | describe the composition of the smallest unit                  |
-+-----+----------------------------------------------------------------+
++---------------------+----------------------------------------------------------------+
+| Field               | Description                                                    |
+| Name                |                                                                |
++=====================+================================================================+
+|                     | Bounding box coordinates of the line                           |
+| bbox                |                                                                |
++---------------------+----------------------------------------------------------------+
+| spans               | list, each element is a dict representing a span, used to      |
+|                     | describe the composition of the smallest unit                  |
++---------------------+----------------------------------------------------------------+
 
 **span**
 
-+----------+-----------------------------------------------------------+
-| Field    | Description                                               |
-| Name     |                                                           |
-+==========+===========================================================+
-| bbox     | Bounding box coordinates of the span                      |
-+----------+-----------------------------------------------------------+
-| type     | Type of the span                                          |
-+----------+-----------------------------------------------------------+
-| content  | Text spans use content, chart spans use img_path to store |
-| \|       | the actual text or screenshot path information            |
-| img_path |                                                           |
-+----------+-----------------------------------------------------------+
++---------------------+-----------------------------------------------------------+
+| Field               | Description                                               |
+| Name                |                                                           |
++=====================+===========================================================+
+| bbox                | Bounding box coordinates of the span                      |
++---------------------+-----------------------------------------------------------+
+| type                | Type of the span                                          |
++---------------------+-----------------------------------------------------------+
+| content             | Text spans use content, chart spans use img_path to store |
+| \|                  | the actual text or screenshot path information            |
+| img_path            |                                                           |
++---------------------+-----------------------------------------------------------+
 
 The types of spans are as follows:
 

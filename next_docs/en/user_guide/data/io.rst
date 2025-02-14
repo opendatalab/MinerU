@@ -21,5 +21,5 @@ if MinerU have not provide the suitable classes. It is easy to implement new cla
         def write(self, path: str, data: bytes) -> None:
             pass
 
-Check :doc:`../../api/classes` for more intuitions or check :doc:`../../api/io` for more details
+Check :doc:`../../api/io` for more details
 

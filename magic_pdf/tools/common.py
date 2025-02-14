@@ -1,19 +1,20 @@
-import copy
-import json as json_parse
 import os
 
 import click
+import fitz
 from loguru import logger
 
 import magic_pdf.model as model_config
-from magic_pdf.libs.draw_bbox import (draw_layout_bbox, draw_line_sort_bbox,
-                                      draw_model_bbox, draw_span_bbox)
-from magic_pdf.libs.MakeContentConfig import DropMode, MakeMode
-from magic_pdf.pipe.OCRPipe import OCRPipe
-from magic_pdf.pipe.TXTPipe import TXTPipe
-from magic_pdf.pipe.UNIPipe import UNIPipe
-from magic_pdf.rw.AbsReaderWriter import AbsReaderWriter
-from magic_pdf.rw.DiskReaderWriter import DiskReaderWriter
+from magic_pdf.config.enums import SupportedPdfParseMethod
+from magic_pdf.config.make_content_config import DropMode, MakeMode
+from magic_pdf.data.data_reader_writer import FileBasedDataWriter
+from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.libs.draw_bbox import draw_char_bbox
+from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
+from magic_pdf.operators.models import InferenceResult
+
+# from io import BytesIO
+# from pypdf import PdfReader, PdfWriter
 
 
 def prepare_env(output_dir, pdf_file_name, method):
@@ -24,6 +25,46 @@ def prepare_env(output_dir, pdf_file_name, method):
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
+
+
+# def convert_pdf_bytes_to_bytes_by_pypdf(pdf_bytes, start_page_id=0, end_page_id=None):
+#     # 将字节数据包装在 BytesIO 对象中
+#     pdf_file = BytesIO(pdf_bytes)
+#     # 读取 PDF 的字节数据
+#     reader = PdfReader(pdf_file)
+#     # 创建一个新的 PDF 写入器
+#     writer = PdfWriter()
+#     # 将所有页面添加到新的 PDF 写入器中
+#     end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(reader.pages) - 1
+#     if end_page_id > len(reader.pages) - 1:
+#         logger.warning("end_page_id is out of range, use pdf_docs length")
+#         end_page_id = len(reader.pages) - 1
+#     for i, page in enumerate(reader.pages):
+#         if start_page_id <= i <= end_page_id:
+#             writer.add_page(page)
+#     # 创建一个字节缓冲区来存储输出的 PDF 数据
+#     output_buffer = BytesIO()
+#     # 将 PDF 写入字节缓冲区
+#     writer.write(output_buffer)
+#     # 获取字节缓冲区的内容
+#     converted_pdf_bytes = output_buffer.getvalue()
+#     return converted_pdf_bytes
+
+
+def convert_pdf_bytes_to_bytes_by_pymupdf(pdf_bytes, start_page_id=0, end_page_id=None):
+    document = fitz.open('pdf', pdf_bytes)
+    output_document = fitz.open()
+    end_page_id = (
+        end_page_id
+        if end_page_id is not None and end_page_id >= 0
+        else len(document) - 1
+    )
+    if end_page_id > len(document) - 1:
+        logger.warning('end_page_id is out of range, use pdf_docs length')
+        end_page_id = len(document) - 1
+    output_document.insert_pdf(document, from_page=start_page_id, to_page=end_page_id)
+    output_bytes = output_document.tobytes()
+    return output_bytes
 
 
 def do_parse(
@@ -43,6 +84,7 @@ def do_parse(
     f_make_md_mode=MakeMode.MM_MD,
     f_draw_model_bbox=False,
     f_draw_line_sort_bbox=False,
+    f_draw_char_bbox=False,
     start_page_id=0,
     end_page_id=None,
     lang=None,
@@ -54,96 +96,147 @@ def do_parse(
         logger.warning('debug mode is on')
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
+        # f_draw_char_bbox = True
 
-    orig_model_list = copy.deepcopy(model_list)
-    local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name,
-                                                parse_method)
+    pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
+        pdf_bytes, start_page_id, end_page_id
+    )
 
-    image_writer, md_writer = DiskReaderWriter(
-        local_image_dir), DiskReaderWriter(local_md_dir)
+    local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+
+    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
+        local_md_dir
+    )
     image_dir = str(os.path.basename(local_image_dir))
 
-    if parse_method == 'auto':
-        jso_useful_key = {'_pdf_type': '', 'model_list': model_list}
-        pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
-                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
-    elif parse_method == 'txt':
-        pipe = TXTPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
-                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
-    elif parse_method == 'ocr':
-        pipe = OCRPipe(pdf_bytes, model_list, image_writer, is_debug=True,
-                       start_page_id=start_page_id, end_page_id=end_page_id, lang=lang,
-                       layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
-    else:
-        logger.error('unknown parse method')
-        exit(1)
-
-    pipe.pipe_classify()
+    ds = PymuDocDataset(pdf_bytes, lang=lang)
 
     if len(model_list) == 0:
         if model_config.__use_inside_model__:
-            pipe.pipe_analyze()
-            orig_model_list = copy.deepcopy(pipe.model_list)
+            if parse_method == 'auto':
+                if ds.classify() == SupportedPdfParseMethod.TXT:
+                    infer_result = ds.apply(
+                        doc_analyze,
+                        ocr=False,
+                        lang=ds._lang,
+                        layout_model=layout_model,
+                        formula_enable=formula_enable,
+                        table_enable=table_enable,
+                    )
+                    pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+                else:
+                    infer_result = ds.apply(
+                        doc_analyze,
+                        ocr=True,
+                        lang=ds._lang,
+                        layout_model=layout_model,
+                        formula_enable=formula_enable,
+                        table_enable=table_enable,
+                    )
+                    pipe_result = infer_result.pipe_ocr_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+
+            elif parse_method == 'txt':
+                infer_result = ds.apply(
+                    doc_analyze,
+                    ocr=False,
+                    lang=ds._lang,
+                    layout_model=layout_model,
+                    formula_enable=formula_enable,
+                    table_enable=table_enable,
+                )
+                pipe_result = infer_result.pipe_txt_mode(
+                    image_writer, debug_mode=True, lang=ds._lang
+                )
+            elif parse_method == 'ocr':
+                infer_result = ds.apply(
+                    doc_analyze,
+                    ocr=True,
+                    lang=ds._lang,
+                    layout_model=layout_model,
+                    formula_enable=formula_enable,
+                    table_enable=table_enable,
+                )
+                pipe_result = infer_result.pipe_ocr_mode(
+                    image_writer, debug_mode=True, lang=ds._lang
+                )
+            else:
+                logger.error('unknown parse method')
+                exit(1)
         else:
             logger.error('need model list input')
             exit(2)
+    else:
 
-    pipe.pipe_parse()
-    pdf_info = pipe.pdf_mid_data['pdf_info']
-    if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
-    if f_draw_span_bbox:
-        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
+        infer_result = InferenceResult(model_list, ds)
+        if parse_method == 'ocr':
+            pipe_result = infer_result.pipe_ocr_mode(
+                image_writer, debug_mode=True, lang=ds._lang
+            )
+        elif parse_method == 'txt':
+            pipe_result = infer_result.pipe_txt_mode(
+                image_writer, debug_mode=True, lang=ds._lang
+            )
+        else:
+            if ds.classify() == SupportedPdfParseMethod.TXT:
+                pipe_result = infer_result.pipe_txt_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+            else:
+                pipe_result = infer_result.pipe_ocr_mode(
+                        image_writer, debug_mode=True, lang=ds._lang
+                    )
+
+
     if f_draw_model_bbox:
-        draw_model_bbox(copy.deepcopy(orig_model_list), pdf_bytes, local_md_dir, pdf_file_name)
-    if f_draw_line_sort_bbox:
-        draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, pdf_file_name)
+        infer_result.draw_model(
+            os.path.join(local_md_dir, f'{pdf_file_name}_model.pdf')
+        )
 
-    md_content = pipe.pipe_mk_markdown(image_dir,
-                                       drop_mode=DropMode.NONE,
-                                       md_make_mode=f_make_md_mode)
+    if f_draw_layout_bbox:
+        pipe_result.draw_layout(
+            os.path.join(local_md_dir, f'{pdf_file_name}_layout.pdf')
+        )
+    if f_draw_span_bbox:
+        pipe_result.draw_span(os.path.join(local_md_dir, f'{pdf_file_name}_spans.pdf'))
+
+    if f_draw_line_sort_bbox:
+        pipe_result.draw_line_sort(
+            os.path.join(local_md_dir, f'{pdf_file_name}_line_sort.pdf')
+        )
+
+    if f_draw_char_bbox:
+        draw_char_bbox(pdf_bytes, local_md_dir, f'{pdf_file_name}_char_bbox.pdf')
+
     if f_dump_md:
-        md_writer.write(
-            content=md_content,
-            path=f'{pdf_file_name}.md',
-            mode=AbsReaderWriter.MODE_TXT,
+        pipe_result.dump_md(
+            md_writer,
+            f'{pdf_file_name}.md',
+            image_dir,
+            drop_mode=DropMode.NONE,
+            md_make_mode=f_make_md_mode,
         )
 
     if f_dump_middle_json:
-        md_writer.write(
-            content=json_parse.dumps(pipe.pdf_mid_data,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_middle.json',
-            mode=AbsReaderWriter.MODE_TXT,
-        )
+        pipe_result.dump_middle_json(md_writer, f'{pdf_file_name}_middle.json')
 
     if f_dump_model_json:
-        md_writer.write(
-            content=json_parse.dumps(orig_model_list,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_model.json',
-            mode=AbsReaderWriter.MODE_TXT,
-        )
+        infer_result.dump_model(md_writer, f'{pdf_file_name}_model.json')
 
     if f_dump_orig_pdf:
         md_writer.write(
-            content=pdf_bytes,
-            path=f'{pdf_file_name}_origin.pdf',
-            mode=AbsReaderWriter.MODE_BIN,
+            f'{pdf_file_name}_origin.pdf',
+            pdf_bytes,
         )
 
-    content_list = pipe.pipe_mk_uni_format(image_dir, drop_mode=DropMode.NONE)
     if f_dump_content_list:
-        md_writer.write(
-            content=json_parse.dumps(content_list,
-                                     ensure_ascii=False,
-                                     indent=4),
-            path=f'{pdf_file_name}_content_list.json',
-            mode=AbsReaderWriter.MODE_TXT,
+        pipe_result.dump_content_list(
+            md_writer,
+            f'{pdf_file_name}_content_list.json',
+            image_dir
         )
 
     logger.info(f'local output dir is {local_md_dir}')

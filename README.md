@@ -14,7 +14,7 @@
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
-[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
@@ -31,17 +31,44 @@
 
 <p align="center">
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: High-Quality PDF Extraction Toolkit</a>🔥🔥🔥
+<br>
+<br>
+<a href="https://mineru.net/client?source=github">
+Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple interface and smooth interactions. Enjoy it without any fuss!</a>🚀🚀🚀
+
 </p>
 
 <!-- join us -->
 
 <p align="center">
-    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://cdn.vansin.top/internlm/mineru.jpg" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="http://mineru.space/s/V85Yl" target="_blank">WeChat</a>
 </p>
 
 </div>
 
 # Changelog
+- 2025/01/22 1.1.0 released. In this version we have focused on improving parsing accuracy and efficiency:
+  - Model capability upgrade (requires re-executing the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files)
+    - The layout recognition model has been upgraded to the latest `doclayout_yolo(2501)` model, improving layout recognition accuracy.
+    - The formula parsing model has been upgraded to the latest `unimernet(2501)` model, improving formula recognition accuracy.
+  - Performance optimization
+    - On devices that meet certain configuration requirements (16GB+ VRAM), by optimizing resource usage and restructuring the processing pipeline, overall parsing speed has been increased by more than 50%.
+  - Parsing effect optimization
+    - Added a new heading classification feature (testing version, enabled by default) to the online demo([mineru.net](https://mineru.net/OpenSourceTools/Extractor)/[huggingface](https://huggingface.co/spaces/opendatalab/MinerU)/[modelscope](https://www.modelscope.cn/studios/OpenDataLab/MinerU)), which supports hierarchical classification of headings, thereby enhancing document structuring.
+- 2025/01/10 1.0.1 released. This is our first official release, where we have introduced a completely new API interface and enhanced compatibility through extensive refactoring, as well as a brand new automatic language identification feature:
+  - New API Interface
+    - For the data-side API, we have introduced the Dataset class, designed to provide a robust and flexible data processing framework. This framework currently supports a variety of document formats, including images (.jpg and .png), PDFs, Word documents (.doc and .docx), and PowerPoint presentations (.ppt and .pptx). It ensures effective support for data processing tasks ranging from simple to complex.
+    - For the user-side API, we have meticulously designed the MinerU processing workflow as a series of composable Stages. Each Stage represents a specific processing step, allowing users to define new Stages according to their needs and creatively combine these stages to customize their data processing workflows.
+  - Enhanced Compatibility
+    - By optimizing the dependency environment and configuration items, we ensure stable and efficient operation on ARM architecture Linux systems.
+    - We have deeply integrated with Huawei Ascend NPU acceleration, providing autonomous and controllable high-performance computing capabilities. This supports the localization and development of AI application platforms in China. [Ascend NPU Acceleration](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+  - Automatic Language Identification
+    - By introducing a new language recognition model, setting the `lang` configuration to `auto` during document parsing will automatically select the appropriate OCR language model, improving the accuracy of scanned document parsing.
+- 2024/11/22 0.10.0 released. Introducing hybrid OCR text extraction capabilities,
+  - Significantly improved parsing performance in complex text distribution scenarios such as dense formulas, irregular span regions, and text represented by images.
+  - Combines the dual advantages of accurate content extraction and faster speed in text mode, and more precise span/line region recognition in OCR mode.
+- 2024/11/20 add fastapi, via: [https://github.com/lztiancn/lzmineru.git](https://github.com/lztiancn/lzmineru.git)
+- 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
   - Refactored the sorting module code to use [layoutreader](https://github.com/ppaanngggg/layoutreader) for reading order sorting, ensuring high accuracy in various layouts.
@@ -77,6 +104,7 @@
             <li><a href="#online-demo">Online Demo</a></li>
             <li><a href="#quick-cpu-demo">Quick CPU Demo</a></li>
             <li><a href="#using-gpu">Using GPU</a></li>
+            <li><a href="#using-npu">Using NPU</a></li>
             </ul>
         </li>
         <li><a href="#usage">Usage</a>
@@ -120,15 +148,20 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
 - Extract images, image descriptions, tables, table titles, and footnotes.
 - Automatically recognize and convert formulas in the document to LaTeX format.
-- Automatically recognize and convert tables in the document to LaTeX or HTML format.
+- Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
 - OCR supports detection and recognition of 84 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
-- Supports both CPU and GPU environments.
+- Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
 - Compatible with Windows, Linux, and Mac platforms.
 
 ## Quick Start
+
+
+```
+docker-compose up -d
+```
 
 If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
 If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
@@ -136,7 +169,10 @@ There are three different ways to experience MinerU:
 
 - [Online Demo (No Installation Required)](#online-demo)
 - [Quick CPU Demo (Windows, Linux, Mac)](#quick-cpu-demo)
-- [Linux/Windows + CUDA](#Using-GPU)
+- Accelerate inference by using CUDA/CANN/MPS
+  - [Linux/Windows + CUDA](#Using-GPU)
+  - [Linux + CANN](#using-npu)
+  - [MacOS + MPS](#using-mps)
 
 > [!WARNING]
 > **Pre-installation Notice—Hardware and Software Environment Support**
@@ -152,19 +188,23 @@ There are three different ways to experience MinerU:
         <td colspan="3" rowspan="2">Operating System</td>
     </tr>
     <tr>
-        <td>Ubuntu 22.04 LTS</td>
+        <td>Linux after 2019</td>
         <td>Windows 10 / 11</td>
         <td>macOS 11+</td>
     </tr>
     <tr>
         <td colspan="3">CPU</td>
-        <td>x86_64(unsupported ARM Linux)</td>
+        <td>x86_64 / arm64</td>
         <td>x86_64(unsupported ARM Windows)</td>
         <td>x86_64 / arm64</td>
     </tr>
     <tr>
-        <td colspan="3">Memory</td>
+        <td colspan="3">Memory Requirements</td>
         <td colspan="3">16GB or more, recommended 32GB+</td>
+    </tr>
+    <tr>
+        <td colspan="3">Storage Requirements</td>
+        <td colspan="3">20GB or more, with a preference for SSD</td>
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
@@ -183,26 +223,25 @@ There are three different ways to experience MinerU:
         <td>None</td>
     </tr>
     <tr>
-        <td rowspan="2">GPU Hardware Support List</td>
-        <td colspan="2">Minimum Requirement 8G+ VRAM</td>
-        <td colspan="2">3060ti/3070/4060<br>
-        8G VRAM enables layout, formula recognition acceleration and OCR acceleration</td>
-        <td rowspan="2">None</td>
+        <td colspan="3">CANN Environment(NPU support)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
+        <td>None</td>
     </tr>
     <tr>
-        <td colspan="2">Recommended Configuration 10G+ VRAM</td>
-        <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-        10G VRAM or more can enable layout, formula recognition, OCR acceleration and table recognition acceleration simultaneously
-        </td>
+        <td rowspan="2">GPU Hardware Support List</td>
+        <td colspan="2">GPU VRAM 8GB or more</td>
+        <td colspan="2">2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
+        8G VRAM can enable all acceleration features</td>
+        <td rowspan="2">None</td>
     </tr>
 </table>
 
 ### Online Demo
 
-Stable Version (Stable version verified by QA):  
-[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbD0ibm9uZSI+CiA8ZGVmcz4KICA8bGluZWFyR3JhZGllbnQgeTI9IjAuNTMzNjciIHgyPSIxLjAwMDQiIHkxPSIwLjI5MjE5IiB4MT0iLTAuMTEyNjgiIGlkPSJhIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogIDxsaW5lYXJHcmFkaWVudCB5Mj0iMC41OTc1NyIgeDI9IjEuMDExMzciIHkxPSIwLjExMDIzIiB4MT0iLTAuMDg0NzQiIGlkPSJiIj4KICAgPHN0b3Agc3RvcC1jb2xvcj0iIzE1NDNGRSIvPgogICA8c3RvcCBzdG9wLWNvbG9yPSIjOEM0NkZGIiBvZmZzZXQ9IjEiLz4KICA8L2xpbmVhckdyYWRpZW50PgogPC9kZWZzPgogPGc+CiAgPHRpdGxlPkxheWVyIDE8L3RpdGxlPgogIDxwYXRoIGlkPSJzdmdfMSIgZmlsbD0idXJsKCNhKSIgZD0ibTEuNjIzLDEyLjA2N2EwLjQ4NCwwLjQ4NCAwIDAgMSAwLjA3LC0wLjM4NGw1LjMxLC03Ljg5NWMwLjA2OCwtMC4xIDAuMTcsLTAuMTcyIDAuMjg4LC0wLjJsMTQuMzc3LC0zLjQ3NGEwLjQ4NCwwLjQ4NCAwIDAgMSAwLjU4NCwwLjM1N2wzLjY2MiwxNS4xNTJjMS40NzcsNi4xMTQgLTIuMjgxLDEyLjI2NyAtOC4zOTQsMTMuNzQ1Yy02LjExNCwxLjQ3NyAtMTIuMjY3LC0yLjI4MSAtMTMuNzQ1LC04LjM5NWwtMi4xNTIsLTguOTA2eiIgb3BhY2l0eT0iMC40Ii8+CiAgPHBhdGggaWQ9InN2Z18yIiBmaWxsPSJ1cmwoI2IpIiBkPSJtNS44MjYsOC42NzNjMCwtMC4xMzYgMC4wNTcsLTAuMjY2IDAuMTU3LC0wLjM1OGw3LjAxNywtNi40MjVhMC40ODQsMC40ODQgMCAwIDEgMC4zMjcsLTAuMTI3bDE0Ljc5LDBjMC4yNjgsMCAwLjQ4NSwwLjIxNiAwLjQ4NSwwLjQ4NGwwLDE1LjU4OWMwLDYuMjkgLTUuMDk5LDExLjM4OCAtMTEuMzg4LDExLjM4OGMtNi4yOSwwIC0xMS4zODgsLTUuMDk5IC0xMS4zODgsLTExLjM4OGwwLC05LjE2M3oiLz4KICA8cGF0aCBpZD0ic3ZnXzMiIGZpbGw9IiM1RDc2RkYiIGQ9Im0xMi4zMzEsOC43NTNsLTYuMzgzLC0wLjM5OGw3LjEyMiwtNi41MmwwLjI5OSw1Ljg5MmEwLjk3OCwwLjk3OCAwIDAgMSAtMS4wMzgsMS4wMjZ6Ii8+CiAgPHBhdGggaWQ9InN2Z180IiBmaWxsPSIjMDAyOEZEIiBkPSJtMjAuNDE2LDE1LjAyMmwwLDEuNzExYTIuNDA0LDIuNDA0IDAgMCAxIC00LjgwOCwwbDAsLTQuMjc4bC0yLjgxLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDEgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEyLDB6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPgogIDxwYXRoIGlkPSJzdmdfNSIgZmlsbD0iIzAwMjhGRCIgZD0ibTIzLjIyOCwxMy44ODFsMS4xNCwwbDAsMS4xNDFsLTEuMTQsMGwwLC0xLjE0bDAsLTAuMDAxem0tMi44MTIsLTAuNjkybDEuODM0LDBsMCwxLjgzM2wtMS44MzQsMGwwLC0xLjgzMmwwLC0wLjAwMXptMS44MzQsLTAuOTc5bDAuOTc4LDBsMCwwLjk3OWwtMC45NzgsMGwwLC0wLjk3OGwwLC0wLjAwMXptMS41NDgsLTEuNjI5bDAuNjExLDBsMCwwLjYxMWwtMC42MTEsMGwwLC0wLjYxMXoiLz4KICA8cGF0aCBpZD0ic3ZnXzYiIGZpbGw9IiNmZmYiIGQ9Im0yMC4wODYsMTQuOTEybDAsMS43MTFhMi40MDQsMi40MDQgMCAxIDEgLTQuODA3LDBsMCwtNC4yNzhsLTIuODEyLDBsMCw0LjY4NmE1LjIxNSw1LjIxNSAwIDAgMCAxMC40MywwbDAsLTQuNjg2bDAsMi41NjdsLTIuODEsMGwtMC4wMDEsMHoiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZmlsbC1ydWxlPSJldmVub2RkIi8+CiAgPHBhdGggaWQ9InN2Z183IiBmaWxsPSIjZmZmIiBkPSJtMjIuODk4LDEzLjc3MWwxLjE0LDBsMCwxLjE0MWwtMS4xNCwwbDAsLTEuMTRsMCwtMC4wMDF6bS0yLjgxMiwtMC42OTJsMS44MzQsMGwwLDEuODMzbC0xLjgzNCwwbDAsLTEuODMybDAsLTAuMDAxem0xLjgzNCwtMC45NzlsMC45NzgsMGwwLDAuOTc5bC0wLjk3OCwwbDAsLTAuOTc5em0xLjU0OCwtMS42MjlsMC42MTEsMGwwLDAuNjExbC0wLjYxLDBsMCwtMC42MWwtMC4wMDEsLTAuMDAxeiIvPgogPC9nPgo8L3N2Zz4=&labelColor=white)](https://opendatalab.com/OpenSourceTools/Extractor/PDF)
+Synced with dev branch updates:
 
-Test Version (Synced with dev branch updates, testing new features):  
+[![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 
@@ -213,7 +252,7 @@ Test Version (Synced with dev branch updates, testing new features):
 ```bash
 conda create -n MinerU python=3.10
 conda activate MinerU
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
 ```
 
 #### 2. Download model weight files
@@ -238,7 +277,7 @@ You can modify certain configurations in this file to enable or disable features
 {
     // other config
     "layout-config": {
-        "model": "layoutlmv3" // Please change to "doclayout_yolo" when using doclayout_yolo.
+        "model": "doclayout_yolo" // Please change to "layoutlmv3" when using layoutlmv3.
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -246,8 +285,9 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "tablemaster",  // When using structEqTable, please change to "struct_eqtable".
-        "enable": false, // The table recognition feature is disabled by default. If you need to enable it, please change the value here to "true".
+        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
+        "sub_model": "slanet_plus",  // When the model is "rapid_table", you can choose a sub_model. The options are "slanet_plus" and "unitable"
+        "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
         "max_time": 400
     }
 }
@@ -261,7 +301,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
 > [!IMPORTANT]
-> Docker requires a GPU with at least 16GB of VRAM, and all acceleration features are enabled by default.
+> Docker requires a GPU with at least 8GB of VRAM, and all acceleration features are enabled by default.
 >
 > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
 > 
@@ -269,103 +309,55 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 > docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 > ```
   ```bash
-  wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
+  wget https://github.com/opendatalab/MinerU/raw/master/docker/global/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash
+  docker run --rm -it --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
   magic-pdf --help
   ```
+
+### Using NPU
+
+If your device has NPU acceleration hardware, you can follow the tutorial below to use NPU acceleration:
+
+[Ascend NPU Acceleration](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
+
+### Using MPS
+
+If your device uses Apple silicon chips, you can enable MPS acceleration for certain supported tasks (such as layout detection and formula detection).
+
+You can enable MPS acceleration by setting the `device-mode` parameter to `mps` in the `magic-pdf.json` configuration file.
+
+```json
+{
+    // other config
+    "device-mode": "mps"
+}
+```
+
+> [!TIP]
+> Since the formula recognition task cannot utilize MPS acceleration, you can disable the formula recognition feature in tasks where it is not needed to achieve optimal performance.
+>
+> You can disable the formula recognition feature by setting the `enable` parameter in the `formula-config` section to `false`.
 
 ## Usage
 
 ### Command Line
 
-```bash
-magic-pdf --help
-Usage: magic-pdf [OPTIONS]
+[Using MinerU via Command Line](https://mineru.readthedocs.io/en/latest/user_guide/usage/command_line.html)
 
-Options:
-  -v, --version                display the version and exit
-  -p, --path PATH              local pdf filepath or directory  [required]
-  -o, --output-dir PATH        output local directory  [required]
-  -m, --method [ocr|txt|auto]  the method for parsing pdf. ocr: using ocr
-                               technique to extract information from pdf. txt:
-                               suitable for the text-based pdf only and
-                               outperform ocr. auto: automatically choose the
-                               best method for parsing pdf from ocr and txt.
-                               without method specified, auto will be used by
-                               default.
-  -l, --lang TEXT              Input the languages in the pdf (if known) to
-                               improve OCR accuracy.  Optional. You should
-                               input "Abbreviation" with language form url: ht
-                               tps://paddlepaddle.github.io/PaddleOCR/latest/en
-                               /ppocr/blog/multi_languages.html#5-support-languages-
-                               and-abbreviations
-  -d, --debug BOOLEAN          Enables detailed debugging information during
-                               the execution of the CLI commands.
-  -s, --start INTEGER          The starting page for PDF parsing, beginning
-                               from 0.
-  -e, --end INTEGER            The ending page for PDF parsing, beginning from
-                               0.
-  --help                       Show this message and exit.
-
-
-## show version
-magic-pdf -v
-
-## command line example
-magic-pdf -p {some_pdf} -o {some_output_dir} -m auto
-```
-
-`{some_pdf}` can be a single PDF file or a directory containing multiple PDFs.
-The results will be saved in the `{some_output_dir}` directory. The output file list is as follows:
-
-```text
-├── some_pdf.md                          # markdown file
-├── images                               # directory for storing images
-├── some_pdf_layout.pdf                  # layout diagram (Include layout reading order)
-├── some_pdf_middle.json                 # MinerU intermediate processing result
-├── some_pdf_model.json                  # model inference result
-├── some_pdf_origin.pdf                  # original PDF file
-├── some_pdf_spans.pdf                   # smallest granularity bbox position information diagram
-└── some_pdf_content_list.json           # Rich text JSON arranged in reading order
-```
 > [!TIP]
 > For more information about the output files, please refer to the [Output File Description](docs/output_file_en_us.md).
 
 ### API
 
-Processing files from local disk
+[Using MinerU via Python API](https://mineru.readthedocs.io/en/latest/user_guide/usage/api.html)
 
-```python
-image_writer = DiskReaderWriter(local_image_dir)
-image_dir = str(os.path.basename(local_image_dir))
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, image_writer)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
 
-Processing files from object storage
 
-```python
-s3pdf_cli = S3ReaderWriter(pdf_ak, pdf_sk, pdf_endpoint)
-image_dir = "s3://img_bucket/"
-s3image_cli = S3ReaderWriter(img_ak, img_sk, img_endpoint, parent_path=image_dir)
-pdf_bytes = s3pdf_cli.read(s3_pdf_path, mode=s3pdf_cli.MODE_BIN)
-jso_useful_key = {"_pdf_type": "", "model_list": []}
-pipe = UNIPipe(pdf_bytes, jso_useful_key, s3image_cli)
-pipe.pipe_classify()
-pipe.pipe_analyze()
-pipe.pipe_parse()
-md_content = pipe.pipe_mk_markdown(image_dir, drop_mode="none")
-```
+### FAST API
 
-For detailed implementation, refer to:
+doc [http://localhost:8910/docs](http://localhost:8910/docs)
 
-- [demo.py Simplest Processing Method](demo/demo.py)
-- [magic_pdf_parse_main.py More Detailed Processing Workflow](demo/magic_pdf_parse_main.py)
 
 ### Deploy Derived Projects
 
@@ -384,6 +376,7 @@ TODO
 - [x] Reading order based on the model  
 - [x] Recognition of `index` and `list` in the main text  
 - [x] Table recognition
+- [x] Heading Classification
 - [ ] Code block recognition in the main text
 - [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
 - [ ] Geometric shape recognition
@@ -393,7 +386,6 @@ TODO
 - Reading order is determined by the model based on the spatial distribution of readable content, and may be out of order in some areas under extremely complex layouts.
 - Vertical text is not supported.
 - Tables of contents and lists are recognized through rules, and some uncommon list formats may not be recognized.
-- Only one level of headings is supported; hierarchical headings are not currently supported.
 - Code blocks are not yet supported in the layout model.
 - Comic books, art albums, primary school textbooks, and exercises cannot be parsed well.
 - Table recognition may result in row/column recognition errors in complex tables.
@@ -421,7 +413,9 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 # Acknowledgments
 
 - [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
+- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
+- [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)

@@ -10,22 +10,6 @@ appropriate guide based on your system:
 -  :ref:`ubuntu_22_04_lts_section`
 -  :ref:`windows_10_or_11_section`
 
--  Quick Deployment with Docker > Docker requires a GPU with at least
-   16GB of VRAM, and all acceleration features are enabled by default.
-
-.. note:: 
-
-   Before running this Docker, you can use the following command to
-   check if your device supports CUDA acceleration on Docker. 
-
-   bash  docker run --rm --gpus=all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
-
-.. code:: sh
-
-   wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-   docker build -t mineru:latest .
-   docker run --rm -it --gpus=all mineru:latest /bin/bash
-   magic-pdf --help
 
 .. _ubuntu_22_04_lts_section:
 
@@ -42,8 +26,9 @@ Ubuntu 22.04 LTS
 If you see information similar to the following, it means that the
 NVIDIA drivers are already installed, and you can skip Step 2.
 
-Notice:``CUDA Version`` should be >= 12.1, If the displayed version
-number is less than 12.1, please upgrade the driver.
+.. note::
+
+   ``CUDA Version`` should be >= 12.1, If the displayed version number is less than 12.1, please upgrade the driver.
 
 .. code:: text
 
@@ -105,8 +90,10 @@ Specify Python version 3.10.
 
    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
-❗ After installation, make sure to check the version of ``magic-pdf``
-using the following command:
+.. admonition:: Important
+    :class: tip
+
+    ❗ After installation, make sure to check the version of ``magic-pdf`` using the following command:
 
 .. code:: sh
 
@@ -127,7 +114,10 @@ the script will automatically generate a ``magic-pdf.json`` file in the
 user directory and configure the default model path. You can find the
 ``magic-pdf.json`` file in your user directory.
 
-   The user directory for Linux is “/home/username”.
+.. admonition:: TIP
+    :class: tip
+
+    The user directory for Linux is “/home/username”.
 
 8. First Run
 ~~~~~~~~~~~~
@@ -137,17 +127,13 @@ Download a sample file from the repository and test it.
 .. code:: sh
 
    wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf
-   magic-pdf -p small_ocr.pdf
+   magic-pdf -p small_ocr.pdf -o ./output
 
 9. Test CUDA Acceleration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your graphics card has at least **8GB** of VRAM, follow these steps
 to test CUDA acceleration:
-
-   ❗ Due to the extremely limited nature of 8GB VRAM for running this
-   application, you need to close all other programs using VRAM to
-   ensure that 8GB of VRAM is available when running this application.
 
 1. Modify the value of ``"device-mode"`` in the ``magic-pdf.json``
    configuration file located in your home directory.
@@ -162,7 +148,7 @@ to test CUDA acceleration:
 
    .. code:: sh
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
 
 10. Enable CUDA Acceleration for OCR
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,7 +164,9 @@ to test CUDA acceleration:
 
    .. code:: sh
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
+
+
 
 .. _windows_10_or_11_section:
 
@@ -218,16 +206,16 @@ Python version must be 3.10.
 
    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 
-..
+.. admonition:: Important
+    :class: tip
 
-   ❗️After installation, verify the version of ``magic-pdf``:
+    ❗️After installation, verify the version of ``magic-pdf``:
 
-   .. code:: bash
+    .. code:: bash
 
       magic-pdf --version
 
-   If the version number is less than 0.7.0, please report it in the
-   issues section.
+    If the version number is less than 0.7.0, please report it in the issues section.
 
 5. Download Models
 ~~~~~~~~~~~~~~~~~~
@@ -242,7 +230,10 @@ the script will automatically generate a ``magic-pdf.json`` file in the
 user directory and configure the default model path. You can find the
 ``magic-pdf.json`` file in your 【user directory】 .
 
-   The user directory for Windows is “C:/Users/username”.
+.. admonition:: Tip
+    :class: tip
+
+    The user directory for Windows is “C:/Users/username”.
 
 7. First Run
 ~~~~~~~~~~~~
@@ -252,7 +243,7 @@ Download a sample file from the repository and test it.
 .. code:: powershell
 
      wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
-     magic-pdf -p small_ocr.pdf
+     magic-pdf -p small_ocr.pdf -o ./output
 
 8. Test CUDA Acceleration
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -260,27 +251,23 @@ Download a sample file from the repository and test it.
 If your graphics card has at least 8GB of VRAM, follow these steps to
 test CUDA-accelerated parsing performance.
 
-   ❗ Due to the extremely limited nature of 8GB VRAM for running this
-   application, you need to close all other programs using VRAM to
-   ensure that 8GB of VRAM is available when running this application.
+1. **Overwrite the installation of torch and torchvision** supporting CUDA.
 
-1. **Overwrite the installation of torch and torchvision** supporting
-   CUDA.
+.. code:: sh
 
-   ::
+   pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
 
-      pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+.. admonition:: Important
+    :class: tip
 
-   ..
+    ❗️Ensure the following versions are specified in the command:
 
-      ❗️Ensure the following versions are specified in the command:
-
-      ::
+ 
+    .. code:: sh
 
          torch==2.3.1 torchvision==0.18.1
 
-      These are the highest versions we support. Installing higher
-      versions without specifying them will cause the program to fail.
+    These are the highest versions we support. Installing higher versions without specifying them will cause the program to fail.
 
 2. **Modify the value of ``"device-mode"``** in the ``magic-pdf.json``
    configuration file located in your user directory.
@@ -295,7 +282,7 @@ test CUDA-accelerated parsing performance.
 
    ::
 
-      magic-pdf -p small_ocr.pdf
+      magic-pdf -p small_ocr.pdf -o ./output
 
 9. Enable CUDA Acceleration for OCR
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -311,5 +298,4 @@ test CUDA-accelerated parsing performance.
 
    ::
 
-      magic-pdf -p small_ocr.pdf
-
+      magic-pdf -p small_ocr.pdf -o ./output
