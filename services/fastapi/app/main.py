@@ -68,7 +68,7 @@ async def parse_pdf(encodeUrl: str = None, md5: str = None, cbUrl: str = None, c
         decodeUrl = urllib.parse.unquote(encodeUrl)
         pdf_bytes = urllib.request.urlopen(decodeUrl).read()
     except Exception:
-        return {"state": "failed", "error": "encodeUrl is not valid"}
+        return {"state": "failed", "error": "encodeUrl is not valid."}
     if (pdf_bytes is None):
         return {"state": "failed", "error": "download faild"}
     

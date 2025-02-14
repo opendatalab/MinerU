@@ -1,11 +1,3 @@
-'''
-Author: FutureMeng be_loving@163.com
-Date: 2024-11-20 11:10:37
-LastEditors: FutureMeng futuremeng@gmail.com
-LastEditTime: 2025-02-14 09:06:54
-FilePath: /MinerU/services/fastapi/app/magic_pdf_parse_util.py
-Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
-'''
 import os
 import json
 import datetime
@@ -57,7 +49,7 @@ def pdf_parse(
             model_json = []
 
         # 执行解析步骤
-        image_writer = DiskReaderWriter(output_image_path)
+        image_writer = FileBasedDataWriter(output_image_path)
 
         ds = PymuDocDataset(pdf_bytes)
 
