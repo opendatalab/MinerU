@@ -151,10 +151,33 @@ async def pdf_parse(
     return_info: bool = False,
     return_content_list: bool = False,
 ):
+    """
+    Execute the process of converting PDF to JSON and MD, outputting MD and JSON files
+    to the specified directory.
+
+    :param pdf_file: The PDF file to be parsed. Must not be specified together with
+        `pdf_path`
+    :param pdf_path: The path to the PDF file to be parsed. Must not be specified
+        together with `pdf_file`
+    :param parse_method: Parsing method, can be auto, ocr, or txt. Default is auto. If
+        results are not satisfactory, try ocr
+    :param is_json_md_dump: Whether to write parsed data to .json and .md files. Default
+        is True. Different stages of data will be written to different .json files (3 in
+        total), md content will be saved to .md file
+    :param output_dir: Output directory for results. A folder named after the PDF file
+        will be created to store all results
+    :param return_layout: Whether to return parsed PDF layout. Default to False
+    :param return_info: Whether to return parsed PDF info. Default to False
+    :param return_content_list: Whether to return parsed PDF content list. Default to
+        False
+    """
     try:
-        if pdf_file is None and pdf_path is None:
-            raise HTTPException(
-                status_code=400, detail="Must provide either pdf_file or pdf_path"
+        if (pdf_file is None and pdf_path is None) or (
+            pdf_file is not None and pdf_path is not None
+        ):
+            return JSONResponse(
+                content={"error": "Must provide either pdf_file or pdf_path"},
+                status_code=400,
             )
 
         # Get PDF filename
