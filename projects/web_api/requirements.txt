@@ -1,0 +1,7 @@
+--extra-index-url https://myhloli.github.io/wheels/
+
+magic-pdf[full]
+
+fastapi
+uvicorn
+python-multipart
