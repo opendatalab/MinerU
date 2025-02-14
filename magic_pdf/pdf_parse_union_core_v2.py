@@ -436,10 +436,11 @@ def cal_block_index(fix_blocks, sorted_bboxes):
             block_bboxes.append(block['bbox'])
 
             # 删除图表body block中的虚拟line信息, 并用real_lines信息回填
-            if block['type'] in [BlockType.ImageBody, BlockType.TableBody]:
-                block['virtual_lines'] = copy.deepcopy(block['lines'])
-                block['lines'] = copy.deepcopy(block['real_lines'])
-                del block['real_lines']
+            if block['type'] in [BlockType.ImageBody, BlockType.TableBody, BlockType.Title, BlockType.InterlineEquation]:
+                if 'real_lines' in block:
+                    block['virtual_lines'] = copy.deepcopy(block['lines'])
+                    block['lines'] = copy.deepcopy(block['real_lines'])
+                    del block['real_lines']
 
         import numpy as np
 
