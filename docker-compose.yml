@@ -1,7 +1,7 @@
 services:
   gateway:
     build:
-      context: .
+      context: ./docker/china
     depends_on:
       - redis
     container_name: mineru-gateway
