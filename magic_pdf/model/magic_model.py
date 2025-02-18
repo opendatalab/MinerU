@@ -518,13 +518,13 @@ class MagicModel:
                     break
             if nxt is None:
                 break
-    
+
             if fst_kind == SUB_BIT_KIND:
                 sub_idx, obj_idx = fst_idx, nxt[0] - OBJ_IDX_OFFSET
 
             else:
                 sub_idx, obj_idx = nxt[0], fst_idx - OBJ_IDX_OFFSET
-                
+
             pair_dis = bbox_distance(subjects[sub_idx]['bbox'], objects[obj_idx]['bbox'])
             nearest_dis = float('inf')
             for i in range(N):
@@ -533,13 +533,13 @@ class MagicModel:
 
             if pair_dis >= 3*nearest_dis:
                 seen_idx.add(sub_idx)
-                continue 
+                continue
 
-            
+
             seen_idx.add(sub_idx)
             seen_idx.add(obj_idx + OBJ_IDX_OFFSET)
             seen_sub_idx.add(sub_idx)
-            
+
             ret.append(
                 {
                     'sub_bbox': {
