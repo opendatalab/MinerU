@@ -36,7 +36,8 @@ RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/ascend_npu/requirements.txt -O requirements.txt && \
     pip3 install -r requirements.txt --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple && \
     wget https://gitee.com/ascend/pytorch/releases/download/v6.0.rc2-pytorch2.3.1/torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
-    pip install torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+    pip3 install torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
+    pip3 install https://gcore.jsdelivr.net/gh/myhloli/wheels@main/assets/whl/paddle-custom-npu/paddle_custom_npu-0.0.0-cp310-cp310-linux_aarch64.whl"
 
 # Copy the configuration file template and install magic-pdf latest
 RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/magic-pdf.template.json && \
