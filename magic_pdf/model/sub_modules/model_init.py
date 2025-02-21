@@ -10,10 +10,22 @@ from magic_pdf.model.sub_modules.mfd.yolov8.YOLOv8 import YOLOv8MFDModel
 from magic_pdf.model.sub_modules.mfr.unimernet.Unimernet import UnimernetModel
 
 try:
+    from magic_pdf_ascend_plugin.libs.license_verifier import load_license, LicenseFormatError, LicenseSignatureError, LicenseExpiredError
     from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
     from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
-    logger.info('Using Ascend Plugin')
-except ImportError:
+    license_key = load_license()
+    logger.info(f'Using Ascend Plugin Success, License expired at {license_key["payload"]["date"]["end_date"]}')
+except Exception as e:
+    if isinstance(e, LicenseFormatError):
+        logger.error("Ascend Plugin: Invalid license format. Please check the license file.")
+    elif isinstance(e, LicenseSignatureError):
+        logger.error("Ascend Plugin: Invalid signature. The license may be tampered with.")
+    elif isinstance(e, LicenseExpiredError):
+        logger.error("Ascend Plugin: License has expired. Please renew your license.")
+    elif isinstance(e, FileNotFoundError):
+        logger.error("Ascend Plugin: Not found License file.")
+    else:
+        pass
     from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import ModifiedPaddleOCR
     # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
     from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
