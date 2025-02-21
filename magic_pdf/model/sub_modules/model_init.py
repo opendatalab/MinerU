@@ -16,7 +16,9 @@ try:
     license_key = load_license()
     logger.info(f'Using Ascend Plugin Success, License expired at {license_key["payload"]["date"]["end_date"]}')
 except Exception as e:
-    if isinstance(e, LicenseFormatError):
+    if isinstance(e, ImportError):
+        pass
+    elif isinstance(e, LicenseFormatError):
         logger.error("Ascend Plugin: Invalid license format. Please check the license file.")
     elif isinstance(e, LicenseSignatureError):
         logger.error("Ascend Plugin: Invalid signature. The license may be tampered with.")
@@ -25,7 +27,7 @@ except Exception as e:
     elif isinstance(e, FileNotFoundError):
         logger.error("Ascend Plugin: Not found License file.")
     else:
-        pass
+        logger.error(f"Ascend Plugin: {e}")
     from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import ModifiedPaddleOCR
     # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
     from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
