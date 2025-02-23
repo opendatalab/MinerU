@@ -14,7 +14,8 @@ try:
     from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
     from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
     license_key = load_license()
-    logger.info(f'Using Ascend Plugin Success, License expired at {license_key["payload"]["date"]["end_date"]}')
+    logger.info(f'Using Ascend Plugin Success, License id is {license_key["payload"]["id"]},'
+                f' License expired at {license_key["payload"]["date"]["end_date"]}')
 except Exception as e:
     if isinstance(e, ImportError):
         pass
