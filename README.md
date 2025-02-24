@@ -48,7 +48,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 
 # Changelog
 
-- 2025/02/24 Release 1.2.0: This version includes several fixes and improvements to enhance parsing efficiency and accuracy:
+- 2025/02/24 1.2.0 released. This version includes several fixes and improvements to enhance parsing efficiency and accuracy:
   - Performance Optimization
     - Increased classification speed for PDF documents in auto mode.
   - Parsing Optimization
