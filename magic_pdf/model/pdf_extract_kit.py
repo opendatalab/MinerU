@@ -89,13 +89,6 @@ class CustomPEKModel:
         # 初始化解析方案
         self.device = kwargs.get('device', 'cpu')
 
-        if str(self.device).startswith("npu"):
-            import torch_npu
-            os.environ['FLAGS_npu_jit_compile'] = '0'
-            os.environ['FLAGS_use_stride_kernel'] = '0'
-        elif str(self.device).startswith("mps"):
-            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-
         logger.info('using device: {}'.format(self.device))
         models_dir = kwargs.get(
             'models_dir', os.path.join(root_dir, 'resources', 'models')

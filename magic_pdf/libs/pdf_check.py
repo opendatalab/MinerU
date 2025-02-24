@@ -4,6 +4,7 @@ from loguru import logger
 import re
 from io import BytesIO
 from pdfminer.high_level import extract_text
+from pdfminer.layout import LAParams
 
 
 def calculate_sample_count(total_page: int):
@@ -41,7 +42,16 @@ def detect_invalid_chars(src_pdf_bytes: bytes) -> bool:
     sample_docs = extract_pages(src_pdf_bytes)
     sample_pdf_bytes = sample_docs.tobytes()
     sample_pdf_file_like_object = BytesIO(sample_pdf_bytes)
-    text = extract_text(sample_pdf_file_like_object)
+    laparams = LAParams(
+        line_overlap=0.5,
+        char_margin=2.0,
+        line_margin=0.5,
+        word_margin=0.1,
+        boxes_flow=None,
+        detect_vertical=False,
+        all_texts=False,
+    )
+    text = extract_text(pdf_file=sample_pdf_file_like_object, laparams=laparams)
     text = text.replace("\n", "")
     # logger.info(text)
     '''乱码文本用pdfminer提取出来的文本特征是(cid:xxx)'''

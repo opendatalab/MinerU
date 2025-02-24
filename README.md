@@ -244,8 +244,8 @@ Synced with dev branch updates:
 #### 1. Install magic-pdf
 
 ```bash
-conda create -n MinerU python=3.10
-conda activate MinerU
+conda create -n mineru python=3.10
+conda activate mineru
 pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
 ```
 
@@ -305,7 +305,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
   ```bash
   wget https://github.com/opendatalab/MinerU/raw/master/docker/global/Dockerfile -O Dockerfile
   docker build -t mineru:latest .
-  docker run --rm -it --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
+  docker run -it --name mineru --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
   magic-pdf --help
   ```
 
