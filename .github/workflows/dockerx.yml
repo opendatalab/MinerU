@@ -1,0 +1,26 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Docker Hub
+      run: echo ${{ secrets.DOCKER_PASSWORD }} | docker login --username ${{ secrets.DOCKER_USERNAME }} --password-stdin crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com
+
+    - name: Build and push Docker image
+      run: |
+        docker buildx build --file projects/web_api/Dockerfile --tag crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest --push .

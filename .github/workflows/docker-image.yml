@@ -17,7 +17,6 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build the Docker image
       run: |
-        docker login --username=${{ secrets.DOCKER_USERNAME }} --password=${{ secrets.DOCKER_PASSWORD }} crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com
-        cd projects/web_api
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login --username ${{ secrets.DOCKER_USERNAME }} --password-stdin crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com
         docker build . --file projects/web_api/Dockerfile --tag crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest
         docker push crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest
