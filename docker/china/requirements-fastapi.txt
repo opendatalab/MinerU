@@ -1,0 +1,4 @@
+fastapi>=0.115.2,<0.115.4
+uvicorn>=0.30.0,<0.32.0
+redis>=5.2.0
+requests

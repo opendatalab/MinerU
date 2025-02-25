@@ -76,6 +76,7 @@
 - 2024/11/22 0.10.0发布，通过引入混合OCR文本提取能力，
   - 在公式密集、span区域不规范、部分文本使用图像表现等复杂文本分布场景下获得解析效果的显著提升
   - 同时具备文本模式内容提取准确、速度更快与OCR模式span/line区域识别更准的双重优势
+- 2024/11/20 增加fastapi(futuremeng and tianlz)
 - 2024/11/15 0.9.3发布，为表格识别功能接入了[RapidTable](https://github.com/RapidAI/RapidTable),单表解析速度提升10倍以上，准确率更高，显存占用更低
 - 2024/11/06 0.9.2发布，为表格识别功能接入了[StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B)模型
 - 2024/10/31 0.9.0发布，这是我们进行了大量代码重构的全新版本，解决了众多问题，提升了性能，降低了硬件需求，并提供了更丰富的易用性：
@@ -358,6 +359,11 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 
 [通过Python代码调用MinerU](https://mineru.readthedocs.io/en/latest/user_guide/usage/api.html)
 
+
+
+### FAST API
+
+接口文档doc [http://localhost:8910/docs](http://localhost:8910/docs)
 
 ### 部署衍生项目
 
