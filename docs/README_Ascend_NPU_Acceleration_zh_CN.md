@@ -2,11 +2,13 @@
 
 ## 简介
 
-本文档介绍如何在 Ascend NPU 上使用 MinerU。本文档内容已在`华为Atlas 800T A2`服务器上测试通过。
+本文档介绍如何在 Ascend NPU 上使用 MinerU。本文档内容已在`华为 Atlas 800T A2`服务器上测试通过。
 ```
 CPU：鲲鹏 920 aarch64 2.6GHz
 NPU：Ascend 910B 64GB
-OS：openEuler 22.03 (LTS-SP3)
+OS：openEuler 22.03 (LTS-SP3)/ Ubuntu 22.04.5 LTS
+CANN：8.0.RC2
+驱动版本：24.1.rc2.1
 ```
 由于适配 Ascend NPU 的环境较为复杂，建议使用 Docker 容器运行 MinerU。
 
@@ -55,3 +57,17 @@ magic-pdf --help
 - 自定义lang参数时，paddleocr速度会存在明显下降情况
 - layout模型使用layoutlmv3时会发生间歇性崩溃，建议使用默认配置的doclayout_yolo模型
 - 表格解析仅适配了rapid_table模型，其他模型可能会无法使用
+
+
+## 高性能模式
+
+- 在特定硬件环境可以通过插件开启高性能模式，整体速度相比默认模式提升300%以上
+
+| 系统要求           | 版本/型号        |
+|----------------|--------------|
+| 芯片类型           | 昇腾910B       |
+| CANN版本         | CANN 8.0.RC2 |
+| 驱动版本           | 24.1.rc2.1   |
+| magic-pdf 软件版本 | \> = 1.2.0   |
+
+- 高性能插件需满足一定的硬件条件和资质要求，如需申请使用请填写以下表单[MinerU高性能版本合作申请表](https://aicarrier.feishu.cn/share/base/form/shrcnb10VaoNQB8kQPA8DEfZC6d)
