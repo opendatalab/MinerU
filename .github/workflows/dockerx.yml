@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Docker Buildx
 
 on:
   push:
@@ -23,4 +23,4 @@ jobs:
 
     - name: Build and push Docker image
       run: |
-        docker buildx build --file projects/web_api/Dockerfile --tag crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest --push .
+        cd projects/web_api && docker buildx build --file Dockerfile --tag crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest --push .
