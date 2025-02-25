@@ -157,6 +157,7 @@ def doc_analyze(
     )
 
     batch_analyze = False
+    batch_ratio = 1
     device = get_device()
 
     npu_support = False
@@ -181,7 +182,6 @@ def doc_analyze(
                 batch_ratio = 2
 
             logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
-            batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
             batch_analyze = True
 
     model_json = []
@@ -190,24 +190,26 @@ def doc_analyze(
     if batch_analyze:
         # batch analyze
         images = []
+        page_wh_list = []
         for index in range(len(dataset)):
             if start_page_id <= index <= end_page_id:
                 page_data = dataset.get_page(index)
                 img_dict = page_data.get_image()
                 images.append(img_dict['img'])
+                page_wh_list.append((img_dict['width'], img_dict['height']))
+        batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
         analyze_result = batch_model(images)
 
         for index in range(len(dataset)):
-            page_data = dataset.get_page(index)
-            img_dict = page_data.get_image()
-            page_width = img_dict['width']
-            page_height = img_dict['height']
             if start_page_id <= index <= end_page_id:
                 result = analyze_result.pop(0)
+                page_width, page_height = page_wh_list.pop(0)
             else:
                 result = []
+                page_height = 0
+                page_width = 0
 
-            page_info = {'page_no': index, 'height': page_height, 'width': page_width}
+            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
             page_dict = {'layout_dets': result, 'page_info': page_info}
             model_json.append(page_dict)
 
@@ -227,7 +229,7 @@ def doc_analyze(
             else:
                 result = []
 
-            page_info = {'page_no': index, 'height': page_height, 'width': page_width}
+            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
             page_dict = {'layout_dets': result, 'page_info': page_info}
             model_json.append(page_dict)
 
