@@ -122,7 +122,7 @@ magic-pdf -p small_ocr.pdf -o ./output
 **1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
 
 ```bash
-python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+python -m pip install paddlepaddle-gpu==3.0.0rc1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 ```
 
 **2.运行以下命令测试ocr加速效果**
