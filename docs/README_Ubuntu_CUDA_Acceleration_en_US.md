@@ -117,7 +117,7 @@ If your graphics card has at least **8GB** of VRAM, follow these steps to test C
 
 1. Download `paddlepaddle-gpu`. Installation will automatically enable OCR acceleration.
    ```sh
-   python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+   python -m pip install paddlepaddle-gpu==3.0.0rc1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
    ```
 2. Test OCR acceleration with the following command:
    ```sh
