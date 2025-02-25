@@ -39,7 +39,7 @@ jobs:
     - name: Login to Aliyun Container Registry
       uses: docker/login-action@v2
       with:
-        registry: crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com
+        registry: ${{ secrets.DOCKER_REGISTRY }}
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         
@@ -49,6 +49,6 @@ jobs:
         context: ./projects/web_api
         file: ./projects/web_api/Dockerfile
         push: true
-        tags: crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest
-        cache-from: type=registry,ref=crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:buildcache
-        cache-to: type=registry,ref=crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:buildcache,mode=max
+        tags: ${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/${{ github.event.repository.name }}:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/${{ github.event.repository.name }}:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/${{ github.event.repository.name }}:buildcache,mode=max
