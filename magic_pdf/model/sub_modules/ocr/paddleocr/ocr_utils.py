@@ -7,6 +7,8 @@ import base64
 from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
 
+import importlib.resources
+from paddleocr import PaddleOCR
 from ppocr.utils.utility import check_and_read
 
 
@@ -327,30 +329,35 @@ class ONNXModelSingleton:
         return self._models[key]
 
 def onnx_model_init(key):
-
-    import importlib.resources
-
-    resource_path = importlib.resources.path('rapidocr_onnxruntime.models','')
-
-    onnx_model = None
-    additional_ocr_params = {
-        "use_onnx": True,
-        "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
-        "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
-        "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
-        "det_db_box_thresh": key[1],
-        "use_dilation": key[2],
-        "det_db_unclip_ratio": key[3],
-    }
-    # logger.info(f"additional_ocr_params: {additional_ocr_params}")
-    if key[0] is not None:
-        additional_ocr_params["lang"] = key[0]
-
-    from paddleocr import PaddleOCR
-    onnx_model = PaddleOCR(**additional_ocr_params)
-
-    if onnx_model is None:
-        logger.error('model init failed')
+    if len(key) < 4:
+        logger.error('Invalid key length, expected at least 4 elements')
         exit(1)
-    else:
-        return onnx_model
+
+    try:
+        with importlib.resources.path('rapidocr_onnxruntime.models', '') as resource_path:
+            additional_ocr_params = {
+                "use_onnx": True,
+                "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
+                "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
+                "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
+                "det_db_box_thresh": key[1],
+                "use_dilation": key[2],
+                "det_db_unclip_ratio": key[3],
+            }
+
+            if key[0] is not None:
+                additional_ocr_params["lang"] = key[0]
+
+            # logger.info(f"additional_ocr_params: {additional_ocr_params}")
+
+            onnx_model = PaddleOCR(**additional_ocr_params)
+
+            if onnx_model is None:
+                logger.error('model init failed')
+                exit(1)
+            else:
+                return onnx_model
+
+    except Exception as e:
+        logger.exception(f'Error initializing model: {e}')
+        exit(1)

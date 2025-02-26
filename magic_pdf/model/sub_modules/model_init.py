@@ -4,24 +4,39 @@ from loguru import logger
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.model_list import AtomicModel
 from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
-from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
-    DocLayoutYOLOModel
-from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
-    Layoutlmv3_Predictor
+from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import DocLayoutYOLOModel
+from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import Layoutlmv3_Predictor
 from magic_pdf.model.sub_modules.mfd.yolov8.YOLOv8 import YOLOv8MFDModel
 from magic_pdf.model.sub_modules.mfr.unimernet.Unimernet import UnimernetModel
-from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import \
-    ModifiedPaddleOCR
-from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import \
-    RapidTableModel
-# from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
-from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import \
-    StructTableModel
-from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
-    TableMasterPaddleModel
 
+try:
+    from magic_pdf_ascend_plugin.libs.license_verifier import load_license, LicenseFormatError, LicenseSignatureError, LicenseExpiredError
+    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
+    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
+    license_key = load_license()
+    logger.info(f'Using Ascend Plugin Success, License id is {license_key["payload"]["id"]},'
+                f' License expired at {license_key["payload"]["date"]["end_date"]}')
+except Exception as e:
+    if isinstance(e, ImportError):
+        pass
+    elif isinstance(e, LicenseFormatError):
+        logger.error("Ascend Plugin: Invalid license format. Please check the license file.")
+    elif isinstance(e, LicenseSignatureError):
+        logger.error("Ascend Plugin: Invalid signature. The license may be tampered with.")
+    elif isinstance(e, LicenseExpiredError):
+        logger.error("Ascend Plugin: License has expired. Please renew your license.")
+    elif isinstance(e, FileNotFoundError):
+        logger.error("Ascend Plugin: Not found License file.")
+    else:
+        logger.error(f"Ascend Plugin: {e}")
+    from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import ModifiedPaddleOCR
+    # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
+    from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
-def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None):
+from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import StructTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
+
+def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None, table_sub_model_name=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
         table_model = StructTableModel(model_path, max_new_tokens=2048, max_time=max_time)
     elif table_model_type == MODEL_NAME.TABLE_MASTER:
@@ -31,7 +46,7 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr
         }
         table_model = TableMasterPaddleModel(config)
     elif table_model_type == MODEL_NAME.RAPID_TABLE:
-        table_model = RapidTableModel(ocr_engine)
+        table_model = RapidTableModel(ocr_engine, table_sub_model_name)
     else:
         logger.error('table model type not allow')
         exit(1)
@@ -76,7 +91,6 @@ def ocr_model_init(show_log: bool = False,
                    use_dilation=True,
                    det_db_unclip_ratio=1.8,
                    ):
-
     if lang is not None and lang != '':
         model = ModifiedPaddleOCR(
             show_log=show_log,
@@ -163,7 +177,8 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('table_model_path'),
             kwargs.get('table_max_time'),
             kwargs.get('device'),
-            kwargs.get('ocr_engine')
+            kwargs.get('ocr_engine'),
+            kwargs.get('table_sub_model_name')
         )
     elif model_name == AtomicModel.LangDetect:
         if kwargs.get('langdetect_model_name') == MODEL_NAME.YOLO_V11_LangDetect:

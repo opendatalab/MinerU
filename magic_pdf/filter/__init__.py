@@ -23,7 +23,7 @@ def classify(pdf_bytes: bytes) -> SupportedPdfParseMethod:
                 pdf_meta['image_info_per_page'],
                 pdf_meta['text_len_per_page'],
                 pdf_meta['imgs_per_page'],
-                pdf_meta['text_layout_per_page'],
+                # pdf_meta['text_layout_per_page'],
                 pdf_meta['invalid_chars'],
             )
             if is_text_pdf:

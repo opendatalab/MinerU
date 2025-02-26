@@ -60,6 +60,19 @@ def merge_spans_to_line(spans, threshold=0.6):
         return lines
 
 
+def span_block_type_compatible(span_type, block_type):
+    if span_type in [ContentType.Text, ContentType.InlineEquation]:
+        return block_type in [BlockType.Text, BlockType.Title, BlockType.ImageCaption, BlockType.ImageFootnote, BlockType.TableCaption, BlockType.TableFootnote]
+    elif span_type == ContentType.InterlineEquation:
+        return block_type in [BlockType.InterlineEquation]
+    elif span_type == ContentType.Image:
+        return block_type in [BlockType.ImageBody]
+    elif span_type == ContentType.Table:
+        return block_type in [BlockType.TableBody]
+    else:
+        return False
+
+
 def fill_spans_in_blocks(blocks, spans, radio):
     """将allspans中的span按位置关系，放入blocks中."""
     block_with_spans = []
@@ -78,8 +91,7 @@ def fill_spans_in_blocks(blocks, spans, radio):
         block_spans = []
         for span in spans:
             span_bbox = span['bbox']
-            if calculate_overlap_area_in_bbox1_area_ratio(
-                    span_bbox, block_bbox) > radio:
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > radio and span_block_type_compatible(span['type'], block_type):
                 block_spans.append(span)
 
         block_dict['spans'] = block_spans

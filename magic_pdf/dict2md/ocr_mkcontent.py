@@ -126,11 +126,35 @@ def detect_language(text):
         return 'empty'
 
 
+def full_to_half(text: str) -> str:
+    """Convert full-width characters to half-width characters using code point manipulation.
+
+    Args:
+        text: String containing full-width characters
+
+    Returns:
+        String with full-width characters converted to half-width
+    """
+    result = []
+    for char in text:
+        code = ord(char)
+        # Full-width ASCII variants (FF01-FF5E)
+        if 0xFF01 <= code <= 0xFF5E:
+            result.append(chr(code - 0xFEE0))  # Shift to ASCII range
+        # Full-width space
+        elif code == 0x3000:
+            result.append(' ')
+        else:
+            result.append(char)
+    return ''.join(result)
+
+
 def merge_para_with_text(para_block):
     block_text = ''
     for line in para_block['lines']:
         for span in line['spans']:
             if span['type'] in [ContentType.Text]:
+                span['content'] = full_to_half(span['content'])
                 block_text += span['content']
     block_lang = detect_lang(block_text)
 

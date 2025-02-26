@@ -1,17 +1,22 @@
 import os
 import time
+import torch
 
+os.environ['FLAGS_npu_jit_compile'] = '0'  # 关闭paddle的jit编译
+os.environ['FLAGS_use_stride_kernel'] = '0'
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
+os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 # 关闭paddle的信号处理
 import paddle
-from loguru import logger
-
 paddle.disable_signal_handler()
 
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
+from loguru import logger
+
+from magic_pdf.model.batch_analyze import BatchAnalyze
+from magic_pdf.model.sub_modules.model_utils import get_vram
 
 try:
     import torchtext
-
     if torchtext.__version__ >= '0.18.0':
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
@@ -26,20 +31,6 @@ from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_table_recog_config)
 from magic_pdf.model.model_list import MODEL
 from magic_pdf.operators.models import InferenceResult
-
-
-def dict_compare(d1, d2):
-    return d1.items() == d2.items()
-
-
-def remove_duplicates_dicts(lst):
-    unique_dicts = []
-    for dict_item in lst:
-        if not any(
-            dict_compare(dict_item, existing_dict) for existing_dict in unique_dicts
-        ):
-            unique_dicts.append(dict_item)
-    return unique_dicts
 
 
 class ModelSingleton:
@@ -154,33 +145,93 @@ def doc_analyze(
     table_enable=None,
 ) -> InferenceResult:
 
+    end_page_id = (
+        end_page_id
+        if end_page_id is not None and end_page_id >= 0
+        else len(dataset) - 1
+    )
+
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(
         ocr, show_log, lang, layout_model, formula_enable, table_enable
     )
 
+    batch_analyze = False
+    batch_ratio = 1
+    device = get_device()
+
+    npu_support = False
+    if str(device).startswith("npu"):
+        import torch_npu
+        if torch_npu.npu.is_available():
+            npu_support = True
+
+    if torch.cuda.is_available() and device != 'cpu' or npu_support:
+        gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
+        if gpu_memory is not None and gpu_memory >= 8:
+
+            if gpu_memory >= 40:
+                batch_ratio = 32
+            elif gpu_memory >=20:
+                batch_ratio = 16
+            elif gpu_memory >= 16:
+                batch_ratio = 8
+            elif gpu_memory >= 10:
+                batch_ratio = 4
+            else:
+                batch_ratio = 2
+
+            logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
+            batch_analyze = True
+
     model_json = []
     doc_analyze_start = time.time()
 
-    if end_page_id is None:
-        end_page_id = len(dataset)
+    if batch_analyze:
+        # batch analyze
+        images = []
+        page_wh_list = []
+        for index in range(len(dataset)):
+            if start_page_id <= index <= end_page_id:
+                page_data = dataset.get_page(index)
+                img_dict = page_data.get_image()
+                images.append(img_dict['img'])
+                page_wh_list.append((img_dict['width'], img_dict['height']))
+        batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
+        analyze_result = batch_model(images)
 
-    for index in range(len(dataset)):
-        page_data = dataset.get_page(index)
-        img_dict = page_data.get_image()
-        img = img_dict['img']
-        page_width = img_dict['width']
-        page_height = img_dict['height']
-        if start_page_id <= index <= end_page_id:
-            page_start = time.time()
-            result = custom_model(img)
-            logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
-        else:
-            result = []
+        for index in range(len(dataset)):
+            if start_page_id <= index <= end_page_id:
+                result = analyze_result.pop(0)
+                page_width, page_height = page_wh_list.pop(0)
+            else:
+                result = []
+                page_height = 0
+                page_width = 0
 
-        page_info = {'page_no': index, 'height': page_height, 'width': page_width}
-        page_dict = {'layout_dets': result, 'page_info': page_info}
-        model_json.append(page_dict)
+            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
+            page_dict = {'layout_dets': result, 'page_info': page_info}
+            model_json.append(page_dict)
+
+    else:
+        # single analyze
+
+        for index in range(len(dataset)):
+            page_data = dataset.get_page(index)
+            img_dict = page_data.get_image()
+            img = img_dict['img']
+            page_width = img_dict['width']
+            page_height = img_dict['height']
+            if start_page_id <= index <= end_page_id:
+                page_start = time.time()
+                result = custom_model(img)
+                logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
+            else:
+                result = []
+
+            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
+            page_dict = {'layout_dets': result, 'page_info': page_info}
+            model_json.append(page_dict)
 
     gc_start = time.time()
     clean_memory(get_device())

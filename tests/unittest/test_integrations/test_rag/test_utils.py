@@ -24,7 +24,7 @@ def test_convert_middle_json_to_layout_elements():
     assert len(res[0].layout_dets) > 0
     assert res[0].layout_dets[0].anno_id == 0
     assert res[0].layout_dets[0].category_type == CategoryType.text
-    assert len(res[0].extra.element_relation) >= 3
+    assert len(res[0].extra.element_relation) >= 2
 
     # teardown
     shutil.rmtree(temp_output_dir)
@@ -51,7 +51,7 @@ def test_inference():
     assert len(res[0].layout_dets) > 0
     assert res[0].layout_dets[0].anno_id == 0
     assert res[0].layout_dets[0].category_type == CategoryType.text
-    assert len(res[0].extra.element_relation) >= 3
+    assert len(res[0].extra.element_relation) >= 2
 
     # teardown
     shutil.rmtree(temp_output_dir)

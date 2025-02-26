@@ -1,85 +1,67 @@
-# Use the official Ubuntu base image
-FROM ubuntu:latest
+FROM python:3.10-slim-bookworm AS base
 
-# ENV http_proxy http://127.0.0.1:7890
-# ENV https_proxy http://127.0.0.1:7890
+WORKDIR /app
 
-# Set environment variables to non-interactive to avoid prompts during installation
-ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG C.UTF-8
-
-# ADD sources.list /etc/apt
-# RUN apt-get clean
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
 
+FROM base AS build
 
 # Update the package list and install necessary packages
-RUN apt-get -q update \
-    && apt-get -q install -y --no-install-recommends \
-        apt-utils \
-        bats \
-        build-essential
-RUN apt-get update && apt-get install -y vim net-tools procps lsof curl wget iputils-ping telnet lrzsz git
-
 RUN apt-get update && \
-    apt-get install -y \
-        software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y \
-        python3.10 \
-        python3.10-venv \
-        python3.10-distutils \
-        python3-pip \
-        wget \
-        git \
+    apt-get install -y --no-install-recommends \
+        build-essential && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build Python dependencies
+COPY requirements.txt .
+RUN python -m venv /app/venv && \
+    . /app/venv/bin/activate && \
+    pip install -r requirements.txt && \
+    pip uninstall -y paddlepaddle && \
+    pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
+        paddlepaddle-gpu==3.0.0rc1
+
+# Download models
+COPY download_models.py .
+RUN . /app/venv/bin/activate && \
+    ./download_models.py
+
+
+FROM base AS prod
+
+# Copy Python dependencies and models from the build stage
+COPY --from=build /app/venv /app/venv
+COPY --from=build /opt/models /opt/models
+COPY --from=build /opt/layoutreader /opt/layoutreader
+
+# Update the package list and install necessary packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
-        && rm -rf /var/lib/apt/lists/*
-        
-# RUN unset http_proxy && unset https_proxy
+        libgomp1 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.10 as the default python3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Create volume for paddleocr models
+RUN mkdir -p /root/.paddleocr
+VOLUME [ "/root/.paddleocr" ]
 
-# Create a virtual environment for MinerU
-RUN python3 -m venv /opt/mineru_venv
-RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple
-# Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install magic-pdf[full] --extra-index-url https://myhloli.github.io/wheels/ --no-cache-dir"
-
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip install fastapi uvicorn python-multipart --no-cache-dir"
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip uninstall  paddlepaddle -y"
-
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ --no-cache-dir"
-
-# Copy the configuration file template and set up the model directory
-COPY magic-pdf.template.json /root/magic-pdf.json
-ADD models /opt/models
-ADD .paddleocr /root/.paddleocr 
-ADD app.py /root/app.py
-
-WORKDIR /root
-
-# Set the models directory in the configuration file (adjust the path as needed)
-RUN sed -i 's|/tmp/models|/opt/models|g' /root/magic-pdf.json
-
-# Create the models directory
-# RUN mkdir -p /opt/models
-
-# Set the entry point to activate the virtual environment and run the command line tool
-# ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && exec \"$@\" && python3 app.py", "--"]
-
+# Copy the app and its configuration file
+COPY entrypoint.sh /app/entrypoint.sh
+COPY magic-pdf.json /root/magic-pdf.json
+COPY app.py /app/app.py
 
 # Expose the port that FastAPI will run on
 EXPOSE 8000
 
 # Command to run FastAPI using Uvicorn, pointing to app.py and binding to 0.0.0.0:8000
-CMD ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && uvicorn app:app --host 0.0.0.0 --port 8000"]
+ENTRYPOINT [ "/app/entrypoint.sh" ]
+CMD ["--host", "0.0.0.0", "--port", "8000"]
