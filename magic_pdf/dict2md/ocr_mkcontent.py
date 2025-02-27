@@ -138,12 +138,9 @@ def full_to_half(text: str) -> str:
     result = []
     for char in text:
         code = ord(char)
-        # Full-width ASCII variants (FF01-FF5E)
-        if 0xFF01 <= code <= 0xFF5E:
+        # Full-width letters and numbers (FF21-FF3A for A-Z, FF41-FF5A for a-z, FF10-FF19 for 0-9)
+        if (0xFF21 <= code <= 0xFF3A) or (0xFF41 <= code <= 0xFF5A) or (0xFF10 <= code <= 0xFF19):
             result.append(chr(code - 0xFEE0))  # Shift to ASCII range
-        # Full-width space
-        elif code == 0x3000:
-            result.append(' ')
         else:
             result.append(char)
     return ''.join(result)
