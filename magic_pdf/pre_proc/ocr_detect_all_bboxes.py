@@ -83,11 +83,20 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     add_bboxes(title_blocks, BlockType.Title, all_bboxes)
     add_bboxes(interline_equation_blocks, BlockType.InterlineEquation, all_bboxes)
 
+    # 🚀 **NEW: Add discarded blocks as normal text**
+    # ADD:
+    add_bboxes(discarded_blocks, BlockType.Text, all_bboxes)
+
     """block嵌套问题解决"""
     """文本框与标题框重叠，优先信任文本框"""
     all_bboxes = fix_text_overlap_title_blocks(all_bboxes)
     """任何框体与舍弃框重叠，优先信任舍弃框"""
-    all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
+
+        # 🚀 **NEW: Remove filtering of discarded blocks**
+    # Previously, remove_need_drop_blocks() prioritized discarded blocks.
+    # We now treat them normally, so we skip this step.
+    # SKIP:
+    # all_bboxes = remove_need_drop_blocks(all_bboxes, discarded_blocks)
 
     # interline_equation 与title或text框冲突的情况，分两种情况处理
     """interline_equation框与文本类型框iou比较接近1的时候，信任行间公式框"""
@@ -96,8 +105,15 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     # 通过后续大框套小框逻辑删除
 
     """discarded_blocks"""
-    all_discarded_blocks = []
-    add_bboxes(discarded_blocks, BlockType.Discarded, all_discarded_blocks)
+
+    # 🚀 **NEW: Instead of keeping discarded blocks separate, merge them**
+    # Previously:
+    # all_discarded_blocks = []
+    # add_bboxes(discarded_blocks, BlockType.Discarded, all_discarded_blocks)
+    # Now, they're already in all_bboxes as text, so we remove this.
+    # SKIP:
+    # all_discarded_blocks = []
+    # add_bboxes(discarded_blocks, BlockType.Discarded, all_discarded_blocks)
 
     """footnote识别：宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的"""
     footnote_blocks = []
@@ -111,15 +127,25 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     if len(need_remove_blocks) > 0:
         for block in need_remove_blocks:
             all_bboxes.remove(block)
-            all_discarded_blocks.append(block)
+            # 🚀 **NEW: Don't add to discarded list, just remove them**
+            # all_discarded_blocks.append(block)  # Removed
+            # SKIP:
+            # all_discarded_blocks.append(block)
 
     """经过以上处理后，还存在大框套小框的情况，则删除小框"""
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
+    all_discarded_blocks = []
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
+
     """将剩余的bbox做分离处理，防止后面分layout时出错"""
     # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
     all_bboxes.sort(key=lambda x: x[0]+x[1])
-    return all_bboxes, all_discarded_blocks
+    
+    # 🚀 **NEW: Don't return discarded blocks separately**
+    # SKIP:
+    # return all_bboxes, all_discarded_blocks
+    # ADD:
+    return all_bboxes, []
 
 
 def find_blocks_under_footnote(all_bboxes, footnote_blocks):
