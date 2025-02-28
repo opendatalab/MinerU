@@ -1,21 +1,14 @@
-'''
-Author: dt_4541218930 abcstorms@163.com
-Date: 2024-11-14 17:04:42
-LastEditors: FutureMeng futuremeng@gmail.com
-LastEditTime: 2025-02-14 09:07:31
-FilePath: /MinerU/services/fastapi/app/main.py
-Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
-'''
-import os
-from fastapi import FastAPI
-import urllib.request
-import urllib.parse
 import hashlib
+import os
 import queue
 import threading
+from urllib import parse, request
+
+from fastapi import FastAPI
+from loguru import logger
+
 from . import magic_pdf_parse_util
 from . import redis_util
-from loguru import logger
 
 message_queue = queue.Queue(20)
 
@@ -40,18 +33,19 @@ def queue_consumer(q):
                 magic_pdf_parse_util.pdf_parse(item['md5'], byteContent, item['parse_method'], item['cbUrl'], item['cbkey'])
             else:
                 logger.error(file_path+' can not read')
+            q.task_done()
 
 consumer_thread = threading.Thread(target=queue_consumer, args=(message_queue,))
 consumer_thread.start()
 
 
-list = redis_util.get_init_list()
-logger.info(list)
-for item in list:
+initial_pdf_list = redis_util.get_init_list()
+logger.info(initial_pdf_list)
+for item in initial_pdf_list:
     redis_util.set_parse_init(item['md5'])
     commit_parse_task(item['md5'], 'auto')
     
-
+MAX_FILE_SIZE = 1024 * 1024 * 50
 
 @app.post("/parse_pdf")
 async def parse_pdf(encodeUrl: str = None, md5: str = None, cbUrl: str = None, cbkey: str = None, parse_method: str = 'auto'):
@@ -66,15 +60,24 @@ async def parse_pdf(encodeUrl: str = None, md5: str = None, cbUrl: str = None, c
 
     try:
         decodeUrl = urllib.parse.unquote(encodeUrl)
-        pdf_bytes = urllib.request.urlopen(decodeUrl).read()
+        with urllib.request.urlopen(decodeUrl) as response:
+            if response.getheader('Content-Length') and int(response.getheader('Content-Length')) > MAX_FILE_SIZE:
+                return {"state": "failed", "error": "File size exceeds the limit."}
+            pdf_bytes = bytearray()
+            while True:
+                chunk = response.read(4096)
+                if not chunk:
+                    break
+                pdf_bytes.extend(chunk)
+                if len(pdf_bytes) > MAX_FILE_SIZE:
+                    return {"state": "failed", "error": "File size exceeds the limit."}
     except Exception:
+        logger.error(f"Error downloading PDF: {e}")
         return {"state": "failed", "error": "encodeUrl is not valid."}
-    if (pdf_bytes is None):
-        return {"state": "failed", "error": "download faild"}
-    
+
     md5_value = calc_md5(pdf_bytes)
     
-    file_path='/gateway/tmp/'+md5_value+'.pdf'
+    file_path=f'/gateway/tmp/{md5_value+}.pdf'
     
     if not os.path.isfile(file_path):
         tmp_file = open(file_path,'wb')
