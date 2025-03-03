@@ -528,13 +528,12 @@ class MagicModel:
             pair_dis = bbox_distance(subjects[sub_idx]['bbox'], objects[obj_idx]['bbox'])
             nearest_dis = float('inf')
             for i in range(N):
-                if i in seen_idx:continue
+                if i in seen_idx or i == sub_idx:continue
                 nearest_dis = min(nearest_dis, bbox_distance(subjects[i]['bbox'], objects[obj_idx]['bbox']))
 
             if pair_dis >= 3*nearest_dis:
                 seen_idx.add(sub_idx)
                 continue
-
 
             seen_idx.add(sub_idx)
             seen_idx.add(obj_idx + OBJ_IDX_OFFSET)
