@@ -21,6 +21,7 @@ from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_l
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
+from magic_pdf.libs.performance_stats import measure_time, PerformanceStats
 from magic_pdf.model.magic_model import MagicModel
 from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text, llm_aided_title
 
@@ -217,7 +218,7 @@ def calculate_contrast(img, img_mode) -> float:
     # logger.info(f"contrast: {contrast}")
     return round(contrast, 2)
 
-
+@measure_time
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
     # cid用0xfffd表示，连字符拆开
     # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
@@ -491,7 +492,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
     else:
         return [[x0, y0, x1, y1]]
 
-
+@measure_time
 def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
 
@@ -925,7 +926,6 @@ def pdf_parse_union(
     magic_model = MagicModel(model_list, dataset)
 
     """根据输入的起始范围解析pdf"""
-    # end_page_id = end_page_id if end_page_id else len(pdf_docs) - 1
     end_page_id = (
         end_page_id
         if end_page_id is not None and end_page_id >= 0
@@ -939,33 +939,16 @@ def pdf_parse_union(
     """初始化启动时间"""
     start_time = time.time()
 
-    # for page_id, page in enumerate(dataset):
-    #     """debug时输出每页解析的耗时."""
-    #     if debug_mode:
-    #         time_now = time.time()
-    #         logger.info(
-    #             f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
-    #         )
-    #         start_time = time_now
-    #
-    #     """解析pdf中的每一页"""
-    #     if start_page_id <= page_id <= end_page_id:
-    #         page_info = parse_page_core(
-    #             page, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
-    #         )
-    #     else:
-    #         page_info = page.get_page_info()
-    #         page_w = page_info.w
-    #         page_h = page_info.h
-    #         page_info = ocr_construct_page_component_v2(
-    #             [], [], page_id, page_w, page_h, [], [], [], [], [], True, 'skip page'
-    #         )
-    #     pdf_info_dict[f'page_{page_id}'] = page_info
-    def process_page(page_id, page, dataset_len, start_page_id, end_page_id, magic_model, pdf_bytes_md5, imageWriter,
-                     parse_mode, lang, debug_mode, start_time):
+    for page_id, page in enumerate(dataset):
+        """debug时输出每页解析的耗时."""
         if debug_mode:
             time_now = time.time()
+            logger.info(
+                f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
+            )
+            start_time = time_now
 
+        """解析pdf中的每一页"""
         if start_page_id <= page_id <= end_page_id:
             page_info = parse_page_core(
                 page, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
@@ -977,43 +960,14 @@ def pdf_parse_union(
             page_info = ocr_construct_page_component_v2(
                 [], [], page_id, page_w, page_h, [], [], [], [], [], True, 'skip page'
             )
-        return page_id, page_info
+        pdf_info_dict[f'page_{page_id}'] = page_info
 
-    # Use max_workers based on CPU count but limit to avoid excessive resource usage
-    max_workers = 2
-    pdf_info_dict = {}
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {
-            executor.submit(
-                process_page,
-                page_id,
-                page,
-                len(dataset),
-                start_page_id,
-                end_page_id,
-                magic_model,
-                pdf_bytes_md5,
-                imageWriter,
-                parse_mode,
-                lang,
-                debug_mode,
-                time.time()
-            ): page_id
-            for page_id, page in enumerate(dataset)
-        }
-
-        for page_id in range(len(dataset)):
-            future = [f for f in futures if futures[f] == page_id][0]
-            try:
-                page_id, page_info = future.result()
-                pdf_info_dict[f'page_{page_id}'] = page_info
-            except Exception as e:
-                logger.exception(f"Error processing page {page_id}: {e}")
 
     logger.info(
         f'page_process_time: {round(time.time() - start_time, 2)}'
     )
+
+    PerformanceStats.print_stats()
 
     """分段"""
     para_split(pdf_info_dict)
