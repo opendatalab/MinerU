@@ -17,16 +17,17 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Build Python dependencies
 COPY requirements.txt .
 RUN python -m venv /app/venv && \
     . /app/venv/bin/activate && \
-    pip install -r requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip uninstall -y paddlepaddle && \
-    pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
-        paddlepaddle-gpu==3.0.0rc1
+    pip install --no-cache-dir -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
+        paddlepaddle-gpu==3.0.0rc1 && \
+    find /app/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Download models
 COPY download_models.py .
@@ -48,7 +49,7 @@ RUN apt-get update && \
         libglib2.0-0 \
         libgomp1 && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Create volume for paddleocr models
 RUN mkdir -p /root/.paddleocr
