@@ -170,7 +170,9 @@ def doc_analyze(
         gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
 
-            if gpu_memory >= 10:
+            if gpu_memory >= 16:
+                batch_ratio = 8
+            elif gpu_memory >= 10:
                 batch_ratio = 4
             else:
                 batch_ratio = 2
