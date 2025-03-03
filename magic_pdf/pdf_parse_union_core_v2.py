@@ -218,7 +218,7 @@ def calculate_contrast(img, img_mode) -> float:
     # logger.info(f"contrast: {contrast}")
     return round(contrast, 2)
 
-@measure_time
+# @measure_time
 def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang):
     # cid用0xfffd表示，连字符拆开
     # text_blocks_raw = pdf_page.get_text('rawdict', flags=fitz.TEXT_PRESERVE_WHITESPACE | fitz.TEXT_MEDIABOX_CLIP)['blocks']
@@ -492,7 +492,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
     else:
         return [[x0, y0, x1, y1]]
 
-@measure_time
+# @measure_time
 def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
 
@@ -962,12 +962,7 @@ def pdf_parse_union(
             )
         pdf_info_dict[f'page_{page_id}'] = page_info
 
-
-    logger.info(
-        f'page_process_time: {round(time.time() - start_time, 2)}'
-    )
-
-    PerformanceStats.print_stats()
+    # PerformanceStats.print_stats()
 
     """分段"""
     para_split(pdf_info_dict)
