@@ -47,6 +47,10 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/03/03 1.2.1 released, fixed several bugs:
+  - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
+  - Fixed caption matching inaccuracies in certain scenarios
+  - Fixed formula span loss issues in certain scenarios
 - 2025/02/24 1.2.0 released. This version includes several fixes and improvements to enhance parsing efficiency and accuracy:
   - Performance Optimization
     - Increased classification speed for PDF documents in auto mode.
