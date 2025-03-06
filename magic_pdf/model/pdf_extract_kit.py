@@ -8,13 +8,14 @@ import torch
 import yaml
 from loguru import logger
 from PIL import Image
+from packaging import version
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
 try:
     import torchtext
 
-    if torchtext.__version__ >= '0.18.0':
+    if version.parse(torchtext.__version__) >= version.parse('0.18.0'):
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass
