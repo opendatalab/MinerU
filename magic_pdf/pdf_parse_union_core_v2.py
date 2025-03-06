@@ -22,9 +22,11 @@ from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_l
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
+from magic_pdf.libs.performance_stats import measure_time, PerformanceStats
 from magic_pdf.model.magic_model import MagicModel
 from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text, llm_aided_title
 
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     import torchtext
