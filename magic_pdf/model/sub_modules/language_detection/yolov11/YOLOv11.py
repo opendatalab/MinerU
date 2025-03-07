@@ -29,7 +29,7 @@ def split_images(image, result_images=None):
     if result_images is None:
         result_images = []
 
-    width, height = image.size
+    width, height = image.shape[:2]
     long_side = max(width, height)  # 获取较长边长度
 
     if long_side <= 400:
@@ -45,7 +45,7 @@ def split_images(image, result_images=None):
             if x + new_long_side > width:
                 continue
             box = (x, 0, x + new_long_side, height)
-            sub_image = image.crop(box)
+            sub_image = image[0:height, x:x + new_long_side]
             sub_images.append(sub_image)
     else:  # 如果高度是较长边
         for y in range(0, height, new_long_side):
@@ -53,7 +53,7 @@ def split_images(image, result_images=None):
             if y + new_long_side > height:
                 continue
             box = (0, y, width, y + new_long_side)
-            sub_image = image.crop(box)
+            sub_image = image[y:y + new_long_side, 0:width]
             sub_images.append(sub_image)
 
     for sub_image in sub_images:
@@ -75,24 +75,27 @@ def resize_images_to_224(image):
             height, width = image.shape
             image = np.stack([image] * 3, axis=2)  # Convert to RGB
 
+        import cv2
         if width < 224 or height < 224:
             # Create black background
             new_image = np.zeros((224, 224, 3), dtype=np.uint8)
-            # Calculate paste position
-            paste_x = (224 - width) // 2
-            paste_y = (224 - height) // 2
+            # Calculate paste position (ensure they're not negative)
+            paste_x = max(0, (224 - width) // 2)
+            paste_y = max(0, (224 - height) // 2)
+            # Make sure we don't exceed the boundaries of new_image
+            paste_width = min(width, 224)
+            paste_height = min(height, 224)
             # Paste original image onto black background
-            new_image[paste_y:paste_y + height, paste_x:paste_x + width] = image
+            new_image[paste_y:paste_y + paste_height, paste_x:paste_x + paste_width] = image[:paste_height, :paste_width]
             image = new_image
         else:
-            # Resize using cv2 functionality or numpy interpolation
-            # Method 1: Using cv2 (preferred for better quality)
-            import cv2
+            # Resize using cv2
             image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_LANCZOS4)
 
         return image
     except Exception as e:
-        logger.exception(e)
+        logger.exception(f"Error in resize_images_to_224: {e}")
+        return None
 
 
 class YOLOv11LangDetModel(object):
