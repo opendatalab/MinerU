@@ -3,11 +3,9 @@ import os
 import time
 
 import cv2
-import numpy as np
 import torch
 import yaml
 from loguru import logger
-from PIL import Image
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
@@ -174,11 +172,6 @@ class CustomPEKModel:
         logger.info('DocAnalysis init done!')
 
     def __call__(self, image):
-
-        pil_img = Image.fromarray(image)
-        width, height = pil_img.size
-        # logger.info(f'width: {width}, height: {height}')
-
         # layout检测
         layout_start = time.time()
         layout_res = []
@@ -186,24 +179,6 @@ class CustomPEKModel:
             # layoutlmv3
             layout_res = self.layout_model(image, ignore_catids=[])
         elif self.layout_model_name == MODEL_NAME.DocLayout_YOLO:
-            # doclayout_yolo
-            # if height > width:
-            #     input_res = {"poly":[0,0,width,0,width,height,0,height]}
-            #     new_image, useful_list = crop_img(input_res, pil_img, crop_paste_x=width//2, crop_paste_y=0)
-            #     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
-            #     layout_res = self.layout_model.predict(new_image)
-            #     for res in layout_res:
-            #         p1, p2, p3, p4, p5, p6, p7, p8 = res['poly']
-            #         p1 = p1 - paste_x + xmin
-            #         p2 = p2 - paste_y + ymin
-            #         p3 = p3 - paste_x + xmin
-            #         p4 = p4 - paste_y + ymin
-            #         p5 = p5 - paste_x + xmin
-            #         p6 = p6 - paste_y + ymin
-            #         p7 = p7 - paste_x + xmin
-            #         p8 = p8 - paste_y + ymin
-            #         res['poly'] = [p1, p2, p3, p4, p5, p6, p7, p8]
-            # else:
             layout_res = self.layout_model.predict(image)
 
         layout_cost = round(time.time() - layout_start, 2)
@@ -234,11 +209,11 @@ class CustomPEKModel:
         ocr_start = time.time()
         # Process each area that requires OCR processing
         for res in ocr_res_list:
-            new_image, useful_list = crop_img(res, pil_img, crop_paste_x=50, crop_paste_y=50)
+            new_image, useful_list = crop_img(res, image, crop_paste_x=50, crop_paste_y=50)
             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list)
 
             # OCR recognition
-            new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+            new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
 
             if self.apply_ocr:
                 ocr_res = self.ocr_model.ocr(new_image, mfd_res=adjusted_mfdetrec_res)[0]
@@ -260,7 +235,7 @@ class CustomPEKModel:
         if self.apply_table:
             table_start = time.time()
             for res in table_res_list:
-                new_image, _ = crop_img(res, pil_img)
+                new_image, _ = crop_img(res, image)
                 single_table_start_time = time.time()
                 html_code = None
                 if self.table_model_name == MODEL_NAME.STRUCT_EQTABLE:

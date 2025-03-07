@@ -3,8 +3,8 @@ import time
 from collections import Counter
 from uuid import uuid4
 
+import numpy as np
 import torch
-from PIL import Image
 from loguru import logger
 from ultralytics import YOLO
 
@@ -64,21 +64,32 @@ def split_images(image, result_images=None):
 
 def resize_images_to_224(image):
     """
-    若分辨率小于224则用黑色背景补齐到224*224大小,若大于等于224则调整为224*224大小,并保存到输出文件夹中。
+    若分辨率小于224则用黑色背景补齐到224*224大小,若大于等于224则调整为224*224大小。
+    Works directly with NumPy arrays.
     """
     try:
-        width, height = image.size
+        # Handle numpy array directly
+        if len(image.shape) == 3:  # Color image
+            height, width, channels = image.shape
+        else:  # Grayscale image
+            height, width = image.shape
+            image = np.stack([image] * 3, axis=2)  # Convert to RGB
+
         if width < 224 or height < 224:
-            new_image = Image.new('RGB', (224, 224), (0, 0, 0))
+            # Create black background
+            new_image = np.zeros((224, 224, 3), dtype=np.uint8)
+            # Calculate paste position
             paste_x = (224 - width) // 2
             paste_y = (224 - height) // 2
-            new_image.paste(image, (paste_x, paste_y))
+            # Paste original image onto black background
+            new_image[paste_y:paste_y + height, paste_x:paste_x + width] = image
             image = new_image
         else:
-            image = image.resize((224, 224), Image.Resampling.LANCZOS)
+            # Resize using cv2 functionality or numpy interpolation
+            # Method 1: Using cv2 (preferred for better quality)
+            import cv2
+            image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_LANCZOS4)
 
-        # uuid = str(uuid4())
-        # image.save(f"/tmp/{uuid}.jpg")
         return image
     except Exception as e:
         logger.exception(e)
@@ -96,8 +107,7 @@ class YOLOv11LangDetModel(object):
     def do_detect(self, images: list):
         all_images = []
         for image in images:
-            width, height = image.size
-            # logger.info(f"image size: {width} x {height}")
+            height, width = image.shape[:2]
             if width < 100 and height < 100:
                 continue
             temp_images = split_images(image)

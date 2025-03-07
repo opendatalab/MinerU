@@ -4,7 +4,6 @@ import re
 
 import torch
 import unimernet.tasks as tasks
-from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from unimernet.common.config import Config
@@ -100,45 +99,6 @@ class UnimernetModel(object):
             res["latex"] = latex_rm_whitespace(latex)
         return formula_list
 
-    # def batch_predict(
-    #     self, images_mfd_res: list, images: list, batch_size: int = 64
-    # ) -> list:
-    #     images_formula_list = []
-    #     mf_image_list = []
-    #     backfill_list = []
-    #     for image_index in range(len(images_mfd_res)):
-    #         mfd_res = images_mfd_res[image_index]
-    #         pil_img = Image.fromarray(images[image_index])
-    #         formula_list = []
-    #
-    #         for xyxy, conf, cla in zip(
-    #             mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
-    #         ):
-    #             xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
-    #             new_item = {
-    #                 "category_id": 13 + int(cla.item()),
-    #                 "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-    #                 "score": round(float(conf.item()), 2),
-    #                 "latex": "",
-    #             }
-    #             formula_list.append(new_item)
-    #             bbox_img = pil_img.crop((xmin, ymin, xmax, ymax))
-    #             mf_image_list.append(bbox_img)
-    #
-    #         images_formula_list.append(formula_list)
-    #         backfill_list += formula_list
-    #
-    #     dataset = MathDataset(mf_image_list, transform=self.mfr_transform)
-    #     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0)
-    #     mfr_res = []
-    #     for mf_img in dataloader:
-    #         mf_img = mf_img.to(self.device)
-    #         with torch.no_grad():
-    #             output = self.model.generate({"image": mf_img})
-    #         mfr_res.extend(output["pred_str"])
-    #     for res, latex in zip(backfill_list, mfr_res):
-    #         res["latex"] = latex_rm_whitespace(latex)
-    #     return images_formula_list
 
     def batch_predict(self, images_mfd_res: list, images: list, batch_size: int = 64) -> list:
         images_formula_list = []
@@ -149,7 +109,7 @@ class UnimernetModel(object):
         # Collect images with their original indices
         for image_index in range(len(images_mfd_res)):
             mfd_res = images_mfd_res[image_index]
-            pil_img = Image.fromarray(images[image_index])
+            np_array_image = images[image_index]
             formula_list = []
 
             for idx, (xyxy, conf, cla) in enumerate(zip(
@@ -163,7 +123,7 @@ class UnimernetModel(object):
                     "latex": "",
                 }
                 formula_list.append(new_item)
-                bbox_img = pil_img.crop((xmin, ymin, xmax, ymax))
+                bbox_img = np_array_image[ymin:ymax, xmin:xmax]
                 area = (xmax - xmin) * (ymax - ymin)
 
                 curr_idx = len(mf_image_list)
