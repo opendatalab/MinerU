@@ -528,7 +528,7 @@ class MagicModel:
             pair_dis = bbox_distance(subjects[sub_idx]['bbox'], objects[obj_idx]['bbox'])
             nearest_dis = float('inf')
             for i in range(N):
-                if i in seen_idx or i == sub_idx:continue
+                if i in seen_idx:continue
                 nearest_dis = min(nearest_dis, bbox_distance(subjects[i]['bbox'], objects[obj_idx]['bbox']))
 
             if pair_dis >= 3*nearest_dis:
@@ -714,6 +714,8 @@ class MagicModel:
                 span = {'bbox': layout_det['bbox'], 'score': layout_det['score']}
                 if category_id == 3:
                     span['type'] = ContentType.Image
+                    if layout_det.get('latex', None):
+                        span['content'] = layout_det['text']
                 elif category_id == 5:
                     # 获取table模型结果
                     latex = layout_det.get('latex', None)

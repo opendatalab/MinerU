@@ -27,6 +27,7 @@ def crop_img(input_res, input_pil_img, crop_paste_x=0, crop_paste_y=0):
 def get_res_list_from_layout_res(layout_res):
     ocr_res_list = []
     table_res_list = []
+    image_res_list = []
     single_page_mfdetrec_res = []
     for res in layout_res:
         if int(res['category_id']) in [13, 14]:
@@ -38,7 +39,9 @@ def get_res_list_from_layout_res(layout_res):
             ocr_res_list.append(res)
         elif int(res['category_id']) in [5]:
             table_res_list.append(res)
-    return ocr_res_list, table_res_list, single_page_mfdetrec_res
+        elif int(res['category_id']) in [3]:
+            image_res_list.append(res)     
+    return ocr_res_list, table_res_list, single_page_mfdetrec_res, image_res_list
 
 
 def clean_vram(device, vram_threshold=8):

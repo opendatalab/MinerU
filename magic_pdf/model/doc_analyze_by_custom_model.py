@@ -28,7 +28,8 @@ from magic_pdf.libs.clean_memory import clean_memory
 from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_layout_config,
                                           get_local_models_dir,
-                                          get_table_recog_config)
+                                          get_table_recog_config,
+                                          get_image_ocr_config)
 from magic_pdf.model.model_list import MODEL
 from magic_pdf.operators.models import InferenceResult
 
@@ -108,6 +109,10 @@ def custom_model_init(
             table_config = get_table_recog_config()
             if table_enable is not None:
                 table_config['enable'] = table_enable
+            
+            image_config = get_image_ocr_config()
+            if image_config is not None:
+                table_config['enable'] = image_config
 
             model_input = {
                 'ocr': ocr,
@@ -118,6 +123,7 @@ def custom_model_init(
                 'layout_config': layout_config,
                 'formula_config': formula_config,
                 'lang': lang,
+                'image_config': image_config,
             }
 
             custom_model = CustomPEKModel(**model_input)

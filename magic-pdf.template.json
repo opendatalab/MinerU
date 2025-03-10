@@ -20,6 +20,9 @@
         "enable": true,
         "max_time": 400
     },
+    "image-config": {
+        "enable": true
+    },  	
     "llm-aided-config": {
         "formula_aided": {
             "api_key": "your_api_key",

@@ -75,15 +75,20 @@ class CustomPEKModel:
         self.apply_ocr = ocr
         self.lang = kwargs.get('lang', None)
 
+        # image config
+        self.image_config = kwargs.get('image_config')
+        self.image_apply_ocr = self.image_config.get('enable', False)        
+
         logger.info(
             'DocAnalysis init, this may take some times, layout_model: {}, apply_formula: {}, apply_ocr: {}, '
-            'apply_table: {}, table_model: {}, lang: {}'.format(
+            'apply_table: {}, table_model: {}, lang: {}, image_apply_ocr: {}'.format(
                 self.layout_model_name,
                 self.apply_formula,
                 self.apply_ocr,
                 self.apply_table,
                 self.table_model_name,
                 self.lang,
+                self.image_apply_ocr,
             )
         )
         # 初始化解析方案
@@ -226,7 +231,7 @@ class CustomPEKModel:
         clean_vram(self.device, vram_threshold=6)
 
         # 从layout_res中获取ocr区域、表格区域、公式区域
-        ocr_res_list, table_res_list, single_page_mfdetrec_res = (
+        ocr_res_list, table_res_list, single_page_mfdetrec_res, image_res_list = (
             get_res_list_from_layout_res(layout_res)
         )
 
@@ -295,5 +300,31 @@ class CustomPEKModel:
                         'table recognition processing fails, not get html return'
                     )
             logger.info(f'table time: {round(time.time() - table_start, 2)}')
+
+        if self.image_apply_ocr:
+            for res in image_res_list:
+                new_image, useful_list = crop_img(
+                    res, pil_img, crop_paste_x=50, crop_paste_y=50
+                )
+                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+                    single_page_mfdetrec_res, useful_list
+                )
+
+                # OCR recognition
+                new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+
+                if self.model.apply_ocr:
+                    ocr_res = self.model.ocr_model.ocr(
+                        new_image, mfd_res=adjusted_mfdetrec_res
+                    )[0]
+                else:
+                    ocr_res = self.model.ocr_model.ocr(
+                        new_image, mfd_res=adjusted_mfdetrec_res, rec=False
+                    )[0]
+
+                # Integration results
+                if ocr_res:
+                    ocr_text_list = [box_ocr_res[1][0] for box_ocr_res in ocr_res]
+                    res['text'] = "\n".join(ocr_text_list)
 
         return layout_res
