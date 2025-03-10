@@ -29,7 +29,6 @@ def fitz_doc_to_image(doc, dpi=200) -> dict:
 
     return img_dict
 
-@ImportPIL
 def load_images_from_pdf(pdf_bytes: bytes, dpi=200, start_page_id=0, end_page_id=None) -> list:
     images = []
     with fitz.open('pdf', pdf_bytes) as doc:
