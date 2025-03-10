@@ -113,7 +113,7 @@ class BatchAnalyze:
             layout_res = images_layout_res[index]
             pil_img = Image.fromarray(images[index])
 
-            ocr_res_list, table_res_list, single_page_mfdetrec_res = (
+            ocr_res_list, table_res_list, single_page_mfdetrec_res, image_res_list= (
                 get_res_list_from_layout_res(layout_res)
             )
             # ocr识别
@@ -188,6 +188,32 @@ class BatchAnalyze:
                         )
                 table_time += time.time() - table_start
                 table_count += len(table_res_list)
+
+            if self.model.image_apply_ocr:
+                for res in image_res_list:
+                    new_image, useful_list = crop_img(
+                        res, pil_img, crop_paste_x=50, crop_paste_y=50
+                    )
+                    adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+                        single_page_mfdetrec_res, useful_list
+                    )
+
+                    # OCR recognition
+                    new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+
+                    if self.model.apply_ocr:
+                        ocr_res = self.model.ocr_model.ocr(
+                            new_image, mfd_res=adjusted_mfdetrec_res
+                        )[0]
+                    else:
+                        ocr_res = self.model.ocr_model.ocr(
+                            new_image, mfd_res=adjusted_mfdetrec_res, rec=False
+                        )[0]
+
+                    # Integration results
+                    if ocr_res:
+                        ocr_text_list = [box_ocr_res[1][0] for box_ocr_res in ocr_res]
+                        res['text'] = "\n".join(ocr_text_list)
 
         if self.model.apply_ocr:
             logger.info(f'ocr time: {round(ocr_time, 2)}, image num: {ocr_count}')
