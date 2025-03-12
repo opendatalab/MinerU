@@ -80,6 +80,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 - 2024/11/22 0.10.0 released. Introducing hybrid OCR text extraction capabilities,
   - Significantly improved parsing performance in complex text distribution scenarios such as dense formulas, irregular span regions, and text represented by images.
   - Combines the dual advantages of accurate content extraction and faster speed in text mode, and more precise span/line region recognition in OCR mode.
+- 2024/11/20 add fastapi, via: [https://github.com/lztiancn/lzmineru.git](https://github.com/lztiancn/lzmineru.git)
 - 2024/11/15 0.9.3 released. Integrated [RapidTable](https://github.com/RapidAI/RapidTable) for table recognition, improving single-table parsing speed by more than 10 times, with higher accuracy and lower GPU memory usage.
 - 2024/11/06 0.9.2 released. Integrated the [StructTable-InternVL2-1B](https://huggingface.co/U4R/StructTable-InternVL2-1B) model for table recognition functionality.
 - 2024/10/31 0.9.0 released. This is a major new version with extensive code refactoring, addressing numerous issues, improving performance, reducing hardware requirements, and enhancing usability:
@@ -169,6 +170,11 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Compatible with Windows, Linux, and Mac platforms.
 
 ## Quick Start
+
+
+```
+docker-compose up -d
+```
 
 If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
 If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
@@ -358,6 +364,12 @@ You can enable MPS acceleration by setting the `device-mode` parameter to `mps` 
 ### API
 
 [Using MinerU via Python API](https://mineru.readthedocs.io/en/latest/user_guide/usage/api.html)
+
+
+
+### FAST API
+
+doc [http://localhost:8910/docs](http://localhost:8910/docs)
 
 
 ### Deploy Derived Projects
