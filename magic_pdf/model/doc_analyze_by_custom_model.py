@@ -10,6 +10,7 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 import paddle
 paddle.disable_signal_handler()
 
+from packaging import version
 from loguru import logger
 
 from magic_pdf.model.batch_analyze import BatchAnalyze
@@ -17,7 +18,8 @@ from magic_pdf.model.sub_modules.model_utils import get_vram
 
 try:
     import torchtext
-    if torchtext.__version__ >= '0.18.0':
+
+    if version.parse(torchtext.__version__) >= version.parse('0.18.0'):
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass

@@ -5,6 +5,7 @@ import re
 import statistics
 import time
 from typing import List
+from packaging import version
 
 import cv2
 import fitz
@@ -30,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 try:
     import torchtext
 
-    if torchtext.__version__ >= '0.18.0':
+    if version.parse(torchtext.__version__) >= version.parse('0.18.0'):
         torchtext.disable_torchtext_deprecation_warning()
 except ImportError:
     pass
