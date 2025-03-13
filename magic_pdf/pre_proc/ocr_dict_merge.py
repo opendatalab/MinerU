@@ -62,7 +62,15 @@ def merge_spans_to_line(spans, threshold=0.6):
 
 def span_block_type_compatible(span_type, block_type):
     if span_type in [ContentType.Text, ContentType.InlineEquation]:
-        return block_type in [BlockType.Text, BlockType.Title, BlockType.ImageCaption, BlockType.ImageFootnote, BlockType.TableCaption, BlockType.TableFootnote]
+        return block_type in [
+            BlockType.Text,
+            BlockType.Title,
+            BlockType.ImageCaption,
+            BlockType.ImageFootnote,
+            BlockType.TableCaption,
+            BlockType.TableFootnote,
+            BlockType.Discarded
+        ]
     elif span_type == ContentType.InterlineEquation:
         return block_type in [BlockType.InterlineEquation, BlockType.Text]
     elif span_type == ContentType.Image:

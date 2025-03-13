@@ -108,6 +108,22 @@ def __is_list_or_index_block(block):
         ):
             multiple_para_flag = True
 
+        block_text = ''
+
+        for line in block['lines']:
+            line_text = ''
+
+            for span in line['spans']:
+                span_type = span['type']
+                if span_type == ContentType.Text:
+                    line_text += span['content'].strip()
+            # 添加所有文本，包括空行，保持与block['lines']长度一致
+            lines_text_list.append(line_text)
+            block_text = ''.join(lines_text_list)
+
+        block_lang = detect_lang(block_text)
+        # logger.info(f"block_lang: {block_lang}")
+
         for line in block['lines']:
             line_mid_x = (line['bbox'][0] + line['bbox'][2]) / 2
             block_mid_x = (block['bbox_fs'][0] + block['bbox_fs'][2]) / 2
@@ -118,19 +134,6 @@ def __is_list_or_index_block(block):
                 external_sides_not_close_num += 1
             if abs(line_mid_x - block_mid_x) < line_height / 2:
                 center_close_num += 1
-
-            line_text = ''
-
-            for span in line['spans']:
-                span_type = span['type']
-                if span_type == ContentType.Text:
-                    line_text += span['content'].strip()
-
-            # 添加所有文本，包括空行，保持与block['lines']长度一致
-            lines_text_list.append(line_text)
-            block_text = ''.join(lines_text_list)
-            block_lang = detect_lang(block_text)
-            # logger.info(f"block_lang: {block_lang}")
 
             # 计算line左侧顶格数量是否大于2，是否顶格用abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height/2 来判断
             if abs(block['bbox_fs'][0] - line['bbox'][0]) < line_height / 2:
