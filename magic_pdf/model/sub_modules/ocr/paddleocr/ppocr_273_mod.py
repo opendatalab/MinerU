@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import torch
 
+
 from paddleocr import PaddleOCR
 from ppocr.utils.logging import get_logger
 from ppocr.utils.utility import alpha_to_color, binarize_img
