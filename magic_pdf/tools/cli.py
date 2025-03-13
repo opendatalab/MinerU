@@ -8,9 +8,12 @@ from pathlib import Path
 
 import magic_pdf.model as model_config
 from magic_pdf.data.data_reader_writer import FileBasedDataReader
+from magic_pdf.data.batch_build_dataset import batch_build_dataset
+from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.version import __version__
-from magic_pdf.tools.common import do_parse, parse_pdf_methods
+from magic_pdf.tools.common import do_parse, parse_pdf_methods, batch_do_parse
 from magic_pdf.utils.office_to_pdf import convert_file_to_pdf
+
 
 pdf_suffixes = ['.pdf']
 ms_office_suffixes = ['.ppt', '.pptx', '.doc', '.docx']
@@ -110,14 +113,17 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
         disk_rw = FileBasedDataReader(os.path.dirname(fn))
         return disk_rw.read(os.path.basename(fn))
 
-    def parse_doc(doc_path: Path):
+    def parse_doc(doc_path: Path, dataset: Dataset | None = None):
         try:
             file_name = str(Path(doc_path).stem)
-            pdf_data = read_fn(doc_path)
+            if dataset is None:
+                pdf_data_or_dataset = read_fn(doc_path)
+            else:
+                pdf_data_or_dataset = dataset
             do_parse(
                 output_dir,
                 file_name,
-                pdf_data,
+                pdf_data_or_dataset,
                 [],
                 method,
                 debug_able,
@@ -130,9 +136,12 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
             logger.exception(e)
 
     if os.path.isdir(path):
+        doc_paths = []
         for doc_path in Path(path).glob('*'):
             if doc_path.suffix in pdf_suffixes + image_suffixes + ms_office_suffixes:
-                parse_doc(doc_path)
+                doc_paths.append(doc_path)
+        datasets = batch_build_dataset(doc_paths, 4, lang)
+        batch_do_parse(output_dir, [str(doc_path.stem) for doc_path in doc_paths], datasets, method, debug_able, lang=lang)
     else:
         parse_doc(Path(path))
 
