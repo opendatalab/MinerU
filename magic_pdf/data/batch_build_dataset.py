@@ -1,7 +1,4 @@
 import concurrent.futures
-import glob
-import os
-import threading
 
 import fitz
 
@@ -83,6 +80,7 @@ def process_pdf_batch(pdf_jobs, idx):
         images.append(tmp)
     return (idx, images)
 
+
 def batch_build_dataset(pdf_paths, k, lang=None):
     """Process multiple PDFs by partitioning them into k balanced parts and
     processing each part in parallel.
@@ -122,9 +120,6 @@ def batch_build_dataset(pdf_paths, k, lang=None):
     # Partition the jobs based on page countEach job has 1 page
     partitions = partition_array_greedy(pdf_info, k)
 
-    for i, partition in enumerate(partitions):
-        print(f'Partition {i+1}: {len(partition)} pdfs')
-
     # Process each partition in parallel
     all_images_h = {}
 
@@ -146,7 +141,6 @@ def batch_build_dataset(pdf_paths, k, lang=None):
         for i, future in enumerate(concurrent.futures.as_completed(futures)):
             try:
                 idx, images = future.result()
-                print(f'Partition {i+1} completed: processed {len(images)} images')
                 all_images_h[idx] = images
             except Exception as e:
                 print(f'Error processing partition: {e}')
