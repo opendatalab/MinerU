@@ -1,19 +1,27 @@
-import os 
+import os
+
 import torch
 from loguru import logger
 
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.model_list import AtomicModel
-from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
-from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import DocLayoutYOLOModel
-from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import Layoutlmv3_Predictor
+from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import \
+    YOLOv11LangDetModel
+from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
+    DocLayoutYOLOModel
+from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
+    Layoutlmv3_Predictor
 from magic_pdf.model.sub_modules.mfd.yolov8.YOLOv8 import YOLOv8MFDModel
 from magic_pdf.model.sub_modules.mfr.unimernet.Unimernet import UnimernetModel
 
 try:
-    from magic_pdf_ascend_plugin.libs.license_verifier import load_license, LicenseFormatError, LicenseSignatureError, LicenseExpiredError
-    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
-    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
+    from magic_pdf_ascend_plugin.libs.license_verifier import (
+        LicenseExpiredError, LicenseFormatError, LicenseSignatureError,
+        load_license)
+    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import \
+        ModifiedPaddleOCR
+    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import \
+        RapidTableModel
     license_key = load_license()
     logger.info(f'Using Ascend Plugin Success, License id is {license_key["payload"]["id"]},'
                 f' License expired at {license_key["payload"]["date"]["end_date"]}')
@@ -21,21 +29,24 @@ except Exception as e:
     if isinstance(e, ImportError):
         pass
     elif isinstance(e, LicenseFormatError):
-        logger.error("Ascend Plugin: Invalid license format. Please check the license file.")
+        logger.error('Ascend Plugin: Invalid license format. Please check the license file.')
     elif isinstance(e, LicenseSignatureError):
-        logger.error("Ascend Plugin: Invalid signature. The license may be tampered with.")
+        logger.error('Ascend Plugin: Invalid signature. The license may be tampered with.')
     elif isinstance(e, LicenseExpiredError):
-        logger.error("Ascend Plugin: License has expired. Please renew your license.")
+        logger.error('Ascend Plugin: License has expired. Please renew your license.')
     elif isinstance(e, FileNotFoundError):
-        logger.error("Ascend Plugin: Not found License file.")
+        logger.error('Ascend Plugin: Not found License file.')
     else:
-        logger.error(f"Ascend Plugin: {e}")
+        logger.error(f'Ascend Plugin: {e}')
     from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_273_mod import ModifiedPaddleOCR
     # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
     from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
-from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import StructTableModel
-from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
+from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import \
+    StructTableModel
+from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
+    TableMasterPaddleModel
+
 
 def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None, table_sub_model_name=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
@@ -56,7 +67,7 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr
 
 
 def mfd_model_init(weight, device='cpu'):
-    if str(device).startswith("npu"):
+    if str(device).startswith('npu'):
         device = torch.device(device)
     mfd_model = YOLOv8MFDModel(weight, device)
     return mfd_model
@@ -73,14 +84,14 @@ def layout_model_init(weight, config_file, device):
 
 
 def doclayout_yolo_model_init(weight, device='cpu'):
-    if str(device).startswith("npu"):
+    if str(device).startswith('npu'):
         device = torch.device(device)
     model = DocLayoutYOLOModel(weight, device)
     return model
 
 
 def langdetect_model_init(langdetect_model_weight, device='cpu'):
-    if str(device).startswith("npu"):
+    if str(device).startswith('npu'):
         device = torch.device(device)
     model = YOLOv11LangDetModel(langdetect_model_weight, device)
     return model

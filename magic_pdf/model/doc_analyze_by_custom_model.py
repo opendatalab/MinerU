@@ -1,9 +1,11 @@
+import concurrent.futures as fut
+import multiprocessing as mp
 import os
 import time
-import torch
+
 import numpy as np
-import multiprocessing as mp
-import concurrent.futures as fut
+import torch
+
 os.environ['FLAGS_npu_jit_compile'] = '0'  # 关闭paddle的jit编译
 os.environ['FLAGS_use_stride_kernel'] = '0'
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
@@ -29,6 +31,7 @@ from magic_pdf.libs.config_reader import (get_device, get_formula_config,
                                           get_local_models_dir,
                                           get_table_recog_config)
 from magic_pdf.model.model_list import MODEL
+
 # from magic_pdf.operators.models import InferenceResult
 
 MIN_BATCH_INFERENCE_SIZE = 100
@@ -170,7 +173,7 @@ def doc_analyze(
         else:
             batch_images = [images]
         results = []
-        parallel_count = len(batch_images) # adjust to real parallel count 
+        parallel_count = len(batch_images) # adjust to real parallel count
         # using concurrent.futures to analyze
         """
         with fut.ProcessPoolExecutor(max_workers=parallel_count) as executor:
@@ -192,8 +195,8 @@ def doc_analyze(
         _, results = may_batch_image_analyze(
             images,
             0,
-            ocr, 
-            show_log, 
+            ocr,
+            show_log,
             lang, layout_model, formula_enable, table_enable)
 
     model_json = []
@@ -234,7 +237,7 @@ def batch_doc_analyze(
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
-    
+
     if one_shot and len(images) >= MIN_BATCH_INFERENCE_SIZE:
         if parallel_count is None:
             parallel_count = 2 # should check the gpu memory firstly !
@@ -245,7 +248,7 @@ def batch_doc_analyze(
         else:
             batch_images = [images]
         results = []
-        parallel_count = len(batch_images) # adjust to real parallel count 
+        parallel_count = len(batch_images) # adjust to real parallel count
         # using concurrent.futures to analyze
         """
         with fut.ProcessPoolExecutor(max_workers=parallel_count) as executor:
@@ -266,8 +269,8 @@ def batch_doc_analyze(
         _, results = may_batch_image_analyze(
             images,
             0,
-            ocr, 
-            show_log, 
+            ocr,
+            show_log,
             lang, layout_model, formula_enable, table_enable)
     infer_results = []
 
@@ -286,20 +289,20 @@ def batch_doc_analyze(
 
 
 def may_batch_image_analyze(
-        images: list[np.ndarray], 
+        images: list[np.ndarray],
         idx: int,
-        ocr: bool = False, 
-        show_log: bool = False, 
-        lang=None, 
-        layout_model=None, 
-        formula_enable=None, 
+        ocr: bool = False,
+        show_log: bool = False,
+        lang=None,
+        layout_model=None,
+        formula_enable=None,
         table_enable=None):
     # os.environ['CUDA_VISIBLE_DEVICES'] = str(idx)
     # 关闭paddle的信号处理
     import paddle
     paddle.disable_signal_handler()
     from magic_pdf.model.batch_analyze import BatchAnalyze
-    
+
     model_manager = ModelSingleton()
     custom_model = model_manager.get_model(
         ocr, show_log, lang, layout_model, formula_enable, table_enable
@@ -310,14 +313,14 @@ def may_batch_image_analyze(
     device = get_device()
 
     npu_support = False
-    if str(device).startswith("npu"):
+    if str(device).startswith('npu'):
         import torch_npu
         if torch_npu.npu.is_available():
             npu_support = True
             torch.npu.set_compile_mode(jit_compile=False)
 
     if torch.cuda.is_available() and device != 'cpu' or npu_support:
-        gpu_memory = int(os.getenv("VIRTUAL_VRAM_SIZE", round(get_vram(device))))
+        gpu_memory = int(os.getenv('VIRTUAL_VRAM_SIZE', round(get_vram(device))))
         if gpu_memory is not None and gpu_memory >= 8:
             if gpu_memory >= 20:
                 batch_ratio = 16
@@ -398,4 +401,3 @@ def may_batch_image_analyze(
         f' speed: {doc_analyze_speed} pages/second'
     )
     return (idx, results)
-

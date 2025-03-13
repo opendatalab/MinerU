@@ -8,10 +8,10 @@ import magic_pdf.model as model_config
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-from magic_pdf.data.dataset import PymuDocDataset, Dataset
+from magic_pdf.data.dataset import Dataset, PymuDocDataset
 from magic_pdf.libs.draw_bbox import draw_char_bbox
-from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze, batch_doc_analyze
-
+from magic_pdf.model.doc_analyze_by_custom_model import (batch_doc_analyze,
+                                                         doc_analyze)
 
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
