@@ -64,14 +64,13 @@ def init_writers(
     Initialize writers based on path type
 
     Args:
-        pdf_path: PDF file path (local path or S3 path)
-        pdf_file: Uploaded PDF file object
+        file_path: file path (local path or S3 path)
+        file: Uploaded file object
         output_path: Output directory path
         output_image_path: Image output directory path
 
     Returns:
-        Tuple[writer, image_writer, pdf_bytes]: Returns initialized writer tuple and PDF
-        file content
+        Tuple[writer, image_writer, file_bytes]: Returns initialized writer tuple and file content
     """
     file_extension:str = None
     if file_path:
@@ -120,7 +119,8 @@ def process_file(
     Process PDF file content
 
     Args:
-        pdf_bytes: Binary content of PDF file
+        file_bytes: Binary content of file
+        file_extension: file extension
         parse_method: Parse method ('ocr', 'txt', 'auto')
         image_writer: Image writer
 
@@ -170,9 +170,9 @@ def encode_image(image_path: str) -> str:
 
 
 @app.post(
-    "/pdf_parse",
+    "/file_parse",
     tags=["projects"],
-    summary="Parse PDF files (supports local files and S3)",
+    summary="Parse files (supports local files and S3)",
 )
 async def file_parse(
     file: UploadFile = None,
@@ -190,10 +190,10 @@ async def file_parse(
     to the specified directory.
 
     Args:
-        pdf_file: The PDF file to be parsed. Must not be specified together with
-            `pdf_path`
-        pdf_path: The path to the PDF file to be parsed. Must not be specified together
-            with `pdf_file`
+        file: The PDF file to be parsed. Must not be specified together with
+            `file_path`
+        file_path: The path to the PDF file to be parsed. Must not be specified together
+            with `file`
         parse_method: Parsing method, can be auto, ocr, or txt. Default is auto. If
             results are not satisfactory, try ocr
         is_json_md_dump: Whether to write parsed data to .json and .md files. Default
