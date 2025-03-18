@@ -27,3 +27,15 @@ jobs:
     # 推送 Docker 镜像到 Docker Hub
     - name: Push Docker image for mineru
       run: docker push docker.io/jianjungki/mineru:latest
+    
+    # 设置 Docker Hub 凭据
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.ALIYUN_DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.ALIYUN_DOCKER_HUB_ACCESS_TOKEN }}
+        registry: registry.cn-hangzhou.aliyuncs.com/jianjungki/mineru
+
+    # 推送 Docker 镜像到 Docker Hub
+    - name: Push Docker image for mineru
+      run: docker push registry.cn-hangzhou.aliyuncs.com/jianjungki/mineru:latest
