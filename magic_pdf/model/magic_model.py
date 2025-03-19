@@ -714,7 +714,7 @@ class MagicModel:
                 span = {'bbox': layout_det['bbox'], 'score': layout_det['score']}
                 if category_id == 3:
                     span['type'] = ContentType.Image
-                    if layout_det.get('latex', None):
+                    if layout_det.get('text', None):
                         span['content'] = layout_det['text']
                 elif category_id == 5:
                     # 获取table模型结果

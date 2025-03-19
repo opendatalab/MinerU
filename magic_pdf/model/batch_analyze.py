@@ -201,18 +201,14 @@ class BatchAnalyze:
                     # OCR recognition
                     new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
 
-                    if self.model.apply_ocr:
-                        ocr_res = self.model.ocr_model.ocr(
-                            new_image, mfd_res=adjusted_mfdetrec_res
-                        )[0]
-                    else:
-                        ocr_res = self.model.ocr_model.ocr(
-                            new_image, mfd_res=adjusted_mfdetrec_res, rec=False
-                        )[0]
+                    # 图片默认使用ocr
+                    ocr_res = self.model.ocr_model.ocr(
+                        new_image, mfd_res=adjusted_mfdetrec_res
+                    )[0]
 
                     # Integration results
                     if ocr_res:
-                        ocr_text_list = [box_ocr_res[1][0] for box_ocr_res in ocr_res]
+                        ocr_text_list = [str(box_ocr_res[1][0]) for box_ocr_res in ocr_res]
                         res['text'] = "\n".join(ocr_text_list)
 
         if self.model.apply_ocr:
