@@ -3,8 +3,6 @@ import os
 from pathlib import Path
 
 import yaml
-from PIL import Image
-
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
 from magic_pdf.config.constants import MODEL_NAME
@@ -42,7 +40,7 @@ def get_text_images(simple_images):
     )
     text_images = []
     for simple_image in simple_images:
-        image = Image.fromarray(simple_image['img'])
+        image = simple_image['img']
         layout_res = temp_layout_model.predict(image)
         # 给textblock截图
         for res in layout_res:
@@ -51,7 +49,7 @@ def get_text_images(simple_images):
                 # 初步清洗（宽和高都小于100）
                 if x2 - x1 < 100 and y2 - y1 < 100:
                     continue
-                text_images.append(image.crop((x1, y1, x2, y2)))
+                text_images.append(image[y1:y2, x1:x2])
     return text_images
 
 
