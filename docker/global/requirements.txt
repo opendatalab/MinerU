@@ -16,4 +16,5 @@ rapidocr-paddle>=1.4.5,<2.0.0
 rapidocr-onnxruntime>=1.4.4,<2.0.0
 rapid-table>=1.0.3,<2.0.0
 doclayout-yolo==0.0.2b1
+ftfy
 openai
