@@ -16,13 +16,6 @@ from loguru import logger
 
 from magic_pdf.model.sub_modules.model_utils import get_vram
 
-try:
-    import torchtext
-    if torchtext.__version__ >= '0.18.0':
-        torchtext.disable_torchtext_deprecation_warning()
-except ImportError:
-    pass
-
 import magic_pdf.model as model_config
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.clean_memory import clean_memory
