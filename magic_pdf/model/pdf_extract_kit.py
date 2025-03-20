@@ -9,14 +9,6 @@ from loguru import logger
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
-try:
-    import torchtext
-
-    if torchtext.__version__ >= '0.18.0':
-        torchtext.disable_torchtext_deprecation_warning()
-except ImportError:
-    pass
-
 from magic_pdf.config.constants import *
 from magic_pdf.model.model_list import AtomicModel
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton

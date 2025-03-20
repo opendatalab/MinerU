@@ -27,14 +27,6 @@ from magic_pdf.post_proc.llm_aided import llm_aided_formula, llm_aided_text, llm
 
 from concurrent.futures import ThreadPoolExecutor
 
-try:
-    import torchtext
-
-    if torchtext.__version__ >= '0.18.0':
-        torchtext.disable_torchtext_deprecation_warning()
-except ImportError:
-    pass
-
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.post_proc.para_split_v3 import para_split
 from magic_pdf.pre_proc.construct_page_dict import ocr_construct_page_component_v2
