@@ -2,9 +2,9 @@
 import time
 from collections import Counter
 from uuid import uuid4
-
+import cv2
+import numpy as np
 import torch
-from PIL import Image
 from loguru import logger
 from ultralytics import YOLO
 
@@ -29,7 +29,7 @@ def split_images(image, result_images=None):
     if result_images is None:
         result_images = []
 
-    width, height = image.size
+    height, width = image.shape[:2]
     long_side = max(width, height)  # 获取较长边长度
 
     if long_side <= 400:
@@ -44,16 +44,14 @@ def split_images(image, result_images=None):
             # 判断裁剪区域是否超出图片范围，如果超出则不进行裁剪保存操作
             if x + new_long_side > width:
                 continue
-            box = (x, 0, x + new_long_side, height)
-            sub_image = image.crop(box)
+            sub_image = image[0:height, x:x + new_long_side]
             sub_images.append(sub_image)
     else:  # 如果高度是较长边
         for y in range(0, height, new_long_side):
             # 判断裁剪区域是否超出图片范围，如果超出则不进行裁剪保存操作
             if y + new_long_side > height:
                 continue
-            box = (0, y, width, y + new_long_side)
-            sub_image = image.crop(box)
+            sub_image = image[y:y + new_long_side, 0:width]
             sub_images.append(sub_image)
 
     for sub_image in sub_images:
@@ -64,24 +62,32 @@ def split_images(image, result_images=None):
 
 def resize_images_to_224(image):
     """
-    若分辨率小于224则用黑色背景补齐到224*224大小,若大于等于224则调整为224*224大小,并保存到输出文件夹中。
+    若分辨率小于224则用黑色背景补齐到224*224大小,若大于等于224则调整为224*224大小。
+    Works directly with NumPy arrays.
     """
     try:
-        width, height = image.size
+        height, width = image.shape[:2]
+
         if width < 224 or height < 224:
-            new_image = Image.new('RGB', (224, 224), (0, 0, 0))
-            paste_x = (224 - width) // 2
-            paste_y = (224 - height) // 2
-            new_image.paste(image, (paste_x, paste_y))
+            # Create black background
+            new_image = np.zeros((224, 224, 3), dtype=np.uint8)
+            # Calculate paste position (ensure they're not negative)
+            paste_x = max(0, (224 - width) // 2)
+            paste_y = max(0, (224 - height) // 2)
+            # Make sure we don't exceed the boundaries of new_image
+            paste_width = min(width, 224)
+            paste_height = min(height, 224)
+            # Paste original image onto black background
+            new_image[paste_y:paste_y + paste_height, paste_x:paste_x + paste_width] = image[:paste_height, :paste_width]
             image = new_image
         else:
-            image = image.resize((224, 224), Image.Resampling.LANCZOS)
+            # Resize using cv2
+            image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_LANCZOS4)
 
-        # uuid = str(uuid4())
-        # image.save(f"/tmp/{uuid}.jpg")
         return image
     except Exception as e:
-        logger.exception(e)
+        logger.exception(f"Error in resize_images_to_224: {e}")
+        return None
 
 
 class YOLOv11LangDetModel(object):
@@ -96,8 +102,7 @@ class YOLOv11LangDetModel(object):
     def do_detect(self, images: list):
         all_images = []
         for image in images:
-            width, height = image.size
-            # logger.info(f"image size: {width} x {height}")
+            height, width = image.shape[:2]
             if width < 100 and height < 100:
                 continue
             temp_images = split_images(image)

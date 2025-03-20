@@ -492,7 +492,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
     else:
         return [[x0, y0, x1, y1]]
 
-# @measure_time
+
 def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
     page_line_list = []
 

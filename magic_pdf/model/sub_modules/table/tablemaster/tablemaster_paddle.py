@@ -2,6 +2,7 @@ import os
 
 import cv2
 import numpy as np
+from paddleocr import PaddleOCR
 from ppstructure.table.predict_table import TableSystem
 from ppstructure.utility import init_args
 from PIL import Image

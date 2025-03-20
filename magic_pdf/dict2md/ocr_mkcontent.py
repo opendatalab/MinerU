@@ -208,12 +208,13 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason
             'text': merge_para_with_text(para_block),
         }
     elif para_type == BlockType.Title:
-        title_level = get_title_level(para_block)
         para_content = {
             'type': 'text',
             'text': merge_para_with_text(para_block),
-            'text_level': title_level,
         }
+        title_level = get_title_level(para_block)
+        if title_level != 0:
+            para_content['text_level'] = title_level
     elif para_type == BlockType.InterlineEquation:
         para_content = {
             'type': 'equation',
@@ -319,5 +320,5 @@ def get_title_level(block):
     if title_level > 4:
         title_level = 4
     elif title_level < 1:
-        title_level = 1
+        title_level = 0
     return title_level

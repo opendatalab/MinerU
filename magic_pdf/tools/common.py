@@ -8,10 +8,10 @@ import magic_pdf.model as model_config
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.data.data_reader_writer import FileBasedDataWriter
-from magic_pdf.data.dataset import PymuDocDataset
+from magic_pdf.data.dataset import Dataset, PymuDocDataset
 from magic_pdf.libs.draw_bbox import draw_char_bbox
-from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
-from magic_pdf.operators.models import InferenceResult
+from magic_pdf.model.doc_analyze_by_custom_model import (batch_doc_analyze,
+                                                         doc_analyze)
 
 # from io import BytesIO
 # from pypdf import PdfReader, PdfWriter
@@ -67,10 +67,10 @@ def convert_pdf_bytes_to_bytes_by_pymupdf(pdf_bytes, start_page_id=0, end_page_i
     return output_bytes
 
 
-def do_parse(
+def _do_parse(
     output_dir,
     pdf_file_name,
-    pdf_bytes,
+    pdf_bytes_or_dataset,
     model_list,
     parse_method,
     debug_able,
@@ -92,24 +92,27 @@ def do_parse(
     formula_enable=None,
     table_enable=None,
 ):
+    from magic_pdf.operators.models import InferenceResult
     if debug_able:
         logger.warning('debug mode is on')
         f_draw_model_bbox = True
         f_draw_line_sort_bbox = True
         # f_draw_char_bbox = True
 
-    pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
-        pdf_bytes, start_page_id, end_page_id
-    )
-
+    if isinstance(pdf_bytes_or_dataset, bytes):
+        pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
+            pdf_bytes_or_dataset, start_page_id, end_page_id
+        )
+        ds = PymuDocDataset(pdf_bytes, lang=lang)
+    else:
+        ds = pdf_bytes_or_dataset
+    pdf_bytes = ds._raw_data
     local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
 
     image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
         local_md_dir
     )
     image_dir = str(os.path.basename(local_image_dir))
-
-    ds = PymuDocDataset(pdf_bytes, lang=lang)
 
     if len(model_list) == 0:
         if model_config.__use_inside_model__:
@@ -240,6 +243,80 @@ def do_parse(
         )
 
     logger.info(f'local output dir is {local_md_dir}')
+
+def do_parse(
+    output_dir,
+    pdf_file_name,
+    pdf_bytes_or_dataset,
+    model_list,
+    parse_method,
+    debug_able,
+    f_draw_span_bbox=True,
+    f_draw_layout_bbox=True,
+    f_dump_md=True,
+    f_dump_middle_json=True,
+    f_dump_model_json=True,
+    f_dump_orig_pdf=True,
+    f_dump_content_list=True,
+    f_make_md_mode=MakeMode.MM_MD,
+    f_draw_model_bbox=False,
+    f_draw_line_sort_bbox=False,
+    f_draw_char_bbox=False,
+    start_page_id=0,
+    end_page_id=None,
+    lang=None,
+    layout_model=None,
+    formula_enable=None,
+    table_enable=None,
+):
+    parallel_count = 1
+    if os.environ.get('MINERU_PARALLEL_INFERENCE_COUNT'):
+        parallel_count = int(os.environ['MINERU_PARALLEL_INFERENCE_COUNT'])
+
+    if parallel_count > 1:
+        if isinstance(pdf_bytes_or_dataset, bytes):
+            pdf_bytes = convert_pdf_bytes_to_bytes_by_pymupdf(
+                pdf_bytes_or_dataset, start_page_id, end_page_id
+            )
+            ds = PymuDocDataset(pdf_bytes, lang=lang)
+        else:
+            ds = pdf_bytes_or_dataset
+        batch_do_parse(output_dir, [pdf_file_name], [ds], parse_method, debug_able, f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox)
+    else:
+        _do_parse(output_dir, pdf_file_name, pdf_bytes_or_dataset, model_list, parse_method, debug_able, start_page_id=start_page_id, end_page_id=end_page_id, lang=lang, layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable,  f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox)
+
+
+def batch_do_parse(
+    output_dir,
+    pdf_file_names: list[str],
+    pdf_bytes_or_datasets: list[bytes | Dataset],
+    parse_method,
+    debug_able,
+    f_draw_span_bbox=True,
+    f_draw_layout_bbox=True,
+    f_dump_md=True,
+    f_dump_middle_json=True,
+    f_dump_model_json=True,
+    f_dump_orig_pdf=True,
+    f_dump_content_list=True,
+    f_make_md_mode=MakeMode.MM_MD,
+    f_draw_model_bbox=False,
+    f_draw_line_sort_bbox=False,
+    f_draw_char_bbox=False,
+    lang=None,
+    layout_model=None,
+    formula_enable=None,
+    table_enable=None,
+):
+    dss = []
+    for v in pdf_bytes_or_datasets:
+        if isinstance(v, bytes):
+            dss.append(PymuDocDataset(v, lang=lang))
+        else:
+            dss.append(v)
+    infer_results = batch_doc_analyze(dss, lang=lang, layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
+    for idx, infer_result in enumerate(infer_results):
+        _do_parse(output_dir, pdf_file_names[idx], dss[idx], infer_result.get_infer_res(), parse_method, debug_able, f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox)
 
 
 parse_pdf_methods = click.Choice(['ocr', 'txt', 'auto'])
