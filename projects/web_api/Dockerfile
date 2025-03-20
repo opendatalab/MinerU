@@ -13,24 +13,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
 FROM base AS build
 
 # Update the package list and install necessary packages
-#RUN apt-get update && \
-#    apt-get install -y --no-install-recommends \
-#        build-essential && \
-#    apt-get clean && \
-#    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Build Python dependencies
 COPY requirements.txt .
 RUN python -m venv /app/venv && \
     . /app/venv/bin/activate && \
-    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-#    pip uninstall -y paddlepaddle && \
-#    pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
-#        paddlepaddle-gpu
+    pip install -r requirements.txt && \
+    pip uninstall -y paddlepaddle && \
+    pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
+        paddlepaddle-gpu==3.0.0rc1
 
 # Download models
 COPY download_models.py .
-ENV  HF_ENDPOINT=https://hf-mirror.com
 RUN . /app/venv/bin/activate && \
     ./download_models.py
 
