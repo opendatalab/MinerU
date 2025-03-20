@@ -4,8 +4,6 @@ from ultralytics import YOLO
 class YOLOv8MFDModel(object):
     def __init__(self, weight, device="cpu"):
         self.mfd_model = YOLO(weight)
-        if not device.startswith("cpu"):
-            self.mfd_model.half()
         self.device = device
 
     def predict(self, image):
