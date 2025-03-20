@@ -1,16 +1,10 @@
-import os
-
 import torch
 from loguru import logger
 
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.model_list import AtomicModel
-from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import \
-    YOLOv11LangDetModel
-from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import \
-    DocLayoutYOLOModel
-from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import \
-    Layoutlmv3_Predictor
+from magic_pdf.model.sub_modules.language_detection.yolov11.YOLOv11 import YOLOv11LangDetModel
+from magic_pdf.model.sub_modules.layout.doclayout_yolo.DocLayoutYOLO import DocLayoutYOLOModel
 from magic_pdf.model.sub_modules.mfd.yolov8.YOLOv8 import YOLOv8MFDModel
 from magic_pdf.model.sub_modules.mfr.unimernet.Unimernet import UnimernetModel
 
@@ -18,10 +12,8 @@ try:
     from magic_pdf_ascend_plugin.libs.license_verifier import (
         LicenseExpiredError, LicenseFormatError, LicenseSignatureError,
         load_license)
-    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import \
-        ModifiedPaddleOCR
-    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import \
-        RapidTableModel
+    from magic_pdf_ascend_plugin.model_plugin.ocr.paddleocr.ppocr_273_npu import ModifiedPaddleOCR
+    from magic_pdf_ascend_plugin.model_plugin.table.rapidtable.rapid_table_npu import RapidTableModel
     license_key = load_license()
     logger.info(f'Using Ascend Plugin Success, License id is {license_key["payload"]["id"]},'
                 f' License expired at {license_key["payload"]["date"]["end_date"]}')
@@ -42,16 +34,13 @@ except Exception as e:
     # from magic_pdf.model.sub_modules.ocr.paddleocr.ppocr_291_mod import ModifiedPaddleOCR
     from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
-from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import \
-    StructTableModel
-from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import \
-    TableMasterPaddleModel
-
 
 def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None, table_sub_model_name=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
+        from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import StructTableModel
         table_model = StructTableModel(model_path, max_new_tokens=2048, max_time=max_time)
     elif table_model_type == MODEL_NAME.TABLE_MASTER:
+        from magic_pdf.model.sub_modules.table.tablemaster.tablemaster_paddle import TableMasterPaddleModel
         config = {
             'model_dir': model_path,
             'device': _device_
@@ -79,6 +68,7 @@ def mfr_model_init(weight_dir, cfg_path, device='cpu'):
 
 
 def layout_model_init(weight, config_file, device):
+    from magic_pdf.model.sub_modules.layout.layoutlmv3.model_init import Layoutlmv3_Predictor
     model = Layoutlmv3_Predictor(weight, config_file, device)
     return model
 

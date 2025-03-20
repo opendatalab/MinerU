@@ -4,6 +4,8 @@ from doclayout_yolo import YOLOv10
 class DocLayoutYOLOModel(object):
     def __init__(self, weight, device):
         self.model = YOLOv10(weight)
+        if not device.startswith("cpu"):
+            self.model.half()
         self.device = device
 
     def predict(self, image):
