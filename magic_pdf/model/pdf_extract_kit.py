@@ -118,7 +118,7 @@ class CustomPEKModel:
                 atom_model_name=AtomicModel.MFR,
                 mfr_weight_dir=mfr_weight_dir,
                 mfr_cfg_path=mfr_cfg_path,
-                device='cpu' if str(self.device).startswith("mps") else self.device,
+                device=self.device,
             )
 
         # 初始化layout模型

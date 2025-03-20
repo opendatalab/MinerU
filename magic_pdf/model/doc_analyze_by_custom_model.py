@@ -256,27 +256,28 @@ def may_batch_image_analyze(
     batch_ratio = 1
     device = get_device()
 
-    npu_support = False
     if str(device).startswith('npu'):
         import torch_npu
         if torch_npu.npu.is_available():
-            npu_support = True
             torch.npu.set_compile_mode(jit_compile=False)
 
-    if torch.cuda.is_available() and device != 'cpu' or npu_support:
+    if str(device).startswith('npu') or str(device).startswith('cuda'):
         gpu_memory = int(os.getenv('VIRTUAL_VRAM_SIZE', round(get_vram(device))))
-        if gpu_memory is not None and gpu_memory >= 8:
+        if gpu_memory is not None:
             if gpu_memory >= 20:
                 batch_ratio = 16
             elif gpu_memory >= 15:
                 batch_ratio = 8
             elif gpu_memory >= 10:
                 batch_ratio = 4
-            else:
+            elif gpu_memory >= 7:
                 batch_ratio = 2
-
+            else:
+                batch_ratio = 1
             logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
             batch_analyze = True
+    elif str(device).startswith('mps'):
+        batch_analyze = True
     doc_analyze_start = time.time()
 
     if batch_analyze:

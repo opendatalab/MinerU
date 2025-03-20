@@ -44,7 +44,6 @@ def split_images(image, result_images=None):
             # 判断裁剪区域是否超出图片范围，如果超出则不进行裁剪保存操作
             if x + new_long_side > width:
                 continue
-            box = (x, 0, x + new_long_side, height)
             sub_image = image[0:height, x:x + new_long_side]
             sub_images.append(sub_image)
     else:  # 如果高度是较长边
@@ -52,7 +51,6 @@ def split_images(image, result_images=None):
             # 判断裁剪区域是否超出图片范围，如果超出则不进行裁剪保存操作
             if y + new_long_side > height:
                 continue
-            box = (0, y, width, y + new_long_side)
             sub_image = image[y:y + new_long_side, 0:width]
             sub_images.append(sub_image)
 
