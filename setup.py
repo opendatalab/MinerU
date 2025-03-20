@@ -48,6 +48,7 @@ if __name__ == '__main__':
                      "rapidocr_onnxruntime>=1.4.4,<2.0.0",
                      "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
+                     "ftfy"
                      "openai",  # openai SDK
                      ],
             "old_linux":[
