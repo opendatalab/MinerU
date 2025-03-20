@@ -52,7 +52,15 @@ if __name__ == '__main__':
                      ],
             "old_linux":[
                 "albumentations<=1.4.20", # 1.4.21引入的simsimd不支持2019年及更早的linux系统
-            ]
+            ],
+            "layoutlmv3":[
+                "detectron2"
+            ],
+            "struct_eqtable":[
+                "struct-eqtable==0.3.2",  # 表格解析
+                "einops",  # struct-eqtable依赖
+                "accelerate",  # struct-eqtable依赖
+            ],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述

@@ -16,7 +16,7 @@ def download_and_modify_json(url, local_filename, modifications):
     if os.path.exists(local_filename):
         data = json.load(open(local_filename))
         config_version = data.get('config_version', '0.0.0')
-        if config_version < '1.1.1':
+        if config_version < '1.2.0':
             data = download_json(url)
     else:
         data = download_json(url)
@@ -32,12 +32,12 @@ def download_and_modify_json(url, local_filename, modifications):
 
 if __name__ == '__main__':
     mineru_patterns = [
-        "models/Layout/LayoutLMv3/*",
+        # "models/Layout/LayoutLMv3/*",
         "models/Layout/YOLO/*",
         "models/MFD/YOLO/*",
-        "models/MFR/unimernet_small_2501/*",
-        "models/TabRec/TableMaster/*",
-        "models/TabRec/StructEqTable/*",
+        "models/MFR/unimernet_hf_small_2503/*",
+        # "models/TabRec/TableMaster/*",
+        # "models/TabRec/StructEqTable/*",
     ]
     model_dir = snapshot_download('opendatalab/PDF-Extract-Kit-1.0', allow_patterns=mineru_patterns)
     layoutreader_model_dir = snapshot_download('ppaanngggg/layoutreader')
