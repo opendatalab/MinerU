@@ -30,7 +30,6 @@ class UnimernetModel(object):
             self.model = self.model.to(dtype=torch.float16)
         self.model.eval()
 
-
     def predict(self, mfd_res, image):
         formula_list = []
         mf_image_list = []
