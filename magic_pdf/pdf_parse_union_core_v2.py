@@ -34,7 +34,7 @@ from magic_pdf.pre_proc.cut_image import ocr_cut_image_and_table
 from magic_pdf.pre_proc.ocr_detect_all_bboxes import ocr_prepare_bboxes_for_layout_split_v2
 from magic_pdf.pre_proc.ocr_dict_merge import fill_spans_in_blocks, fix_block_spans_v2, fix_discarded_block
 from magic_pdf.pre_proc.ocr_span_list_modify import get_qa_need_list_v2, remove_overlaps_low_confidence_spans, \
-    remove_overlaps_min_spans, check_chars_is_overlap_in_span
+    remove_overlaps_min_spans, remove_x_overlapping_chars
 
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
@@ -56,14 +56,6 @@ def __replace_STX_ETX(text_str: str):
     return text_str
 
 
-def __replace_0xfffd(text_str: str):
-    """Replace \ufffd, as these characters become garbled when extracted using pymupdf."""
-    if text_str:
-        s = text_str.replace('\ufffd', " ")
-        return s
-    return text_str
-
-
 # 连写字符拆分
 def __replace_ligatures(text: str):
     ligatures = {
@@ -76,16 +68,17 @@ def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) == 0:
         pass
-        # span['content'] = ''
-    elif check_chars_is_overlap_in_span(span['chars']):
-        pass
     else:
         # 先给chars按char['bbox']的中心点的x坐标排序
         span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
 
-        # 求char的平均宽度
-        char_width_sum = sum([char['bbox'][2] - char['bbox'][0] for char in span['chars']])
-        char_avg_width = char_width_sum / len(span['chars'])
+        # Calculate the width of each character
+        char_widths = [char['bbox'][2] - char['bbox'][0] for char in span['chars']]
+        # Calculate the median width
+        median_width = statistics.median(char_widths)
+
+        # 通过x轴重叠比率移除一部分char
+        span = remove_x_overlapping_chars(span, median_width)
 
         content = ''
         for char in span['chars']:
@@ -93,13 +86,12 @@ def chars_to_content(span):
             # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
             char1 = char
             char2 = span['chars'][span['chars'].index(char) + 1] if span['chars'].index(char) + 1 < len(span['chars']) else None
-            if char2 and char2['bbox'][0] - char1['bbox'][2] > char_avg_width * 0.25 and char['c'] != ' ' and char2['c'] != ' ':
+            if char2 and char2['bbox'][0] - char1['bbox'][2] > median_width * 0.25 and char['c'] != ' ' and char2['c'] != ' ':
                 content += f"{char['c']} "
             else:
                 content += char['c']
 
-        content = __replace_ligatures(content)
-        span['content'] = __replace_0xfffd(content)
+        span['content'] = __replace_ligatures(content)
 
     del span['chars']
 
@@ -114,10 +106,6 @@ def fill_char_in_spans(spans, all_chars):
     spans = sorted(spans, key=lambda x: x['bbox'][1])
 
     for char in all_chars:
-        # 跳过非法bbox的char
-        # x1, y1, x2, y2 = char['bbox']
-        # if abs(x1 - x2) <= 0.01 or abs(y1 - y2) <= 0.01:
-        #     continue
 
         for span in spans:
             if calculate_char_in_span(char['bbox'], span['bbox'], char['c']):
