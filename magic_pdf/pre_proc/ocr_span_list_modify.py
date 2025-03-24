@@ -71,15 +71,17 @@ def remove_x_overlapping_chars(span, median_width):
             overlap_width = x_right - x_left
 
             if overlap_width > overlap_threshold:
-                # Determine which character to remove
-                width1 = char1['bbox'][2] - char1['bbox'][0]
-                width2 = char2['bbox'][2] - char2['bbox'][0]
-
-                if width1 < width2:
-                    # Remove the narrower character
-                    span['chars'].pop(i)
+                if char1['c'] == char2['c'] or char1['c'] == ' ' or char2['c'] == ' ':
+                    # Determine which character to remove
+                    width1 = char1['bbox'][2] - char1['bbox'][0]
+                    width2 = char2['bbox'][2] - char2['bbox'][0]
+                    if width1 < width2:
+                        # Remove the narrower character
+                        span['chars'].pop(i)
+                    else:
+                        span['chars'].pop(i + 1)
                 else:
-                    span['chars'].pop(i + 1)
+                    i += 1
 
                 # Don't increment i since we need to check the new pair
             else:
