@@ -60,28 +60,46 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
         if img is None:
             return None
 
-        try:
-            img = self.crop_margin_numpy(img)
-        except Exception:
-            # might throw an error for broken files
-            return None
+        # try:
+        #     img = self.crop_margin_numpy(img)
+        # except Exception:
+        #     # might throw an error for broken files
+        #     return None
 
         if img.shape[0] == 0 or img.shape[1] == 0:
             return None
 
-        # Resize while preserving aspect ratio
+        # Get current dimensions
         h, w = img.shape[:2]
-        scale = min(self.input_size[0] / h, self.input_size[1] / w)
-        new_h, new_w = int(h * scale), int(w * scale)
-        resized_img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        target_h, target_w = self.input_size
 
-        # Calculate padding
+        # Calculate scale to preserve aspect ratio (equivalent to resize + thumbnail)
+        scale = min(target_h / h, target_w / w)
+
+        # Calculate new dimensions
+        new_h, new_w = int(h * scale), int(w * scale)
+
+        # Resize the image while preserving aspect ratio
+        resized_img = cv2.resize(img, (new_w, new_h))
+
+        # Calculate padding values using the existing method
+        delta_width = target_w - new_w
+        delta_height = target_h - new_h
+
         pad_width, pad_height = self._get_padding_values(new_w, new_h, random_padding)
 
-        # Create and apply padding
-        channels = 3 if len(img.shape) == 3 else 1
-        padded_img = np.full((self.input_size[0], self.input_size[1], channels), 255, dtype=np.uint8)
-        padded_img[pad_height:pad_height + new_h, pad_width:pad_width + new_w] = resized_img
+        # Apply padding (convert PIL padding format to OpenCV format)
+        padding_color = [0, 0, 0] if len(img.shape) == 3 else [0]
+
+        padded_img = cv2.copyMakeBorder(
+            resized_img,
+            pad_height,  # top
+            delta_height - pad_height,  # bottom
+            pad_width,  # left
+            delta_width - pad_width,  # right
+            cv2.BORDER_CONSTANT,
+            value=padding_color
+        )
 
         return padded_img
 
