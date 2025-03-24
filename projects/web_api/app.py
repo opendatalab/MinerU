@@ -1,6 +1,10 @@
 import json
 import os
-from base64 import b64encode
+import traceback
+from urllib.parse import urlparse, parse_qs
+
+import requests
+from base64 import b64decode, b64encode
 from glob import glob
 from io import StringIO
 from typing import Tuple, Union
@@ -45,120 +49,22 @@ class MemoryDataWriter(DataWriter):
         self.buffer.close()
 
 
-def init_writers(
-    pdf_path: str = None,
-    pdf_file: UploadFile = None,
-    output_path: str = None,
-    output_image_path: str = None,
-) -> Tuple[
-    Union[S3DataWriter, FileBasedDataWriter],
-    Union[S3DataWriter, FileBasedDataWriter],
-    bytes,
-]:
-    """
-    Initialize writers based on path type
-
-    Args:
-        pdf_path: PDF file path (local path or S3 path)
-        pdf_file: Uploaded PDF file object
-        output_path: Output directory path
-        output_image_path: Image output directory path
-
-    Returns:
-        Tuple[writer, image_writer, pdf_bytes]: Returns initialized writer tuple and PDF
-        file content
-    """
-    if pdf_path:
-        is_s3_path = pdf_path.startswith("s3://")
-        if is_s3_path:
-            bucket = get_bucket_name(pdf_path)
-            ak, sk, endpoint = get_s3_config(bucket)
-
-            writer = S3DataWriter(
-                output_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
-            )
-            image_writer = S3DataWriter(
-                output_image_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
-            )
-            # 临时创建reader读取文件内容
-            temp_reader = S3DataReader(
-                "", bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
-            )
-            pdf_bytes = temp_reader.read(pdf_path)
-        else:
-            writer = FileBasedDataWriter(output_path)
-            image_writer = FileBasedDataWriter(output_image_path)
-            os.makedirs(output_image_path, exist_ok=True)
-            with open(pdf_path, "rb") as f:
-                pdf_bytes = f.read()
-    else:
-        # 处理上传的文件
-        pdf_bytes = pdf_file.file.read()
-        writer = FileBasedDataWriter(output_path)
-        image_writer = FileBasedDataWriter(output_image_path)
-        os.makedirs(output_image_path, exist_ok=True)
-
-    return writer, image_writer, pdf_bytes
-
-
-def process_pdf(
-    pdf_bytes: bytes,
-    parse_method: str,
-    image_writer: Union[S3DataWriter, FileBasedDataWriter],
-) -> Tuple[InferenceResult, PipeResult]:
-    """
-    Process PDF file content
-
-    Args:
-        pdf_bytes: Binary content of PDF file
-        parse_method: Parse method ('ocr', 'txt', 'auto')
-        image_writer: Image writer
-
-    Returns:
-        Tuple[InferenceResult, PipeResult]: Returns inference result and pipeline result
-    """
-    ds = PymuDocDataset(pdf_bytes)
-    infer_result: InferenceResult = None
-    pipe_result: PipeResult = None
-
-    if parse_method == "ocr":
-        infer_result = ds.apply(doc_analyze, ocr=True)
-        pipe_result = infer_result.pipe_ocr_mode(image_writer)
-    elif parse_method == "txt":
-        infer_result = ds.apply(doc_analyze, ocr=False)
-        pipe_result = infer_result.pipe_txt_mode(image_writer)
-    else:  # auto
-        if ds.classify() == SupportedPdfParseMethod.OCR:
-            infer_result = ds.apply(doc_analyze, ocr=True)
-            pipe_result = infer_result.pipe_ocr_mode(image_writer)
-        else:
-            infer_result = ds.apply(doc_analyze, ocr=False)
-            pipe_result = infer_result.pipe_txt_mode(image_writer)
-
-    return infer_result, pipe_result
-
-
-def encode_image(image_path: str) -> str:
-    """Encode image using base64"""
-    with open(image_path, "rb") as f:
-        return b64encode(f.read()).decode()
-
-
 @app.post(
     "/pdf_parse",
     tags=["projects"],
-    summary="Parse PDF files (supports local files and S3)",
+    summary="Parse PDF files (supports local files, S3, and URLs)",
 )
 async def pdf_parse(
-    pdf_file: UploadFile = None,
-    pdf_path: str = None,
-    parse_method: str = "auto",
-    is_json_md_dump: bool = False,
-    output_dir: str = "output",
-    return_layout: bool = False,
-    return_info: bool = False,
-    return_content_list: bool = False,
-    return_images: bool = False,
+        pdf_file: UploadFile = None,
+        pdf_path: str = None,
+        pdf_url: str = None,  # 新增 file_url 参数
+        parse_method: str = "auto",
+        is_json_md_dump: bool = False,
+        output_dir: str = "output",
+        return_layout: bool = False,
+        return_info: bool = False,
+        return_content_list: bool = False,
+        return_images: bool = False,
 ):
     """
     Execute the process of converting PDF to JSON and MD, outputting MD and JSON files
@@ -166,9 +72,11 @@ async def pdf_parse(
 
     Args:
         pdf_file: The PDF file to be parsed. Must not be specified together with
-            `pdf_path`
+            `pdf_path` or `file_url`
         pdf_path: The path to the PDF file to be parsed. Must not be specified together
-            with `pdf_file`
+            with `pdf_file` or `file_url`
+        file_url: The URL to the PDF file to be parsed. Must not be specified together
+            with `pdf_file` or `pdf_path`
         parse_method: Parsing method, can be auto, ocr, or txt. Default is auto. If
             results are not satisfactory, try ocr
         is_json_md_dump: Whether to write parsed data to .json and .md files. Default
@@ -181,18 +89,34 @@ async def pdf_parse(
         return_content_list: Whether to return parsed PDF content list. Default to False
     """
     try:
-        if (pdf_file is None and pdf_path is None) or (
-            pdf_file is not None and pdf_path is not None
+        if (pdf_file is None and pdf_path is None and pdf_url is None) or (
+                sum([pdf_file is not None, pdf_path is not None, pdf_url is not None]) > 1
         ):
             return JSONResponse(
-                content={"error": "Must provide either pdf_file or pdf_path"},
+                content={"error": "Must provide either pdf_file, pdf_path, or pdf_url"},
                 status_code=400,
             )
 
+        # Decode file_url if it's base64 encoded
+        if pdf_url:
+            try:
+                pdf_url = b64decode(pdf_url).decode('utf-8')
+            except Exception as e:
+                logger.error(f"Error decoding base64 file_url: {e}")
+                return JSONResponse(
+                    content={"error": "Invalid base64 encoded file_url"},
+                    status_code=400,
+                )
+
         # Get PDF filename
-        pdf_name = os.path.basename(pdf_path if pdf_path else pdf_file.filename).split(
-            "."
-        )[0]
+        if pdf_path:
+            pdf_name = os.path.basename(pdf_path).split(".")[0]
+        elif pdf_file:
+            pdf_name = os.path.basename(pdf_file.filename).split(".")[0]
+        elif pdf_url:
+            parsed_url = urlparse(pdf_url)
+            pdf_name = os.path.basename(parsed_url.path).split(".")[0]
+
         output_path = f"{output_dir}/{pdf_name}"
         output_image_path = f"{output_path}/images"
 
@@ -200,6 +124,7 @@ async def pdf_parse(
         writer, image_writer, pdf_bytes = init_writers(
             pdf_path=pdf_path,
             pdf_file=pdf_file,
+            file_url=pdf_url,  # 传递 file_url 参数
             output_path=output_path,
             output_image_path=output_image_path,
         )
@@ -268,10 +193,126 @@ async def pdf_parse(
         middle_json_writer.close()
 
         return JSONResponse(data, status_code=200)
-
     except Exception as e:
-        logger.exception(e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        logger.error(f"Error processing PDF: {e}\n{traceback.format_exc()}")
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500,
+        )
+
+
+def init_writers(
+        pdf_path: str = None,
+        pdf_file: UploadFile = None,
+        file_url: str = None,  # 新增 file_url 参数
+        output_path: str = None,
+        output_image_path: str = None,
+) -> Tuple[
+    Union[S3DataWriter, FileBasedDataWriter],
+    Union[S3DataWriter, FileBasedDataWriter],
+    bytes,
+]:
+    """
+    Initialize writers based on path type
+
+    Args:
+        pdf_path: PDF file path (local path or S3 path)
+        pdf_file: Uploaded PDF file object
+        file_url: URL to the PDF file
+        output_path: Output directory path
+        output_image_path: Image output directory path
+
+    Returns:
+        Tuple[writer, image_writer, pdf_bytes]: Returns initialized writer tuple and PDF
+        file content
+    """
+    if pdf_path:
+        is_s3_path = pdf_path.startswith("s3://")
+        if is_s3_path:
+            bucket = get_bucket_name(pdf_path)
+            ak, sk, endpoint = get_s3_config(bucket)
+
+            writer = S3DataWriter(
+                output_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
+            )
+            image_writer = S3DataWriter(
+                output_image_path, bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
+            )
+            # 临时创建reader读取文件内容
+            temp_reader = S3DataReader(
+                "", bucket=bucket, ak=ak, sk=sk, endpoint_url=endpoint
+            )
+            pdf_bytes = temp_reader.read(pdf_path)
+        else:
+            writer = FileBasedDataWriter(output_path)
+            image_writer = FileBasedDataWriter(output_image_path)
+            os.makedirs(output_image_path, exist_ok=True)
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+    elif pdf_file:
+        pdf_bytes = pdf_file.file.read()
+        writer = FileBasedDataWriter(output_path)
+        image_writer = FileBasedDataWriter(output_image_path)
+        os.makedirs(output_image_path, exist_ok=True)
+    elif file_url:  # 处理 URL 下载的文件
+        logger.info(f"Downloading file from URL: {file_url}")
+        response = requests.get(file_url)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail=response.text,
+            )
+        pdf_bytes = b''
+        for chunk in response.iter_content(chunk_size=8192):
+            pdf_bytes += chunk
+        writer = FileBasedDataWriter(output_path)
+        image_writer = FileBasedDataWriter(output_image_path)
+        os.makedirs(output_image_path, exist_ok=True)
+
+    return writer, image_writer, pdf_bytes
+
+
+def process_pdf(
+        pdf_bytes: bytes,
+        parse_method: str,
+        image_writer: Union[S3DataWriter, FileBasedDataWriter],
+) -> Tuple[InferenceResult, PipeResult]:
+    """
+    Process PDF file content
+
+    Args:
+        pdf_bytes: Binary content of PDF file
+        parse_method: Parse method ('ocr', 'txt', 'auto')
+        image_writer: Image writer
+
+    Returns:
+        Tuple[InferenceResult, PipeResult]: Returns inference result and pipeline result
+    """
+    ds = PymuDocDataset(pdf_bytes)
+    infer_result: InferenceResult = None
+    pipe_result: PipeResult = None
+
+    if parse_method == "ocr":
+        infer_result = ds.apply(doc_analyze, ocr=True)
+        pipe_result = infer_result.pipe_ocr_mode(image_writer)
+    elif parse_method == "txt":
+        infer_result = ds.apply(doc_analyze, ocr=False)
+        pipe_result = infer_result.pipe_txt_mode(image_writer)
+    else:  # auto
+        if ds.classify() == SupportedPdfParseMethod.OCR:
+            infer_result = ds.apply(doc_analyze, ocr=True)
+            pipe_result = infer_result.pipe_ocr_mode(image_writer)
+        else:
+            infer_result = ds.apply(doc_analyze, ocr=False)
+            pipe_result = infer_result.pipe_txt_mode(image_writer)
+
+    return infer_result, pipe_result
+
+
+def encode_image(image_path: str) -> str:
+    """Encode image using base64"""
+    with open(image_path, "rb") as f:
+        return b64encode(f.read()).decode()
 
 
 if __name__ == "__main__":
