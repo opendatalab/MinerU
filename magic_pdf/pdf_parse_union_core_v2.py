@@ -535,6 +535,11 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
                 f'top < 0, left: {left}, right: {right}, top: {top}, bottom: {bottom}, page_w: {page_w}, page_h: {page_h}'
             )  # noqa: E501
             top = 0
+        if top > page_h:
+            logger.warning(
+                f'top > page_h, left: {left}, right: {right}, top: {top}, bottom: {bottom}, page_w: {page_w}, page_h: {page_h}'
+            )
+            top = page_h
         if bottom > page_h:
             logger.warning(
                 f'bottom > page_h, left: {left}, right: {right}, top: {top}, bottom: {bottom}, page_w: {page_w}, page_h: {page_h}'
