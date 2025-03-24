@@ -457,7 +457,6 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
             # 如果block的宽度超过0.4页面宽度，则将block分成3行(是一种复杂布局，图不能切的太细)
             if block_weight > page_w * 0.4:
                 lines = 3
-                line_height = (y1 - y0) / lines
             elif block_weight > page_w * 0.25:  # （可能是三列结构，也切细点）
                 lines = int(block_height / line_height)
             else:  # 判断长宽比
@@ -465,7 +464,8 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
                     return [[x0, y0, x1, y1]]
                 else:  # 不细长的还是分成两行
                     lines = 2
-                    line_height = (y1 - y0) / lines
+
+        line_height = (y1 - y0) / lines
 
         # 确定从哪个y位置开始绘制线条
         current_y = y0
