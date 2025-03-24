@@ -189,26 +189,48 @@ def batch_doc_analyze(
     table_enable=None,
 ):
     MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
+    batch_size = MIN_BATCH_INFERENCE_SIZE
     images = []
     page_wh_list = []
+    lang_list = []
+    lang_s = set()
     for dataset in datasets:
         for index in range(len(dataset)):
+            if lang is None or lang == 'auto':
+                lang_list.append(dataset._lang)
+            else:
+                lang_list.append(lang)
+            lang_s.add(lang_list[-1])
             page_data = dataset.get_page(index)
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
 
-    if len(images) >= MIN_BATCH_INFERENCE_SIZE:
-        batch_size = MIN_BATCH_INFERENCE_SIZE
-        batch_images = [images[i:i+batch_size] for i in range(0, len(images), batch_size)]
-    else:
-        batch_images = [images]
+    batch_images = []
+    img_idx_list = []
+    for t_lang in lang_s:
+        tmp_img_idx_list = []
+        for i, _lang in enumerate(lang_list):
+            if _lang == t_lang:
+                tmp_img_idx_list.append(i)
+        img_idx_list.extend(tmp_img_idx_list)
 
-    results = []
+        if batch_size >= len(tmp_img_idx_list):
+            batch_images.append((t_lang, [images[j] for j in tmp_img_idx_list]))
+        else:
+            slices = [tmp_img_idx_list[k:k+batch_size] for k in range(0, len(tmp_img_idx_list), batch_size)]
+            for arr in slices:
+                batch_images.append((t_lang, [images[j] for j in arr]))
 
-    for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log, lang, layout_model, formula_enable, table_enable)
-        results.extend(result)
+    unorder_results = []
+
+    for sn, (_lang, batch_image) in enumerate(batch_images):
+        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log, _lang, layout_model, formula_enable, table_enable)
+        unorder_results.extend(result)
+    results = [None] * len(img_idx_list)
+    for i, idx in enumerate(img_idx_list):
+        results[idx] = unorder_results[i]
+
     infer_results = []
 
     from magic_pdf.operators.models import InferenceResult

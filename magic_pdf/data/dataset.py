@@ -143,6 +143,7 @@ class PymuDocDataset(Dataset):
         self._records = [Doc(v) for v in self._raw_fitz]
         self._data_bits = bits
         self._raw_data = bits
+        self._classify_result = None
 
         if lang == '':
             self._lang = None
@@ -218,7 +219,9 @@ class PymuDocDataset(Dataset):
         Returns:
             SupportedPdfParseMethod: _description_
         """
-        return classify(self._data_bits)
+        if self._classify_result is None:
+            self._classify_result = classify(self._data_bits)
+        return self._classify_result
 
     def clone(self):
         """clone this dataset."""
