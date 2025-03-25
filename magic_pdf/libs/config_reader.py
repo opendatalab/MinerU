@@ -96,6 +96,14 @@ def get_table_recog_config():
     else:
         return table_config
 
+def get_image_ocr_config():
+    config = read_config()
+    image_config = config.get('image-config')
+    if image_config is None:
+        logger.warning(f"'image-config' not found in {CONFIG_FILE_NAME}, use 'False' as default")
+        return None
+    else:
+        return image_config
 
 def get_layout_config():
     config = read_config()
