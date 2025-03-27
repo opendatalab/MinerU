@@ -72,7 +72,14 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 > magic-pdf --version
 > ```
 >
-> If the version number is less than 0.7.0, please report the issue.
+> If the version number is less than 0.7.0, please follow the instruction.
+>
+> ```
+> conda create -n mineru python=3.10
+> conda activate mineru
+> pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
+> magic-pdf --version
+> ```
 
 ### 6. Download Models
 
