@@ -17,13 +17,25 @@ MFR_BASE_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
-    def __init__(self, model: CustomPEKModel, batch_ratio: int):
-        self.model = model
+    def __init__(self, model_manager, batch_ratio: int, show_log, layout_model, formula_enable, table_enable):
+        self.model_manager = model_manager
         self.batch_ratio = batch_ratio
+        self.show_log = show_log
+        self.layout_model = layout_model
+        self.formula_enable = formula_enable
+        self.table_enable = table_enable
 
-    def __call__(self, images: list) -> list:
+    def __call__(self, images_with_extra_info: list) -> list:
+        if len(images_with_extra_info) == 0:
+            return []
+    
         images_layout_res = []
         layout_start_time = time.time()
+        _, fst_ocr, fst_lang = images_with_extra_info[0]
+        self.model = self.model_manager.get_model(fst_ocr, self.show_log, fst_lang, self.layout_model, self.formula_enable, self.table_enable)
+
+        images = [image for image, _, _ in images_with_extra_info]
+
         if self.model.layout_model_name == MODEL_NAME.LAYOUTLMv3:
             # layoutlmv3
             for image in images:
@@ -79,6 +91,8 @@ class BatchAnalyze:
         table_count = 0
         # reference: magic_pdf/model/doc_analyze_by_custom_model.py:doc_analyze
         for index in range(len(images)):
+            _, ocr_enable, _lang = images_with_extra_info[index]
+            self.model = self.model_manager.get_model(ocr_enable, self.show_log, _lang, self.layout_model, self.formula_enable, self.table_enable)
             layout_res = images_layout_res[index]
             np_array_img = images[index]
 
@@ -99,7 +113,7 @@ class BatchAnalyze:
                 # OCR recognition
                 new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
 
-                if self.model.apply_ocr:
+                if ocr_enable:
                     ocr_res = self.model.ocr_model.ocr(
                         new_image, mfd_res=adjusted_mfdetrec_res
                     )[0]
@@ -159,9 +173,7 @@ class BatchAnalyze:
                 table_count += len(table_res_list)
 
         if self.model.apply_ocr:
-            logger.info(f'ocr time: {round(ocr_time, 2)}, image num: {ocr_count}')
-        else:
-            logger.info(f'det time: {round(ocr_time, 2)}, image num: {ocr_count}')
+            logger.info(f'det or det time costs: {round(ocr_time, 2)}, image num: {ocr_count}')
         if self.model.apply_table:
             logger.info(f'table time: {round(table_time, 2)}, image num: {table_count}')
 
