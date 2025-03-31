@@ -1,4 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import copy
+
 import cv2
 import numpy as np
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
@@ -259,9 +261,10 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
     return adjusted_mfdetrec_res
 
 
-def get_ocr_result_list(ocr_res, useful_list):
+def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image):
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
+    ori_im = new_image.copy()
     for box_ocr_res in ocr_res:
 
         if len(box_ocr_res) == 2:
@@ -273,6 +276,11 @@ def get_ocr_result_list(ocr_res, useful_list):
         else:
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
+
+            if ocr_enable:
+                tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype('float32'))
+                img_crop = get_rotate_crop_image(ori_im, tmp_box)
+
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
         # if average_angle_degrees > 0.5:
         poly = [p1, p2, p3, p4]
@@ -295,12 +303,21 @@ def get_ocr_result_list(ocr_res, useful_list):
         p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
         p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
 
-        ocr_result_list.append({
-            'category_id': 15,
-            'poly': p1 + p2 + p3 + p4,
-            'score': float(round(score, 2)),
-            'text': text,
-        })
+        if ocr_enable:
+            ocr_result_list.append({
+                'category_id': 15,
+                'poly': p1 + p2 + p3 + p4,
+                'score': float(round(score, 2)),
+                'text': text,
+                'np_img': img_crop,
+            })
+        else:
+            ocr_result_list.append({
+                'category_id': 15,
+                'poly': p1 + p2 + p3 + p4,
+                'score': float(round(score, 2)),
+                'text': text,
+            })
 
     return ocr_result_list
 
