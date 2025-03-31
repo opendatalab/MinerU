@@ -14,7 +14,7 @@ from magic_pdf.model.model_list import AtomicModel
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.model.sub_modules.model_utils import (
     clean_vram, crop_img, get_res_list_from_layout_res)
-from magic_pdf.model.sub_modules.ocr.paddleocr.ocr_utils import (
+from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
 
 

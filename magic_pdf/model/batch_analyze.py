@@ -124,7 +124,7 @@ class BatchAnalyze:
 
                 # Integration results
                 if ocr_res:
-                    ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image)
+                    ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, _lang)
                     layout_res.extend(ocr_result_list)
             det_time += time.time() - det_start
             det_count += len(ocr_res_list)
@@ -177,27 +177,58 @@ class BatchAnalyze:
         if self.model.apply_table:
             logger.info(f'table time: {round(table_time, 2)}, image num: {table_count}')
 
-        need_ocr_list = []
-        img_crop_list = []
+        # Create dictionaries to store items by language
+        need_ocr_lists_by_lang = {}  # Dict of lists for each language
+        img_crop_lists_by_lang = {}  # Dict of lists for each language
+
         for layout_res in images_layout_res:
             for layout_res_item in layout_res:
                 if layout_res_item['category_id'] in [15]:
-                    if 'np_img' in layout_res_item:
-                        need_ocr_list.append(layout_res_item)
-                        img_crop_list.append(layout_res_item['np_img'])
-                        layout_res_item.pop('np_img')
+                    if 'np_img' in layout_res_item and 'lang' in layout_res_item:
+                        lang = layout_res_item['lang']
 
-        rec_time = 0
-        rec_start = time.time()
-        if len(img_crop_list) > 0:
-            ocr_res_list = self.model.ocr_model.ocr(img_crop_list, det=False)[0]
-            assert len(ocr_res_list)==len(need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
-            for index, layout_res_item in enumerate(need_ocr_list):
-                ocr_text, ocr_score = ocr_res_list[index]
-                layout_res_item['text'] = ocr_text
-                layout_res_item['score'] = float(round(ocr_score, 2))
-        rec_time += time.time() - rec_start
-        logger.info(f'ocr-rec time: {round(rec_time, 2)}, image num: {len(img_crop_list)}')
+                        # Initialize lists for this language if not exist
+                        if lang not in need_ocr_lists_by_lang:
+                            need_ocr_lists_by_lang[lang] = []
+                            img_crop_lists_by_lang[lang] = []
+
+                        # Add to the appropriate language-specific lists
+                        need_ocr_lists_by_lang[lang].append(layout_res_item)
+                        img_crop_lists_by_lang[lang].append(layout_res_item['np_img'])
+
+                        # Remove the fields after adding to lists
+                        layout_res_item.pop('np_img')
+                        layout_res_item.pop('lang')
+
+
+        if len(img_crop_lists_by_lang) > 0:
+
+            # Process OCR by language
+            rec_time = 0
+            rec_start = time.time()
+            total_processed = 0
+
+            # Process each language separately
+            for lang, img_crop_list in img_crop_lists_by_lang.items():
+                if len(img_crop_list) > 0:
+                    # Get OCR results for this language's images
+                    ocr_res_list = self.model.ocr_model.ocr(img_crop_list, det=False)[0]
+                    need_ocr_list = need_ocr_lists_by_lang[lang]
+
+                    # Verify we have matching counts
+                    assert len(ocr_res_list) == len(
+                        need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)} for lang: {lang}'
+
+                    # Process OCR results for this language
+                    for index, layout_res_item in enumerate(need_ocr_list):
+                        ocr_text, ocr_score = ocr_res_list[index]
+                        layout_res_item['text'] = ocr_text
+                        layout_res_item['score'] = float(round(ocr_score, 2))
+
+                    total_processed += len(img_crop_list)
+
+            rec_time += time.time() - rec_start
+            logger.info(f'ocr-rec time: {round(rec_time, 2)}, total images processed: {total_processed}')
 
 
 

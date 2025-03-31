@@ -66,6 +66,7 @@ class PytorchPaddleOCR(TextSystem):
             for img in imgs:
                 img = preprocess_image(img)
                 dt_boxes, elapse = self.text_detector(img)
+                logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
                 if dt_boxes is None:
                     ocr_res.append(None)
                     continue
@@ -84,6 +85,7 @@ class PytorchPaddleOCR(TextSystem):
                     img = preprocess_image(img)
                     img = [img]
                 rec_res, elapse = self.text_recognizer(img)
+                logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
                 ocr_res.append(rec_res)
             return ocr_res
 
