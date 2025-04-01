@@ -4,6 +4,7 @@ import os
 import re
 import statistics
 import time
+import warnings
 from typing import List
 
 import cv2
@@ -369,9 +370,12 @@ def do_predict(boxes: List[List[int]], model) -> List[int]:
     from magic_pdf.model.sub_modules.reading_oreder.layoutreader.helpers import (
         boxes2inputs, parse_logits, prepare_inputs)
 
-    inputs = boxes2inputs(boxes)
-    inputs = prepare_inputs(inputs, model)
-    logits = model(**inputs).logits.cpu().squeeze(0)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+
+        inputs = boxes2inputs(boxes)
+        inputs = prepare_inputs(inputs, model)
+        logits = model(**inputs).logits.cpu().squeeze(0)
     return parse_logits(logits, len(boxes))
 
 
