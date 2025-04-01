@@ -1,15 +1,49 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
+import os.path
+from pathlib import Path
 
 import cv2
 import numpy as np
+import yaml
 from loguru import logger
 
-from magic_pdf.libs.config_reader import get_device
+from magic_pdf.libs.config_reader import get_device, get_local_models_dir
 from .ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
 from .tools.infer.predict_system import TextSystem
 from .tools.infer import pytorchocr_utility as utility
 import argparse
+
+
+latin_lang = [
+        'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',  # noqa: E126
+        'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
+        'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
+        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+]
+arabic_lang = ['ar', 'fa', 'ug', 'ur']
+cyrillic_lang = [
+        'ru', 'rs_cyrillic', 'be', 'bg', 'uk', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
+        'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
+]
+devanagari_lang = [
+        'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
+        'sa', 'bgc'
+]
+
+
+def get_model_params(lang, config):
+    if lang in config['lang']:
+        params = config['lang'][lang]
+        det = params.get('det')
+        rec = params.get('rec')
+        dict_file = params.get('dict')
+        return det, rec, dict_file
+    else:
+        raise Exception (f'Language {lang} not supported')
+
+
+root_dir = Path(__file__).resolve().parent
 
 
 class PytorchPaddleOCR(TextSystem):
@@ -18,10 +52,25 @@ class PytorchPaddleOCR(TextSystem):
         args = parser.parse_args(args)
 
         self.lang = kwargs.get('lang', 'ch')
+        if self.lang in latin_lang:
+            self.lang = 'latin'
+        elif self.lang in arabic_lang:
+            self.lang = 'arabic'
+        elif self.lang in cyrillic_lang:
+            self.lang = 'cyrillic'
+        elif self.lang in devanagari_lang:
+            self.lang = 'devanagari'
+        else:
+            pass
 
-        if self.lang == 'ch':
-            kwargs['det_model_path'] = "/Users/myhloli/Downloads/ch_ptocr_v4_det_infer.pth"
-            kwargs['rec_model_path'] = "/Users/myhloli/Downloads/ch_ptocr_v4_rec_infer.pth"
+        models_config_path = os.path.join(root_dir, 'models_config.yml')
+        with open(models_config_path) as file:
+            config = yaml.safe_load(file)
+            det, rec, dict_file = get_model_params(self.lang, config)
+        ocr_models_dir = os.path.join(get_local_models_dir(), 'OCR', 'paddleocr_torch')
+        kwargs['det_model_path'] = os.path.join(ocr_models_dir, det)
+        kwargs['rec_model_path'] = os.path.join(ocr_models_dir, rec)
+        kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'dict', dict_file)
 
         kwargs['device'] = get_device()
 

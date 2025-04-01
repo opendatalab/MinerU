@@ -172,7 +172,7 @@ chinese_cht_PP-OCRv3_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 8423
+#    out_channels: 8423
     fc_decay: 0.00001
 
 latin_PP-OCRv3_rec_infer:
@@ -193,7 +193,7 @@ latin_PP-OCRv3_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 187
+#    out_channels: 187
     fc_decay: 0.00001
 
 cyrillic_PP-OCRv3_rec_infer:
@@ -214,10 +214,10 @@ cyrillic_PP-OCRv3_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 165
+#    out_channels: 165
     fc_decay: 0.00001
 
-arabic_PP-OCRv4_rec_infer:
+arabic_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -235,10 +235,10 @@ arabic_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 164
+#    out_channels: 164
     fc_decay: 0.00001
 
-korean_PP-OCRv4_rec_infer:
+korean_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -256,10 +256,10 @@ korean_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 3690
+#    out_channels: 3690
     fc_decay: 0.00001
 
-japan_PP-OCRv4_rec_infer:
+japan_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -277,10 +277,10 @@ japan_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 4401
+#    out_channels: 4401
     fc_decay: 0.00001
 
-ta_PP-OCRv4_rec_infer:
+ta_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -298,10 +298,10 @@ ta_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 130
+#    out_channels: 130
     fc_decay: 0.00001
 
-te_PP-OCRv4_rec_infer:
+te_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -319,10 +319,10 @@ te_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 153
+#    out_channels: 153
     fc_decay: 0.00001
 
-ka_PP-OCRv4_rec_infer:
+ka_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -340,10 +340,10 @@ ka_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 155
+#    out_channels: 155
     fc_decay: 0.00001
 
-devanagari_PP-OCRv4_rec_infer:
+devanagari_PP-OCRv3_rec_infer:
   model_type: rec
   algorithm: SVTR
   Transform:
@@ -361,6 +361,6 @@ devanagari_PP-OCRv4_rec_infer:
     use_guide: True
   Head:
     name: CTCHead
-    out_channels: 169
+#    out_channels: 169
     fc_decay: 0.00001
 
