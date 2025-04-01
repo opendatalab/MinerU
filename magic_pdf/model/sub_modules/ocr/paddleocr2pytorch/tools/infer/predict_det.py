@@ -1,21 +1,12 @@
-import os
 import sys
 
-__dir__ = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(__dir__)
-sys.path.append(os.path.abspath(os.path.join(__dir__, '../..')))
-import copy
-import cv2
 import numpy as np
 import time
-import json
 import torch
-from pytorchocr.base_ocr_v20 import BaseOCRV20
-import tools.infer.pytorchocr_utility as utility
-from pytorchocr.utils.utility import get_image_file_list, check_and_read_gif
-from pytorchocr.data import create_operators, transform
-from pytorchocr.postprocess import build_post_process
-
+from ...pytorchocr.base_ocr_v20 import BaseOCRV20
+from . import pytorchocr_utility as utility
+from ...pytorchocr.data import create_operators, transform
+from ...pytorchocr.postprocess import build_post_process
 
 
 class TextDetector(BaseOCRV20):
@@ -123,13 +114,14 @@ class TextDetector(BaseOCRV20):
 
         self.weights_path = args.det_model_path
         self.yaml_path = args.det_yaml_path
-        network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path)
+        # network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path)
+        network_config = utility.get_arch_config(self.weights_path)
         super(TextDetector, self).__init__(network_config, **kwargs)
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
         # if self.use_gpu:
         #     self.net.cuda()
-        self.net = self.net.to(self.device)
+        self.net.to(self.device)
 
     def order_points_clockwise(self, pts):
         """
@@ -231,38 +223,3 @@ class TextDetector(BaseOCRV20):
 
         elapse = time.time() - starttime
         return dt_boxes, elapse
-
-
-
-if __name__ == "__main__":
-    args = utility.parse_args()
-    image_file_list = get_image_file_list(args.image_dir)
-    text_detector = TextDetector(args)
-    count = 0
-    total_time = 0
-    draw_img_save = "./inference_results"
-    if not os.path.exists(draw_img_save):
-        os.makedirs(draw_img_save)
-    for image_file in image_file_list:
-        img, flag = check_and_read_gif(image_file)
-        if not flag:
-            img = cv2.imread(image_file)
-        if img is None:
-            print("error in loading image:{}".format(image_file))
-            continue
-        dt_boxes, elapse = text_detector(img)
-        if count > 0:
-            total_time += elapse
-        count += 1
-        save_pred = os.path.basename(image_file) + "\t" + str(
-            json.dumps(np.array(dt_boxes).astype(np.int32).tolist())) + "\n"
-        print(save_pred)
-        print("Predict time of {}: {}".format(image_file, elapse))
-        src_im = utility.draw_text_det_res(dt_boxes, image_file)
-        img_name_pure = os.path.split(image_file)[-1]
-        img_path = os.path.join(draw_img_save,
-                                "det_res_{}".format(img_name_pure))
-        cv2.imwrite(img_path, src_im)
-        print("The visualized image saved in {}".format(img_path))
-    if count > 1:
-        print("Avg Time: {}".format(total_time / (count - 1)))

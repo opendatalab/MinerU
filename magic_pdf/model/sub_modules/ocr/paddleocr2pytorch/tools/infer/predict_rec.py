@@ -1,19 +1,12 @@
-import os
-import sys
-
-__dir__ = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(__dir__)
-sys.path.append(os.path.abspath(os.path.join(__dir__, '../..')))
 from PIL import Image
 import cv2
 import numpy as np
 import math
 import time
 import torch
-from pytorchocr.base_ocr_v20 import BaseOCRV20
-import tools.infer.pytorchocr_utility as utility
-from pytorchocr.postprocess import build_post_process
-from pytorchocr.utils.utility import get_image_file_list, check_and_read_gif
+from ...pytorchocr.base_ocr_v20 import BaseOCRV20
+from . import pytorchocr_utility as utility
+from ...pytorchocr.postprocess import build_post_process
 
 
 class TextRecognizer(BaseOCRV20):
@@ -87,7 +80,8 @@ class TextRecognizer(BaseOCRV20):
         self.yaml_path = args.rec_yaml_path
 
         char_num = len(getattr(self.postprocess_op, 'character'))
-        network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path, char_num)
+        # network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path, char_num)
+        network_config = utility.get_arch_config(self.weights_path)
         weights = self.read_pytorch_weights(self.weights_path)
 
         self.out_channels = self.get_out_channels(weights)
@@ -103,7 +97,7 @@ class TextRecognizer(BaseOCRV20):
         self.net.eval()
         # if self.use_gpu:
         #     self.net.cuda()
-        self.net = self.net.to(self.device)
+        self.net.to(self.device)
 
     def resize_norm_img(self, img, max_wh_ratio):
         imgC, imgH, imgW = self.rec_image_shape
@@ -452,33 +446,3 @@ class TextRecognizer(BaseOCRV20):
                 rec_res[indices[beg_img_no + rno]] = rec_result[rno]
             elapse += time.time() - starttime
         return rec_res, elapse
-
-
-def main(args):
-    image_file_list = get_image_file_list(args.image_dir)
-    text_recognizer = TextRecognizer(args)
-    valid_image_file_list = []
-    img_list = []
-    for image_file in image_file_list:
-        img, flag = check_and_read_gif(image_file)
-        if not flag:
-            img = cv2.imread(image_file)
-        if img is None:
-            print("error in loading image:{}".format(image_file))
-            continue
-        valid_image_file_list.append(image_file)
-        img_list.append(img)
-    try:
-        rec_res, predict_time = text_recognizer(img_list)
-    except Exception as e:
-        print(e)
-        exit()
-    for ino in range(len(img_list)):
-        print("Predicts of {}:{}".format(valid_image_file_list[ino], rec_res[
-            ino]))
-    print("Total predict time for {} images, cost: {:.3f}".format(
-        len(img_list), predict_time))
-
-
-if __name__ == '__main__':
-    main(utility.parse_args())

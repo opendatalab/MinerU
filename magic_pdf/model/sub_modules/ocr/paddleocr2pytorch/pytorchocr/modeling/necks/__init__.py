@@ -12,22 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ['build_neck']
+__all__ = ["build_neck"]
+
 
 def build_neck(config):
-    from .db_fpn import DBFPN, RSEFPN, LKPAN
-    from .east_fpn import EASTFPN
-    from .sast_fpn import SASTFPN
+    from .db_fpn import DBFPN, LKPAN, RSEFPN
     from .rnn import SequenceEncoder
-    from .pg_fpn import PGFPN
-    from .fpn import FPN
-    from .fce_fpn import FCEFPN
-    from .table_fpn import TableFPN
-    support_dict = ['FPN', 'DBFPN', 'EASTFPN', 'SASTFPN', 'SequenceEncoder', 'PGFPN', 'TableFPN',
-                    'RSEFPN', 'LKPAN', 'FCEFPN']
 
-    module_name = config.pop('name')
-    assert module_name in support_dict, Exception('neck only support {}'.format(
-        support_dict))
+    support_dict = ["DBFPN", "SequenceEncoder", "RSEFPN", "LKPAN"]
+
+    module_name = config.pop("name")
+    assert module_name in support_dict, Exception(
+        "neck only support {}".format(support_dict)
+    )
     module_class = eval(module_name)(**config)
     return module_class

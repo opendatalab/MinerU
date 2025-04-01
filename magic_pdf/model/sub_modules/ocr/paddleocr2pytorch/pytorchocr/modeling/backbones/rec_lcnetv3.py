@@ -12,43 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from pytorchocr.modeling.common import Activation
+from torch import nn
 
-# from paddle.nn.initializer import Constant, KaimingNormal
-# from paddle.nn import AdaptiveAvgPool2D, BatchNorm2D, Conv2D, Dropout, Hardsigmoid, Hardswish, Identity, Linear, ReLU
-# from paddle.regularizer import L2Decay
+from ..common import Activation
 
 NET_CONFIG_det = {
     "blocks2":
-    #k, in_c, out_c, s, use_se
+    # k, in_c, out_c, s, use_se
     [[3, 16, 32, 1, False]],
     "blocks3": [[3, 32, 64, 2, False], [3, 64, 64, 1, False]],
     "blocks4": [[3, 64, 128, 2, False], [3, 128, 128, 1, False]],
-    "blocks5":
-    [[3, 128, 256, 2, False], [5, 256, 256, 1, False], [5, 256, 256, 1, False],
-     [5, 256, 256, 1, False], [5, 256, 256, 1, False]],
-    "blocks6": [[5, 256, 512, 2, True], [5, 512, 512, 1, True],
-                [5, 512, 512, 1, False], [5, 512, 512, 1, False]]
+    "blocks5": [
+        [3, 128, 256, 2, False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+    ],
+    "blocks6": [
+        [5, 256, 512, 2, True],
+        [5, 512, 512, 1, True],
+        [5, 512, 512, 1, False],
+        [5, 512, 512, 1, False],
+    ],
 }
 
 NET_CONFIG_rec = {
     "blocks2":
-    #k, in_c, out_c, s, use_se
+    # k, in_c, out_c, s, use_se
     [[3, 16, 32, 1, False]],
     "blocks3": [[3, 32, 64, 1, False], [3, 64, 64, 1, False]],
     "blocks4": [[3, 64, 128, (2, 1), False], [3, 128, 128, 1, False]],
-    "blocks5":
-    [[3, 128, 256, (1, 2), False], [5, 256, 256, 1, False],
-     [5, 256, 256, 1, False], [5, 256, 256, 1, False], [5, 256, 256, 1, False]],
-    "blocks6": [[5, 256, 512, (2, 1), True], [5, 512, 512, 1, True],
-                [5, 512, 512, (2, 1), False], [5, 512, 512, 1, False]]
+    "blocks5": [
+        [3, 128, 256, (1, 2), False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+        [5, 256, 256, 1, False],
+    ],
+    "blocks6": [
+        [5, 256, 512, (2, 1), True],
+        [5, 512, 512, 1, True],
+        [5, 512, 512, (2, 1), False],
+        [5, 512, 512, 1, False],
+    ],
 }
 
 
@@ -62,8 +73,7 @@ def make_divisible(v, divisor=16, min_value=None):
 
 
 class LearnableAffineBlock(nn.Module):
-    def __init__(self, scale_value=1.0, bias_value=0.0, lr_mult=1.0,
-                 lab_lr=0.1):
+    def __init__(self, scale_value=1.0, bias_value=0.0, lr_mult=1.0, lab_lr=0.1):
         super().__init__()
         self.scale = nn.Parameter(torch.Tensor([scale_value]))
         self.bias = nn.Parameter(torch.Tensor([bias_value]))
@@ -73,13 +83,9 @@ class LearnableAffineBlock(nn.Module):
 
 
 class ConvBNLayer(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 stride,
-                 groups=1,
-                 lr_mult=1.0):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride, groups=1, lr_mult=1.0
+    ):
         super().__init__()
         self.conv = nn.Conv2d(
             in_channels=in_channels,
@@ -88,7 +94,8 @@ class ConvBNLayer(nn.Module):
             stride=stride,
             padding=(kernel_size - 1) // 2,
             groups=groups,
-            bias=False)
+            bias=False,
+        )
 
         self.bn = nn.BatchNorm2d(
             out_channels,
@@ -115,15 +122,17 @@ class Act(nn.Module):
 
 
 class LearnableRepLayer(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 stride=1,
-                 groups=1,
-                 num_conv_branches=1,
-                 lr_mult=1.0,
-                 lab_lr=0.1):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        groups=1,
+        num_conv_branches=1,
+        lr_mult=1.0,
+        lab_lr=0.1,
+    ):
         super().__init__()
         self.is_repped = False
         self.groups = groups
@@ -134,27 +143,35 @@ class LearnableRepLayer(nn.Module):
         self.num_conv_branches = num_conv_branches
         self.padding = (kernel_size - 1) // 2
 
-        self.identity = nn.BatchNorm2d(
-            num_features=in_channels,
-        ) if out_channels == in_channels and stride == 1 else None
+        self.identity = (
+            nn.BatchNorm2d(
+                num_features=in_channels,
+            )
+            if out_channels == in_channels and stride == 1
+            else None
+        )
 
-        self.conv_kxk = nn.ModuleList([
+        self.conv_kxk = nn.ModuleList(
+            [
+                ConvBNLayer(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride,
+                    groups=groups,
+                    lr_mult=lr_mult,
+                )
+                for _ in range(self.num_conv_branches)
+            ]
+        )
+
+        self.conv_1x1 = (
             ConvBNLayer(
-                in_channels,
-                out_channels,
-                kernel_size,
-                stride,
-                groups=groups,
-                lr_mult=lr_mult) for _ in range(self.num_conv_branches)
-        ])
-
-        self.conv_1x1 = ConvBNLayer(
-            in_channels,
-            out_channels,
-            1,
-            stride,
-            groups=groups,
-            lr_mult=lr_mult) if kernel_size > 1 else None
+                in_channels, out_channels, 1, stride, groups=groups, lr_mult=lr_mult
+            )
+            if kernel_size > 1
+            else None
+        )
 
         self.lab = LearnableAffineBlock(lr_mult=lr_mult, lab_lr=lab_lr)
         self.act = Act(lr_mult=lr_mult, lab_lr=lab_lr)
@@ -192,7 +209,8 @@ class LearnableRepLayer(nn.Module):
             kernel_size=self.kernel_size,
             stride=self.stride,
             padding=self.padding,
-            groups=self.groups)
+            groups=self.groups,
+        )
         self.reparam_conv.weight.data = kernel
         self.reparam_conv.bias.data = bias
         self.is_repped = True
@@ -205,8 +223,9 @@ class LearnableRepLayer(nn.Module):
 
     def _get_kernel_bias(self):
         kernel_conv_1x1, bias_conv_1x1 = self._fuse_bn_tensor(self.conv_1x1)
-        kernel_conv_1x1 = self._pad_kernel_1x1_to_kxk(kernel_conv_1x1,
-                                                      self.kernel_size // 2)
+        kernel_conv_1x1 = self._pad_kernel_1x1_to_kxk(
+            kernel_conv_1x1, self.kernel_size // 2
+        )
 
         kernel_identity, bias_identity = self._fuse_bn_tensor(self.identity)
 
@@ -233,15 +252,16 @@ class LearnableRepLayer(nn.Module):
             eps = branch.bn._epsilon
         else:
             assert isinstance(branch, nn.BatchNorm2d)
-            if not hasattr(self, 'id_tensor'):
+            if not hasattr(self, "id_tensor"):
                 input_dim = self.in_channels // self.groups
                 kernel_value = torch.zeros(
-                    (self.in_channels, input_dim, self.kernel_size,
-                     self.kernel_size),
-                    dtype=branch.weight.dtype)
+                    (self.in_channels, input_dim, self.kernel_size, self.kernel_size),
+                    dtype=branch.weight.dtype,
+                )
                 for i in range(self.in_channels):
-                    kernel_value[i, i % input_dim, self.kernel_size // 2,
-                                 self.kernel_size // 2] = 1
+                    kernel_value[
+                        i, i % input_dim, self.kernel_size // 2, self.kernel_size // 2
+                    ] = 1
                 self.id_tensor = kernel_value
             kernel = self.id_tensor
             running_mean = branch._mean
@@ -287,15 +307,17 @@ class SELayer(nn.Module):
 
 
 class LCNetV3Block(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 stride,
-                 dw_size,
-                 use_se=False,
-                 conv_kxk_num=4,
-                 lr_mult=1.0,
-                 lab_lr=0.1):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        stride,
+        dw_size,
+        use_se=False,
+        conv_kxk_num=4,
+        lr_mult=1.0,
+        lab_lr=0.1,
+    ):
         super().__init__()
         self.use_se = use_se
         self.dw_conv = LearnableRepLayer(
@@ -306,7 +328,8 @@ class LCNetV3Block(nn.Module):
             groups=in_channels,
             num_conv_branches=conv_kxk_num,
             lr_mult=lr_mult,
-            lab_lr=lab_lr)
+            lab_lr=lab_lr,
+        )
         if use_se:
             self.se = SELayer(in_channels, lr_mult=lr_mult)
         self.pw_conv = LearnableRepLayer(
@@ -316,7 +339,8 @@ class LCNetV3Block(nn.Module):
             stride=1,
             num_conv_branches=conv_kxk_num,
             lr_mult=lr_mult,
-            lab_lr=lab_lr)
+            lab_lr=lab_lr,
+        )
 
     def forward(self, x):
         x = self.dw_conv(x)
@@ -327,13 +351,15 @@ class LCNetV3Block(nn.Module):
 
 
 class PPLCNetV3(nn.Module):
-    def __init__(self,
-                 scale=1.0,
-                 conv_kxk_num=4,
-                 lr_mult_list=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-                 lab_lr=0.1,
-                 det=False,
-                 **kwargs):
+    def __init__(
+        self,
+        scale=1.0,
+        conv_kxk_num=4,
+        lr_mult_list=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        lab_lr=0.1,
+        det=False,
+        **kwargs
+    ):
         super().__init__()
         self.scale = scale
         self.lr_mult_list = lr_mult_list
@@ -341,90 +367,102 @@ class PPLCNetV3(nn.Module):
 
         self.net_config = NET_CONFIG_det if self.det else NET_CONFIG_rec
 
-        assert isinstance(self.lr_mult_list, (
-            list, tuple
-        )), "lr_mult_list should be in (list, tuple) but got {}".format(
-            type(self.lr_mult_list))
-        assert len(self.lr_mult_list
-                   ) == 6, "lr_mult_list length should be 6 but got {}".format(
-                       len(self.lr_mult_list))
+        assert isinstance(
+            self.lr_mult_list, (list, tuple)
+        ), "lr_mult_list should be in (list, tuple) but got {}".format(
+            type(self.lr_mult_list)
+        )
+        assert (
+            len(self.lr_mult_list) == 6
+        ), "lr_mult_list length should be 6 but got {}".format(len(self.lr_mult_list))
 
         self.conv1 = ConvBNLayer(
             in_channels=3,
             out_channels=make_divisible(16 * scale),
             kernel_size=3,
             stride=2,
-            lr_mult=self.lr_mult_list[0])
+            lr_mult=self.lr_mult_list[0],
+        )
 
-        self.blocks2 = nn.Sequential(*[
-            LCNetV3Block(
-                in_channels=make_divisible(in_c * scale),
-                out_channels=make_divisible(out_c * scale),
-                dw_size=k,
-                stride=s,
-                use_se=se,
-                conv_kxk_num=conv_kxk_num,
-                lr_mult=self.lr_mult_list[1],
-                lab_lr=lab_lr)
-            for i, (k, in_c, out_c, s, se
-                    ) in enumerate(self.net_config["blocks2"])
-        ])
+        self.blocks2 = nn.Sequential(
+            *[
+                LCNetV3Block(
+                    in_channels=make_divisible(in_c * scale),
+                    out_channels=make_divisible(out_c * scale),
+                    dw_size=k,
+                    stride=s,
+                    use_se=se,
+                    conv_kxk_num=conv_kxk_num,
+                    lr_mult=self.lr_mult_list[1],
+                    lab_lr=lab_lr,
+                )
+                for i, (k, in_c, out_c, s, se) in enumerate(self.net_config["blocks2"])
+            ]
+        )
 
-        self.blocks3 = nn.Sequential(*[
-            LCNetV3Block(
-                in_channels=make_divisible(in_c * scale),
-                out_channels=make_divisible(out_c * scale),
-                dw_size=k,
-                stride=s,
-                use_se=se,
-                conv_kxk_num=conv_kxk_num,
-                lr_mult=self.lr_mult_list[2],
-                lab_lr=lab_lr)
-            for i, (k, in_c, out_c, s, se
-                    ) in enumerate(self.net_config["blocks3"])
-        ])
+        self.blocks3 = nn.Sequential(
+            *[
+                LCNetV3Block(
+                    in_channels=make_divisible(in_c * scale),
+                    out_channels=make_divisible(out_c * scale),
+                    dw_size=k,
+                    stride=s,
+                    use_se=se,
+                    conv_kxk_num=conv_kxk_num,
+                    lr_mult=self.lr_mult_list[2],
+                    lab_lr=lab_lr,
+                )
+                for i, (k, in_c, out_c, s, se) in enumerate(self.net_config["blocks3"])
+            ]
+        )
 
-        self.blocks4 = nn.Sequential(*[
-            LCNetV3Block(
-                in_channels=make_divisible(in_c * scale),
-                out_channels=make_divisible(out_c * scale),
-                dw_size=k,
-                stride=s,
-                use_se=se,
-                conv_kxk_num=conv_kxk_num,
-                lr_mult=self.lr_mult_list[3],
-                lab_lr=lab_lr)
-            for i, (k, in_c, out_c, s, se
-                    ) in enumerate(self.net_config["blocks4"])
-        ])
+        self.blocks4 = nn.Sequential(
+            *[
+                LCNetV3Block(
+                    in_channels=make_divisible(in_c * scale),
+                    out_channels=make_divisible(out_c * scale),
+                    dw_size=k,
+                    stride=s,
+                    use_se=se,
+                    conv_kxk_num=conv_kxk_num,
+                    lr_mult=self.lr_mult_list[3],
+                    lab_lr=lab_lr,
+                )
+                for i, (k, in_c, out_c, s, se) in enumerate(self.net_config["blocks4"])
+            ]
+        )
 
-        self.blocks5 = nn.Sequential(*[
-            LCNetV3Block(
-                in_channels=make_divisible(in_c * scale),
-                out_channels=make_divisible(out_c * scale),
-                dw_size=k,
-                stride=s,
-                use_se=se,
-                conv_kxk_num=conv_kxk_num,
-                lr_mult=self.lr_mult_list[4],
-                lab_lr=lab_lr)
-            for i, (k, in_c, out_c, s, se
-                    ) in enumerate(self.net_config["blocks5"])
-        ])
+        self.blocks5 = nn.Sequential(
+            *[
+                LCNetV3Block(
+                    in_channels=make_divisible(in_c * scale),
+                    out_channels=make_divisible(out_c * scale),
+                    dw_size=k,
+                    stride=s,
+                    use_se=se,
+                    conv_kxk_num=conv_kxk_num,
+                    lr_mult=self.lr_mult_list[4],
+                    lab_lr=lab_lr,
+                )
+                for i, (k, in_c, out_c, s, se) in enumerate(self.net_config["blocks5"])
+            ]
+        )
 
-        self.blocks6 = nn.Sequential(*[
-            LCNetV3Block(
-                in_channels=make_divisible(in_c * scale),
-                out_channels=make_divisible(out_c * scale),
-                dw_size=k,
-                stride=s,
-                use_se=se,
-                conv_kxk_num=conv_kxk_num,
-                lr_mult=self.lr_mult_list[5],
-                lab_lr=lab_lr)
-            for i, (k, in_c, out_c, s, se
-                    ) in enumerate(self.net_config["blocks6"])
-        ])
+        self.blocks6 = nn.Sequential(
+            *[
+                LCNetV3Block(
+                    in_channels=make_divisible(in_c * scale),
+                    out_channels=make_divisible(out_c * scale),
+                    dw_size=k,
+                    stride=s,
+                    use_se=se,
+                    conv_kxk_num=conv_kxk_num,
+                    lr_mult=self.lr_mult_list[5],
+                    lab_lr=lab_lr,
+                )
+                for i, (k, in_c, out_c, s, se) in enumerate(self.net_config["blocks6"])
+            ]
+        )
         self.out_channels = make_divisible(512 * scale)
 
         if self.det:
@@ -436,15 +474,19 @@ class PPLCNetV3(nn.Module):
                 make_divisible(self.net_config["blocks6"][-1][2] * scale),
             ]
 
-            self.layer_list = nn.ModuleList([
-                nn.Conv2d(self.out_channels[0], int(mv_c[0] * scale), 1, 1, 0),
-                nn.Conv2d(self.out_channels[1], int(mv_c[1] * scale), 1, 1, 0),
-                nn.Conv2d(self.out_channels[2], int(mv_c[2] * scale), 1, 1, 0),
-                nn.Conv2d(self.out_channels[3], int(mv_c[3] * scale), 1, 1, 0)
-            ])
+            self.layer_list = nn.ModuleList(
+                [
+                    nn.Conv2d(self.out_channels[0], int(mv_c[0] * scale), 1, 1, 0),
+                    nn.Conv2d(self.out_channels[1], int(mv_c[1] * scale), 1, 1, 0),
+                    nn.Conv2d(self.out_channels[2], int(mv_c[2] * scale), 1, 1, 0),
+                    nn.Conv2d(self.out_channels[3], int(mv_c[3] * scale), 1, 1, 0),
+                ]
+            )
             self.out_channels = [
-                int(mv_c[0] * scale), int(mv_c[1] * scale),
-                int(mv_c[2] * scale), int(mv_c[3] * scale)
+                int(mv_c[0] * scale),
+                int(mv_c[1] * scale),
+                int(mv_c[2] * scale),
+                int(mv_c[3] * scale),
             ]
 
     def forward(self, x):

@@ -6,10 +6,9 @@ import numpy as np
 from loguru import logger
 
 from magic_pdf.libs.config_reader import get_device
-from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.ocr_utils import check_img, preprocess_image, sorted_boxes, \
-    merge_det_boxes, update_det_boxes, get_rotate_crop_image
-from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.tools.infer.predict_system import TextSystem
-import tools.infer.pytorchocr_utility as utility
+from .ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
+from .tools.infer.predict_system import TextSystem
+from .tools.infer import pytorchocr_utility as utility
 import argparse
 
 
@@ -20,14 +19,9 @@ class PytorchPaddleOCR(TextSystem):
 
         self.lang = kwargs.get('lang', 'ch')
 
-        # kwargs['cls_model_path'] = "/Users/myhloli/Downloads/ch_ptocr_mobile_v2.0_cls_infer.pth"
-
         if self.lang == 'ch':
             kwargs['det_model_path'] = "/Users/myhloli/Downloads/ch_ptocr_v4_det_infer.pth"
             kwargs['rec_model_path'] = "/Users/myhloli/Downloads/ch_ptocr_v4_rec_infer.pth"
-            kwargs['det_yaml_path'] = "/Users/myhloli/Downloads/PaddleOCR2Pytorch-main/configs/det/ch_PP-OCRv4/ch_PP-OCRv4_det_student.yml"
-            kwargs['rec_yaml_path'] = "/Users/myhloli/Downloads/PaddleOCR2Pytorch-main/configs/rec/PP-OCRv4/ch_PP-OCRv4_rec.yml"
-            kwargs['rec_image_shape'] = '3,48,320'
 
         kwargs['device'] = get_device()
 

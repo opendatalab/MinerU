@@ -1,20 +1,12 @@
-import os
-import sys
-
-__dir__ = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(__dir__)
-sys.path.append(os.path.abspath(os.path.join(__dir__, '../..')))
-
 import cv2
 import copy
 import numpy as np
 import math
 import time
 import torch
-from pytorchocr.base_ocr_v20 import BaseOCRV20
-import tools.infer.pytorchocr_utility as utility
-from pytorchocr.postprocess import build_post_process
-from pytorchocr.utils.utility import get_image_file_list, check_and_read_gif
+from ...pytorchocr.base_ocr_v20 import BaseOCRV20
+from . import pytorchocr_utility as utility
+from ...pytorchocr.postprocess import build_post_process
 
 
 class TextClassifier(BaseOCRV20):
@@ -34,7 +26,8 @@ class TextClassifier(BaseOCRV20):
 
         self.weights_path = args.cls_model_path
         self.yaml_path = args.cls_yaml_path
-        network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path)
+        # network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path)
+        network_config = utility.get_arch_config(self.weights_path)
         super(TextClassifier, self).__init__(network_config, **kwargs)
 
         self.cls_image_shape = [int(v) for v in args.cls_image_shape.split(",")]
@@ -46,7 +39,7 @@ class TextClassifier(BaseOCRV20):
         self.net.eval()
         # if self.use_gpu:
         #     self.net.cuda()
-        self.net = self.net.to(self.device)
+        self.net.to(self.device)
 
     def resize_norm_img(self, img):
         imgC, imgH, imgW = self.cls_image_shape
@@ -119,38 +112,3 @@ class TextClassifier(BaseOCRV20):
                     img_list[indices[beg_img_no + rno]] = cv2.rotate(
                         img_list[indices[beg_img_no + rno]], 1)
         return img_list, cls_res, elapse
-
-
-def main(args):
-    image_file_list = get_image_file_list(args.image_dir)
-    text_classifier = TextClassifier(args)
-    valid_image_file_list = []
-    img_list = []
-    for image_file in image_file_list:
-        img, flag = check_and_read_gif(image_file)
-        if not flag:
-            img = cv2.imread(image_file)
-        if img is None:
-            print("error in loading image:{}".format(image_file))
-            continue
-        valid_image_file_list.append(image_file)
-        img_list.append(img)
-    try:
-        img_list, cls_res, predict_time = text_classifier(img_list)
-    except:
-        print(
-            "ERROR!!!! \n"
-            "Please read the FAQ：https://github.com/PaddlePaddle/PaddleOCR#faq \n"
-            "If your model has tps module:  "
-            "TPS does not support variable shape.\n"
-            "Please set --rec_image_shape='3,32,100' and --rec_char_type='en' ")
-        exit()
-    for ino in range(len(img_list)):
-        print("Predicts of {}:{}".format(valid_image_file_list[ino], cls_res[
-            ino]))
-    print("Total predict time for {} images, cost: {:.3f}".format(
-        len(img_list), predict_time))
-
-
-if __name__ == '__main__':
-    main(utility.parse_args())

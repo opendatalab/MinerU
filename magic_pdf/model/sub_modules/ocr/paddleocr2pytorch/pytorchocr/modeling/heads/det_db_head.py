@@ -1,9 +1,8 @@
-import os, sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pytorchocr.modeling.common import Activation
-from pytorchocr.modeling.backbones.det_mobilenet_v3 import ConvBNLayer
+from ..common import Activation
+from ..backbones.det_mobilenet_v3 import ConvBNLayer
 
 class Head(nn.Module):
     def __init__(self, in_channels, **kwargs):
@@ -76,13 +75,8 @@ class DBHead(nn.Module):
 
     def forward(self, x):
         shrink_maps = self.binarize(x)
-        if not self.training:
-            return {'maps': shrink_maps}
+        return {'maps': shrink_maps}
 
-        threshold_maps = self.thresh(x)
-        binary_maps = self.step_function(shrink_maps, threshold_maps)
-        y = torch.cat([shrink_maps, threshold_maps, binary_maps], dim=1)
-        return {'maps': y}
 
 class LocalModule(nn.Module):
     def __init__(self, in_c, mid_c, use_distance=True):
@@ -101,7 +95,7 @@ class PFHeadLocal(DBHead):
         super(PFHeadLocal, self).__init__(in_channels, k, **kwargs)
         self.mode = mode
 
-        self.up_conv = nn.interpolate(scale_factor=2, mode="nearest")
+        self.up_conv = nn.Upsample(scale_factor=2, mode="nearest")
         if self.mode == 'large':
             self.cbn_layer = LocalModule(in_channels // 4, in_channels // 4)
         elif self.mode == 'small':
@@ -112,10 +106,4 @@ class PFHeadLocal(DBHead):
         base_maps = shrink_maps
         cbn_maps = self.cbn_layer(self.up_conv(f), shrink_maps, None)
         cbn_maps = F.sigmoid(cbn_maps)
-        if not self.training:
-            return {'maps': 0.5 * (base_maps + cbn_maps), 'cbn_maps': cbn_maps}
-
-        threshold_maps = self.thresh(x)
-        binary_maps = self.step_function(shrink_maps, threshold_maps)
-        y = torch.cat([cbn_maps, threshold_maps, binary_maps], dim=1)
-        return {'maps': y, 'distance_maps': cbn_maps, 'cbn_maps': binary_maps}
+        return {'maps': 0.5 * (base_maps + cbn_maps), 'cbn_maps': cbn_maps}

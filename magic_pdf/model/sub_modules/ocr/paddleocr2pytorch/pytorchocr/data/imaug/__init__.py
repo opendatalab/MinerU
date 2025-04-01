@@ -15,7 +15,7 @@ from .operators import *
 
 # from .east_process import *
 # from .sast_process import *
-from .gen_table_mask import *
+# from .gen_table_mask import *
 
 def transform(data, ops=None):
     """ transform """

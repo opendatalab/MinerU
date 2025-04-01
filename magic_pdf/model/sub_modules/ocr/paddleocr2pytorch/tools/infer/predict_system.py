@@ -1,22 +1,10 @@
-import os
-import sys
-
-__dir__ = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(__dir__)
-sys.path.append(os.path.abspath(os.path.join(__dir__, '../..')))
-
 import cv2
 import copy
 import numpy as np
-import time
-from PIL import Image
-import tools.infer.pytorchocr_utility as utility
-import tools.infer.predict_rec as predict_rec
-import tools.infer.predict_det as predict_det
-import tools.infer.predict_cls as predict_cls
-from pytorchocr.utils.utility import get_image_file_list, check_and_read_gif
-from tools.infer.pytorchocr_utility import draw_ocr_box_txt
 
+from . import predict_rec
+from . import  predict_det
+from . import  predict_cls
 
 
 class TextSystem(object):
@@ -121,51 +109,3 @@ def sorted_boxes(dt_boxes):
             _boxes[i] = _boxes[i + 1]
             _boxes[i + 1] = tmp
     return _boxes
-
-
-def main(args):
-    image_file_list = get_image_file_list(args.image_dir)
-    text_sys = TextSystem(args)
-    is_visualize = True
-    font_path = args.vis_font_path
-    drop_score = args.drop_score
-    for image_file in image_file_list:
-        img, flag = check_and_read_gif(image_file)
-        if not flag:
-            img = cv2.imread(image_file)
-        if img is None:
-            print("error in loading image:{}".format(image_file))
-            continue
-        starttime = time.time()
-        dt_boxes, rec_res = text_sys(img)
-        elapse = time.time() - starttime
-        print("Predict time of %s: %.3fs" % (image_file, elapse))
-
-        for text, score in rec_res:
-            print("{}, {:.3f}".format(text, score))
-
-        if is_visualize:
-            image = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-            boxes = dt_boxes
-            txts = [rec_res[i][0] for i in range(len(rec_res))]
-            scores = [rec_res[i][1] for i in range(len(rec_res))]
-
-            draw_img = draw_ocr_box_txt(
-                image,
-                boxes,
-                txts,
-                scores,
-                drop_score=drop_score,
-                font_path=font_path)
-            draw_img_save = "./inference_results/"
-            if not os.path.exists(draw_img_save):
-                os.makedirs(draw_img_save)
-            cv2.imwrite(
-                os.path.join(draw_img_save, os.path.basename(image_file)),
-                draw_img[:, :, ::-1])
-            print("The visualized image saved in {}".format(
-                os.path.join(draw_img_save, os.path.basename(image_file))))
-
-
-if __name__ == '__main__':
-    main(utility.parse_args())
