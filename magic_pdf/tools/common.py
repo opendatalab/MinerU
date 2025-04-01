@@ -314,21 +314,10 @@ def batch_do_parse(
             dss.append(PymuDocDataset(v, lang=lang))
         else:
             dss.append(v)
-    dss_with_fn = list(zip(dss, pdf_file_names))
-    if parse_method == 'auto':
-        dss_typed_txt = [(i, x) for i, x in enumerate(dss_with_fn) if x[0].classify() == SupportedPdfParseMethod.TXT]
-        dss_typed_ocr = [(i, x) for i, x in enumerate(dss_with_fn) if x[0].classify() == SupportedPdfParseMethod.OCR]
-        infer_results = [None] * len(dss_with_fn)
-        infer_results_txt = batch_doc_analyze([x[1][0] for x in dss_typed_txt], lang=lang, ocr=False,  layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
-        infer_results_ocr = batch_doc_analyze([x[1][0] for x in dss_typed_ocr], lang=lang, ocr=True,  layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
-        for i, infer_res in enumerate(infer_results_txt):
-            infer_results[dss_typed_txt[i][0]] = infer_res
-        for i, infer_res in enumerate(infer_results_ocr):
-            infer_results[dss_typed_ocr[i][0]] = infer_res
-    else:
-        infer_results = batch_doc_analyze(dss, lang=lang, ocr=parse_method == 'ocr',  layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
+
+    infer_results = batch_doc_analyze(dss, parse_method, lang=lang, layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
     for idx, infer_result in enumerate(infer_results):
-        _do_parse(output_dir, dss_with_fn[idx][1], dss_with_fn[idx][0], infer_result.get_infer_res(), parse_method, debug_able, f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox, lang=lang)
+        _do_parse(output_dir, pdf_file_names[idx], dss[idx], infer_result.get_infer_res(), parse_method, debug_able, f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox, lang=lang)
 
 
 parse_pdf_methods = click.Choice(['ocr', 'txt', 'auto'])

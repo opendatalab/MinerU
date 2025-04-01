@@ -15,7 +15,7 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 from loguru import logger
 
 from magic_pdf.model.sub_modules.model_utils import get_vram
-
+from magic_pdf.config.enums import SupportedPdfParseMethod
 import magic_pdf.model as model_config
 from magic_pdf.data.dataset import Dataset
 from magic_pdf.libs.clean_memory import clean_memory
@@ -141,7 +141,7 @@ def doc_analyze(
         else len(dataset) - 1
     )
 
-    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
+    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 200))
     images = []
     page_wh_list = []
     for index in range(len(dataset)):
@@ -150,16 +150,20 @@ def doc_analyze(
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
+    if lang is None or lang == 'auto':
+        images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(dataset))]
+    else:
+        images_with_extra_info = [(images[index], ocr, lang) for index in range(len(dataset))]
 
     if len(images) >= MIN_BATCH_INFERENCE_SIZE:
         batch_size = MIN_BATCH_INFERENCE_SIZE
-        batch_images = [images[i:i+batch_size] for i in range(0, len(images), batch_size)]
+        batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
     else:
-        batch_images = [images]
+        batch_images = [images_with_extra_info]
 
     results = []
     for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log, lang, layout_model, formula_enable, table_enable)
+        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log,layout_model, formula_enable, table_enable)
         results.extend(result)
 
     model_json = []
@@ -181,7 +185,7 @@ def doc_analyze(
 
 def batch_doc_analyze(
     datasets: list[Dataset],
-    ocr: bool = False,
+    parse_method: str,
     show_log: bool = False,
     lang=None,
     layout_model=None,
@@ -192,47 +196,31 @@ def batch_doc_analyze(
     batch_size = MIN_BATCH_INFERENCE_SIZE
     images = []
     page_wh_list = []
-    lang_list = []
-    lang_s = set()
+
+    images_with_extra_info = []
     for dataset in datasets:
         for index in range(len(dataset)):
             if lang is None or lang == 'auto':
-                lang_list.append(dataset._lang)
+                _lang = dataset._lang
             else:
-                lang_list.append(lang)
-            lang_s.add(lang_list[-1])
+                _lang = lang
+
             page_data = dataset.get_page(index)
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
+            if parse_method == 'auto':
+                images_with_extra_info.append((images[-1], dataset.classify() == SupportedPdfParseMethod.OCR, _lang))
+            else:
+                images_with_extra_info.append((images[-1], parse_method == 'ocr', _lang))
 
-    batch_images = []
-    img_idx_list = []
-    for t_lang in lang_s:
-        tmp_img_idx_list = []
-        for i, _lang in enumerate(lang_list):
-            if _lang == t_lang:
-                tmp_img_idx_list.append(i)
-        img_idx_list.extend(tmp_img_idx_list)
-
-        if batch_size >= len(tmp_img_idx_list):
-            batch_images.append((t_lang, [images[j] for j in tmp_img_idx_list]))
-        else:
-            slices = [tmp_img_idx_list[k:k+batch_size] for k in range(0, len(tmp_img_idx_list), batch_size)]
-            for arr in slices:
-                batch_images.append((t_lang, [images[j] for j in arr]))
-
-    unorder_results = []
-
-    for sn, (_lang, batch_image) in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log, _lang, layout_model, formula_enable, table_enable)
-        unorder_results.extend(result)
-    results = [None] * len(img_idx_list)
-    for i, idx in enumerate(img_idx_list):
-        results[idx] = unorder_results[i]
+    batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
+    results = []
+    for sn, batch_image in enumerate(batch_images):
+        _, result = may_batch_image_analyze(batch_image, sn, True, show_log, layout_model, formula_enable, table_enable)
+        results.extend(result)
 
     infer_results = []
-
     from magic_pdf.operators.models import InferenceResult
     for index in range(len(datasets)):
         dataset = datasets[index]
@@ -248,11 +236,10 @@ def batch_doc_analyze(
 
 
 def may_batch_image_analyze(
-        images: list[np.ndarray],
+        images_with_extra_info: list[(np.ndarray, bool, str)],
         idx: int,
-        ocr: bool = False,
+        ocr: bool,
         show_log: bool = False,
-        lang=None,
         layout_model=None,
         formula_enable=None,
         table_enable=None):
@@ -263,10 +250,8 @@ def may_batch_image_analyze(
     from magic_pdf.model.batch_analyze import BatchAnalyze
 
     model_manager = ModelSingleton()
-    custom_model = model_manager.get_model(
-        ocr, show_log, lang, layout_model, formula_enable, table_enable
-    )
 
+    images = [image for image, _, _ in images_with_extra_info]
     batch_analyze = False
     batch_ratio = 1
     device = get_device()
@@ -290,64 +275,15 @@ def may_batch_image_analyze(
             else:
                 batch_ratio = 1
             logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
-            batch_analyze = True
+            # batch_analyze = True
     elif str(device).startswith('mps'):
-        batch_analyze = True
+        # batch_analyze = True
+        pass
+
     doc_analyze_start = time.time()
 
-    if batch_analyze:
-        """# batch analyze
-        images = []
-        page_wh_list = []
-        for index in range(len(dataset)):
-            if start_page_id <= index <= end_page_id:
-                page_data = dataset.get_page(index)
-                img_dict = page_data.get_image()
-                images.append(img_dict['img'])
-                page_wh_list.append((img_dict['width'], img_dict['height']))
-        """
-        batch_model = BatchAnalyze(model=custom_model, batch_ratio=batch_ratio)
-        results = batch_model(images)
-        """
-        for index in range(len(dataset)):
-            if start_page_id <= index <= end_page_id:
-                result = analyze_result.pop(0)
-                page_width, page_height = page_wh_list.pop(0)
-            else:
-                result = []
-                page_height = 0
-                page_width = 0
-
-            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
-            page_dict = {'layout_dets': result, 'page_info': page_info}
-            model_json.append(page_dict)
-        """
-    else:
-        # single analyze
-        """
-        for index in range(len(dataset)):
-            page_data = dataset.get_page(index)
-            img_dict = page_data.get_image()
-            img = img_dict['img']
-            page_width = img_dict['width']
-            page_height = img_dict['height']
-            if start_page_id <= index <= end_page_id:
-                page_start = time.time()
-                result = custom_model(img)
-                logger.info(f'-----page_id : {index}, page total time: {round(time.time() - page_start, 2)}-----')
-            else:
-                result = []
-
-            page_info = {'page_no': index, 'width': page_width, 'height': page_height}
-            page_dict = {'layout_dets': result, 'page_info': page_info}
-            model_json.append(page_dict)
-        """
-        results = []
-        for img_idx, img in enumerate(images):
-            inference_start = time.time()
-            result = custom_model(img)
-            logger.info(f'-----image index : {img_idx}, image inference total time: {round(time.time() - inference_start, 2)}-----')
-            results.append(result)
+    batch_model = BatchAnalyze(model_manager, batch_ratio, show_log, layout_model, formula_enable, table_enable)
+    results = batch_model(images_with_extra_info)
 
     gc_start = time.time()
     clean_memory(get_device())
