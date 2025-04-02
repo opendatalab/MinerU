@@ -47,11 +47,11 @@ if __name__ == '__main__':
     print(f'model_dir is: {model_dir}')
     print(f'layoutreader_model_dir is: {layoutreader_model_dir}')
 
-    paddleocr_model_dir = model_dir + '/OCR/paddleocr'
-    user_paddleocr_dir = os.path.expanduser('~/.paddleocr')
-    if os.path.exists(user_paddleocr_dir):
-        shutil.rmtree(user_paddleocr_dir)
-    shutil.copytree(paddleocr_model_dir, user_paddleocr_dir)
+    # paddleocr_model_dir = model_dir + '/OCR/paddleocr'
+    # user_paddleocr_dir = os.path.expanduser('~/.paddleocr')
+    # if os.path.exists(user_paddleocr_dir):
+    #     shutil.rmtree(user_paddleocr_dir)
+    # shutil.copytree(paddleocr_model_dir, user_paddleocr_dir)
 
     json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/magic-pdf.template.json'
     config_file_name = 'magic-pdf.json'
