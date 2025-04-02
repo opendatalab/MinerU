@@ -54,7 +54,7 @@ pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 从仓库中下载样本文件，并测试
 
 ```powershell
- wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
+ wget https://github.com/opendatalab/MinerU/raw/master/demo/pdfs/small_ocr.pdf -O small_ocr.pdf
  magic-pdf -p small_ocr.pdf -o ./output
 ```
 
