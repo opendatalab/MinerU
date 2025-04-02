@@ -48,7 +48,18 @@ def measure_time(func):
         start_time = time.time()
         result = func(*args, **kwargs)
         execution_time = time.time() - start_time
-        PerformanceStats.add_execution_time(func.__name__, execution_time)
+
+        # 获取更详细的函数标识
+        if hasattr(func, "__self__"):  # 实例方法
+            class_name = func.__self__.__class__.__name__
+            full_name = f"{class_name}.{func.__name__}"
+        elif hasattr(func, "__qualname__"):  # 类方法或静态方法
+            full_name = func.__qualname__
+        else:
+            module_name = func.__module__
+            full_name = f"{module_name}.{func.__name__}"
+
+        PerformanceStats.add_execution_time(full_name, execution_time)
         return result
 
     return wrapper
