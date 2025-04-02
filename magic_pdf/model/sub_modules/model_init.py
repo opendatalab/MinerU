@@ -36,7 +36,7 @@ from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableM
 #     from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
 
-def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr_engine=None, table_sub_model_name=None):
+def table_model_init(table_model_type, model_path, max_time, _device_='cpu', lang=None, table_sub_model_name=None):
     if table_model_type == MODEL_NAME.STRUCT_EQTABLE:
         from magic_pdf.model.sub_modules.table.structeqtable.struct_eqtable import StructTableModel
         table_model = StructTableModel(model_path, max_new_tokens=2048, max_time=max_time)
@@ -48,6 +48,14 @@ def table_model_init(table_model_type, model_path, max_time, _device_='cpu', ocr
         }
         table_model = TableMasterPaddleModel(config)
     elif table_model_type == MODEL_NAME.RAPID_TABLE:
+        atom_model_manager = AtomModelSingleton()
+        ocr_engine = atom_model_manager.get_atom_model(
+            atom_model_name='ocr',
+            ocr_show_log=False,
+            det_db_box_thresh=0.5,
+            det_db_unclip_ratio=1.6,
+            lang=lang
+        )
         table_model = RapidTableModel(ocr_engine, table_sub_model_name)
     else:
         logger.error('table model type not allow')
@@ -134,7 +142,7 @@ class AtomModelSingleton:
         elif atom_model_name in [AtomicModel.Layout]:
             key = (atom_model_name, layout_model_name)
         elif atom_model_name in [AtomicModel.Table]:
-            key = (atom_model_name, table_model_name)
+            key = (atom_model_name, table_model_name, lang)
         else:
             key = atom_model_name
 
@@ -182,7 +190,7 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('table_model_path'),
             kwargs.get('table_max_time'),
             kwargs.get('device'),
-            kwargs.get('ocr_engine'),
+            kwargs.get('lang'),
             kwargs.get('table_sub_model_name')
         )
     elif model_name == AtomicModel.LangDetect:

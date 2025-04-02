@@ -27,11 +27,11 @@ class BaseOCRV20:
 
     def load_state_dict(self, weights):
         self.net.load_state_dict(weights)
-        print('weights is loaded.')
+        # print('weights is loaded.')
 
     def load_pytorch_weights(self, weights_path):
         self.net.load_state_dict(torch.load(weights_path, weights_only=True))
-        print('model is loaded: {}'.format(weights_path))
+        # print('model is loaded: {}'.format(weights_path))
 
     def inference(self, inputs):
         with torch.no_grad():

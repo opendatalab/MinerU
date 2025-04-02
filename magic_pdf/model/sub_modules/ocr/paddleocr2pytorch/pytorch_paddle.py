@@ -109,7 +109,7 @@ class PytorchPaddleOCR(TextSystem):
             for img in imgs:
                 img = preprocess_image(img)
                 dt_boxes, elapse = self.text_detector(img)
-                logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
+                # logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
                 if dt_boxes is None:
                     ocr_res.append(None)
                     continue
@@ -128,7 +128,7 @@ class PytorchPaddleOCR(TextSystem):
                     img = preprocess_image(img)
                     img = [img]
                 rec_res, elapse = self.text_recognizer(img)
-                logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
+                # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
                 ocr_res.append(rec_res)
             return ocr_res
 
@@ -146,7 +146,7 @@ class PytorchPaddleOCR(TextSystem):
             return None, None
         else:
             pass
-            logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
+            # logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
         img_crop_list = []
 
         dt_boxes = sorted_boxes(dt_boxes)
@@ -163,7 +163,7 @@ class PytorchPaddleOCR(TextSystem):
             img_crop_list.append(img_crop)
 
         rec_res, elapse = self.text_recognizer(img_crop_list)
-        logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
+        # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
 
         filter_boxes, filter_rec_res = [], []
         for box, rec_result in zip(dt_boxes, rec_res):
