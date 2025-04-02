@@ -16,7 +16,7 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
     
         self.transform = alb.Compose(
             [
-                alb.ToGray(always_apply=True),
+                alb.ToGray(),
                 alb.Normalize((0.7931, 0.7931, 0.7931), (0.1738, 0.1738, 0.1738)),
                 # alb.Sharpen()
                 ToTensorV2(),
