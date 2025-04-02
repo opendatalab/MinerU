@@ -45,6 +45,23 @@ en_PP-OCRv3_det_infer:
     name: DBHead
     k: 50
 
+ch_PP-OCRv3_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform:
+  Backbone:
+    name: MobileNetV3
+    scale: 0.5
+    model_name: large
+    disable_se: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
 en_PP-OCRv4_rec_infer:
   model_type: rec
   algorithm: SVTR_LCNet
