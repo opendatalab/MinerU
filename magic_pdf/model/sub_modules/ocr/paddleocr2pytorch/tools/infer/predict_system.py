@@ -50,12 +50,6 @@ class TextSystem(object):
             dst_img = np.rot90(dst_img)
         return dst_img
 
-    def print_draw_crop_rec_res(self, img_crop_list, rec_res):
-        bbox_num = len(img_crop_list)
-        for bno in range(bbox_num):
-            cv2.imwrite("./output/img_crop_%d.jpg" % bno, img_crop_list[bno])
-            print(bno, rec_res[bno])
-
     def __call__(self, img):
         ori_im = img.copy()
         dt_boxes, elapse = self.text_detector(img)

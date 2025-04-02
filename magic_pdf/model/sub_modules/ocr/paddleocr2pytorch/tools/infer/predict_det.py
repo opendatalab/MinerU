@@ -109,18 +109,12 @@ class TextDetector(BaseOCRV20):
         self.preprocess_op = create_operators(pre_process_list)
         self.postprocess_op = build_post_process(postprocess_params)
 
-        # use_gpu = args.use_gpu
-        # self.use_gpu = torch.cuda.is_available() and use_gpu
-
         self.weights_path = args.det_model_path
         self.yaml_path = args.det_yaml_path
-        # network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path)
         network_config = utility.get_arch_config(self.weights_path)
         super(TextDetector, self).__init__(network_config, **kwargs)
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
-        # if self.use_gpu:
-        #     self.net.cuda()
         self.net.to(self.device)
 
     def order_points_clockwise(self, pts):
@@ -190,8 +184,6 @@ class TextDetector(BaseOCRV20):
 
         with torch.no_grad():
             inp = torch.from_numpy(img)
-            # if self.use_gpu:
-            #     inp = inp.cuda()
             inp = inp.to(self.device)
             outputs = self.net(inp)
 

@@ -70,17 +70,12 @@ class TextRecognizer(BaseOCRV20):
             }
         self.postprocess_op = build_post_process(postprocess_params)
 
-        # use_gpu = args.use_gpu
-        # self.use_gpu = torch.cuda.is_available() and use_gpu
-
         self.limited_max_width = args.limited_max_width
         self.limited_min_width = args.limited_min_width
 
         self.weights_path = args.rec_model_path
         self.yaml_path = args.rec_yaml_path
 
-        char_num = len(getattr(self.postprocess_op, 'character'))
-        # network_config = utility.AnalysisConfig(self.weights_path, self.yaml_path, char_num)
         network_config = utility.get_arch_config(self.weights_path)
         weights = self.read_pytorch_weights(self.weights_path)
 
@@ -95,8 +90,6 @@ class TextRecognizer(BaseOCRV20):
 
         self.load_state_dict(weights)
         self.net.eval()
-        # if self.use_gpu:
-        #     self.net.cuda()
         self.net.to(self.device)
 
     def resize_norm_img(self, img, max_wh_ratio):
@@ -417,8 +410,6 @@ class TextRecognizer(BaseOCRV20):
                 inputs = [norm_img_batch, norm_img_mask_batch, word_label_list]
 
                 inp = [torch.from_numpy(e_i) for e_i in inputs]
-                # if self.use_gpu:
-                #     inp = [e_i.cuda() for e_i in inp]
                 inp = [e_i.to(self.device) for e_i in inp]
                 with torch.no_grad():
                     outputs = self.net(inp)
@@ -431,8 +422,6 @@ class TextRecognizer(BaseOCRV20):
 
                 with torch.no_grad():
                     inp = torch.from_numpy(norm_img_batch)
-                    # if self.use_gpu:
-                    #     inp = inp.cuda()
                     inp = inp.to(self.device)
                     prob_out = self.net(inp)
 
