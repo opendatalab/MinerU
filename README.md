@@ -47,6 +47,20 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/03 Release of version 1.3.0, with many changes in this version:
+  - Installation and compatibility optimization
+    - By using paddleocr2torch, completely replaced the paddle framework and paddleocr used in the project, resolving conflicts between paddle and torch (OCR speed under single-process is slightly slower compared to the paddle framework).
+    - Removed the use of layoutlmv3 in layout, solving compatibility issues caused by `detectron2`.
+    - Extended torch version compatibility to 2.2~2.6.
+    - CUDA compatibility extended to 11.8~12.6 (CUDA version determined by torch), addressing compatibility issues for some users with 50-series and H-series GPUs.
+    - Python compatible versions extended to 3.10~3.12, resolving the issue of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
+  - Performance optimization (compared to version 1.0.1, formula parsing speed improved by over 1400%, and overall parsing speed improved by over 500%)
+    - Supported batch processing for multiple PDF files, enhancing the parsing speed of batch files.
+    - Optimized the loading and usage of the mfr model, reducing memory usage and improving parsing speed.
+    - Optimized memory usage, allowing the project to run with as little as 6GB.
+    - Improved running speed on mps devices.
+  - Parsing effect optimization
+    - Updated the mfr model to unimernet(2503), solving the issue of missing line breaks in multi-line formulas.
 - 2025/03/03 1.2.1 released, fixed several bugs:
   - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
   - Fixed caption matching inaccuracies in certain scenarios
@@ -414,6 +428,8 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [RapidOCR](https://github.com/RapidAI/RapidOCR)
+- [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
