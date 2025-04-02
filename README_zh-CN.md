@@ -288,7 +288,7 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 {
     // other config
     "layout-config": {
-        "model": "doclayout_yolo" // 使用layoutlmv3请修改为“layoutlmv3"
+        "model": "doclayout_yolo" 
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -296,7 +296,7 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
         "enable": true  // 公式识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
     },
     "table-config": {
-        "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
+        "model": "rapid_table",  
         "sub_model": "slanet_plus",  // 当model为"rapid_table"时，可以自选sub_model，可选项为"slanet_plus"和"unitable"
         "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
         "max_time": 400
@@ -312,7 +312,7 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
 > [!IMPORTANT]
-> Docker 需设备gpu显存大于等于8GB，默认开启所有加速功能
+> Docker 需设备gpu显存大于等于6GB，默认开启所有加速功能
 > 
 > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
 > 
@@ -332,7 +332,7 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 [NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
 
 ### 使用MPS
-如果您的设备使用Apple silicon 芯片，您可以在部分支持的任务（layout检测/公式检测）中开启mps加速：
+如果您的设备使用Apple silicon 芯片，您可以开启mps加速：
 
 您可以通过在 `magic-pdf.json` 配置文件中将 `device-mode` 参数设置为 `mps` 来启用 MPS 加速。
 
@@ -343,10 +343,6 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 }
 ```
 
-> [!TIP]
-> 由于公式识别任务无法开启mps加速，您可在不需要识别公式的任务关闭公式识别功能以获得最佳性能。
->
-> 您可以通过将 `formula-config` 部分中的 `enable` 参数设置为 `false` 来禁用公式识别功能。
 
 
 ## 使用
