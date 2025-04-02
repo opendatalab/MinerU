@@ -47,6 +47,9 @@ if __name__ == '__main__':
                      "PyYAML",  # yaml
                      "ftfy", # unimernet_hf
                      "openai",  # openai SDK
+                     "shapely",  # imgaug-paddleocr2pytorch
+                     "pyclipper",  # paddleocr2pytorch
+                     "omegaconf",  # paddleocr2pytorch
                      ],
             "old_linux":[
                 "albumentations<=1.4.20", # 1.4.21引入的simsimd不支持2019年及更早的linux系统

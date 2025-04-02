@@ -7,7 +7,7 @@ import argparse
 
 
 root_dir = Path(__file__).resolve().parent.parent.parent
-DEFAULT_CFG_PATH = root_dir / "pytorchocr" / "modeling" / "arch_config.yaml"
+DEFAULT_CFG_PATH = root_dir / "pytorchocr" / "utils" / "resources" / "arch_config.yaml"
 
 
 def init_args():
