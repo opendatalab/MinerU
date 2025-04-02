@@ -2,10 +2,11 @@
 
 ## 1. 安装cuda和cuDNN
 
-需要安装的版本 CUDA 11.8 + cuDNN 8.7.0
+需要安装符合torch要求的cuda版本，torch目前支持11.8/12.4/12.6
 
 - CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
-- cuDNN v8.7.0 (November 28th, 2022), for CUDA 11.x https://developer.nvidia.com/rdp/cudnn-archive
+- CUDA 12.4 https://developer.nvidia.com/cuda-12-4-0-download-archive
+- CUDA 12.6 https://developer.nvidia.com/cuda-12-6-0-download-archive
 
 ## 2. 安装anaconda
 
@@ -16,17 +17,15 @@ https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-2024.06-1-Window
 
 ## 3. 使用conda 创建环境
 
-需指定python版本为3.10
-
 ```bash
-conda create -n MinerU python=3.10
-conda activate MinerU
+conda create -n mineru 'python<3.13' -y
+conda activate mineru
 ```
 
 ## 4. 安装应用
 
 ```bash
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!IMPORTANT]
@@ -36,7 +35,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > magic-pdf --version
 > ```
 >
-> 如果版本号小于0.7.0，请到issue中向我们反馈
+> 如果版本号小于 1.3.0 ，请到issue中向我们反馈
 
 ## 5. 下载模型
 
@@ -61,12 +60,12 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 
 ## 8. 测试CUDA加速
 
-如果您的显卡显存大于等于 **8GB** ，可以进行以下流程，测试CUDA解析加速效果
+如果您的显卡显存大于等于 **6GB** ，可以进行以下流程，测试CUDA解析加速效果
 
-**1.覆盖安装支持cuda的torch和torchvision**
+**1.覆盖安装支持cuda的torch和torchvision**(请根据cuda版本选择合适的index-url，具体可参考[torch官网](https://pytorch.org/get-started/locally/))
 
 ```bash
-pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu118
+pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
 ```
 
 **2.修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值**
@@ -84,20 +83,4 @@ magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 > [!TIP]
-> CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下，`layout detection time` 和 `mfr time` 应提速10倍以上。
-
-## 9. 为ocr开启cuda加速
-
-**1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
-
-```bash
-pip install paddlepaddle-gpu==2.6.1
-```
-
-**2.运行以下命令测试ocr加速效果**
-
-```bash
-magic-pdf -p small_ocr.pdf -o ./output
-```
-> [!TIP]
-> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr time`应提速10倍以上。
+> CUDA加速是否生效可以根据log中输出的各个阶段的耗时来简单判断，通常情况下，cuda加速后运行速度比cpu更快。
