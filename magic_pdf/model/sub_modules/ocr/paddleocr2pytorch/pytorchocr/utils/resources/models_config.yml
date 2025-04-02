@@ -1,6 +1,6 @@
 lang:
   ch:
-    det: ch_PP-OCRv4_det_infer.pth
+    det: ch_PP-OCRv3_det_infer.pth
     rec: ch_PP-OCRv4_rec_infer.pth
     dict: ppocr_keys_v1.txt
   en:
