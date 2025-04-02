@@ -216,7 +216,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">python版本</td>
-        <td colspan="3">3.10 (请务必通过conda创建3.10虚拟环境)</td>
+        <td colspan="3">>=3.9,<=3.12</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver 版本</td>
@@ -226,8 +226,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">CUDA环境</td>
-        <td>自动安装[12.1(pytorch)+11.8(paddle)]</td>
-        <td>11.8(手动安装)+cuDNN v8.7.0(手动安装)</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
         <td>None</td>
     </tr>
     <tr>
@@ -237,12 +237,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>None</td>
     </tr>
     <tr>
-        <td rowspan="2">GPU硬件支持列表</td>
-        <td colspan="2">显存8G以上</td>
+        <td rowspan="2">GPU/MPS 硬件支持列表</td>
+        <td colspan="2">显存6G以上</td>
         <td colspan="2">
-        2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
-        8G显存及以上可开启全部加速功能</td>
-        <td rowspan="2">None</td>
+        Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
+        6G显存及以上</td>
+        <td rowspan="2">apple slicon</td>
     </tr>
 </table>
 
@@ -262,9 +262,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
-conda create -n mineru python=3.10
+conda create -n mineru 'python<3.13' -y
 conda activate mineru
-pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 #### 2. 下载模型权重文件

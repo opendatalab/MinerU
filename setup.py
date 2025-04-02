@@ -26,9 +26,10 @@ if __name__ == '__main__':
     setup(
         name="magic_pdf",  # 项目名
         version=__version__,  # 自动从tag中获取版本号
-        packages=find_packages() + ["magic_pdf.resources"],  # 包含所有的包
+        packages=find_packages() + ["magic_pdf.resources"] + ["magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources"],  # 包含所有的包
         package_data={
             "magic_pdf.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
+            "magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources": ["**"],  # pytorchocr.resources目录下的所有文件
         },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
@@ -41,9 +42,10 @@ if __name__ == '__main__':
                      "matplotlib;platform_system=='Linux' or platform_system=='Darwin'",  # linux 和 macos 不应限制matplotlib的最高版本，以避免无法更新导致的一些bug
                      "ultralytics>=8.3.48",  # yolov8,公式检测
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
+                     "dill",  # doclayout_yolo
                      "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                      "PyYAML",  # yaml
-                     "ftfy"
+                     "ftfy", # unimernet_hf
                      "openai",  # openai SDK
                      ],
             "old_linux":[

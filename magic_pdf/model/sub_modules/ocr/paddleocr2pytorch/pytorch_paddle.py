@@ -63,14 +63,14 @@ class PytorchPaddleOCR(TextSystem):
         else:
             pass
 
-        models_config_path = os.path.join(root_dir, 'models_config.yml')
+        models_config_path = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'models_config.yml')
         with open(models_config_path) as file:
             config = yaml.safe_load(file)
             det, rec, dict_file = get_model_params(self.lang, config)
         ocr_models_dir = os.path.join(get_local_models_dir(), 'OCR', 'paddleocr_torch')
         kwargs['det_model_path'] = os.path.join(ocr_models_dir, det)
         kwargs['rec_model_path'] = os.path.join(ocr_models_dir, rec)
-        kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'dict', dict_file)
+        kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
 
         kwargs['device'] = get_device()
 
