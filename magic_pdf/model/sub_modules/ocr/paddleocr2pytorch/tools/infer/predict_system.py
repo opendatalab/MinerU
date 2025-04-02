@@ -16,7 +16,6 @@ class TextSystem(object):
         if self.use_angle_cls:
             self.text_classifier = predict_cls.TextClassifier(args, **kwargs)
 
-
     def get_rotate_crop_image(self, img, points):
         '''
         img_height, img_width = img.shape[0:2]

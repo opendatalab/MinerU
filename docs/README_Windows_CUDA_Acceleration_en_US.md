@@ -53,7 +53,7 @@ You can find the `magic-pdf.json` file in your 【user directory】 .
 Download a sample file from the repository and test it.
 
 ```powershell
-  wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
+  wget https://github.com/opendatalab/MinerU/raw/master/demo/pdfs/small_ocr.pdf -O small_ocr.pdf
   magic-pdf -p small_ocr.pdf -o ./output
 ```
 

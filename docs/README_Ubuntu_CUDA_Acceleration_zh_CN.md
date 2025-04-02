@@ -91,7 +91,7 @@ pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 从仓库中下载样本文件，并测试
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/small_ocr.pdf
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/pdfs/small_ocr.pdf
 magic-pdf -p small_ocr.pdf -o ./output
 ```
 

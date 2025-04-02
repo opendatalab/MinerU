@@ -90,8 +90,6 @@ without method specified, auto will be used by default.""",
     default=None,
 )
 def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
-    model_config.__use_inside_model__ = True
-    model_config.__model_mode__ = 'full'
     os.makedirs(output_dir, exist_ok=True)
     temp_dir = tempfile.mkdtemp()
     def read_fn(path: Path):
