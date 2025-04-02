@@ -371,12 +371,6 @@ class TextRecognizer(BaseOCRV20):
                     gsrm_slf_attn_bias1_inp = torch.from_numpy(gsrm_slf_attn_bias1_list)
                     gsrm_slf_attn_bias2_inp = torch.from_numpy(gsrm_slf_attn_bias2_list)
 
-                    # if self.use_gpu:
-                    #     inp = inp.cuda()
-                    #     encoder_word_pos_inp = encoder_word_pos_inp.cuda()
-                    #     gsrm_word_pos_inp = gsrm_word_pos_inp.cuda()
-                    #     gsrm_slf_attn_bias1_inp = gsrm_slf_attn_bias1_inp.cuda()
-                    #     gsrm_slf_attn_bias2_inp = gsrm_slf_attn_bias2_inp.cuda()
                     inp = inp.to(self.device)
                     encoder_word_pos_inp = encoder_word_pos_inp.to(self.device)
                     gsrm_word_pos_inp = gsrm_word_pos_inp.to(self.device)
@@ -398,8 +392,6 @@ class TextRecognizer(BaseOCRV20):
 
                 with torch.no_grad():
                     inp = torch.from_numpy(norm_img_batch)
-                    # if self.use_gpu:
-                    #     inp = inp.cuda()
                     inp = inp.to(self.device)
                     preds = self.net(inp)
 

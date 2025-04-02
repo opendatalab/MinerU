@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
 import os.path
+import warnings
 from pathlib import Path
 
 import cv2
@@ -92,45 +93,46 @@ class PytorchPaddleOCR(TextSystem):
             exit(0)
         img = check_img(img)
         imgs = [img]
-
-        if det and rec:
-            ocr_res = []
-            for img in imgs:
-                img = preprocess_image(img)
-                dt_boxes, rec_res = self.__call__(img, mfd_res=mfd_res)
-                if not dt_boxes and not rec_res:
-                    ocr_res.append(None)
-                    continue
-                tmp_res = [[box.tolist(), res] for box, res in zip(dt_boxes, rec_res)]
-                ocr_res.append(tmp_res)
-            return ocr_res
-        elif det and not rec:
-            ocr_res = []
-            for img in imgs:
-                img = preprocess_image(img)
-                dt_boxes, elapse = self.text_detector(img)
-                # logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
-                if dt_boxes is None:
-                    ocr_res.append(None)
-                    continue
-                dt_boxes = sorted_boxes(dt_boxes)
-                # merge_det_boxes 和 update_det_boxes 都会把poly转成bbox再转回poly，因此需要过滤所有倾斜程度较大的文本框
-                dt_boxes = merge_det_boxes(dt_boxes)
-                if mfd_res:
-                    dt_boxes = update_det_boxes(dt_boxes, mfd_res)
-                tmp_res = [box.tolist() for box in dt_boxes]
-                ocr_res.append(tmp_res)
-            return ocr_res
-        elif not det and rec:
-            ocr_res = []
-            for img in imgs:
-                if not isinstance(img, list):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            if det and rec:
+                ocr_res = []
+                for img in imgs:
                     img = preprocess_image(img)
-                    img = [img]
-                rec_res, elapse = self.text_recognizer(img)
-                # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
-                ocr_res.append(rec_res)
-            return ocr_res
+                    dt_boxes, rec_res = self.__call__(img, mfd_res=mfd_res)
+                    if not dt_boxes and not rec_res:
+                        ocr_res.append(None)
+                        continue
+                    tmp_res = [[box.tolist(), res] for box, res in zip(dt_boxes, rec_res)]
+                    ocr_res.append(tmp_res)
+                return ocr_res
+            elif det and not rec:
+                ocr_res = []
+                for img in imgs:
+                    img = preprocess_image(img)
+                    dt_boxes, elapse = self.text_detector(img)
+                    # logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
+                    if dt_boxes is None:
+                        ocr_res.append(None)
+                        continue
+                    dt_boxes = sorted_boxes(dt_boxes)
+                    # merge_det_boxes 和 update_det_boxes 都会把poly转成bbox再转回poly，因此需要过滤所有倾斜程度较大的文本框
+                    dt_boxes = merge_det_boxes(dt_boxes)
+                    if mfd_res:
+                        dt_boxes = update_det_boxes(dt_boxes, mfd_res)
+                    tmp_res = [box.tolist() for box in dt_boxes]
+                    ocr_res.append(tmp_res)
+                return ocr_res
+            elif not det and rec:
+                ocr_res = []
+                for img in imgs:
+                    if not isinstance(img, list):
+                        img = preprocess_image(img)
+                        img = [img]
+                    rec_res, elapse = self.text_recognizer(img)
+                    # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
+                    ocr_res.append(rec_res)
+                return ocr_res
 
     def __call__(self, img, mfd_res=None):
 
