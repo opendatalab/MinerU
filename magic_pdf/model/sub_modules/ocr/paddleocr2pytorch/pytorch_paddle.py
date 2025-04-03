@@ -86,6 +86,7 @@ class PytorchPaddleOCR(TextSystem):
             det=True,
             rec=True,
             mfd_res=None,
+            tqdm_enable=False,
             ):
         assert isinstance(img, (np.ndarray, list, str, bytes))
         if isinstance(img, list) and det == True:
@@ -129,7 +130,7 @@ class PytorchPaddleOCR(TextSystem):
                     if not isinstance(img, list):
                         img = preprocess_image(img)
                         img = [img]
-                    rec_res, elapse = self.text_recognizer(img)
+                    rec_res, elapse = self.text_recognizer(img, tqdm_enable=tqdm_enable)
                     # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
                     ocr_res.append(rec_res)
                 return ocr_res

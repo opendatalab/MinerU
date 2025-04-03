@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 
 class MathDataset(Dataset):
@@ -107,7 +108,8 @@ class UnimernetModel(object):
 
         # Process batches and store results
         mfr_res = []
-        for mf_img in dataloader:
+        # for mf_img in dataloader:
+        for mf_img in tqdm(dataloader, desc="MFR Predict"):
             mf_img = mf_img.to(dtype=self.model.dtype)
             mf_img = mf_img.to(self.device)
             with torch.no_grad():

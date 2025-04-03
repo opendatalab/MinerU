@@ -4,6 +4,8 @@ import numpy as np
 import math
 import time
 import torch
+from tqdm import tqdm
+
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
 from . import pytorchocr_utility as utility
 from ...pytorchocr.postprocess import build_post_process
@@ -286,7 +288,7 @@ class TextRecognizer(BaseOCRV20):
 
         return img
 
-    def __call__(self, img_list):
+    def __call__(self, img_list, tqdm_enable=False):
         img_num = len(img_list)
         # Calculate the aspect ratio of all text bars
         width_list = []
@@ -299,7 +301,8 @@ class TextRecognizer(BaseOCRV20):
         rec_res = [['', 0.0]] * img_num
         batch_num = self.rec_batch_num
         elapse = 0
-        for beg_img_no in range(0, img_num, batch_num):
+        # for beg_img_no in range(0, img_num, batch_num):
+        for beg_img_no in tqdm(range(0, img_num, batch_num), desc='OCR-rec Predict', disable=not tqdm_enable):
             end_img_no = min(img_num, beg_img_no + batch_num)
             norm_img_batch = []
             max_wh_ratio = 0
