@@ -47,20 +47,23 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
-- 2025/04/03 Release of version 1.3.0, with many changes in this version:
+- 2025/04/03 Release of 1.3.0, in this version we made many optimizations and improvements:
   - Installation and compatibility optimization
-    - By using paddleocr2torch, completely replaced the paddle framework and paddleocr used in the project, resolving conflicts between paddle and torch.
-    - Removed the use of layoutlmv3 in layout, solving compatibility issues caused by `detectron2`.
-    - Extended torch version compatibility to 2.2~2.6.
-    - CUDA compatibility extended to 11.8~12.6 (CUDA version determined by torch), addressing compatibility issues for some users with 50-series and H-series Nvidia GPUs.
-    - Python compatible versions extended to 3.10~3.12, resolving the issue of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
-  - Performance optimization (compared to version 1.0.1, formula parsing speed improved by over 1400%, and overall parsing speed improved by over 500%)
-    - Improved parsing speed for batch processing of multiple small PDF files ([script example](demo/batch_demo.py)).
-    - Optimized the loading and usage of the mfr model, reducing memory usage and improving parsing speed. (requires re-executing the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files)
-    - Optimized memory usage, allowing the project to run with as little as 6GB.
-    - Improved running speed on mps devices.
+    - By removing the use of `layoutlmv3` in layout, resolved compatibility issues caused by `detectron2`.
+    - Torch version compatibility extended to 2.2~2.6 (excluding 2.5).
+    - CUDA compatibility supports 11.8/12.4/12.6 (CUDA version determined by torch), resolving compatibility issues for some users with 50-series and H-series GPUs.
+    - Python compatible versions expanded to 3.10~3.12, solving the problem of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
+    - Offline deployment process optimized; no internet connection required after successful deployment to download any model files.
+  - Performance optimization
+    - By supporting batch processing of multiple PDF files ([script example](demo/batch_demo.py)), improved parsing speed for small files in batches (compared to version 1.0.1, formula parsing speed increased by over 1400%, overall parsing speed increased by over 500%).
+    - Optimized loading and usage of the mfr model, reducing GPU memory usage and improving parsing speed (requires re-execution of the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files).
+    - Optimized GPU memory usage, requiring only a minimum of 6GB to run this project.
+    - Improved running speed on MPS devices.
   - Parsing effect optimization
-    - Updated the mfr model to unimernet(2503), solving the issue of missing line breaks in multi-line formulas.
+    - Updated the mfr model to `unimernet(2503)`, solving the issue of lost line breaks in multi-line formulas.
+  - Usability Optimization
+    - By using `paddleocr2torch`, completely replaced the use of the `paddle` framework and `paddleocr` in the project, resolving conflicts between `paddle` and `torch`, as well as thread safety issues caused by the `paddle` framework.
+    - Added a real-time progress bar during the parsing process to accurately track progress, making the wait less painful.
 - 2025/03/03 1.2.1 released, fixed several bugs:
   - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
   - Fixed caption matching inaccuracies in certain scenarios
