@@ -37,53 +37,57 @@ Also you can try `online demo <https://www.modelscope.cn/studios/OpenDataLab/Min
         }
     </style>
     <table>
-        <tr>
-            <td colspan="3" rowspan="2">Operating System</td>
-        </tr>
-        <tr>
-            <td>Ubuntu 22.04 LTS</td>
-            <td>Windows 10 / 11</td>
-            <td>macOS 11+</td>
-        </tr>
-        <tr>
-            <td colspan="3">CPU</td>
-            <td>x86_64(unsupported ARM Linux)</td>
-            <td>x86_64(unsupported ARM Windows)</td>
-            <td>x86_64 / arm64</td>
-        </tr>
-        <tr>
-            <td colspan="3">Memory</td>
-            <td colspan="3">16GB or more, recommended 32GB+</td>
-        </tr>
-        <tr>
-            <td colspan="3">Python Version</td>
-            <td colspan="3">3.10(Please make sure to create a Python 3.10 virtual environment using conda)</td>
-        </tr>
-        <tr>
-            <td colspan="3">Nvidia Driver Version</td>
-            <td>latest (Proprietary Driver)</td>
-            <td>latest</td>
-            <td>None</td>
-        </tr>
-        <tr>
-            <td colspan="3">CUDA Environment</td>
-            <td>Automatic installation [12.1 (pytorch) + 11.8 (paddle)]</td>
-            <td>11.8 (manual installation) + cuDNN v8.7.0 (manual installation)</td>
-            <td>None</td>
-        </tr>
-        <tr>
-            <td rowspan="2">GPU Hardware Support List</td>
-            <td colspan="2">Minimum Requirement 8G+ VRAM</td>
-            <td colspan="2">3060ti/3070/4060<br>
-            8G VRAM enables layout, formula recognition acceleration and OCR acceleration</td>
-            <td rowspan="2">None</td>
-        </tr>
-        <tr>
-            <td colspan="2">Recommended Configuration 10G+ VRAM</td>
-            <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-            10G VRAM or more can enable layout, formula recognition, OCR acceleration and table recognition acceleration simultaneously
-            </td>
-        </tr>
+    <tr>
+        <td colspan="3" rowspan="2">Operating System</td>
+    </tr>
+    <tr>
+        <td>Linux after 2019</td>
+        <td>Windows 10 / 11</td>
+        <td>macOS 11+</td>
+    </tr>
+    <tr>
+        <td colspan="3">CPU</td>
+        <td>x86_64 / arm64</td>
+        <td>x86_64(unsupported ARM Windows)</td>
+        <td>x86_64 / arm64</td>
+    </tr>
+    <tr>
+        <td colspan="3">Memory Requirements</td>
+        <td colspan="3">16GB or more, recommended 32GB+</td>
+    </tr>
+    <tr>
+        <td colspan="3">Storage Requirements</td>
+        <td colspan="3">20GB or more, with a preference for SSD</td>
+    </tr>
+    <tr>
+        <td colspan="3">Python Version</td>
+        <td colspan="3">3.10~3.12</td>
+    </tr>
+    <tr>
+        <td colspan="3">Nvidia Driver Version</td>
+        <td>latest (Proprietary Driver)</td>
+        <td>latest</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CUDA Environment</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CANN Environment(NPU support)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td rowspan="2">GPU/MPS Hardware Support List</td>
+        <td colspan="2">GPU VRAM 6GB or more</td>
+        <td colspan="2">All GPUs with Tensor Cores produced from Volta(2017) onwards.<br>
+        More than 6GB VRAM </td>
+        <td rowspan="2">apple slicon</td>
+    </tr>
     </table>
 
 
@@ -93,9 +97,9 @@ Create an environment
 
 .. code-block:: shell
 
-    conda create -n MinerU python=3.10
-    conda activate MinerU
-    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+    conda create -n mineru 'python<3.13' -y
+    conda activate mineru
+    pip install -U "magic-pdf[full]"
 
 
 Download model weight files
