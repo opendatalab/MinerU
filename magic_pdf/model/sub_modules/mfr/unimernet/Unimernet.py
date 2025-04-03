@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 
 class MathDataset(Dataset):
@@ -107,12 +108,19 @@ class UnimernetModel(object):
 
         # Process batches and store results
         mfr_res = []
-        for mf_img in dataloader:
-            mf_img = mf_img.to(dtype=self.model.dtype)
-            mf_img = mf_img.to(self.device)
-            with torch.no_grad():
-                output = self.model.generate({"image": mf_img})
-            mfr_res.extend(output["fixed_str"])
+        # for mf_img in dataloader:
+
+        with tqdm(total=len(sorted_images), desc="MFR Predict") as pbar:
+            for index, mf_img in enumerate(dataloader):
+                mf_img = mf_img.to(dtype=self.model.dtype)
+                mf_img = mf_img.to(self.device)
+                with torch.no_grad():
+                    output = self.model.generate({"image": mf_img})
+                mfr_res.extend(output["fixed_str"])
+
+                # 更新进度条，每次增加batch_size，但要注意最后一个batch可能不足batch_size
+                current_batch_size = min(batch_size, len(sorted_images) - index * batch_size)
+                pbar.update(current_batch_size)
 
         # Restore original order
         unsorted_results = [""] * len(mfr_res)

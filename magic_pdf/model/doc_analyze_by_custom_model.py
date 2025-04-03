@@ -188,7 +188,7 @@ def batch_doc_analyze(
     formula_enable=None,
     table_enable=None,
 ):
-    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
+    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 200))
     batch_size = MIN_BATCH_INFERENCE_SIZE
     images = []
     page_wh_list = []
@@ -245,8 +245,7 @@ def may_batch_image_analyze(
 
     model_manager = ModelSingleton()
 
-    images = [image for image, _, _ in images_with_extra_info]
-    batch_analyze = False
+    # images = [image for image, _, _ in images_with_extra_info]
     batch_ratio = 1
     device = get_device()
 
@@ -269,25 +268,22 @@ def may_batch_image_analyze(
             else:
                 batch_ratio = 1
             logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
-            # batch_analyze = True
-    elif str(device).startswith('mps'):
-        # batch_analyze = True
-        pass
 
-    doc_analyze_start = time.time()
+
+    # doc_analyze_start = time.time()
 
     batch_model = BatchAnalyze(model_manager, batch_ratio, show_log, layout_model, formula_enable, table_enable)
     results = batch_model(images_with_extra_info)
 
-    gc_start = time.time()
+    # gc_start = time.time()
     clean_memory(get_device())
-    gc_time = round(time.time() - gc_start, 2)
-    logger.info(f'gc time: {gc_time}')
+    # gc_time = round(time.time() - gc_start, 2)
+    # logger.debug(f'gc time: {gc_time}')
 
-    doc_analyze_time = round(time.time() - doc_analyze_start, 2)
-    doc_analyze_speed = round(len(images) / doc_analyze_time, 2)
-    logger.info(
-        f'doc analyze time: {round(time.time() - doc_analyze_start, 2)},'
-        f' speed: {doc_analyze_speed} pages/second'
-    )
-    return (idx, results)
+    # doc_analyze_time = round(time.time() - doc_analyze_start, 2)
+    # doc_analyze_speed = round(len(images) / doc_analyze_time, 2)
+    # logger.debug(
+    #     f'doc analyze time: {round(time.time() - doc_analyze_start, 2)},'
+    #     f' speed: {doc_analyze_speed} pages/second'
+    # )
+    return idx, results

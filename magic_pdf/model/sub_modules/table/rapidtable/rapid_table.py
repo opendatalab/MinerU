@@ -9,7 +9,7 @@ from magic_pdf.libs.config_reader import get_device
 
 
 class RapidTableModel(object):
-    def __init__(self, ocr_engine, table_sub_model_name):
+    def __init__(self, ocr_engine, table_sub_model_name='slanet_plus'):
         sub_model_list = [model.value for model in ModelType]
         if table_sub_model_name is None:
             input_args = RapidTableInput()
