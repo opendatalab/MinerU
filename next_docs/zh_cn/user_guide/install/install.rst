@@ -24,53 +24,58 @@
         }
     </style>
     <table>
-        <tr>
-            <td colspan="3" rowspan="2">操作系统</td>
-        </tr>
-        <tr>
-            <td>Ubuntu 22.04 LTS</td>
-            <td>Windows 10 / 11</td>
-            <td>macOS 11+</td>
-        </tr>
-        <tr>
-            <td colspan="3">CPU</td>
-            <td>x86_64(暂不支持ARM Linux)</td>
-            <td>x86_64(暂不支持ARM Windows)</td>
-            <td>x86_64 / arm64</td>
-        </tr>
-        <tr>
-            <td colspan="3">内存</td>
-            <td colspan="3">大于等于16GB，推荐32G以上</td>
-        </tr>
-        <tr>
-            <td colspan="3">python版本</td>
-            <td colspan="3">3.10 (请务必通过conda创建3.10虚拟环境)</td>
-        </tr>
-        <tr>
-            <td colspan="3">Nvidia Driver 版本</td>
-            <td>latest(专有驱动)</td>
-            <td>latest</td>
-            <td>None</td>
-        </tr>
-        <tr>
-            <td colspan="3">CUDA环境</td>
-            <td>自动安装[12.1(pytorch)+11.8(paddle)]</td>
-            <td>11.8(手动安装)+cuDNN v8.7.0(手动安装)</td>
-            <td>None</td>
-        </tr>
-        <tr>
-            <td rowspan="2">GPU硬件支持列表</td>
-            <td colspan="2">最低要求 8G+显存</td>
-            <td colspan="2">3060ti/3070/4060<br>
-            8G显存可开启layout、公式识别和ocr加速</td>
-            <td rowspan="2">None</td>
-        </tr>
-        <tr>
-            <td colspan="2">推荐配置 10G+显存</td>
-            <td colspan="2">3080/3080ti/3090/3090ti/4070/4070ti/4070tisuper/4080/4090<br>
-            10G显存及以上可以同时开启layout、公式识别和ocr加速和表格识别加速<br>
-            </td>
-        </tr>
+    <tr>
+        <td colspan="3" rowspan="2">操作系统</td>
+    </tr>
+    <tr>
+        <td>Linux after 2019</td>
+        <td>Windows 10 / 11</td>
+        <td>macOS 11+</td>
+    </tr>
+    <tr>
+        <td colspan="3">CPU</td>
+        <td>x86_64 / arm64</td>
+        <td>x86_64(暂不支持ARM Windows)</td>
+        <td>x86_64 / arm64</td>
+    </tr>
+    <tr>
+        <td colspan="3">内存</td>
+        <td colspan="3">大于等于16GB，推荐32G以上</td>
+    </tr>
+    <tr>
+        <td colspan="3">存储空间</td>
+        <td colspan="3">大于等于20GB，推荐使用SSD以获得最佳性能</td>
+    </tr>
+    <tr>
+        <td colspan="3">python版本</td>
+        <td colspan="3">>=3.9,<=3.12</td>
+    </tr>
+    <tr>
+        <td colspan="3">Nvidia Driver 版本</td>
+        <td>latest(专有驱动)</td>
+        <td>latest</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CUDA环境</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td colspan="3">CANN环境(NPU支持)</td>
+        <td>8.0+(Ascend 910b)</td>
+        <td>None</td>
+        <td>None</td>
+    </tr>
+    <tr>
+        <td rowspan="2">GPU/MPS 硬件支持列表</td>
+        <td colspan="2">显存6G以上</td>
+        <td colspan="2">
+        Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
+        6G显存及以上</td>
+        <td rowspan="2">apple slicon</td>
+    </tr>
     </table>
 
 
@@ -79,9 +84,9 @@
 
 .. code-block:: shell
 
-    conda create -n MinerU python=3.10
-    conda activate MinerU
-    pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+    conda create -n mineru 'python<3.13' -y
+    conda activate mineru
+    pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 
 
 下载模型权重文件
