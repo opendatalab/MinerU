@@ -49,14 +49,14 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 # Changelog
 - 2025/04/03 Release of version 1.3.0, with many changes in this version:
   - Installation and compatibility optimization
-    - By using paddleocr2torch, completely replaced the paddle framework and paddleocr used in the project, resolving conflicts between paddle and torch (OCR speed under single-process is slightly slower compared to the paddle framework).
+    - By using paddleocr2torch, completely replaced the paddle framework and paddleocr used in the project, resolving conflicts between paddle and torch.
     - Removed the use of layoutlmv3 in layout, solving compatibility issues caused by `detectron2`.
     - Extended torch version compatibility to 2.2~2.6.
-    - CUDA compatibility extended to 11.8~12.6 (CUDA version determined by torch), addressing compatibility issues for some users with 50-series and H-series GPUs.
+    - CUDA compatibility extended to 11.8~12.6 (CUDA version determined by torch), addressing compatibility issues for some users with 50-series and H-series Nvidia GPUs.
     - Python compatible versions extended to 3.10~3.12, resolving the issue of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
   - Performance optimization (compared to version 1.0.1, formula parsing speed improved by over 1400%, and overall parsing speed improved by over 500%)
-    - Supported batch processing for multiple PDF files, enhancing the parsing speed of batch files.
-    - Optimized the loading and usage of the mfr model, reducing memory usage and improving parsing speed.
+    - Improved parsing speed for batch processing of multiple small PDF files ([script example](demo/batch_demo.py)).
+    - Optimized the loading and usage of the mfr model, reducing memory usage and improving parsing speed. (requires re-executing the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files)
     - Optimized memory usage, allowing the project to run with as little as 6GB.
     - Improved running speed on mps devices.
   - Parsing effect optimization
