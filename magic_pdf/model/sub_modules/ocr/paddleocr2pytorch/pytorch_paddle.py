@@ -72,6 +72,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['det_model_path'] = os.path.join(ocr_models_dir, det)
         kwargs['rec_model_path'] = os.path.join(ocr_models_dir, rec)
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
+        # kwargs['rec_batch_num'] = 8
 
         kwargs['device'] = get_device()
 
@@ -86,6 +87,7 @@ class PytorchPaddleOCR(TextSystem):
             det=True,
             rec=True,
             mfd_res=None,
+            tqdm_enable=False,
             ):
         assert isinstance(img, (np.ndarray, list, str, bytes))
         if isinstance(img, list) and det == True:
@@ -129,7 +131,7 @@ class PytorchPaddleOCR(TextSystem):
                     if not isinstance(img, list):
                         img = preprocess_image(img)
                         img = [img]
-                    rec_res, elapse = self.text_recognizer(img)
+                    rec_res, elapse = self.text_recognizer(img, tqdm_enable=tqdm_enable)
                     # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
                     ocr_res.append(rec_res)
                 return ocr_res

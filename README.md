@@ -307,7 +307,7 @@ You can modify certain configurations in this file to enable or disable features
     },
     "table-config": {
         "model": "rapid_table", 
-        "sub_model": "slanet_plus",  // When the model is "rapid_table", you can choose a sub_model. The options are "slanet_plus" and "unitable"
+        "sub_model": "slanet_plus",
         "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
         "max_time": 400
     }
