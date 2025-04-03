@@ -137,6 +137,10 @@ def cli(path, output_dir, method, lang, debug_able, start_page_id, end_page_id):
         doc_paths = []
         for doc_path in Path(path).glob('*'):
             if doc_path.suffix in pdf_suffixes + image_suffixes + ms_office_suffixes:
+                if doc_path.suffix not in ms_office_suffixes:
+                    basename = Path(doc_path).stem
+                    convert_file_to_pdf(str(doc_path), temp_dir)
+                    doc_path = Path(os.path.join(temp_dir, f'{basename}.pdf'))
                 doc_paths.append(doc_path)
         datasets = batch_build_dataset(doc_paths, 4, lang)
         batch_do_parse(output_dir, [str(doc_path.stem) for doc_path in doc_paths], datasets, method, debug_able, lang=lang)
