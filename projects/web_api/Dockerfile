@@ -23,10 +23,10 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN python -m venv /app/venv && \
     . /app/venv/bin/activate && \
-    pip install -r requirements.txt && \
-    pip uninstall -y paddlepaddle && \
-    pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
-        paddlepaddle-gpu==3.0.0rc1
+    pip install -r requirements.txt
+#     pip uninstall -y paddlepaddle && \
+#     pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
+#         paddlepaddle-gpu==3.0.0rc1
 
 # Download models
 COPY download_models.py .
@@ -51,8 +51,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create volume for paddleocr models
-RUN mkdir -p /root/.paddleocr
-VOLUME [ "/root/.paddleocr" ]
+# RUN mkdir -p /root/.paddleocr
+# VOLUME [ "/root/.paddleocr" ]
 
 # Copy the app and its configuration file
 COPY entrypoint.sh /app/entrypoint.sh
