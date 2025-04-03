@@ -1,4 +1,5 @@
 from doclayout_yolo import YOLOv10
+from tqdm import tqdm
 
 
 class DocLayoutYOLOModel(object):
@@ -31,7 +32,8 @@ class DocLayoutYOLOModel(object):
 
     def batch_predict(self, images: list, batch_size: int) -> list:
         images_layout_res = []
-        for index in range(0, len(images), batch_size):
+        # for index in range(0, len(images), batch_size):
+        for index in tqdm(range(0, len(images), batch_size), desc="Layout Predict"):
             doclayout_yolo_res = [
                 image_res.cpu()
                 for image_res in self.model.predict(

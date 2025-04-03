@@ -47,6 +47,20 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/03 Release of version 1.3.0, with many changes in this version:
+  - Installation and compatibility optimization
+    - By using paddleocr2torch, completely replaced the paddle framework and paddleocr used in the project, resolving conflicts between paddle and torch.
+    - Removed the use of layoutlmv3 in layout, solving compatibility issues caused by `detectron2`.
+    - Extended torch version compatibility to 2.2~2.6.
+    - CUDA compatibility extended to 11.8~12.6 (CUDA version determined by torch), addressing compatibility issues for some users with 50-series and H-series Nvidia GPUs.
+    - Python compatible versions extended to 3.10~3.12, resolving the issue of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
+  - Performance optimization (compared to version 1.0.1, formula parsing speed improved by over 1400%, and overall parsing speed improved by over 500%)
+    - Improved parsing speed for batch processing of multiple small PDF files ([script example](demo/batch_demo.py)).
+    - Optimized the loading and usage of the mfr model, reducing memory usage and improving parsing speed. (requires re-executing the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files)
+    - Optimized memory usage, allowing the project to run with as little as 6GB.
+    - Improved running speed on mps devices.
+  - Parsing effect optimization
+    - Updated the mfr model to unimernet(2503), solving the issue of missing line breaks in multi-line formulas.
 - 2025/03/03 1.2.1 released, fixed several bugs:
   - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
   - Fixed caption matching inaccuracies in certain scenarios
@@ -215,7 +229,7 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
-        <td colspan="3">3.10(Please make sure to create a Python 3.10 virtual environment using conda)</td>
+        <td colspan="3">3.10~3.12</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver Version</td>
@@ -225,8 +239,8 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">CUDA Environment</td>
-        <td>Automatic installation [12.1 (pytorch) + 11.8 (paddle)]</td>
-        <td>11.8 (manual installation) + cuDNN v8.7.0 (manual installation)</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
         <td>None</td>
     </tr>
     <tr>
@@ -236,11 +250,11 @@ There are three different ways to experience MinerU:
         <td>None</td>
     </tr>
     <tr>
-        <td rowspan="2">GPU Hardware Support List</td>
-        <td colspan="2">GPU VRAM 8GB or more</td>
-        <td colspan="2">2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
-        8G VRAM can enable all acceleration features</td>
-        <td rowspan="2">None</td>
+        <td rowspan="2">GPU/MPS Hardware Support List</td>
+        <td colspan="2">GPU VRAM 6GB or more</td>
+        <td colspan="2">All GPUs with Tensor Cores produced from Volta(2017) onwards.<br>
+        More than 6GB VRAM </td>
+        <td rowspan="2">apple slicon</td>
     </tr>
 </table>
 
@@ -257,9 +271,9 @@ Synced with dev branch updates:
 #### 1. Install magic-pdf
 
 ```bash
-conda create -n mineru python=3.10
+conda create -n mineru 'python<3.13' -y
 conda activate mineru
-pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
+pip install -U "magic-pdf[full]"
 ```
 
 #### 2. Download model weight files
@@ -284,7 +298,7 @@ You can modify certain configurations in this file to enable or disable features
 {
     // other config
     "layout-config": {
-        "model": "doclayout_yolo" // Please change to "layoutlmv3" when using layoutlmv3.
+        "model": "doclayout_yolo" 
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -292,8 +306,8 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
-        "sub_model": "slanet_plus",  // When the model is "rapid_table", you can choose a sub_model. The options are "slanet_plus" and "unitable"
+        "model": "rapid_table", 
+        "sub_model": "slanet_plus",
         "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
         "max_time": 400
     }
@@ -308,7 +322,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
 > [!IMPORTANT]
-> Docker requires a GPU with at least 8GB of VRAM, and all acceleration features are enabled by default.
+> Docker requires a GPU with at least 6GB of VRAM, and all acceleration features are enabled by default.
 >
 > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
 > 
@@ -330,7 +344,7 @@ If your device has NPU acceleration hardware, you can follow the tutorial below 
 
 ### Using MPS
 
-If your device uses Apple silicon chips, you can enable MPS acceleration for certain supported tasks (such as layout detection and formula detection).
+If your device uses Apple silicon chips, you can enable MPS acceleration for your tasks.
 
 You can enable MPS acceleration by setting the `device-mode` parameter to `mps` in the `magic-pdf.json` configuration file.
 
@@ -341,10 +355,6 @@ You can enable MPS acceleration by setting the `device-mode` parameter to `mps` 
 }
 ```
 
-> [!TIP]
-> Since the formula recognition task cannot utilize MPS acceleration, you can disable the formula recognition feature in tasks where it is not needed to achieve optimal performance.
->
-> You can disable the formula recognition feature by setting the `enable` parameter in the `formula-config` section to `false`.
 
 ## Usage
 
@@ -418,6 +428,8 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [RapidOCR](https://github.com/RapidAI/RapidOCR)
+- [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)

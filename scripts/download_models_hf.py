@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 
 import requests
 from huggingface_hub import snapshot_download
@@ -16,7 +17,7 @@ def download_and_modify_json(url, local_filename, modifications):
     if os.path.exists(local_filename):
         data = json.load(open(local_filename))
         config_version = data.get('config_version', '0.0.0')
-        if config_version < '1.1.1':
+        if config_version < '1.2.0':
             data = download_json(url)
     else:
         data = download_json(url)
@@ -33,12 +34,13 @@ def download_and_modify_json(url, local_filename, modifications):
 if __name__ == '__main__':
 
     mineru_patterns = [
-        "models/Layout/LayoutLMv3/*",
+        # "models/Layout/LayoutLMv3/*",
         "models/Layout/YOLO/*",
         "models/MFD/YOLO/*",
-        "models/MFR/unimernet_small_2501/*",
-        "models/TabRec/TableMaster/*",
-        "models/TabRec/StructEqTable/*",
+        "models/MFR/unimernet_hf_small_2503/*",
+        "models/OCR/paddleocr_torch/*",
+        # "models/TabRec/TableMaster/*",
+        # "models/TabRec/StructEqTable/*",
     ]
     model_dir = snapshot_download('opendatalab/PDF-Extract-Kit-1.0', allow_patterns=mineru_patterns)
 
@@ -51,6 +53,12 @@ if __name__ == '__main__':
     model_dir = model_dir + '/models'
     print(f'model_dir is: {model_dir}')
     print(f'layoutreader_model_dir is: {layoutreader_model_dir}')
+
+    # paddleocr_model_dir = model_dir + '/OCR/paddleocr'
+    # user_paddleocr_dir = os.path.expanduser('~/.paddleocr')
+    # if os.path.exists(user_paddleocr_dir):
+    #     shutil.rmtree(user_paddleocr_dir)
+    # shutil.copytree(paddleocr_model_dir, user_paddleocr_dir)
 
     json_url = 'https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json'
     config_file_name = 'magic-pdf.json'
