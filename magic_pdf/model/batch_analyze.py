@@ -102,10 +102,13 @@ class BatchAnalyze:
                                           'single_page_mfdetrec_res':single_page_mfdetrec_res,
                                           'layout_res':layout_res,
                                           })
-            table_res_list_all_page.append({'table_res_list':table_res_list,
-                                            'lang':_lang,
-                                            'np_array_img':np_array_img,
-                                          })
+
+            for table_res in table_res_list:
+                table_img, _ = crop_img(table_res, np_array_img)
+                table_res_list_all_page.append({'table_res':table_res,
+                                                'lang':_lang,
+                                                'table_img':table_img,
+                                              })
 
         # 文本框检测
         det_start = time.time()
@@ -149,8 +152,8 @@ class BatchAnalyze:
             table_start = time.time()
             table_count = 0
             # for table_res_list_dict in table_res_list_all_page:
-            for table_res_list_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
-                _lang = table_res_list_dict['lang']
+            for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
+                _lang = table_res_dict['lang']
                 atom_model_manager = AtomModelSingleton()
                 ocr_engine = atom_model_manager.get_atom_model(
                     atom_model_name='ocr',
@@ -168,26 +171,23 @@ class BatchAnalyze:
                     ocr_engine=ocr_engine,
                     table_sub_model_name='slanet_plus'
                 )
-                for res in table_res_list_dict['table_res_list']:
-                    new_image, _ = crop_img(res, table_res_list_dict['np_array_img'])
-                    html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(new_image)
-                    # 判断是否返回正常
-                    if html_code:
-                        expected_ending = html_code.strip().endswith(
-                            '</html>'
-                        ) or html_code.strip().endswith('</table>')
-                        if expected_ending:
-                            res['html'] = html_code
-                        else:
-                            logger.warning(
-                                'table recognition processing fails, not found expected HTML table end'
-                            )
+                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
+                # 判断是否返回正常
+                if html_code:
+                    expected_ending = html_code.strip().endswith(
+                        '</html>'
+                    ) or html_code.strip().endswith('</table>')
+                    if expected_ending:
+                        table_res_dict['table_res']['html'] = html_code
                     else:
                         logger.warning(
-                            'table recognition processing fails, not get html return'
+                            'table recognition processing fails, not found expected HTML table end'
                         )
-                table_count += len(table_res_list_dict['table_res_list'])
-            # logger.info(f'table time: {round(time.time() - table_start, 2)}, image num: {table_count}')
+                else:
+                    logger.warning(
+                        'table recognition processing fails, not get html return'
+                    )
+            # logger.info(f'table time: {round(time.time() - table_start, 2)}, image num: {len(table_res_list_all_page)}')
 
         # Create dictionaries to store items by language
         need_ocr_lists_by_lang = {}  # Dict of lists for each language

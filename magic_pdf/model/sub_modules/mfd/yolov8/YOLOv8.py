@@ -16,9 +16,7 @@ class YOLOv8MFDModel(object):
     def batch_predict(self, images: list, batch_size: int) -> list:
         images_mfd_res = []
         # for index in range(0, len(images), batch_size):
-        for index in tqdm(range(0, len(images), batch_size),
-                          total=len(images) // batch_size + (1 if len(images) % batch_size != 0 else 0),
-                          desc="MFD Predict"):
+        for index in tqdm(range(0, len(images), batch_size), desc="MFD Predict"):
             mfd_res = [
                 image_res.cpu()
                 for image_res in self.mfd_model.predict(
