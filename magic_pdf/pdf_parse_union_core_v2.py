@@ -989,7 +989,7 @@ def pdf_parse_union(
             det_db_box_thresh=0.3,
             lang=lang
         )
-        rec_start = time.time()
+        # rec_start = time.time()
         ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
         # Verify we have matching counts
         assert len(ocr_res_list) == len(need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
@@ -998,8 +998,8 @@ def pdf_parse_union(
             ocr_text, ocr_score = ocr_res_list[index]
             span['content'] = ocr_text
             span['score'] = float(round(ocr_score, 2))
-        rec_time = time.time() - rec_start
-        logger.info(f'ocr-dynamic-rec time: {round(rec_time, 2)}, total images processed: {len(img_crop_list)}')
+        # rec_time = time.time() - rec_start
+        # logger.info(f'ocr-dynamic-rec time: {round(rec_time, 2)}, total images processed: {len(img_crop_list)}')
 
 
     """分段"""
