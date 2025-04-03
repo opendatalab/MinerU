@@ -12,6 +12,7 @@ import fitz
 import torch
 import numpy as np
 from loguru import logger
+from tqdm import tqdm
 
 from magic_pdf.config.enums import SupportedPdfParseMethod
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
@@ -932,17 +933,18 @@ def pdf_parse_union(
         logger.warning('end_page_id is out of range, use pdf_docs length')
         end_page_id = len(dataset) - 1
 
-    """初始化启动时间"""
-    start_time = time.time()
+    # """初始化启动时间"""
+    # start_time = time.time()
 
-    for page_id, page in enumerate(dataset):
-        """debug时输出每页解析的耗时."""
-        if debug_mode:
-            time_now = time.time()
-            logger.info(
-                f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
-            )
-            start_time = time_now
+    # for page_id, page in enumerate(dataset):
+    for page_id, page in tqdm(enumerate(dataset), total=len(dataset), desc="Processing pages"):
+        # """debug时输出每页解析的耗时."""
+        # if debug_mode:
+            # time_now = time.time()
+            # logger.info(
+            #     f'page_id: {page_id}, last_page_cost_time: {round(time.time() - start_time, 2)}'
+            # )
+            # start_time = time_now
 
         """解析pdf中的每一页"""
         if start_page_id <= page_id <= end_page_id:
@@ -988,7 +990,7 @@ def pdf_parse_union(
             lang=lang
         )
         rec_start = time.time()
-        ocr_res_list = ocr_model.ocr(img_crop_list, det=False)[0]
+        ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
         # Verify we have matching counts
         assert len(ocr_res_list) == len(need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
         # Process OCR results for this language

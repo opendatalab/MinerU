@@ -1,18 +1,14 @@
 import time
-
 import cv2
-import torch
 from loguru import logger
 from tqdm import tqdm
 
 from magic_pdf.config.constants import MODEL_NAME
-from magic_pdf.libs.config_reader import get_table_recog_config
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.model.sub_modules.model_utils import (
     clean_vram, crop_img, get_res_list_from_layout_res)
 from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
-from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableModel
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
@@ -86,7 +82,7 @@ class BatchAnalyze:
             # )
 
         # 清理显存
-        clean_vram(self.model.device, vram_threshold=8)
+        # clean_vram(self.model.device, vram_threshold=8)
 
         ocr_res_list_all_page = []
         table_res_list_all_page = []
