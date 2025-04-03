@@ -49,7 +49,6 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 # Changelog
 - 2025/04/03 Release of 1.3.0, in this version we made many optimizations and improvements:
   - Installation and compatibility optimization
-    - By using `paddleocr2torch`, completely replaced the use of `paddle` framework and `paddleocr` in the project, solving the conflict issue between `paddle` and `torch`.
     - By removing the use of `layoutlmv3` in layout, resolved compatibility issues caused by `detectron2`.
     - Torch version compatibility extended to 2.2~2.6 (excluding 2.5).
     - CUDA compatibility supports 11.8/12.4/12.6 (CUDA version determined by torch), resolving compatibility issues for some users with 50-series and H-series GPUs.
@@ -62,6 +61,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
     - Improved running speed on MPS devices.
   - Parsing effect optimization
     - Updated the mfr model to `unimernet(2503)`, solving the issue of lost line breaks in multi-line formulas.
+  - Usability Optimization
+    - By using `paddleocr2torch`, completely replaced the use of the `paddle` framework and `paddleocr` in the project, resolving conflicts between `paddle` and `torch`, as well as thread safety issues caused by the `paddle` framework.
+    - Added a real-time progress bar during the parsing process to accurately track progress, making the wait less painful.
 - 2025/03/03 1.2.1 released, fixed several bugs:
   - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
   - Fixed caption matching inaccuracies in certain scenarios
