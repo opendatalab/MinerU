@@ -10,7 +10,7 @@
 .. admonition:: Important
     :class: tip
 
-    Docker 需要至少 16GB 显存的 GPU，并且所有加速功能默认启用。
+    Docker 需要至少 6GB 显存的 GPU，并且所有加速功能默认启用。
    
     在运行此 Docker 容器之前，您可以使用以下命令检查您的设备是否支持 Docker 上的 CUDA 加速。
 
@@ -20,10 +20,10 @@
 
 .. code:: sh
 
-    wget https://github.com/opendatalab/MinerU/raw/master/Dockerfile
-    docker build -t mineru:latest .
-    docker run --rm -it --gpus=all mineru:latest /bin/bash
-    magic-pdf --help
+      wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile -O Dockerfile
+      docker build -t mineru:latest .
+      docker run -it --name mineru --gpus=all mineru:latest /bin/bash -c "echo 'source /opt/mineru_venv/bin/activate' >> ~/.bashrc && exec bash"
+      magic-pdf --help
 
 
 .. _ubuntu_22_04_lts_section:
@@ -42,12 +42,12 @@ Ubuntu 22.04 LTS
 .. admonition:: Important
     :class: tip
 
-    ``CUDA Version`` 显示的版本号应 >=12.1，如显示的版本号小于12.1，请升级驱动
+    ``CUDA Version`` 显示的版本号应 >= 12.4，如显示的版本号小于12.4，请升级驱动
 
 .. code:: text
 
    +---------------------------------------------------------------------------------------+
-   | NVIDIA-SMI 537.34                 Driver Version: 537.34       CUDA Version: 12.2     |
+   | NVIDIA-SMI 570.133.07             Driver Version: 572.83         CUDA Version: 12.8   |
    |-----------------------------------------+----------------------+----------------------+
    | GPU  Name                     TCC/WDDM  | Bus-Id        Disp.A | Volatile Uncorr. ECC |
    | Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
@@ -66,7 +66,7 @@ Ubuntu 22.04 LTS
 .. code:: bash
 
    sudo apt-get update
-   sudo apt-get install nvidia-driver-545
+   sudo apt-get install nvidia-driver-570-server
 
 安装专有驱动，安装完成后，重启电脑
 
@@ -89,19 +89,17 @@ Ubuntu 22.04 LTS
 4. 使用 conda 创建环境
 ---------------------
 
-需指定 python 版本为3.10
-
 .. code:: bash
 
-   conda create -n MinerU python=3.10
-   conda activate MinerU
+   conda create -n mineru 'python<3.13' -y
+   conda activate mineru
 
 5. 安装应用
 -----------
 
 .. code:: bash
 
-   pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+   pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 
 .. admonition:: Important
     :class: tip
@@ -112,7 +110,7 @@ Ubuntu 22.04 LTS
 
        magic-pdf --version
 
-    如果版本号小于0.7.0，请到issue中向我们反馈
+    如果版本号小于1.3.0，请到issue中向我们反馈
 
 6. 下载模型
 -----------
@@ -136,7 +134,7 @@ Ubuntu 22.04 LTS
 
 .. code:: bash
 
-   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/small_ocr.pdf
+   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/pdfs/small_ocr.pdf
    magic-pdf -p small_ocr.pdf -o ./output
 
 9. 测试CUDA加速
@@ -163,27 +161,8 @@ Ubuntu 22.04 LTS
 .. admonition:: Tip
     :class: tip
 
-    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``layout detection cost`` 和 ``mfr time`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段的耗时来简单判断，通常情况下，cuda应比cpu更快。
 
-10. 为 ocr 开启 cuda 加速
----------------------
-
-**1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
-
-.. code:: bash
-
-   python -m pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
-
-**2.运行以下命令测试ocr加速效果**
-
-.. code:: bash
-
-   magic-pdf -p small_ocr.pdf -o ./output
-
-.. admonition:: Tip
-    :class: tip
-
-    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``ocr cost`` 应提速10倍以上。
 
 
 .. _windows_10_or_11_section:
@@ -194,10 +173,12 @@ Windows 10/11
 1. 安装 cuda 和 cuDNN
 ------------------
 
-需要安装的版本 CUDA 11.8 + cuDNN 8.7.0
+需要安装符合torch要求的cuda版本，torch目前支持11.8/12.4/12.6
 
--  CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
--  cuDNN v8.7.0 (November 28th, 2022), for CUDA 11.x https://developer.nvidia.com/rdp/cudnn-archive
+- CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
+- CUDA 12.4 https://developer.nvidia.com/cuda-12-4-0-download-archive
+- CUDA 12.6 https://developer.nvidia.com/cuda-12-6-0-download-archive
+
 
 2. 安装 anaconda
 ---------------
@@ -209,19 +190,17 @@ Windows 10/11
 3. 使用 conda 创建环境
 ---------------------
 
-需指定python版本为3.10
-
 .. code:: bash
 
-   conda create -n MinerU python=3.10
-   conda activate MinerU
+    conda create -n mineru 'python<3.13' -y
+    conda activate mineru
 
 4. 安装应用
 -----------
 
 .. code:: bash
 
-   pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+   pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 
 .. admonition:: Important
     :class: tip
@@ -232,7 +211,7 @@ Windows 10/11
 
       magic-pdf --version
 
-    如果版本号小于0.7.0，请到issue中向我们反馈
+    如果版本号小于1.3.0，请到issue中向我们反馈
 
 5. 下载模型
 -----------
@@ -256,7 +235,7 @@ Windows 10/11
 
 .. code:: powershell
 
-    wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
+    wget https://github.com/opendatalab/MinerU/raw/master/demo/pdfs/small_ocr.pdf -O small_ocr.pdf
     magic-pdf -p small_ocr.pdf -o ./output
 
 8. 测试 CUDA 加速
@@ -264,22 +243,13 @@ Windows 10/11
 
 如果您的显卡显存大于等于 **8GB**，可以进行以下流程，测试 CUDA 解析加速效果
 
-**1.覆盖安装支持cuda的torch和torchvision**
+**1.覆盖安装支持cuda的torch和torchvision**(请根据cuda版本选择合适的index-url，具体可参考[torch官网](https://pytorch.org/get-started/locally/))
+
 
 .. code:: bash
 
-   pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu118
+   pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
 
-.. admonition:: Important
-    :class: tip
-
-    务必在命令中指定以下版本
-
-    .. code:: bash
-
-      torch==2.3.1 torchvision==0.18.1
-
-    这是我们支持的最高版本，如果不指定版本会自动安装更高版本导致程序无法运行
 
 **2.修改【用户目录】中配置文件magic-pdf.json中”device-mode”的值**
 
@@ -298,24 +268,5 @@ Windows 10/11
 .. admonition:: Tip
     :class: tip
 
-    CUDA 加速是否生效可以根据 log 中输出的各个阶段的耗时来简单判断，通常情况下， ``layout detection time`` 和 ``mfr time`` 应提速10倍以上。
+    CUDA 加速是否生效可以根据 log 中输出的各个阶段的耗时来简单判断，通常情况下， cuda会比cpu更快。
 
-9. 为 ocr 开启 cuda 加速
---------------------
-
-**1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
-
-.. code:: bash
-
-   pip install paddlepaddle-gpu==2.6.1
-
-**2.运行以下命令测试ocr加速效果**
-
-.. code:: bash
-
-   magic-pdf -p small_ocr.pdf -o ./output
-
-.. admonition:: Tip
-    :class: tip
-
-    CUDA 加速是否生效可以根据 log 中输出的各个阶段 cost 耗时来简单判断，通常情况下， ``ocr time`` 应提速10倍以上。
