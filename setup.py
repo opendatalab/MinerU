@@ -26,9 +26,10 @@ if __name__ == '__main__':
     setup(
         name="magic_pdf",  # 项目名
         version=__version__,  # 自动从tag中获取版本号
-        packages=find_packages() + ["magic_pdf.resources"],  # 包含所有的包
+        packages=find_packages() + ["magic_pdf.resources"] + ["magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources"],  # 包含所有的包
         package_data={
             "magic_pdf.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
+            "magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources": ["**"],  # pytorchocr.resources目录下的所有文件
         },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
@@ -36,29 +37,23 @@ if __name__ == '__main__':
                      "paddlepaddle==3.0.0b1;platform_system=='Linux'",
                      "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
                      ],
-            "full": ["unimernet==0.2.3",  # unimernet升级0.2.3,移除torchtext/eva-decord的依赖
-                     "torch>=2.2.2,<=2.3.1",  # torch2.4.0及之后版本未测试，先卡住版本上限
-                     "torchvision>=0.17.2,<=0.18.1",  # torchvision 受torch版本约束
+            "full": [
                      "matplotlib<=3.9.0;platform_system=='Windows'",  # 3.9.1及之后不提供windows的预编译包，避免一些没有编译环境的windows设备安装失败
-                     "matplotlib;platform_system=='Linux' or platform_system=='Darwin'",  # linux 和 macos 不应限制matplotlib的最高版本，以避免无法更新导致的一些bug
+                     "matplotlib>=3.10;platform_system=='Linux' or platform_system=='Darwin'",  # linux 和 macos 不应限制matplotlib的最高版本，以避免无法更新导致的一些bug
                      "ultralytics>=8.3.48",  # yolov8,公式检测
-                     "paddleocr==2.7.3",  # 2.8.0及2.8.1版本与detectron2有冲突，需锁定2.7.3
-                     "paddlepaddle==3.0.0rc1;platform_system=='Linux' or platform_system=='Darwin'",  # 解决linux的段异常问题
-                     "paddlepaddle==2.6.1;platform_system=='Windows'",  # windows版本3.0.0效率下降，需锁定2.6.1
-                     "struct-eqtable==0.3.2",  # 表格解析
-                     "einops",  # struct-eqtable依赖
-                     "accelerate",  # struct-eqtable依赖
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
-                     "rapidocr-paddle>=1.4.5,<2.0.0",  # rapidocr-paddle
-                     "rapidocr_onnxruntime>=1.4.4,<2.0.0",
+                     "dill>=0.3.9,<1",  # doclayout_yolo
                      "rapid_table>=1.0.3,<2.0.0",  # rapid_table
-                     "PyYAML",  # yaml
-                     "openai",  # openai SDK
-                     "detectron2"
+                     "PyYAML>=6.0.2,<7",  # yaml
+                     "ftfy>=6.3.1,<7", # unimernet_hf
+                     "openai>=1.70.0,<2",  # openai SDK
+                     "shapely>=2.0.7,<3",  # imgaug-paddleocr2pytorch
+                     "pyclipper>=1.3.0,<2",  # paddleocr2pytorch
+                     "omegaconf>=2.3.0,<3",  # paddleocr2pytorch
                      ],
             "old_linux":[
                 "albumentations<=1.4.20", # 1.4.21引入的simsimd不支持2019年及更早的linux系统
-            ]
+            ],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述

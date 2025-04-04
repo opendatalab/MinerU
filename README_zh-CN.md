@@ -46,6 +46,23 @@
 </div>
 
 # 更新记录
+- 2025/04/03 1.3.0 发布，在这个版本我们做出了许多优化和改进：
+  - 安装与兼容性优化
+    - 通过移除layout中`layoutlmv3`的使用，解决了由`detectron2`导致的兼容问题
+    - torch版本兼容扩展到2.2~2.6(2.5除外)
+    - cuda兼容支持11.8/12.4/12.6（cuda版本由torch决定），解决部分用户50系显卡与H系显卡的兼容问题
+    - python兼容版本扩展到3.10~3.12，解决了在非3.10环境下安装时自动降级到0.6.1的问题
+    - 优化离线部署流程，部署成功后不需要联网下载任何模型文件
+  - 性能优化
+    - 通过支持多个pdf文件的batch处理（[脚本样例](demo/batch_demo.py)），提升了批量小文件的解析速度 (与1.0.1版本相比，公式解析速度最高提升超过1400%，整体解析速度最高提升超过500%)
+    - 通过优化mfr模型的加载和使用，降低了显存占用并提升了解析速度(需重新执行[模型下载流程](docs/how_to_download_models_zh_cn.md)以获得模型文件的增量更新)
+    - 优化显存占用，最低仅需6GB即可运行本项目
+    - 优化了在mps设备上的运行速度
+  - 解析效果优化
+    - mfr模型更新到`unimernet(2503)`，解决多行公式中换行丢失的问题
+  - 易用性优化
+    - 通过使用`paddleocr2torch`，完全替代`paddle`框架以及`paddleocr`在项目中的使用，解决了`paddle`和`torch`的冲突问题，和由于`paddle`框架导致的线程不安全问题
+    - 解析过程增加实时进度条显示，精准把握解析进度，让等待不再痛苦
 - 2025/03/03 1.2.1 发布，修复了一些问题：
   - 修复在字母与数字的全角转半角操作时对标点符号的影响
   - 修复在某些情况下caption的匹配不准确问题
@@ -216,7 +233,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">python版本</td>
-        <td colspan="3">3.10 (请务必通过conda创建3.10虚拟环境)</td>
+        <td colspan="3">>=3.9,<=3.12</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver 版本</td>
@@ -226,8 +243,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">CUDA环境</td>
-        <td>自动安装[12.1(pytorch)+11.8(paddle)]</td>
-        <td>11.8(手动安装)+cuDNN v8.7.0(手动安装)</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
         <td>None</td>
     </tr>
     <tr>
@@ -237,12 +254,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>None</td>
     </tr>
     <tr>
-        <td rowspan="2">GPU硬件支持列表</td>
-        <td colspan="2">显存8G以上</td>
+        <td rowspan="2">GPU/MPS 硬件支持列表</td>
+        <td colspan="2">显存6G以上</td>
         <td colspan="2">
-        2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
-        8G显存及以上可开启全部加速功能</td>
-        <td rowspan="2">None</td>
+        Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
+        6G显存及以上</td>
+        <td rowspan="2">apple slicon</td>
     </tr>
 </table>
 
@@ -262,9 +279,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
-conda create -n mineru python=3.10
+conda create -n mineru 'python<3.13' -y
 conda activate mineru
-pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 #### 2. 下载模型权重文件
@@ -288,7 +305,7 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 {
     // other config
     "layout-config": {
-        "model": "doclayout_yolo" // 使用layoutlmv3请修改为“layoutlmv3"
+        "model": "doclayout_yolo" 
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -296,8 +313,8 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
         "enable": true  // 公式识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
     },
     "table-config": {
-        "model": "rapid_table",  // 默认使用"rapid_table",可以切换为"tablemaster"和"struct_eqtable"
-        "sub_model": "slanet_plus",  // 当model为"rapid_table"时，可以自选sub_model，可选项为"slanet_plus"和"unitable"
+        "model": "rapid_table",
+        "sub_model": "slanet_plus",
         "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
         "max_time": 400
     }
@@ -312,7 +329,7 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 - [Windows10/11 + GPU](docs/README_Windows_CUDA_Acceleration_zh_CN.md)
 - 使用Docker快速部署
 > [!IMPORTANT]
-> Docker 需设备gpu显存大于等于8GB，默认开启所有加速功能
+> Docker 需设备gpu显存大于等于6GB，默认开启所有加速功能
 > 
 > 运行本docker前可以通过以下命令检测自己的设备是否支持在docker上使用CUDA加速
 > 
@@ -332,7 +349,7 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 [NPU加速教程](docs/README_Ascend_NPU_Acceleration_zh_CN.md)
 
 ### 使用MPS
-如果您的设备使用Apple silicon 芯片，您可以在部分支持的任务（layout检测/公式检测）中开启mps加速：
+如果您的设备使用Apple silicon 芯片，您可以开启mps加速：
 
 您可以通过在 `magic-pdf.json` 配置文件中将 `device-mode` 参数设置为 `mps` 来启用 MPS 加速。
 
@@ -343,10 +360,6 @@ pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com -i
 }
 ```
 
-> [!TIP]
-> 由于公式识别任务无法开启mps加速，您可在不需要识别公式的任务关闭公式识别功能以获得最佳性能。
->
-> 您可以通过将 `formula-config` 部分中的 `enable` 参数设置为 `false` 来禁用公式识别功能。
 
 
 ## 使用
@@ -422,6 +435,8 @@ TODO
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [RapidOCR](https://github.com/RapidAI/RapidOCR)
+- [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)

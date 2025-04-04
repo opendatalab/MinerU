@@ -9,11 +9,11 @@ nvidia-smi
 如果看到类似如下的信息，说明已经安装了nvidia驱动，可以跳过步骤2
 
 > [!NOTE]
-> `CUDA Version` 显示的版本号应 >= 12.1，如显示的版本号小于12.1，请升级驱动
+> `CUDA Version` 显示的版本号应 >= 12.4，如显示的版本号小于12.4，请升级驱动
 
 ```plaintext
 +---------------------------------------------------------------------------------------+
-| NVIDIA-SMI 537.34                 Driver Version: 537.34       CUDA Version: 12.2     |
+| NVIDIA-SMI 570.133.07             Driver Version: 572.83         CUDA Version: 12.8   |
 |-----------------------------------------+----------------------+----------------------+
 | GPU  Name                     TCC/WDDM  | Bus-Id        Disp.A | Volatile Uncorr. ECC |
 | Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
@@ -31,7 +31,7 @@ nvidia-smi
 
 ```bash
 sudo apt-get update
-sudo apt-get install nvidia-driver-545
+sudo apt-get install nvidia-driver-570-server
 ```
 
 安装专有驱动，安装完成后，重启电脑
@@ -53,17 +53,15 @@ bash Anaconda3-2024.06-1-Linux-x86_64.sh
 
 ## 4. 使用conda 创建环境
 
-需指定python版本为3.10
-
 ```bash
-conda create -n MinerU python=3.10
-conda activate MinerU
+conda create -n mineru 'python<3.13' -y
+conda activate mineru
 ```
 
 ## 5. 安装应用
 
 ```bash
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i https://mirrors.aliyun.com/pypi/simple
+pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!IMPORTANT]
@@ -73,7 +71,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 > magic-pdf --version
 > ```
 >
-> 如果版本号小于0.7.0，请到issue中向我们反馈
+> 如果版本号小于1.3.0，请到issue中向我们反馈
 
 ## 6. 下载模型
 
@@ -93,13 +91,13 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com -i h
 从仓库中下载样本文件，并测试
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/small_ocr.pdf
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/demo/pdfs/small_ocr.pdf
 magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ## 9. 测试CUDA加速
 
-如果您的显卡显存大于等于 **8GB** ，可以进行以下流程，测试CUDA解析加速效果
+如果您的显卡显存大于等于 **6GB** ，可以进行以下流程，测试CUDA解析加速效果
 
 **1.修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值**
 
@@ -115,20 +113,4 @@ magic-pdf -p small_ocr.pdf -o ./output
 magic-pdf -p small_ocr.pdf -o ./output
 ```
 > [!TIP]
-> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`layout detection cost` 和 `mfr time` 应提速10倍以上。
-
-## 10. 为ocr开启cuda加速
-
-**1.下载paddlepaddle-gpu, 安装完成后会自动开启ocr加速**
-
-```bash
-python -m pip install paddlepaddle-gpu==3.0.0rc1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
-```
-
-**2.运行以下命令测试ocr加速效果**
-
-```bash
-magic-pdf -p small_ocr.pdf -o ./output
-```
-> [!TIP]
-> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，`ocr cost`应提速10倍以上。
+> CUDA加速是否生效可以根据log中输出的各个阶段cost耗时来简单判断，通常情况下，使用cuda加速会比cpu更快。

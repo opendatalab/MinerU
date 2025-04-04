@@ -9,11 +9,11 @@ nvidia-smi
 If you see information similar to the following, it means that the NVIDIA drivers are already installed, and you can skip Step 2.
 
 > [!NOTE]
-> Notice:`CUDA Version` should be >= 12.1, If the displayed version number is less than 12.1, please upgrade the driver.
+> Notice:`CUDA Version` should be >= 12.4, If the displayed version number is less than 12.4, please upgrade the driver.
 
 ```plaintext
 +---------------------------------------------------------------------------------------+
-| NVIDIA-SMI 537.34                 Driver Version: 537.34       CUDA Version: 12.2     |
+| NVIDIA-SMI 570.133.07             Driver Version: 572.83         CUDA Version: 12.8   |
 |-----------------------------------------+----------------------+----------------------+
 | GPU  Name                     TCC/WDDM  | Bus-Id        Disp.A | Volatile Uncorr. ECC |
 | Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
@@ -31,7 +31,7 @@ If no driver is installed, use the following command:
 
 ```sh
 sudo apt-get update
-sudo apt-get install nvidia-driver-545
+sudo apt-get install nvidia-driver-570-server
 ```
 
 Install the proprietary driver and restart your computer after installation.
@@ -53,17 +53,15 @@ In the final step, enter `yes`, close the terminal, and reopen it.
 
 ### 4. Create an Environment Using Conda
 
-Specify Python version 3.10.
-
-```sh
-conda create -n MinerU python=3.10
-conda activate MinerU
+```bash
+conda create -n mineru 'python<3.13' -y
+conda activate mineru
 ```
 
 ### 5. Install Applications
 
 ```sh
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+pip install -U magic-pdf[full]
 ```
 > [!IMPORTANT]
 > After installation, make sure to check the version of `magic-pdf` using the following command:
@@ -72,7 +70,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 > magic-pdf --version
 > ```
 >
-> If the version number is less than 0.7.0, please report the issue.
+> If the version number is less than 1.3.0, please report the issue.
 
 ### 6. Download Models
 
@@ -94,13 +92,13 @@ You can find the `magic-pdf.json` file in your user directory.
 Download a sample file from the repository and test it.
 
 ```sh
-wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf
+wget https://github.com/opendatalab/MinerU/raw/master/demo/pdfs/small_ocr.pdf
 magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ### 9. Test CUDA Acceleration
 
-If your graphics card has at least **8GB** of VRAM, follow these steps to test CUDA acceleration:
+If your graphics card has at least **6GB** of VRAM, follow these steps to test CUDA acceleration:
 
 1. Modify the value of `"device-mode"` in the `magic-pdf.json` configuration file located in your home directory.
    ```json
@@ -109,17 +107,6 @@ If your graphics card has at least **8GB** of VRAM, follow these steps to test C
    }
    ```
 2. Test CUDA acceleration with the following command:
-   ```sh
-   magic-pdf -p small_ocr.pdf -o ./output
-   ```
-
-### 10. Enable CUDA Acceleration for OCR
-
-1. Download `paddlepaddle-gpu`. Installation will automatically enable OCR acceleration.
-   ```sh
-   python -m pip install paddlepaddle-gpu==3.0.0rc1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
-   ```
-2. Test OCR acceleration with the following command:
    ```sh
    magic-pdf -p small_ocr.pdf -o ./output
    ```

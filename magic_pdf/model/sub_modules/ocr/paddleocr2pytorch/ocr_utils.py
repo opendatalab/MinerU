@@ -1,56 +1,65 @@
+# Copyright (c) Opendatalab. All rights reserved.
+import copy
+
 import cv2
 import numpy as np
-from loguru import logger
-from io import BytesIO
-from PIL import Image
-import base64
-from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 from magic_pdf.pre_proc.ocr_dict_merge import merge_spans_to_line
-
-import importlib.resources
-from paddleocr import PaddleOCR
-from ppocr.utils.utility import check_and_read
+from magic_pdf.libs.boxbase import __is_overlaps_y_exceeds_threshold
 
 
 def img_decode(content: bytes):
     np_arr = np.frombuffer(content, dtype=np.uint8)
     return cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
 
-
 def check_img(img):
     if isinstance(img, bytes):
         img = img_decode(img)
-    if isinstance(img, str):
-        image_file = img
-        img, flag_gif, flag_pdf = check_and_read(image_file)
-        if not flag_gif and not flag_pdf:
-            with open(image_file, 'rb') as f:
-                img_str = f.read()
-                img = img_decode(img_str)
-            if img is None:
-                try:
-                    buf = BytesIO()
-                    image = BytesIO(img_str)
-                    im = Image.open(image)
-                    rgb = im.convert('RGB')
-                    rgb.save(buf, 'jpeg')
-                    buf.seek(0)
-                    image_bytes = buf.read()
-                    data_base64 = str(base64.b64encode(image_bytes),
-                                      encoding="utf-8")
-                    image_decode = base64.b64decode(data_base64)
-                    img_array = np.frombuffer(image_decode, np.uint8)
-                    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                except:
-                    logger.error("error in loading image:{}".format(image_file))
-                    return None
-        if img is None:
-            logger.error("error in loading image:{}".format(image_file))
-            return None
     if isinstance(img, np.ndarray) and len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
     return img
+
+
+def alpha_to_color(img, alpha_color=(255, 255, 255)):
+    if len(img.shape) == 3 and img.shape[2] == 4:
+        B, G, R, A = cv2.split(img)
+        alpha = A / 255
+
+        R = (alpha_color[0] * (1 - alpha) + R * alpha).astype(np.uint8)
+        G = (alpha_color[1] * (1 - alpha) + G * alpha).astype(np.uint8)
+        B = (alpha_color[2] * (1 - alpha) + B * alpha).astype(np.uint8)
+
+        img = cv2.merge((B, G, R))
+    return img
+
+
+def preprocess_image(_image):
+    alpha_color = (255, 255, 255)
+    _image = alpha_to_color(_image, alpha_color)
+    return _image
+
+
+def sorted_boxes(dt_boxes):
+    """
+    Sort text boxes in order from top to bottom, left to right
+    args:
+        dt_boxes(array):detected text boxes with shape [4, 2]
+    return:
+        sorted boxes(array) with shape [4, 2]
+    """
+    num_boxes = dt_boxes.shape[0]
+    sorted_boxes = sorted(dt_boxes, key=lambda x: (x[0][1], x[0][0]))
+    _boxes = list(sorted_boxes)
+
+    for i in range(num_boxes - 1):
+        for j in range(i, -1, -1):
+            if abs(_boxes[j + 1][0][1] - _boxes[j][0][1]) < 10 and \
+                    (_boxes[j + 1][0][0] < _boxes[j][0][0]):
+                tmp = _boxes[j]
+                _boxes[j] = _boxes[j + 1]
+                _boxes[j + 1] = tmp
+            else:
+                break
+    return _boxes
 
 
 def bbox_to_points(bbox):
@@ -252,9 +261,10 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
     return adjusted_mfdetrec_res
 
 
-def get_ocr_result_list(ocr_res, useful_list):
+def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
+    ori_im = new_image.copy()
     for box_ocr_res in ocr_res:
 
         if len(box_ocr_res) == 2:
@@ -266,6 +276,11 @@ def get_ocr_result_list(ocr_res, useful_list):
         else:
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
+
+            if ocr_enable:
+                tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype('float32'))
+                img_crop = get_rotate_crop_image(ori_im, tmp_box)
+
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
         # if average_angle_degrees > 0.5:
         poly = [p1, p2, p3, p4]
@@ -288,12 +303,22 @@ def get_ocr_result_list(ocr_res, useful_list):
         p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
         p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
 
-        ocr_result_list.append({
-            'category_id': 15,
-            'poly': p1 + p2 + p3 + p4,
-            'score': float(round(score, 2)),
-            'text': text,
-        })
+        if ocr_enable:
+            ocr_result_list.append({
+                'category_id': 15,
+                'poly': p1 + p2 + p3 + p4,
+                'score': 1,
+                'text': text,
+                'np_img': img_crop,
+                'lang': lang,
+            })
+        else:
+            ocr_result_list.append({
+                'category_id': 15,
+                'poly': p1 + p2 + p3 + p4,
+                'score': float(round(score, 2)),
+                'text': text,
+            })
 
     return ocr_result_list
 
@@ -308,56 +333,36 @@ def calculate_is_angle(poly):
         return True
 
 
-class ONNXModelSingleton:
-    _instance = None
-    _models = {}
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def get_onnx_model(self, **kwargs):
-
-        lang = kwargs.get('lang', None)
-        det_db_box_thresh = kwargs.get('det_db_box_thresh', 0.3)
-        use_dilation = kwargs.get('use_dilation', True)
-        det_db_unclip_ratio = kwargs.get('det_db_unclip_ratio', 1.8)
-        key = (lang, det_db_box_thresh, use_dilation, det_db_unclip_ratio)
-        if key not in self._models:
-            self._models[key] = onnx_model_init(key)
-        return self._models[key]
-
-def onnx_model_init(key):
-    if len(key) < 4:
-        logger.error('Invalid key length, expected at least 4 elements')
-        exit(1)
-
-    try:
-        with importlib.resources.path('rapidocr_onnxruntime.models', '') as resource_path:
-            additional_ocr_params = {
-                "use_onnx": True,
-                "det_model_dir": f'{resource_path}/ch_PP-OCRv4_det_infer.onnx',
-                "rec_model_dir": f'{resource_path}/ch_PP-OCRv4_rec_infer.onnx',
-                "cls_model_dir": f'{resource_path}/ch_ppocr_mobile_v2.0_cls_infer.onnx',
-                "det_db_box_thresh": key[1],
-                "use_dilation": key[2],
-                "det_db_unclip_ratio": key[3],
-            }
-
-            if key[0] is not None:
-                additional_ocr_params["lang"] = key[0]
-
-            # logger.info(f"additional_ocr_params: {additional_ocr_params}")
-
-            onnx_model = PaddleOCR(**additional_ocr_params)
-
-            if onnx_model is None:
-                logger.error('model init failed')
-                exit(1)
-            else:
-                return onnx_model
-
-    except Exception as e:
-        logger.exception(f'Error initializing model: {e}')
-        exit(1)
+def get_rotate_crop_image(img, points):
+    '''
+    img_height, img_width = img.shape[0:2]
+    left = int(np.min(points[:, 0]))
+    right = int(np.max(points[:, 0]))
+    top = int(np.min(points[:, 1]))
+    bottom = int(np.max(points[:, 1]))
+    img_crop = img[top:bottom, left:right, :].copy()
+    points[:, 0] = points[:, 0] - left
+    points[:, 1] = points[:, 1] - top
+    '''
+    assert len(points) == 4, "shape of points must be 4*2"
+    img_crop_width = int(
+        max(
+            np.linalg.norm(points[0] - points[1]),
+            np.linalg.norm(points[2] - points[3])))
+    img_crop_height = int(
+        max(
+            np.linalg.norm(points[0] - points[3]),
+            np.linalg.norm(points[1] - points[2])))
+    pts_std = np.float32([[0, 0], [img_crop_width, 0],
+                          [img_crop_width, img_crop_height],
+                          [0, img_crop_height]])
+    M = cv2.getPerspectiveTransform(points, pts_std)
+    dst_img = cv2.warpPerspective(
+        img,
+        M, (img_crop_width, img_crop_height),
+        borderMode=cv2.BORDER_REPLICATE,
+        flags=cv2.INTER_CUBIC)
+    dst_img_height, dst_img_width = dst_img.shape[0:2]
+    if dst_img_height * 1.0 / dst_img_width >= 1.5:
+        dst_img = np.rot90(dst_img)
+    return dst_img

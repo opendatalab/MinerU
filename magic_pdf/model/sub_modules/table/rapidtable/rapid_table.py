@@ -9,7 +9,7 @@ from magic_pdf.libs.config_reader import get_device
 
 
 class RapidTableModel(object):
-    def __init__(self, ocr_engine, table_sub_model_name):
+    def __init__(self, ocr_engine, table_sub_model_name='slanet_plus'):
         sub_model_list = [model.value for model in ModelType]
         if table_sub_model_name is None:
             input_args = RapidTableInput()
@@ -23,25 +23,17 @@ class RapidTableModel(object):
 
         self.table_model = RapidTable(input_args)
 
-        # if ocr_engine is None:
-        #     self.ocr_model_name = "RapidOCR"
-        #     if torch.cuda.is_available():
-        #         from rapidocr_paddle import RapidOCR
-        #         self.ocr_engine = RapidOCR(det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True)
-        #     else:
-        #         from rapidocr_onnxruntime import RapidOCR
-        #         self.ocr_engine = RapidOCR()
+        # self.ocr_model_name = "RapidOCR"
+        # if torch.cuda.is_available():
+        #     from rapidocr_paddle import RapidOCR
+        #     self.ocr_engine = RapidOCR(det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True)
         # else:
-        #     self.ocr_model_name = "PaddleOCR"
-        #     self.ocr_engine = ocr_engine
+        #     from rapidocr_onnxruntime import RapidOCR
+        #     self.ocr_engine = RapidOCR()
 
-        self.ocr_model_name = "RapidOCR"
-        if torch.cuda.is_available():
-            from rapidocr_paddle import RapidOCR
-            self.ocr_engine = RapidOCR(det_use_cuda=True, cls_use_cuda=True, rec_use_cuda=True)
-        else:
-            from rapidocr_onnxruntime import RapidOCR
-            self.ocr_engine = RapidOCR()
+        self.ocr_model_name = "PaddleOCR"
+        self.ocr_engine = ocr_engine
+
 
     def predict(self, image):
 
