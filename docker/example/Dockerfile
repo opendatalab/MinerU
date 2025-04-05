@@ -31,8 +31,7 @@ RUN python3 -m venv /opt/mineru_venv
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip && \
     wget https://github.com/jianjungki/MinerU/raw/master/docker/global/requirements.txt -O requirements.txt && \
-    pip3 install -r requirements.txt --extra-index-url https://wheels.myhloli.com && \
-    pip3 install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+    pip3 install -r requirements.txt "
 
 # Copy the configuration file template and install magic-pdf latest
 RUN /bin/bash -c "wget https://github.com/jianjungki/MinerU/raw/master/magic-pdf.template.json && \
@@ -45,6 +44,8 @@ RUN /bin/bash -c "pip3 install huggingface_hub && \
     wget https://github.com/jianjungki/MinerU/raw/master/scripts/download_models_hf.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
+
+    
 
 
 COPY api /tmp/api
