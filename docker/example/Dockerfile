@@ -64,7 +64,7 @@ ENV GRADIO_SERVER_NAME=0.0.0.0
 
 WORKDIR /tmp/example
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install modelscope gradio-pdf gradio"
+    pip3 install -r requirements.txt"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "source /opt/mineru_venv/bin/activate && python3 app.py"]
