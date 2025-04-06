@@ -2,6 +2,7 @@
 
 import base64
 import os
+import json
 import time
 import zipfile
 from pathlib import Path
@@ -46,6 +47,7 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, layout_mode, formula_en
             formula_enable=formula_enable,
             table_enable=table_enable,
             lang=language,
+            f_dump_orig_pdf=False,
         )
         return local_md_dir, file_name
     except Exception as e:
@@ -195,7 +197,10 @@ if __name__ == "__main__":
                 file = gr.File(label="Please upload a PDF or image", file_types=[".pdf", ".png", ".jpeg", ".jpg"])
                 max_pages = gr.Slider(1, 20, 10, step=1, label="Max convert pages")
                 with gr.Row():
-                    layout_mode = gr.Dropdown(["layoutlmv3", "doclayout_yolo"], label="Layout model", value="doclayout_yolo")
+                    layout_mode = gr.Dropdown([
+                        # "layoutlmv3", 
+                        "doclayout_yolo"
+                    ],label="Layout model", value="doclayout_yolo")
                     language = gr.Dropdown(all_lang, label="Language", value="auto")
                 with gr.Row():
                     formula_enable = gr.Checkbox(label="Enable formula recognition", value=True)
@@ -225,4 +230,4 @@ if __name__ == "__main__":
         change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show], api_name=False)
         clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
-    demo.launch()
+    demo.launch(ssr_mode=False)
