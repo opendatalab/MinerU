@@ -25,3 +25,4 @@ shapely>=2.0.7,<3
 pyclipper>=1.3.0,<2
 omegaconf>=2.3.0,<3
 tqdm>=4.67.1
+accelerate==1.6.0
