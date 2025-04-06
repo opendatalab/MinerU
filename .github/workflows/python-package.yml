@@ -122,6 +122,6 @@ jobs:
 
       - name: Publish distribution to PyPI
         run: |
-          pip install twine
+          pip install -U twine id keyring packaging readme-renderer requests requests-toolbelt rfc3986 rich urllib3
           twine check dist/*
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

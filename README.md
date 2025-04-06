@@ -47,7 +47,27 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
-
+- 2025/04/03 Release of 1.3.0, in this version we made many optimizations and improvements:
+  - Installation and compatibility optimization
+    - By removing the use of `layoutlmv3` in layout, resolved compatibility issues caused by `detectron2`.
+    - Torch version compatibility extended to 2.2~2.6 (excluding 2.5).
+    - CUDA compatibility supports 11.8/12.4/12.6 (CUDA version determined by torch), resolving compatibility issues for some users with 50-series and H-series GPUs.
+    - Python compatible versions expanded to 3.10~3.12, solving the problem of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
+    - Offline deployment process optimized; no internet connection required after successful deployment to download any model files.
+  - Performance optimization
+    - By supporting batch processing of multiple PDF files ([script example](demo/batch_demo.py)), improved parsing speed for small files in batches (compared to version 1.0.1, formula parsing speed increased by over 1400%, overall parsing speed increased by over 500%).
+    - Optimized loading and usage of the mfr model, reducing GPU memory usage and improving parsing speed (requires re-execution of the [model download process](docs/how_to_download_models_en.md) to obtain incremental updates of model files).
+    - Optimized GPU memory usage, requiring only a minimum of 6GB to run this project.
+    - Improved running speed on MPS devices.
+  - Parsing effect optimization
+    - Updated the mfr model to `unimernet(2503)`, solving the issue of lost line breaks in multi-line formulas.
+  - Usability Optimization
+    - By using `paddleocr2torch`, completely replaced the use of the `paddle` framework and `paddleocr` in the project, resolving conflicts between `paddle` and `torch`, as well as thread safety issues caused by the `paddle` framework.
+    - Added a real-time progress bar during the parsing process to accurately track progress, making the wait less painful.
+- 2025/03/03 1.2.1 released, fixed several bugs:
+  - Fixed the impact on punctuation marks during full-width to half-width conversion of letters and numbers
+  - Fixed caption matching inaccuracies in certain scenarios
+  - Fixed formula span loss issues in certain scenarios
 - 2025/02/24 1.2.0 released. This version includes several fixes and improvements to enhance parsing efficiency and accuracy:
   - Performance Optimization
     - Increased classification speed for PDF documents in auto mode.
@@ -212,7 +232,7 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
-        <td colspan="3">3.10(Please make sure to create a Python 3.10 virtual environment using conda)</td>
+        <td colspan="3">3.10~3.12</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver Version</td>
@@ -222,8 +242,8 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">CUDA Environment</td>
-        <td>Automatic installation [12.1 (pytorch) + 11.8 (paddle)]</td>
-        <td>11.8 (manual installation) + cuDNN v8.7.0 (manual installation)</td>
+        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6</td>
         <td>None</td>
     </tr>
     <tr>
@@ -233,11 +253,11 @@ There are three different ways to experience MinerU:
         <td>None</td>
     </tr>
     <tr>
-        <td rowspan="2">GPU Hardware Support List</td>
-        <td colspan="2">GPU VRAM 8GB or more</td>
-        <td colspan="2">2080~2080Ti / 3060Ti~3090Ti / 4060~4090<br>
-        8G VRAM can enable all acceleration features</td>
-        <td rowspan="2">None</td>
+        <td rowspan="2">GPU/MPS Hardware Support List</td>
+        <td colspan="2">GPU VRAM 6GB or more</td>
+        <td colspan="2">All GPUs with Tensor Cores produced from Volta(2017) onwards.<br>
+        More than 6GB VRAM </td>
+        <td rowspan="2">apple slicon</td>
     </tr>
 </table>
 
@@ -254,9 +274,9 @@ Synced with dev branch updates:
 #### 1. Install magic-pdf
 
 ```bash
-conda create -n mineru python=3.10
+conda create -n mineru 'python<3.13' -y
 conda activate mineru
-pip install -U "magic-pdf[full]" --extra-index-url https://wheels.myhloli.com
+pip install -U "magic-pdf[full]"
 ```
 
 #### 2. Download model weight files
@@ -281,7 +301,7 @@ You can modify certain configurations in this file to enable or disable features
 {
     // other config
     "layout-config": {
-        "model": "doclayout_yolo" // Please change to "layoutlmv3" when using layoutlmv3.
+        "model": "doclayout_yolo" 
     },
     "formula-config": {
         "mfd_model": "yolo_v8_mfd",
@@ -289,8 +309,8 @@ You can modify certain configurations in this file to enable or disable features
         "enable": true  // The formula recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
     },
     "table-config": {
-        "model": "rapid_table",  // Default to using "rapid_table", can be switched to "tablemaster" or "struct_eqtable".
-        "sub_model": "slanet_plus",  // When the model is "rapid_table", you can choose a sub_model. The options are "slanet_plus" and "unitable"
+        "model": "rapid_table", 
+        "sub_model": "slanet_plus",
         "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
         "max_time": 400
     }
@@ -305,7 +325,7 @@ If your device supports CUDA and meets the GPU requirements of the mainline envi
 - [Windows 10/11 + GPU](docs/README_Windows_CUDA_Acceleration_en_US.md)
 - Quick Deployment with Docker
 > [!IMPORTANT]
-> Docker requires a GPU with at least 8GB of VRAM, and all acceleration features are enabled by default.
+> Docker requires a GPU with at least 6GB of VRAM, and all acceleration features are enabled by default.
 >
 > Before running this Docker, you can use the following command to check if your device supports CUDA acceleration on Docker.
 > 
@@ -327,7 +347,7 @@ If your device has NPU acceleration hardware, you can follow the tutorial below 
 
 ### Using MPS
 
-If your device uses Apple silicon chips, you can enable MPS acceleration for certain supported tasks (such as layout detection and formula detection).
+If your device uses Apple silicon chips, you can enable MPS acceleration for your tasks.
 
 You can enable MPS acceleration by setting the `device-mode` parameter to `mps` in the `magic-pdf.json` configuration file.
 
@@ -338,10 +358,6 @@ You can enable MPS acceleration by setting the `device-mode` parameter to `mps` 
 }
 ```
 
-> [!TIP]
-> Since the formula recognition task cannot utilize MPS acceleration, you can disable the formula recognition feature in tasks where it is not needed to achieve optimal performance.
->
-> You can disable the formula recognition feature by setting the `enable` parameter in the `formula-config` section to `false`.
 
 ## Usage
 
@@ -415,6 +431,8 @@ This project currently uses PyMuPDF to achieve advanced functionality. However, 
 - [StructEqTable](https://github.com/UniModal4Reasoning/StructEqTable-Deploy)
 - [RapidTable](https://github.com/RapidAI/RapidTable)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [RapidOCR](https://github.com/RapidAI/RapidOCR)
+- [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
 - [PyMuPDF](https://github.com/pymupdf/PyMuPDF)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
