@@ -12,5 +12,4 @@ torchvision
 transformers>=4.49.0,<5.0.0
 pdfminer.six==20231228
 tqdm>=4.67.1
-accelerate>=1.6.0,<2
 # The requirements.txt must ensure that only necessary external dependencies are introduced. If there are new dependencies to add, please contact the project administrator.
