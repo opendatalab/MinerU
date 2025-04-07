@@ -57,7 +57,7 @@ def clean_vram(device, vram_threshold=8):
 
 
 def get_vram(device):
-    if torch.cuda.is_available() and device != 'cpu':
+    if torch.cuda.is_available() and str(device).startswith("cuda"):
         total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)  # 将字节转换为 GB
         return total_memory
     elif str(device).startswith("npu"):
