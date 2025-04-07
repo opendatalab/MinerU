@@ -65,7 +65,7 @@ pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 **1.覆盖安装支持cuda的torch和torchvision**(请根据cuda版本选择合适的index-url，具体可参考[torch官网](https://pytorch.org/get-started/locally/))
 
 ```bash
-pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
+pip install --force-reinstall torch==2.6.0 torchvision==0.21.0 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
 ```
 
 **2.修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值**
