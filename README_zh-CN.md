@@ -10,7 +10,7 @@
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
-[![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
+[![PyPI version](https://img.shields.io/pypi/v/magic-pdf)](https://pypi.org/project/magic-pdf/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/magic-pdf)](https://pypi.org/project/magic-pdf/)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
