@@ -241,7 +241,7 @@ class BatchAnalyze:
                     for index, layout_res_item in enumerate(need_ocr_lists_by_lang[lang]):
                         ocr_text, ocr_score = ocr_res_list[index]
                         layout_res_item['text'] = ocr_text
-                        layout_res_item['score'] = float(round(ocr_score, 2))
+                        layout_res_item['score'] = float(f"{ocr_score:.3f}")
 
                     total_processed += len(img_crop_list)
 
