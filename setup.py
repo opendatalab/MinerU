@@ -71,7 +71,10 @@ if __name__ == '__main__':
         description="A practical tool for converting PDF to Markdown",  # 简短描述
         long_description=long_description,  # 详细描述
         long_description_content_type="text/markdown",  # 如果README是Markdown格式
-        url="https://github.com/opendatalab/MinerU",
+        project_urls={
+            "Home": "https://mineru.net/",
+            "Repository": "https://github.com/opendatalab/MinerU",
+        },
         keywords=["magic-pdf, mineru, MinerU, convert, pdf, markdown"],
         classifiers=[
             "Programming Language :: Python :: 3.10",
