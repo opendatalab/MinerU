@@ -57,7 +57,6 @@ if __name__ == '__main__':
                     "ultralytics>=8.3.48",  # yolov8,公式检测
                     "doclayout_yolo==0.0.2b1",  # doclayout_yolo
                     "dill>=0.3.9,<1",  # doclayout_yolo
-                    "rapid_table>=1.0.3,<2.0.0",  # rapid_table
                     "PyYAML>=6.0.2,<7",  # yaml
                     "ftfy>=6.3.1,<7",  # unimernet_hf
                     "openai>=1.70.0,<2",  # openai SDK
