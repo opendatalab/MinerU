@@ -48,7 +48,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
-- 2025/04/08 1.3.2 released, fixed some compatibility issues
+- 2025/04/08 1.3.1 released, fixed some compatibility issues
   - Supported Python 3.13
   - Resolved errors caused by `transformers 4.51.0`
   - Made the final adaptation for some outdated Linux systems (e.g., CentOS 7), and no further support will be guaranteed for subsequent versions. [Installation Instructions](https://github.com/opendatalab/MinerU/issues/1004)
