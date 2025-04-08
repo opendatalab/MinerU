@@ -47,7 +47,7 @@
 </div>
 
 # 更新记录
-- 2025/04/08 1.3.2 发布，修复了一些兼容问题
+- 2025/04/08 1.3.1 发布，修复了一些兼容问题
   - 支持python 3.13
   - 解决因`transformers 4.51.0` 导致的报错
   - 为部分过时的linux系统（如centos7）做出最后适配，并不再保证后续版本的继续支持，[安装说明](https://github.com/opendatalab/MinerU/issues/1004)
