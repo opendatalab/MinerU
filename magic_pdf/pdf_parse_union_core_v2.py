@@ -997,7 +997,7 @@ def pdf_parse_union(
         for index, span in enumerate(need_ocr_list):
             ocr_text, ocr_score = ocr_res_list[index]
             span['content'] = ocr_text
-            span['score'] = float(round(ocr_score, 2))
+            span['score'] = float(f"{ocr_score:.3f}")
         # rec_time = time.time() - rec_start
         # logger.info(f'ocr-dynamic-rec time: {round(rec_time, 2)}, total images processed: {len(img_crop_list)}')
 
