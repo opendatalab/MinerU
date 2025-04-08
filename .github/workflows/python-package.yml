@@ -54,7 +54,7 @@ jobs:
         run: |
           git push origin HEAD:master
 
-  build:
+  check-install:
     needs: [ update-version ]
     runs-on: ubuntu-latest
     strategy:
@@ -83,6 +83,22 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e .[full]
+
+  build:
+    needs: [ check-install ]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10"]
+
+    steps:
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: master
+        fetch-depth: 0
 
     - name: Install wheel
       run: |
