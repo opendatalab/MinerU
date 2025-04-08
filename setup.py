@@ -53,6 +53,7 @@ if __name__ == '__main__':
                      ],
             "old_linux":[
                 "albumentations<=1.4.20", # 1.4.21引入的simsimd不支持2019年及更早的linux系统
+                "rapid_table==1.0.3",  # rapid_table新版本依赖的onnxruntime不支持2019年及更早的linux系统
             ],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
