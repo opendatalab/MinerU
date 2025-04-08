@@ -71,8 +71,8 @@ Also you can try `online demo <https://www.modelscope.cn/studios/OpenDataLab/Min
     </tr>
     <tr>
         <td colspan="3">CUDA Environment</td>
-        <td>11.8/12.4/12.6</td>
-        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6/12.8</td>
+        <td>11.8/12.4/12.6/12.8</td>
         <td>None</td>
     </tr>
     <tr>
@@ -97,7 +97,7 @@ Create an environment
 
 .. code-block:: shell
 
-    conda create -n mineru 'python<3.13' -y
+    conda create -n mineru 'python>=3.10' -y
     conda activate mineru
     pip install -U "magic-pdf[full]"
 
