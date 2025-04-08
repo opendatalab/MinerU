@@ -10,7 +10,8 @@
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
-[![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
+[![PyPI version](https://img.shields.io/pypi/v/magic-pdf)](https://pypi.org/project/magic-pdf/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/magic-pdf)](https://pypi.org/project/magic-pdf/)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
@@ -46,11 +47,15 @@
 </div>
 
 # 更新记录
+- 2025/04/08 1.3.1发布，修复了一些兼容问题
+  - 支持python 3.13
+  - 解决因`transformers 4.51.0` 导致的报错
+  - 为部分过时的linux系统（如centos7）做出最后适配，并不再保证后续版本的继续支持，[安装说明](https://github.com/opendatalab/MinerU/issues/1004)
 - 2025/04/03 1.3.0 发布，在这个版本我们做出了许多优化和改进：
   - 安装与兼容性优化
     - 通过移除layout中`layoutlmv3`的使用，解决了由`detectron2`导致的兼容问题
     - torch版本兼容扩展到2.2~2.6(2.5除外)
-    - cuda兼容支持11.8/12.4/12.6（cuda版本由torch决定），解决部分用户50系显卡与H系显卡的兼容问题
+    - cuda兼容支持11.8/12.4/12.6/12.8（cuda版本由torch决定），解决部分用户50系显卡与H系显卡的兼容问题
     - python兼容版本扩展到3.10~3.12，解决了在非3.10环境下安装时自动降级到0.6.1的问题
     - 优化离线部署流程，部署成功后不需要联网下载任何模型文件
   - 性能优化
@@ -70,7 +75,6 @@
 - 2025/02/24 1.2.0 发布，这个版本我们修复了一些问题，提升了解析的效率与精度：
   - 性能优化 
     - auto模式下pdf文档的分类速度提升
-    - 在华为昇腾 NPU 加速模式下，添加高性能插件支持，常见场景下端到端加速可达 300% [申请链接](https://aicarrier.feishu.cn/share/base/form/shrcnb10VaoNQB8kQPA8DEfZC6d)
   - 解析优化
     - 优化对包含水印文档的解析逻辑，显著提升包含水印文档的解析效果
     - 改进了单页内多个图像/表格与caption的匹配逻辑，提升了复杂布局下图文匹配的准确性
@@ -233,7 +237,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">python版本</td>
-        <td colspan="3">>=3.9,<=3.12</td>
+        <td colspan="3">>=3.10</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver 版本</td>
@@ -243,8 +247,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">CUDA环境</td>
-        <td>11.8/12.4/12.6</td>
-        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6/12.8</td>
+        <td>11.8/12.4/12.6/12.8</td>
         <td>None</td>
     </tr>
     <tr>
@@ -279,7 +283,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python>=3.10' -y
 conda activate mineru
 pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 ```
