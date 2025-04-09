@@ -143,7 +143,8 @@ class BatchAnalyze:
                 if ocr_res:
                     ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], new_image, _lang)
                     ocr_res_list_dict['layout_res'].extend(ocr_result_list)
-            det_count += len(ocr_res_list_dict['ocr_res_list'])
+
+            # det_count += len(ocr_res_list_dict['ocr_res_list'])
         # logger.info(f'ocr-det time: {round(time.time()-det_start, 2)}, image num: {det_count}')
 
 
