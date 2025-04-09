@@ -150,7 +150,6 @@ class BatchAnalyze:
         # 表格识别 table recognition
         if self.model.apply_table:
             table_start = time.time()
-            table_count = 0
             # for table_res_list_dict in table_res_list_all_page:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
