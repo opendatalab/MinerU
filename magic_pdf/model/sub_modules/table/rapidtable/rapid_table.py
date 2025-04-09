@@ -53,20 +53,16 @@ class RapidTableModel(object):
             # Check if table is rotated by analyzing text box aspect ratios
             is_rotated = False
             if det_res:
-                aspect_ratios = []
                 vertical_count = 0
 
                 for box_ocr_res in det_res:
                     p1, p2, p3, p4 = box_ocr_res
 
                     # Calculate width and height
-                    width = max(np.linalg.norm(np.array(p1) - np.array(p2)),
-                                np.linalg.norm(np.array(p3) - np.array(p4)))
-                    height = max(np.linalg.norm(np.array(p1) - np.array(p4)),
-                                 np.linalg.norm(np.array(p2) - np.array(p3)))
+                    width = p3[0] - p1[0]
+                    height = p3[1] - p1[1]
 
                     aspect_ratio = width / height if height > 0 else 1.0
-                    aspect_ratios.append(aspect_ratio)
 
                     # Count vertical vs horizontal text boxes
                     if aspect_ratio < 0.8:  # Taller than wide - vertical text
