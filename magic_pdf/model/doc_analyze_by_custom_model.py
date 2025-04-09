@@ -146,10 +146,11 @@ def doc_analyze(
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
+    
     if lang is None or lang == 'auto':
-        images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(dataset))]
+        images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(images))]
     else:
-        images_with_extra_info = [(images[index], ocr, lang) for index in range(len(dataset))]
+        images_with_extra_info = [(images[index], ocr, lang) for index in range(len(images))]
 
     if len(images) >= MIN_BATCH_INFERENCE_SIZE:
         batch_size = MIN_BATCH_INFERENCE_SIZE
