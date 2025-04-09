@@ -10,7 +10,8 @@
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
-[![PyPI version](https://badge.fury.io/py/magic-pdf.svg)](https://badge.fury.io/py/magic-pdf)
+[![PyPI version](https://img.shields.io/pypi/v/magic-pdf)](https://pypi.org/project/magic-pdf/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/magic-pdf)](https://pypi.org/project/magic-pdf/)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf)](https://pepy.tech/project/magic-pdf)
 [![Downloads](https://static.pepy.tech/badge/magic-pdf/month)](https://pepy.tech/project/magic-pdf)
 
@@ -47,11 +48,15 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
-- 2025/04/03 Release of 1.3.0, in this version we made many optimizations and improvements:
+- 2025/04/08 1.3.1 released, fixed some compatibility issues
+  - Supported Python 3.13
+  - Resolved errors caused by `transformers 4.51.0`
+  - Made the final adaptation for some outdated Linux systems (e.g., CentOS 7), and no further support will be guaranteed for subsequent versions. [Installation Instructions](https://github.com/opendatalab/MinerU/issues/1004)
+- 2025/04/03 1.3.0 released, in this version we made many optimizations and improvements:
   - Installation and compatibility optimization
     - By removing the use of `layoutlmv3` in layout, resolved compatibility issues caused by `detectron2`.
     - Torch version compatibility extended to 2.2~2.6 (excluding 2.5).
-    - CUDA compatibility supports 11.8/12.4/12.6 (CUDA version determined by torch), resolving compatibility issues for some users with 50-series and H-series GPUs.
+    - CUDA compatibility supports 11.8/12.4/12.6/12.8 (CUDA version determined by torch), resolving compatibility issues for some users with 50-series and H-series GPUs.
     - Python compatible versions expanded to 3.10~3.12, solving the problem of automatic downgrade to 0.6.1 during installation in non-3.10 environments.
     - Offline deployment process optimized; no internet connection required after successful deployment to download any model files.
   - Performance optimization
@@ -243,7 +248,7 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
-        <td colspan="3">3.10~3.12</td>
+        <td colspan="3">>=3.10</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver Version</td>
@@ -253,8 +258,8 @@ There are three different ways to experience MinerU:
     </tr>
     <tr>
         <td colspan="3">CUDA Environment</td>
-        <td>11.8/12.4/12.6</td>
-        <td>11.8/12.4/12.6</td>
+        <td>11.8/12.4/12.6/12.8</td>
+        <td>11.8/12.4/12.6/12.8</td>
         <td>None</td>
     </tr>
     <tr>
@@ -285,7 +290,7 @@ Synced with dev branch updates:
 #### 1. Install magic-pdf
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python>=3.10' -y
 conda activate mineru
 pip install -U "magic-pdf[full]"
 ```

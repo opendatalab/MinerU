@@ -17,7 +17,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 ### 3. Create an Environment Using Conda
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python>=3.10' -y
 conda activate mineru
 ```
 
@@ -28,13 +28,12 @@ pip install -U magic-pdf[full]
 ```
 
 > [!IMPORTANT]
-> After installation, verify the version of `magic-pdf`:
+> After installation, you can check the version of `magic-pdf` using the following command:
 >
 > ```bash
 > magic-pdf --version
 > ```
->
-> If the version number is less than 1.3.0, please report it in the issues section.
+
 
 ### 5. Download Models
 
@@ -64,7 +63,7 @@ If your graphics card has at least 6GB of VRAM, follow these steps to test CUDA-
 1. **Overwrite the installation of torch and torchvision** supporting CUDA.(Please select the appropriate index-url based on your CUDA version. For more details, refer to the [PyTorch official website](https://pytorch.org/get-started/locally/).)
 
    ```
-   pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
+   pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
    ```
 
 2. **Modify the value of `"device-mode"`** in the `magic-pdf.json` configuration file located in your user directory.

@@ -64,10 +64,10 @@ body:
       # Need quotes around `3.10` otherwise it is treated as a number and shows as `3.1`.
       options:
         -
+        - "3.13"
         - "3.12"
         - "3.11"
         - "3.10"
-        - "3.9"
     validations:
       required: true
 
@@ -78,10 +78,10 @@ body:
       #multiple: false
       options:
         -
-        - "0.8.x"
-        - "0.9.x"
-        - "0.10.x"
         - "1.0.x"
+        - "1.1.x"
+        - "1.2.x"
+        - "1.3.x"
     validations:
       required: true
 

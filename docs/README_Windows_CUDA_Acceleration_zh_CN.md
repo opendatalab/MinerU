@@ -18,7 +18,7 @@ https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-2024.06-1-Window
 ## 3. 使用conda 创建环境
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python>=3.10' -y
 conda activate mineru
 ```
 
@@ -29,13 +29,12 @@ pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!IMPORTANT]
-> 下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
+> 下载完成后，您可以通过以下命令检查magic-pdf的版本
 >
 > ```bash
 > magic-pdf --version
 > ```
->
-> 如果版本号小于 1.3.0 ，请到issue中向我们反馈
+
 
 ## 5. 下载模型
 
@@ -65,7 +64,7 @@ pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 **1.覆盖安装支持cuda的torch和torchvision**(请根据cuda版本选择合适的index-url，具体可参考[torch官网](https://pytorch.org/get-started/locally/))
 
 ```bash
-pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
+pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
 ```
 
 **2.修改【用户目录】中配置文件magic-pdf.json中"device-mode"的值**

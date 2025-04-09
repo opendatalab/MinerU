@@ -54,7 +54,7 @@ In the final step, enter `yes`, close the terminal, and reopen it.
 ### 4. Create an Environment Using Conda
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python>=3.10' -y
 conda activate mineru
 ```
 
@@ -63,14 +63,13 @@ conda activate mineru
 ```sh
 pip install -U magic-pdf[full]
 ```
-> [!IMPORTANT]
-> After installation, make sure to check the version of `magic-pdf` using the following command:
+> [!TIP]
+> After installation, you can check the version of `magic-pdf` using the following command:
 >
 > ```sh
 > magic-pdf --version
 > ```
->
-> If the version number is less than 1.3.0, please report the issue.
+
 
 ### 6. Download Models
 

@@ -28,7 +28,7 @@ magic-pdf.json
         "layoutreader-model-dir":"/tmp/layoutreader",
         "device-mode":"cpu",
         "layout-config": {
-            "model": "layoutlmv3"
+            "model": "doclayout_yolo"
         },
         "formula-config": {
             "mfd_model": "yolo_v8_mfd",
@@ -37,7 +37,7 @@ magic-pdf.json
         },
         "table-config": {
             "model": "rapid_table",
-            "enable": false,
+            "enable": true,
             "max_time": 400    
         },
         "config_version": "1.0.0"
@@ -88,10 +88,10 @@ layout-config
 .. code:: json
 
     {
-        "model": "layoutlmv3"  
+        "model": "doclayout_yolo"
     }
 
-layout model can not be disabled now, And we have only kind of layout model currently.
+layout model can not be disabled now.
 
 
 formula-config
@@ -132,14 +132,14 @@ table-config
 
    {
         "model": "rapid_table",
-        "enable": false,
+        "enable": true,
         "max_time": 400    
     }
 
 model
 """"""""
 
-Specify the table inference model, options are ['rapid_table', 'tablemaster', 'struct_eqtable']
+Specify the table inference model, options are ['rapid_table']
 
 
 max_time
