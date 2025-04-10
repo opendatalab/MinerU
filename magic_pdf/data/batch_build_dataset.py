@@ -107,50 +107,13 @@ def batch_build_dataset(pdf_paths, k, lang=None):
     pdf_info = []
     total_pages = 0
 
+    results = []
     for pdf_path in pdf_paths:
         try:
-            doc = fitz.open(pdf_path)
-            num_pages = len(doc)
-            pdf_info.append((pdf_path, num_pages))
-            total_pages += num_pages
-            doc.close()
+            with open(pdf_path, 'rb') as f:
+                bits = f.read() 
+            results.append(PymuDocDataset(bits, lang))
         except Exception as e:
             print(f'Error opening {pdf_path}: {e}')
 
-    # Partition the jobs based on page countEach job has 1 page
-    partitions = partition_array_greedy(pdf_info, k)
-
-    # Process each partition in parallel
-    all_images_h = {}
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=k) as executor:
-        # Submit one task per partition
-        futures = []
-        for sn, partition in enumerate(partitions):
-            # Get the jobs for this partition
-            partition_jobs = [pdf_info[idx] for idx in partition]
-
-            # Submit the task
-            future = executor.submit(
-                process_pdf_batch,
-                partition_jobs,
-                sn
-            )
-            futures.append(future)
-        # Process results as they complete
-        for i, future in enumerate(concurrent.futures.as_completed(futures)):
-            try:
-                idx, images = future.result()
-                all_images_h[idx] = images
-            except Exception as e:
-                print(f'Error processing partition: {e}')
-    results = [None] * len(pdf_paths)
-    for i in range(len(partitions)):
-        partition = partitions[i]
-        for j in range(len(partition)):
-            with open(pdf_info[partition[j]][0], 'rb') as f:
-                pdf_bytes = f.read()
-            dataset = PymuDocDataset(pdf_bytes, lang=lang)
-            dataset.set_images(all_images_h[i][j])
-            results[partition[j]] = dataset
     return results

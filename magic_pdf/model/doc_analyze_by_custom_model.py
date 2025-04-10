@@ -138,30 +138,31 @@ def doc_analyze(
     )
 
     MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 200))
+    batch_size = MIN_BATCH_INFERENCE_SIZE
     images = []
     page_wh_list = []
+    images_with_extra_info = []
+    results = []
     for index in range(len(dataset)):
         if start_page_id <= index <= end_page_id:
             page_data = dataset.get_page(index)
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
-    
-    if lang is None or lang == 'auto':
-        images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(images))]
-    else:
-        images_with_extra_info = [(images[index], ocr, lang) for index in range(len(images))]
+            if lang is None or lang == 'auto':
+                images_with_extra_info.append((images[index], ocr, dataset._lang))
+            else:
+                images_with_extra_info.append((images[index], ocr, lang))
+                
+            if len(images_with_extra_info) == batch_size:
+                _, result = may_batch_image_analyze(images_with_extra_info, 0, ocr, show_log, layout_model, formula_enable, table_enable)
+                results.extend(result)
+                images_with_extra_info = [] 
 
-    if len(images) >= MIN_BATCH_INFERENCE_SIZE:
-        batch_size = MIN_BATCH_INFERENCE_SIZE
-        batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
-    else:
-        batch_images = [images_with_extra_info]
-
-    results = []
-    for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log,layout_model, formula_enable, table_enable)
+    if len(images_with_extra_info) > 0:
+        _, result = may_batch_image_analyze(images_with_extra_info, 0, ocr, show_log, layout_model, formula_enable, table_enable)
         results.extend(result)
+        images_with_extra_info = [] 
 
     model_json = []
     for index in range(len(dataset)):
@@ -193,6 +194,7 @@ def batch_doc_analyze(
     batch_size = MIN_BATCH_INFERENCE_SIZE
     images = []
     page_wh_list = []
+    results = []
 
     images_with_extra_info = []
     for dataset in datasets:
@@ -211,11 +213,15 @@ def batch_doc_analyze(
             else:
                 images_with_extra_info.append((images[-1], parse_method == 'ocr', _lang))
 
-    batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
-    results = []
-    for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, True, show_log, layout_model, formula_enable, table_enable)
+            if len(images_with_extra_info) == batch_size:
+                _, result = may_batch_image_analyze(images_with_extra_info, 0, True, show_log, layout_model, formula_enable, table_enable)
+                results.extend(result)
+                images_with_extra_info = [] 
+
+    if len(images_with_extra_info) > 0:
+        _, result = may_batch_image_analyze(images_with_extra_info, 0, True, show_log, layout_model, formula_enable, table_enable)
         results.extend(result)
+        images_with_extra_info = [] 
 
     infer_results = []
     from magic_pdf.operators.models import InferenceResult
