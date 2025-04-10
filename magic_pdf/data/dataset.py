@@ -342,17 +342,8 @@ class Doc(PageableData):
                 height: int
             }
         """
-        if self._img is None:
-            self._img = fitz_doc_to_image(self._doc)
-        return self._img
+        return fitz_doc_to_image(self._doc)
 
-    def set_image(self, img):
-        """
-        Args:
-            img (np.ndarray): the image
-        """
-        if self._img is None:
-            self._img = img
 
     def get_doc(self) -> fitz.Page:
         """Get the pymudoc object.
