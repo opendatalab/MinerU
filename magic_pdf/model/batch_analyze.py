@@ -30,8 +30,14 @@ class BatchAnalyze:
     
         images_layout_res = []
         layout_start_time = time.time()
-        _, fst_ocr, fst_lang = images_with_extra_info[0]
-        self.model = self.model_manager.get_model(fst_ocr, self.show_log, fst_lang, self.layout_model, self.formula_enable, self.table_enable)
+        self.model = self.model_manager.get_model(
+            ocr=True,
+            show_log=self.show_log,
+            lang = None,
+            layout_model = self.layout_model,
+            formula_enable = self.formula_enable,
+            table_enable = self.table_enable,
+        )
 
         images = [image for image, _, _ in images_with_extra_info]
 

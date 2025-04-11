@@ -150,7 +150,7 @@ class PymuDocDataset(Dataset):
         elif lang == 'auto':
             from magic_pdf.model.sub_modules.language_detection.utils import \
                 auto_detect_lang
-            self._lang = auto_detect_lang(bits)
+            self._lang = auto_detect_lang(self._data_bits)
             logger.info(f'lang: {lang}, detect_lang: {self._lang}')
         else:
             self._lang = lang
@@ -342,8 +342,17 @@ class Doc(PageableData):
                 height: int
             }
         """
-        return fitz_doc_to_image(self._doc)
+        if self._img is None:
+            self._img = fitz_doc_to_image(self._doc)
+        return self._img
 
+    def set_image(self, img):
+        """
+        Args:
+            img (np.ndarray): the image
+        """
+        if self._img is None:
+            self._img = img
 
     def get_doc(self) -> fitz.Page:
         """Get the pymudoc object.
