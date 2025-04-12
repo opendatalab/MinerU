@@ -109,9 +109,7 @@ def _do_parse(
     pdf_bytes = ds._raw_data
     local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
 
-    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(
-        local_md_dir
-    )
+    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
     image_dir = str(os.path.basename(local_image_dir))
 
     if len(model_list) == 0:
@@ -317,7 +315,26 @@ def batch_do_parse(
 
     infer_results = batch_doc_analyze(dss, parse_method, lang=lang, layout_model=layout_model, formula_enable=formula_enable, table_enable=table_enable)
     for idx, infer_result in enumerate(infer_results):
-        _do_parse(output_dir, pdf_file_names[idx], dss[idx], infer_result.get_infer_res(), parse_method, debug_able, f_draw_span_bbox=f_draw_span_bbox, f_draw_layout_bbox=f_draw_layout_bbox, f_dump_md=f_dump_md, f_dump_middle_json=f_dump_middle_json, f_dump_model_json=f_dump_model_json, f_dump_orig_pdf=f_dump_orig_pdf, f_dump_content_list=f_dump_content_list, f_make_md_mode=f_make_md_mode, f_draw_model_bbox=f_draw_model_bbox, f_draw_line_sort_bbox=f_draw_line_sort_bbox, f_draw_char_bbox=f_draw_char_bbox, lang=lang)
+        _do_parse(
+            output_dir = output_dir,
+            pdf_file_name = pdf_file_names[idx],
+            pdf_bytes_or_dataset = dss[idx],
+            model_list = infer_result.get_infer_res(),
+            parse_method = parse_method,
+            debug_able = debug_able,
+            f_draw_span_bbox = f_draw_span_bbox,
+            f_draw_layout_bbox = f_draw_layout_bbox,
+            f_dump_md=f_dump_md,
+            f_dump_middle_json=f_dump_middle_json,
+            f_dump_model_json=f_dump_model_json,
+            f_dump_orig_pdf=f_dump_orig_pdf,
+            f_dump_content_list=f_dump_content_list,
+            f_make_md_mode=MakeMode.MM_MD,
+            f_draw_model_bbox=f_draw_model_bbox,
+            f_draw_line_sort_bbox=f_draw_line_sort_bbox,
+            f_draw_char_bbox=f_draw_char_bbox,
+            lang=lang,
+        )
 
 
 parse_pdf_methods = click.Choice(['ocr', 'txt', 'auto'])
