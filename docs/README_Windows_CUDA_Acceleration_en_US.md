@@ -63,7 +63,7 @@ If your graphics card has at least 6GB of VRAM, follow these steps to test CUDA-
 1. **Overwrite the installation of torch and torchvision** supporting CUDA.(Please select the appropriate index-url based on your CUDA version. For more details, refer to the [PyTorch official website](https://pytorch.org/get-started/locally/).)
 
    ```
-   pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
+   pip install --force-reinstall torch torchvision "numpy<=2.1.1" --index-url https://download.pytorch.org/whl/cu124
    ```
 
 2. **Modify the value of `"device-mode"`** in the `magic-pdf.json` configuration file located in your user directory.
