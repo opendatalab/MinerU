@@ -214,7 +214,10 @@ def batch_doc_analyze(
 
     batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
     results = []
-    for batch_image in batch_images:
+    processed_images_count = 0
+    for index, batch_image in enumerate(batch_images):
+        processed_images_count += len(batch_image)
+        logger.info(f'Batch {index + 1}/{len(batch_images)}: {processed_images_count} pages/{len(images_with_extra_info)} pages')
         result = may_batch_image_analyze(batch_image, True, show_log, layout_model, formula_enable, table_enable)
         results.extend(result)
 
