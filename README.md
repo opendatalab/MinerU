@@ -53,7 +53,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
   - Optimized memory usage during batch inference.
   - Improved the parsing effect of tables rotated by 90 degrees.
   - Enhanced the parsing accuracy for large tables in financial report samples.
-  - Fixed the occasional word concatenation issue in English text areas when OCR language is not specified.
+  - Fixed the occasional word concatenation issue in English text areas when OCR language is not specified.(The model needs to be updated)
 - 2025/04/08 1.3.1 released, fixed some compatibility issues
   - Supported Python 3.13
   - Made the final adaptation for some outdated Linux systems (e.g., CentOS 7), and no further support will be guaranteed for subsequent versions. [Installation Instructions](https://github.com/opendatalab/MinerU/issues/1004)
