@@ -437,4 +437,10 @@ class TextRecognizer(BaseOCRV20):
                 index += 1
                 pbar.update(current_batch_size)
 
+        # Fix NaN values in recognition results
+        for i in range(len(rec_res)):
+            text, score = rec_res[i]
+            if isinstance(score, float) and math.isnan(score):
+                rec_res[i] = (text, 0.0)
+
         return rec_res, elapse
