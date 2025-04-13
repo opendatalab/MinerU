@@ -27,17 +27,12 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 # Create a virtual environment for MinerU
 RUN python3 -m venv /opt/mineru_venv
 
-# Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install --upgrade pip && \
-    wget https://github.com/opendatalab/MinerU/raw/master/docker/global/requirements.txt -O requirements.txt && \
-    pip3 install -r requirements.txt"
-
 # Copy the configuration file template and install magic-pdf latest
 RUN /bin/bash -c "wget https://github.com/opendatalab/MinerU/raw/master/magic-pdf.template.json && \
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
-    pip3 install -U magic-pdf"
+    pip3 install --upgrade pip && \
+    pip3 install -U magic-pdf[full]"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install huggingface_hub && \
