@@ -27,17 +27,12 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 # Create a virtual environment for MinerU
 RUN python3 -m venv /opt/mineru_venv
 
-# Activate the virtual environment and install necessary Python packages
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple && \
-    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/requirements.txt -O requirements.txt && \
-    pip3 install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple"
-
 # Copy the configuration file template and install magic-pdf latest
 RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/magic-pdf.template.json && \
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
-    pip3 install -U magic-pdf -i https://mirrors.aliyun.com/pypi/simple"
+    pip3 install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple && \
+    pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
