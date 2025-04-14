@@ -30,8 +30,14 @@ class BatchAnalyze:
     
         images_layout_res = []
         layout_start_time = time.time()
-        _, fst_ocr, fst_lang = images_with_extra_info[0]
-        self.model = self.model_manager.get_model(fst_ocr, self.show_log, fst_lang, self.layout_model, self.formula_enable, self.table_enable)
+        self.model = self.model_manager.get_model(
+            ocr=True,
+            show_log=self.show_log,
+            lang = None,
+            layout_model = self.layout_model,
+            formula_enable = self.formula_enable,
+            table_enable = self.table_enable,
+        )
 
         images = [image for image, _, _ in images_with_extra_info]
 
@@ -143,14 +149,14 @@ class BatchAnalyze:
                 if ocr_res:
                     ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], new_image, _lang)
                     ocr_res_list_dict['layout_res'].extend(ocr_result_list)
-            det_count += len(ocr_res_list_dict['ocr_res_list'])
+
+            # det_count += len(ocr_res_list_dict['ocr_res_list'])
         # logger.info(f'ocr-det time: {round(time.time()-det_start, 2)}, image num: {det_count}')
 
 
         # 表格识别 table recognition
         if self.model.apply_table:
             table_start = time.time()
-            table_count = 0
             # for table_res_list_dict in table_res_list_all_page:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
