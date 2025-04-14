@@ -99,11 +99,11 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     all_discarded_blocks = []
     add_bboxes(discarded_blocks, BlockType.Discarded, all_discarded_blocks)
 
-    """footnote识别：宽度超过1/3页面宽度的，高度超过10的，处于页面下半50%区域的"""
+    """footnote识别：宽度超过1/3页面宽度的，高度超过10的，处于页面下半30%区域的"""
     footnote_blocks = []
     for discarded in discarded_blocks:
         x0, y0, x1, y1 = discarded['bbox']
-        if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h / 2):
+        if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h * 0.7):
             footnote_blocks.append([x0, y0, x1, y1])
 
     """移除在footnote下面的任何框"""
