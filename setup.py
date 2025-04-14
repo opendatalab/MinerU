@@ -43,7 +43,7 @@ if __name__ == '__main__':
                      "matplotlib>=3.10,<4",
                      "ultralytics>=8.3.48,<9",  # yolov8,公式检测
                      "doclayout_yolo==0.0.2b1",  # doclayout_yolo
-                     "dill>=0.3.9,<1",  # doclayout_yolo
+                     "dill>=0.3.8,<1",  # doclayout_yolo
                      "rapid_table>=1.0.5,<2.0.0",  # rapid_table
                      "PyYAML>=6.0.2,<7",  # yaml
                      "ftfy>=6.3.1,<7",  # unimernet_hf
@@ -56,7 +56,7 @@ if __name__ == '__main__':
                     "matplotlib>=3.10,<=3.10.1",
                     "ultralytics>=8.3.48,<=8.3.104",  # yolov8,公式检测
                     "doclayout_yolo==0.0.2b1",  # doclayout_yolo
-                    "dill==0.3.9",  # doclayout_yolo
+                    "dill==0.3.8",  # doclayout_yolo
                     "PyYAML==6.0.2",  # yaml
                     "ftfy==6.3.1",  # unimernet_hf
                     "openai==1.71.0",  # openai SDK
