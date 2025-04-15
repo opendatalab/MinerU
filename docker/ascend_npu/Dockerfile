@@ -38,11 +38,14 @@ RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/m
     pip3 install torch==2.3.1 torchvision==0.18.1 -i https://mirrors.aliyun.com/pypi/simple && \
     pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple && \
     wget https://gitee.com/ascend/pytorch/releases/download/v6.0.rc2-pytorch2.3.1/torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
-    pip3 install torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+    pip3 install torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
+    rm -f torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
+    pip3 cache purge"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
     pip3 install modelscope -i https://mirrors.aliyun.com/pypi/simple && \
+    pip3 cache purge && \
     wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|npu|g' /root/magic-pdf.json"
