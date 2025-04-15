@@ -35,6 +35,7 @@ RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/m
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple && \
+    pip3 install torch==2.3.1 torchvision==0.18.1 -i https://mirrors.aliyun.com/pypi/simple && \
     pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple && \
     wget https://gitee.com/ascend/pytorch/releases/download/v6.0.rc2-pytorch2.3.1/torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl && \
     pip3 install torch_npu-2.3.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
