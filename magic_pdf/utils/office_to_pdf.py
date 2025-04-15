@@ -86,11 +86,6 @@ def get_soffice_command():
                 if os.path.exists(path):
                     return path
 
-            # Last attempt with which
-            soffice_path = shutil.which('soffice')
-            if soffice_path:
-                return soffice_path
-
             raise ConvertToPdfError(
                 "LibreOffice not found. Please install it:\n"
                 "  - Ubuntu/Debian: sudo apt-get install libreoffice\n"
