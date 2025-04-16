@@ -21,13 +21,14 @@ def check_fonts_installed():
 
     if system_type == 'Windows':
         # Windows: check fonts via registry or system font folder
-        font_dir = Path("C:/Windows/Fonts")
-        installed_fonts = [f.name for f in font_dir.glob("*.ttf")]
-        if any(font for font in REQUIRED_CHS_FONTS if any(font in f for f in installed_fonts)):
-            return True
-        raise EnvironmentError(
-            f"Missing Chinese font. Please install at least one of: {', '.join(REQUIRED_CHS_FONTS)}"
-        )
+        # font_dir = Path("C:/Windows/Fonts")
+        # installed_fonts = [f.name for f in font_dir.glob("*.ttf")]
+        # if any(font for font in REQUIRED_CHS_FONTS if any(font in f for f in installed_fonts)):
+        #     return True
+        # raise EnvironmentError(
+        #     f"Missing Chinese font. Please install at least one of: {', '.join(REQUIRED_CHS_FONTS)}"
+        # )
+        pass
     else:
         # Linux/macOS: use fc-list
         try:
