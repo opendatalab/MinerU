@@ -490,7 +490,7 @@ def insert_lines_into_block(block_bbox, line_height, page_w, page_h):
         return [[x0, y0, x1, y1]]
 
 
-def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
+def sort_lines_by_model(fix_blocks, page_w, page_h, line_height, footnote_blocks):
     page_line_list = []
 
     def add_lines_to_block(b):
@@ -518,6 +518,10 @@ def sort_lines_by_model(fix_blocks, page_w, page_h, line_height):
         elif block['type'] in [BlockType.ImageBody, BlockType.TableBody, BlockType.InterlineEquation]:
             block['real_lines'] = copy.deepcopy(block['lines'])
             add_lines_to_block(block)
+
+    for block in footnote_blocks:
+        footnote_block = {'bbox': block[:4]}
+        add_lines_to_block(footnote_block)
 
     if len(page_line_list) > 200:  # layoutreader最高支持512line
         return None
@@ -779,7 +783,7 @@ def parse_page_core(
     # interline_equation_blocks参数不够准，后面切换到interline_equations上
     interline_equation_blocks = []
     if len(interline_equation_blocks) > 0:
-        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
+        all_bboxes, all_discarded_blocks, footnote_blocks = ocr_prepare_bboxes_for_layout_split_v2(
             img_body_blocks, img_caption_blocks, img_footnote_blocks,
             table_body_blocks, table_caption_blocks, table_footnote_blocks,
             discarded_blocks,
@@ -790,7 +794,7 @@ def parse_page_core(
             page_h,
         )
     else:
-        all_bboxes, all_discarded_blocks = ocr_prepare_bboxes_for_layout_split_v2(
+        all_bboxes, all_discarded_blocks, footnote_blocks = ocr_prepare_bboxes_for_layout_split_v2(
             img_body_blocks, img_caption_blocks, img_footnote_blocks,
             table_body_blocks, table_caption_blocks, table_footnote_blocks,
             discarded_blocks,
@@ -866,7 +870,7 @@ def parse_page_core(
     line_height = get_line_height(fix_blocks)
 
     """获取所有line并对line排序"""
-    sorted_bboxes = sort_lines_by_model(fix_blocks, page_w, page_h, line_height)
+    sorted_bboxes = sort_lines_by_model(fix_blocks, page_w, page_h, line_height, footnote_blocks)
 
     """根据line的中位数算block的序列关系"""
     fix_blocks = cal_block_index(fix_blocks, sorted_bboxes)
