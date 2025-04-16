@@ -1,4 +1,5 @@
 import unittest
+import os
 from PIL import Image
 from lxml import etree
 
@@ -8,7 +9,7 @@ from magic_pdf.model.sub_modules.table.rapidtable.rapid_table import RapidTableM
 
 class TestppTableModel(unittest.TestCase):
     def test_image2html(self):
-        img = Image.open("assets/table.jpg")
+        img = Image.open(os.path.join(os.path.dirname(__file__), "assets/table.jpg"))
         atom_model_manager = AtomModelSingleton()
         ocr_engine = atom_model_manager.get_atom_model(
             atom_model_name='ocr',
