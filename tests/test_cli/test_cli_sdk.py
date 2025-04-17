@@ -323,7 +323,7 @@ class TestCli:
         logging.info(cmd)
         os.system(cmd)
     
-
+    @pytest.mark.skip(reason="st废弃")
     @pytest.mark.P1
     def test_local_magic_pdf_open_st_table(self):
         """magic pdf cli open st table."""
@@ -343,25 +343,6 @@ class TestCli:
         assert res is True
   
     @pytest.mark.P1
-    def test_local_magic_pdf_open_tablemaster_cuda(self):
-        """magic pdf cli open table master html table cuda mode."""
-        time.sleep(2)
-        #pre_cmd = "cp ~/magic_pdf_html.json ~/magic-pdf.json"
-        #os.system(pre_cmd)
-        value = {
-        "model": "tablemaster",
-        "enable": True,
-        "max_time": 400
-        }   
-        common.update_config_file(magic_pdf_config, "table-config", value)
-        pdf_path = os.path.join(pdf_dev_path, "pdf", "test_rearch_report.pdf")
-        common.delete_file(pdf_res_path)
-        cli_cmd = "magic-pdf -p %s -o %s" % (pdf_path, pdf_res_path)
-        os.system(cli_cmd)
-        res = common.check_html_table_exists(os.path.join(pdf_res_path, "test_rearch_report", "auto", "test_rearch_report.md"))
-        assert res is True
-    
-    @pytest.mark.P1
     def test_local_magic_pdf_open_rapidai_table(self):
         """magic pdf cli open rapid ai table."""
         time.sleep(2)
@@ -370,6 +351,7 @@ class TestCli:
         value = {
         "model": "rapid_table",
         "enable": True,
+        "sub_model": "slanet_plus",
         "max_time": 400
         }   
         common.update_config_file(magic_pdf_config, "table-config", value)
@@ -420,8 +402,9 @@ class TestCli:
         #pre_cmd = "cp ~/magic_pdf_html_table_cpu.json ~/magic-pdf.json"
         #os.system(pre_cmd)
         value = {
-        "model": "tablemaster",
+        "model": "rapid_table",
         "enable": False,
+        "sub_model": "slanet_plus",
         "max_time": 400
         }   
         common.update_config_file(magic_pdf_config, "table-config", value)
@@ -440,8 +423,9 @@ class TestCli:
         #pre_cmd = "cp ~/magic_pdf_close_table.json ~/magic-pdf.json"
         #os.system(pre_cmd)
         value = {
-        "model": "tablemaster",
+        "model": "rapid_table",
         "enable": False,
+        "sub_model": "slanet_plus",
         "max_time": 400
         }   
         common.update_config_file(magic_pdf_config, "table-config", value)
