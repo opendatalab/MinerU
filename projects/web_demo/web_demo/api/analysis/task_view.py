@@ -92,7 +92,7 @@ class DeleteTaskView(Resource):
         """
         analysis_task = AnalysisTask.query.filter(AnalysisTask.id == id, AnalysisTask.status != 0).first()
         if analysis_task:
-            analysis_pdf = AnalysisPdf.query.filter(AnalysisPdf.id == AnalysisTask.analysis_pdf_id).first()
+            analysis_pdf = AnalysisPdf.query.filter(AnalysisPdf.id == analysis_task.analysis_pdf_id).first()
             with db.auto_commit():
                 db.session.delete(analysis_pdf)
                 db.session.delete(analysis_task)
