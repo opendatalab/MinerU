@@ -4,6 +4,8 @@ import platform
 from pathlib import Path
 import shutil
 
+from loguru import logger
+
 
 class ConvertToPdfError(Exception):
     def __init__(self, msg):
@@ -11,35 +13,24 @@ class ConvertToPdfError(Exception):
         super().__init__(self.msg)
 
 
-# Chinese font list
-REQUIRED_CHS_FONTS = ['SimSun', 'Microsoft YaHei', 'Noto Sans CJK SC']
-
-
 def check_fonts_installed():
     """Check if required Chinese fonts are installed."""
     system_type = platform.system()
 
-    if system_type == 'Windows':
-        # Windows: check fonts via registry or system font folder
-        font_dir = Path("C:/Windows/Fonts")
-        installed_fonts = [f.name for f in font_dir.glob("*.ttf")]
-        if any(font for font in REQUIRED_CHS_FONTS if any(font in f for f in installed_fonts)):
-            return True
-        raise EnvironmentError(
-            f"Missing Chinese font. Please install at least one of: {', '.join(REQUIRED_CHS_FONTS)}"
-        )
+    if system_type in ['Windows', 'Darwin']:
+        pass
     else:
-        # Linux/macOS: use fc-list
+        # Linux: use fc-list
         try:
             output = subprocess.check_output(['fc-list', ':lang=zh'], encoding='utf-8')
-            for font in REQUIRED_CHS_FONTS:
-                if font in output:
-                    return True
-            raise EnvironmentError(
-                f"Missing Chinese font. Please install at least one of: {', '.join(REQUIRED_CHS_FONTS)}"
-            )
-        except Exception as e:
-            raise EnvironmentError(f"Font detection failed. Please install 'fontconfig' and fonts: {str(e)}")
+            if output.strip():  # 只要有任何输出（非空）
+                return True
+            else:
+                logger.warning(
+                    f"No Chinese fonts were detected, the converted document may not display Chinese content properly."
+                )
+        except Exception:
+            pass
 
 
 def get_soffice_command():
