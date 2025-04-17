@@ -397,6 +397,7 @@ class TestCli:
         os.system(cli_cmd)
         common.cli_count_folders_and_check_contents(os.path.join(pdf_res_path, "test_rearch_report", "auto"))
 
+    @pytest.mark.skip(reason="layoutlmv3废弃")
     @pytest.mark.P1
     def test_local_magic_pdf_layoutlmv3_yolo(self):
         """magic pdf cli open layoutlmv3."""
