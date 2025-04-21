@@ -18,7 +18,17 @@ RUN apt-get update && \
         wget \
         git \
         libgl1 \
+        libreoffice \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
+        fonts-wqy-microhei \
+        ttf-mscorefonts-installer \
+        fontconfig \
         libglib2.0-0 \
+        libxrender1 \
+        libsm6 \
+        libxext6 \
+        poppler-utils \
         && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as the default python3

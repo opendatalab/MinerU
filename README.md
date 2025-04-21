@@ -48,6 +48,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/16 1.3.4 Released
+  - Slightly improved the speed of OCR detection by removing some unused blocks.
+  - Fixed page-level sorting errors caused by footnotes in certain cases.
 - 2025/04/12 1.3.2 released
   - Fixed the issue of incompatible dependency package versions when installing in Python 3.13 environment on Windows systems.
   - Optimized memory usage during batch inference.
