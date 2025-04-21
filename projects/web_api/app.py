@@ -28,7 +28,7 @@ app = FastAPI()
 
 pdf_extensions = [".pdf"]
 office_extensions = [".ppt", ".pptx", ".doc", ".docx"]
-image_extensions = [".png", ".jpg"]
+image_extensions = [".png", ".jpg", ".jpeg"]
 
 class MemoryDataWriter(DataWriter):
     def __init__(self):
@@ -128,7 +128,7 @@ def process_file(
         Tuple[InferenceResult, PipeResult]: Returns inference result and pipeline result
     """
 
-    ds = Union[PymuDocDataset, ImageDataset]
+    ds: Union[PymuDocDataset, ImageDataset] = None
     if file_extension in pdf_extensions:
         ds = PymuDocDataset(file_bytes)
     elif file_extension in office_extensions:
