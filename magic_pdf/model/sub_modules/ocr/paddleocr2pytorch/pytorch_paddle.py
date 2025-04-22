@@ -53,6 +53,11 @@ class PytorchPaddleOCR(TextSystem):
         args = parser.parse_args(args)
 
         self.lang = kwargs.get('lang', 'ch')
+
+        device = get_device()
+        if device == 'cpu' and self.lang == 'ch':
+            self.lang = 'ch_lite'
+
         if self.lang in latin_lang:
             self.lang = 'latin'
         elif self.lang in arabic_lang:
