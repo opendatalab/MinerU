@@ -304,7 +304,7 @@ def union_make(pdf_info_dict: list,
             for para_block in paras_of_layout:
                 if drop_reason_flag:
                     para_content = para_to_standard_format_v2(
-                        para_block, img_buket_path, page_idx)
+                        para_block, img_buket_path, page_idx, drop_reason)
                 else:
                     para_content = para_to_standard_format_v2(
                         para_block, img_buket_path, page_idx)
