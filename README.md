@@ -48,6 +48,12 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- Released on 2025/04/23, version 1.3.8
+  - The default `ocr` model (`ch`) has been updated to `PP-OCRv4_server_rec_doc` (model update required)
+    - `PP-OCRv4_server_rec_doc` is trained on a mix of more Chinese document data and PP-OCR training data, enhancing recognition capabilities for some traditional Chinese characters, Japanese, and special characters. It supports over 15,000 recognizable characters, improving text recognition in documents while also boosting general text recognition.
+    - [Performance comparison between PP-OCRv4_server_rec_doc, PP-OCRv4_server_rec, and PP-OCRv4_mobile_rec](https://paddlepaddle.github.io/PaddleX/latest/en/module_usage/tutorials/ocr_modules/text_recognition.html#ii-supported-model-list)
+    - Verified results show that the `PP-OCRv4_server_rec_doc` model significantly improves accuracy in both single-language (`Chinese`, `English`, `Japanese`, `Traditional Chinese`) and mixed-language scenarios, with speed comparable to `PP-OCRv4_server_rec`, making it suitable for most use cases.
+    - In a small number of pure English scenarios, the `PP-OCRv4_server_rec_doc` model may encounter word concatenation issues, whereas `PP-OCRv4_server_rec` performs better in such cases. Therefore, we have retained the `PP-OCRv4_server_rec` model, which users can invoke by passing the parameter `lang='ch_server'`(python api) or `--lang ch_server`(cli).
 - 2025/04/22 1.3.7 Released
   - Fixed the issue where the `lang` parameter was ineffective during table parsing model initialization.
   - Fixed the significant slowdown in OCR and table parsing speed in `cpu` mode.
