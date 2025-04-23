@@ -161,20 +161,13 @@ class BatchAnalyze:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
                 atom_model_manager = AtomModelSingleton()
-                ocr_engine = atom_model_manager.get_atom_model(
-                    atom_model_name='ocr',
-                    ocr_show_log=False,
-                    det_db_box_thresh=0.5,
-                    det_db_unclip_ratio=1.6,
-                    lang=_lang
-                )
                 table_model = atom_model_manager.get_atom_model(
                     atom_model_name='table',
                     table_model_name='rapid_table',
                     table_model_path='',
                     table_max_time=400,
                     device='cpu',
-                    ocr_engine=ocr_engine,
+                    lang=_lang,
                     table_sub_model_name='slanet_plus'
                 )
                 html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])

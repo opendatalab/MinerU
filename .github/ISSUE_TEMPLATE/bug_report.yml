@@ -17,7 +17,7 @@ body:
       description: >
         Please search the MinerU [Readme](https://github.com/opendatalab/MinerU), [Issues](https://github.com/opendatalab/MinerU/issues) and [Discussions](https://github.com/opendatalab/MinerU/discussions) to see if a similar bug report already exists.
       options:
-        - label: I have searched the MinerU [Docs](https://github.com/opendatalab/MinerU) and found no similar bug report.
+        - label: I have searched the MinerU [Readme](https://github.com/opendatalab/MinerU) and found no similar bug report.
           required: true
         - label: I have searched the MinerU [Issues](https://github.com/opendatalab/MinerU/issues) and found no similar bug report.
           required: true

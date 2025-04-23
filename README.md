@@ -48,6 +48,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/22 1.3.7 Released
+  - Fixed the issue where the `lang` parameter was ineffective during table parsing model initialization.
+  - Fixed the significant slowdown in OCR and table parsing speed in `cpu` mode.
 - 2025/04/16 1.3.4 Released
   - Slightly improved the speed of OCR detection by removing some unused blocks.
   - Fixed page-level sorting errors caused by footnotes in certain cases.
