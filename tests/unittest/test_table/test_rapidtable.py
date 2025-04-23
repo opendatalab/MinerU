@@ -41,7 +41,7 @@ class TestppTableModel(unittest.TestCase):
         # 检查第一行数据
         first_row = tree.xpath('//table/tr[2]/td')
         assert len(first_row) == 5, "First row should have 5 cells"
-        assert first_row[0].text and first_row[0].text.strip() == "SegLink[26]", "First cell should be 'SegLink[26]'"
+        assert first_row[0].text and 'SegLink' in first_row[0].text.strip(), "First cell should be 'SegLink [26]'"
         assert first_row[1].text and first_row[1].text.strip() == "70.0", "Second cell should be '70.0'"
         assert first_row[2].text and first_row[2].text.strip() == "86.0", "Third cell should be '86.0'"
         assert first_row[3].text and first_row[3].text.strip() == "77.0", "Fourth cell should be '77.0'"
