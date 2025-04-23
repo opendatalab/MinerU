@@ -80,7 +80,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
         # kwargs['rec_batch_num'] = 8
 
-        kwargs['device'] = get_device()
+        kwargs['device'] = device
 
         default_args = vars(args)
         default_args.update(kwargs)
