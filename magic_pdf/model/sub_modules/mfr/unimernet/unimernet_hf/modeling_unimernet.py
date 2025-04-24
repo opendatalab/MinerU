@@ -60,6 +60,10 @@ class TokenizerWrapper:
 def latex_rm_whitespace(s: str):
     """Remove unnecessary whitespace from LaTeX code.
     """
+
+    # 先保存 "\ " 序列，防止被错误处理
+    s = re.sub(r'\\ ', r'\\SPACE', s)
+
     text_reg = r'(\\(operatorname|mathrm|text|mathbf)\s?\*? {.*?})'
     letter = r'[a-zA-Z]'
     noletter = r'[\W_^\d]'
@@ -73,7 +77,11 @@ def latex_rm_whitespace(s: str):
         news = re.sub(r'(%s)\s+?(%s)' % (letter, noletter), r'\1\2', news)
         if news == s:
             break
-    return s
+
+    # 恢复 "\ " 序列
+    news = re.sub(r'\\SPACE', r'\\ ', news)
+
+    return news
 
 
 class UnimernetModel(VisionEncoderDecoderModel):
