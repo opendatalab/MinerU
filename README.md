@@ -374,7 +374,7 @@ There are three different ways to experience MinerU:
         <td colspan="2">GPU VRAM 6GB or more</td>
         <td colspan="2">All GPUs with Tensor Cores produced from Volta(2017) onwards.<br>
         More than 6GB VRAM </td>
-        <td rowspan="2">apple slicon</td>
+        <td rowspan="2">Apple silicon</td>
     </tr>
 </table>
 
