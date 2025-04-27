@@ -247,6 +247,14 @@
       "created_at": "2025-04-17T03:54:59Z",
       "repoId": 765083837,
       "pullRequestNo": 2267
+    },
+    {
+      "name": "kowyo",
+      "id": 110339237,
+      "comment_id": 2829263082,
+      "created_at": "2025-04-25T02:54:20Z",
+      "repoId": 765083837,
+      "pullRequestNo": 2367
     }
   ]
 }
