@@ -1,4 +1,4 @@
-name: Bug Report | 反馈 Bug
+name: 🐛 Bug Report
 description: Create a bug report for MinerU | MinerU 的 Bug 反馈
 labels: bug
 
@@ -6,14 +6,32 @@ labels: bug
 # empty string, Github seems to reject this .yml file.
 
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a MinerU 🐛 Bug Report! | 感谢您提交 MinerU 🐛 Bug 反馈！
+
+  - type: checkboxes
+    attributes:
+      label: 🔎 Search before asking | 提交之前请先搜索
+      description: >
+        Please search the MinerU [Readme](https://github.com/opendatalab/MinerU), [Issues](https://github.com/opendatalab/MinerU/issues) and [Discussions](https://github.com/opendatalab/MinerU/discussions) to see if a similar bug report already exists.
+      options:
+        - label: I have searched the MinerU [Readme](https://github.com/opendatalab/MinerU) and found no similar bug report.
+          required: true
+        - label: I have searched the MinerU [Issues](https://github.com/opendatalab/MinerU/issues) and found no similar bug report.
+          required: true
+        - label: I have searched the MinerU [Discussions](https://github.com/opendatalab/MinerU/discussions) and found no similar bug report.
+          required: true
 
   - type: textarea
     id: description
     attributes:
       label: Description of the bug | 错误描述
       description: |
-        A clear and concise description of the bug. | 简单描述遇到的问题  
-        
+        Provide console output with error messages and/or screenshots of the bug. | 请提供详细报错信息或者截图
+      placeholder: |
+        💡 ProTip! Include as much information as possible (screenshots, logs, tracebacks etc.) to receive the most helpful response.
     validations:
       required: true
   
@@ -24,11 +42,12 @@ body:
       
       # Should not word-wrap this description here.
       description: |
-        * Explain the steps required to reproduce the bug. | 说明复现此错误所需的步骤。
-        * Include required code snippets, example files, etc. | 包含必要的代码片段、示例文件等。
-        * Describe what you expected to happen (if not obvious). | 描述你期望发生的情况。
-        * If applicable, add screenshots to help explain the problem. | 添加截图以帮助解释问题。
-        * Include any other information that could be relevant, for example information about the Python environment. | 包括任何其他可能相关的信息。
+        If you have questions about the parsing results or encounter errors during execution: | 如对解析结果有疑问或在运行中出现报错等异常:
+        * Provide a minimal reproducible example. | 请提供一个最小可复现的demo。 
+        * The demo should include the complete steps, code, and the PDF file to be parsed. | demo需要包含完整的操作步骤，代码，以及需要解析的PDF文件。
+        * When reporting parsing result anomalies and runtime errors, reproducible PDF files are essential. If the document is too large or confidential, you can print the problematic page(s) via the browser and submit the corresponding example file.
+        * 在反馈解析结果异常和运行时报错时，可复现的PDF文件是必不可少的，如文档过大或涉密，您可通过浏览器打印出出现问题的某一页或某几页再提交相应的示例文件。
+        
         
         For problems when building or installing MinerU: | 在构建或安装 MinerU 时遇到的问题:
         * Give the **exact** build/install commands that were run. | 提供**确切**的构建/安装命令。
@@ -44,15 +63,31 @@ body:
 
 
   - type: dropdown
-    id: os_name
+    id: os_mode
     attributes:
-      label: Operating system | 操作系统
+      label: Operating System Mode | 操作系统类型
       #multiple: true
       options:
         -
         - Windows
         - Linux
         - MacOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: os_name_version
+    attributes:
+      label: Operating System Version| 操作系统版本
+      #multiple: true
+      description: |
+        * 如果您使用的是Linux系统，请提供Linux系统的**发行版名称**和**版本号**来帮助开发人员排查问题。 
+        * If you are using a Linux system, please provide the Linux distribution and version number to help developers troubleshoot the issue.
+        * 如果您使用的是Windows或MacOS系统，请提供操作系统的**版本号**来帮助开发人员排查问题。
+        * If you are using a Windows or MacOS system, please provide the version number of the operating system to help developers troubleshoot the issue.
+        * 例如：Ubuntu 22.04, CentOS 7.9, MacOS 15.1, Windows 11
+        * For example: Ubuntu 22.04, CentOS 7.9, MacOS 15.1, Windows 11.
+
     validations:
       required: true
 
@@ -94,6 +129,7 @@ body:
         -
         - cpu
         - cuda
+        - mps
         - npu
     validations:
       required: true

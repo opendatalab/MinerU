@@ -119,7 +119,7 @@ def ocr_prepare_bboxes_for_layout_split_v2(
     """将剩余的bbox做分离处理，防止后面分layout时出错"""
     # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
     all_bboxes.sort(key=lambda x: x[0]+x[1])
-    return all_bboxes, all_discarded_blocks
+    return all_bboxes, all_discarded_blocks, footnote_blocks
 
 
 def find_blocks_under_footnote(all_bboxes, footnote_blocks):
