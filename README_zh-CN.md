@@ -367,7 +367,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td colspan="2">
         Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
         6G显存及以上</td>
-        <td rowspan="2">apple slicon</td>
+        <td rowspan="2">Apple silicon</td>
     </tr>
 </table>
 
