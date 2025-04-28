@@ -47,6 +47,15 @@
 </div>
 
 # 更新记录
+- 2025/04/27 1.3.9 发布
+  - 优化公式解析功能，提升公式渲染的成功率
+  - 更新`pdfminer.six`到最新版本，修复了部分pdf解析异常问题
+- 2025/04/23 1.3.8 发布
+  - `ocr`默认模型(`ch`)更新为`PP-OCRv4_server_rec_doc`（需更新模型）
+    - `PP-OCRv4_server_rec_doc`是在`PP-OCRv4_server_rec`的基础上，在更多中文文档数据和PP-OCR训练数据的混合数据训练而成，增加了部分繁体字、日文、特殊字符的识别能力，可支持识别的字符为1.5万+，除文档相关的文字识别能力提升外，也同时提升了通用文字的识别能力。
+    - [PP-OCRv4_server_rec_doc/PP-OCRv4_server_rec/PP-OCRv4_mobile_rec 性能对比](https://paddlepaddle.github.io/PaddleX/latest/module_usage/tutorials/ocr_modules/text_recognition.html#_3)
+    - 经验证，`PP-OCRv4_server_rec_doc`模型在`中英日繁`单种语言或多种语言混合场景均有明显精度提升，且速度与`PP-OCRv4_server_rec`相当，适合绝大部分场景使用。
+    - `PP-OCRv4_server_rec_doc`在小部分纯英文场景可能会发生单词粘连问题，`PP-OCRv4_server_rec`则在此场景下表现更好，因此我们保留了`PP-OCRv4_server_rec`模型，用户可通过增加参数`lang='ch_server'`(python api)或`--lang ch_server`(命令行)调用。
 - 2025/04/22 1.3.7 发布
   - 修复表格解析模型初始化时lang参数失效的问题
   - 修复在`cpu`模式下ocr和表格解析速度大幅下降的问题
@@ -358,7 +367,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td colspan="2">
         Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
         6G显存及以上</td>
-        <td rowspan="2">apple slicon</td>
+        <td rowspan="2">Apple silicon</td>
     </tr>
 </table>
 
