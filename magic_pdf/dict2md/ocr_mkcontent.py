@@ -5,6 +5,7 @@ from loguru import logger
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
+from magic_pdf.libs.config_reader import get_latex_delimiter_config
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.post_proc.para_split_v3 import ListLineTag
@@ -145,6 +146,19 @@ def full_to_half(text: str) -> str:
             result.append(char)
     return ''.join(result)
 
+latex_delimiters_config = get_latex_delimiter_config()
+
+default_delimiters = {
+    'display': {'left': '$$', 'right': '$$'},
+    'inline': {'left': '$', 'right': '$'}
+}
+
+delimiters = latex_delimiters_config if latex_delimiters_config else default_delimiters
+
+display_left_delimiter = delimiters['display']['left']
+display_right_delimiter = delimiters['display']['right']
+inline_left_delimiter = delimiters['inline']['left']
+inline_right_delimiter = delimiters['inline']['right']
 
 def merge_para_with_text(para_block):
     block_text = ''
@@ -168,9 +182,9 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.Text:
                 content = ocr_escape_special_markdown_char(span['content'])
             elif span_type == ContentType.InlineEquation:
-                content = f"${span['content']}$"
+                content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.InterlineEquation:
-                content = f"\n$$\n{span['content']}\n$$\n"
+                content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
 
             content = content.strip()
 
