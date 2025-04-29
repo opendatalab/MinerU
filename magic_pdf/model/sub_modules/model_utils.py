@@ -172,8 +172,8 @@ def filter_nested_tables(table_res_list, overlap_threshold=0.8, area_threshold=0
         tables_inside = [j for j in range(len(table_res_list))
                          if i != j and is_inside(table_info[j], table_info[i], overlap_threshold)]
 
-        # Continue if there are at least 2 tables inside
-        if len(tables_inside) >= 2:
+        # Continue if there are at least 3 tables inside
+        if len(tables_inside) >= 3:
             # Check if inside tables overlap with each other
             tables_overlap = any(do_overlap(table_info[tables_inside[idx1]], table_info[tables_inside[idx2]])
                                  for idx1 in range(len(tables_inside))
