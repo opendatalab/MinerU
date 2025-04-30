@@ -29,7 +29,7 @@ const LazyUrlMarkdown: React.FC<IMarkdownProps> = ({
             remarkMath,
             [remarkGfm, { singleTilde: false }, { strict: "ignore" }],
           ]}
-          rehypePlugins={[[rehypeKatex, { strict: "ignore" }], rehypeRaw]}
+          rehypePlugins={[[rehypeKatex, { strict: "ignore", output: 'mathml' }], rehypeRaw]}
           components={{
             code(props) {
               const { children, className, node, ...rest } = props;
