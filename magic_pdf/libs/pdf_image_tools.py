@@ -19,16 +19,16 @@ def cut_image(bbox: tuple, page_num: int, page: fitz.Page, return_path, imageWri
     img_path = join_path(return_path, filename) if return_path is not None else None
 
     # 新版本生成平铺路径
-    img_hash256_path = f'{compute_sha256(img_path)}.jpg'
+    img_hash256_path = f'{compute_sha256(img_path)}.png'
 
     # 将坐标转换为fitz.Rect对象
     rect = fitz.Rect(*bbox)
     # 配置缩放倍数为3倍
-    zoom = fitz.Matrix(3, 3)
+    zoom = fitz.Matrix(5, 5)
     # 截取图片
     pix = page.get_pixmap(clip=rect, matrix=zoom)
 
-    byte_data = pix.tobytes(output='jpeg', jpg_quality=95)
+    byte_data = pix.tobytes(output='png')
 
     imageWriter.write(img_hash256_path, byte_data)
 
