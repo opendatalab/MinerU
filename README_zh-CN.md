@@ -47,6 +47,12 @@
 </div>
 
 # 更新记录
+- 2025/04/29 1.3.10 发布
+  - 支持使用自定义公式标识符，可通过修改用户目录下的`magic-pdf.json`文件中的`latex-delimiter-config`项实现。
+  - 锁定`pdfminer.six`至`20250324`版本，以避免新版本导致的解析失败问题。
+- 2025/04/27 1.3.9 发布
+  - 优化公式解析功能，提升公式渲染的成功率
+  - 更新`pdfminer.six`到最新版本，修复了部分pdf解析异常问题
 - 2025/04/23 1.3.8 发布
   - `ocr`默认模型(`ch`)更新为`PP-OCRv4_server_rec_doc`（需更新模型）
     - `PP-OCRv4_server_rec_doc`是在`PP-OCRv4_server_rec`的基础上，在更多中文文档数据和PP-OCR训练数据的混合数据训练而成，增加了部分繁体字、日文、特殊字符的识别能力，可支持识别的字符为1.5万+，除文档相关的文字识别能力提升外，也同时提升了通用文字的识别能力。
@@ -364,7 +370,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td colspan="2">
         Volta(2017)及之后生产的全部带Tensor Core的GPU <br>
         6G显存及以上</td>
-        <td rowspan="2">apple slicon</td>
+        <td rowspan="2">Apple silicon</td>
     </tr>
 </table>
 

@@ -48,6 +48,12 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/29 1.3.10 Released
+  - Support for custom formula delimiters can be achieved by modifying the `latex-delimiter-config` item in the `magic-pdf.json` file under the user directory.
+  - Pinned `pdfminer.six` to version `20250324` to prevent parsing failures caused by new versions.
+- 2025/04/27 1.3.9 Released  
+  - Optimized the formula parsing function to improve the success rate of formula rendering  
+  - Updated `pdfminer.six` to the latest version, fixing some abnormal PDF parsing issues
 - 2025/04/23 1.3.8 Released
   - The default `ocr` model (`ch`) has been updated to `PP-OCRv4_server_rec_doc` (model update required)
     - `PP-OCRv4_server_rec_doc` is trained on a mix of more Chinese document data and PP-OCR training data, enhancing recognition capabilities for some traditional Chinese characters, Japanese, and special characters. It supports over 15,000 recognizable characters, improving text recognition in documents while also boosting general text recognition.
@@ -374,7 +380,7 @@ There are three different ways to experience MinerU:
         <td colspan="2">GPU VRAM 6GB or more</td>
         <td colspan="2">All GPUs with Tensor Cores produced from Volta(2017) onwards.<br>
         More than 6GB VRAM </td>
-        <td rowspan="2">apple slicon</td>
+        <td rowspan="2">Apple silicon</td>
     </tr>
 </table>
 
