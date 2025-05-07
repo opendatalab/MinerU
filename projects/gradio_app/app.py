@@ -117,8 +117,12 @@ def to_markdown(file_path, end_pages, is_ocr, layout_mode, formula_enable, table
     return md_content, txt_content, archive_zip_path, new_pdf_path
 
 
-latex_delimiters = [{'left': '$$', 'right': '$$', 'display': True},
-                    {'left': '$', 'right': '$', 'display': False}]
+latex_delimiters = [
+    {'left': '$$', 'right': '$$', 'display': True},
+    {'left': '$', 'right': '$', 'display': False},
+    {'left': '\\(', 'right': '\\)', 'display': False},
+    {'left': '\\[', 'right': '\\]', 'display': True},
+]
 
 
 def init_model():
@@ -218,7 +222,8 @@ if __name__ == '__main__':
                 with gr.Tabs():
                     with gr.Tab('Markdown rendering'):
                         md = gr.Markdown(label='Markdown rendering', height=1100, show_copy_button=True,
-                                         latex_delimiters=latex_delimiters, line_breaks=True)
+                                         latex_delimiters=latex_delimiters,
+                                         line_breaks=True)
                     with gr.Tab('Markdown text'):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
         file.change(fn=to_pdf, inputs=file, outputs=pdf_show)

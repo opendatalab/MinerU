@@ -10,6 +10,6 @@ scikit-learn>=1.0.2
 torch>=2.2.2,!=2.5.0,!=2.5.1
 torchvision
 transformers>=4.49.0,!=4.51.0,<5.0.0
-pdfminer.six>=20250416
+pdfminer.six==20250324
 tqdm>=4.67.1
 # The requirements.txt must ensure that only necessary external dependencies are introduced. If there are new dependencies to add, please contact the project administrator.

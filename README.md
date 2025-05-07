@@ -48,6 +48,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/04/29 1.3.10 Released
+  - Support for custom formula delimiters can be achieved by modifying the `latex-delimiter-config` item in the `magic-pdf.json` file under the user directory.
+  - Pinned `pdfminer.six` to version `20250324` to prevent parsing failures caused by new versions.
 - 2025/04/27 1.3.9 Released  
   - Optimized the formula parsing function to improve the success rate of formula rendering  
   - Updated `pdfminer.six` to the latest version, fixing some abnormal PDF parsing issues
