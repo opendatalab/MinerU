@@ -346,6 +346,9 @@ REPLACEMENTS_PATTERNS = {
     re.compile(r'\\textunderscore'): r'\\_',
     re.compile(r'\\fint'): r'⨏',
     re.compile(r'\\up '): r'\\ ',
+    re.compile(r'\\vline = '): r'\\models ',
+    re.compile(r'\\vDash '): r'\\models ',
+    re.compile(r'\\sq \\sqcup '): r'\\square ',
 }
 QQUAD_PATTERN = re.compile(r'\\qquad(?!\s)')
 
