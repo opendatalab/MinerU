@@ -4,9 +4,7 @@
 ## 环境配置
 请使用以下命令配置所需的环境：
 ```bash
-pip install -U litserve python-multipart filetype
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
-pip install paddlepaddle-gpu==3.0.0b1 -i https://www.paddlepaddle.org.cn/packages/stable/cu118
+pip install -U magic-pdf[full] litserve python-multipart filetype
 ```
 
 ## 快速使用
