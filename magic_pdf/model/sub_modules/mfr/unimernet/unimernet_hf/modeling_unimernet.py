@@ -334,7 +334,7 @@ def fix_latex_environments(s):
 
 UP_PATTERN = re.compile(r'\\up([a-zA-Z]+)')
 COMMANDS_TO_REMOVE_PATTERN = re.compile(
-    r'\\(?:lefteqn|boldmath|ensuremath|centering|textsubscript|sides|textsl|textcent|emph|protect)')
+    r'\\(?:lefteqn|boldmath|ensuremath|centering|textsubscript|sides|textsl|textcent|emph|protect|null)')
 REPLACEMENTS_PATTERNS = {
     re.compile(r'\\underbar'): r'\\underline',
     re.compile(r'\\Bar'): r'\\hat',
