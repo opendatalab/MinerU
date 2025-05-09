@@ -344,7 +344,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">python版本</td>
-        <td colspan="3">>=3.10</td>
+        <td colspan="3">3.10~3.13</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver 版本</td>
@@ -354,8 +354,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">CUDA环境</td>
-        <td>11.8/12.4/12.6/12.8</td>
-        <td>11.8/12.4/12.6/12.8</td>
+        <td colspan="2"><a href="https://pytorch.org/get-started/locally/">Refer to the PyTorch official website</a></td>
         <td>None</td>
     </tr>
     <tr>
@@ -390,7 +389,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
-conda create -n mineru 'python>=3.10' -y
+conda create -n mineru 'python=3.12' -y
 conda activate mineru
 pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 ```
