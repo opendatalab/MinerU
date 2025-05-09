@@ -61,7 +61,7 @@ Also you can try `online demo <https://www.modelscope.cn/studios/OpenDataLab/Min
     </tr>
     <tr>
         <td colspan="3">Python Version</td>
-        <td colspan="3">3.10~3.12</td>
+        <td colspan="3">3.10~3.13</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver Version</td>
@@ -71,8 +71,7 @@ Also you can try `online demo <https://www.modelscope.cn/studios/OpenDataLab/Min
     </tr>
     <tr>
         <td colspan="3">CUDA Environment</td>
-        <td>11.8/12.4/12.6/12.8</td>
-        <td>11.8/12.4/12.6/12.8</td>
+        <td colspan="2"><a href="https://pytorch.org/get-started/locally/">Refer to the PyTorch official website</a></td>
         <td>None</td>
     </tr>
     <tr>
@@ -97,7 +96,7 @@ Create an environment
 
 .. code-block:: shell
 
-    conda create -n mineru 'python>=3.10' -y
+    conda create -n mineru 'python=3.12' -y
     conda activate mineru
     pip install -U "magic-pdf[full]"
 

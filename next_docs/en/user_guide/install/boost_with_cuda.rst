@@ -76,11 +76,11 @@ In the final step, enter ``yes``, close the terminal, and reopen it.
 4. Create an Environment Using Conda
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Specify Python version 3.10.
+Specify Python version 3.10～3.13.
 
 .. code:: sh
 
-    conda create -n mineru 'python>=3.10' -y
+    conda create -n mineru 'python=3.12' -y
     conda activate mineru
 
 5. Install Applications
@@ -155,14 +155,15 @@ to test CUDA acceleration:
 Windows 10/11
 --------------
 
-1. Install CUDA and cuDNN
+1. Install CUDA
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You need to install a CUDA version that is compatible with torch's requirements. Currently, torch supports CUDA 11.8/12.4/12.6.
+You need to install a CUDA version that is compatible with torch's requirements. For details, please refer to the [official PyTorch website](https://pytorch.org/get-started/locally/).
 
 - CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
 - CUDA 12.4 https://developer.nvidia.com/cuda-12-4-0-download-archive
 - CUDA 12.6 https://developer.nvidia.com/cuda-12-6-0-download-archive
+- CUDA 12.8 https://developer.nvidia.com/cuda-12-8-0-download-archive
 
 
 2. Install Anaconda
@@ -177,7 +178,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
 ::
 
-    conda create -n mineru 'python>=3.10' -y
+    conda create -n mineru 'python=3.12' -y
     conda activate mineru
 
 4. Install Applications
