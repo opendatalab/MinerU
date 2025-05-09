@@ -42,10 +42,12 @@ RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/m
     cp magic-pdf.template.json /root/magic-pdf.json && \
     source /opt/mineru_venv/bin/activate && \
     pip3 install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple && \
-    pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple"
+    pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple && \
+    pip3 cache purge"
 
 # Download models and update the configuration file
 RUN /bin/bash -c "pip3 install modelscope && \
+    pip3 cache purge && \
     wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
