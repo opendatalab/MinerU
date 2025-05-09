@@ -45,7 +45,7 @@ RUN /bin/bash -c "wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/m
     pip3 install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple"
 
 # Download models and update the configuration file
-RUN /bin/bash -c "pip3 install modelscope && \
+RUN /bin/bash -c "pip3 install modelscope -i https://mirrors.aliyun.com/pypi/simple && \
     wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/scripts/download_models.py -O download_models.py && \
     python3 download_models.py && \
     sed -i 's|cpu|cuda|g' /root/magic-pdf.json"
