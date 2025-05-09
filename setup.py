@@ -81,7 +81,7 @@ if __name__ == '__main__':
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
         ],
-        python_requires=">=3.10,<4",  # 项目依赖的 Python 版本
+        python_requires=">=3.10,<3.14",  # 项目依赖的 Python 版本
         entry_points={
             "console_scripts": [
                 "magic-pdf = magic_pdf.tools.cli:cli",
