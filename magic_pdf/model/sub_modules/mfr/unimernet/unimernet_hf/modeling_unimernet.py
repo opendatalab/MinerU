@@ -66,9 +66,9 @@ LEFT_RIGHT_REMOVE_PATTERN = re.compile(r'\\left\.?|\\right\.?')
 
 def fix_latex_left_right(s):
     """
-    修复LaTeX中的\left和\right命令
+    修复LaTeX中的\\left和\\right命令
     1. 确保它们后面跟有效分隔符
-    2. 平衡\left和\right的数量
+    2. 平衡\\left和\\right的数量
     """
     # 白名单分隔符
     valid_delims_list = [r'(', r')', r'[', r']', r'{', r'}', r'/', r'|',
@@ -106,7 +106,7 @@ def fix_latex_left_right(s):
 
 def fix_left_right_pairs(latex_formula):
     """
-    检测并修复LaTeX公式中\left和\right不在同一组的情况
+    检测并修复LaTeX公式中\\left和\\right不在同一组的情况
 
     Args:
         latex_formula (str): 输入的LaTeX公式
@@ -308,9 +308,9 @@ ENV_FORMAT_PATTERNS = {env: re.compile(r'\\begin\{' + env + r'\}\{([^}]*)\}') fo
 
 def fix_latex_environments(s):
     """
-    检测LaTeX中环境（如array）的\begin和\end是否匹配
-    1. 如果缺少\begin标签则在开头添加
-    2. 如果缺少\end标签则在末尾添加
+    检测LaTeX中环境（如array）的\\begin和\\end是否匹配
+    1. 如果缺少\\begin标签则在开头添加
+    2. 如果缺少\\end标签则在末尾添加
     """
     for env in ENV_TYPES:
         begin_count = len(ENV_BEGIN_PATTERNS[env].findall(s))
@@ -334,7 +334,7 @@ def fix_latex_environments(s):
 
 UP_PATTERN = re.compile(r'\\up([a-zA-Z]+)')
 COMMANDS_TO_REMOVE_PATTERN = re.compile(
-    r'\\(?:lefteqn|boldmath|ensuremath|centering|textsubscript|sides|textsl|textcent|emph)')
+    r'\\(?:lefteqn|boldmath|ensuremath|centering|textsubscript|sides|textsl|textcent|emph|protect|null)')
 REPLACEMENTS_PATTERNS = {
     re.compile(r'\\underbar'): r'\\underline',
     re.compile(r'\\Bar'): r'\\hat',
@@ -346,6 +346,9 @@ REPLACEMENTS_PATTERNS = {
     re.compile(r'\\textunderscore'): r'\\_',
     re.compile(r'\\fint'): r'⨏',
     re.compile(r'\\up '): r'\\ ',
+    re.compile(r'\\vline = '): r'\\models ',
+    re.compile(r'\\vDash '): r'\\models ',
+    re.compile(r'\\sq \\sqcup '): r'\\square ',
 }
 QQUAD_PATTERN = re.compile(r'\\qquad(?!\s)')
 
