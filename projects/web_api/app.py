@@ -21,6 +21,7 @@ from magic_pdf.libs.config_reader import get_bucket_name, get_s3_config
 from magic_pdf.model.doc_analyze_by_custom_model import doc_analyze
 from magic_pdf.operators.models import InferenceResult
 from magic_pdf.operators.pipes import PipeResult
+from fastapi import Form
 
 model_config.__use_inside_model__ = True
 
@@ -102,6 +103,7 @@ def init_writers(
         # 处理上传的文件
         file_bytes = file.file.read()
         file_extension = os.path.splitext(file.filename)[1]
+
         writer = FileBasedDataWriter(output_path)
         image_writer = FileBasedDataWriter(output_image_path)
         os.makedirs(output_image_path, exist_ok=True)
@@ -176,14 +178,14 @@ def encode_image(image_path: str) -> str:
 )
 async def file_parse(
     file: UploadFile = None,
-    file_path: str = None,
-    parse_method: str = "auto",
-    is_json_md_dump: bool = False,
-    output_dir: str = "output",
-    return_layout: bool = False,
-    return_info: bool = False,
-    return_content_list: bool = False,
-    return_images: bool = False,
+    file_path: str = Form(None),
+    parse_method: str = Form("auto"),
+    is_json_md_dump: bool = Form(False),
+    output_dir: str = Form("output"),
+    return_layout: bool = Form(False),
+    return_info: bool = Form(False),
+    return_content_list: bool = Form(False),
+    return_images: bool = Form(False),
 ):
     """
     Execute the process of converting PDF to JSON and MD, outputting MD and JSON files

@@ -54,7 +54,7 @@ bash Anaconda3-2024.06-1-Linux-x86_64.sh
 ## 4. 使用conda 创建环境
 
 ```bash
-conda create -n mineru 'python>=3.10' -y
+conda create -n mineru 'python=3.12' -y
 conda activate mineru
 ```
 
