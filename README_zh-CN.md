@@ -49,10 +49,8 @@
 # 更新记录
 - 2025/04/29 1.3.10 发布
   - 支持使用自定义公式标识符，可通过修改用户目录下的`magic-pdf.json`文件中的`latex-delimiter-config`项实现。
-  - 锁定`pdfminer.six`至`20250324`版本，以避免新版本导致的解析失败问题。
 - 2025/04/27 1.3.9 发布
   - 优化公式解析功能，提升公式渲染的成功率
-  - 更新`pdfminer.six`到最新版本，修复了部分pdf解析异常问题
 - 2025/04/23 1.3.8 发布
   - `ocr`默认模型(`ch`)更新为`PP-OCRv4_server_rec_doc`（需更新模型）
     - `PP-OCRv4_server_rec_doc`是在`PP-OCRv4_server_rec`的基础上，在更多中文文档数据和PP-OCR训练数据的混合数据训练而成，增加了部分繁体字、日文、特殊字符的识别能力，可支持识别的字符为1.5万+，除文档相关的文字识别能力提升外，也同时提升了通用文字的识别能力。
@@ -344,7 +342,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">python版本</td>
-        <td colspan="3">>=3.10</td>
+        <td colspan="3">3.10~3.13</td>
     </tr>
     <tr>
         <td colspan="3">Nvidia Driver 版本</td>
@@ -354,8 +352,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
         <td colspan="3">CUDA环境</td>
-        <td>11.8/12.4/12.6/12.8</td>
-        <td>11.8/12.4/12.6/12.8</td>
+        <td colspan="2"><a href="https://pytorch.org/get-started/locally/">Refer to the PyTorch official website</a></td>
         <td>None</td>
     </tr>
     <tr>
@@ -390,7 +387,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 最新版本国内镜像源同步可能会有延迟，请耐心等待
 
 ```bash
-conda create -n mineru 'python>=3.10' -y
+conda create -n mineru 'python=3.12' -y
 conda activate mineru
 pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
 ```

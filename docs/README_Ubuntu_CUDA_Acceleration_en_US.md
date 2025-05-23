@@ -54,7 +54,7 @@ In the final step, enter `yes`, close the terminal, and reopen it.
 ### 4. Create an Environment Using Conda
 
 ```bash
-conda create -n mineru 'python>=3.10' -y
+conda create -n mineru 'python=3.12' -y
 conda activate mineru
 ```
 
