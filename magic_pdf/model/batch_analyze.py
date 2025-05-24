@@ -156,7 +156,7 @@ class BatchAnalyze:
                         res_area = get_coords_and_area(res)[4]
                         if res_area > 0:
                             ratio = ocr_res_area / res_area
-                            if ratio > 0.45:
+                            if ratio > 0.25:
                                 res["category_id"] = 1
                             else:
                                 continue
