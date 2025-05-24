@@ -10,22 +10,22 @@ from loguru import logger
 
 
 
-def fitz_doc_to_image(doc, dpi=200) -> dict:
+def fitz_doc_to_image(page, dpi=200) -> dict:
     """Convert fitz.Document to image, Then convert the image to numpy array.
 
     Args:
-        doc (_type_): pymudoc page
+        page (_type_): pymudoc page
         dpi (int, optional): reset the dpi of dpi. Defaults to 200.
 
     Returns:
         dict:  {'img': numpy array, 'width': width, 'height': height }
     """
     mat = fitz.Matrix(dpi / 72, dpi / 72)
-    pm = doc.get_pixmap(matrix=mat, alpha=False)
+    pm = page.get_pixmap(matrix=mat, alpha=False)
 
     # If the width or height exceeds 4500 after scaling, do not scale further.
     if pm.width > 4500 or pm.height > 4500:
-        pm = doc.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
+        pm = page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
 
     # Convert pixmap samples directly to numpy array
     img = np.frombuffer(pm.samples, dtype=np.uint8).reshape(pm.height, pm.width, 3)
