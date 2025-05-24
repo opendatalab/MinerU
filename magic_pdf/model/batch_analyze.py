@@ -6,7 +6,7 @@ from tqdm import tqdm
 from magic_pdf.config.constants import MODEL_NAME
 from magic_pdf.model.sub_modules.model_init import AtomModelSingleton
 from magic_pdf.model.sub_modules.model_utils import (
-    clean_vram, crop_img, get_res_list_from_layout_res)
+    clean_vram, crop_img, get_res_list_from_layout_res, get_coords_and_area)
 from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.ocr_utils import (
     get_adjusted_mfdetrec_res, get_ocr_result_list)
 
@@ -148,6 +148,19 @@ class BatchAnalyze:
                 # Integration results
                 if ocr_res:
                     ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], new_image, _lang)
+
+                    if res["category_id"] == 3:
+                        # ocr_result_list中所有bbox的面积之和
+                        ocr_res_area = sum(get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
+                        # 求ocr_res_area和res的面积的比值
+                        res_area = get_coords_and_area(res)[4]
+                        if res_area > 0:
+                            ratio = ocr_res_area / res_area
+                            if ratio > 0.45:
+                                res["category_id"] = 1
+                            else:
+                                continue
+
                     ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
             # det_count += len(ocr_res_list_dict['ocr_res_list'])
