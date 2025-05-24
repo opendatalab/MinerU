@@ -104,6 +104,22 @@ ch_PP-OCRv4_det_infer:
     name: DBHead
     k: 50
 
+ch_PP-OCRv5_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.75
+    det: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
 ch_PP-OCRv4_det_server_infer:
   model_type: det
   algorithm: DB
@@ -181,6 +197,58 @@ ch_PP-OCRv4_rec_server_doc_infer:
     name: MultiHead
     out_channels_list:
       CTCLabelDecode: 15631
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv5_rec_server_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPHGNetV2_B4
+    text_rec: True
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18385
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv5_rec_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18385
     head_list:
       - CTCHead:
           Neck:

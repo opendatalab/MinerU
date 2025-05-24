@@ -35,7 +35,7 @@ def build_backbone(config, model_type):
         from .rec_mobilenet_v3 import MobileNetV3
         from .rec_svtrnet import SVTRNet
         from .rec_mv1_enhance import MobileNetV1Enhance
-
+        from .rec_pphgnetv2 import PPHGNetV2_B4
         support_dict = [
             "MobileNetV1Enhance",
             "MobileNetV3",
@@ -48,6 +48,7 @@ def build_backbone(config, model_type):
             "DenseNet",
             "PPLCNetV3",
             "PPHGNet_small",
+            "PPHGNetV2_B4",
         ]
     else:
         raise NotImplementedError

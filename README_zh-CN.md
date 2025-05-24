@@ -47,6 +47,20 @@
 </div>
 
 # 更新记录
+- 2025/05/24 1.3.12 发布
+  - 增加ppocrv5模型的支持，将`ch_server`模型更新为`PP-OCRv5_rec_server`，`ch_lite`模型更新为`PP-OCRv5_rec_mobile`（需更新模型）
+    - 在测试中，发现ppocrv5(server)对手写文档效果有一定提升，但在其余类别文档的精度略差于v4_server_doc，因此默认的ch模型保持不变，仍为`PP-OCRv4_server_rec_doc`。
+    - 由于ppocrv5强化了手写场景和特殊字符的识别能力，因此您可以在日繁混合场景以及手写文档场景下手动选择使用ppocrv5模型
+    - 您可通过lang参数`lang='ch_server'`(python api)或`--lang ch_server`(命令行)自行选择相应的模型：
+      - `ch` ：`PP-OCRv4_rec_server_doc`（默认）（中英日繁混合/1.5w字典）
+      - `ch_server` ：`PP-OCRv5_rec_server`（中英日繁混合+手写场景/1.8w字典）
+      - `ch_lite` ：`PP-OCRv5_rec_mobile`（中英日繁混合+手写场景/1.8w字典）
+      - `ch_server_v4` ：`PP-OCRv4_rec_server`（中英混合/6k字典）
+      - `ch_lite_v4` ：`PP-OCRv4_rec_mobile`（中英混合/6k字典）
+  - 增加手写文档的支持，通过优化layout对手写文本区域的识别，现已支持手写文档的解析
+    - 默认支持此功能，无需额外配置 
+    - 可以参考上述说明，手动选择ppocrv5模型以获得更好的手写文档解析效果
+  - `huggingface`和`modelscope`的demo已更新为支持手写识别和ppocrv5模型的版本，可自行在线体验
 - 2025/04/29 1.3.10 发布
   - 支持使用自定义公式标识符，可通过修改用户目录下的`magic-pdf.json`文件中的`latex-delimiter-config`项实现。
 - 2025/04/27 1.3.9 发布
