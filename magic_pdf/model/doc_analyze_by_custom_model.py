@@ -189,7 +189,7 @@ def batch_doc_analyze(
     formula_enable=None,
     table_enable=None,
 ):
-    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 200))
+    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
     batch_size = MIN_BATCH_INFERENCE_SIZE
     page_wh_list = []
 

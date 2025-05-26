@@ -1,9 +1,17 @@
 lang:
   ch_lite:
     det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_dict.txt
+  ch_lite_v4:
+    det: ch_PP-OCRv3_det_infer.pth
     rec: ch_PP-OCRv4_rec_infer.pth
     dict: ppocr_keys_v1.txt
   ch_server:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv5_rec_server_infer.pth
+    dict: ppocrv5_dict.txt
+  ch_server_v4:
     det: ch_PP-OCRv3_det_infer.pth
     rec: ch_PP-OCRv4_rec_server_infer.pth
     dict: ppocr_keys_v1.txt

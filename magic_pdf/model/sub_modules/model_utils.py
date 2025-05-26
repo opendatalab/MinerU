@@ -31,10 +31,10 @@ def crop_img(input_res, input_np_img, crop_paste_x=0, crop_paste_y=0):
     return return_image, return_list
 
 
-def get_coords_and_area(table):
+def get_coords_and_area(block_with_poly):
     """Extract coordinates and area from a table."""
-    xmin, ymin = int(table['poly'][0]), int(table['poly'][1])
-    xmax, ymax = int(table['poly'][4]), int(table['poly'][5])
+    xmin, ymin = int(block_with_poly['poly'][0]), int(block_with_poly['poly'][1])
+    xmax, ymax = int(block_with_poly['poly'][4]), int(block_with_poly['poly'][5])
     area = (xmax - xmin) * (ymax - ymin)
     return xmin, ymin, xmax, ymax, area
 
@@ -243,7 +243,7 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
                 "bbox": [int(res['poly'][0]), int(res['poly'][1]),
                          int(res['poly'][4]), int(res['poly'][5])],
             })
-        elif category_id in [0, 2, 4, 6, 7]:  # OCR regions
+        elif category_id in [0, 2, 4, 6, 7, 3]:  # OCR regions
             ocr_res_list.append(res)
         elif category_id == 5:  # Table regions
             table_res_list.append(res)

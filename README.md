@@ -48,6 +48,20 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/05/24 1.3.12 Released
+  - Added support for ppocrv5 model, updated `ch_server` model to `PP-OCRv5_rec_server` and `ch_lite` model to `PP-OCRv5_rec_mobile` (model update required)
+    - In testing, we found that ppocrv5(server) shows some improvement for handwritten documents, but slightly lower accuracy than v4_server_doc for other document types. Therefore, the default ch model remains unchanged as `PP-OCRv4_server_rec_doc`.
+    - Since ppocrv5 enhances recognition capabilities for handwritten text and special characters, you can manually select ppocrv5 models for Japanese, traditional Chinese mixed scenarios and handwritten document scenarios
+    - You can select the appropriate model through the lang parameter `lang='ch_server'` (python api) or `--lang ch_server` (command line):
+      - `ch`: `PP-OCRv4_rec_server_doc` (default) (Chinese, English, Japanese, Traditional Chinese mixed/15k dictionary)
+      - `ch_server`: `PP-OCRv5_rec_server` (Chinese, English, Japanese, Traditional Chinese mixed + handwriting/18k dictionary)
+      - `ch_lite`: `PP-OCRv5_rec_mobile` (Chinese, English, Japanese, Traditional Chinese mixed + handwriting/18k dictionary)
+      - `ch_server_v4`: `PP-OCRv4_rec_server` (Chinese, English mixed/6k dictionary)
+      - `ch_lite_v4`: `PP-OCRv4_rec_mobile` (Chinese, English mixed/6k dictionary)
+  - Added support for handwritten documents by optimizing layout recognition of handwritten text areas
+    - This feature is supported by default, no additional configuration needed
+    - You can refer to the instructions above to manually select ppocrv5 model for better handwritten document parsing
+  - The demos on `huggingface` and `modelscope` have been updated to support handwriting recognition and ppocrv5 models, which you can experience online
 - 2025/04/29 1.3.10 Released
   - Support for custom formula delimiters can be achieved by modifying the `latex-delimiter-config` item in the `magic-pdf.json` file under the user directory.
 - 2025/04/27 1.3.9 Released  
