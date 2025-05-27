@@ -40,7 +40,7 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, layout_mode, formula_en
             pdf_data,
             [],
             parse_method,
-            False,
+            True,
             end_page_id=end_page_id,
             layout_model=layout_mode,
             formula_enable=formula_enable,
