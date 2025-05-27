@@ -1,0 +1,139 @@
+import re
+
+from ...libs.cut_image import cut_image_and_table
+from ...libs.enum_class import BlockType, ContentType
+from ...libs.hash_utils import str_md5
+from ...libs.magic_model import fix_two_layer_blocks
+from ...libs.version import __version__
+
+
+def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dict:
+    """将token转换为页面信息"""
+    # 解析token，提取坐标和类型
+    # 假设token格式为：<|box_start|>x0 y0 x1 y1<|box_end|><|ref_start|>type<|ref_end|><|md_start|>content<|md_end|>
+    # 这里需要根据实际的token格式进行解析
+    # 提取所有完整块，每个块从<|box_start|>开始到<|md_end|>或<|im_end|>结束
+
+    scale = image_dict["scale"]
+    page_pil_img = image_dict["img_pil"]
+    page_img_md5 = str_md5(image_dict["img_base64"])
+
+    width, height = map(int, page.get_size())
+
+    # 使用正则表达式查找所有块
+    pattern = (
+        r"<\|box_start\|>(.*?)<\|box_end\|><\|ref_start\|>(.*?)<\|ref_end\|><\|md_start\|>(.*?)(?:<\|md_end\|>|<\|im_end\|>)"
+    )
+    block_infos = re.findall(pattern, token, re.DOTALL)
+
+    blocks = []
+    # 解析每个块
+    for index, block_info in enumerate(block_infos):
+        block_bbox = block_info[0].strip()
+        x1, y1, x2, y2 = map(int, block_bbox.split())
+        x_1, y_1, x_2, y_2 = (
+            int(x1 * width / 1000),
+            int(y1 * height / 1000),
+            int(x2 * width / 1000),
+            int(y2 * height / 1000),
+        )
+        if x_2 < x_1:
+            x_1, x_2 = x_2, x_1
+        if y_2 < y_1:
+            y_1, y_2 = y_2, y_1
+        block_bbox = (x_1, y_1, x_2, y_2)
+        block_type = block_info[1].strip()
+        block_content = block_info[2].strip()
+
+        # print(f"坐标: {block_bbox}")
+        # print(f"类型: {block_type}")
+        # print(f"内容: {block_content}")
+        # print("-" * 50)
+
+        span_type = "unknown"
+        if block_type in [
+            "text",
+            "title",
+            "image_caption",
+            "image_footnote",
+            "table_caption",
+            "table_footnote",
+            "list",
+            "index",
+        ]:
+            span_type = ContentType.TEXT
+        elif block_type in ["image"]:
+            block_type = BlockType.IMAGE_BODY
+            span_type = ContentType.IMAGE
+        elif block_type in ["table"]:
+            block_type = BlockType.TABLE_BODY
+            span_type = ContentType.TABLE
+        elif block_type in ["equation"]:
+            block_type = BlockType.INTERLINE_EQUATION
+            span_type = ContentType.INTERLINE_EQUATION
+
+        if span_type in ["image", "table"]:
+            span = {
+                "bbox": block_bbox,
+                "type": span_type,
+            }
+            if span_type == ContentType.TABLE:
+                span["html"] = block_content
+            span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
+        else:
+            span = {
+                "bbox": block_bbox,
+                "type": span_type,
+                "content": block_content,
+            }
+
+        line = {
+            "bbox": block_bbox,
+            "spans": [span],
+        }
+
+        blocks.append(
+            {
+                "bbox": block_bbox,
+                "type": block_type,
+                "lines": [line],
+                "index": index,
+            }
+        )
+
+    image_blocks = fix_two_layer_blocks(blocks, BlockType.IMAGE)
+    table_blocks = fix_two_layer_blocks(blocks, BlockType.TABLE)
+
+    page_blocks = [
+        block
+        for block in blocks
+        if block["type"] in [BlockType.TEXT, BlockType.TITLE, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]
+    ]
+    page_blocks.extend([*image_blocks, *table_blocks])
+    # 对page_blocks根据index的值进行排序
+    page_blocks.sort(key=lambda x: x["index"])
+
+    page_info = {"para_blocks": page_blocks, "page_size": [width, height], "page_idx": page_index}
+    return page_info
+
+
+def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
+    middle_json = {"pdf_info": [], "_version_name": __version__}
+    for index, token in enumerate(token_list):
+        page = pdf_doc[index]
+        image_dict = images_list[index]
+        page_info = token_to_page_info(token, image_dict, page, image_writer, index)
+        middle_json["pdf_info"].append(page_info)
+    return middle_json
+
+
+if __name__ == "__main__":
+
+    output = r"<|box_start|>088 119 472 571<|box_end|><|ref_start|>image<|ref_end|><|md_start|>![]('img_url')<|md_end|>\n<|box_start|>079 582 482 608<|box_end|><|ref_start|>image_caption<|ref_end|><|md_start|>Fig. 2. (a) Schematic of the change in the FDC over time, and (b) definition of model parameters.<|md_end|>\n<|box_start|>079 624 285 638<|box_end|><|ref_start|>title<|ref_end|><|md_start|># 2.2. Zero flow day analysis<|md_end|>\n<|box_start|>079 656 482 801<|box_end|><|ref_start|>text<|ref_end|><|md_start|>A notable feature of Fig. 1 is the increase in the number of zero flow days. A similar approach to Eq. (2), using an inverse sigmoidal function was employed to assess the impact of afforestation on the number of zero flow days per year \((N_{\mathrm{zero}})\). In this case, the left hand side of Eq. (2) is replaced by \(N_{\mathrm{zero}}\) and \(b\) and \(S\) are constrained to negative as \(N_{\mathrm{zero}}\) decreases as rainfall increases, and increases with plantation growth:<|md_end|>\n<|box_start|>076 813 368 853<|box_end|><|ref_start|>equation<|ref_end|><|md_start|>\[\nN_{\mathrm{zero}}=a+b(\Delta P)+\frac{Y}{1+\exp\left(\frac{T-T_{\mathrm{half}}}{S}\right)}\n\]<|md_end|>\n<|box_start|>079 865 482 895<|box_end|><|ref_start|>text<|ref_end|><|md_start|>For the average pre-treatment condition \(\Delta P=0\) and \(T=0\), \(N_{\mathrm{zero}}\) approximately equals \(a\). \(Y\) gives<|md_end|>\n<|box_start|>525 119 926 215<|box_end|><|ref_start|>text<|ref_end|><|md_start|>the magnitude of change in zero flow days due to afforestation, and \(S\) describes the shape of the response. For the average climate condition \(\Delta P=0\), \(a+Y\) becomes the number of zero flow days when the new equilibrium condition under afforestation is reached.<|md_end|>\n<|box_start|>525 240 704 253<|box_end|><|ref_start|>title<|ref_end|><|md_start|># 2.3. Statistical analyses<|md_end|>\n<|box_start|>525 271 926 368<|box_end|><|ref_start|>text<|ref_end|><|md_start|>The coefficient of efficiency \((E)\) (Nash and Sutcliffe, 1970; Chiew and McMahon, 1993; Legates and McCabe, 1999) was used as the 'goodness of fit' measure to evaluate the fit between observed and predicted flow deciles (2) and zero flow days (3). \(E\) is given by:<|md_end|>\n<|box_start|>520 375 735 415<|box_end|><|ref_start|>equation<|ref_end|><|md_start|>\[\nE=1.0-\frac{\sum_{i=1}^{N}(O_{i}-P_{i})^{2}}{\sum_{i=1}^{N}(O_{i}-\bar{O})^{2}}\n\]<|md_end|>\n<|box_start|>525 424 926 601<|box_end|><|ref_start|>text<|ref_end|><|md_start|>where \(O\) are observed data, \(P\) are predicted values, and \(\bar{O}\) is the mean for the entire period. \(E\) is unity minus the ratio of the mean square error to the variance in the observed data, and ranges from \(-\infty\) to 1.0. Higher values indicate greater agreement between observed and predicted data as per the coefficient of determination \((r^{2})\). \(E\) is used in preference to \(r^{2}\) in evaluating hydrologic modelling because it is a measure of the deviation from the 1:1 line. As \(E\) is always \(<r^{2}\) we have arbitrarily considered \(E>0.7\) to indicate adequate model fits.<|md_end|>\n<|box_start|>525 603 926 731<|box_end|><|ref_start|>text<|ref_end|><|md_start|>It is important to assess the significance of the model parameters to check the model assumptions that rainfall and forest age are driving changes in the FDC. The model (2) was split into simplified forms, where only the rainfall or time terms were included by setting \(b=0\), as shown in Eq. (5), or \(Y=0\) as shown in Eq. (6). The component models (5) and (6) were then tested against the complete model, (2).<|md_end|>\n<|box_start|>520 739 735 778<|box_end|><|ref_start|>equation<|ref_end|><|md_start|>\[\nQ_{\%}=a+\frac{Y}{1+\exp\left(\frac{T-T_{\mathrm{half}}^{\prime}}{S}\right)}\n\]<|md_end|>\n<|box_start|>525 787 553 799<|box_end|><|ref_start|>text<|ref_end|><|md_start|>and<|md_end|>\n<|box_start|>520 807 646 825<|box_end|><|ref_start|>equation<|ref_end|><|md_start|>\[\nQ_{\%}=a+b\Delta P\n\]<|md_end|>\n<|box_start|>525 833 926 895<|box_end|><|ref_start|>text<|ref_end|><|md_start|>For both the flow duration curve analysis and zero flow days analysis, a \(t\)-test was then performed to test whether (5) and (6) were significantly different to (2). A critical value of \(t\) exceeding the calculated \(t\)-value<|md_end|><|im_end|>"
+
+    p_info = token_to_page_info(output)
+    # 将blocks 转换为json文本
+    import json
+
+    json_str = json.dumps(p_info, ensure_ascii=False, indent=4)
+    print(json_str)
