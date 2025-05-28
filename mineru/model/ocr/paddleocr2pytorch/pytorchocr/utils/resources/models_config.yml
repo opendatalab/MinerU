@@ -1,0 +1,65 @@
+lang:
+  ch_lite:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_dict.txt
+  ch_lite_v4:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv4_rec_infer.pth
+    dict: ppocr_keys_v1.txt
+  ch_server:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv5_rec_server_infer.pth
+    dict: ppocrv5_dict.txt
+  ch_server_v4:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv4_rec_server_infer.pth
+    dict: ppocr_keys_v1.txt
+  ch:
+    det: ch_PP-OCRv3_det_infer.pth
+    rec: ch_PP-OCRv4_rec_server_doc_infer.pth
+    dict: ppocrv4_doc_dict.txt
+  en:
+    det: en_PP-OCRv3_det_infer.pth
+    rec: en_PP-OCRv4_rec_infer.pth
+    dict: en_dict.txt
+  korean:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: korean_PP-OCRv3_rec_infer.pth
+    dict: korean_dict.txt
+  japan:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: japan_PP-OCRv3_rec_infer.pth
+    dict: japan_dict.txt
+  chinese_cht:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: chinese_cht_PP-OCRv3_rec_infer.pth
+    dict: chinese_cht_dict.txt
+  ta:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: ta_PP-OCRv3_rec_infer.pth
+    dict: ta_dict.txt
+  te:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: te_PP-OCRv3_rec_infer.pth
+    dict: te_dict.txt
+  ka:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: ka_PP-OCRv3_rec_infer.pth
+    dict: ka_dict.txt
+  latin:
+    det: en_PP-OCRv3_det_infer.pth
+    rec: latin_PP-OCRv3_rec_infer.pth
+    dict: latin_dict.txt
+  arabic:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: arabic_PP-OCRv3_rec_infer.pth
+    dict: arabic_dict.txt
+  cyrillic:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: cyrillic_PP-OCRv3_rec_infer.pth
+    dict: cyrillic_dict.txt
+  devanagari:
+    det: Multilingual_PP-OCRv3_det_infer.pth
+    rec: devanagari_PP-OCRv3_rec_infer.pth
+    dict: devanagari_dict.txt

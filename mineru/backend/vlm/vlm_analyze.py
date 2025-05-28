@@ -4,7 +4,7 @@ import time
 from loguru import logger
 
 from ...data.data_reader_writer import DataWriter
-from ...libs.pdf_image_tools import load_images_from_pdf
+from mineru.utils.pdf_image_tools import load_images_from_pdf
 from .base_predictor import BasePredictor
 from .predictor import get_predictor
 from .token_to_middle_json import result_to_middle_json

@@ -5,8 +5,8 @@ import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image
 
-from ..data.data_reader_writer import FileBasedDataWriter
-from ..utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from .hash_utils import str_sha256
 
 

@@ -1,0 +1,476 @@
+ch_ptocr_mobile_v2.0_cls_infer:
+  model_type: cls
+  algorithm: CLS
+  Transform:
+  Backbone:
+    name: MobileNetV3
+    scale: 0.35
+    model_name: small
+  Neck:
+  Head:
+    name: ClsHead
+    class_dim: 2
+
+Multilingual_PP-OCRv3_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform:
+  Backbone:
+    name: MobileNetV3
+    scale: 0.5
+    model_name: large
+    disable_se: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+en_PP-OCRv3_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform:
+  Backbone:
+    name: MobileNetV3
+    scale: 0.5
+    model_name: large
+    disable_se: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+ch_PP-OCRv3_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform:
+  Backbone:
+    name: MobileNetV3
+    scale: 0.5
+    model_name: large
+    disable_se: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+en_PP-OCRv4_rec_infer:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 97 #'blank' + ...(62) + ' '
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv4_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.75
+    det: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+ch_PP-OCRv5_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.75
+    det: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+ch_PP-OCRv4_det_server_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPHGNet_small
+    det: True
+  Neck:
+    name: LKPAN
+    out_channels: 256
+    intracl: true
+  Head:
+    name: PFHeadLocal
+    k: 50
+    mode: "large"
+
+ch_PP-OCRv4_rec_infer:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 6625 #'blank' + ...(6623) + ' '
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv4_rec_server_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPHGNet_small
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 6625 #'blank' + ...(6623) + ' '
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv4_rec_server_doc_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPHGNet_small
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 15631
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv5_rec_server_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPHGNetV2_B4
+    text_rec: True
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18385
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+ch_PP-OCRv5_rec_infer:
+  model_type: rec
+  algorithm: SVTR_HGNet
+  Transform:
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.95
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18385
+    head_list:
+      - CTCHead:
+          Neck:
+            name: svtr
+            dims: 120
+            depth: 2
+            hidden_dims: 120
+            kernel_size: [ 1, 3 ]
+            use_guide: True
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25
+
+chinese_cht_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [1, 2]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 8423
+    fc_decay: 0.00001
+
+latin_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 187
+    fc_decay: 0.00001
+
+cyrillic_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 165
+    fc_decay: 0.00001
+
+arabic_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 164
+    fc_decay: 0.00001
+
+korean_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 3690
+    fc_decay: 0.00001
+
+japan_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 4401
+    fc_decay: 0.00001
+
+ta_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 130
+    fc_decay: 0.00001
+
+te_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 153
+    fc_decay: 0.00001
+
+ka_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 155
+    fc_decay: 0.00001
+
+devanagari_PP-OCRv3_rec_infer:
+  model_type: rec
+  algorithm: SVTR
+  Transform:
+  Backbone:
+    name: MobileNetV1Enhance
+    scale: 0.5
+    last_conv_stride: [ 1, 2 ]
+    last_pool_type: avg
+  Neck:
+    name: SequenceEncoder
+    encoder_type: svtr
+    dims: 64
+    depth: 2
+    hidden_dims: 120
+    use_guide: True
+  Head:
+    name: CTCHead
+#    out_channels: 169
+    fc_decay: 0.00001
+

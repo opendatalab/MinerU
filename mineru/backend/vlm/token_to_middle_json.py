@@ -1,10 +1,10 @@
 import re
 
-from ...libs.cut_image import cut_image_and_table
-from ...libs.enum_class import BlockType, ContentType
-from ...libs.hash_utils import str_md5
-from ...libs.magic_model import fix_two_layer_blocks
-from ...libs.version import __version__
+from mineru.utils.cut_image import cut_image_and_table
+from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.hash_utils import str_md5
+from mineru.utils.magic_model import fix_two_layer_blocks
+from mineru.version import __version__
 
 
 def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dict:
