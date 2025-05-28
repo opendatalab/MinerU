@@ -22,15 +22,14 @@ The latest versions of MinerU are supported.
 
 ## Reporting a Vulnerability
 
-If you think you've identified a security issue in an MinerU project repository, please DO NOT report the issue publicly via the GitHub issue tracker, etc.
-
-Instead, send an email with as many details as possible to [moe@myhloli.com](mailto:deepsearch-core@zurich.ibm.com). This is a private mailing list for the maintainers team.
+send an email with as many details as possible to [moe@myhloli.com](mailto:deepsearch-core@zurich.ibm.com). This is a private mailing list for the maintainers team.
 
 Please do not create a public issue.
 
 ### Security Vulnerability Response
 
-Each report is acknowledged and analyzed by the core maintainers within 30 working days.
+Each report is acknowledged and analyzed by the core maintainers within 90 working days.
+Please wait patiently.
 
 Any vulnerability information shared with core maintainers stays within the MinerU project and will not be disseminated to other projects unless it is necessary to get the issue fixed.
 
