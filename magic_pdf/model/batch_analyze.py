@@ -127,7 +127,7 @@ class BatchAnalyze:
             # 收集所有需要OCR检测的裁剪图像
             all_cropped_images_info = []
 
-            for ocr_res_list_dict in tqdm(ocr_res_list_all_page, desc="Preparing OCR-det batches"):
+            for ocr_res_list_dict in ocr_res_list_all_page:
                 _lang = ocr_res_list_dict['lang']
 
                 for res in ocr_res_list_dict['ocr_res_list']:
@@ -156,7 +156,7 @@ class BatchAnalyze:
                 if not lang_crop_list:
                     continue
 
-                logger.info(f"Processing OCR detection for language {lang} with {len(lang_crop_list)} images")
+                # logger.info(f"Processing OCR detection for language {lang} with {len(lang_crop_list)} images")
 
                 # 获取OCR模型
                 atom_model_manager = AtomModelSingleton()
@@ -201,7 +201,7 @@ class BatchAnalyze:
 
                     # 批处理检测
                     batch_size = min(len(batch_images), self.batch_ratio * 16)  # 增加批处理大小
-                    logger.debug(f"OCR-det batch: {batch_size} images, target size: {target_h}x{target_w}")
+                    # logger.debug(f"OCR-det batch: {batch_size} images, target size: {target_h}x{target_w}")
                     batch_results = ocr_model.text_detector.batch_predict(batch_images, batch_size)
 
                     # 处理批处理结果
