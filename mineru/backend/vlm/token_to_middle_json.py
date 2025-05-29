@@ -3,7 +3,7 @@ import re
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import str_md5
-from mineru.utils.magic_model import fix_two_layer_blocks
+from mineru.utils.vlm_magic_model import fix_two_layer_blocks
 from mineru.version import __version__
 
 
@@ -113,7 +113,7 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_info = {"para_blocks": page_blocks, "page_size": [width, height], "page_idx": page_index}
+    page_info = {"para_blocks": page_blocks, "discarded_blocks": [], "page_size": [width, height], "page_idx": page_index}
     return page_info
 
 

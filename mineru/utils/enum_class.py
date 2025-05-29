@@ -12,6 +12,7 @@ class BlockType:
     INTERLINE_EQUATION = 'interline_equation'
     LIST = 'list'
     INDEX = 'index'
+    DISCARDED = 'discarded'
 
 
 class ContentType:
@@ -19,6 +20,7 @@ class ContentType:
     TABLE = 'table'
     TEXT = 'text'
     INTERLINE_EQUATION = 'interline_equation'
+    INLINE_EQUATION = 'inline_equation'
 
 
 class MakeMode:
