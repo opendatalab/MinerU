@@ -7,7 +7,8 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from loguru import logger
 from ..api.vlm_middle_json_mkcontent import union_make
-from ..backend.vlm.vlm_analyze import doc_analyze
+from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from ..backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from ..data.data_reader_writer import FileBasedDataWriter
 from ..utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from ..utils.enum_class import MakeMode
@@ -28,8 +29,8 @@ def read_fn(path: Path):
             raise Exception(f"Unknown file suffix: {path.suffix}")
 
 
-def prepare_env(output_dir, pdf_file_name):
-    local_parent_dir = os.path.join(output_dir, pdf_file_name)
+def prepare_env(output_dir, pdf_file_name, parse_method):
+    local_parent_dir = os.path.join(output_dir, pdf_file_name, parse_method)
 
     local_image_dir = os.path.join(str(local_parent_dir), "images")
     local_md_dir = local_parent_dir
@@ -70,13 +71,17 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
 
 def do_parse(
     output_dir,
-    pdf_file_name,
-    pdf_bytes,
+    pdf_file_names: list[str],
+    pdf_bytes_list: list[bytes],
+    p_lang_list: list[str],
     backend="pipeline",
     model_path="jinzhenj/OEEzRkQ3RTAtMDMx-0415",  # TODO: change to formal path after release.
+    parse_method="auto",
+    p_formula_enable=True,
+    p_table_enable=True,
     server_url=None,
     f_draw_layout_bbox=True,
-    f_draw_span_bbox=False,
+    f_draw_span_bbox=True,
     f_dump_md=True,
     f_dump_middle_json=True,
     f_dump_model_output=True,
@@ -86,58 +91,114 @@ def do_parse(
     start_page_id=0,
     end_page_id=None,
 ):
-    if backend == 'pipeline':
-        f_draw_span_bbox = True
 
-    pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
-    local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name)
-    image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+    if backend == "pipeline":
+        for pdf_bytes in pdf_bytes_list:
+            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        middle_json_list, infer_results = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
+        for idx, middle_json in enumerate(middle_json_list):
+            pdf_file_name = pdf_file_names[idx]
+            model_json = infer_results[idx]
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-    middle_json, infer_result = doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
-    pdf_info = middle_json["pdf_info"]
+            pdf_info = middle_json["pdf_info"]
 
-    if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+            if f_draw_layout_bbox:
+                draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
 
-    if f_draw_span_bbox:
-        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+            if f_draw_span_bbox:
+                draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
-    if f_dump_orig_pdf:
-        md_writer.write(
-            f"{pdf_file_name}_origin.pdf",
-            pdf_bytes,
-        )
+            if f_dump_orig_pdf:
+                md_writer.write(
+                    f"{pdf_file_name}_origin.pdf",
+                    pdf_bytes,
+                )
 
-    if f_dump_md:
-        image_dir = str(os.path.basename(local_image_dir))
-        md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}.md",
-            md_content_str,
-        )
+            if f_dump_md:
+                image_dir = str(os.path.basename(local_image_dir))
+                md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}.md",
+                    md_content_str,
+                )
 
-    if f_dump_content_list:
-        image_dir = str(os.path.basename(local_image_dir))
-        content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=4),
-        )
+            if f_dump_content_list:
+                image_dir = str(os.path.basename(local_image_dir))
+                content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}_content_list.json",
+                    json.dumps(content_list, ensure_ascii=False, indent=4),
+                )
 
-    if f_dump_middle_json:
-        md_writer.write_string(
-            f"{pdf_file_name}_middle.json",
-            json.dumps(middle_json, ensure_ascii=False, indent=4),
-        )
+            if f_dump_middle_json:
+                md_writer.write_string(
+                    f"{pdf_file_name}_middle.json",
+                    json.dumps(middle_json, ensure_ascii=False, indent=4),
+                )
 
-    if f_dump_model_output:
-        model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
-        md_writer.write_string(
-            f"{pdf_file_name}_model_output.txt",
-            model_output,
-        )
+            if f_dump_model_output:
+                md_writer.write_string(
+                    f"{pdf_file_name}_model.json",
+                    json.dumps(model_json, ensure_ascii=False, indent=4),
+                )
 
-    logger.info(f"local output dir is {local_md_dir}")
+            logger.info(f"local output dir is {local_md_dir}")
+    else:
+        f_draw_span_bbox = False
+        parse_method = "vlm"
+        for idx, pdf_bytes in enumerate(pdf_bytes_list):
+            pdf_file_name = pdf_file_names[idx]
+            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, model_path=model_path, server_url=server_url)
+
+        pdf_info = middle_json["pdf_info"]
+
+        if f_draw_layout_bbox:
+            draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+
+        if f_draw_span_bbox:
+            draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+
+        if f_dump_orig_pdf:
+            md_writer.write(
+                f"{pdf_file_name}_origin.pdf",
+                pdf_bytes,
+            )
+
+        if f_dump_md:
+            image_dir = str(os.path.basename(local_image_dir))
+            md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
+            md_writer.write_string(
+                f"{pdf_file_name}.md",
+                md_content_str,
+            )
+
+        if f_dump_content_list:
+            image_dir = str(os.path.basename(local_image_dir))
+            content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+            md_writer.write_string(
+                f"{pdf_file_name}_content_list.json",
+                json.dumps(content_list, ensure_ascii=False, indent=4),
+            )
+
+        if f_dump_middle_json:
+            md_writer.write_string(
+                f"{pdf_file_name}_middle.json",
+                json.dumps(middle_json, ensure_ascii=False, indent=4),
+            )
+
+        if f_dump_model_output:
+            model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
+            md_writer.write_string(
+                f"{pdf_file_name}_model_output.txt",
+                model_output,
+            )
+
+        logger.info(f"local output dir is {local_md_dir}")
 
     return infer_result
 
