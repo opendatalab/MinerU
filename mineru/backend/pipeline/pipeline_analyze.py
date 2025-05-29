@@ -6,11 +6,9 @@ from pypdfium2 import PdfDocument
 
 from mineru.backend.pipeline.model_init import MineruPipelineModel
 from .model_json_to_middle_json import result_to_middle_json
+from ...data.data_reader_writer import DataWriter
 from ...utils.pdf_classify import classify
-from ...utils.pdf_image_tools import pdf_page_to_image
-
-
-
+from ...utils.pdf_image_tools import load_images_from_pdf
 
 from loguru import logger
 
@@ -87,6 +85,7 @@ def custom_model_init(
 def doc_analyze(
         pdf_bytes_list,
         lang_list,
+        image_writer: DataWriter | None,
         parse_method: str = 'auto',
         formula_enable=None,
         table_enable=None,
@@ -108,6 +107,8 @@ def doc_analyze(
     # 收集所有页面信息
     all_pages_info = []  # 存储(dataset_index, page_index, img, ocr, lang, width, height)
 
+    all_image_lists = []
+    all_pdf_docs = []
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
         _ocr = False
@@ -120,14 +121,14 @@ def doc_analyze(
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
-        pdf_doc = PdfDocument(pdf_bytes)
-        for page_idx in range(len(pdf_doc)):
-            page_data = pdf_doc[page_idx]
-            img_dict = pdf_page_to_image(page_data)
+        images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
+        all_image_lists.append(images_list)
+        all_pdf_docs.append(pdf_doc)
+        for page_idx in range(len(images_list)):
+            img_dict = images_list[page_idx]
             all_pages_info.append((
                 pdf_idx, page_idx,
                 img_dict['img_pil'], _ocr, _lang,
-                img_dict['scale']
             ))
 
     # 准备批处理
@@ -164,8 +165,10 @@ def doc_analyze(
         infer_results[pdf_idx].append(page_dict)
 
     middle_json_list = []
-    for model_json in infer_results:
-        middle_json = result_to_middle_json(model_json)
+    for pdf_idx, model_json in enumerate(infer_results):
+        images_list = all_image_lists[pdf_idx]
+        pdf_doc = all_pdf_docs[pdf_idx]
+        middle_json = result_to_middle_json(model_json, images_list, pdf_doc, image_writer)
         middle_json_list.append(middle_json)
 
     return middle_json_list, infer_results
