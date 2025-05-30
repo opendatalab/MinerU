@@ -3,14 +3,14 @@ from loguru import logger
 from .pdf_image_tools import cut_image
 
 
-def cut_image_and_table(span, page_pil_img, page_img_md5, page_id, imageWriter, scale=2):
+def cut_image_and_table(span, page_pil_img, page_img_md5, page_id, image_writer, scale=2):
 
     def return_path(path_type):
         return f"{path_type}/{page_img_md5}"
 
     span_type = span["type"]
 
-    if not check_img_bbox(span["bbox"]) or not imageWriter:
+    if not check_img_bbox(span["bbox"]) or not image_writer:
         span["image_path"] = ""
     else:
         span["image_path"] = cut_image(

@@ -1,11 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from mineru.utils.block_pre_proc import prepare_block_bboxes
+from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
+from mineru.utils.block_sort import sort_blocks_by_bbox
+from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.pipeline_magic_model import MagicModel
+from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
+from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
+    remove_overlaps_min_spans, txt_spans_extract
 from mineru.version import __version__
 from mineru.utils.hash_utils import str_md5
 
 
-def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, lang=None, ocr=False):
+def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr=False):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = str_md5(image_dict["img_base64"])
@@ -54,6 +59,57 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
             page_w,
             page_h,
         )
+    """获取所有的spans信息"""
+    spans = magic_model.get_all_spans()
+    """在删除重复span之前，应该通过image_body和table_body的block过滤一下image和table的span"""
+    """顺便删除大水印并保留abandon的span"""
+    spans = remove_outside_spans(spans, all_bboxes, all_discarded_blocks)
+
+    """删除重叠spans中置信度较低的那些"""
+    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
+    """删除重叠spans中较小的那些"""
+    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
+
+    """根据parse_mode，构造spans，主要是文本类的字符填充"""
+    if ocr:
+        pass
+    else:
+        """使用新版本的混合ocr方案."""
+        spans = txt_spans_extract(page, spans, page_pil_img, scale)
+
+    """先处理不需要排版的discarded_blocks"""
+    discarded_block_with_spans, spans = fill_spans_in_blocks(
+        all_discarded_blocks, spans, 0.4
+    )
+    fix_discarded_blocks = fix_discarded_block(discarded_block_with_spans)
+
+    """如果当前页面没有有效的bbox则跳过"""
+    if len(all_bboxes) == 0:
+        return None
+
+    """对image和table截图"""
+    for span in spans:
+        if span['type'] in ['image', 'table']:
+            span = cut_image_and_table(
+                span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale
+            )
+
+    """span填充进block"""
+    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.5)
+
+    """对block进行fix操作"""
+    fix_blocks = fix_block_spans(block_with_spans)
+
+    """同一行被断开的titile合并"""
+    # merge_title_blocks(fix_blocks)
+
+    """对block进行排序"""
+    sorted_blocks = sort_blocks_by_bbox(fix_blocks, page_w, page_h, footnote_blocks)
+
+    """构造page_info"""
+    page_info = make_page_info_dict(sorted_blocks, page_index, page_w, page_h, fix_discarded_blocks)
+
+    return page_info
 
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr=False):
@@ -62,23 +118,20 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
         page_info = page_model_info_to_page_info(
-            page_model_info, image_dict, page, image_writer, page_index, lang=lang, ocr=ocr
+            page_model_info, image_dict, page, image_writer, page_index, ocr=ocr
         )
+        if page_info is None:
+            page_w, page_h = map(int, page.get_size())
+            page_info = make_page_info_dict([], page_index, page_w, page_h, [])
         middle_json["pdf_info"].append(page_info)
     return middle_json
 
 
-def process_groups(groups, body_key, caption_key, footnote_key):
-    body_blocks = []
-    caption_blocks = []
-    footnote_blocks = []
-    for i, group in enumerate(groups):
-        group[body_key]['group_id'] = i
-        body_blocks.append(group[body_key])
-        for caption_block in group[caption_key]:
-            caption_block['group_id'] = i
-            caption_blocks.append(caption_block)
-        for footnote_block in group[footnote_key]:
-            footnote_block['group_id'] = i
-            footnote_blocks.append(footnote_block)
-    return body_blocks, caption_blocks, footnote_blocks
+def make_page_info_dict(blocks, page_id, page_w, page_h, discarded_blocks):
+    return_dict = {
+        'preproc_blocks': blocks,
+        'page_idx': page_id,
+        'page_size': [page_w, page_h],
+        'discarded_blocks': discarded_blocks,
+    }
+    return return_dict
