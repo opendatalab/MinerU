@@ -72,3 +72,88 @@ def bbox_distance(bbox1, bbox2):
     elif top:
         return y2 - y1b
     return 0.0
+
+
+def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
+    """通过calculate_overlap_area_2_minbox_area_ratio计算两个bbox重叠的面积占最小面积的box的比例
+    如果比例大于ratio，则返回小的那个bbox, 否则返回None."""
+    x1_min, y1_min, x1_max, y1_max = bbox1
+    x2_min, y2_min, x2_max, y2_max = bbox2
+    area1 = (x1_max - x1_min) * (y1_max - y1_min)
+    area2 = (x2_max - x2_min) * (y2_max - y2_min)
+    overlap_ratio = calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2)
+    if overlap_ratio > ratio:
+        if area1 <= area2:
+            return bbox1
+        else:
+            return bbox2
+    else:
+        return None
+
+
+def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
+    """计算box1和box2的重叠面积占最小面积的box的比例."""
+    # Determine the coordinates of the intersection rectangle
+    x_left = max(bbox1[0], bbox2[0])
+    y_top = max(bbox1[1], bbox2[1])
+    x_right = min(bbox1[2], bbox2[2])
+    y_bottom = min(bbox1[3], bbox2[3])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # The area of overlap area
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+    min_box_area = min([(bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]),
+                        (bbox2[3] - bbox2[1]) * (bbox2[2] - bbox2[0])])
+    if min_box_area == 0:
+        return 0
+    else:
+        return intersection_area / min_box_area
+
+
+def calculate_iou(bbox1, bbox2):
+    """计算两个边界框的交并比(IOU)。
+
+    Args:
+        bbox1 (list[float]): 第一个边界框的坐标，格式为 [x1, y1, x2, y2]，其中 (x1, y1) 为左上角坐标，(x2, y2) 为右下角坐标。
+        bbox2 (list[float]): 第二个边界框的坐标，格式与 `bbox1` 相同。
+
+    Returns:
+        float: 两个边界框的交并比(IOU)，取值范围为 [0, 1]。
+    """
+    # Determine the coordinates of the intersection rectangle
+    x_left = max(bbox1[0], bbox2[0])
+    y_top = max(bbox1[1], bbox2[1])
+    x_right = min(bbox1[2], bbox2[2])
+    y_bottom = min(bbox1[3], bbox2[3])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    # The area of overlap area
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+
+    # The area of both rectangles
+    bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+    bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+
+    if any([bbox1_area == 0, bbox2_area == 0]):
+        return 0
+
+    # Compute the intersection over union by taking the intersection area
+    # and dividing it by the sum of both areas minus the intersection area
+    iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
+
+    return iou
+
+
+def _is_in(box1, box2) -> bool:
+    """box1是否完全在box2里面."""
+    x0_1, y0_1, x1_1, y1_1 = box1
+    x0_2, y0_2, x1_2, y1_2 = box2
+
+    return (x0_1 >= x0_2 and  # box1的左边界不在box2的左边外
+            y0_1 >= y0_2 and  # box1的上边界不在box2的上边外
+            x1_1 <= x1_2 and  # box1的右边界不在box2的右边外
+            y1_1 <= y1_2)  # box1的下边界不在box2的下边外

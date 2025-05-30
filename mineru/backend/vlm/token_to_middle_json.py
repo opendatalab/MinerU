@@ -118,7 +118,7 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
 
 
 def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
-    middle_json = {"pdf_info": [], "_version_name": __version__}
+    middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
     for index, token in enumerate(token_list):
         page = pdf_doc[index]
         image_dict = images_list[index]

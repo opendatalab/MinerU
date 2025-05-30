@@ -4,7 +4,7 @@ import gc
 from loguru import logger
 import numpy as np
 
-from magic_pdf.libs.boxbase import get_minbox_if_overlap_by_ratio
+from mineru.utils.boxbase import get_minbox_if_overlap_by_ratio
 
 
 def crop_img(input_res, input_np_img, crop_paste_x=0, crop_paste_y=0):

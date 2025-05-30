@@ -2,9 +2,9 @@ import os
 import time
 import numpy as np
 import torch
-from pypdfium2 import PdfDocument
 
-from mineru.backend.pipeline.model_init import MineruPipelineModel
+from .model_init import MineruPipelineModel
+from .config_reader import get_local_models_dir, get_device, get_formula_config, get_table_recog_config
 from .model_json_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from ...utils.pdf_classify import classify
@@ -13,11 +13,6 @@ from ...utils.pdf_image_tools import load_images_from_pdf
 from loguru import logger
 
 from ...utils.model_utils import get_vram, clean_memory
-from magic_pdf.libs.config_reader import (get_device, get_formula_config,
-                                          get_layout_config,
-                                          get_local_models_dir,
-                                          get_table_recog_config)
-
 
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
@@ -109,6 +104,7 @@ def doc_analyze(
 
     all_image_lists = []
     all_pdf_docs = []
+    ocr_enabled_list = []
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
         _ocr = False
@@ -118,6 +114,7 @@ def doc_analyze(
         elif parse_method == 'ocr':
             _ocr = True
 
+        ocr_enabled_list[pdf_idx] = _ocr
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
@@ -152,23 +149,23 @@ def doc_analyze(
         results.extend(batch_results)
 
     # 构建返回结果
-
-    # 多数据集模式：按数据集分组结果
-    infer_results = [[] for _ in datasets]
+    infer_results = []
 
     for i, page_info in enumerate(all_pages_info):
         pdf_idx, page_idx, pil_img, _, _ = page_info
         result = results[i]
 
-        page_info_dict = {'page_no': page_idx, 'width': pil_img.get_width(), 'height': pil_img.get_height()}
+        page_info_dict = {'page_no': page_idx, 'width': pil_img.width, 'height': pil_img.height}
         page_dict = {'layout_dets': result, 'page_info': page_info_dict}
-        infer_results[pdf_idx].append(page_dict)
+        infer_results[pdf_idx][page_idx] = page_dict
 
     middle_json_list = []
-    for pdf_idx, model_json in enumerate(infer_results):
+    for pdf_idx, model_list in enumerate(infer_results):
         images_list = all_image_lists[pdf_idx]
         pdf_doc = all_pdf_docs[pdf_idx]
-        middle_json = result_to_middle_json(model_json, images_list, pdf_doc, image_writer)
+        _lang = lang_list[pdf_idx]
+        _ocr = ocr_enabled_list[pdf_idx]
+        middle_json = result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr)
         middle_json_list.append(middle_json)
 
     return middle_json_list, infer_results

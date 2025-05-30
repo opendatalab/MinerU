@@ -23,6 +23,22 @@ class ContentType:
     INLINE_EQUATION = 'inline_equation'
 
 
+class CategoryId:
+    Title = 0
+    Text = 1
+    Abandon = 2
+    ImageBody = 3
+    ImageCaption = 4
+    TableBody = 5
+    TableCaption = 6
+    TableFootnote = 7
+    InterlineEquation_Layout = 8
+    InlineEquation = 13
+    InterlineEquation_YOLO = 14
+    OcrText = 15
+    ImageFootnote = 101
+
+
 class MakeMode:
     MM_MD = 'mm_markdown'
     NLP_MD = 'nlp_markdown'
