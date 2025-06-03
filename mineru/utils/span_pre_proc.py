@@ -107,6 +107,8 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale):
     cropbox = pdf_page.get_cropbox()
     need_ocr_spans = []
     for span in spans:
+        if span['type'] in [ContentType.INTERLINE_EQUATION, ContentType.IMAGE, ContentType.TABLE]:
+            continue
         span_bbox = span['bbox']
         rect_box = [span_bbox[0] + cropbox[0],
                     height - span_bbox[3] + cropbox[1],

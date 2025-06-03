@@ -115,3 +115,13 @@ def get_formula_config():
         return json.loads(f'{{"enable": true}}')
     else:
         return formula_config
+
+
+def get_latex_delimiter_config():
+    config = read_config()
+    latex_delimiter_config = config.get('latex-delimiter-config')
+    if latex_delimiter_config is None:
+        logger.warning(f"'latex-delimiter-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
+        return None
+    else:
+        return latex_delimiter_config

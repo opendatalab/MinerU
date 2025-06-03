@@ -8,6 +8,7 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from loguru import logger
 
+from mineru.api.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from mineru.api.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
@@ -125,21 +126,21 @@ def do_parse(
                     pdf_bytes,
                 )
 
-            # if f_dump_md:
-            #     image_dir = str(os.path.basename(local_image_dir))
-            #     md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
-            #     md_writer.write_string(
-            #         f"{pdf_file_name}.md",
-            #         md_content_str,
-            #     )
+            if f_dump_md:
+                image_dir = str(os.path.basename(local_image_dir))
+                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}.md",
+                    md_content_str,
+                )
 
-            # if f_dump_content_list:
-            #     image_dir = str(os.path.basename(local_image_dir))
-            #     content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
-            #     md_writer.write_string(
-            #         f"{pdf_file_name}_content_list.json",
-            #         json.dumps(content_list, ensure_ascii=False, indent=4),
-            #     )
+            if f_dump_content_list:
+                image_dir = str(os.path.basename(local_image_dir))
+                content_list = pipeline_union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}_content_list.json",
+                    json.dumps(content_list, ensure_ascii=False, indent=4),
+                )
 
             if f_dump_middle_json:
                 md_writer.write_string(
