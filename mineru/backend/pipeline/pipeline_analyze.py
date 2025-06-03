@@ -138,13 +138,17 @@ def doc_analyze(
     # 构建返回结果
     infer_results = []
 
+    for _ in range(len(pdf_bytes_list)):
+        infer_results.append([])
+
     for i, page_info in enumerate(all_pages_info):
         pdf_idx, page_idx, pil_img, _, _ = page_info
         result = results[i]
 
         page_info_dict = {'page_no': page_idx, 'width': pil_img.width, 'height': pil_img.height}
         page_dict = {'layout_dets': result, 'page_info': page_info_dict}
-        infer_results[pdf_idx][page_idx] = page_dict
+
+        infer_results[pdf_idx].append(page_dict)
 
     return infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list
 

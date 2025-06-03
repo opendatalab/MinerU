@@ -1,7 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from mineru.backend.pipeline.config_reader import get_device
+from mineru.backend.pipeline.model_init import AtomModelSingleton
+from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
 from mineru.utils.block_sort import sort_blocks_by_bbox
 from mineru.utils.cut_image import cut_image_and_table
+from mineru.utils.model_utils import clean_memory
 from mineru.utils.pipeline_magic_model import MagicModel
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
@@ -124,6 +128,49 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
             page_w, page_h = map(int, page.get_size())
             page_info = make_page_info_dict([], page_index, page_w, page_h, [])
         middle_json["pdf_info"].append(page_info)
+
+    """后置ocr处理"""
+    need_ocr_list = []
+    img_crop_list = []
+    text_block_list = []
+    for page_info in middle_json["pdf_info"]:
+        for block in page_info['preproc_blocks']:
+            if block['type'] in ['table', 'image']:
+                for sub_block in block['blocks']:
+                    if sub_block['type'] in ['image_caption', 'image_footnote', 'table_caption', 'table_footnote']:
+                        text_block_list.append(sub_block)
+            elif block['type'] in ['text', 'title']:
+                text_block_list.append(block)
+        for block in page_info['discarded_blocks']:
+            text_block_list.append(block)
+    for block in text_block_list:
+        for line in block['lines']:
+            for span in line['spans']:
+                if 'np_img' in span:
+                    need_ocr_list.append(span)
+                    img_crop_list.append(span['np_img'])
+                    span.pop('np_img')
+    if len(img_crop_list) > 0:
+        atom_model_manager = AtomModelSingleton()
+        ocr_model = atom_model_manager.get_atom_model(
+            atom_model_name='ocr',
+            ocr_show_log=False,
+            det_db_box_thresh=0.3,
+            lang=lang
+        )
+        ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+        assert len(ocr_res_list) == len(
+            need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
+        for index, span in enumerate(need_ocr_list):
+            ocr_text, ocr_score = ocr_res_list[index]
+            span['content'] = ocr_text
+            span['score'] = float(f"{ocr_score:.3f}")
+
+    """分段"""
+    para_split(middle_json["pdf_info"])
+
+    clean_memory(get_device())
+
     return middle_json
 
 
