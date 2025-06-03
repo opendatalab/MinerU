@@ -30,6 +30,7 @@ RUN python -m venv /app/venv && \
 
 # Download models
 COPY download_models.py .
+RUN sed -i 's/\r//' download_models.py
 RUN . /app/venv/bin/activate && \
     ./download_models.py
 
