@@ -145,7 +145,7 @@ def doc_analyze(
             f'Batch {index + 1}/{len(batch_images)}: '
             f'{processed_images_count} pages/{len(images_with_extra_info)} pages'
         )
-        batch_results = may_batch_image_analyze(batch_image, formula_enable, table_enable)
+        batch_results = batch_image_analyze(batch_image, formula_enable, table_enable)
         results.extend(batch_results)
 
     # 构建返回结果
@@ -171,7 +171,7 @@ def doc_analyze(
     return middle_json_list, infer_results
 
 
-def may_batch_image_analyze(
+def batch_image_analyze(
         images_with_extra_info: list[(np.ndarray, bool, str)],
         formula_enable=None,
         table_enable=None):
@@ -192,7 +192,7 @@ def may_batch_image_analyze(
     if str(device).startswith('npu') or str(device).startswith('cuda'):
         vram = get_vram(device)
         if vram is not None:
-            gpu_memory = int(os.getenv('VIRTUAL_VRAM_SIZE', round(vram)))
+            gpu_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(vram)))
             if gpu_memory >= 16:
                 batch_ratio = 16
             elif gpu_memory >= 12:

@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from magic_pdf.libs.config_reader import get_device, get_local_models_dir
+from mineru.backend.pipeline.config_reader import get_device, get_local_models_dir
 from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
 from .tools.infer.predict_system import TextSystem
 from .tools.infer import pytorchocr_utility as utility

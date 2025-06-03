@@ -1,6 +1,6 @@
 from pathlib import Path
 from setuptools import setup, find_packages
-from magic_pdf.libs.version import __version__
+from mineru.version import __version__
 
 
 def parse_requirements(filename):
@@ -24,13 +24,13 @@ if __name__ == '__main__':
               'README.md').open(encoding='utf-8') as file:
         long_description = file.read()
     setup(
-        name="magic_pdf",  # 项目名
+        name="mineru",  # 项目名
         version=__version__,  # 自动从tag中获取版本号
         license="AGPL-3.0",
-        packages=find_packages() + ["magic_pdf.resources"] + ["magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources"],  # 包含所有的包
+        packages=find_packages() + ["mineru.resources"] + ["mineru.model.ocr.paddleocr2pytorch.pytorchocr.utils.resources"],  # 包含所有的包
         package_data={
-            "magic_pdf.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
-            "magic_pdf.model.sub_modules.ocr.paddleocr2pytorch.pytorchocr.utils.resources": ["**"],  # pytorchocr.resources目录下的所有文件
+            "mineru.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
+            "mineru.model.ocr.paddleocr2pytorch.pytorchocr.utils.resources": ["**"],  # pytorchocr.resources目录下的所有文件
         },
         install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
         extras_require={
@@ -84,8 +84,7 @@ if __name__ == '__main__':
         python_requires=">=3.10,<3.14",  # 项目依赖的 Python 版本
         entry_points={
             "console_scripts": [
-                "magic-pdf = magic_pdf.tools.cli:cli",
-                "magic-pdf-dev = magic_pdf.tools.cli_dev:cli" 
+                "mineru = mineru.cli:client.main",  # 命令行入口点，mineru命令将调用mineru.cli.client.main函数
             ],
         },  # 项目提供的可执行命令
         include_package_data=True,  # 是否包含非代码文件，如数据文件、配置文件等
