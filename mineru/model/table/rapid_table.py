@@ -8,7 +8,7 @@ from rapid_table import RapidTable, RapidTableInput
 
 class RapidTableModel(object):
     def __init__(self, ocr_engine):
-        root_dir = Path(__file__).absolute().parent.parent.parent.parent.parent
+        root_dir = Path(__file__).absolute().parent.parent.parent
         slanet_plus_model_path = os.path.join(root_dir, 'resources', 'slanet_plus', 'slanet-plus.onnx')
         input_args = RapidTableInput(model_type='slanet_plus', model_path=slanet_plus_model_path)
         self.table_model = RapidTable(input_args)

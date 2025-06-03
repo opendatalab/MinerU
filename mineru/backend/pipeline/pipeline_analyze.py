@@ -101,7 +101,7 @@ def doc_analyze(
         elif parse_method == 'ocr':
             _ocr = True
 
-        ocr_enabled_list[pdf_idx] = _ocr
+        ocr_enabled_list.append(_ocr)
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
