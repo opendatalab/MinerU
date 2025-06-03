@@ -54,7 +54,7 @@ def load_images_from_pdf(
     return images_list, pdf_doc
 
 
-def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, imageWriter: FileBasedDataWriter, scale=2):
+def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, image_writer: FileBasedDataWriter, scale=2):
     """从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径 save_path：需要同时支持s3和本地,
     图片存放在save_path下，文件名是:
     {page_num}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg , bbox内数字取整。"""
@@ -73,7 +73,7 @@ def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, imageWriter
 
     img_bytes = image_to_bytes(crop_img, image_format="JPEG")
 
-    imageWriter.write(img_hash256_path, img_bytes)
+    image_writer.write(img_hash256_path, img_bytes)
     return img_hash256_path
 
 

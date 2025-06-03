@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pypdfium2 as pdfium
 from loguru import logger
+
+from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from ..api.vlm_middle_json_mkcontent import union_make
 from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from ..backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
@@ -30,10 +32,8 @@ def read_fn(path: Path):
 
 
 def prepare_env(output_dir, pdf_file_name, parse_method):
-    local_parent_dir = os.path.join(output_dir, pdf_file_name, parse_method)
-
-    local_image_dir = os.path.join(str(local_parent_dir), "images")
-    local_md_dir = local_parent_dir
+    local_md_dir = str(os.path.join(output_dir, pdf_file_name, parse_method))
+    local_image_dir = os.path.join(str(local_md_dir), "images")
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
@@ -95,15 +95,23 @@ def do_parse(
     if backend == "pipeline":
         for pdf_bytes in pdf_bytes_list:
             pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
-        middle_json_list, infer_results = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
-        for idx, middle_json in enumerate(middle_json_list):
+        infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
+
+        for idx, model_list in enumerate(infer_results):
             pdf_file_name = pdf_file_names[idx]
             model_json = infer_results[idx]
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
+            images_list = all_image_lists[idx]
+            pdf_doc = all_pdf_docs[idx]
+            _lang = lang_list[idx]
+            _ocr = ocr_enabled_list[idx]
+            middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr)
+
             pdf_info = middle_json["pdf_info"]
 
+            pdf_bytes = pdf_bytes_list[idx]
             if f_draw_layout_bbox:
                 draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
 
@@ -155,52 +163,51 @@ def do_parse(
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
             middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, model_path=model_path, server_url=server_url)
 
-        pdf_info = middle_json["pdf_info"]
+            pdf_info = middle_json["pdf_info"]
 
-        if f_draw_layout_bbox:
-            draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+            if f_draw_layout_bbox:
+                draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
 
-        if f_draw_span_bbox:
-            draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+            if f_draw_span_bbox:
+                draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
-        if f_dump_orig_pdf:
-            md_writer.write(
-                f"{pdf_file_name}_origin.pdf",
-                pdf_bytes,
-            )
+            if f_dump_orig_pdf:
+                md_writer.write(
+                    f"{pdf_file_name}_origin.pdf",
+                    pdf_bytes,
+                )
 
-        if f_dump_md:
-            image_dir = str(os.path.basename(local_image_dir))
-            md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
-            md_writer.write_string(
-                f"{pdf_file_name}.md",
-                md_content_str,
-            )
+            if f_dump_md:
+                image_dir = str(os.path.basename(local_image_dir))
+                md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}.md",
+                    md_content_str,
+                )
 
-        if f_dump_content_list:
-            image_dir = str(os.path.basename(local_image_dir))
-            content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
-            md_writer.write_string(
-                f"{pdf_file_name}_content_list.json",
-                json.dumps(content_list, ensure_ascii=False, indent=4),
-            )
+            if f_dump_content_list:
+                image_dir = str(os.path.basename(local_image_dir))
+                content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                md_writer.write_string(
+                    f"{pdf_file_name}_content_list.json",
+                    json.dumps(content_list, ensure_ascii=False, indent=4),
+                )
 
-        if f_dump_middle_json:
-            md_writer.write_string(
-                f"{pdf_file_name}_middle.json",
-                json.dumps(middle_json, ensure_ascii=False, indent=4),
-            )
+            if f_dump_middle_json:
+                md_writer.write_string(
+                    f"{pdf_file_name}_middle.json",
+                    json.dumps(middle_json, ensure_ascii=False, indent=4),
+                )
 
-        if f_dump_model_output:
-            model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
-            md_writer.write_string(
-                f"{pdf_file_name}_model_output.txt",
-                model_output,
-            )
+            if f_dump_model_output:
+                model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
+                md_writer.write_string(
+                    f"{pdf_file_name}_model_output.txt",
+                    model_output,
+                )
 
-        logger.info(f"local output dir is {local_md_dir}")
+            logger.info(f"local output dir is {local_md_dir}")
 
-    return infer_result
 
 
 if __name__ == "__main__":

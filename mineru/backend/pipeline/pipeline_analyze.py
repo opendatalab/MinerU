@@ -80,23 +80,10 @@ def custom_model_init(
 def doc_analyze(
         pdf_bytes_list,
         lang_list,
-        image_writer: DataWriter | None,
         parse_method: str = 'auto',
         formula_enable=None,
         table_enable=None,
 ):
-    """
-    统一处理文档分析函数，根据输入参数类型决定处理单个数据集还是多个数据集
-
-    Args:
-        dataset_or_datasets: 单个Dataset对象或Dataset对象列表
-        parse_method: 解析方法，'auto'/'ocr'/'txt'
-        formula_enable: 是否启用公式识别
-        table_enable: 是否启用表格识别
-
-    Returns:
-        单个dataset时返回单个model_json，多个dataset时返回model_json列表
-    """
     MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
 
     # 收集所有页面信息
@@ -159,16 +146,7 @@ def doc_analyze(
         page_dict = {'layout_dets': result, 'page_info': page_info_dict}
         infer_results[pdf_idx][page_idx] = page_dict
 
-    middle_json_list = []
-    for pdf_idx, model_list in enumerate(infer_results):
-        images_list = all_image_lists[pdf_idx]
-        pdf_doc = all_pdf_docs[pdf_idx]
-        _lang = lang_list[pdf_idx]
-        _ocr = ocr_enabled_list[pdf_idx]
-        middle_json = result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr)
-        middle_json_list.append(middle_json)
-
-    return middle_json_list, infer_results
+    return infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list
 
 
 def batch_image_analyze(
