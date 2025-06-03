@@ -127,7 +127,7 @@ class BatchAnalyze:
                 if not lang_crop_list:
                     continue
 
-                logger.info(f"Processing OCR detection for language {lang} with {len(lang_crop_list)} images")
+                # logger.info(f"Processing OCR detection for language {lang} with {len(lang_crop_list)} images")
 
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(
@@ -171,7 +171,7 @@ class BatchAnalyze:
 
                     # 批处理检测
                     batch_size = min(len(batch_images), self.batch_ratio * 16)  # 增加批处理大小
-                    logger.debug(f"OCR-det batch: {batch_size} images, target size: {target_h}x{target_w}")
+                    # logger.debug(f"OCR-det batch: {batch_size} images, target size: {target_h}x{target_w}")
                     batch_results = ocr_model.text_detector.batch_predict(batch_images, batch_size)
 
                     # 处理批处理结果
