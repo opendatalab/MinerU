@@ -70,7 +70,7 @@ class UnimernetModel(object):
         # Collect images with their original indices
         for image_index in range(len(images_mfd_res)):
             mfd_res = images_mfd_res[image_index]
-            np_array_image = images[image_index]
+            pil_img = images[image_index]
             formula_list = []
 
             for idx, (xyxy, conf, cla) in enumerate(zip(
@@ -84,7 +84,7 @@ class UnimernetModel(object):
                     "latex": "",
                 }
                 formula_list.append(new_item)
-                bbox_img = np_array_image[ymin:ymax, xmin:xmax]
+                bbox_img = pil_img.crop((xmin, ymin, xmax, ymax))
                 area = (xmax - xmin) * (ymax - ymin)
 
                 curr_idx = len(mf_image_list)
