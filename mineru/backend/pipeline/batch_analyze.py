@@ -71,7 +71,7 @@ class BatchAnalyze:
         for index in range(len(images)):
             _, ocr_enable, _lang = images_with_extra_info[index]
             layout_res = images_layout_res[index]
-            np_array_img = images[index]
+            pil_img = images[index]
 
             ocr_res_list, table_res_list, single_page_mfdetrec_res = (
                 get_res_list_from_layout_res(layout_res)
@@ -80,13 +80,13 @@ class BatchAnalyze:
             ocr_res_list_all_page.append({'ocr_res_list':ocr_res_list,
                                           'lang':_lang,
                                           'ocr_enable':ocr_enable,
-                                          'np_array_img':np_array_img,
+                                          'pil_img':pil_img,
                                           'single_page_mfdetrec_res':single_page_mfdetrec_res,
                                           'layout_res':layout_res,
                                           })
 
             for table_res in table_res_list:
-                table_img, _ = crop_img(table_res, np_array_img)
+                table_img, _ = crop_img(table_res, pil_img)
                 table_res_list_all_page.append({'table_res':table_res,
                                                 'lang':_lang,
                                                 'table_img':table_img,
@@ -103,14 +103,14 @@ class BatchAnalyze:
 
                         for res in ocr_res_list_dict['ocr_res_list']:
                             new_image, useful_list = crop_img(
-                                res, ocr_res_list_dict['np_array_img'], crop_paste_x=50, crop_paste_y=50
+                                res, ocr_res_list_dict['pil_img'], crop_paste_x=50, crop_paste_y=50
                             )
                             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                                 ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
                             )
 
                             # BGR转换
-                            new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+                            new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
 
                             all_cropped_images_info.append((
                                 new_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang
@@ -215,37 +215,36 @@ class BatchAnalyze:
                         )
                         for res in ocr_res_list_dict['ocr_res_list']:
                             new_image, useful_list = crop_img(
-                                res, ocr_res_list_dict['np_array_img'], crop_paste_x=50, crop_paste_y=50
+                                res, ocr_res_list_dict['pil_img'], crop_paste_x=50, crop_paste_y=50
                             )
                             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                                 ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
                             )
+                            # OCR-det
+                            new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
+                            ocr_res = ocr_model.ocr(
+                                new_image, mfd_res=adjusted_mfdetrec_res, rec=False
+                            )[0]
 
-                        # OCR-det
-                        new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-                        ocr_res = ocr_model.ocr(
-                            new_image, mfd_res=adjusted_mfdetrec_res, rec=False
-                        )[0]
+                            # Integration results
+                            if ocr_res:
+                                ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],
+                                                                      new_image, _lang)
 
-                        # Integration results
-                        if ocr_res:
-                            ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],
-                                                                  new_image, _lang)
+                                if res["category_id"] == 3:
+                                    # ocr_result_list中所有bbox的面积之和
+                                    ocr_res_area = sum(
+                                        get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
+                                    # 求ocr_res_area和res的面积的比值
+                                    res_area = get_coords_and_area(res)[4]
+                                    if res_area > 0:
+                                        ratio = ocr_res_area / res_area
+                                        if ratio > 0.25:
+                                            res["category_id"] = 1
+                                        else:
+                                            continue
 
-                            if res["category_id"] == 3:
-                                # ocr_result_list中所有bbox的面积之和
-                                ocr_res_area = sum(
-                                    get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
-                                # 求ocr_res_area和res的面积的比值
-                                res_area = get_coords_and_area(res)[4]
-                                if res_area > 0:
-                                    ratio = ocr_res_area / res_area
-                                    if ratio > 0.25:
-                                        res["category_id"] = 1
-                                    else:
-                                        continue
-
-                            ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+                                ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
         # 表格识别 table recognition
         if self.table_enable:

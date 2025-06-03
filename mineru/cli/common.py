@@ -8,13 +8,13 @@ import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-from ..api.vlm_middle_json_mkcontent import union_make
-from ..backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from ..backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
-from ..data.data_reader_writer import FileBasedDataWriter
-from ..utils.draw_bbox import draw_layout_bbox, draw_span_bbox
-from ..utils.enum_class import MakeMode
-from ..utils.pdf_image_tools import images_bytes_to_pdf_bytes
+from mineru.api.vlm_middle_json_mkcontent import union_make
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.enum_class import MakeMode
+from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 
 pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg"]
@@ -211,11 +211,9 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/demo2.pdf"
+    pdf_path = "../../demo/pdfs/demo2.pdf"
     with open(pdf_path, "rb") as f:
         try:
-            result = do_parse("./output", Path(pdf_path).stem, f.read())
+           do_parse("./output", [Path(pdf_path).stem], [f.read()],["ch"],)
         except Exception as e:
             logger.exception(e)
-        # dict转成json
-        print(json.dumps(result, ensure_ascii=False, indent=4))
