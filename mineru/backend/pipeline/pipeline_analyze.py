@@ -5,8 +5,6 @@ import torch
 
 from .model_init import MineruPipelineModel
 from .config_reader import get_local_models_dir, get_device, get_formula_config, get_table_recog_config
-from .model_json_to_middle_json import result_to_middle_json
-from ...data.data_reader_writer import DataWriter
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf
 

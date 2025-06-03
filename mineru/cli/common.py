@@ -2,13 +2,14 @@
 import io
 import json
 import os
+import copy
 from pathlib import Path
 
 import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-from mineru.api.vlm_middle_json_mkcontent import union_make
+from mineru.api.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from mineru.data.data_reader_writer import FileBasedDataWriter
@@ -98,8 +99,8 @@ def do_parse(
         infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
 
         for idx, model_list in enumerate(infer_results):
+            model_json = copy.deepcopy(model_list)
             pdf_file_name = pdf_file_names[idx]
-            model_json = infer_results[idx]
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
@@ -124,21 +125,21 @@ def do_parse(
                     pdf_bytes,
                 )
 
-            if f_dump_md:
-                image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}.md",
-                    md_content_str,
-                )
+            # if f_dump_md:
+            #     image_dir = str(os.path.basename(local_image_dir))
+            #     md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
+            #     md_writer.write_string(
+            #         f"{pdf_file_name}.md",
+            #         md_content_str,
+            #     )
 
-            if f_dump_content_list:
-                image_dir = str(os.path.basename(local_image_dir))
-                content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}_content_list.json",
-                    json.dumps(content_list, ensure_ascii=False, indent=4),
-                )
+            # if f_dump_content_list:
+            #     image_dir = str(os.path.basename(local_image_dir))
+            #     content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+            #     md_writer.write_string(
+            #         f"{pdf_file_name}_content_list.json",
+            #         json.dumps(content_list, ensure_ascii=False, indent=4),
+            #     )
 
             if f_dump_middle_json:
                 md_writer.write_string(
@@ -179,7 +180,7 @@ def do_parse(
 
             if f_dump_md:
                 image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = union_make(pdf_info, f_make_md_mode, image_dir)
+                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir)
                 md_writer.write_string(
                     f"{pdf_file_name}.md",
                     md_content_str,
@@ -187,7 +188,7 @@ def do_parse(
 
             if f_dump_content_list:
                 image_dir = str(os.path.basename(local_image_dir))
-                content_list = union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                content_list = vlm_union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
                 md_writer.write_string(
                     f"{pdf_file_name}_content_list.json",
                     json.dumps(content_list, ensure_ascii=False, indent=4),

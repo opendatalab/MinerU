@@ -117,7 +117,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr=False):
-    middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
+    middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
     for page_index, page_model_info in enumerate(model_list):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
