@@ -18,7 +18,8 @@
         "model": "rapid_table",
         "sub_model": "slanet_plus",
         "enable": true,
-        "max_time": 400
+        "max_time": 400,
+        "strictly_check": true
     },
     "latex-delimiter-config": {
         "display": {
