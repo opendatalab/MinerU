@@ -14,7 +14,7 @@ MFR_BASE_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
-    def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = True):
+    def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = False):
         self.batch_ratio = batch_ratio
         self.formula_enable = formula_enable
         self.table_enable = table_enable
