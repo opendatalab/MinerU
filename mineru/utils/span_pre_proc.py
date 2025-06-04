@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import re
 import cv2
 import numpy as np
 
@@ -100,6 +101,19 @@ def remove_overlaps_min_spans(spans):
     return spans, dropped_spans
 
 
+def __replace_ligatures(text: str):
+    ligatures = {
+        'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st'
+    }
+    return re.sub('|'.join(map(re.escape, ligatures.keys())), lambda m: ligatures[m.group()], text)
+
+def __replace_unicode(text: str):
+    ligatures = {
+        '\r\n': '', '\u0002': '-',
+    }
+    return re.sub('|'.join(map(re.escape, ligatures.keys())), lambda m: ligatures[m.group()], text)
+
+
 def txt_spans_extract(pdf_page, spans, pil_img, scale):
 
     textpage = pdf_page.get_textpage()
@@ -117,6 +131,8 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale):
         text = textpage.get_text_bounded(left=rect_box[0], top=rect_box[1],
                                          right=rect_box[2], bottom=rect_box[3])
         if text and len(text) > 0:
+            text = __replace_unicode(text)
+            text = __replace_ligatures(text)
             span['content'] = text.strip()
             span['score'] = 1.0
         else:

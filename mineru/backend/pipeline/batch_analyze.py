@@ -132,7 +132,6 @@ class BatchAnalyze:
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(
                     atom_model_name='ocr',
-                    ocr_show_log=False,
                     det_db_box_thresh=0.3,
                     lang=lang
                 )
