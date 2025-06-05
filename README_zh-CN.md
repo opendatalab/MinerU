@@ -438,7 +438,8 @@ pip install -U "magic-pdf[full]" -i https://mirrors.aliyun.com/pypi/simple
         "model": "rapid_table",
         "sub_model": "slanet_plus",
         "enable": true, // 表格识别功能默认是开启的，如果需要关闭请修改此处的值为"false"
-        "max_time": 400
+        "max_time": 400,        
+        "strictly_check": true // TXT模式下如果表格中没有文本则视为图片处理
     }
 }
 ```

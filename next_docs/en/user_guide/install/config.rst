@@ -38,7 +38,8 @@ magic-pdf.json
         "table-config": {
             "model": "rapid_table",
             "enable": true,
-            "max_time": 400    
+            "max_time": 400,
+            "strictly_check": true
         },
         "config_version": "1.0.0"
     }
