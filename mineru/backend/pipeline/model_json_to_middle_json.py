@@ -48,6 +48,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     """获取所有的spans信息"""
     spans = magic_model.get_all_spans()
 
+    """某些图可能是文本块，通过简单的规则判断一下"""
     if len(maybe_text_image_blocks) > 0:
         for block in maybe_text_image_blocks:
             span_in_block_list = []
@@ -64,8 +65,10 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
                     if ratio > 0.25 and ocr:
                         # 移除block的group_id
                         block.pop('group_id', None)
+                        # 符合文本图的条件就把块加入到文本块列表中
                         text_blocks.append(block)
                     else:
+                        # 如果不符合文本图的条件，就把块加回到图片块列表中
                         img_body_blocks.append(block)
             else:
                 img_body_blocks.append(block)

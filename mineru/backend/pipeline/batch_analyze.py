@@ -230,19 +230,6 @@ class BatchAnalyze:
                         ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],
                                                               new_image, _lang)
 
-                        # if res["category_id"] == 3 and ocr_res_list_dict['ocr_enable']:
-                        #     # ocr_result_list中所有bbox的面积之和
-                        #     ocr_res_area = sum(
-                        #         get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
-                        #     # 求ocr_res_area和res的面积的比值
-                        #     res_area = get_coords_and_area(res)[4]
-                        #     if res_area > 0:
-                        #         ratio = ocr_res_area / res_area
-                        #         if ratio > 0.25:
-                        #             res["category_id"] = 1
-                        #         else:
-                        #             continue
-
                         ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
         # 表格识别 table recognition

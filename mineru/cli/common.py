@@ -215,9 +215,10 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/pdfs/demo2.pdf"
-    with open(pdf_path, "rb") as f:
-        try:
-           do_parse("./output", [Path(pdf_path).stem], [f.read()],["ch"], end_page_id=20,)
-        except Exception as e:
-            logger.exception(e)
+    pdf_path = "../../demo/pdfs/hello-algo-1.1.0-zh-c-word转换的span有问题.pdf"
+    # pdf_path = "C:/Users/zhaoxiaomeng/Downloads/input_img_0.jpg"
+
+    try:
+       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=20,)
+    except Exception as e:
+        logger.exception(e)
