@@ -125,3 +125,13 @@ def get_latex_delimiter_config():
         return None
     else:
         return latex_delimiter_config
+
+
+def get_llm_aided_config():
+    config = read_config()
+    llm_aided_config = config.get('llm-aided-config')
+    if llm_aided_config is None:
+        logger.warning(f"'llm-aided-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
+        return None
+    else:
+        return llm_aided_config

@@ -1,10 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from mineru.backend.pipeline.config_reader import get_device
+import time
+
+from loguru import logger
+
+from mineru.backend.pipeline.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
 from mineru.utils.block_sort import sort_blocks_by_bbox
 from mineru.utils.cut_image import cut_image_and_table
+from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.utils.pipeline_magic_model import MagicModel
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
@@ -168,6 +173,18 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
 
     """分段"""
     para_split(middle_json["pdf_info"])
+
+    """llm优化"""
+    llm_aided_config = get_llm_aided_config()
+
+    if llm_aided_config is not None:
+        """标题优化"""
+        title_aided_config = llm_aided_config.get('title_aided', None)
+        if title_aided_config is not None:
+            if title_aided_config.get('enable', False):
+                llm_aided_title_start_time = time.time()
+                llm_aided_title(middle_json["pdf_info"], title_aided_config)
+                logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
     clean_memory(get_device())
 
