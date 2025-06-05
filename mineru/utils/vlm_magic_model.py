@@ -1,6 +1,9 @@
+import re
 from typing import Literal
 
 from .boxbase import bbox_distance, is_in
+from .enum_class import BlockType
+from ..api.vlm_middle_json_mkcontent import merge_para_with_text
 
 
 def __reduct_overlap(bboxes):
@@ -217,3 +220,27 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table"]):
         fixed_blocks.append(two_layer_block)
 
     return fixed_blocks
+
+
+def fix_title_blocks(blocks):
+    for block in blocks:
+        if block["type"] == BlockType.TITLE:
+            title_content = merge_para_with_text(block)
+            title_level = count_leading_hashes(title_content)
+            block['level'] = title_level
+            for line in block['lines']:
+                for span in line['spans']:
+                    span['content'] = strip_leading_hashes(span['content'])
+                    break
+                break
+    return blocks
+
+
+def count_leading_hashes(text):
+    match = re.match(r'^(#+)', text)
+    return len(match.group(1)) if match else 0
+
+
+def strip_leading_hashes(text):
+    # 去除开头的#和紧随其后的空格
+    return re.sub(r'^#+\s*', '', text)

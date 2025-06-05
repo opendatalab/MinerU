@@ -1,9 +1,10 @@
 import re
 
+from mineru.utils.block_pre_proc import fix_text_overlap_title_blocks
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import str_md5
-from mineru.utils.vlm_magic_model import fix_two_layer_blocks
+from mineru.utils.vlm_magic_model import fix_two_layer_blocks, fix_title_blocks
 from mineru.version import __version__
 
 
@@ -103,13 +104,14 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
 
     image_blocks = fix_two_layer_blocks(blocks, BlockType.IMAGE)
     table_blocks = fix_two_layer_blocks(blocks, BlockType.TABLE)
+    title_blocks = fix_title_blocks(blocks)
 
     page_blocks = [
         block
         for block in blocks
-        if block["type"] in [BlockType.TEXT, BlockType.TITLE, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]
+        if block["type"] in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]
     ]
-    page_blocks.extend([*image_blocks, *table_blocks])
+    page_blocks.extend([*image_blocks, *table_blocks, *title_blocks])
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 

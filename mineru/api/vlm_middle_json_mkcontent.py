@@ -22,8 +22,11 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
     for para_block in para_blocks:
         para_text = ''
         para_type = para_block['type']
-        if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.TITLE, BlockType.INTERLINE_EQUATION]:
+        if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
+        elif para_type == BlockType.TITLE:
+            title_level = get_title_level(para_block)
+            para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
         elif para_type == BlockType.IMAGE:
             if make_mode == MakeMode.NLP_MD:
                 continue
@@ -87,13 +90,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
     return page_markdown
 
 
-def count_leading_hashes(text):
-    match = re.match(r'^(#+)', text)
-    return len(match.group(1)) if match else 0
 
-def strip_leading_hashes(text):
-    # 去除开头的#和紧随其后的空格
-    return re.sub(r'^#+\s*', '', text)
 
 
 def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
@@ -105,11 +102,10 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             'text': merge_para_with_text(para_block),
         }
     elif para_type == BlockType.TITLE:
-        title_content = merge_para_with_text(para_block)
-        title_level = count_leading_hashes(title_content)
+        title_level = get_title_level(para_block)
         para_content = {
             'type': 'text',
-            'text': strip_leading_hashes(title_content),
+            'text': merge_para_with_text(para_block),
         }
         if title_level != 0:
             para_content['text_level'] = title_level
