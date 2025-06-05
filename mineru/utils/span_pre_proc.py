@@ -2,11 +2,13 @@
 import re
 import cv2
 import numpy as np
+from loguru import logger
 
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio, calculate_iou, \
     get_minbox_if_overlap_by_ratio
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdf_text_tool import get_page
 
 
 def remove_outside_spans(spans, all_bboxes, all_discarded_blocks):
@@ -114,7 +116,7 @@ def __replace_unicode(text: str):
     return re.sub('|'.join(map(re.escape, ligatures.keys())), lambda m: ligatures[m.group()], text)
 
 
-def txt_spans_extract(pdf_page, spans, pil_img, scale):
+def txt_spans_extract_v1(pdf_page, spans, pil_img, scale):
 
     textpage = pdf_page.get_textpage()
     width, height = pdf_page.get_size()
@@ -128,6 +130,10 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale):
                     height - span_bbox[3] + cropbox[1],
                     span_bbox[2] + cropbox[0],
                     height - span_bbox[1] + cropbox[1]]
+        # logger.info(f"span bbox: {span_bbox}, rect_box: {rect_box}")
+        middle_height = (rect_box[1] + rect_box[3]) / 2
+        rect_box[1] = middle_height - 1
+        rect_box[3] = middle_height + 1
         text = textpage.get_text_bounded(left=rect_box[0], top=rect_box[1],
                                          right=rect_box[2], bottom=rect_box[3])
         if text and len(text) > 0:
@@ -137,6 +143,68 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale):
             span['score'] = 1.0
         else:
             need_ocr_spans.append(span)
+
+    if len(need_ocr_spans) > 0:
+
+        for span in need_ocr_spans:
+            # 对span的bbox截图再ocr
+            span_pil_img = get_crop_img(span['bbox'], pil_img, scale)
+            span_img = cv2.cvtColor(np.array(span_pil_img), cv2.COLOR_RGB2BGR)
+            # 计算span的对比度，低于0.20的span不进行ocr
+            if calculate_contrast(span_img, img_mode='bgr') <= 0.17:
+                spans.remove(span)
+                continue
+
+            span['content'] = ''
+            span['score'] = 1.0
+            span['np_img'] = span_img
+
+    return spans
+
+
+def txt_spans_extract_v2(pdf_page, spans, pil_img, scale):
+
+    page_dict = get_page(pdf_page)
+
+    page_all_spans = []
+    for block in page_dict['blocks']:
+        for line in block['lines']:
+            if 0 < abs(line['rotation']) < 90:
+                # 旋转角度在0-90度之间的行，直接跳过
+                continue
+            for span in line['spans']:
+                page_all_spans.append(span)
+
+    need_ocr_spans = []
+    for span in spans:
+        if span['type'] in [ContentType.TEXT]:
+            span['sub_spans'] = []
+            matched_spans = []
+            for page_span in page_all_spans:
+                if calculate_overlap_area_in_bbox1_area_ratio(page_span['bbox'].bbox, span['bbox']) > 0.5:
+                    span['sub_spans'].append(page_span)
+                    matched_spans.append(page_span)
+
+            # 从page_all_spans中移除已匹配的元素
+            page_all_spans = [span for span in page_all_spans if span not in matched_spans]
+
+            # 对sub_spans按照bbox的x坐标进行排序
+            span['sub_spans'].sort(key=lambda x: x['bbox'].x_start)
+            # 对sub_spans的content进行拼接
+            span_content = ''.join([sub_span['text'] for sub_span in span['sub_spans']])
+
+            if span_content and len(span_content) > 0:
+                span_content = __replace_unicode(span_content)
+                span_content = __replace_ligatures(span_content)
+                span['content'] = span_content.strip()
+                span['score'] = 1.0
+            else:
+                need_ocr_spans.append(span)
+
+            # 移除span的sub_spans
+            span.pop('sub_spans', None)
+        else:
+            pass
 
     if len(need_ocr_spans) > 0:
 

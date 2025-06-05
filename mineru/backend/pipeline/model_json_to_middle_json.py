@@ -9,7 +9,7 @@ from mineru.utils.model_utils import clean_memory
 from mineru.utils.pipeline_magic_model import MagicModel
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
-    remove_overlaps_min_spans, txt_spans_extract
+    remove_overlaps_min_spans, txt_spans_extract_v2
 from mineru.version import __version__
 from mineru.utils.hash_utils import str_md5
 
@@ -79,7 +79,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
         pass
     else:
         """使用新版本的混合ocr方案."""
-        spans = txt_spans_extract(page, spans, page_pil_img, scale)
+        spans = txt_spans_extract_v2(page, spans, page_pil_img, scale)
 
     """先处理不需要排版的discarded_blocks"""
     discarded_block_with_spans, spans = fill_spans_in_blocks(

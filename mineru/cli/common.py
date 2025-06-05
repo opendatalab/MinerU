@@ -95,8 +95,10 @@ def do_parse(
 ):
 
     if backend == "pipeline":
-        for pdf_bytes in pdf_bytes_list:
-            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        for idx, pdf_bytes in enumerate(pdf_bytes_list):
+            new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            pdf_bytes_list[idx] = new_pdf_bytes
+
         infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
 
         for idx, model_list in enumerate(infer_results):
@@ -213,9 +215,10 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/pdfs/demo2.pdf"
+    pdf_path = "../../demo/pdfs/计算机学报-单词中间有换行符-span不准确.pdf"
+    # pdf_path = "../../demo/pdfs/demo1.pdf"
     with open(pdf_path, "rb") as f:
         try:
-           do_parse("./output", [Path(pdf_path).stem], [f.read()],["ch"],)
+           do_parse("./output", [Path(pdf_path).stem], [f.read()],["ch"], end_page_id=20,)
         except Exception as e:
             logger.exception(e)
