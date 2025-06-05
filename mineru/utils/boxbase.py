@@ -148,17 +148,6 @@ def calculate_iou(bbox1, bbox2):
     return iou
 
 
-def _is_in(box1, box2) -> bool:
-    """box1是否完全在box2里面."""
-    x0_1, y0_1, x1_1, y1_1 = box1
-    x0_2, y0_2, x1_2, y1_2 = box2
-
-    return (x0_1 >= x0_2 and  # box1的左边界不在box2的左边外
-            y0_1 >= y0_2 and  # box1的上边界不在box2的上边外
-            x1_1 <= x1_2 and  # box1的右边界不在box2的右边外
-            y1_1 <= y1_2)  # box1的下边界不在box2的下边外
-
-
 def calculate_overlap_area_in_bbox1_area_ratio(bbox1, bbox2):
     """计算box1和box2的重叠面积占bbox1的比例."""
     # Determine the coordinates of the intersection rectangle

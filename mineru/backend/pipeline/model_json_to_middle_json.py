@@ -8,6 +8,7 @@ from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
 from mineru.utils.block_sort import sort_blocks_by_bbox
+from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
@@ -27,22 +28,48 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     magic_model = MagicModel(page_model_info, scale)
 
     """从magic_model对象中获取后面会用到的区块信息"""
-    img_groups = magic_model.get_imgs()
-    table_groups = magic_model.get_tables()
-
-    """对image和table的区块分组"""
-    img_body_blocks, img_caption_blocks, img_footnote_blocks = process_groups(
-        img_groups, 'image_body', 'image_caption_list', 'image_footnote_list'
-    )
-
-    table_body_blocks, table_caption_blocks, table_footnote_blocks = process_groups(
-        table_groups, 'table_body', 'table_caption_list', 'table_footnote_list'
-    )
-
     discarded_blocks = magic_model.get_discarded()
     text_blocks = magic_model.get_text_blocks()
     title_blocks = magic_model.get_title_blocks()
     inline_equations, interline_equations, interline_equation_blocks = magic_model.get_equations()
+
+    img_groups = magic_model.get_imgs()
+    table_groups = magic_model.get_tables()
+
+    """对image和table的区块分组"""
+    img_body_blocks, img_caption_blocks, img_footnote_blocks, maybe_text_image_blocks = process_groups(
+        img_groups, 'image_body', 'image_caption_list', 'image_footnote_list'
+    )
+
+    table_body_blocks, table_caption_blocks, table_footnote_blocks, _ = process_groups(
+        table_groups, 'table_body', 'table_caption_list', 'table_footnote_list'
+    )
+
+    """获取所有的spans信息"""
+    spans = magic_model.get_all_spans()
+
+    if len(maybe_text_image_blocks) > 0:
+        for block in maybe_text_image_blocks:
+            span_in_block_list = []
+            for span in spans:
+                if span['type'] == 'text' and calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block['bbox']) > 0.7:
+                    span_in_block_list.append(span)
+            if len(span_in_block_list) > 0:
+                # span_in_block_list中所有bbox的面积之和
+                spans_area = sum((span['bbox'][2] - span['bbox'][0]) * (span['bbox'][3] - span['bbox'][1]) for span in span_in_block_list)
+                # 求ocr_res_area和res的面积的比值
+                block_area = (block['bbox'][2] - block['bbox'][0]) * (block['bbox'][3] - block['bbox'][1])
+                if block_area > 0:
+                    ratio = spans_area / block_area
+                    if ratio > 0.25 and ocr:
+                        # 移除block的group_id
+                        block.pop('group_id', None)
+                        text_blocks.append(block)
+                    else:
+                        img_body_blocks.append(block)
+            else:
+                img_body_blocks.append(block)
+
 
     """将所有区块的bbox整理到一起"""
     interline_equation_blocks = []
@@ -68,8 +95,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
             page_w,
             page_h,
         )
-    """获取所有的spans信息"""
-    spans = magic_model.get_all_spans()
+
     """在删除重复span之前，应该通过image_body和table_body的block过滤一下image和table的span"""
     """顺便删除大水印并保留abandon的span"""
     spans = remove_outside_spans(spans, all_bboxes, all_discarded_blocks)

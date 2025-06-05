@@ -230,18 +230,18 @@ class BatchAnalyze:
                         ocr_result_list = get_ocr_result_list(ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],
                                                               new_image, _lang)
 
-                        if res["category_id"] == 3:
-                            # ocr_result_list中所有bbox的面积之和
-                            ocr_res_area = sum(
-                                get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
-                            # 求ocr_res_area和res的面积的比值
-                            res_area = get_coords_and_area(res)[4]
-                            if res_area > 0:
-                                ratio = ocr_res_area / res_area
-                                if ratio > 0.3:
-                                    res["category_id"] = 1
-                                else:
-                                    continue
+                        # if res["category_id"] == 3 and ocr_res_list_dict['ocr_enable']:
+                        #     # ocr_result_list中所有bbox的面积之和
+                        #     ocr_res_area = sum(
+                        #         get_coords_and_area(ocr_res_item)[4] for ocr_res_item in ocr_result_list if 'poly' in ocr_res_item)
+                        #     # 求ocr_res_area和res的面积的比值
+                        #     res_area = get_coords_and_area(res)[4]
+                        #     if res_area > 0:
+                        #         ratio = ocr_res_area / res_area
+                        #         if ratio > 0.25:
+                        #             res["category_id"] = 1
+                        #         else:
+                        #             continue
 
                         ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
@@ -321,6 +321,8 @@ class BatchAnalyze:
                         ocr_text, ocr_score = ocr_res_list[index]
                         layout_res_item['text'] = ocr_text
                         layout_res_item['score'] = float(f"{ocr_score:.3f}")
+                        if ocr_score < 0.6:
+                            layout_res_item['category_id'] = 16
 
                     total_processed += len(img_crop_list)
 

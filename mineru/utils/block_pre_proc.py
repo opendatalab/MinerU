@@ -12,16 +12,23 @@ def process_groups(groups, body_key, caption_key, footnote_key):
     body_blocks = []
     caption_blocks = []
     footnote_blocks = []
+    maybe_text_image_blocks = []
     for i, group in enumerate(groups):
-        group[body_key]['group_id'] = i
-        body_blocks.append(group[body_key])
-        for caption_block in group[caption_key]:
-            caption_block['group_id'] = i
-            caption_blocks.append(caption_block)
-        for footnote_block in group[footnote_key]:
-            footnote_block['group_id'] = i
-            footnote_blocks.append(footnote_block)
-    return body_blocks, caption_blocks, footnote_blocks
+        if body_key == 'image_body' and len(group[caption_key]) == 0 and len(group[footnote_key]) == 0:
+            # 如果没有caption和footnote，则不需要将group_id添加到image_body中
+            group[body_key]['group_id'] = i
+            maybe_text_image_blocks.append(group[body_key])
+            continue
+        else:
+            group[body_key]['group_id'] = i
+            body_blocks.append(group[body_key])
+            for caption_block in group[caption_key]:
+                caption_block['group_id'] = i
+                caption_blocks.append(caption_block)
+            for footnote_block in group[footnote_key]:
+                footnote_block['group_id'] = i
+                footnote_blocks.append(footnote_block)
+    return body_blocks, caption_blocks, footnote_blocks, maybe_text_image_blocks
 
 
 def prepare_block_bboxes(

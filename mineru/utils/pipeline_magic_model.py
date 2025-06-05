@@ -1,4 +1,4 @@
-from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, _is_in
+from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, is_in
 from mineru.utils.enum_class import CategoryId, ContentType
 
 
@@ -156,7 +156,7 @@ class MagicModel:
             for j in range(N):
                 if i == j:
                     continue
-                if _is_in(bboxes[i]['bbox'], bboxes[j]['bbox']):
+                if is_in(bboxes[i]['bbox'], bboxes[j]['bbox']):
                     keep[i] = False
         return [bboxes[i] for i in range(N) if keep[i]]
 
