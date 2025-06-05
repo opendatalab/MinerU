@@ -215,8 +215,8 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/pdfs/计算机学报-单词中间有换行符-span不准确.pdf"
-    # pdf_path = "../../demo/pdfs/demo1.pdf"
+    # pdf_path = "../../demo/pdfs/计算机学报-单词中间有换行符-span不准确.pdf"
+    pdf_path = "../../demo/pdfs/demo1.pdf"
     with open(pdf_path, "rb") as f:
         try:
            do_parse("./output", [Path(pdf_path).stem], [f.read()],["ch"], end_page_id=20,)
