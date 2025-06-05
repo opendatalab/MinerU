@@ -12,7 +12,7 @@ from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
-from mineru.utils.pipeline_magic_model import MagicModel
+from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract

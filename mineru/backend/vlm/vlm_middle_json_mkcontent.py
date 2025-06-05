@@ -1,5 +1,5 @@
 import re
-from ..utils.enum_class import MakeMode, BlockType, ContentType
+from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
 
 def merge_para_with_text(para_block):

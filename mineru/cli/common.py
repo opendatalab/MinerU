@@ -8,9 +8,9 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from loguru import logger
 
-from mineru.api.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-from mineru.api.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from mineru.data.data_reader_writer import FileBasedDataWriter
@@ -215,8 +215,8 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/pdfs/hello-algo-1.1.0-zh-c-word转换的span有问题.pdf"
-    # pdf_path = "C:/Users/zhaoxiaomeng/Downloads/input_img_0.jpg"
+    # pdf_path = "../../demo/pdfs/hello-algo-1.1.0-zh-c-word转换的span有问题.pdf"
+    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/数学新星问题征解第一期(2014.03).pdf"
 
     try:
        do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=20,)

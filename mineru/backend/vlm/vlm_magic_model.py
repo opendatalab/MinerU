@@ -1,9 +1,9 @@
 import re
 from typing import Literal
 
-from .boxbase import bbox_distance, is_in
-from .enum_class import BlockType
-from ..api.vlm_middle_json_mkcontent import merge_para_with_text
+from mineru.utils.boxbase import bbox_distance, is_in
+from mineru.utils.enum_class import BlockType
+from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 
 
 def __reduct_overlap(bboxes):

@@ -1,10 +1,9 @@
 import re
 
-from mineru.utils.block_pre_proc import fix_text_overlap_title_blocks
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import str_md5
-from mineru.utils.vlm_magic_model import fix_two_layer_blocks, fix_title_blocks
+from mineru.backend.vlm.vlm_magic_model import fix_two_layer_blocks, fix_title_blocks
 from mineru.version import __version__
 
 

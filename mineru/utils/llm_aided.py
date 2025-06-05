@@ -3,7 +3,7 @@ from loguru import logger
 from openai import OpenAI
 import ast
 
-from mineru.api.pipeline_middle_json_mkcontent import merge_para_with_text
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 
 
 def llm_aided_title(page_info_list, title_aided_config):
