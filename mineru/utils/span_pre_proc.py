@@ -344,7 +344,8 @@ def fill_char_in_spans(spans, all_chars):
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；', ']', '】', '}', '}', '>', '》', '、', ',', '，', '-', '—', '–',)
 LINE_START_FLAG = ('(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',)
 
-def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
+Span_Height_Radio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
+def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=Span_Height_Radio):
     char_center_x = (char_bbox[0] + char_bbox[2]) / 2
     char_center_y = (char_bbox[1] + char_bbox[3]) / 2
     span_center_y = (span_bbox[1] + span_bbox[3]) / 2
@@ -353,7 +354,7 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_radio=0.33):
     if (
         span_bbox[0] < char_center_x < span_bbox[2]
         and span_bbox[1] < char_center_y < span_bbox[3]
-        and abs(char_center_y - span_center_y) < span_height * span_height_radio  # 字符的中轴和span的中轴高度差不能超过1/4span高度
+        and abs(char_center_y - span_center_y) < span_height * span_height_radio  # 字符的中轴和span的中轴高度差不能超过Span_Height_Radio
     ):
         return True
     else:
@@ -385,7 +386,10 @@ def chars_to_content(span):
         pass
     else:
         # 先给chars按char['bbox']的中心点的x坐标排序
-        span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
+        # span['chars'] = sorted(span['chars'], key=lambda x: (x['bbox'][0] + x['bbox'][2]) / 2)
+
+        # 给chars按char_idx排序
+        span['chars'] = sorted(span['chars'], key=lambda x: x['char_idx'])
 
         # Calculate the width of each character
         char_widths = [char['bbox'][2] - char['bbox'][0] for char in span['chars']]
@@ -393,7 +397,7 @@ def chars_to_content(span):
         median_width = statistics.median(char_widths)
 
         # 通过x轴重叠比率移除一部分char
-        span = remove_x_overlapping_chars(span, median_width)
+        # span = remove_x_overlapping_chars(span, median_width)
 
         content = ''
         for char in span['chars']:
