@@ -20,7 +20,7 @@ def __is_hyphen_at_line_end(line):
     return bool(re.search(r'[A-Za-z]+-\s*$', line))
 
 
-def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
+def make_blocks_to_markdown(paras_of_layout,
                                       mode,
                                       img_buket_path='',
                                       ):
@@ -36,9 +36,9 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
         elif para_type == BlockType.INTERLINE_EQUATION:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.IMAGE:
-            if mode == 'nlp':
+            if mode == MakeMode.NLP_MD:
                 continue
-            elif mode == 'mm':
+            elif mode == MakeMode.MM_MD:
                 # 检测是否存在图片脚注
                 has_image_footnote = any(block['type'] == BlockType.IMAGE_FOOTNOTE for block in para_block['blocks'])
                 # 如果存在图片脚注，则将图片脚注拼接到图片正文后面
@@ -68,9 +68,9 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
                         if block['type'] == BlockType.IMAGE_CAPTION:
                             para_text += '  \n' + merge_para_with_text(block)
         elif para_type == BlockType.TABLE:
-            if mode == 'nlp':
+            if mode == MakeMode.NLP_MD:
                 continue
-            elif mode == 'mm':
+            elif mode == MakeMode.MM_MD:
                 for block in para_block['blocks']:  # 1st.拼table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
                         para_text += merge_para_with_text(block) + '  \n'
@@ -150,7 +150,7 @@ def merge_para_with_text(para_block):
             span_type = span['type']
             content = ''
             if span_type == ContentType.TEXT:
-                content = ocr_escape_special_markdown_char(span['content'])
+                content = escape_special_markdown_char(span['content'])
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
@@ -181,7 +181,7 @@ def merge_para_with_text(para_block):
     return para_text
 
 
-def para_to_standard_format_v2(para_block, img_buket_path, page_idx):
+def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
@@ -252,15 +252,12 @@ def union_make(pdf_info_dict: list,
         page_idx = page_info.get('page_idx')
         if not paras_of_layout:
             continue
-        if make_mode == MakeMode.MM_MD:
-            page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, 'mm', img_buket_path)
-            output_content.extend(page_markdown)
-        elif make_mode == MakeMode.NLP_MD:
-            page_markdown = ocr_mk_markdown_with_para_core_v2(paras_of_layout, 'nlp')
+        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
+            page_markdown = make_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.STANDARD_FORMAT:
             for para_block in paras_of_layout:
-                para_content = para_to_standard_format_v2(para_block, img_buket_path, page_idx)
+                para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx)
                 output_content.append(para_content)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
@@ -281,7 +278,7 @@ def get_title_level(block):
     return title_level
 
 
-def ocr_escape_special_markdown_char(content):
+def escape_special_markdown_char(content):
     """
     转义正文里对markdown语法有特殊意义的字符
     """
