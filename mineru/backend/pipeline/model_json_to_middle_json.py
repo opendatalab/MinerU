@@ -197,8 +197,12 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
             need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
         for index, span in enumerate(need_ocr_list):
             ocr_text, ocr_score = ocr_res_list[index]
-            span['content'] = ocr_text
-            span['score'] = float(f"{ocr_score:.3f}")
+            if ocr_score > 0.6:
+                span['content'] = ocr_text
+                span['score'] = float(f"{ocr_score:.3f}")
+            else:
+                span['content'] = ''
+                span['score'] = 0.0
 
     """分段"""
     para_split(middle_json["pdf_info"])
