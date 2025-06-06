@@ -60,7 +60,12 @@ def llm_aided_title(page_info_list, title_aided_config):
 
 IMPORTANT: 
 请直接返回优化过的由标题层级组成的字典，格式为{{标题id:标题层级}}，如下：
-{{0:1,1:2,2:2,3:3}}
+{{
+  0:1,
+  1:2,
+  2:2,
+  3:3
+}}
 不需要对字典格式化，不需要返回任何其他信息。
 
 Input title list:
