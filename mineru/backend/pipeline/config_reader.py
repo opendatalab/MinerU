@@ -16,11 +16,12 @@ def read_config():
         config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
 
     if not os.path.exists(config_file):
-        raise FileNotFoundError(f'{config_file} not found')
-
-    with open(config_file, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    return config
+        logger.warning(f'{config_file} not found, using default configuration')
+        return None
+    else:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        return config
 
 
 def get_s3_config(bucket_name: str):
@@ -88,33 +89,30 @@ def get_local_layoutreader_model_dir():
 
 
 def get_device():
-    config = read_config()
-    device = config.get('device-mode')
-    if device is None:
-        logger.warning(f"'device-mode' not found in {CONFIG_FILE_NAME}, use 'cpu' as default")
-        return 'cpu'
+    device_mode = os.getenv('MINERU_DEVICE_MODE', None)
+    if device_mode is not None:
+        return device_mode
     else:
-        return device
+        logger.warning(f"not found 'MINERU_DEVICE_MODE' in environment variable, use 'cpu' as default.")
+        return 'cpu'
 
 
 def get_table_recog_config():
-    config = read_config()
-    table_config = config.get('table-config')
-    if table_config is None:
-        logger.warning(f"'table-config' not found in {CONFIG_FILE_NAME}, use 'False' as default")
-        return json.loads(f'{{"enable": true}}')
+    table_enable = os.getenv('MINERU_TABLE_ENABLE', None)
+    if table_enable is not None:
+        return json.loads(f'{{"enable": {table_enable}}}')
     else:
-        return table_config
+        logger.warning(f"not found 'MINERU_TABLE_ENABLE' in environment variable, use 'true' as default.")
+        return json.loads(f'{{"enable": true}}')
 
 
 def get_formula_config():
-    config = read_config()
-    formula_config = config.get('formula-config')
-    if formula_config is None:
-        logger.warning(f"'formula-config' not found in {CONFIG_FILE_NAME}, use 'True' as default")
-        return json.loads(f'{{"enable": true}}')
+    formula_enable = os.getenv('MINERU_FORMULA_ENABLE', None)
+    if formula_enable is not None:
+        return json.loads(f'{{"enable": {formula_enable}}}')
     else:
-        return formula_config
+        logger.warning(f"not found 'MINERU_FORMULA_ENABLE' in environment variable, use 'true' as default.")
+        return json.loads(f'{{"enable": true}}')
 
 
 def get_latex_delimiter_config():
