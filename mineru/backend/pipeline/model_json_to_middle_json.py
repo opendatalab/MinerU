@@ -10,6 +10,7 @@ from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
 from mineru.utils.block_sort import sort_blocks_by_bbox
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.cut_image import cut_image_and_table
+from mineru.utils.enum_class import ContentType
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
@@ -20,7 +21,7 @@ from mineru.version import __version__
 from mineru.utils.hash_utils import str_md5
 
 
-def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr=False):
+def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False, formula_enabled=True):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = str_md5(image_dict["img_base64"])
@@ -62,7 +63,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
                 block_area = (block['bbox'][2] - block['bbox'][0]) * (block['bbox'][3] - block['bbox'][1])
                 if block_area > 0:
                     ratio = spans_area / block_area
-                    if ratio > 0.25 and ocr:
+                    if ratio > 0.25 and ocr_enable:
                         # 移除block的group_id
                         block.pop('group_id', None)
                         # 符合文本图的条件就把块加入到文本块列表中
@@ -75,8 +76,18 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 
     """将所有区块的bbox整理到一起"""
-    interline_equation_blocks = []
+    if formula_enabled:
+        interline_equation_blocks = []
+
     if len(interline_equation_blocks) > 0:
+
+        for block in interline_equation_blocks:
+            spans.append({
+                "type": ContentType.INTERLINE_EQUATION,
+                'score': block['score'],
+                "bbox": block['bbox'],
+            })
+
         all_bboxes, all_discarded_blocks, footnote_blocks = prepare_block_bboxes(
             img_body_blocks, img_caption_blocks, img_footnote_blocks,
             table_body_blocks, table_caption_blocks, table_footnote_blocks,
@@ -109,7 +120,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
 
     """根据parse_mode，构造spans，主要是文本类的字符填充"""
-    if ocr:
+    if ocr_enable:
         pass
     else:
         """使用新版本的混合ocr方案."""
@@ -125,9 +136,9 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     if len(all_bboxes) == 0:
         return None
 
-    """对image和table截图"""
+    """对image/table/interline_equation截图"""
     for span in spans:
-        if span['type'] in ['image', 'table']:
+        if span['type'] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(
                 span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale
             )
@@ -150,13 +161,13 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     return page_info
 
 
-def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr=False):
+def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
     for page_index, page_model_info in enumerate(model_list):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
         page_info = page_model_info_to_page_info(
-            page_model_info, image_dict, page, image_writer, page_index, ocr=ocr
+            page_model_info, image_dict, page, image_writer, page_index, ocr_enable=ocr_enable
         )
         if page_info is None:
             page_w, page_h = map(int, page.get_size())

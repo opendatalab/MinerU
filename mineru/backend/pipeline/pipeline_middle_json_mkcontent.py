@@ -34,7 +34,10 @@ def make_blocks_to_markdown(paras_of_layout,
             title_level = get_title_level(para_block)
             para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
         elif para_type == BlockType.INTERLINE_EQUATION:
-            para_text = merge_para_with_text(para_block)
+            if para_block['lines'][0]['spans'][0].get('content', ''):
+                para_text = merge_para_with_text(para_block)
+            else:
+                para_text += f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
         elif para_type == BlockType.IMAGE:
             if mode == MakeMode.NLP_MD:
                 continue
@@ -200,9 +203,11 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     elif para_type == BlockType.INTERLINE_EQUATION:
         para_content = {
             'type': 'equation',
-            'text': merge_para_with_text(para_block),
-            'text_format': 'latex',
+            'img_path': f"{img_buket_path}/{para_block['lines'][0]['spans'][0].get('image_path', '')}",
         }
+        if para_block['lines'][0]['spans'][0].get('content', ''):
+            para_content['text'] = merge_para_with_text(para_block)
+            para_content['text_format'] = 'latex'
     elif para_type == BlockType.IMAGE:
         para_content = {'type': 'image', 'img_path': '', 'img_caption': [], 'img_footnote': []}
         for block in para_block['blocks']:

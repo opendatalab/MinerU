@@ -110,8 +110,8 @@ def do_parse(
             images_list = all_image_lists[idx]
             pdf_doc = all_pdf_docs[idx]
             _lang = lang_list[idx]
-            _ocr = ocr_enabled_list[idx]
-            middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr)
+            _ocr_enable = ocr_enabled_list[idx]
+            middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable)
 
             pdf_info = middle_json["pdf_info"]
 
@@ -215,8 +215,8 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    # pdf_path = "../../demo/pdfs/hello-algo-1.1.0-zh-c-word转换的span有问题.pdf"
-    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/数学新星问题征解第一期(2014.03).pdf"
+    pdf_path = "../../demo/pdfs/demo2.pdf"
+    # pdf_path = "C:/Users/zhaoxiaomeng/Downloads/数学新星问题征解第一期(2014.03).pdf"
 
     try:
        do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=20,)
