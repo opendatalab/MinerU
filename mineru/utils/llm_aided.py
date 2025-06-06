@@ -81,10 +81,16 @@ Corrected title list:
                     {'role': 'user', 'content': title_optimize_prompt}],
                 temperature=0.7,
             )
-            # logger.info(f"Title completion: {completion.choices[0].message.content}")
-            dict_completion = ast.literal_eval(completion.choices[0].message.content)
-            # logger.info(f"len(dict_completion): {len(dict_completion)}, len(title_dict): {len(title_dict)}")
+            content = completion.choices[0].message.content.strip()
+            # logger.info(f"Title completion: {content}")
+            if "</think>" in content:
+                idx = content.index("</think>") + len("</think>")
+                content = content[idx:].strip()
+            import json_repair
+            dict_completion = json_repair.loads(content)
+            dict_completion = {int(k): int(v) for k, v in dict_completion.items()}
 
+            # logger.info(f"len(dict_completion): {len(dict_completion)}, len(title_dict): {len(title_dict)}")
             if len(dict_completion) == len(title_dict):
                 for i, origin_title_block in enumerate(origin_title_list):
                     origin_title_block["level"] = int(dict_completion[i])
