@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_device
+from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import get_file_from_repos
 from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image

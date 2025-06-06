@@ -7,7 +7,7 @@ from typing import List
 import torch
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_device
+from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import BlockType, ModelPath
 from mineru.utils.models_download_utils import get_file_from_repos
 

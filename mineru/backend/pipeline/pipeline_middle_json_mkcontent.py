@@ -1,7 +1,7 @@
 import re
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_latex_delimiter_config
+from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.utils.enum_class import BlockType, ContentType, MakeMode
 from mineru.utils.language import detect_lang

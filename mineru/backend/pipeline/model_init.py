@@ -138,24 +138,20 @@ class MineruPipelineModel:
             'DocAnalysis init, this may take some times......'
         )
         atom_model_manager = AtomModelSingleton()
-        models_dir = kwargs.get('models_dir', "")
-        if not models_dir:
-            logger.error("can't found models_dir, please set models_dir")
-            exit(1)
 
         if self.apply_formula:
             # 初始化公式检测模型
             self.mfd_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFD,
                 mfd_weights=str(
-                    os.path.join(models_dir, get_file_from_repos(ModelPath.yolo_v8_mfd))
+                    get_file_from_repos(ModelPath.yolo_v8_mfd)
                 ),
                 device=self.device,
             )
 
             # 初始化公式解析模型
             mfr_weight_dir = str(
-                os.path.join(models_dir, get_file_from_repos(ModelPath.unimernet_small))
+                get_file_from_repos(ModelPath.unimernet_small)
             )
 
             self.mfr_model = atom_model_manager.get_atom_model(
@@ -168,7 +164,7 @@ class MineruPipelineModel:
         self.layout_model = atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
             doclayout_yolo_weights=str(
-                os.path.join(models_dir, get_file_from_repos(ModelPath.doclayout_yolo))
+                get_file_from_repos(ModelPath.doclayout_yolo)
             ),
             device=self.device,
         )

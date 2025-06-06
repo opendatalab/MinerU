@@ -3,7 +3,7 @@ import time
 
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_device, get_llm_aided_config
+from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups

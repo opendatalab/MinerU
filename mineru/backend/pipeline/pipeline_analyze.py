@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from .model_init import MineruPipelineModel
-from .config_reader import get_local_models_dir, get_device, get_formula_config, get_table_recog_config
+from mineru.utils.config_reader import get_device, get_formula_config, get_table_recog_config
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf
 
@@ -48,7 +48,6 @@ def custom_model_init(
 ):
     model_init_start = time.time()
     # 从配置文件读取model-dir和device
-    local_models_dir = get_local_models_dir()
     device = get_device()
 
     formula_config = get_formula_config()
@@ -60,7 +59,6 @@ def custom_model_init(
         table_config['enable'] = table_enable
 
     model_input = {
-        'models_dir': local_models_dir,
         'device': device,
         'table_config': table_config,
         'formula_config': formula_config,

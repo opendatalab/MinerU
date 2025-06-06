@@ -2,8 +2,205 @@ import re
 from typing import Literal
 
 from mineru.utils.boxbase import bbox_distance, is_in
-from mineru.utils.enum_class import BlockType
+from mineru.utils.enum_class import BlockType, ContentType
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
+from mineru.utils.format_utils import convert_otsl_to_html
+
+
+class MagicModel:
+    def __init__(self, token: str, width, height):
+        self.token = token
+
+        # 使用正则表达式查找所有块
+        pattern = (
+            r"<\|box_start\|>(.*?)<\|box_end\|><\|ref_start\|>(.*?)<\|ref_end\|><\|md_start\|>(.*?)(?:<\|md_end\|>|<\|im_end\|>)"
+        )
+        block_infos = re.findall(pattern, token, re.DOTALL)
+
+        blocks = []
+        self.all_spans = []
+        # 解析每个块
+        for index, block_info in enumerate(block_infos):
+            block_bbox = block_info[0].strip()
+            x1, y1, x2, y2 = map(int, block_bbox.split())
+            x_1, y_1, x_2, y_2 = (
+                int(x1 * width / 1000),
+                int(y1 * height / 1000),
+                int(x2 * width / 1000),
+                int(y2 * height / 1000),
+            )
+            if x_2 < x_1:
+                x_1, x_2 = x_2, x_1
+            if y_2 < y_1:
+                y_1, y_2 = y_2, y_1
+            block_bbox = (x_1, y_1, x_2, y_2)
+            block_type = block_info[1].strip()
+            block_content = block_info[2].strip()
+
+            # print(f"坐标: {block_bbox}")
+            # print(f"类型: {block_type}")
+            # print(f"内容: {block_content}")
+            # print("-" * 50)
+
+            span_type = "unknown"
+            if block_type in [
+                "text",
+                "title",
+                "image_caption",
+                "image_footnote",
+                "table_caption",
+                "table_footnote",
+                "list",
+                "index",
+            ]:
+                span_type = ContentType.TEXT
+            elif block_type in ["image"]:
+                block_type = BlockType.IMAGE_BODY
+                span_type = ContentType.IMAGE
+            elif block_type in ["table"]:
+                block_type = BlockType.TABLE_BODY
+                span_type = ContentType.TABLE
+            elif block_type in ["equation"]:
+                block_type = BlockType.INTERLINE_EQUATION
+                span_type = ContentType.INTERLINE_EQUATION
+
+            if span_type in ["image", "table"]:
+                span = {
+                    "bbox": block_bbox,
+                    "type": span_type,
+                }
+                if span_type == ContentType.TABLE:
+                    if "<fcel>" in block_content or "<ecel>" in block_content:
+                        lines = block_content.split("\n\n")
+                        new_lines = []
+                        for line in lines:
+                            if "<fcel>" in line or "<ecel>" in line:
+                                line = convert_otsl_to_html(line)
+                            new_lines.append(line)
+                        span["html"] = "\n\n".join(new_lines)
+                    else:
+                        span["html"] = block_content
+            elif span_type in [ContentType.INTERLINE_EQUATION]:
+                span = {
+                    "bbox": block_bbox,
+                    "type": span_type,
+                    "content": isolated_formula_clean(block_content),
+                }
+            else:
+                if block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
+                    # 生成包含文本和公式的span列表
+                    spans = []
+                    last_end = 0
+
+                    # 查找所有公式
+                    for match in re.finditer(r'\\\((.+?)\\\)', block_content):
+                        start, end = match.span()
+
+                        # 添加公式前的文本
+                        if start > last_end:
+                            text_before = block_content[last_end:start]
+                            if text_before.strip():
+                                spans.append({
+                                    "bbox": block_bbox,
+                                    "type": ContentType.TEXT,
+                                    "content": text_before
+                                })
+
+                        # 添加公式（去除\(和\)）
+                        formula = match.group(1)
+                        spans.append({
+                            "bbox": block_bbox,
+                            "type": ContentType.INLINE_EQUATION,
+                            "content": formula.strip()
+                        })
+
+                        last_end = end
+
+                    # 添加最后一个公式后的文本
+                    if last_end < len(block_content):
+                        text_after = block_content[last_end:]
+                        if text_after.strip():
+                            spans.append({
+                                "bbox": block_bbox,
+                                "type": ContentType.TEXT,
+                                "content": text_after
+                            })
+
+                    span = spans
+                else:
+                    span = {
+                        "bbox": block_bbox,
+                        "type": span_type,
+                        "content": block_content,
+                    }
+
+            if isinstance(span, dict) and "bbox" in span:
+                self.all_spans.append(span)
+                line = {
+                    "bbox": block_bbox,
+                    "spans": [span],
+                }
+            elif isinstance(span, list):
+                self.all_spans.extend(span)
+                line = {
+                    "bbox": block_bbox,
+                    "spans": span,
+                }
+            else:
+                raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
+
+            blocks.append(
+                {
+                    "bbox": block_bbox,
+                    "type": block_type,
+                    "lines": [line],
+                    "index": index,
+                }
+            )
+
+        self.image_blocks = []
+        self.table_blocks = []
+        self.interline_equation_blocks = []
+        self.text_blocks = []
+        self.title_blocks = []
+        for block in blocks:
+            if block["type"] in [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]:
+                self.image_blocks.append(block)
+            elif block["type"] in [BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]:
+                self.table_blocks.append(block)
+            elif block["type"] == BlockType.INTERLINE_EQUATION:
+                self.interline_equation_blocks.append(block)
+            elif block["type"] == BlockType.TEXT:
+                self.text_blocks.append(block)
+            elif block["type"] == BlockType.TITLE:
+                self.title_blocks.append(block)
+            else:
+                continue
+
+    def get_image_blocks(self):
+        return fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
+
+    def get_table_blocks(self):
+        return fix_two_layer_blocks(self.table_blocks, BlockType.TABLE)
+
+    def get_title_blocks(self):
+        return fix_title_blocks(self.title_blocks)
+
+    def get_text_blocks(self):
+        return self.text_blocks
+
+    def get_interline_equation_blocks(self):
+        return self.interline_equation_blocks
+
+    def get_all_spans(self):
+        return self.all_spans
+
+
+def isolated_formula_clean(txt):
+    latex = txt[:]
+    if latex.startswith("\\["): latex = latex[2:]
+    if latex.endswith("\\]"): latex = latex[:-2]
+    return latex.strip()
 
 
 def __reduct_overlap(bboxes):

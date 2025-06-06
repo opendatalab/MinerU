@@ -3,7 +3,7 @@ import re
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import str_md5
-from mineru.backend.vlm.vlm_magic_model import fix_two_layer_blocks, fix_title_blocks
+from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.version import __version__
 
 
@@ -17,100 +17,23 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = str_md5(image_dict["img_base64"])
-
     width, height = map(int, page.get_size())
 
-    # 使用正则表达式查找所有块
-    pattern = (
-        r"<\|box_start\|>(.*?)<\|box_end\|><\|ref_start\|>(.*?)<\|ref_end\|><\|md_start\|>(.*?)(?:<\|md_end\|>|<\|im_end\|>)"
-    )
-    block_infos = re.findall(pattern, token, re.DOTALL)
+    magic_model = MagicModel(token, width, height)
+    image_blocks = magic_model.get_image_blocks()
+    table_blocks = magic_model.get_table_blocks()
+    title_blocks = magic_model.get_title_blocks()
+    text_blocks = magic_model.get_text_blocks()
+    interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
-    blocks = []
-    # 解析每个块
-    for index, block_info in enumerate(block_infos):
-        block_bbox = block_info[0].strip()
-        x1, y1, x2, y2 = map(int, block_bbox.split())
-        x_1, y_1, x_2, y_2 = (
-            int(x1 * width / 1000),
-            int(y1 * height / 1000),
-            int(x2 * width / 1000),
-            int(y2 * height / 1000),
-        )
-        if x_2 < x_1:
-            x_1, x_2 = x_2, x_1
-        if y_2 < y_1:
-            y_1, y_2 = y_2, y_1
-        block_bbox = (x_1, y_1, x_2, y_2)
-        block_type = block_info[1].strip()
-        block_content = block_info[2].strip()
-
-        # print(f"坐标: {block_bbox}")
-        # print(f"类型: {block_type}")
-        # print(f"内容: {block_content}")
-        # print("-" * 50)
-
-        span_type = "unknown"
-        if block_type in [
-            "text",
-            "title",
-            "image_caption",
-            "image_footnote",
-            "table_caption",
-            "table_footnote",
-            "list",
-            "index",
-        ]:
-            span_type = ContentType.TEXT
-        elif block_type in ["image"]:
-            block_type = BlockType.IMAGE_BODY
-            span_type = ContentType.IMAGE
-        elif block_type in ["table"]:
-            block_type = BlockType.TABLE_BODY
-            span_type = ContentType.TABLE
-        elif block_type in ["equation"]:
-            block_type = BlockType.INTERLINE_EQUATION
-            span_type = ContentType.INTERLINE_EQUATION
-
-        if span_type in ["image", "table"]:
-            span = {
-                "bbox": block_bbox,
-                "type": span_type,
-            }
-            if span_type == ContentType.TABLE:
-                span["html"] = block_content
+    all_spans = magic_model.get_all_spans()
+    # 对image/table/interline_equation的span截图
+    for span in all_spans:
+        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
-        else:
-            span = {
-                "bbox": block_bbox,
-                "type": span_type,
-                "content": block_content,
-            }
 
-        line = {
-            "bbox": block_bbox,
-            "spans": [span],
-        }
-
-        blocks.append(
-            {
-                "bbox": block_bbox,
-                "type": block_type,
-                "lines": [line],
-                "index": index,
-            }
-        )
-
-    image_blocks = fix_two_layer_blocks(blocks, BlockType.IMAGE)
-    table_blocks = fix_two_layer_blocks(blocks, BlockType.TABLE)
-    title_blocks = fix_title_blocks(blocks)
-
-    page_blocks = [
-        block
-        for block in blocks
-        if block["type"] in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]
-    ]
-    page_blocks.extend([*image_blocks, *table_blocks, *title_blocks])
+    page_blocks = []
+    page_blocks.extend([*image_blocks, *table_blocks, *title_blocks, *text_blocks, *interline_equation_blocks])
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 

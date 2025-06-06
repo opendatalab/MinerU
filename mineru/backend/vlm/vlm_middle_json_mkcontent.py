@@ -1,20 +1,42 @@
-import re
+from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
 
-def merge_para_with_text(para_block):
+latex_delimiters_config = get_latex_delimiter_config()
 
+default_delimiters = {
+    'display': {'left': '$$', 'right': '$$'},
+    'inline': {'left': '$', 'right': '$'}
+}
+
+delimiters = latex_delimiters_config if latex_delimiters_config else default_delimiters
+
+display_left_delimiter = delimiters['display']['left']
+display_right_delimiter = delimiters['display']['right']
+inline_left_delimiter = delimiters['inline']['left']
+inline_right_delimiter = delimiters['inline']['right']
+
+def merge_para_with_text(para_block):
     para_text = ''
     for line in para_block['lines']:
-        for span in line['spans']:
-            content = span['content']
+        for j, span in enumerate(line['spans']):
+            span_type = span['type']
+            content = ''
+            if span_type == ContentType.TEXT:
+                content = span['content']
+            elif span_type == ContentType.INLINE_EQUATION:
+                content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
+            elif span_type == ContentType.INTERLINE_EQUATION:
+                content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
             content = content.strip()
-
             if content:
-                para_text += content
-            else:
-                continue
-
+                if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
+                    if j == len(line['spans']) - 1:
+                        para_text += content
+                    else:
+                        para_text += f'{content} '
+                elif span_type == ContentType.INTERLINE_EQUATION:
+                    para_text += content
     return para_text
 
 def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
