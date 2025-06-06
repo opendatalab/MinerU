@@ -113,9 +113,19 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     help='Device mode for model inference, e.g., "cpu", "cuda", "cuda:0", "npu", "npu:0", "mps". Default is "cpu". Adapted only for the case where the backend is set to "pipeline". ',
     default=None,
 )
+@click.option(
+    '-r',
+    '--repo',
+    'model_source',
+    type=click.Choice(['huggingface', 'modelscope']),
+    help="""
+    The source of the model repository. Default is 'huggingface'.
+    """,
+    default='huggingface',
+)
 
 
-def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram):
+def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
 
     os.environ['MINERU_FORMULA_ENABLE'] = str(formula_enable).lower()
     os.environ['MINERU_TABLE_ENABLE'] = str(table_enable).lower()
@@ -137,6 +147,8 @@ def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_p
         return 1
 
     os.environ['MINERU_VIRTUAL_VRAM_SIZE']= str(get_virtual_vram_size())
+
+    os.environ['MINERU_MODEL_SOURCE'] = model_source
 
     os.makedirs(output_dir, exist_ok=True)
 

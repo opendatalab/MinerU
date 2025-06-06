@@ -8,6 +8,7 @@ from mineru.utils.pdf_image_tools import load_images_from_pdf
 from .base_predictor import BasePredictor
 from .predictor import get_predictor
 from .token_to_middle_json import result_to_middle_json
+from ...utils.enum_class import ModelPath
 
 
 class ModelSingleton:
@@ -40,7 +41,7 @@ def doc_analyze(
     image_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
     backend="huggingface",
-    model_path="jinzhenj/OEEzRkQ3RTAtMDMx-0415",  # TODO: change to formal path after release.
+    model_path=ModelPath.vlm_root_hf,
     server_url: str | None = None,
 ):
     if predictor is None:
@@ -66,7 +67,7 @@ async def aio_doc_analyze(
     image_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
     backend="huggingface",
-    model_path="jinzhenj/OEEzRkQ3RTAtMDMx-0415",  # TODO: change to formal path after release.
+    model_path=ModelPath.vlm_root_hf,
     server_url: str | None = None,
 ):
     if predictor is None:
