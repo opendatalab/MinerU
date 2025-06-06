@@ -92,14 +92,14 @@ def doc_analyze(
     ocr_enabled_list = []
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
-        _ocr = False
+        _ocr_enable = False
         if parse_method == 'auto':
             if classify(pdf_bytes) == 'ocr':
-                _ocr = True
+                _ocr_enable = True
         elif parse_method == 'ocr':
-            _ocr = True
+            _ocr_enable = True
 
-        ocr_enabled_list.append(_ocr)
+        ocr_enabled_list.append(_ocr_enable)
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
@@ -110,7 +110,7 @@ def doc_analyze(
             img_dict = images_list[page_idx]
             all_pages_info.append((
                 pdf_idx, page_idx,
-                img_dict['img_pil'], _ocr, _lang,
+                img_dict['img_pil'], _ocr_enable, _lang,
             ))
 
     # 准备批处理
