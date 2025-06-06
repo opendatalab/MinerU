@@ -9,10 +9,8 @@ from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
 from ...model.table.rapid_table import RapidTableModel
-
-doclayout_yolo = "Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
-yolo_v8_mfd =  "MFD/YOLO/yolo_v8_ft.pt"
-unimernet_small = "MFR/unimernet_hf_small_2503"
+from ...utils.enum_class import ModelPath
+from ...utils.models_download_utils import get_file_from_repos
 
 
 def table_model_init(lang=None):
@@ -150,14 +148,14 @@ class MineruPipelineModel:
             self.mfd_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFD,
                 mfd_weights=str(
-                    os.path.join(models_dir, yolo_v8_mfd)
+                    os.path.join(models_dir, get_file_from_repos(ModelPath.yolo_v8_mfd))
                 ),
                 device=self.device,
             )
 
             # 初始化公式解析模型
             mfr_weight_dir = str(
-                os.path.join(models_dir, unimernet_small)
+                os.path.join(models_dir, get_file_from_repos(ModelPath.unimernet_small))
             )
 
             self.mfr_model = atom_model_manager.get_atom_model(
@@ -170,7 +168,7 @@ class MineruPipelineModel:
         self.layout_model = atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
             doclayout_yolo_weights=str(
-                os.path.join(models_dir, doclayout_yolo)
+                os.path.join(models_dir, get_file_from_repos(ModelPath.doclayout_yolo))
             ),
             device=self.device,
         )

@@ -9,7 +9,9 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_device, get_local_models_dir
+from mineru.backend.pipeline.config_reader import get_device
+from mineru.utils.enum_class import ModelPath
+from mineru.utils.models_download_utils import get_file_from_repos
 from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
 from .tools.infer.predict_system import TextSystem
 from .tools.infer import pytorchocr_utility as utility
@@ -74,9 +76,11 @@ class PytorchPaddleOCR(TextSystem):
         with open(models_config_path) as file:
             config = yaml.safe_load(file)
             det, rec, dict_file = get_model_params(self.lang, config)
-        ocr_models_dir = os.path.join(get_local_models_dir(), 'OCR', 'paddleocr_torch')
-        kwargs['det_model_path'] = os.path.join(ocr_models_dir, det)
-        kwargs['rec_model_path'] = os.path.join(ocr_models_dir, rec)
+        ocr_models_dir = ModelPath.pytorch_paddle
+        det_model_path = get_file_from_repos(f"{ocr_models_dir}/{det}")
+        rec_model_path = get_file_from_repos(f"{ocr_models_dir}/{rec}")
+        kwargs['det_model_path'] = det_model_path
+        kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
         # kwargs['rec_batch_num'] = 8
 

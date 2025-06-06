@@ -43,3 +43,15 @@ class MakeMode:
     MM_MD = 'mm_markdown'
     NLP_MD = 'nlp_markdown'
     STANDARD_FORMAT = 'standard_format'
+
+
+class ModelPath:
+    pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
+    pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
+    doclayout_yolo = "models/Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+    yolo_v8_mfd = "models/MFD/YOLO/yolo_v8_ft.pt"
+    unimernet_small = "models/MFR/unimernet_hf_small_2503"
+    pytorch_paddle = "models/OCR/paddleocr_torch"
+    layout_reader = "models/ReadingOrder/layout_reader"
+    vlm_root_hf = "opendatalab/MinerU-VLM-1.0"
+    vlm_root_modelscope = "OpenDataLab/MinerU-VLM-1.0"

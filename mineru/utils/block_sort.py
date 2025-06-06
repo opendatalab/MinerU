@@ -7,8 +7,9 @@ from typing import List
 import torch
 from loguru import logger
 
-from mineru.backend.pipeline.config_reader import get_device, get_local_layoutreader_model_dir
-from mineru.utils.enum_class import BlockType
+from mineru.backend.pipeline.config_reader import get_device
+from mineru.utils.enum_class import BlockType, ModelPath
+from mineru.utils.models_download_utils import get_file_from_repos
 
 
 def sort_blocks_by_bbox(blocks, page_w, page_h, footnote_blocks):
@@ -187,7 +188,7 @@ def model_init(model_name: str):
     device = torch.device(device_name)
     if model_name == 'layoutreader':
         # 检测modelscope的缓存目录是否存在
-        layoutreader_model_dir = get_local_layoutreader_model_dir()
+        layoutreader_model_dir = get_file_from_repos(ModelPath.layout_reader)
         if os.path.exists(layoutreader_model_dir):
             model = LayoutLMv3ForTokenClassification.from_pretrained(
                 layoutreader_model_dir

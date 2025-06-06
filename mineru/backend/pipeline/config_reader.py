@@ -67,28 +67,6 @@ def parse_bucket_key(s3_full_path: str):
     return bucket, key
 
 
-def get_local_models_dir():
-    config = read_config()
-    models_dir = config.get('models-dir')
-    if models_dir is None:
-        logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use '/tmp/models' as default")
-        return '/tmp/models'
-    else:
-        return models_dir
-
-
-def get_local_layoutreader_model_dir():
-    config = read_config()
-    layoutreader_model_dir = config.get('layoutreader-model-dir')
-    if layoutreader_model_dir is None or not os.path.exists(layoutreader_model_dir):
-        home_dir = os.path.expanduser('~')
-        layoutreader_at_modelscope_dir_path = os.path.join(home_dir, '.cache/modelscope/hub/ppaanngggg/layoutreader')
-        logger.warning(f"'layoutreader-model-dir' not exists, use {layoutreader_at_modelscope_dir_path} as default")
-        return layoutreader_at_modelscope_dir_path
-    else:
-        return layoutreader_model_dir
-
-
 def get_device():
     device_mode = os.getenv('MINERU_DEVICE_MODE', None)
     if device_mode is not None:
