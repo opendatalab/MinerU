@@ -528,13 +528,12 @@ class MagicModel:
             pair_dis = bbox_distance(subjects[sub_idx]['bbox'], objects[obj_idx]['bbox'])
             nearest_dis = float('inf')
             for i in range(N):
-                if i in seen_idx:continue
+                if i in seen_idx or i == sub_idx:continue
                 nearest_dis = min(nearest_dis, bbox_distance(subjects[i]['bbox'], objects[obj_idx]['bbox']))
 
             if pair_dis >= 3*nearest_dis:
                 seen_idx.add(sub_idx)
                 continue
-
 
             seen_idx.add(sub_idx)
             seen_idx.add(obj_idx + OBJ_IDX_OFFSET)
@@ -552,6 +551,42 @@ class MagicModel:
                     'sub_idx': sub_idx,
                 }
             )
+
+        for i in range(len(objects)):
+            j = i + OBJ_IDX_OFFSET
+            if j in seen_idx:
+                continue
+            seen_idx.add(j)
+            nearest_dis, nearest_sub_idx = float('inf'), -1
+            for k in range(len(subjects)):
+                dis = bbox_distance(objects[i]['bbox'], subjects[k]['bbox'])
+                if dis < nearest_dis:
+                    nearest_dis = dis
+                    nearest_sub_idx = k
+
+            for k in range(len(subjects)):
+                if k != nearest_sub_idx: continue
+                if k in seen_sub_idx:
+                    for kk in range(len(ret)):
+                        if ret[kk]['sub_idx'] == k:
+                            ret[kk]['obj_bboxes'].append({'score': objects[i]['score'], 'bbox': objects[i]['bbox']})
+                            break
+                else:
+                    ret.append(
+                        {
+                            'sub_bbox': {
+                                'bbox': subjects[k]['bbox'],
+                                'score': subjects[k]['score'],
+                            },
+                            'obj_bboxes': [
+                                {'score': objects[i]['score'], 'bbox': objects[i]['bbox']}
+                            ],
+                            'sub_idx': k,
+                        }
+                    )
+                seen_sub_idx.add(k)
+                seen_idx.add(k)
+
 
         for i in range(len(subjects)):
             if i in seen_sub_idx:

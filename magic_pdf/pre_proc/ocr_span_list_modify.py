@@ -41,6 +41,57 @@ def check_chars_is_overlap_in_span(chars):
     return False
 
 
+def remove_x_overlapping_chars(span, median_width):
+    """
+    Remove characters from a span that overlap significantly on the x-axis.
+
+    Args:
+        median_width:
+        span (dict): A span containing a list of chars, each with bbox coordinates
+                    in the format [x0, y0, x1, y1]
+
+    Returns:
+        dict: The span with overlapping characters removed
+    """
+    if 'chars' not in span or len(span['chars']) < 2:
+        return span
+
+    overlap_threshold = median_width * 0.3
+
+    i = 0
+    while i < len(span['chars']) - 1:
+        char1 = span['chars'][i]
+        char2 = span['chars'][i + 1]
+
+        # Calculate overlap width
+        x_left = max(char1['bbox'][0], char2['bbox'][0])
+        x_right = min(char1['bbox'][2], char2['bbox'][2])
+
+        if x_right > x_left:  # There is overlap
+            overlap_width = x_right - x_left
+
+            if overlap_width > overlap_threshold:
+                if char1['c'] == char2['c'] or char1['c'] == ' ' or char2['c'] == ' ':
+                    # Determine which character to remove
+                    width1 = char1['bbox'][2] - char1['bbox'][0]
+                    width2 = char2['bbox'][2] - char2['bbox'][0]
+                    if width1 < width2:
+                        # Remove the narrower character
+                        span['chars'].pop(i)
+                    else:
+                        span['chars'].pop(i + 1)
+                else:
+                    i += 1
+
+                # Don't increment i since we need to check the new pair
+            else:
+                i += 1
+        else:
+            i += 1
+
+    return span
+
+
 def remove_overlaps_min_spans(spans):
     dropped_spans = []
     #  删除重叠spans中较小的那些

@@ -2,10 +2,11 @@
 
 ### 1. Install CUDA and cuDNN
 
-Required versions: CUDA 11.8 + cuDNN 8.7.0
+You need to install a CUDA version that is compatible with torch's requirements. Currently, torch supports CUDA 11.8/12.4/12.6.
 
-- CUDA 11.8: https://developer.nvidia.com/cuda-11-8-0-download-archive
-- cuDNN v8.7.0 (November 28th, 2022), for CUDA 11.x: https://developer.nvidia.com/rdp/cudnn-archive
+- CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
+- CUDA 12.4 https://developer.nvidia.com/cuda-12-4-0-download-archive
+- CUDA 12.6 https://developer.nvidia.com/cuda-12-6-0-download-archive
 
 ### 2. Install Anaconda
 
@@ -15,17 +16,15 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
 ### 3. Create an Environment Using Conda
 
-Python version must be 3.10.
-
-```
-conda create -n MinerU python=3.10
-conda activate MinerU
+```bash
+conda create -n mineru 'python<3.13' -y
+conda activate mineru
 ```
 
 ### 4. Install Applications
 
 ```
-pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
+pip install -U magic-pdf[full]
 ```
 
 > [!IMPORTANT]
@@ -35,7 +34,7 @@ pip install -U magic-pdf[full] --extra-index-url https://wheels.myhloli.com
 > magic-pdf --version
 > ```
 >
-> If the version number is less than 0.7.0, please report it in the issues section.
+> If the version number is less than 1.3.0, please report it in the issues section.
 
 ### 5. Download Models
 
@@ -54,18 +53,18 @@ You can find the `magic-pdf.json` file in your 【user directory】 .
 Download a sample file from the repository and test it.
 
 ```powershell
-  wget https://github.com/opendatalab/MinerU/raw/master/demo/small_ocr.pdf -O small_ocr.pdf
+  wget https://github.com/opendatalab/MinerU/raw/master/demo/pdfs/small_ocr.pdf -O small_ocr.pdf
   magic-pdf -p small_ocr.pdf -o ./output
 ```
 
 ### 8. Test CUDA Acceleration
 
-If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-accelerated parsing performance.
+If your graphics card has at least 6GB of VRAM, follow these steps to test CUDA-accelerated parsing performance.
 
-1. **Overwrite the installation of torch and torchvision** supporting CUDA.
+1. **Overwrite the installation of torch and torchvision** supporting CUDA.(Please select the appropriate index-url based on your CUDA version. For more details, refer to the [PyTorch official website](https://pytorch.org/get-started/locally/).)
 
    ```
-   pip install --force-reinstall torch==2.3.1 torchvision==0.18.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu118
+   pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
    ```
 
 2. **Modify the value of `"device-mode"`** in the `magic-pdf.json` configuration file located in your user directory.
@@ -79,17 +78,6 @@ If your graphics card has at least 8GB of VRAM, follow these steps to test CUDA-
 
 3. **Run the following command to test CUDA acceleration**:
 
-   ```
-   magic-pdf -p small_ocr.pdf -o ./output
-   ```
-
-### 9. Enable CUDA Acceleration for OCR
-
-1. **Download paddlepaddle-gpu**, which will automatically enable OCR acceleration upon installation.
-   ```
-   pip install paddlepaddle-gpu==2.6.1
-   ```
-2. **Run the following command to test OCR acceleration**:
    ```
    magic-pdf -p small_ocr.pdf -o ./output
    ```

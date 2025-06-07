@@ -44,14 +44,19 @@ def cut_image_to_pil_image(bbox: tuple, page: fitz.Page, mode="pillow"):
     # 截取图片
     pix = page.get_pixmap(clip=rect, matrix=zoom)
 
-    # 将字节数据转换为文件对象
-    image_file = BytesIO(pix.tobytes(output='png'))
-    # 使用 Pillow 打开图像
-    pil_image = Image.open(image_file)
     if mode == "cv2":
-        image_result = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
+        # 直接转换为numpy数组供cv2使用
+        img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        # PyMuPDF使用RGB顺序，而cv2使用BGR顺序
+        if pix.n == 3 or pix.n == 4:
+            image_result = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        else:
+            image_result = img_array
     elif mode == "pillow":
-        image_result = pil_image
+        # 将字节数据转换为文件对象
+        image_file = BytesIO(pix.tobytes(output='png'))
+        # 使用 Pillow 打开图像
+        image_result = Image.open(image_file)
     else:
         raise ValueError(f"mode: {mode} is not supported.")
 
