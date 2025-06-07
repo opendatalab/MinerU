@@ -3,5 +3,3 @@ magic-pdf[full]
 fastapi
 uvicorn
 python-multipart
-huggingface_hub
-transformers==4.49.0

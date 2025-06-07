@@ -47,33 +47,6 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 
 </div>
 
-# MinerU_webapi: 写在前面
-
-镜像拉取方式：
-
-```bash
-docker pull crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest
-```
-
-运行方式：
-
-```bash
-docker run --rm -it --gpus=all -v ./paddleocr:/root/.paddleocr -p 8000:8000 crpi-is0d31x62vq89ybt.cn-hangzhou.personal.cr.aliyuncs.com/betterspace/mineru2:latest
-```
-
-初次调用 API 时会自动下载 paddleocr 的模型（约数十 MB），其余模型已包含在镜像中。
-
-访问地址：
-
-```
-http://localhost:8000/docs
-http://127.0.0.1:8000/docs
-```
-
-![image](https://github.com/user-attachments/assets/302cd3da-88ac-46b8-ae79-a77bd22291ac)
-
-![image](https://github.com/user-attachments/assets/2c837a1a-bf57-4228-a10c-7bd6a47f12f8)
-
 # Changelog
 - 2025/05/24 1.3.12 Released
   - Added support for ppocrv5 model, updated `ch_server` model to `PP-OCRv5_rec_server` and `ch_lite` model to `PP-OCRv5_rec_mobile` (model update required)
