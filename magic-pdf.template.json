@@ -20,6 +20,16 @@
         "enable": true,
         "max_time": 400
     },
+    "latex-delimiter-config": {
+        "display": {
+            "left": "$$",
+            "right": "$$"
+        },
+        "inline": {
+            "left": "$",
+            "right": "$"
+        }
+    },
     "llm-aided-config": {
         "formula_aided": {
             "api_key": "your_api_key",
@@ -40,5 +50,5 @@
             "enable": false
         }
     },
-    "config_version": "1.2.0"
+    "config_version": "1.2.1"
 }

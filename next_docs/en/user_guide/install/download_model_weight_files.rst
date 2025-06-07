@@ -29,18 +29,7 @@ filename ``magic-pdf.json``.
 How to update models previously downloaded
 -----------------------------------------
 
-1. Models downloaded via Git LFS
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-   Due to feedback from some users that downloading model files using
-   git lfs was incomplete or resulted in corrupted model files, this
-   method is no longer recommended.
-
-If you previously downloaded model files via git lfs, you can navigate
-to the previous download directory and use the ``git pull`` command to
-update the model.
-
-2. Models downloaded via Hugging Face or Model Scope
+1. Models downloaded via Hugging Face or Model Scope
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If you previously downloaded models via Hugging Face or Model Scope, you

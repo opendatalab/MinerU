@@ -76,11 +76,11 @@ In the final step, enter ``yes``, close the terminal, and reopen it.
 4. Create an Environment Using Conda
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Specify Python version 3.10.
+Specify Python version 3.10～3.13.
 
 .. code:: sh
 
-    conda create -n mineru 'python<3.13' -y
+    conda create -n mineru 'python=3.12' -y
     conda activate mineru
 
 5. Install Applications
@@ -90,16 +90,15 @@ Specify Python version 3.10.
 
    pip install -U magic-pdf[full]
 
-.. admonition:: Important
+.. admonition:: TIP
     :class: tip
 
-    ❗ After installation, make sure to check the version of ``magic-pdf`` using the following command:
+    After installation, you can check the version of ``magic-pdf`` using the following command:
 
 .. code:: sh
 
    magic-pdf --version
 
-If the version number is less than 1.3.0, please report the issue.
 
 6. Download Models
 ~~~~~~~~~~~~~~~~~~
@@ -156,14 +155,15 @@ to test CUDA acceleration:
 Windows 10/11
 --------------
 
-1. Install CUDA and cuDNN
+1. Install CUDA
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You need to install a CUDA version that is compatible with torch's requirements. Currently, torch supports CUDA 11.8/12.4/12.6.
+You need to install a CUDA version that is compatible with torch's requirements. For details, please refer to the [official PyTorch website](https://pytorch.org/get-started/locally/).
 
 - CUDA 11.8 https://developer.nvidia.com/cuda-11-8-0-download-archive
 - CUDA 12.4 https://developer.nvidia.com/cuda-12-4-0-download-archive
 - CUDA 12.6 https://developer.nvidia.com/cuda-12-6-0-download-archive
+- CUDA 12.8 https://developer.nvidia.com/cuda-12-8-0-download-archive
 
 
 2. Install Anaconda
@@ -178,7 +178,7 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
 ::
 
-    conda create -n mineru 'python<3.13' -y
+    conda create -n mineru 'python=3.12' -y
     conda activate mineru
 
 4. Install Applications
@@ -188,16 +188,15 @@ Download link: https://repo.anaconda.com/archive/Anaconda3-2024.06-1-Windows-x86
 
    pip install -U magic-pdf[full]
 
-.. admonition:: Important
+.. admonition:: Tip
     :class: tip
 
-    ❗️After installation, verify the version of ``magic-pdf``:
+    After installation, you can check the version of ``magic-pdf``:
 
     .. code:: bash
 
       magic-pdf --version
 
-    If the version number is less than 1.3.0, please report it in the issues section.
 
 5. Download Models
 ~~~~~~~~~~~~~~~~~~
@@ -237,7 +236,7 @@ test CUDA-accelerated parsing performance.
 
 .. code:: sh
 
-   pip install --force-reinstall torch==2.6.0 torchvision==0.21.1 "numpy<2.0.0" --index-url https://download.pytorch.org/whl/cu124
+   pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 
 2. **Modify the value of ``"device-mode"``** in the ``magic-pdf.json``

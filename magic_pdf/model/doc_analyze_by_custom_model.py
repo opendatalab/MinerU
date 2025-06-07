@@ -146,10 +146,8 @@ def doc_analyze(
             img_dict = page_data.get_image()
             images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
-    if lang is None or lang == 'auto':
-        images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(dataset))]
-    else:
-        images_with_extra_info = [(images[index], ocr, lang) for index in range(len(dataset))]
+
+    images_with_extra_info = [(images[index], ocr, dataset._lang) for index in range(len(images))]
 
     if len(images) >= MIN_BATCH_INFERENCE_SIZE:
         batch_size = MIN_BATCH_INFERENCE_SIZE
@@ -158,8 +156,11 @@ def doc_analyze(
         batch_images = [images_with_extra_info]
 
     results = []
-    for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, ocr, show_log,layout_model, formula_enable, table_enable)
+    processed_images_count = 0
+    for index, batch_image in enumerate(batch_images):
+        processed_images_count += len(batch_image)
+        logger.info(f'Batch {index + 1}/{len(batch_images)}: {processed_images_count} pages/{len(images_with_extra_info)} pages')
+        result = may_batch_image_analyze(batch_image, ocr, show_log,layout_model, formula_enable, table_enable)
         results.extend(result)
 
     model_json = []
@@ -181,39 +182,46 @@ def doc_analyze(
 
 def batch_doc_analyze(
     datasets: list[Dataset],
-    parse_method: str,
+    parse_method: str = 'auto',
     show_log: bool = False,
     lang=None,
     layout_model=None,
     formula_enable=None,
     table_enable=None,
 ):
-    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 200))
+    MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
     batch_size = MIN_BATCH_INFERENCE_SIZE
-    images = []
     page_wh_list = []
 
     images_with_extra_info = []
     for dataset in datasets:
-        for index in range(len(dataset)):
-            if lang is None or lang == 'auto':
-                _lang = dataset._lang
-            else:
-                _lang = lang
 
+        ocr = False
+        if parse_method == 'auto':
+            if dataset.classify() == SupportedPdfParseMethod.TXT:
+                ocr = False
+            elif dataset.classify() == SupportedPdfParseMethod.OCR:
+                ocr = True
+        elif parse_method == 'ocr':
+            ocr = True
+        elif parse_method == 'txt':
+            ocr = False
+
+        _lang = dataset._lang
+
+        for index in range(len(dataset)):
             page_data = dataset.get_page(index)
             img_dict = page_data.get_image()
-            images.append(img_dict['img'])
             page_wh_list.append((img_dict['width'], img_dict['height']))
-            if parse_method == 'auto':
-                images_with_extra_info.append((images[-1], dataset.classify() == SupportedPdfParseMethod.OCR, _lang))
-            else:
-                images_with_extra_info.append((images[-1], parse_method == 'ocr', _lang))
+            images_with_extra_info.append((img_dict['img'], ocr, _lang))
 
     batch_images = [images_with_extra_info[i:i+batch_size] for i in range(0, len(images_with_extra_info), batch_size)]
     results = []
-    for sn, batch_image in enumerate(batch_images):
-        _, result = may_batch_image_analyze(batch_image, sn, True, show_log, layout_model, formula_enable, table_enable)
+    processed_images_count = 0
+    for index, batch_image in enumerate(batch_images):
+        processed_images_count += len(batch_image)
+        logger.info(f'Batch {index + 1}/{len(batch_images)}: {processed_images_count} pages/{len(images_with_extra_info)} pages')
+        result = may_batch_image_analyze(batch_image, True, show_log, layout_model, formula_enable, table_enable)
         results.extend(result)
 
     infer_results = []
@@ -233,7 +241,6 @@ def batch_doc_analyze(
 
 def may_batch_image_analyze(
         images_with_extra_info: list[(np.ndarray, bool, str)],
-        idx: int,
         ocr: bool,
         show_log: bool = False,
         layout_model=None,
@@ -255,8 +262,9 @@ def may_batch_image_analyze(
             torch.npu.set_compile_mode(jit_compile=False)
 
     if str(device).startswith('npu') or str(device).startswith('cuda'):
-        gpu_memory = int(os.getenv('VIRTUAL_VRAM_SIZE', round(get_vram(device))))
-        if gpu_memory is not None:
+        vram = get_vram(device)
+        if vram is not None:
+            gpu_memory = int(os.getenv('VIRTUAL_VRAM_SIZE', round(vram)))
             if gpu_memory >= 16:
                 batch_ratio = 16
             elif gpu_memory >= 12:
@@ -268,6 +276,10 @@ def may_batch_image_analyze(
             else:
                 batch_ratio = 1
             logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
+        else:
+            # Default batch_ratio when VRAM can't be determined
+            batch_ratio = 1
+            logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_ratio}')
 
 
     # doc_analyze_start = time.time()
@@ -286,4 +298,4 @@ def may_batch_image_analyze(
     #     f'doc analyze time: {round(time.time() - doc_analyze_start, 2)},'
     #     f' speed: {doc_analyze_speed} pages/second'
     # )
-    return idx, results
+    return results

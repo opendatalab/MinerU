@@ -150,7 +150,7 @@ class PymuDocDataset(Dataset):
         elif lang == 'auto':
             from magic_pdf.model.sub_modules.language_detection.utils import \
                 auto_detect_lang
-            self._lang = auto_detect_lang(bits)
+            self._lang = auto_detect_lang(self._data_bits)
             logger.info(f'lang: {lang}, detect_lang: {self._lang}')
         else:
             self._lang = lang
@@ -232,7 +232,7 @@ class PymuDocDataset(Dataset):
             self._records[i].set_image(images[i])
 
 class ImageDataset(Dataset):
-    def __init__(self, bits: bytes):
+    def __init__(self, bits: bytes, lang=None):
         """Initialize the dataset, which wraps the pymudoc documents.
 
         Args:
@@ -243,6 +243,17 @@ class ImageDataset(Dataset):
         self._records = [Doc(v) for v in self._raw_fitz]
         self._raw_data = bits
         self._data_bits = pdf_bytes
+
+        if lang == '':
+            self._lang = None
+        elif lang == 'auto':
+            from magic_pdf.model.sub_modules.language_detection.utils import \
+                auto_detect_lang
+            self._lang = auto_detect_lang(self._data_bits)
+            logger.info(f'lang: {lang}, detect_lang: {self._lang}')
+        else:
+            self._lang = lang
+            logger.info(f'lang: {lang}')
 
     def __len__(self) -> int:
         """The length of the dataset."""

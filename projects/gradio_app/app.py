@@ -117,8 +117,12 @@ def to_markdown(file_path, end_pages, is_ocr, layout_mode, formula_enable, table
     return md_content, txt_content, archive_zip_path, new_pdf_path
 
 
-latex_delimiters = [{'left': '$$', 'right': '$$', 'display': True},
-                    {'left': '$', 'right': '$', 'display': False}]
+latex_delimiters = [
+    {'left': '$$', 'right': '$$', 'display': True},
+    {'left': '$', 'right': '$', 'display': False},
+    {'left': '\\(', 'right': '\\)', 'display': False},
+    {'left': '\\[', 'right': '\\]', 'display': True},
+]
 
 
 def init_model():
@@ -158,10 +162,13 @@ devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
-other_lang = ['ch', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
+other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
+add_lang = ['latin', 'arabic', 'cyrillic', 'devanagari']
 
-all_lang = ['', 'auto']
-all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
+# all_lang = ['', 'auto']
+all_lang = []
+# all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
+all_lang.extend([*other_lang, *add_lang])
 
 
 def to_pdf(file_path):
@@ -192,8 +199,8 @@ if __name__ == '__main__':
                 file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
                 max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
-                    layout_mode = gr.Dropdown(['layoutlmv3', 'doclayout_yolo'], label='Layout model', value='doclayout_yolo')
-                    language = gr.Dropdown(all_lang, label='Language', value='auto')
+                    layout_mode = gr.Dropdown(['doclayout_yolo'], label='Layout model', value='doclayout_yolo')
+                    language = gr.Dropdown(all_lang, label='Language', value='ch')
                 with gr.Row():
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                     is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
@@ -215,7 +222,8 @@ if __name__ == '__main__':
                 with gr.Tabs():
                     with gr.Tab('Markdown rendering'):
                         md = gr.Markdown(label='Markdown rendering', height=1100, show_copy_button=True,
-                                         latex_delimiters=latex_delimiters, line_breaks=True)
+                                         latex_delimiters=latex_delimiters,
+                                         line_breaks=True)
                     with gr.Tab('Markdown text'):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
         file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
