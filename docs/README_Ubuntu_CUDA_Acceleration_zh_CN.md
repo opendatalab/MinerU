@@ -54,7 +54,7 @@ bash Anaconda3-2024.06-1-Linux-x86_64.sh
 ## 4. 使用conda 创建环境
 
 ```bash
-conda create -n mineru 'python<3.13' -y
+conda create -n mineru 'python=3.12' -y
 conda activate mineru
 ```
 
@@ -64,14 +64,13 @@ conda activate mineru
 pip install -U magic-pdf[full] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-> [!IMPORTANT]
-> 下载完成后，务必通过以下命令确认magic-pdf的版本是否正确
+> [!TIP]
+> 下载完成后，您可以通过以下命令检查`magic-pdf`的版本：
 >
 > ```bash
 > magic-pdf --version
 > ```
->
-> 如果版本号小于1.3.0，请到issue中向我们反馈
+
 
 ## 6. 下载模型
 

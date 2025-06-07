@@ -53,6 +53,12 @@ class PytorchPaddleOCR(TextSystem):
         args = parser.parse_args(args)
 
         self.lang = kwargs.get('lang', 'ch')
+
+        device = get_device()
+        if device == 'cpu' and self.lang in ['ch', 'ch_server']:
+            logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
+            self.lang = 'ch_lite'
+
         if self.lang in latin_lang:
             self.lang = 'latin'
         elif self.lang in arabic_lang:
@@ -74,7 +80,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
         # kwargs['rec_batch_num'] = 8
 
-        kwargs['device'] = get_device()
+        kwargs['device'] = device
 
         default_args = vars(args)
         default_args.update(kwargs)

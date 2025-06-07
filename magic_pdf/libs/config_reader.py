@@ -125,6 +125,15 @@ def get_llm_aided_config():
     else:
         return llm_aided_config
 
+def get_latex_delimiter_config():
+    config = read_config()
+    latex_delimiter_config = config.get('latex-delimiter-config')
+    if latex_delimiter_config is None:
+        logger.warning(f"'latex-delimiter-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
+        return None
+    else:
+        return latex_delimiter_config
+
 
 if __name__ == '__main__':
     ak, sk, endpoint = get_s3_config('llm-raw')

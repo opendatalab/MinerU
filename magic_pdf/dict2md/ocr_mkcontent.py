@@ -5,6 +5,7 @@ from loguru import logger
 from magic_pdf.config.make_content_config import DropMode, MakeMode
 from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.libs.commons import join_path
+from magic_pdf.libs.config_reader import get_latex_delimiter_config
 from magic_pdf.libs.language import detect_lang
 from magic_pdf.libs.markdown_utils import ocr_escape_special_markdown_char
 from magic_pdf.post_proc.para_split_v3 import ListLineTag
@@ -69,19 +70,34 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
             if mode == 'nlp':
                 continue
             elif mode == 'mm':
-                for block in para_block['blocks']:  # 1st.拼image_body
-                    if block['type'] == BlockType.ImageBody:
-                        for line in block['lines']:
-                            for span in line['spans']:
-                                if span['type'] == ContentType.Image:
-                                    if span.get('image_path', ''):
-                                        para_text += f"\n![]({join_path(img_buket_path, span['image_path'])})  \n"
-                for block in para_block['blocks']:  # 2nd.拼image_caption
-                    if block['type'] == BlockType.ImageCaption:
-                        para_text += merge_para_with_text(block) + '  \n'
-                for block in para_block['blocks']:  # 3rd.拼image_footnote
-                    if block['type'] == BlockType.ImageFootnote:
-                        para_text += merge_para_with_text(block) + '  \n'
+                # 检测是否存在图片脚注
+                has_image_footnote = any(block['type'] == BlockType.ImageFootnote for block in para_block['blocks'])
+                # 如果存在图片脚注，则将图片脚注拼接到图片正文后面
+                if has_image_footnote:
+                    for block in para_block['blocks']:  # 1st.拼image_caption
+                        if block['type'] == BlockType.ImageCaption:
+                            para_text += merge_para_with_text(block) + '  \n'
+                    for block in para_block['blocks']:  # 2nd.拼image_body
+                        if block['type'] == BlockType.ImageBody:
+                            for line in block['lines']:
+                                for span in line['spans']:
+                                    if span['type'] == ContentType.Image:
+                                        if span.get('image_path', ''):
+                                            para_text += f"![]({img_buket_path}/{span['image_path']})"
+                    for block in para_block['blocks']:  # 3rd.拼image_footnote
+                        if block['type'] == BlockType.ImageFootnote:
+                            para_text += '  \n' + merge_para_with_text(block)
+                else:
+                    for block in para_block['blocks']:  # 1st.拼image_body
+                        if block['type'] == BlockType.ImageBody:
+                            for line in block['lines']:
+                                for span in line['spans']:
+                                    if span['type'] == ContentType.Image:
+                                        if span.get('image_path', ''):
+                                            para_text += f"![]({img_buket_path}/{span['image_path']})"
+                    for block in para_block['blocks']:  # 2nd.拼image_caption
+                        if block['type'] == BlockType.ImageCaption:
+                            para_text += '  \n' + merge_para_with_text(block)
         elif para_type == BlockType.Table:
             if mode == 'nlp':
                 continue
@@ -95,20 +111,19 @@ def ocr_mk_markdown_with_para_core_v2(paras_of_layout,
                             for span in line['spans']:
                                 if span['type'] == ContentType.Table:
                                     # if processed by table model
-                                    if span.get('latex', ''):
-                                        para_text += f"\n\n$\n {span['latex']}\n$\n\n"
-                                    elif span.get('html', ''):
-                                        para_text += f"\n\n{span['html']}\n\n"
+                                    if span.get('html', ''):
+                                        para_text += f"\n{span['html']}\n"
                                     elif span.get('image_path', ''):
-                                        para_text += f"\n![]({join_path(img_buket_path, span['image_path'])})  \n"
+                                        para_text += f"![]({img_buket_path}/{span['image_path']})"
                 for block in para_block['blocks']:  # 3rd.拼table_footnote
                     if block['type'] == BlockType.TableFootnote:
-                        para_text += merge_para_with_text(block) + '  \n'
+                        para_text += '\n' + merge_para_with_text(block) + '  '
 
         if para_text.strip() == '':
             continue
         else:
-            page_markdown.append(para_text.strip() + '  ')
+            # page_markdown.append(para_text.strip() + '  ')
+            page_markdown.append(para_text.strip())
 
     return page_markdown
 
@@ -145,6 +160,19 @@ def full_to_half(text: str) -> str:
             result.append(char)
     return ''.join(result)
 
+latex_delimiters_config = get_latex_delimiter_config()
+
+default_delimiters = {
+    'display': {'left': '$$', 'right': '$$'},
+    'inline': {'left': '$', 'right': '$'}
+}
+
+delimiters = latex_delimiters_config if latex_delimiters_config else default_delimiters
+
+display_left_delimiter = delimiters['display']['left']
+display_right_delimiter = delimiters['display']['right']
+inline_left_delimiter = delimiters['inline']['left']
+inline_right_delimiter = delimiters['inline']['right']
 
 def merge_para_with_text(para_block):
     block_text = ''
@@ -168,9 +196,9 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.Text:
                 content = ocr_escape_special_markdown_char(span['content'])
             elif span_type == ContentType.InlineEquation:
-                content = f"${span['content']}$"
+                content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.InterlineEquation:
-                content = f"\n$$\n{span['content']}\n$$\n"
+                content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
 
             content = content.strip()
 
@@ -243,9 +271,9 @@ def para_to_standard_format_v2(para_block, img_buket_path, page_idx, drop_reason
                         if span['type'] == ContentType.Table:
 
                             if span.get('latex', ''):
-                                para_content['table_body'] = f"\n\n$\n {span['latex']}\n$\n\n"
+                                para_content['table_body'] = f"{span['latex']}"
                             elif span.get('html', ''):
-                                para_content['table_body'] = f"\n\n{span['html']}\n\n"
+                                para_content['table_body'] = f"{span['html']}"
 
                             if span.get('image_path', ''):
                                 para_content['img_path'] = join_path(img_buket_path, span['image_path'])

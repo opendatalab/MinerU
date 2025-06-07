@@ -49,25 +49,3 @@ docker run -it -u root --name mineru-npu --privileged=true \
 
 magic-pdf --help
 ```
-
-
-## 已知问题
-
-- paddleocr使用内嵌onnx模型，仅在默认语言配置下能以较快速度对中英文进行识别
-- 自定义lang参数时，paddleocr速度会存在明显下降情况
-- layout模型使用layoutlmv3时会发生间歇性崩溃，建议使用默认配置的doclayout_yolo模型
-- 表格解析仅适配了rapid_table模型，其他模型可能会无法使用
-
-
-## 高性能模式
-
-- 在特定硬件环境可以通过插件开启高性能模式，整体速度相比默认模式提升300%以上
-
-| 系统要求           | 版本/型号        |
-|----------------|--------------|
-| 芯片类型           | 昇腾910B       |
-| CANN版本         | CANN 8.0.RC2 |
-| 驱动版本           | 24.1.rc2.1   |
-| magic-pdf 软件版本 | \> = 1.2.0   |
-
-- 高性能插件需满足一定的硬件条件和资质要求，如需申请使用请填写以下表单[MinerU高性能版本合作申请表](https://aicarrier.feishu.cn/share/base/form/shrcnb10VaoNQB8kQPA8DEfZC6d)
