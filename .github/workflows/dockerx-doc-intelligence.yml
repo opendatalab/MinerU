@@ -1,0 +1,51 @@
+name: Docker Build Image-docIntelligence
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clean up unnecessary large folders
+      run: |
+        # Delete unnecessary large folders
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/share/boost
+        # Clean apt cache
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+        # Show available disk space
+        df -h
+
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      with:
+        buildkitd-flags: --debug
+
+    - name: Login to Aliyun Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ secrets.DOCKER_REGISTRY }}
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./docker/global
+        file: ./docker/global/Dockerfile
+        push: true
+        tags: ${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/doc_intelligence:latest
+        cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/doc_intelligence:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/${{secrets.DOCKER_NAMESPACE}}/doc_intelligence:buildcache,mode=max
