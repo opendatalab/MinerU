@@ -29,3 +29,14 @@ docker run --rm -it --gpus=all -p 8000:8000 mineru-api
 http://localhost:8000/docs
 http://127.0.0.1:8000/docs
 ```
+
+## RabbitMQ消费者
+
+使用 `rabbitmq_consumer.py` 可以从 RabbitMQ 队列读取待解析文件路径并生成解析结果，示例：
+```bash
+export RABBITMQ_HOST=localhost
+export RABBITMQ_QUEUE=parse_queue
+python rabbitmq_consumer.py
+```
+
+消息体需为 JSON 格式，至少包含 `file_path` 字段。
