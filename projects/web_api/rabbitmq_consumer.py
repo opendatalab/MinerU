@@ -18,6 +18,7 @@ def handle_message(ch, method, properties, body):
         message = json.loads(body)
         file_name = message.get("file_name")
         file_content_base64 = message.get("file_content_base64")
+        correlation_id = properties.correlation_id
 
         if not file_name or not file_content_base64:
             raise ValueError("`file_name` and `file_content_base64` are required")
@@ -67,6 +68,13 @@ def handle_message(ch, method, properties, body):
             "content_list": content_list,
             "middle_json": middle_json,
         }
+        
+        # Add correlation_id to result message if it was provided
+        if correlation_id:
+            result_message["correlation_id"] = correlation_id
+        
+        print(f"correlation_id: {correlation_id}")
+            
         ch.queue_declare(queue=result_queue, durable=True)
         ch.basic_publish(
             exchange="",
@@ -74,6 +82,7 @@ def handle_message(ch, method, properties, body):
             body=json.dumps(result_message, ensure_ascii=False),
             properties=pika.BasicProperties(
                 delivery_mode=2,  # make message persistent
+                correlation_id=correlation_id,  # Set correlation_id in message properties
             ),
         )
 

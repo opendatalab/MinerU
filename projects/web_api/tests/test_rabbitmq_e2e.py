@@ -11,12 +11,17 @@ import uuid
 
 class TestRabbitMQEndToEnd(unittest.TestCase):
     def setUp(self):
-        self.input_file_path = r"D:\Coding\Web\MinerU_webapi\tests\unittest\test_data\assets\pdfs\test_01.pdf"
+        self.input_file_path = os.path.abspath(
+            os.path.join(
+                "tests", "unittest", "test_data", "assets", "pdfs", "test_01.pdf"
+            )
+        )
 
         self.host = os.getenv("RABBITMQ_HOST", "localhost")
         self.parse_queue = os.getenv("RABBITMQ_QUEUE", "mineru_parse_queue")
-        self.result_queue = "mineru_results_queue"
-        os.environ["RABBITMQ_RESULT_QUEUE"] = "mineru_results_queue"
+        self.result_queue = f"test_result_queue_{uuid.uuid4().hex}"
+        self.correlation_id = str(uuid.uuid4())
+        os.environ["RABBITMQ_RESULT_QUEUE"] = self.result_queue
 
     def tearDown(self):
         if "RABBITMQ_RESULT_QUEUE" in os.environ:
@@ -31,7 +36,7 @@ class TestRabbitMQEndToEnd(unittest.TestCase):
             channel = connection.channel()
             channel.queue_declare(queue=self.parse_queue, durable=True)
             # Use exclusive queue for results, it will be deleted after connection closed
-            channel.queue_declare(queue=self.result_queue, durable=True, exclusive=False)
+            channel.queue_declare(queue=self.result_queue, durable=True, exclusive=True)
             channel.queue_purge(queue=self.result_queue)
         except pika.exceptions.AMQPConnectionError as e:
             self.fail(
@@ -43,10 +48,11 @@ class TestRabbitMQEndToEnd(unittest.TestCase):
             file_content = f.read()
         file_content_base64 = base64.b64encode(file_content).decode("utf-8")
 
-        # Construct the message
+        # Construct the message with correlation_id
         message = {
             "file_name": os.path.basename(self.input_file_path),
             "file_content_base64": file_content_base64,
+            "correlation_id": self.correlation_id,
         }
         body = json.dumps(message)
 
@@ -57,31 +63,44 @@ class TestRabbitMQEndToEnd(unittest.TestCase):
             body=body,
             properties=pika.BasicProperties(
                 delivery_mode=2,  # make message persistent
+                correlation_id=self.correlation_id,
             ),
         )
-        print(f" [x] Sent message to queue '{self.parse_queue}'")
+        print(f" [x] Sent message to queue '{self.parse_queue}' with correlation_id: {self.correlation_id}")
 
         # Wait for the consumer to process the message and return a result
-        print(f" [*] Waiting for result on queue '{self.result_queue}'...")
+        print(f" [*] Waiting for result on queue '{self.result_queue}' with correlation_id: {self.correlation_id}")
         result_body = None
         # Consume from the result queue with a timeout
         for method_frame, properties, body in channel.consume(
             self.result_queue, inactivity_timeout=60  # Increased timeout for PDF processing
         ):
             if method_frame:
-                result_body = body
-                channel.basic_ack(method_frame.delivery_tag)
-                break
+                # Check if correlation_id matches
+                if properties.correlation_id == self.correlation_id:
+                    result_body = body
+                    channel.basic_ack(method_frame.delivery_tag)
+                    break
+                else:
+                    # If correlation_id doesn't match, reject and requeue
+                    channel.basic_nack(method_frame.delivery_tag, requeue=True)
+                    print(f" [!] Received message with different correlation_id: {properties.correlation_id}")
 
         channel.cancel()
         connection.close()
 
         self.assertIsNotNone(
             result_body,
-            "Did not receive a result from the consumer within the timeout period.",
+            f"Did not receive a result with correlation_id {self.correlation_id} within the timeout period.",
         )
 
         result_message = json.loads(result_body)
+
+        # Verify correlation_id in result message
+        self.assertEqual(
+            result_message.get("correlation_id"), self.correlation_id,
+            "Correlation ID in result message does not match the sent correlation ID"
+        )
 
         self.assertEqual(
             result_message.get("file_name"), os.path.basename(self.input_file_path)
@@ -99,7 +118,7 @@ class TestRabbitMQEndToEnd(unittest.TestCase):
         self.assertIsInstance(result_message["middle_json"], dict)
         self.assertGreater(len(result_message["middle_json"]), 0)
 
-        print(" [+] Test passed: Received and verified result from queue.")
+        print(f" [+] Test passed: Received and verified result from queue with matching correlation_id: {self.correlation_id}")
 
 
 if __name__ == "__main__":

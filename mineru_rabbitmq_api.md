@@ -5,11 +5,11 @@
 ## 1. 概述
 
 服务流程如下：
-1.  **客户端**：将文件内容编码为 Base64，并构建一个 JSON 消息。
+1.  **客户端**：将文件内容编码为 Base64，并构建一个 JSON 消息（可包含 correlation_id 用于任务跟踪）。
 2.  **客户端**：将消息发布到指定的 **解析队列**。
 3.  **MinerU 服务端**：从解析队列中消费消息，执行文档解析。
-4.  **MinerU 服务端**：将解析结果（包含 Markdown、JSON 等）作为一条新的 JSON 消息，发布到 **结果队列**。
-5.  **客户端**：监听结果队列，以获取处理结果。
+4.  **MinerU 服务端**：将解析结果（包含 Markdown、JSON 等）作为一条新的 JSON 消息，发布到 **结果队列**，并保持相同的 correlation_id。
+5.  **客户端**：监听结果队列，通过 correlation_id 匹配对应的处理结果。
 
 ---
 
@@ -37,7 +37,8 @@
 {
   "file_name": "string",
   "file_content_base64": "string",
-  "parse_method": "string (optional)"
+  "parse_method": "string (optional)",
+  "correlation_id": "string (optional)"
 }
 ```
 
@@ -48,6 +49,7 @@
 | `file_name` | String | 是 | 原始文件的名称，包含扩展名。例如: `"document.pdf"` |
 | `file_content_base64` | String | 是 | 文件内容的 Base64 编码字符串。 |
 | `parse_method` | String | 否 | 解析方法。可选值为: `"auto"`, `"ocr"`, `"txt"`。默认为 `"auto"`。 |
+| `correlation_id` | String | 否 | 任务关联ID，用于在结果中识别对应的请求。建议使用UUID。 |
 
 ---
 
@@ -65,7 +67,8 @@
   "file_name": "string",
   "md": "string",
   "content_list": "list",
-  "middle_json": "dict"
+  "middle_json": "dict",
+  "correlation_id": "string (if provided in input)"
 }
 ```
 
@@ -77,6 +80,7 @@
 | `md` | String | 从文档解析出的 Markdown 格式内容。 |
 | `content_list` | List | 结构化的内容列表，每个元素代表文档中的一个内容块。 |
 | `middle_json` | Dict | 解析过程中生成的中间结构化数据。 |
+| `correlation_id` | String | 任务关联ID（如果在输入中提供）。 |
 
 ---
 
@@ -102,6 +106,9 @@ def send_and_receive_parse_result(file_path: str):
     host = os.getenv("RABBITMQ_HOST", "localhost")
     parse_queue = os.getenv("RABBITMQ_QUEUE", "mineru_parse_queue")
     result_queue = os.getenv("RABBITMQ_RESULT_QUEUE", "mineru_results_queue")
+
+    # 生成唯一的 correlation_id 用于任务跟踪
+    correlation_id = str(uuid.uuid4())
 
     # -- 1. 连接到 RabbitMQ --
     try:
@@ -133,7 +140,8 @@ def send_and_receive_parse_result(file_path: str):
     message = {
         "file_name": file_name,
         "file_content_base64": file_content_base64,
-        "parse_method": "auto" # 可以是 "auto", "ocr", 或 "txt"
+        "parse_method": "auto", # 可以是 "auto", "ocr", 或 "txt"
+        "correlation_id": correlation_id  # 添加任务关联ID
     }
     body = json.dumps(message)
 
@@ -143,37 +151,48 @@ def send_and_receive_parse_result(file_path: str):
         body=body,
         properties=pika.BasicProperties(
             delivery_mode=2,  # 使消息持久化
+            correlation_id=correlation_id,  # 在消息属性中也设置 correlation_id
         ),
     )
-    print(f" [x] Sent '{file_name}' to queue '{parse_queue}'.")
+    print(f" [x] Sent '{file_name}' to queue '{parse_queue}' with correlation_id: {correlation_id}")
 
     # -- 4. 等待并接收结果 --
-    print(f" [*] Waiting for a result on queue '{result_queue}'. To exit press CTRL+C")
+    print(f" [*] Waiting for a result on queue '{result_queue}' with correlation_id: {correlation_id}")
     
     result_body = None
     try:
-        # 使用 consume 从结果队列获取一条消息
+        # 使用 consume 从结果队列获取消息
         # inactivity_timeout 设置一个超时时间（秒），防止无限等待
         for method_frame, properties, body in channel.consume(result_queue, inactivity_timeout=120):
             if method_frame:
-                # 确认消息已被接收
-                channel.basic_ack(method_frame.delivery_tag)
-                result_body = body
-                break # 获取到一条消息后即退出循环
+                # 检查 correlation_id 是否匹配
+                if properties.correlation_id == correlation_id:
+                    # 确认消息已被接收
+                    channel.basic_ack(method_frame.delivery_tag)
+                    result_body = body
+                    break
+                else:
+                    # 如果 correlation_id 不匹配，拒绝消息并重新排队
+                    channel.basic_nack(method_frame.delivery_tag, requeue=True)
+                    print(f" [!] Received message with different correlation_id: {properties.correlation_id}, expecting: {correlation_id}")
         
         if result_body:
             print("\n[+] Received result:")
             result_data = json.loads(result_body)
-            # 简单打印结果的关键信息
-            print(f"  - File Name: {result_data.get('file_name')}")
-            print(f"  - MD Content Length: {len(result_data.get('md', ''))} characters")
-            print(f"  - Content List Items: {len(result_data.get('content_list', []))} items")
-            # 您可以在这里添加更复杂的逻辑来处理结果
-            # 例如: with open(f"result_{file_name}.json", "w") as f_out:
-            #           json.dump(result_data, f_out, indent=2)
+            # 验证结果中的 correlation_id
+            if result_data.get("correlation_id") == correlation_id:
+                print(f"  - Correlation ID: {result_data.get('correlation_id')}")
+                print(f"  - File Name: {result_data.get('file_name')}")
+                print(f"  - MD Content Length: {len(result_data.get('md', ''))} characters")
+                print(f"  - Content List Items: {len(result_data.get('content_list', []))} items")
+                # 您可以在这里添加更复杂的逻辑来处理结果
+                # 例如: with open(f"result_{correlation_id}.json", "w") as f_out:
+                #           json.dump(result_data, f_out, indent=2)
+            else:
+                print(f"  [!] Warning: correlation_id mismatch in result data")
 
         else:
-            print("\n[-] Did not receive a result within the timeout period (120 seconds).")
+            print(f"\n[-] Did not receive a result for correlation_id {correlation_id} within the timeout period (120 seconds).")
 
     except KeyboardInterrupt:
         print("\n[*] Aborted by user.")
@@ -195,4 +214,40 @@ if __name__ == "__main__":
     else:
         send_and_receive_parse_result(path_to_your_file)
 
-``` 
+```
+
+## 6. 多任务并发处理
+
+使用 `correlation_id` 的主要优势是支持多任务并发处理。以下是一个处理多个文件的示例：
+
+```python
+import threading
+import time
+
+def process_multiple_files(file_paths: list):
+    """
+    并发处理多个文件
+    
+    Args:
+        file_paths: 文件路径列表
+    """
+    threads = []
+    
+    for file_path in file_paths:
+        thread = threading.Thread(target=send_and_receive_parse_result, args=(file_path,))
+        threads.append(thread)
+        thread.start()
+        time.sleep(1)  # 稍微延迟以避免同时发送大量请求
+    
+    # 等待所有线程完成
+    for thread in threads:
+        thread.join()
+    
+    print("All files processed.")
+
+# 使用示例
+# file_list = ["file1.pdf", "file2.pdf", "file3.pdf"]
+# process_multiple_files(file_list)
+```
+
+通过使用 `correlation_id`，您可以确保即使在高并发环境下，每个请求都能正确匹配到对应的响应结果。 
