@@ -32,7 +32,7 @@ RUN python -m venv /app/venv && \
 # Download models
 COPY download_models.py .
 RUN . /app/venv/bin/activate && \
-    ./download_models.py
+    python download_models.py
 
 
 FROM base AS prod
@@ -57,6 +57,7 @@ RUN apt-get update && \
 
 # Copy the app and its configuration file
 COPY entrypoint.sh /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 COPY magic-pdf.json /root/magic-pdf.json
 COPY app.py /app/app.py
 COPY rabbitmq_consumer.py /app/rabbitmq_consumer.py

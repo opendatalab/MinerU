@@ -2,7 +2,7 @@ version: '3.8'
 services:
   mineru-test:
     build: .
-    # image: ghcr.io/betterandbetterii/doc_intelligence:latest
+#    image: ghcr.io/betterandbetterii/mineru-mq:latest
     deploy:
       resources:
         reservations:

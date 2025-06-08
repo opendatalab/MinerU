@@ -44,8 +44,8 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v4
       with:
-        context: ./docker/global
-        file: ./docker/global/Dockerfile
+        context: ./projects/web_api
+        file: ./projects/web_api/Dockerfile
         push: true
         tags: ${{ env.REGISTRY }}/${{env.NAMESPACE}}/mineru-mq:latest
         cache-from: type=registry,ref=${{ env.REGISTRY }}/${{env.NAMESPACE}}/mineru-mq:buildcache
