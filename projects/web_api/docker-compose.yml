@@ -15,7 +15,7 @@ services:
     container_name: mineru-test
     environment:
       - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_QUEUE=parse_queue
+      - RABBITMQ_QUEUE=mineru_parse_queue
     depends_on:
       - rabbitmq
 
