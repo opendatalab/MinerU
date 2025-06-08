@@ -96,12 +96,14 @@ def main():
     channel.basic_consume(queue=queue, on_message_callback=handle_message)
 
     print(f" [*] Waiting for messages in '{queue}'. To exit press CTRL+C")
-    try:
-        channel.start_consuming()
-    except KeyboardInterrupt:
-        channel.stop_consuming()
-    finally:
-        connection.close()
+    while True:
+        try:
+            channel.start_consuming()
+        except (KeyboardInterrupt, SystemExit):
+            channel.stop_consuming()
+            print(" [*] Exiting...")
+            break
+    connection.close()
 
 
 if __name__ == "__main__":
