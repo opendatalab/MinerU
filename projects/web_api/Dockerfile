@@ -59,10 +59,11 @@ RUN apt-get update && \
 COPY entrypoint.sh /app/entrypoint.sh
 COPY magic-pdf.json /root/magic-pdf.json
 COPY app.py /app/app.py
+COPY rabbitmq_consumer.py /app/rabbitmq_consumer.py
 
-# Expose the port that FastAPI will run on
+# Expose the port that FastAPI will run on (keeping for potential future use)
 EXPOSE 8000
 
-# Command to run FastAPI using Uvicorn, pointing to app.py and binding to 0.0.0.0:8000
+# Command to run RabbitMQ consumer instead of FastAPI
 ENTRYPOINT [ "/app/entrypoint.sh" ]
-CMD ["--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "rabbitmq_consumer.py"]

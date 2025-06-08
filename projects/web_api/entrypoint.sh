@@ -2,4 +2,4 @@
 set -euo pipefail
 
 . /app/venv/bin/activate
-exec uvicorn app:app "$@"
+exec "$@"
