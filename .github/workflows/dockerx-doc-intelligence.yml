@@ -1,4 +1,4 @@
-name: Docker Build Image-docIntelligence
+name: Docker Build Image-mineru-mq
 
 on:
   push:
@@ -47,6 +47,6 @@ jobs:
         context: ./docker/global
         file: ./docker/global/Dockerfile
         push: true
-        tags: ${{ env.REGISTRY }}/${{env.NAMESPACE}}/doc_intelligence:latest
-        cache-from: type=registry,ref=${{ env.REGISTRY }}/${{env.NAMESPACE}}/doc_intelligence:buildcache
-        cache-to: type=registry,ref=${{ env.REGISTRY }}/${{env.NAMESPACE}}/doc_intelligence:buildcache,mode=max
+        tags: ${{ env.REGISTRY }}/${{env.NAMESPACE}}/mineru-mq:latest
+        cache-from: type=registry,ref=${{ env.REGISTRY }}/${{env.NAMESPACE}}/mineru-mq:buildcache
+        cache-to: type=registry,ref=${{ env.REGISTRY }}/${{env.NAMESPACE}}/mineru-mq:buildcache,mode=max
