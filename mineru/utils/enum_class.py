@@ -53,8 +53,8 @@ class ModelPath:
     unimernet_small = "models/MFR/unimernet_hf_small_2503"
     pytorch_paddle = "models/OCR/paddleocr_torch"
     layout_reader = "models/ReadingOrder/layout_reader"
-    vlm_root_hf = "opendatalab/MinerU-VLM-1.0"
-    vlm_root_modelscope = "OpenDataLab/MinerU-VLM-1.0"
+    vlm_root_hf = "opendatalab/MinerU2.0-2505-0.9B"
+    vlm_root_modelscope = "OpenDataLab/MinerU2.0-2505-0.9B"
 
 
 class SplitFlag:
