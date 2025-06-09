@@ -77,6 +77,7 @@ class HuggingfacePredictor(BasePredictor):
             low_cpu_mem_usage=True,
             **kwargs,
         )
+        setattr(self.model.config, "_name_or_path", model_path)
         self.model.eval()
 
         vision_tower = self.model.get_model().vision_tower

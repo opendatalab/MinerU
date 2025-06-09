@@ -79,8 +79,12 @@ class SiglipVisionTower(nn.Module):
 
 def build_vision_tower(config: Mineru2QwenConfig):
     vision_tower = getattr(config, "mm_vision_tower", getattr(config, "vision_tower", ""))
+    model_path = getattr(config, "_name_or_path", "")
     if "siglip" in vision_tower.lower():
-        return SiglipVisionTower(vision_tower)
+        if model_path:
+            return SiglipVisionTower(f"{model_path}/{vision_tower}")
+        else:
+            return SiglipVisionTower(vision_tower)
     raise ValueError(f"Unknown vision tower: {vision_tower}")
 
 

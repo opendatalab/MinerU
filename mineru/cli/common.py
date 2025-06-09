@@ -158,6 +158,9 @@ def do_parse(
 
             logger.info(f"local output dir is {local_md_dir}")
     else:
+        if backend.startswith("vlm-"):
+            backend = backend[4:]
+
         f_draw_span_bbox = False
         parse_method = "vlm"
         for idx, pdf_bytes in enumerate(pdf_bytes_list):
@@ -216,10 +219,10 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    # pdf_path = "../../demo/pdfs/demo2.pdf"
-    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/input_img_0.jpg"
+    pdf_path = "../../demo/pdfs/demo2.pdf"
+    # pdf_path = "C:/Users/zhaoxiaomeng/Downloads/input_img_0.jpg"
 
     try:
-       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=20,)
+       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=1, backend='vlm-huggingface')
     except Exception as e:
         logger.exception(e)
