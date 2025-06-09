@@ -31,8 +31,10 @@
 如果你的包已发布到 PyPI 或其他 Python 包索引，可以直接使用 pip 安装：
 
 ```bash
-pip install mineru-mcp
+pip install mineru-mcp==1.0.0
 ```
+
+目前版本：1.0.0
 
 这种方式适用于不需要修改源代码的普通用户。
 
@@ -342,7 +344,3 @@ docker run -p 8001:8001 --env-file .env mineru-mcp:latest
 5. 对于超时后无法再次调用的问题，需要重启 MCP 客户端
 6. 如果反复出现超时，请检查网络连接或考虑使用本地 API 模式
 
-
-## 9. 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
