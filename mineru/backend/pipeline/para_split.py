@@ -1,10 +1,8 @@
 import copy
 from loguru import logger
-from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.utils.language import detect_lang
 
-CROSS_PAGE = 'cross_page'
-LINES_DELETED = 'lines_deleted'
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；')
 LIST_END_FLAG = ('.', '。', ';', '；')
@@ -284,10 +282,10 @@ def __merge_2_text_blocks(block1, block2):
                             if block1['page_num'] != block2['page_num']:
                                 for line in block1['lines']:
                                     for span in line['spans']:
-                                        span[CROSS_PAGE] = True
+                                        span[SplitFlag.CROSS_PAGE] = True
                             block2['lines'].extend(block1['lines'])
                             block1['lines'] = []
-                            block1[LINES_DELETED] = True
+                            block1[SplitFlag.LINES_DELETED] = True
 
     return block1, block2
 
@@ -296,10 +294,10 @@ def __merge_2_list_blocks(block1, block2):
     if block1['page_num'] != block2['page_num']:
         for line in block1['lines']:
             for span in line['spans']:
-                span[CROSS_PAGE] = True
+                span[SplitFlag.CROSS_PAGE] = True
     block2['lines'].extend(block1['lines'])
     block1['lines'] = []
-    block1[LINES_DELETED] = True
+    block1[SplitFlag.LINES_DELETED] = True
 
     return block1, block2
 

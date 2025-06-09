@@ -28,7 +28,7 @@ def merge_para_with_text(para_block):
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
                 content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
-            content = content.strip()
+            # content = content.strip()
             if content:
                 if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                     if j == len(line['spans']) - 1:

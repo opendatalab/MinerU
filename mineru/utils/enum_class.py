@@ -55,3 +55,8 @@ class ModelPath:
     layout_reader = "models/ReadingOrder/layout_reader"
     vlm_root_hf = "opendatalab/MinerU-VLM-1.0"
     vlm_root_modelscope = "OpenDataLab/MinerU-VLM-1.0"
+
+
+class SplitFlag:
+    CROSS_PAGE = 'cross_page'
+    LINES_DELETED = 'lines_deleted'

@@ -2,7 +2,7 @@ import re
 from typing import Literal
 
 from mineru.utils.boxbase import bbox_distance, is_in
-from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.format_utils import convert_otsl_to_html
 
@@ -187,7 +187,7 @@ class MagicModel:
         return fix_title_blocks(self.title_blocks)
 
     def get_text_blocks(self):
-        return self.text_blocks
+        return fix_text_blocks(self.text_blocks)
 
     def get_interline_equation_blocks(self):
         return self.interline_equation_blocks
@@ -441,3 +441,33 @@ def count_leading_hashes(text):
 def strip_leading_hashes(text):
     # 去除开头的#和紧随其后的空格
     return re.sub(r'^#+\s*', '', text)
+
+
+def fix_text_blocks(blocks):
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        last_line = block["lines"][-1]if block["lines"] else None
+        if last_line:
+            last_span = last_line["spans"][-1] if last_line["spans"] else None
+            if last_span and last_span['content'].endswith('<|txt_contd|>'):
+                last_span['content'] = last_span['content'][:-len('<|txt_contd|>')]
+
+                # 查找下一个未被清空的块
+                next_idx = i + 1
+                while next_idx < len(blocks) and blocks[next_idx].get(SplitFlag.LINES_DELETED, False):
+                    next_idx += 1
+
+                # 如果找到下一个有效块，则合并
+                if next_idx < len(blocks):
+                    next_block = blocks[next_idx]
+                    # 将下一个块的lines扩展到当前块的lines中
+                    block["lines"].extend(next_block["lines"])
+                    # 清空下一个块的lines
+                    next_block["lines"] = []
+                    # 在下一个块中添加标志
+                    next_block[SplitFlag.LINES_DELETED] = True
+                    # 不增加i，继续检查当前块（现在已包含下一个块的内容）
+                    continue
+        i += 1
+    return blocks
