@@ -115,3 +115,11 @@ def get_llm_aided_config():
         return None
     else:
         return llm_aided_config
+
+
+def get_local_models_dir():
+    config = read_config()
+    models_dir = config.get('models-dir')
+    if models_dir is None:
+        logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
+    return models_dir
