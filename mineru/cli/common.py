@@ -23,7 +23,9 @@ pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg"]
 
 
-def read_fn(path: Path):
+def read_fn(path):
+    if not isinstance(path, Path):
+        path = Path(path)
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
         if path.suffix in image_suffixes:

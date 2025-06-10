@@ -12,14 +12,8 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
-from mineru.cli.common import prepare_env, do_parse
-from mineru.data.data_reader_writer import FileBasedDataReader
+from mineru.cli.common import prepare_env, do_parse, read_fn
 from mineru.utils.hash_utils import str_sha256
-
-
-def read_fn(path):
-    disk_rw = FileBasedDataReader(os.path.dirname(path))
-    return disk_rw.read(os.path.basename(path))
 
 
 def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language):
@@ -120,19 +114,6 @@ latex_delimiters = [
 ]
 
 
-def init_model():
-    try:
-        pass
-        return 0
-    except Exception as e:
-        logger.exception(e)
-        return -1
-
-
-model_init = init_model()
-logger.info(f'model_init: {model_init}')
-
-
 with open('header.html', 'r') as file:
     header = file.read()
 
@@ -162,6 +143,8 @@ all_lang.extend([*other_lang, *add_lang])
 
 
 def to_pdf(file_path):
+    if file_path is None:
+        return None
     pdf_bytes = read_fn(file_path)
     # 将pdfbytes 写入到uuid.pdf中
     # 生成唯一的文件名
@@ -182,14 +165,15 @@ if __name__ == '__main__':
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
-                file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
-                max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
-                    with gr.Column():
-                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
-                    with gr.Column():
+                    file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=3):
+                        max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
+                    with gr.Column(scale=1):
                         language = gr.Dropdown(all_lang, label='Language', value='ch')
                 with gr.Row():
+                    is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                     table_enable = gr.Checkbox(label='Enable table recognition(test)', value=True)
                 with gr.Row():
