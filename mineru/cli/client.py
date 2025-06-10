@@ -129,7 +129,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     '-r',
     '--repo',
     'model_source',
-    type=click.Choice(['huggingface', 'modelscope']),
+    type=click.Choice(['huggingface', 'modelscope', 'local']),
     help="""
     The source of the model repository. Default is 'huggingface'.
     """,
