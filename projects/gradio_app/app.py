@@ -9,13 +9,12 @@ import zipfile
 from pathlib import Path
 
 import gradio as gr
-import pymupdf
 from gradio_pdf import PDF
 from loguru import logger
 
-from magic_pdf.data.data_reader_writer import FileBasedDataReader
-from magic_pdf.libs.hash_utils import compute_sha256
-from magic_pdf.tools.common import do_parse, prepare_env
+from mineru.cli.common import prepare_env, do_parse
+from mineru.data.data_reader_writer import FileBasedDataReader
+from mineru.utils.hash_utils import str_sha256
 
 
 def read_fn(path):
@@ -23,7 +22,7 @@ def read_fn(path):
     return disk_rw.read(os.path.basename(path))
 
 
-def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, layout_mode, formula_enable, table_enable, language):
+def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
@@ -35,17 +34,14 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, layout_mode, formula_en
             parse_method = 'auto'
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         do_parse(
-            output_dir,
-            file_name,
-            pdf_data,
-            [],
-            parse_method,
-            True,
+            output_dir=output_dir,
+            pdf_file_names=[file_name],
+            pdf_bytes_list=[pdf_data],
+            p_lang_list=[language],
+            parse_method=parse_method,
             end_page_id=end_page_id,
-            layout_model=layout_mode,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
-            lang=language,
+            p_formula_enable=formula_enable,
+            p_table_enable=table_enable,
         )
         return local_md_dir, file_name
     except Exception as e:
@@ -96,12 +92,11 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages, is_ocr, layout_mode, formula_enable, table_enable, language):
+def to_markdown(file_path, end_pages, is_ocr, formula_enable, table_enable, language):
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr,
-                                        layout_mode, formula_enable, table_enable, language)
-    archive_zip_path = os.path.join('./output', compute_sha256(local_md_dir) + '.zip')
+    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language)
+    archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
         logger.info('压缩成功')
@@ -126,13 +121,8 @@ latex_delimiters = [
 
 
 def init_model():
-    from magic_pdf.model.doc_analyze_by_custom_model import ModelSingleton
     try:
-        model_manager = ModelSingleton()
-        txt_model = model_manager.get_model(False, False)  # noqa: F841
-        logger.info('txt_model init final')
-        ocr_model = model_manager.get_model(True, False)  # noqa: F841
-        logger.info('ocr_model init final')
+        pass
         return 0
     except Exception as e:
         logger.exception(e)
@@ -172,23 +162,19 @@ all_lang.extend([*other_lang, *add_lang])
 
 
 def to_pdf(file_path):
-    with pymupdf.open(file_path) as f:
-        if f.is_pdf:
-            return file_path
-        else:
-            pdf_bytes = f.convert_to_pdf()
-            # 将pdfbytes 写入到uuid.pdf中
-            # 生成唯一的文件名
-            unique_filename = f'{uuid.uuid4()}.pdf'
+    pdf_bytes = read_fn(file_path)
+    # 将pdfbytes 写入到uuid.pdf中
+    # 生成唯一的文件名
+    unique_filename = f'{uuid.uuid4()}.pdf'
 
-            # 构建完整的文件路径
-            tmp_file_path = os.path.join(os.path.dirname(file_path), unique_filename)
+    # 构建完整的文件路径
+    tmp_file_path = os.path.join(os.path.dirname(file_path), unique_filename)
 
-            # 将字节数据写入文件
-            with open(tmp_file_path, 'wb') as tmp_pdf_file:
-                tmp_pdf_file.write(pdf_bytes)
+    # 将字节数据写入文件
+    with open(tmp_file_path, 'wb') as tmp_pdf_file:
+        tmp_pdf_file.write(pdf_bytes)
 
-            return tmp_file_path
+    return tmp_file_path
 
 
 if __name__ == '__main__':
@@ -199,11 +185,12 @@ if __name__ == '__main__':
                 file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
                 max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
-                    layout_mode = gr.Dropdown(['doclayout_yolo'], label='Layout model', value='doclayout_yolo')
-                    language = gr.Dropdown(all_lang, label='Language', value='ch')
+                    with gr.Column():
+                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
+                    with gr.Column():
+                        language = gr.Dropdown(all_lang, label='Language', value='ch')
                 with gr.Row():
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
-                    is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                     table_enable = gr.Checkbox(label='Enable table recognition(test)', value=True)
                 with gr.Row():
                     change_bu = gr.Button('Convert')
@@ -227,7 +214,7 @@ if __name__ == '__main__':
                     with gr.Tab('Markdown text'):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
         file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, layout_mode, formula_enable, table_enable, language],
+        change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, formula_enable, table_enable, language],
                         outputs=[md, md_text, output_file, pdf_show])
         clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
 

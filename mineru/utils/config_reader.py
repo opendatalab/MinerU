@@ -84,7 +84,7 @@ def get_table_recog_config():
     if table_enable is not None:
         return json.loads(f'{{"enable": {table_enable}}}')
     else:
-        logger.warning(f"not found 'MINERU_TABLE_ENABLE' in environment variable, use 'true' as default.")
+        # logger.warning(f"not found 'MINERU_TABLE_ENABLE' in environment variable, use 'true' as default.")
         return json.loads(f'{{"enable": true}}')
 
 
@@ -93,7 +93,7 @@ def get_formula_config():
     if formula_enable is not None:
         return json.loads(f'{{"enable": {formula_enable}}}')
     else:
-        logger.warning(f"not found 'MINERU_FORMULA_ENABLE' in environment variable, use 'true' as default.")
+        # logger.warning(f"not found 'MINERU_FORMULA_ENABLE' in environment variable, use 'true' as default.")
         return json.loads(f'{{"enable": true}}')
 
 
