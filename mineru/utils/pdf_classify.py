@@ -6,6 +6,7 @@ import pypdfium2 as pdfium
 from loguru import logger
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams
+from pypdf import PdfReader
 
 
 def classify(pdf_bytes):
@@ -30,41 +31,106 @@ def classify(pdf_bytes):
         if page_count == 0:
             return 'ocr'
 
-        # 总字符数
-        total_chars = 0
-        # 清理后的总字符数
-        cleaned_total_chars = 0
         # 检查的页面数（最多检查10页）
         pages_to_check = min(page_count, 10)
-
-        # 检查前几页的文本
-        for i in range(pages_to_check):
-            page = pdf[i]
-            text_page = page.get_textpage()
-            text = text_page.get_text_bounded()
-            total_chars += len(text)
-
-            # 清理提取的文本，移除空白字符
-            cleaned_text = re.sub(r'\s+', '', text)
-            cleaned_total_chars += len(cleaned_text)
-
-        # 计算平均每页字符数
-        # avg_chars_per_page = total_chars / pages_to_check
-        avg_cleaned_chars_per_page = cleaned_total_chars / pages_to_check
 
         # 设置阈值：如果每页平均少于50个有效字符，认为需要OCR
         chars_threshold = 50
 
-        # logger.debug(f"PDF分析: 平均每页{avg_chars_per_page:.1f}字符, 清理后{avg_cleaned_chars_per_page:.1f}字符")
-
-        if (avg_cleaned_chars_per_page < chars_threshold) or detect_invalid_chars(sample_pdf_bytes):
+        if (get_avg_cleaned_chars_per_page(pdf, pages_to_check) < chars_threshold) or detect_invalid_chars(sample_pdf_bytes):
             return 'ocr'
         else:
+
+            if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.9:
+                return 'ocr'
+
             return 'txt'
     except Exception as e:
         logger.error(f"判断PDF类型时出错: {e}")
         # 出错时默认使用OCR
         return 'ocr'
+
+
+def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
+    # 总字符数
+    total_chars = 0
+    # 清理后的总字符数
+    cleaned_total_chars = 0
+
+    # 检查前几页的文本
+    for i in range(pages_to_check):
+        page = pdf_doc[i]
+        text_page = page.get_textpage()
+        text = text_page.get_text_bounded()
+        total_chars += len(text)
+
+        # 清理提取的文本，移除空白字符
+        cleaned_text = re.sub(r'\s+', '', text)
+        cleaned_total_chars += len(cleaned_text)
+
+    # 计算平均每页字符数
+    avg_cleaned_chars_per_page = cleaned_total_chars / pages_to_check
+
+    # logger.debug(f"PDF分析: 平均每页清理后{avg_cleaned_chars_per_page:.1f}字符")
+
+    pdf_doc.close()  # 关闭PDF文档
+
+    return avg_cleaned_chars_per_page
+
+def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
+    pdf_stream = BytesIO(sample_pdf_bytes)
+    pdf_reader = PdfReader(pdf_stream)
+
+    # 记录高图像覆盖率的页面数量
+    high_image_coverage_pages = 0
+
+    # 检查前几页的图像
+    for i in range(pages_to_check):
+        page = pdf_reader.pages[i]
+
+        # 获取页面尺寸
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        page_area = page_width * page_height
+
+        # 估算图像覆盖率
+        image_area = 0
+        if '/Resources' in page:
+            resources = page['/Resources']
+            if '/XObject' in resources:
+                x_objects = resources['/XObject']
+                # 计算所有图像对象占据的面积
+                for obj_name in x_objects:
+                    try:
+                        obj = x_objects[obj_name]
+                        if obj['/Subtype'] == '/Image':
+                            # 获取图像宽高
+                            width = obj.get('/Width', 0)
+                            height = obj.get('/Height', 0)
+
+                            # 计算图像在页面上的估计面积
+                            # 注意：这是估计值，因为没有考虑图像变换矩阵
+                            scale_factor = 1.0  # 估计缩放因子
+                            img_area = width * height * scale_factor
+                            image_area += img_area
+                    except Exception as e:
+                        # logger.debug(f"处理图像对象时出错: {e}")
+                        continue
+
+        # 估算图像覆盖率
+        estimated_coverage = min(image_area / page_area, 1.0) if page_area > 0 else 0
+        # logger.debug(f"PDF分析: 页面 {i + 1} 图像覆盖率: {estimated_coverage:.2f}")
+        # 基于估计的图像覆盖率
+        if estimated_coverage >= 1:
+            # 如果图像覆盖率超过80%，认为是高图像覆盖率页面
+            high_image_coverage_pages += 1
+    # 计算高图像覆盖页面比例
+    high_image_coverage_ratio = high_image_coverage_pages / pages_to_check
+    # logger.debug(f"PDF分析: 高图像覆盖页面比例: {high_image_coverage_ratio:.2f}")
+
+    pdf_stream.close()  # 关闭字节流
+    pdf_reader.close()
+    return high_image_coverage_ratio
 
 
 def extract_pages(src_pdf_bytes: bytes) -> bytes:
