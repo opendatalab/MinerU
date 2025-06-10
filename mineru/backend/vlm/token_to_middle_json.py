@@ -48,6 +48,8 @@ def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
         image_dict = images_list[index]
         page_info = token_to_page_info(token, image_dict, page, image_writer, index)
         middle_json["pdf_info"].append(page_info)
+    # 关闭pdf文档
+    pdf_doc.close()
     return middle_json
 
 
