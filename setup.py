@@ -3,22 +3,6 @@ from setuptools import setup, find_packages
 from mineru.version import __version__
 
 
-def parse_requirements(filename):
-    with open(filename) as f:
-        lines = f.read().splitlines()
-
-    requires = []
-
-    for line in lines:
-        if "http" in line:
-            pkg_name_without_url = line.split('@')[0].strip()
-            requires.append(pkg_name_without_url)
-        else:
-            requires.append(line)
-
-    return requires
-
-
 if __name__ == '__main__':
     with Path(Path(__file__).parent,
               'README.md').open(encoding='utf-8') as file:
@@ -32,17 +16,35 @@ if __name__ == '__main__':
             "mineru.resources": ["**"],  # 包含magic_pdf.resources目录下的所有文件
             "mineru.model.ocr.paddleocr2pytorch.pytorchocr.utils.resources": ["**"],  # pytorchocr.resources目录下的所有文件
         },
-        install_requires=parse_requirements('requirements.txt'),  # 项目依赖的第三方库
+        install_requires=[
+                    "boto3>=1.28.43",
+                    "click>=8.1.7",
+                    "loguru>=0.6.0",
+                    "numpy>=1.21.6",
+                    "pdfminer.six==20250506",
+                    "tqdm>=4.67.1",
+                    "requests",
+                    "httpx",
+                    "pillow",
+                    "pypdfium2",
+                    "loguru",
+                    "pypdf",
+                    "reportlab",
+        ],  # 项目依赖的第三方库
         extras_require={
-            "lite": [
-                    "paddleocr==2.7.3",
-                    "paddlepaddle==3.0.0b1;platform_system=='Linux'",
-                    "paddlepaddle==2.6.1;platform_system=='Windows' or platform_system=='Darwin'",
+            "vlm":[
+                "transformers>=4.51.1",
+                "torch>=2.6.0",
+                "accelerate>=1.5.1"
+                "pydantic>=2.7.2,<2.11",
             ],
-            "full": [
+            "sglang": [
+                "sglang[all]==0.4.6.post5",
+            ],
+            "pipeline": [
                      "matplotlib>=3.10,<4",
                      "ultralytics>=8.3.48,<9",  # yolov8,公式检测
-                     "doclayout_yolo==0.0.2b1",  # doclayout_yolo
+                     "doclayout_yolo==0.0.4",  # doclayout_yolo
                      "dill>=0.3.8,<1",  # doclayout_yolo
                      "rapid_table>=1.0.5,<2.0.0",  # rapid_table
                      "PyYAML>=6.0.2,<7",  # yaml
@@ -51,11 +53,15 @@ if __name__ == '__main__':
                      "shapely>=2.0.7,<3",  # imgaug-paddleocr2pytorch
                      "pyclipper>=1.3.0,<2",  # paddleocr2pytorch
                      "omegaconf>=2.3.0,<3",  # paddleocr2pytorch
+                    "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
+                    "torchvision",
+                    "transformers>=4.49.0,!=4.51.0,<5.0.0",
+                    "fast-langdetect>=0.2.3,<0.3.0",
             ],
-            "full_old_linux": [
+            "pipeline_old_linux": [
                     "matplotlib>=3.10,<=3.10.1",
                     "ultralytics>=8.3.48,<=8.3.104",  # yolov8,公式检测
-                    "doclayout_yolo==0.0.2b1",  # doclayout_yolo
+                    "doclayout_yolo==0.0.4",  # doclayout_yolo
                     "dill==0.3.8",  # doclayout_yolo
                     "PyYAML==6.0.2",  # yaml
                     "ftfy==6.3.1",  # unimernet_hf
@@ -65,6 +71,10 @@ if __name__ == '__main__':
                     "omegaconf==2.3.0",  # paddleocr2pytorch
                     "albumentations==1.4.20", # 1.4.21引入的simsimd不支持2019年及更早的linux系统
                     "rapid_table==1.0.3",  # rapid_table新版本依赖的onnxruntime不支持2019年及更早的linux系统
+                    "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
+                    "torchvision",
+                    "transformers>=4.49.0,!=4.51.0,<5.0.0",
+                    "fast-langdetect>=0.2.3,<0.3.0",
             ],
         },
         description="A practical tool for converting PDF to Markdown",  # 简短描述
