@@ -69,6 +69,9 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
     # 获取字节数据
     output_bytes = output_buffer.getvalue()
 
+    pdf.close()  # 关闭原PDF文档以释放资源
+    output_pdf.close()  # 关闭新PDF文档以释放资源
+
     return output_bytes
 
 

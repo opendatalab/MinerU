@@ -59,9 +59,9 @@ def configure_model(model_dir, model_type):
 
 @click.command()
 def download_models():
-    """下载MinerU模型文件。
+    """Download MinerU model files.
 
-    支持从ModelScope或HuggingFace下载pipeline或VLM模型。
+    Supports downloading pipeline or VLM models from ModelScope or HuggingFace.
     """
     # 交互式输入下载来源
     source = click.prompt(

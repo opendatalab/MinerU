@@ -230,6 +230,8 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
                 llm_aided_title(middle_json["pdf_info"], title_aided_config)
                 logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
+    """清理内存"""
+    pdf_doc.close()
     clean_memory(get_device())
 
     return middle_json

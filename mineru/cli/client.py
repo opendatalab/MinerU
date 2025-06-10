@@ -31,6 +31,18 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     help='output local directory',
 )
 @click.option(
+    '-m',
+    '--method',
+    'method',
+    type=click.Choice(['auto', 'txt', 'ocr']),
+    help="""the method for parsing pdf:
+    auto: Automatically determine the method based on the file type.
+    txt: Use text extraction method.
+    ocr: Use OCR method for image-based PDFs.
+    Without method specified, 'auto' will be used by default.""",
+    default='auto',
+)
+@click.option(
     '-b',
     '--backend',
     'backend',
@@ -125,7 +137,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 )
 
 
-def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
+def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
 
     if os.getenv('MINERU_FORMULA_ENABLE', None) is None:
         os.environ['MINERU_FORMULA_ENABLE'] = str(formula_enable).lower()
@@ -167,8 +179,17 @@ def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_p
                 file_name_list.append(file_name)
                 pdf_bytes_list.append(pdf_bytes)
                 lang_list.append(lang)
-            do_parse(output_dir, file_name_list, pdf_bytes_list, lang_list, backend, server_url,
-                         start_page_id=start_page_id, end_page_id=end_page_id)
+            do_parse(
+                output_dir=output_dir,
+                pdf_file_names=file_name_list,
+                pdf_bytes_list=pdf_bytes_list,
+                p_lang_list=lang_list,
+                backend=backend,
+                parse_method=method,
+                server_url=server_url,
+                start_page_id=start_page_id,
+                end_page_id=end_page_id
+            )
         except Exception as e:
             logger.exception(e)
 
