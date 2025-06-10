@@ -151,7 +151,7 @@ def main(input_path, output_dir, backend, lang, server_url, start_page_id, end_p
     if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
         os.environ['MINERU_VIRTUAL_VRAM_SIZE']= str(get_virtual_vram_size())
 
-    if os.getenv('MINERU_BACKEND', None) is None:
+    if os.getenv('MINERU_MODEL_SOURCE', None) is None:
         os.environ['MINERU_MODEL_SOURCE'] = model_source
 
     os.makedirs(output_dir, exist_ok=True)
