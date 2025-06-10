@@ -84,7 +84,7 @@ Repository = "https://github.com/opendatalab/MinerU"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
-mineru-sglang-server = "mineru.cli.vlm-sglang_server:main"
+mineru-sglang-server = "mineru.cli.vlm_sglang_server:main"
 mineru-models-download = "mineru.cli.models_download:download_models"
 
 [tool.setuptools.dynamic]
