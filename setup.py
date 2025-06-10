@@ -85,6 +85,8 @@ if __name__ == '__main__':
         entry_points={
             "console_scripts": [
                 "mineru = mineru.cli:client.main",  # 命令行入口点，mineru命令将调用mineru.cli.client.main函数
+                "mineru-sglang-server = mineru.cli.vlm-sglang_server:main",  # sglang服务器入口点
+                "mineru-models-download = mineru.cli.models_download:download_models",  # 模型下载入口点
             ],
         },  # 项目提供的可执行命令
         include_package_data=True,  # 是否包含非代码文件，如数据文件、配置文件等

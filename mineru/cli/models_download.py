@@ -85,6 +85,7 @@ def download_models():
         download_finish_path = ""
         if model_type == 'pipeline':
             for model_path in [ModelPath.doclayout_yolo, ModelPath.yolo_v8_mfd, ModelPath.unimernet_small, ModelPath.pytorch_paddle, ModelPath.layout_reader, ModelPath.slanet_plus]:
+                click.echo(f"Downloading model: {model_path}")
                 download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode=model_type)
         elif model_type == 'vlm':
             download_finish_path = auto_download_and_get_model_root_path("/", repo_mode=model_type)

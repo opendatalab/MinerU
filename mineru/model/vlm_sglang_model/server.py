@@ -7,6 +7,7 @@ from sglang.srt.managers.io_struct import GenerateReqInput
 from sglang.srt.server_args import prepare_server_args
 from sglang.srt.utils import kill_process_tree
 
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from .logit_processor import Mineru2LogitProcessor
 
 _custom_logit_processor_str = Mineru2LogitProcessor().to_str()
@@ -32,6 +33,9 @@ def main():
         server_args.chat_template = "chatml"
 
     server_args.enable_custom_logit_processor = True
+
+    if server_args.model_path is None:
+        server_args.model_path = auto_download_and_get_model_root_path("/","vlm")
 
     try:
         launch_server(server_args)
