@@ -1,7 +1,7 @@
 import json
 from io import BytesIO
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from .enum_class import BlockType, ContentType
