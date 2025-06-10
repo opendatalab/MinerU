@@ -249,16 +249,12 @@ class BatchAnalyze:
                 _lang = table_res_dict['lang']
                 table_model = atom_model_manager.get_atom_model(
                     atom_model_name='table',
-                    device='cpu',
                     lang=_lang,
-                    table_sub_model_name='slanet_plus'
                 )
                 html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
                 # 判断是否返回正常
                 if html_code:
-                    expected_ending = html_code.strip().endswith(
-                        '</html>'
-                    ) or html_code.strip().endswith('</table>')
+                    expected_ending = html_code.strip().endswith('</html>') or html_code.strip().endswith('</table>')
                     if expected_ending:
                         table_res_dict['table_res']['html'] = html_code
                     else:
