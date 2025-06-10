@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
-import os.path
+import os
 import warnings
 from pathlib import Path
 
@@ -11,7 +11,7 @@ from loguru import logger
 
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import get_file_from_repos
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
 from .tools.infer.predict_system import TextSystem
 from .tools.infer import pytorchocr_utility as utility
@@ -77,8 +77,11 @@ class PytorchPaddleOCR(TextSystem):
             config = yaml.safe_load(file)
             det, rec, dict_file = get_model_params(self.lang, config)
         ocr_models_dir = ModelPath.pytorch_paddle
-        det_model_path = get_file_from_repos(f"{ocr_models_dir}/{det}")
-        rec_model_path = get_file_from_repos(f"{ocr_models_dir}/{rec}")
+
+        det_model_path = f"{ocr_models_dir}/{det}"
+        det_model_path = os.path.join(auto_download_and_get_model_root_path(det_model_path), det_model_path)
+        rec_model_path = f"{ocr_models_dir}/{rec}"
+        rec_model_path = os.path.join(auto_download_and_get_model_root_path(rec_model_path), rec_model_path)
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)

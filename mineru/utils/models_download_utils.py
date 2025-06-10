@@ -5,7 +5,7 @@ from modelscope import snapshot_download as ms_snapshot_download
 from mineru.utils.config_reader import get_local_models_dir
 from mineru.utils.enum_class import ModelPath
 
-def get_file_from_repos(relative_path: str, repo_mode='pipeline') -> str:
+def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipeline') -> str:
     """
     支持文件或目录的可靠下载。
     - 如果输入文件: 返回本地文件绝对路径
@@ -14,7 +14,7 @@ def get_file_from_repos(relative_path: str, repo_mode='pipeline') -> str:
     :param relative_path: 文件或目录相对路径
     :return: 本地文件绝对路径或相对路径
     """
-    model_source = os.getenv('MINERU_MODEL_SOURCE', None)
+    model_source = os.getenv('MINERU_MODEL_SOURCE', "huggingface")
 
     if model_source == 'local':
         local_models_config = get_local_models_dir()
@@ -54,10 +54,10 @@ def get_file_from_repos(relative_path: str, repo_mode='pipeline') -> str:
     relative_path = relative_path.strip('/')
     cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
 
-    return cache_dir + "/" + relative_path
+    return cache_dir
+
 
 if __name__ == '__main__':
-    path1 = get_file_from_repos("models/README.md")
-    print("本地文件绝对路径:", path1)
-    path2 = get_file_from_repos("models/OCR/paddleocr_torch/")
-    print("本地文件绝对路径:", path2)
+    path1 = "models/README.md"
+    root = auto_download_and_get_model_root_path(path1)
+    print("本地文件绝对路径:", os.path.join(root, path1))

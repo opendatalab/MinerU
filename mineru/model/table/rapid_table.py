@@ -1,15 +1,16 @@
+import os
 import cv2
 import numpy as np
 from loguru import logger
 from rapid_table import RapidTable, RapidTableInput
 
 from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import get_file_from_repos
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 class RapidTableModel(object):
     def __init__(self, ocr_engine):
-        slanet_plus_model_path = get_file_from_repos(ModelPath.slanet_plus)
+        slanet_plus_model_path = os.path.join(auto_download_and_get_model_root_path(ModelPath.slanet_plus), ModelPath.slanet_plus)
         input_args = RapidTableInput(model_type='slanet_plus', model_path=slanet_plus_model_path)
         self.table_model = RapidTable(input_args)
         self.ocr_engine = ocr_engine

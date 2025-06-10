@@ -16,7 +16,7 @@ from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.enum_class import MakeMode
-from mineru.utils.models_download_utils import get_file_from_repos
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 
 pdf_suffixes = [".pdf"]
@@ -168,7 +168,7 @@ def do_parse(
             pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-            model_path = get_file_from_repos('/','vlm')
+            model_path = auto_download_and_get_model_root_path('/', 'vlm')
             middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, model_path=model_path, server_url=server_url)
 
             pdf_info = middle_json["pdf_info"]
@@ -219,10 +219,14 @@ def do_parse(
 
 
 if __name__ == "__main__":
-    pdf_path = "../../demo/pdfs/demo2.pdf"
-    # pdf_path = "C:/Users/zhaoxiaomeng/Downloads/input_img_0.jpg"
+    # pdf_path = "../../demo/pdfs/demo3.pdf"
+    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/4546d0e2-ba60-40a5-a17e-b68555cec741.pdf"
 
     try:
-       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"], end_page_id=1, backend='vlm-huggingface')
+       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"],
+                end_page_id=10,
+                backend='vlm-huggingface'
+                # backend = 'pipeline'
+                )
     except Exception as e:
         logger.exception(e)
