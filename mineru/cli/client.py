@@ -24,7 +24,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 )
 @click.option(
     '-o',
-    '--output-dir',
+    '--output',
     'output_dir',
     type=click.Path(),
     required=True,
@@ -118,16 +118,14 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     default=None,
 )
 @click.option(
-    '-vm',
-    '--virtual-vram',
+    '--vram',
     'virtual_vram',
     type=int,
     help='Upper limit of GPU memory occupied by a single process. Adapted only for the case where the backend is set to "pipeline". ',
     default=None,
 )
 @click.option(
-    '-r',
-    '--repo',
+    '--source',
     'model_source',
     type=click.Choice(['huggingface', 'modelscope', 'local']),
     help="""
