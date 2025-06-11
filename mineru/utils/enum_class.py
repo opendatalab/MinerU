@@ -42,7 +42,7 @@ class CategoryId:
 class MakeMode:
     MM_MD = 'mm_markdown'
     NLP_MD = 'nlp_markdown'
-    STANDARD_FORMAT = 'standard_format'
+    CONTENT_LIST = 'content_list'
 
 
 class ModelPath:

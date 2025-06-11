@@ -260,14 +260,14 @@ def union_make(pdf_info_dict: list,
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             page_markdown = make_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
             output_content.extend(page_markdown)
-        elif make_mode == MakeMode.STANDARD_FORMAT:
+        elif make_mode == MakeMode.CONTENT_LIST:
             for para_block in paras_of_layout:
                 para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx)
                 output_content.append(para_content)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
-    elif make_mode == MakeMode.STANDARD_FORMAT:
+    elif make_mode == MakeMode.CONTENT_LIST:
         return output_content
     else:
         logger.error(f"Unsupported make mode: {make_mode}")

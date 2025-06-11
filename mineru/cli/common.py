@@ -143,7 +143,7 @@ def do_parse(
 
             if f_dump_content_list:
                 image_dir = str(os.path.basename(local_image_dir))
-                content_list = pipeline_union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
                 md_writer.write_string(
                     f"{pdf_file_name}_content_list.json",
                     json.dumps(content_list, ensure_ascii=False, indent=4),
@@ -200,7 +200,7 @@ def do_parse(
 
             if f_dump_content_list:
                 image_dir = str(os.path.basename(local_image_dir))
-                content_list = vlm_union_make(pdf_info, MakeMode.STANDARD_FORMAT, image_dir)
+                content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
                 md_writer.write_string(
                     f"{pdf_file_name}_content_list.json",
                     json.dumps(content_list, ensure_ascii=False, indent=4),
