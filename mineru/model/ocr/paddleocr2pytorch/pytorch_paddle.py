@@ -57,7 +57,7 @@ class PytorchPaddleOCR(TextSystem):
         self.lang = kwargs.get('lang', 'ch')
 
         device = get_device()
-        if device == 'cpu' and self.lang in ['ch', 'ch_server']:
+        if device == 'cpu' and self.lang in ['ch', 'ch_server', 'japan', 'chinese_cht']:
             logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
             self.lang = 'ch_lite'
 

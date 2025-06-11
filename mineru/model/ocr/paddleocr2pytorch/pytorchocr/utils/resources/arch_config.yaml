@@ -120,6 +120,22 @@ ch_PP-OCRv5_det_infer:
     name: DBHead
     k: 50
 
+ch_PP-OCRv5_det_server_infer:
+    model_type: det
+    algorithm: DB
+    Transform: null
+    Backbone:
+        name: PPHGNetV2_B4
+        det: True
+    Neck:
+        name: LKPAN
+        out_channels: 256
+        intracl: True
+    Head:
+        name: PFHeadLocal
+        k: 50
+        mode: "large"
+
 ch_PP-OCRv4_det_server_infer:
   model_type: det
   algorithm: DB
