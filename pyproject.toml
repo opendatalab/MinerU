@@ -42,7 +42,7 @@ vlm = [
     "pydantic",
 ]
 sglang = [
-    "sglang[all]==0.4.6.post5",
+    "sglang[all]>=0.4.7",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",
