@@ -20,7 +20,7 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_e
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        file_name = f'{str(Path(doc_path).stem)}_{time.time()}'
+        file_name = f'{str(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
         if is_ocr:
             parse_method = 'ocr'
@@ -142,13 +142,21 @@ all_lang = []
 all_lang.extend([*other_lang, *add_lang])
 
 
+def safe_stem(file_path):
+    stem = Path(file_path).stem
+    # 只保留字母、数字、下划线和点，其他字符替换为下划线
+    return re.sub(r'[^\w.]', '_', stem)
+
+
 def to_pdf(file_path):
+
     if file_path is None:
         return None
+
     pdf_bytes = read_fn(file_path)
-    # 将pdfbytes 写入到uuid.pdf中
-    # 生成唯一的文件名
-    unique_filename = f'{uuid.uuid4()}.pdf'
+
+    # unique_filename = f'{uuid.uuid4()}.pdf'
+    unique_filename = f'{safe_stem(file_path)}.pdf'
 
     # 构建完整的文件路径
     tmp_file_path = os.path.join(os.path.dirname(file_path), unique_filename)
@@ -168,7 +176,7 @@ if __name__ == '__main__':
                 with gr.Row():
                     file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
                 with gr.Row(equal_height=True):
-                    with gr.Column(scale=3):
+                    with gr.Column(scale=4):
                         max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                     with gr.Column(scale=1):
                         language = gr.Dropdown(all_lang, label='Language', value='ch')
