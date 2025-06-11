@@ -61,6 +61,11 @@ pipeline = [
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
     "fast-langdetect>=0.2.3,<0.3.0",
 ]
+all = [
+    "mineru[vlm]",
+    "mineru[sglang]",
+    "mineru[pipeline]",
+]
 pipeline_old_linux = [
     "matplotlib>=3.10,<=3.10.1",
     "ultralytics>=8.3.48,<=8.3.104",
