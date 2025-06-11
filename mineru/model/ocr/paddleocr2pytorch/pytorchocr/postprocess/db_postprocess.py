@@ -124,10 +124,10 @@ class DBPostProcess(object):
         '''
         h, w = bitmap.shape[:2]
         box = _box.copy()
-        xmin = np.clip(np.floor(box[:, 0].min()).astype(np.int64), 0, w - 1)
-        xmax = np.clip(np.ceil(box[:, 0].max()).astype(np.int64), 0, w - 1)
-        ymin = np.clip(np.floor(box[:, 1].min()).astype(np.int64), 0, h - 1)
-        ymax = np.clip(np.ceil(box[:, 1].max()).astype(np.int64), 0, h - 1)
+        xmin = np.clip(np.floor(box[:, 0].min()).astype(np.int if 'int' in np.__dict__ else np.int32), 0, w - 1)
+        xmax = np.clip(np.ceil(box[:, 0].max()).astype(np.int if 'int' in np.__dict__ else np.int32), 0, w - 1)
+        ymin = np.clip(np.floor(box[:, 1].min()).astype(np.int if 'int' in np.__dict__ else np.int32), 0, h - 1)
+        ymax = np.clip(np.ceil(box[:, 1].max()).astype(np.int if 'int' in np.__dict__ else np.int32), 0, h - 1)
 
         mask = np.zeros((ymax - ymin + 1, xmax - xmin + 1), dtype=np.uint8)
         box[:, 0] = box[:, 0] - xmin
