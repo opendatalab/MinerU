@@ -4,7 +4,6 @@ import base64
 import os
 import re
 import time
-import uuid
 import zipfile
 from pathlib import Path
 
