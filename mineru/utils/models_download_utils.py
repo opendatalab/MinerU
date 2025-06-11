@@ -21,7 +21,7 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
         root_path = local_models_config.get(repo_mode, None)
         if not root_path:
             raise ValueError(f"Local path for repo_mode '{repo_mode}' is not configured.")
-        return os.path.join(root_path, relative_path.strip('/'))
+        return root_path
 
     # 建立仓库模式到路径的映射
     repo_mapping = {
