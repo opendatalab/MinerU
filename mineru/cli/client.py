@@ -41,7 +41,8 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     auto: Automatically determine the method based on the file type.
     txt: Use text extraction method.
     ocr: Use OCR method for image-based PDFs.
-    Without method specified, 'auto' will be used by default.""",
+    Without method specified, 'auto' will be used by default.
+    Adapted only for the case where the backend is set to "pipeline".""",
     default='auto',
 )
 @click.option(
