@@ -47,62 +47,138 @@
 </div>
 
 # 更新记录
-- 2025/05/24 1.3.12 发布
-  - 增加ppocrv5模型的支持，将`ch_server`模型更新为`PP-OCRv5_rec_server`，`ch_lite`模型更新为`PP-OCRv5_rec_mobile`（需更新模型）
-    - 在测试中，发现ppocrv5(server)对手写文档效果有一定提升，但在其余类别文档的精度略差于v4_server_doc，因此默认的ch模型保持不变，仍为`PP-OCRv4_server_rec_doc`。
-    - 由于ppocrv5强化了手写场景和特殊字符的识别能力，因此您可以在日繁混合场景以及手写文档场景下手动选择使用ppocrv5模型
-    - 您可通过lang参数`lang='ch_server'`(python api)或`--lang ch_server`(命令行)自行选择相应的模型：
-      - `ch` ：`PP-OCRv4_rec_server_doc`（默认）（中英日繁混合/1.5w字典）
-      - `ch_server` ：`PP-OCRv5_rec_server`（中英日繁混合+手写场景/1.8w字典）
-      - `ch_lite` ：`PP-OCRv5_rec_mobile`（中英日繁混合+手写场景/1.8w字典）
-      - `ch_server_v4` ：`PP-OCRv4_rec_server`（中英混合/6k字典）
-      - `ch_lite_v4` ：`PP-OCRv4_rec_mobile`（中英混合/6k字典）
-  - 增加手写文档的支持，通过优化layout对手写文本区域的识别，现已支持手写文档的解析
-    - 默认支持此功能，无需额外配置 
-    - 可以参考上述说明，手动选择ppocrv5模型以获得更好的手写文档解析效果
-  - `huggingface`和`modelscope`的demo已更新为支持手写识别和ppocrv5模型的版本，可自行在线体验
-- 2025/04/29 1.3.10 发布
-  - 支持使用自定义公式标识符，可通过修改用户目录下的`magic-pdf.json`文件中的`latex-delimiter-config`项实现。
-- 2025/04/27 1.3.9 发布
-  - 优化公式解析功能，提升公式渲染的成功率
-- 2025/04/23 1.3.8 发布
-  - `ocr`默认模型(`ch`)更新为`PP-OCRv4_server_rec_doc`（需更新模型）
-    - `PP-OCRv4_server_rec_doc`是在`PP-OCRv4_server_rec`的基础上，在更多中文文档数据和PP-OCR训练数据的混合数据训练而成，增加了部分繁体字、日文、特殊字符的识别能力，可支持识别的字符为1.5万+，除文档相关的文字识别能力提升外，也同时提升了通用文字的识别能力。
-    - [PP-OCRv4_server_rec_doc/PP-OCRv4_server_rec/PP-OCRv4_mobile_rec 性能对比](https://paddlepaddle.github.io/PaddleX/latest/module_usage/tutorials/ocr_modules/text_recognition.html#_3)
-    - 经验证，`PP-OCRv4_server_rec_doc`模型在`中英日繁`单种语言或多种语言混合场景均有明显精度提升，且速度与`PP-OCRv4_server_rec`相当，适合绝大部分场景使用。
-    - `PP-OCRv4_server_rec_doc`在小部分纯英文场景可能会发生单词粘连问题，`PP-OCRv4_server_rec`则在此场景下表现更好，因此我们保留了`PP-OCRv4_server_rec`模型，用户可通过增加参数`lang='ch_server'`(python api)或`--lang ch_server`(命令行)调用。
-- 2025/04/22 1.3.7 发布
-  - 修复表格解析模型初始化时lang参数失效的问题
-  - 修复在`cpu`模式下ocr和表格解析速度大幅下降的问题
-- 2025/04/16 1.3.4 发布
-  - 通过移除一些无用的块，小幅提升了ocr-det的速度
-  - 修复部分情况下由footnote导致的页面内排序错误
-- 2025/04/12 1.3.2 发布
-  - 修复了windows系统下，在python3.13环境安装时一些依赖包版本不兼容的问题
-  - 优化批量推理时的内存占用
-  - 优化旋转90度表格的解析效果
-  - 优化财报样本中超大表格的解析效果
-  - 修复了在未指定OCR语言时，英文文本区域偶尔出现的单词黏连问题（需要更新模型）
-- 2025/04/08 1.3.1 发布，修复了一些兼容问题
-  - 支持python 3.13
-  - 为部分过时的linux系统（如centos7）做出最后适配，并不再保证后续版本的继续支持，[安装说明](https://github.com/opendatalab/MinerU/issues/1004)
-- 2025/04/03 1.3.0 发布，在这个版本我们做出了许多优化和改进：
-  - 安装与兼容性优化
-    - 通过移除layout中`layoutlmv3`的使用，解决了由`detectron2`导致的兼容问题
-    - torch版本兼容扩展到2.2~2.6(2.5除外)
-    - cuda兼容支持11.8/12.4/12.6/12.8（cuda版本由torch决定），解决部分用户50系显卡与H系显卡的兼容问题
-    - python兼容版本扩展到3.10~3.12，解决了在非3.10环境下安装时自动降级到0.6.1的问题
-    - 优化离线部署流程，部署成功后不需要联网下载任何模型文件
-  - 性能优化
-    - 通过支持多个pdf文件的batch处理（[脚本样例](demo/batch_demo.py)），提升了批量小文件的解析速度 (与1.0.1版本相比，公式解析速度最高提升超过1400%，整体解析速度最高提升超过500%)
-    - 通过优化mfr模型的加载和使用，降低了显存占用并提升了解析速度(需重新执行[模型下载流程](docs/how_to_download_models_zh_cn.md)以获得模型文件的增量更新)
-    - 优化显存占用，最低仅需6GB即可运行本项目
-    - 优化了在mps设备上的运行速度
-  - 解析效果优化
-    - mfr模型更新到`unimernet(2503)`，解决多行公式中换行丢失的问题
-  - 易用性优化
-    - 通过使用`paddleocr2torch`，完全替代`paddle`框架以及`paddleocr`在项目中的使用，解决了`paddle`和`torch`的冲突问题，和由于`paddle`框架导致的线程不安全问题
-    - 解析过程增加实时进度条显示，精准把握解析进度，让等待不再痛苦
+
+
+
+<details>
+<summary>2025/05/24 1.3.12 发布</summary>
+<ul>
+    <li>增加ppocrv5模型的支持，将<code>ch_server</code>模型更新为<code>PP-OCRv5_rec_server</code>，<code>ch_lite</code>模型更新为<code>PP-OCRv5_rec_mobile</code>（需更新模型）
+      <ul>
+        <li>在测试中，发现ppocrv5(server)对手写文档效果有一定提升，但在其余类别文档的精度略差于v4_server_doc，因此默认的ch模型保持不变，仍为<code>PP-OCRv4_server_rec_doc</code>。</li>
+        <li>由于ppocrv5强化了手写场景和特殊字符的识别能力，因此您可以在日繁混合场景以及手写文档场景下手动选择使用ppocrv5模型</li>
+        <li>您可通过lang参数<code>lang='ch_server'</code>(python api)或<code>--lang ch_server</code>(命令行)自行选择相应的模型：
+          <ul>
+            <li><code>ch</code> ：<code>PP-OCRv4_rec_server_doc</code>（默认）（中英日繁混合/1.5w字典）</li>
+            <li><code>ch_server</code> ：<code>PP-OCRv5_rec_server</code>（中英日繁混合+手写场景/1.8w字典）</li>
+            <li><code>ch_lite</code> ：<code>PP-OCRv5_rec_mobile</code>（中英日繁混合+手写场景/1.8w字典）</li>
+            <li><code>ch_server_v4</code> ：<code>PP-OCRv4_rec_server</code>（中英混合/6k字典）</li>
+            <li><code>ch_lite_v4</code> ：<code>PP-OCRv4_rec_mobile</code>（中英混合/6k字典）</li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li>增加手写文档的支持，通过优化layout对手写文本区域的识别，现已支持手写文档的解析
+      <ul>
+        <li>默认支持此功能，无需额外配置</li>
+        <li>可以参考上述说明，手动选择ppocrv5模型以获得更好的手写文档解析效果</li>
+      </ul>
+    </li>
+    <li><code>huggingface</code>和<code>modelscope</code>的demo已更新为支持手写识别和ppocrv5模型的版本，可自行在线体验</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/29 1.3.10 发布</summary>
+<ul>
+    <li>支持使用自定义公式标识符，可通过修改用户目录下的<code>magic-pdf.json</code>文件中的<code>latex-delimiter-config</code>项实现。</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/27 1.3.9 发布</summary>
+<ul>
+    <li>优化公式解析功能，提升公式渲染的成功率</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/23 1.3.8 发布</summary>
+<ul>
+    <li><code>ocr</code>默认模型(<code>ch</code>)更新为<code>PP-OCRv4_server_rec_doc</code>（需更新模型）
+      <ul>
+        <li><code>PP-OCRv4_server_rec_doc</code>是在<code>PP-OCRv4_server_rec</code>的基础上，在更多中文文档数据和PP-OCR训练数据的混合数据训练而成，增加了部分繁体字、日文、特殊字符的识别能力，可支持识别的字符为1.5万+，除文档相关的文字识别能力提升外，也同时提升了通用文字的识别能力。</li>
+        <li><a href="https://paddlepaddle.github.io/PaddleX/latest/module_usage/tutorials/ocr_modules/text_recognition.html#_3">PP-OCRv4_server_rec_doc/PP-OCRv4_server_rec/PP-OCRv4_mobile_rec 性能对比</a></li>
+        <li>经验证，<code>PP-OCRv4_server_rec_doc</code>模型在<code>中英日繁</code>单种语言或多种语言混合场景均有明显精度提升，且速度与<code>PP-OCRv4_server_rec</code>相当，适合绝大部分场景使用。</li>
+        <li><code>PP-OCRv4_server_rec_doc</code>在小部分纯英文场景可能会发生单词粘连问题，<code>PP-OCRv4_server_rec</code>则在此场景下表现更好，因此我们保留了<code>PP-OCRv4_server_rec</code>模型，用户可通过增加参数<code>lang='ch_server'</code>(python api)或<code>--lang ch_server</code>(命令行)调用。</li>
+      </ul>
+    </li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/22 1.3.7 发布</summary>
+<ul>
+    <li>修复表格解析模型初始化时lang参数失效的问题</li>
+    <li>修复在<code>cpu</code>模式下ocr和表格解析速度大幅下降的问题</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/16 1.3.4 发布</summary>
+<ul>
+    <li>通过移除一些无用的块，小幅提升了ocr-det的速度</li>
+    <li>修复部分情况下由footnote导致的页面内排序错误</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/12 1.3.2 发布</summary>
+<ul>
+    <li>修复了windows系统下，在python3.13环境安装时一些依赖包版本不兼容的问题</li>
+    <li>优化批量推理时的内存占用</li>
+    <li>优化旋转90度表格的解析效果</li>
+    <li>优化财报样本中超大表格的解析效果</li>
+    <li>修复了在未指定OCR语言时，英文文本区域偶尔出现的单词黏连问题（需要更新模型）</li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/08 1.3.1 发布</summary>
+<ul>
+    <li>修复了一些兼容问题
+      <ul>
+        <li>支持python 3.13</li>
+        <li>为部分过时的linux系统（如centos7）做出最后适配，并不再保证后续版本的继续支持，<a href="https://github.com/opendatalab/MinerU/issues/1004">安装说明</a></li>
+      </ul>
+    </li>
+</ul>
+</details>
+
+<details>
+<summary>2025/04/03 1.3.0 发布</summary>
+<ul>
+    <li>安装与兼容性优化
+      <ul>
+        <li>通过移除layout中<code>layoutlmv3</code>的使用，解决了由<code>detectron2</code>导致的兼容问题</li>
+        <li>torch版本兼容扩展到2.2~2.6(2.5除外)</li>
+        <li>cuda兼容支持11.8/12.4/12.6/12.8（cuda版本由torch决定），解决部分用户50系显卡与H系显卡的兼容问题</li>
+        <li>python兼容版本扩展到3.10~3.12，解决了在非3.10环境下安装时自动降级到0.6.1的问题</li>
+        <li>优化离线部署流程，部署成功后不需要联网下载任何模型文件</li>
+      </ul>
+    </li>
+    <li>性能优化
+      <ul>
+        <li>通过支持多个pdf文件的batch处理（<a href="demo/batch_demo.py">脚本样例</a>），提升了批量小文件的解析速度 (与1.0.1版本相比，公式解析速度最高提升超过1400%，整体解析速度最高提升超过500%)</li>
+        <li>通过优化mfr模型的加载和使用，降低了显存占用并提升了解析速度(需重新执行<a href="docs/how_to_download_models_zh_cn.md">模型下载流程</a>以获得模型文件的增量更新)</li>
+        <li>优化显存占用，最低仅需6GB即可运行本项目</li>
+        <li>优化了在mps设备上的运行速度</li>
+      </ul>
+    </li>
+    <li>解析效果优化
+      <ul>
+        <li>mfr模型更新到<code>unimernet(2503)</code>，解决多行公式中换行丢失的问题</li>
+      </ul>
+    </li>
+    <li>易用性优化
+      <ul>
+        <li>通过使用<code>paddleocr2torch</code>，完全替代<code>paddle</code>框架以及<code>paddleocr</code>在项目中的使用，解决了<code>paddle</code>和<code>torch</code>的冲突问题，和由于<code>paddle</code>框架导致的线程不安全问题</li>
+        <li>解析过程增加实时进度条显示，精准把握解析进度，让等待不再痛苦</li>
+      </ul>
+    </li>
+</ul>
+</details>
+
 <details>
 <summary>2025/03/03 1.2.1 发布，修复了一些问题</summary>
 <ul>
