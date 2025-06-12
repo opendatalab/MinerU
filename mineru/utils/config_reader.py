@@ -74,8 +74,15 @@ def get_device():
     else:
         if torch.cuda.is_available():
             return "cuda"
-        if torch.backends.mps.is_available():
+        elif torch.backends.mps.is_available():
             return "mps"
+        else:
+            try:
+                import torch_npu
+                if torch_npu.npu.is_available():
+                    return "npu"
+            except Exception as e:
+                pass
         return "cpu"
 
 

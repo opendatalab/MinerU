@@ -1,6 +1,7 @@
 import os
 import time
-import numpy as np
+from typing import List, Tuple
+import PIL.Image
 import torch
 
 from .model_init import MineruPipelineModel
@@ -150,7 +151,7 @@ def doc_analyze(
 
 
 def batch_image_analyze(
-        images_with_extra_info: list[(np.ndarray, bool, str)],
+        images_with_extra_info: List[Tuple[PIL.Image.Image, bool, str]],
         formula_enable=None,
         table_enable=None):
     # os.environ['CUDA_VISIBLE_DEVICES'] = str(idx)
@@ -163,9 +164,15 @@ def batch_image_analyze(
     device = get_device()
 
     if str(device).startswith('npu'):
-        import torch_npu
-        if torch_npu.npu.is_available():
-            torch.npu.set_compile_mode(jit_compile=False)
+        try:
+            import torch_npu
+            if torch_npu.npu.is_available():
+                torch.npu.set_compile_mode(jit_compile=False)
+        except Exception as e:
+            raise RuntimeError(
+                "NPU is selected as device, but torch_npu is not available. "
+                "Please ensure that the torch_npu package is installed correctly."
+            ) from e
 
     if str(device).startswith('npu') or str(device).startswith('cuda'):
         vram = get_vram(device)

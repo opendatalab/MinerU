@@ -205,35 +205,42 @@ def isolated_formula_clean(txt):
 
 
 def latex_fix(latex):
-    # 白名单分隔符
-    valid_delims_list = [r'(', r')', r'[', r']', r'{', r'}', r'/', r'|',
-                         r'\{', r'\}', r'\lceil', r'\rceil', r'\lfloor',
-                         r'\rfloor', r'\backslash', r'\uparrow', r'\downarrow',
-                         r'\Uparrow', r'\Downarrow', r'\|', r'\.']
+    # valid pairs:
+    # \left\{ ... \right\}
+    # \left( ... \right)
+    # \left| ... \right|
+    # \left\| ... \right\|
+    # \left[ ... \right]
 
-    # 为\left后缺失有效分隔符的情况添加点
-    def fix_delim(match):
-        cmd = match.group(1)  # \left 或 \right
-        rest = match.group(2) if len(match.groups()) > 1 else ""
-        if not rest or rest not in valid_delims_list:
-            return cmd + "."
-        return match.group(0)
-
-    LEFT_PATTERN = re.compile(r'(\\left)(\S*)')
-    RIGHT_PATTERN = re.compile(r'(\\right)(\S*)')
     LEFT_COUNT_PATTERN = re.compile(r'\\left(?![a-zA-Z])')
     RIGHT_COUNT_PATTERN = re.compile(r'\\right(?![a-zA-Z])')
-    LEFT_RIGHT_REMOVE_PATTERN = re.compile(r'\\left\.?|\\right\.?')
-
-    latex = LEFT_PATTERN.sub(lambda m: fix_delim(m), latex)
-    latex = RIGHT_PATTERN.sub(lambda m: fix_delim(m), latex)
-
-
     left_count = len(LEFT_COUNT_PATTERN.findall(latex))  # 不匹配\lefteqn等
     right_count = len(RIGHT_COUNT_PATTERN.findall(latex))  # 不匹配\rightarrow
 
     if left_count != right_count:
-        return LEFT_RIGHT_REMOVE_PATTERN.sub('', latex)
+        for _ in range(2):
+            # replace valid pairs
+            latex = re.sub(r'\\left\\\{', "{", latex) # \left\{
+            latex = re.sub(r"\\left\|", "|", latex) # \left|
+            latex = re.sub(r"\\left\\\|", "|", latex) # \left\|
+            latex = re.sub(r"\\left\(", "(", latex) # \left(
+            latex = re.sub(r"\\left\[", "[", latex) # \left[
+
+            latex = re.sub(r"\\right\\\}", "}", latex) # \right\}
+            latex = re.sub(r"\\right\|", "|", latex) # \right|
+            latex = re.sub(r"\\right\\\|", "|", latex) # \right\|
+            latex = re.sub(r"\\right\)", ")", latex) # \right)
+            latex = re.sub(r"\\right\]", "]", latex) # \right]
+            latex = re.sub(r"\\right\.", "", latex) # \right.
+
+            # replace invalid pairs first
+            latex = re.sub(r'\\left\{', "{", latex)
+            latex = re.sub(r'\\right\}', "}", latex) # \left{ ... \right}
+            latex = re.sub(r'\\left\\\(', "(", latex)
+            latex = re.sub(r'\\right\\\)', ")", latex) # \left\( ... \right\)
+            latex = re.sub(r'\\left\\\[', "[", latex)
+            latex = re.sub(r'\\right\\\]', "]", latex) # \left\[ ... \right\]
+
     return latex
 
 
