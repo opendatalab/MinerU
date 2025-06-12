@@ -40,7 +40,7 @@ def doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
-    backend="huggingface",
+    backend="transformers",
     model_path=ModelPath.vlm_root_hf,
     server_url: str | None = None,
 ):
@@ -66,7 +66,7 @@ async def aio_doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
     predictor: BasePredictor | None = None,
-    backend="huggingface",
+    backend="transformers",
     model_path=ModelPath.vlm_root_hf,
     server_url: str | None = None,
 ):
