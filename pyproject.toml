@@ -31,7 +31,8 @@ dependencies = [
     "reportlab",
     "pdftext>=0.6.2",
     "modelscope>=1.26.0",
-    "huggingface-hub>=0.32.4"
+    "huggingface-hub>=0.32.4",
+    "json-repair>=0.46.2",
 ]
 
 [project.optional-dependencies]
