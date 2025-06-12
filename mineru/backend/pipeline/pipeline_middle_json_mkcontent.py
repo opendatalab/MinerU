@@ -34,6 +34,8 @@ def make_blocks_to_markdown(paras_of_layout,
             title_level = get_title_level(para_block)
             para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
         elif para_type == BlockType.INTERLINE_EQUATION:
+            if len(para_block['lines']) == 0 or len(para_block['lines'][0]['spans']) == 0:
+                continue
             if para_block['lines'][0]['spans'][0].get('content', ''):
                 para_text = merge_para_with_text(para_block)
             else:
@@ -201,6 +203,8 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
         if title_level != 0:
             para_content['text_level'] = title_level
     elif para_type == BlockType.INTERLINE_EQUATION:
+        if len(para_block['lines']) == 0 or len(para_block['lines'][0]['spans']) == 0:
+            return None
         para_content = {
             'type': 'equation',
             'img_path': f"{img_buket_path}/{para_block['lines'][0]['spans'][0].get('image_path', '')}",
@@ -263,7 +267,8 @@ def union_make(pdf_info_dict: list,
         elif make_mode == MakeMode.CONTENT_LIST:
             for para_block in paras_of_layout:
                 para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx)
-                output_content.append(para_content)
+                if para_content:
+                    output_content.append(para_content)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
