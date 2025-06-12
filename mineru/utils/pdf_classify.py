@@ -5,8 +5,13 @@ import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from pdfminer.high_level import extract_text
-from pdfminer.layout import LAParams
-from pypdf import PdfReader
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfinterp import PDFResourceManager
+from pdfminer.pdfinterp import PDFPageInterpreter
+from pdfminer.layout import LAParams, LTImage, LTFigure
+from pdfminer.converter import PDFPageAggregator
 
 
 def classify(pdf_bytes):
@@ -41,7 +46,7 @@ def classify(pdf_bytes):
             return 'ocr'
         else:
 
-            if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.9:
+            if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.8:
                 return 'ocr'
 
             return 'txt'
@@ -77,60 +82,94 @@ def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
 
     return avg_cleaned_chars_per_page
 
+
 def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
+    # 创建内存文件对象
     pdf_stream = BytesIO(sample_pdf_bytes)
-    pdf_reader = PdfReader(pdf_stream)
+
+    # 创建PDF解析器
+    parser = PDFParser(pdf_stream)
+
+    # 创建PDF文档对象
+    document = PDFDocument(parser)
+
+    # 检查文档是否允许文本提取
+    if not document.is_extractable:
+        # logger.warning("PDF不允许内容提取")
+        return 1.0  # 默认为高覆盖率，因为无法提取内容
+
+    # 创建资源管理器和参数对象
+    rsrcmgr = PDFResourceManager()
+    laparams = LAParams(
+        line_overlap=0.5,
+        char_margin=2.0,
+        line_margin=0.5,
+        word_margin=0.1,
+        boxes_flow=None,
+        detect_vertical=False,
+        all_texts=False,
+    )
+
+    # 创建聚合器
+    device = PDFPageAggregator(rsrcmgr, laparams=laparams)
+
+    # 创建解释器
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
 
     # 记录高图像覆盖率的页面数量
     high_image_coverage_pages = 0
+    page_count = 0
 
-    # 检查前几页的图像
-    for i in range(pages_to_check):
-        page = pdf_reader.pages[i]
+    # 遍历页面
+    for page in PDFPage.create_pages(document):
+        # 控制检查的页数
+        if page_count >= pages_to_check:
+            break
 
-        # 获取页面尺寸
-        page_width = float(page.mediabox.width)
-        page_height = float(page.mediabox.height)
+        # 处理页面
+        interpreter.process_page(page)
+        layout = device.get_result()
+
+        # 页面尺寸
+        page_width = layout.width
+        page_height = layout.height
         page_area = page_width * page_height
 
-        # 估算图像覆盖率
+        # 计算图像覆盖的总面积
         image_area = 0
-        if '/Resources' in page:
-            resources = page['/Resources']
-            if '/XObject' in resources:
-                x_objects = resources['/XObject']
-                # 计算所有图像对象占据的面积
-                for obj_name in x_objects:
-                    try:
-                        obj = x_objects[obj_name]
-                        if obj['/Subtype'] == '/Image':
-                            # 获取图像宽高
-                            width = obj.get('/Width', 0)
-                            height = obj.get('/Height', 0)
 
-                            # 计算图像在页面上的估计面积
-                            # 注意：这是估计值，因为没有考虑图像变换矩阵
-                            scale_factor = 1.0  # 估计缩放因子
-                            img_area = width * height * scale_factor
-                            image_area += img_area
-                    except Exception as e:
-                        # logger.debug(f"处理图像对象时出错: {e}")
-                        continue
+        # 遍历页面元素
+        for element in layout:
+            # 检查是否为图像或图形元素
+            if isinstance(element, (LTImage, LTFigure)):
+                # 计算图像边界框面积
+                img_width = element.width
+                img_height = element.height
+                img_area = img_width * img_height
+                image_area += img_area
 
-        # 估算图像覆盖率
-        estimated_coverage = min(image_area / page_area, 1.0) if page_area > 0 else 0
-        # logger.debug(f"PDF分析: 页面 {i + 1} 图像覆盖率: {estimated_coverage:.2f}")
-        # 基于估计的图像覆盖率
-        if estimated_coverage >= 1:
-            # 如果图像覆盖率超过80%，认为是高图像覆盖率页面
+        # 计算覆盖率
+        coverage_ratio = min(image_area / page_area, 1.0) if page_area > 0 else 0
+        # logger.debug(f"PDF分析: 页面 {page_count + 1} 图像覆盖率: {coverage_ratio:.2f}")
+
+        # 判断是否为高覆盖率
+        if coverage_ratio >= 0.8:  # 使用80%作为高覆盖率的阈值
             high_image_coverage_pages += 1
-    # 计算高图像覆盖页面比例
-    high_image_coverage_ratio = high_image_coverage_pages / pages_to_check
-    # logger.debug(f"PDF分析: 高图像覆盖页面比例: {high_image_coverage_ratio:.2f}")
 
-    pdf_stream.close()  # 关闭字节流
-    pdf_reader.close()
-    return high_image_coverage_ratio
+        page_count += 1
+
+    # 如果没有处理任何页面，返回0
+    if page_count == 0:
+        return 0.0
+
+    # 计算高图像覆盖率的页面比例
+    high_coverage_ratio = high_image_coverage_pages / page_count
+    # logger.debug(f"PDF分析: 高图像覆盖页面比例: {high_coverage_ratio:.2f}")
+
+    # 关闭资源
+    pdf_stream.close()
+
+    return high_coverage_ratio
 
 
 def extract_pages(src_pdf_bytes: bytes) -> bytes:
