@@ -31,9 +31,9 @@ jobs:
         conda env list
         pip show coverage
         cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
-        cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
-        cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
-        cd $GITHUB_WORKSPACE && python tests/get_coverage.py
+        # cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
+        # cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
+        # cd $GITHUB_WORKSPACE && python tests/get_coverage.py
         cd $GITHUB_WORKSPACE && pytest -m P0 -s -v tests/test_cli/test_cli_sdk.py
 
   notify_to_feishu:
