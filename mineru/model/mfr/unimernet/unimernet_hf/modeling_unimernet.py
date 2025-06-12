@@ -374,6 +374,10 @@ def latex_rm_whitespace(s: str):
     # \qquad后补空格
     s = QQUAD_PATTERN.sub(r'\\qquad ', s)
 
+    # 如果字符串以反斜杠结尾，去掉最后的反斜杠
+    while s.endswith('\\'):
+        s = s[:-1]
+
     return s
 
 
