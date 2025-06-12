@@ -1,6 +1,7 @@
 import json
 from io import BytesIO
 
+from loguru import logger
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
@@ -182,7 +183,13 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         packet.seek(0)
         overlay_pdf = PdfReader(packet)
 
-        page.merge_page(overlay_pdf.pages[0])
+        # 添加检查确保overlay_pdf.pages不为空
+        if len(overlay_pdf.pages) > 0:
+            page.merge_page(overlay_pdf.pages[0])
+        else:
+            # 记录日志并继续处理下一个页面
+            logger.warning(f"layout.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+
         output_pdf.add_page(page)
 
     # 保存结果
@@ -290,7 +297,13 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         packet.seek(0)
         overlay_pdf = PdfReader(packet)
 
-        page.merge_page(overlay_pdf.pages[0])
+        # 添加检查确保overlay_pdf.pages不为空
+        if len(overlay_pdf.pages) > 0:
+            page.merge_page(overlay_pdf.pages[0])
+        else:
+            # 记录日志并继续处理下一个页面
+            logger.warning(f"span.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+
         output_pdf.add_page(page)
 
     # Save the PDF
