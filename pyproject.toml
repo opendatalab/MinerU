@@ -101,7 +101,7 @@ mineru-models-download = "mineru.cli.models_download:download_models"
 version = {attr = "mineru.version.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["mineru*",  "mineru/resources", "mineru/model/ocr/paddleocr2pytorch/pytorchocr/utils/resources"]
+include = ["mineru*"]
 namespaces = false
 
 [tool.setuptools.package-data]
