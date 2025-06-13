@@ -589,8 +589,6 @@ Options:
 或通过交互式命令行下载模型文件
 ```commandline
 mineru-models-download
-Please select the model download source:  (huggingface, modelscope) [huggingface]:
-Please select the model type to download:  (pipeline, vlm, all) [all]:
 ```
 模型下载完成后，会自动将本地模型路径配置在用户目录的`mineru.json`中
 您可以在下次执行MinerU时，直接使用本地模型文件进行解析
@@ -601,6 +599,20 @@ mineru -p <input_path> -o <output_path> --source local
 ```bash
 export MINERU_MODEL_SOURCE=local
 mineru -p <input_path> -o <output_path>
+```
+
+###### 使用sglang加速的vlm模型推理
+MinerU支持使用sglang加速VLM模型推理，您可以通过以下方式启用sglang加速
+```commandline
+mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
+```
+同时您也可以使用sglang原生的sever/client模式进行推理
+```commandline
+mineru-sglang-server --port 30000
+```
+在一个终端中启动sglang server后，您可以在另一个终端中使用sglang-client进行推理
+```commandline
+mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
 > [!TIP]
