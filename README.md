@@ -446,7 +446,8 @@ You can modify certain configurations in this file to enable or disable features
         "model": "rapid_table", 
         "sub_model": "slanet_plus",
         "enable": true, // The table recognition feature is enabled by default. If you need to disable it, please change the value here to "false".
-        "max_time": 400
+        "max_time": 400,
+        "strictly_check": true // If the table does not contain text, it will be treated as an image in TXT mode.
     }
 }
 ```

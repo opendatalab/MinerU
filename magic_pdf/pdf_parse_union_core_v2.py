@@ -19,7 +19,12 @@ from magic_pdf.config.ocr_content_type import BlockType, ContentType
 from magic_pdf.data.dataset import Dataset, PageableData
 from magic_pdf.libs.boxbase import calculate_overlap_area_in_bbox1_area_ratio, __is_overlaps_y_exceeds_threshold
 from magic_pdf.libs.clean_memory import clean_memory
-from magic_pdf.libs.config_reader import get_local_layoutreader_model_dir, get_llm_aided_config, get_device
+from magic_pdf.libs.config_reader import (
+    get_local_layoutreader_model_dir,
+    get_llm_aided_config,
+    get_device,
+    get_table_recog_config,
+)
 from magic_pdf.libs.convert_utils import dict_to_list
 from magic_pdf.libs.hash_utils import compute_md5
 from magic_pdf.libs.pdf_image_tools import cut_image_to_pil_image
@@ -114,6 +119,14 @@ def fill_char_in_spans(spans, all_chars):
     need_ocr_spans = []
     for span in spans:
         chars_to_content(span)
+        # 如果是表格且内容过少，则怀疑是图片
+        if span["type"] == ContentType.Table and len(span.get("content", [])) < 2:
+            span["likely_image"] = True
+            continue
+        if span["type"] != ContentType.Text:
+            # 如果是图片、表格或公式类型的span，直接跳过
+            continue
+
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if len(span['content']) * span['height'] < span['width'] * 0.5:
             # logger.info(f"maybe empty span: {len(span['content'])}, {span['height']}, {span['width']}")
@@ -277,8 +290,9 @@ def txt_spans_extract_v2(pdf_page, spans, all_bboxes, all_discarded_blocks, lang
     """水平的span框如果没有char则用ocr进行填充"""
     new_spans = []
 
-    for span in useful_spans + unuseful_spans:
-        if span['type'] in [ContentType.Text]:
+    for span in spans:
+        # 表格同样需要进行ocr，用于检测图片的误识别
+        if span["type"] in [ContentType.Text, ContentType.Table]:
             span['chars'] = []
             new_spans.append(span)
 
@@ -687,7 +701,14 @@ def remove_outside_spans(spans, all_bboxes, all_discarded_blocks):
 
 
 def parse_page_core(
-    page_doc: PageableData, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
+    page_doc: PageableData,
+    magic_model,
+    page_id,
+    pdf_bytes_md5,
+    imageWriter,
+    parse_mode,
+    lang,
+    checkTableContent,
 ):
     need_drop = False
     drop_reason = []
@@ -886,6 +907,41 @@ def parse_page_core(
         if block['type'] in [BlockType.Image, BlockType.Table]:
             block['blocks'] = sorted(block['blocks'], key=lambda b: b['index'])
 
+    """ 如果检查表格内容，则将疑似图片的表格转换为图片 """
+    if checkTableContent:
+        for block in fix_blocks:
+            if block["type"] != BlockType.Table:
+                continue
+            likely_image = False
+            for sub_block in block["blocks"]:
+                if sub_block["type"] != BlockType.TableBody:
+                    continue
+                if any(
+                    [
+                        span.get("likely_image", False)
+                        for line in sub_block["lines"]
+                        for span in line["spans"]
+                    ]
+                ):
+                    likely_image = True
+                    break
+
+            if not likely_image:
+                continue
+
+            block["type"] = BlockType.Image
+            for sub_block in block["blocks"]:
+                if sub_block["type"] == BlockType.TableBody:
+                    sub_block["type"] = BlockType.ImageBody
+                    for line in sub_block["lines"]:
+                        for span in line["spans"]:
+                            if span["type"] == ContentType.Table:
+                                span["type"] = ContentType.Image
+                elif sub_block["type"] == BlockType.TableCaption:
+                    sub_block["type"] = BlockType.ImageCaption
+                elif sub_block["type"] == BlockType.TableFootnote:
+                    sub_block["type"] = BlockType.ImageFootnote
+
     """获取QA需要外置的list"""
     images, tables, interline_equations = get_qa_need_list_v2(sorted_blocks)
 
@@ -923,6 +979,11 @@ def pdf_parse_union(
     """初始化空的pdf_info_dict"""
     pdf_info_dict = {}
 
+    """获取表格识别配置"""
+    table_config = get_table_recog_config()
+    strictlyCheck = table_config.get("strictly_check", True)
+    checkTableContent = strictlyCheck and parse_mode == SupportedPdfParseMethod.TXT
+
     """用model_list和docs对象初始化magic_model"""
     magic_model = MagicModel(model_list, dataset)
 
@@ -953,7 +1014,14 @@ def pdf_parse_union(
         """解析pdf中的每一页"""
         if start_page_id <= page_id <= end_page_id:
             page_info = parse_page_core(
-                page, magic_model, page_id, pdf_bytes_md5, imageWriter, parse_mode, lang
+                page,
+                magic_model,
+                page_id,
+                pdf_bytes_md5,
+                imageWriter,
+                parse_mode,
+                lang,
+                checkTableContent,
             )
         else:
             page_info = page.get_page_info()
