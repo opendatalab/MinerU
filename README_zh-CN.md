@@ -476,23 +476,23 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 pip install --upgrade pip
 pip install uv
-uv pip install "mineru[core]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
+uv pip install "mineru[core]>=2.0.0"
 ```
 
 您也可以通过源码安装
 ```bash
 git clone https://github.com/opendatalab/MinerU.git
 cd MinerU
-uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
+uv pip install -e .[core]
 ```
 
 如果您需要使用sglang加速vlm模型推理，请直接安装MinerU的完整版本
 ```bash
-uv pip install "mineru[all]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
+uv pip install "mineru[all]>=2.0.0"
 ```
 或
 ```bash
-uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
+uv pip install -e .[all]
 ```
 
 #### 2.使用 MinerU
