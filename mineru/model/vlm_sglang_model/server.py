@@ -27,15 +27,26 @@ async def custom_generate_request(obj: GenerateReqInput, request: Request):
 
 
 def main():
-    server_args = prepare_server_args(sys.argv[1:])
+    # 检查命令行参数中是否包含--model-path
+    args = sys.argv[1:]
+    has_model_path_arg = False
+
+    for i, arg in enumerate(args):
+        if arg == "--model-path" or arg.startswith("--model-path="):
+            has_model_path_arg = True
+            break
+
+    # 如果没有--model-path参数，在参数列表中添加它
+    if not has_model_path_arg:
+        default_path = auto_download_and_get_model_root_path("/", "vlm")
+        args.extend(["--model-path", default_path])
+
+    server_args = prepare_server_args(args)
 
     if server_args.chat_template is None:
         server_args.chat_template = "chatml"
 
     server_args.enable_custom_logit_processor = True
-
-    if server_args.model_path is None:
-        server_args.model_path = auto_download_and_get_model_root_path("/","vlm")
 
     try:
         launch_server(server_args)
