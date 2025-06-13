@@ -4,6 +4,11 @@ import cv2
 import numpy as np
 
 
+class OcrConfidence:
+    min_confidence = 0.68
+    min_width = 3
+
+
 def merge_spans_to_line(spans, threshold=0.6):
     if len(spans) == 0:
         return []
@@ -304,7 +309,7 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
             p1, p2, p3, p4 = box_ocr_res[0]
             text, score = box_ocr_res[1]
             # logger.info(f"text: {text}, score: {score}")
-            if score < 0.6:  # 过滤低置信度的结果
+            if score < OcrConfidence.min_confidence:  # 过滤低置信度的结果
                 continue
         else:
             p1, p2, p3, p4 = box_ocr_res
@@ -317,6 +322,11 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
         # if average_angle_degrees > 0.5:
         poly = [p1, p2, p3, p4]
+
+        if (p3[0] - p1[0]) < OcrConfidence.min_width:
+            # logger.info(f"width too small: {p3[0] - p1[0]}, text: {text}")
+            continue
+
         if calculate_is_angle(poly):
             # logger.info(f"average_angle_degrees: {average_angle_degrees}, text: {text}")
             # 与x轴的夹角超过0.5度，对边界做一下矫正

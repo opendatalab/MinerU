@@ -14,6 +14,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
+from mineru.utils.ocr_utils import OcrConfidence
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract
@@ -208,7 +209,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
             need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
         for index, span in enumerate(need_ocr_list):
             ocr_text, ocr_score = ocr_res_list[index]
-            if ocr_score > 0.6:
+            if ocr_score > OcrConfidence.min_confidence:
                 span['content'] = ocr_text
                 span['score'] = float(f"{ocr_score:.3f}")
             else:
