@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  mineru-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - MINERU_API_KEY=${MINERU_API_KEY}
+    volumes:
+      - ./downloads:/app/downloads
+    restart: unless-stopped 
