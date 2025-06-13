@@ -487,8 +487,9 @@ uv pip install "mineru[core]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
 ### 命令行
 
 ```commandline
-$ mineru --help
-
+mineru --help
+```
+```commandline
 Usage: mineru [OPTIONS]
 
 Options:
@@ -599,7 +600,7 @@ TODO
 
 [LICENSE.md](LICENSE.md)
 
-本项目目前采用PyMuPDF以实现高级功能，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的PDF处理库，以提升用户友好度及灵活性。
+本项目目前部分模型基于YOLO训练，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的模型，以提升用户友好度及灵活性。
 
 # Acknowledgments
 
