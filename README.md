@@ -347,48 +347,38 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
   <details>
   <summary>2024/07/05 Initial open-source release</summary>
   </details>
+</details>
+
+<!-- TABLE OF CONTENT -->
   
-  <!-- TABLE OF CONTENT -->
-  
-  <details open="open">
-    <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
-    <ol>
-      <li>
-        <a href="#mineru">MinerU</a>
-        <ul>
-          <li><a href="#project-introduction">Project Introduction</a></li>
-          <li><a href="#key-features">Key Features</a></li>
-          <li><a href="#quick-start">Quick Start</a>
-              <ul>
-              <li><a href="#online-demo">Online Demo</a></li>
-              <li><a href="#quick-cpu-demo">Quick CPU Demo</a></li>
-              <li><a href="#using-gpu">Using GPU</a></li>
-              <li><a href="#using-npu">Using NPU</a></li>
-              </ul>
-          </li>
-          <li><a href="#usage">Usage</a>
-              <ul>
-              <li><a href="#command-line">Command Line</a></li>
-              <li><a href="#api">API</a></li>
-              <li><a href="#deploy-derived-projects">Deploy Derived Projects</a></li>
-              <li><a href="#development-guide">Development Guide</a></li>
-              </ul>
-          </li>
-        </ul>
-      </li>
-      <li><a href="#todo">TODO</a></li>
-      <li><a href="#known-issues">Known Issues</a></li>
-      <li><a href="#faq">FAQ</a></li>
-      <li><a href="#all-thanks-to-our-contributors">All Thanks To Our Contributors</a></li>
-      <li><a href="#license-information">License Information</a></li>
-      <li><a href="#acknowledgments">Acknowledgments</a></li>
-      <li><a href="#citation">Citation</a></li>
-      <li><a href="#star-history">Star History</a></li>
-      <li><a href="#magic-doc">Magic-doc</a></li>
-      <li><a href="#magic-html">Magic-html</a></li>
-      <li><a href="#links">Links</a></li>
-    </ol>
-  </details>
+<details open="open">
+  <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
+  <ol>
+    <li>
+      <a href="#mineru">MinerU</a>
+      <ul>
+        <li><a href="#project-introduction">Project Introduction</a></li>
+        <li><a href="#key-features">Key Features</a></li>
+        <li><a href="#quick-start">Quick Start</a>
+            <ul>
+            <li><a href="#online-demo">Online Demo</a></li>
+            <li><a href="#quick-cpu-demo">Local Deployment</a></li>
+            </ul>
+        </li>
+      </ul>
+    </li>
+    <li><a href="#todo">TODO</a></li>
+    <li><a href="#known-issues">Known Issues</a></li>
+    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#all-thanks-to-our-contributors">All Thanks To Our Contributors</a></li>
+    <li><a href="#license-information">License Information</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+    <li><a href="#citation">Citation</a></li>
+    <li><a href="#star-history">Star History</a></li>
+    <li><a href="#magic-doc">Magic-doc</a></li>
+    <li><a href="#magic-html">Magic-html</a></li>
+    <li><a href="#links">Links</a></li>
+  </ol>
 </details>
 
 # MinerU

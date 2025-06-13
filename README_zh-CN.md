@@ -336,49 +336,38 @@
   <details>
   <summary>2024/07/05 首次开源</summary>
   </details>
-  
-  
-  <!-- TABLE OF CONTENT -->
-  
-  <details open="open">
-    <summary><h2 style="display: inline-block">文档目录</h2></summary>
-    <ol>
-      <li>
-        <a href="#mineru">MinerU</a>
-        <ul>
-          <li><a href="#项目简介">项目简介</a></li>
-          <li><a href="#主要功能">主要功能</a></li>
-          <li><a href="#快速开始">快速开始</a>
-              <ul>
-              <li><a href="#在线体验">在线体验</a></li>
-              <li><a href="#使用CPU快速体验">使用CPU快速体验</a></li>
-              <li><a href="#使用GPU">使用GPU</a></li>
-              <li><a href="#使用NPU">使用NPU</a></li>
-              </ul>
-          </li>
-          <li><a href="#使用">使用方式</a>
-              <ul>
-              <li><a href="#命令行">命令行</a></li>
-              <li><a href="#api">API</a></li>
-              <li><a href="#部署衍生项目">部署衍生项目</a></li>
-              <li><a href="#二次开发">二次开发</a></li>
-              </ul>
-          </li>
-        </ul>
-      </li>
-      <li><a href="#todo">TODO</a></li>
-      <li><a href="#known-issues">Known Issues</a></li>
-      <li><a href="#faq">FAQ</a></li>
-      <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
-      <li><a href="#license-information">License Information</a></li>
-      <li><a href="#acknowledgments">Acknowledgements</a></li>
-      <li><a href="#citation">Citation</a></li>
-      <li><a href="#star-history">Star History</a></li>
-      <li><a href="#magic-doc">magic-doc快速提取PPT/DOC/PDF</a></li>
-      <li><a href="#magic-html">magic-html提取混合网页内容</a></li>
-      <li><a href="#links">Links</a></li>
-    </ol>
-  </details>
+</details>
+
+
+<!-- TABLE OF CONTENT -->
+
+<details open="open">
+  <summary><h2 style="display: inline-block">文档目录</h2></summary>
+  <ol>
+    <li>
+      <a href="#mineru">MinerU</a>
+      <ul>
+        <li><a href="#项目简介">项目简介</a></li>
+        <li><a href="#主要功能">主要功能</a></li>
+        <li><a href="#快速开始">快速开始</a>
+            <ul>
+            <li><a href="#在线体验">在线体验</a></li>
+            <li><a href="#本地部署">本地部署</a></li>
+            </ul>
+      </ul>
+    </li>
+    <li><a href="#todo">TODO</a></li>
+    <li><a href="#known-issues">Known Issues</a></li>
+    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#all-thanks-to-our-contributors">Contributors</a></li>
+    <li><a href="#license-information">License Information</a></li>
+    <li><a href="#acknowledgments">Acknowledgements</a></li>
+    <li><a href="#citation">Citation</a></li>
+    <li><a href="#star-history">Star History</a></li>
+    <li><a href="#magic-doc">magic-doc快速提取PPT/DOC/PDF</a></li>
+    <li><a href="#magic-html">magic-html提取混合网页内容</a></li>
+    <li><a href="#links">Links</a></li>
+  </ol>
 </details>
 
 
