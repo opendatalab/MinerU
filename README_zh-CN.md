@@ -495,9 +495,9 @@ uv pip install "mineru[all]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
 uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-## 2.使用
+#### 2.使用 MinerU
 
-### 命令行
+###### 命令行
 
 最简单的命令行方式使用MinerU
 ```commandline
@@ -564,7 +564,7 @@ Options:
   --help                          Show this message and exit.
 ```
 
-MinerU现已使用自动模型下载功能，默认为运行时在第一次加载时下载当前所需要的模型文件，默认使用huggingface作为模型源，如您的网络无法访问huggingface，您可以通过以下方式切换为modelscope源
+MinerU现已使用自动模型下载功能，默认为运行时在第一次加载时下载当前所需要的模型文件，默认使用`huggingface`作为模型源，如您的网络无法访问`huggingface`，您可以通过以下方式切换为`modelscope`源
 ```commandline
 mineru -p <input_path> -o <output_path> --source modelscope
 ```
@@ -606,21 +606,17 @@ mineru -p <input_path> -o <output_path>
 > [!TIP]
 > 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
 
-### API
+##### API
 
 [通过Python代码调用MinerU](demo/demo.py)
 
-### 部署衍生项目
+##### 部署衍生项目
 
 衍生项目包含项目开发者和社群开发者们基于MinerU的二次开发项目，
 例如基于Gradio的应用界面、基于Fastapi的webapi、轻量级的多卡负载均衡c/s端等，
 这些项目可能会提供更多的功能和更好的用户体验。
 具体部署方式请参考 [衍生项目readme](projects/README_zh-CN.md)
 
-
-### 二次开发
-
-TODO
 
 # TODO
 
