@@ -2,6 +2,7 @@
 import time
 
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
@@ -164,7 +165,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enabled=True):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
-    for page_index, page_model_info in enumerate(model_list):
+    for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
         page_info = page_model_info_to_page_info(
