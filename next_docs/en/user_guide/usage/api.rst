@@ -12,6 +12,7 @@ Local File Example
 .. code:: python
 
     import os
+    from pathlib import Path
 
     from magic_pdf.data.data_reader_writer import FileBasedDataWriter, FileBasedDataReader
     from magic_pdf.data.dataset import PymuDocDataset
@@ -20,7 +21,7 @@ Local File Example
 
     # args
     pdf_file_name = "abc.pdf"  # replace with the real pdf path
-    name_without_suff = pdf_file_name.split(".")[0]
+    name_without_suff = Path(pdf_file_name).stem
 
     # prepare env
     local_image_dir, local_md_dir = "output/images", "output"
