@@ -50,7 +50,6 @@
 - 2025/06/13 2.0.0发布
   - MinerU 2.0 是经过完全重构的全新版本，主要包含以下重大改进：
     - **全新架构**：MinerU 2.0 完全重构了代码架构，采用了更现代化的设计，大幅提升了易用性、可维护性和可扩展性。
-      - 使用pyproject.toml作为项目配置文件，支持更灵活的依赖管理和版本控制。
       - 完全移除pymupdf库依赖，在开源协议友好之路上迈出了重要一步。
       - 支持开箱即用，无需额外配置（json文件），将绝大部分参数开放到命令行和API参数中，用户可通过命令行或API直接配置所需功能。
       - 支持模型的自动下载和更新，用户无需手动干预，模型管理更简单。
@@ -462,172 +461,193 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
 </table>
 
-### 在线体验
+## 在线体验
 
 [![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAF8AAABYCAMAAACkl9t/AAAAk1BMVEVHcEz/nQv/nQv/nQr/nQv/nQr/nQv/nQv/nQr/wRf/txT/pg7/yRr/rBD/zRz/ngv/oAz/zhz/nwv/txT/ngv/0B3+zBz/nQv/0h7/wxn/vRb/thXkuiT/rxH/pxD/ogzcqyf/nQvTlSz/czCxky7/SjifdjT/Mj3+Mj3wMj15aTnDNz+DSD9RTUBsP0FRO0Q6O0WyIxEIAAAAGHRSTlMADB8zSWF3krDDw8TJ1NbX5efv8ff9/fxKDJ9uAAAGKklEQVR42u2Z63qjOAyGC4RwCOfB2JAGqrSb2WnTw/1f3UaWcSGYNKTdf/P+mOkTrE+yJBulvfvLT2A5ruenaVHyIks33npl/6C4s/ZLAM45SOi/1FtZPyFur1OYofBX3w7d54Bxm+E8db+nDr12ttmESZ4zludJEG5S7TO72YPlKZFyE+YCYUJTBZsMiNS5Sd7NlDmKM2Eg2JQg8awbglfqgbhArjxkS7dgp2RH6hc9AMLdZYUtZN5DJr4molC8BfKrEkPKEnEVjLbgW1fLy77ZVOJagoIcLIl+IxaQZGjiX597HopF5CkaXVMDO9Pyix3AFV3kw4lQLCbHuMovz8FallbcQIJ5Ta0vks9RnolbCK84BtjKRS5uA43hYoZcOBGIG2Epbv6CvFVQ8m8loh66WNySsnN7htL58LNp+NXT8/PhXiBXPMjLSxtwp8W9f/1AngRierBkA+kk/IpUSOeKByzn8y3kAAAfh//0oXgV4roHm/kz4E2z//zRc3/lgwBzbM2mJxQEa5pqgX7d1L0htrhx7LKxOZlKbwcAWyEOWqYSI8YPtgDQVjpB5nvaHaSnBaQSD6hweDi8PosxD6/PT09YY3xQA7LTCTKfYX+QHpA0GCcqmEHvr/cyfKQTEuwgbs2kPxJEB0iNjfJcCTPyocx+A0griHSmADiC91oNGVwJ69RudYe65vJmoqfpul0lrqXadW0jFKH5BKwAeCq+Den7s+3zfRJzA61/Uj/9H/VzLKTx9jFPPdXeeP+L7WEvDLAKAIoF8bPTKT0+TM7W8ePj3Rz/Yn3kOAp2f1Kf0Weony7pn/cPydvhQYV+eFOfmOu7VB/ViPe34/EN3RFHY/yRuT8ddCtMPH/McBAT5s+vRde/gf2c/sPsjLK+m5IBQF5tO+h2tTlBGnP6693JdsvofjOPnnEHkh2TnV/X1fBl9S5zrwuwF8NFrAVJVwCAPTe8gaJlomqlp0pv4Pjn98tJ/t/fL++6unpR1YGC2n/KCoa0tTLoKiEeUPDl94nj+5/Tv3/eT5vBQ60X1S0oZr+IWRR8Ldhu7AlLjPISlJcO9vrFotky9SpzDequlwEir5beYAc0R7D9KS1DXva0jhYRDXoExPdc6yw5GShkZXe9QdO/uOvHofxjrV/TNS6iMJS+4TcSTgk9n5agJdBQbB//IfF/HpvPt3Tbi7b6I6K0R72p6ajryEJrENW2bbeVUGjfgoals4L443c7BEE4mJO2SpbRngxQrAKRudRzGQ8jVOL2qDVjjI8K1gc3TIJ5KiFZ1q+gdsARPB4NQS4AjwVSt72DSoXNyOWUrU5mQ9nRYyjp89Xo7oRI6Bga9QNT1mQ/ptaJq5T/7WcgAZywR/XlPGAUDdet3LE+qS0TI+g+aJU8MIqjo0Kx8Ly+maxLjJmjQ18rA0YCkxLQbUZP1WqdmyQGJLUm7VnQFqodmXSqmRrdVpqdzk5LvmvgtEcW8PMGdaS23EOWyDVbACZzUJPaqMbjDxpA3Qrgl0AikimGDbqmyT8P8NOYiqrldF8rX+YN7TopX4UoHuSCYY7cgX4gHwclQKl1zhx0THf+tCAUValzjI7Wg9EhptrkIcfIJjA94evOn8B2eHaVzvBrnl2ig0So6hvPaz0IGcOvTHvUIlE2+prqAxLSQxZlU2stql1NqCCLdIiIN/i1DBEHUoElM9dBravbiAnKqgpi4IBkw+utSPIoBijDXJipSVV7MpOEJUAc5Qmm3BnUN+w3hteEieYKfRZSIUcXKMVf0u5wD4EwsUNVvZOtUT7A2GkffHjByWpHqvRBYrTV72a6j8zZ6W0DTE86Hn04bmyWX3Ri9WH7ZU6Q7h+ZHo0nHUAcsQvVhXRDZHChwiyi/hnPuOsSEF6Exk3o6Y9DT1eZ+6cASXk2Y9k+6EOQMDGm6WBK10wOQJCBwren86cPPWUcRAnTVjGcU1LBgs9FURiX/e6479yZcLwCBmTxiawEwrOcleuu12t3tbLv/N4RLYIBhYexm7Fcn4OJcn0+zc+s8/VfPeddZHAGN6TT8eGczHdR/Gts1/MzDkThr23zqrVfAMFT33Nx1RJsx1k5zuWILLnG/vsH+Fv5D4NTVcp1Gzo8AAAAAElFTkSuQmCC&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
 
-### 本地部署
+## 本地部署 MinerU
 
-#### 1.安装MinerU
+### 1. 安装 MinerU
 
-使用pip或uv安装
+#### 1.1 使用 pip 或 uv 安装
+
 ```bash
 pip install --upgrade pip
 pip install uv
 uv pip install "mineru[core]>=2.0.0"
 ```
 
-您也可以通过源码安装
+#### 1.2 源码安装
+
 ```bash
 git clone https://github.com/opendatalab/MinerU.git
 cd MinerU
 uv pip install -e .[core]
 ```
 
-如果您需要使用sglang加速vlm模型推理，请直接安装MinerU的完整版本
+#### 1.3 安装完整版（支持 sglang 加速）
+
+如需使用 **sglang 加速 VLM 模型推理**，请安装完整版本：
+
 ```bash
 uv pip install "mineru[all]>=2.0.0"
 ```
-或
+
+或从源码安装：
+
 ```bash
 uv pip install -e .[all]
 ```
 
-#### 2.使用 MinerU
+---
 
-###### 命令行
+### 2. 使用 MinerU
 
-最简单的命令行方式使用MinerU
-```commandline
+#### 2.1 命令行使用方式
+
+##### 基础用法
+
+最简单的命令行调用方式如下：
+
+```bash
 mineru -p <input_path> -o <output_path>
 ```
-其中`<input_path>`为本地PDF文件或目录，`<output_path>`为输出目录。
 
+- `<input_path>`：本地 PDF 文件或目录（支持 pdf/png/jpg/jpeg）
+- `<output_path>`：输出目录
 
-如果您需要获得更多命令行参数信息，可以使用以下命令
-```commandline
+##### 查看帮助信息
+
+获取所有可用参数说明：
+
+```bash
 mineru --help
 ```
-```commandline
+
+##### 参数详解
+
+```text
 Usage: mineru [OPTIONS]
 
 Options:
-  -v, --version                   display the version and exit
-  -p, --path PATH                 local filepath or directory. support pdf,
-                                  png, jpg, jpeg files  [required]
-  -o, --output PATH               output local directory  [required]
-  -m, --method [auto|txt|ocr]     the method for parsing pdf: auto:
-                                  Automatically determine the method based on
-                                  the file type. txt: Use text extraction
-                                  method. ocr: Use OCR method for image-based
-                                  PDFs. Without method specified, 'auto' will
-                                  be used by default. Adapted only for the
-                                  case where the backend is set to "pipeline".
+  -v, --version                   显示版本并退出
+  -p, --path PATH                 输入文件路径或目录（必填）
+  -o, --output PATH               输出目录（必填）
+  -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
   -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
-                                  the backend for parsing pdf: pipeline: More
-                                  general. vlm-transformers: More general.
-                                  vlm-sglang-engine: Faster(engine). vlm-
-                                  sglang-client: Faster(client). without
-                                  method specified, pipeline will be used by
-                                  default.
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka]
-                                  Input the languages in the pdf (if known) to
-                                  improve OCR accuracy.  Optional. Without
-                                  languages specified, 'ch' will be used by
-                                  default. Adapted only for the case where the
-                                  backend is set to "pipeline".
-  -u, --url TEXT                  When the backend is `sglang-client`, you
-                                  need to specify the server_url, for
-                                  example:`http://127.0.0.1:30000`
-  -s, --start INTEGER             The starting page for PDF parsing, beginning
-                                  from 0.
-  -e, --end INTEGER               The ending page for PDF parsing, beginning
-                                  from 0.
-  -f, --formula BOOLEAN           Enable formula parsing. Default is True.
-                                  Adapted only for the case where the backend
-                                  is set to "pipeline".
-  -t, --table BOOLEAN             Enable table parsing. Default is True.
-                                  Adapted only for the case where the backend
-                                  is set to "pipeline".
-  -d, --device TEXT               Device mode for model inference, e.g.,
-                                  "cpu", "cuda", "cuda:0", "npu", "npu:0",
-                                  "mps". Adapted only for the case where the
-                                  backend is set to "pipeline".
-  --vram INTEGER                  Upper limit of GPU memory occupied by a
-                                  single process. Adapted only for the case
-                                  where the backend is set to "pipeline".
+                                  解析后端（默认为 pipeline）
+  -l, --lang [ch|ch_server|... ]  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
+  -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
+  -s, --start INTEGER             开始解析的页码（从 0 开始）
+  -e, --end INTEGER               结束解析的页码（从 0 开始）
+  -f, --formula BOOLEAN           是否启用公式解析（默认开启，仅 pipeline 后端）
+  -t, --table BOOLEAN             是否启用表格解析（默认开启，仅 pipeline 后端）
+  -d, --device TEXT               推理设备（如 cpu/cuda/cuda:0/npu/mps，仅 pipeline 后端）
+  --vram INTEGER                  单进程最大 GPU 显存占用（仅 pipeline 后端）
   --source [huggingface|modelscope|local]
-                                  The source of the model repository. Default
-                                  is 'huggingface'.
-  --help                          Show this message and exit.
+                                  模型来源，默认 huggingface
+  --help                          显示帮助信息
 ```
 
-MinerU现已使用自动模型下载功能，默认为运行时在第一次加载时下载当前所需要的模型文件，默认使用`huggingface`作为模型源，如您的网络无法访问`huggingface`，您可以通过以下方式切换为`modelscope`源
-```commandline
+---
+
+#### 2.2 模型源配置
+
+MinerU 默认在首次运行时自动从 HuggingFace 下载所需模型。若无法访问 HuggingFace，可通过以下方式切换模型源：
+
+##### 切换至 ModelScope 源
+
+```bash
 mineru -p <input_path> -o <output_path> --source modelscope
 ```
-或使用环境变量
+
+或设置环境变量：
+
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
 mineru -p <input_path> -o <output_path>
 ```
-如果您需要使用本地模型文件，请先通过命令将模型下载到本地
-```commandline
-$ mineru-models-download --help
-Usage: mineru-models-download [OPTIONS]
-  Download MinerU model files.
-  Supports downloading pipeline or VLM models from ModelScope or HuggingFace.
-Options:
-  -s, --source [huggingface|modelscope]
-                                  The source of the model repository.
-  -m, --model_type [pipeline|vlm|all]
-                                  The type of the model to download.
-  --help                          Show this message and exit.
+
+##### 使用本地模型
+
+###### 1. 下载模型到本地
+
+```bash
+mineru-models-download --help
 ```
-或通过交互式命令行下载模型文件
-```commandline
+
+或使用交互式命令行工具选择模型下载：
+
+```bash
 mineru-models-download
 ```
-模型下载完成后，会自动将本地模型路径配置在用户目录的`mineru.json`中
-您可以在下次执行MinerU时，直接使用本地模型文件进行解析
-```commandline
+
+下载完成后，模型路径会在当前终端窗口输出，并自动写入用户目录下的 `mineru.json`。
+
+###### 2. 使用本地模型进行解析
+
+```bash
 mineru -p <input_path> -o <output_path> --source local
 ```
-或使用环境变量
+
+或通过环境变量启用：
+
 ```bash
 export MINERU_MODEL_SOURCE=local
 mineru -p <input_path> -o <output_path>
 ```
 
-###### 使用sglang加速的vlm模型推理
-MinerU支持使用sglang加速VLM模型推理，您可以通过以下方式启用sglang加速
-```commandline
+---
+
+#### 2.3 使用 sglang 加速 VLM 模型推理
+
+##### 启动 sglang-engine 模式
+
+```bash
 mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 ```
-同时您也可以使用sglang原生的sever/client模式进行推理
-```commandline
+
+##### 启动 sglang-server/client 模式
+
+1. 启动 Server：
+
+```bash
 mineru-sglang-server --port 30000
 ```
-在一个终端中启动sglang server后，您可以在另一个终端中使用sglang-client进行推理
-```commandline
+
+2. 在另一个终端中使用 Client 调用：
+
+```bash
 mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
-> [!TIP]
-> 更多有关输出文件的信息，请参考[输出文件说明](docs/output_file_zh_cn.md)
+> 💡 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
 
-##### API
+---
 
-[通过Python代码调用MinerU](demo/demo.py)
+### 3. API 调用方式
 
-##### 部署衍生项目
+您也可以通过 Python 代码调用 MinerU，示例代码请参考：
+👉 [Python 调用示例](demo/demo.py)
 
-衍生项目包含项目开发者和社群开发者们基于MinerU的二次开发项目，
-例如基于Gradio的应用界面、基于Fastapi的webapi、轻量级的多卡负载均衡c/s端等，
-这些项目可能会提供更多的功能和更好的用户体验。
-具体部署方式请参考 [衍生项目readme](projects/README_zh-CN.md)
+---
+
+### 4. 部署衍生项目
+
+社区开发者基于 MinerU 进行了多种二次开发，包括：
+
+- 基于 Gradio 的图形界面
+- 基于 FastAPI 的 Web API
+- 多卡负载均衡的客户端/服务端架构等
+
+这些项目通常提供更好的用户体验和更多功能。
+
+详细部署方式请参阅：
+👉 [衍生项目说明](projects/README_zh-CN.md)
+
+--- 
 
 
 # TODO
