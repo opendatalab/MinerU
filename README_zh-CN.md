@@ -472,9 +472,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 #### 1.安装MinerU
 
-> [!NOTE]
-> 最新版本国内镜像源同步可能会有延迟，请耐心等待
-
 使用pip或uv安装
 ```bash
 pip install --upgrade pip
