@@ -5,8 +5,8 @@ from collections import defaultdict
 import numpy as np
 
 from .model_init import AtomModelSingleton
-from ...utils.model_utils import crop_img, get_res_list_from_layout_res, get_coords_and_area
-from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list
+from ...utils.model_utils import crop_img, get_res_list_from_layout_res
+from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
@@ -315,7 +315,7 @@ class BatchAnalyze:
                         ocr_text, ocr_score = ocr_res_list[index]
                         layout_res_item['text'] = ocr_text
                         layout_res_item['score'] = float(f"{ocr_score:.3f}")
-                        if ocr_score < 0.6:
+                        if ocr_score < OcrConfidence.min_confidence:
                             layout_res_item['category_id'] = 16
 
                     total_processed += len(img_crop_list)

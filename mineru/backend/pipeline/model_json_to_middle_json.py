@@ -2,6 +2,7 @@
 import time
 
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
@@ -14,6 +15,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
+from mineru.utils.ocr_utils import OcrConfidence
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract
@@ -163,7 +165,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enabled=True):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
-    for page_index, page_model_info in enumerate(model_list):
+    for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
         page_info = page_model_info_to_page_info(
@@ -208,7 +210,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
             need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
         for index, span in enumerate(need_ocr_list):
             ocr_text, ocr_score = ocr_res_list[index]
-            if ocr_score > 0.6:
+            if ocr_score > OcrConfidence.min_confidence:
                 span['content'] = ocr_text
                 span['score'] = float(f"{ocr_score:.3f}")
             else:

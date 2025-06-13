@@ -41,17 +41,18 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     auto: Automatically determine the method based on the file type.
     txt: Use text extraction method.
     ocr: Use OCR method for image-based PDFs.
-    Without method specified, 'auto' will be used by default.""",
+    Without method specified, 'auto' will be used by default.
+    Adapted only for the case where the backend is set to "pipeline".""",
     default='auto',
 )
 @click.option(
     '-b',
     '--backend',
     'backend',
-    type=click.Choice(['pipeline', 'vlm-huggingface', 'vlm-sglang-engine', 'vlm-sglang-client']),
+    type=click.Choice(['pipeline', 'vlm-transformers', 'vlm-sglang-engine', 'vlm-sglang-client']),
     help="""the backend for parsing pdf:
     pipeline: More general.
-    vlm-huggingface: More general.
+    vlm-transformers: More general.
     vlm-sglang-engine: Faster(engine).
     vlm-sglang-client: Faster(client).
     without method specified, pipeline will be used by default.""",

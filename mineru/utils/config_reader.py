@@ -17,7 +17,7 @@ def read_config():
         config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
 
     if not os.path.exists(config_file):
-        logger.warning(f'{config_file} not found, using default configuration')
+        # logger.warning(f'{config_file} not found, using default configuration')
         return None
     else:
         with open(config_file, 'r', encoding='utf-8') as f:
@@ -106,7 +106,9 @@ def get_formula_config():
 
 def get_latex_delimiter_config():
     config = read_config()
-    latex_delimiter_config = config.get('latex-delimiter-config')
+    if config is None:
+        return None
+    latex_delimiter_config = config.get('latex-delimiter-config', None)
     if latex_delimiter_config is None:
         # logger.warning(f"'latex-delimiter-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
         return None
@@ -116,7 +118,9 @@ def get_latex_delimiter_config():
 
 def get_llm_aided_config():
     config = read_config()
-    llm_aided_config = config.get('llm-aided-config')
+    if config is None:
+        return None
+    llm_aided_config = config.get('llm-aided-config', None)
     if llm_aided_config is None:
         # logger.warning(f"'llm-aided-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
         return None
@@ -126,6 +130,8 @@ def get_llm_aided_config():
 
 def get_local_models_dir():
     config = read_config()
+    if config is None:
+        return None
     models_dir = config.get('models-dir')
     if models_dir is None:
         logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")

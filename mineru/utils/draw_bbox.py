@@ -188,7 +188,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
             page.merge_page(overlay_pdf.pages[0])
         else:
             # 记录日志并继续处理下一个页面
-            logger.warning(f"layout.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            # logger.warning(f"layout.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            pass
 
         output_pdf.add_page(page)
 
@@ -302,7 +303,8 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
             page.merge_page(overlay_pdf.pages[0])
         else:
             # 记录日志并继续处理下一个页面
-            logger.warning(f"span.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            # logger.warning(f"span.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            pass
 
         output_pdf.add_page(page)
 

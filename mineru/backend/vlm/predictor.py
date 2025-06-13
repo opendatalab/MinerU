@@ -22,7 +22,7 @@ try:
 
     hf_loaded = True
 except ImportError as e:
-    logger.warning("hf is not installed. If you are not using huggingface, you can ignore this warning.")
+    logger.warning("hf is not installed. If you are not using transformers, you can ignore this warning.")
 
 engine_loaded = False
 try:
@@ -51,9 +51,9 @@ def get_predictor(
 ) -> BasePredictor:
     start_time = time.time()
 
-    if backend == "huggingface":
+    if backend == "transformers":
         if not model_path:
-            raise ValueError("model_path must be provided for huggingface backend.")
+            raise ValueError("model_path must be provided for transformers backend.")
         if not hf_loaded:
             raise ImportError(
                 "transformers is not installed, so huggingface backend cannot be used. "
@@ -77,7 +77,7 @@ def get_predictor(
             raise ImportError(
                 "sglang is not installed, so sglang-engine backend cannot be used. "
                 "If you need to use sglang-engine backend for inference, "
-                "please install sglang[all]==0.4.6.post4 or a newer version."
+                "please install sglang[all]==0.4.7 or a newer version."
             )
         predictor = SglangEnginePredictor(
             server_args=ServerArgs(model_path, **kwargs),
@@ -104,7 +104,7 @@ def get_predictor(
             http_timeout=http_timeout,
         )
     else:
-        raise ValueError(f"Unsupported backend: {backend}. Supports: huggingface, sglang-engine, sglang-client.")
+        raise ValueError(f"Unsupported backend: {backend}. Supports: transformers, sglang-engine, sglang-client.")
 
     elapsed = round(time.time() - start_time, 2)
     logger.info(f"get_predictor cost: {elapsed}s")
