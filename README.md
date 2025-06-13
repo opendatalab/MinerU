@@ -656,7 +656,8 @@ Community developers have created various extensions based on MinerU, including:
 
 - Graphical interface based on Gradio
 - Web API based on FastAPI
-- Client/server architecture with multi-GPU load balancing, etc.
+- Client/server architecture with multi-GPU load balancing
+- MCP Server based on the official API
 
 These projects typically offer better user experience and additional features.
 
