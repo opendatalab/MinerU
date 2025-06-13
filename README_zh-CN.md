@@ -577,11 +577,8 @@ mineru -p <input_path> -o <output_path>
 ```commandline
 $ mineru-models-download --help
 Usage: mineru-models-download [OPTIONS]
-
   Download MinerU model files.
-
   Supports downloading pipeline or VLM models from ModelScope or HuggingFace.
-
 Options:
   -s, --source [huggingface|modelscope]
                                   The source of the model repository.
