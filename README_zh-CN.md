@@ -499,6 +499,14 @@ uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
 
 ### 命令行
 
+最简单的命令行方式使用MinerU
+```commandline
+mineru -p <input_path> -o <output_path>
+```
+其中`<input_path>`为本地PDF文件或目录，`<output_path>`为输出目录。
+
+
+如果您需要获得更多命令行参数信息，可以使用以下命令
 ```commandline
 mineru --help
 ```
@@ -515,7 +523,8 @@ Options:
                                   the file type. txt: Use text extraction
                                   method. ocr: Use OCR method for image-based
                                   PDFs. Without method specified, 'auto' will
-                                  be used by default.
+                                  be used by default. Adapted only for the
+                                  case where the backend is set to "pipeline".
   -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
                                   the backend for parsing pdf: pipeline: More
                                   general. vlm-transformers: More general.
@@ -553,7 +562,48 @@ Options:
                                   The source of the model repository. Default
                                   is 'huggingface'.
   --help                          Show this message and exit.
+```
 
+MinerU现已使用自动模型下载功能，默认为运行时在第一次加载时下载当前所需要的模型文件，默认使用huggingface作为模型源，如您的网络无法访问huggingface，您可以通过以下方式切换为modelscope源
+```commandline
+mineru -p <input_path> -o <output_path> --source modelscope
+```
+或使用环境变量
+```bash
+export MINERU_MODEL_SOURCE=modelscope
+mineru -p <input_path> -o <output_path>
+```
+如果您需要使用本地模型文件，请先通过命令将模型下载到本地
+```commandline
+$ mineru-models-download --help
+Usage: mineru-models-download [OPTIONS]
+
+  Download MinerU model files.
+
+  Supports downloading pipeline or VLM models from ModelScope or HuggingFace.
+
+Options:
+  -s, --source [huggingface|modelscope]
+                                  The source of the model repository.
+  -m, --model_type [pipeline|vlm|all]
+                                  The type of the model to download.
+  --help                          Show this message and exit.
+```
+或通过交互式命令行下载模型文件
+```commandline
+mineru-models-download
+Please select the model download source:  (huggingface, modelscope) [huggingface]:
+Please select the model type to download:  (pipeline, vlm, all) [all]:
+```
+模型下载完成后，会自动将本地模型路径配置在用户目录的`mineru.json`中
+您可以在下次执行MinerU时，直接使用本地模型文件进行解析
+```commandline
+mineru -p <input_path> -o <output_path> --source local
+```
+或使用环境变量
+```bash
+export MINERU_MODEL_SOURCE=local
+mineru -p <input_path> -o <output_path>
 ```
 
 > [!TIP]
