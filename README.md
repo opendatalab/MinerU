@@ -702,7 +702,7 @@ For detailed deployment instructions, please refer to:
 
 [LICENSE.md](LICENSE.md)
 
-This project currently uses PyMuPDF to achieve advanced functionality. However, since it adheres to the AGPL license, it may impose restrictions on certain usage scenarios. In future iterations, we plan to explore and replace it with a more permissive PDF processing library to enhance user-friendliness and flexibility.
+Currently, some models in this project are trained based on YOLO. However, since YOLO follows the AGPL license, it may impose restrictions on certain use cases. In future iterations, we plan to explore and replace these with models under more permissive licenses to enhance user-friendliness and flexibility.
 
 # Acknowledgments
 
