@@ -10,6 +10,7 @@
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
+
 [![PyPI version](https://img.shields.io/pypi/v/mineru)](https://pypi.org/project/mineru/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/mineru)](https://pypi.org/project/mineru/)
 [![Downloads](https://static.pepy.tech/badge/mineru)](https://pepy.tech/project/mineru)
