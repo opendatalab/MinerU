@@ -553,7 +553,7 @@ Options:
 ### 部署衍生项目
 
 衍生项目包含项目开发者和社群开发者们基于MinerU的二次开发项目，
-例如基于Gradio的应用界面、基于llama的RAG、官网同款web demo、轻量级的多卡负载均衡c/s端等，
+例如基于Gradio的应用界面、基于Fastapi的webapi、轻量级的多卡负载均衡c/s端等，
 这些项目可能会提供更多的功能和更好的用户体验。
 具体部署方式请参考 [衍生项目readme](projects/README_zh-CN.md)
 
