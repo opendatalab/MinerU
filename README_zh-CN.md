@@ -647,7 +647,8 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 
 - 基于 Gradio 的图形界面
 - 基于 FastAPI 的 Web API
-- 多卡负载均衡的客户端/服务端架构等
+- 多卡负载均衡的客户端/服务端架构
+- 基于官网API的MCP Server
 
 这些项目通常提供更好的用户体验和更多功能。
 
