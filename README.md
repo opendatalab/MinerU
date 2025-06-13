@@ -639,7 +639,7 @@ mineru-sglang-server --port 30000
 mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
-> 💡 For more information about output files, please refer to [Output File Documentation](docs/output_file_zh_cn.md)
+> 💡 For more information about output files, please refer to [Output File Documentation](docs/output_file_en_us.md)
 
 ---
 
@@ -661,7 +661,7 @@ Community developers have created various extensions based on MinerU, including:
 These projects typically offer better user experience and additional features.
 
 For detailed deployment instructions, please refer to:
-👉 [Derivative Projects Documentation](projects/README_zh-CN.md)
+👉 [Derivative Projects Documentation](projects/README.md)
 
 ---
 
@@ -702,7 +702,7 @@ For detailed deployment instructions, please refer to:
 
 [LICENSE.md](LICENSE.md)
 
-This project currently uses PyMuPDF to achieve advanced functionality. However, since it adheres to the AGPL license, it may impose restrictions on certain usage scenarios. In future iterations, we plan to explore and replace it with a more permissive PDF processing library to enhance user-friendliness and flexibility.
+Currently, some models in this project are trained based on YOLO. However, since YOLO follows the AGPL license, it may impose restrictions on certain use cases. In future iterations, we plan to explore and replace these with models under more permissive licenses to enhance user-friendliness and flexibility.
 
 # Acknowledgments
 
