@@ -503,12 +503,20 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   ```bash
   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
   docker build -t mineru-sglang:latest -f Dockerfile .
+  ```
+  启动 Docker 容器：
+  ```bash
   docker run --gpus all \
     --shm-size 32g \
     -p 30000:30000 \
     --ipc=host \
     mineru-sglang:latest \
     mineru-sglang-server --host 0.0.0.0 --port 30000
+  ```
+  或使用 Docker Compose 启动：
+  ```bash
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
+    docker compose -f compose.yaml up -d
   ```
   
 > [!TIP]
