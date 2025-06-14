@@ -472,7 +472,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
 pip install uv -i https://mirrors.aliyun.com/pypi/simple
-uv pip install "mineru[core]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple 
+uv pip install -U "mineru[core]" -i https://mirrors.aliyun.com/pypi/simple 
 ```
 
 #### 1.2 源码安装
@@ -485,17 +485,24 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 
 #### 1.3 安装完整版（支持 sglang 加速）
 
-如需使用 **sglang 加速 VLM 模型推理**，请安装完整版本：
+如需使用 **sglang 加速 VLM 模型推理**，请选择合适的方式安装完整版本：
 
-```bash
-uv pip install "mineru[all]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
-```
-
-或从源码安装：
-
-```bash
-uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
-```
+- 使用uv或pip安装
+  ```bash
+  uv pip install -U "mineru[all]" -i https://mirrors.aliyun.com/pypi/simple
+  ```
+- 从源码安装：
+  ```bash
+  uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
+  ```
+- 使用 Dockerfile 构建镜像：
+  ```bash
+  wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
+  docker build -t mineru-sglang:latest -f Dockerfile .
+  ```
+  
+> [!TIP]
+> Dockerfile默认使用`lmsysorg/sglang:v0.4.7-cu124`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
 
 ---
 
@@ -619,7 +626,8 @@ mineru-sglang-server --port 30000
 mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
-> 💡 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
+> [!TIP]
+> 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
 
 ---
 

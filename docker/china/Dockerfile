@@ -2,7 +2,7 @@
 FROM lmsysorg/sglang:v0.4.7-cu124
 
 # install mineru latest
-RUN python3 -m pip install 'mineru[core]>=2.0.0' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages
+RUN python3 -m pip install -U 'mineru[core]' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages
 
 # Download models and update the configuration file
 RUN /bin/bash -c "mineru-models-download -s modelscope -m all"

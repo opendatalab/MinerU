@@ -482,7 +482,7 @@ There are three different ways to experience MinerU:
 ```bash
 pip install --upgrade pip
 pip install uv
-uv pip install "mineru[core]>=2.0.0"
+uv pip install -U "mineru[core]"
 ```
 
 #### 1.2 Install from source
@@ -493,19 +493,26 @@ cd MinerU
 uv pip install -e .[core]
 ```
 
-#### 1.3 Install full version (with sglang acceleration)
+#### 1.3 Install the Full Version (Supports sglang Acceleration)
 
-To use **sglang acceleration for VLM model inference**, install the full version:
+If you need to use **sglang to accelerate VLM model inference**, you can choose any of the following methods to install the full version:
 
-```bash
-uv pip install "mineru[all]>=2.0.0"
-```
-
-Or install from source:
-
-```bash
-uv pip install -e .[all]
-```
+- Install using uv or pip:
+  ```bash
+  uv pip install -U "mineru[all]"
+  ```
+- Install from source:
+  ```bash
+  uv pip install -e .[all]
+  ```
+- Build the Docker image:
+  ```bash
+  wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
+  docker build -t mineru-sglang:latest -f Dockerfile .
+  ```
+  
+> [!TIP]
+> The Dockerfile uses `lmsysorg/sglang:v0.4.7-cu124` as the default base image. If necessary, you can modify it to another platform version.
 
 ---
 
@@ -629,7 +636,8 @@ mineru-sglang-server --port 30000
 mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
-> 💡 For more information about output files, please refer to [Output File Documentation](docs/output_file_en_us.md)
+> [!TIP]
+> For more information about output files, please refer to [Output File Documentation](docs/output_file_en_us.md)
 
 ---
 
