@@ -2,7 +2,6 @@
 import os
 import click
 from pathlib import Path
-import torch
 from loguru import logger
 
 from mineru.utils.config_reader import get_device
@@ -140,10 +139,6 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
 
-    if os.getenv('MINERU_FORMULA_ENABLE', None) is None:
-        os.environ['MINERU_FORMULA_ENABLE'] = str(formula_enable).lower()
-    if os.getenv('MINERU_TABLE_ENABLE', None) is None:
-        os.environ['MINERU_TABLE_ENABLE'] = str(table_enable).lower()
     def get_device_mode() -> str:
         if device_mode is not None:
             return device_mode
@@ -184,6 +179,8 @@ def main(input_path, output_dir, method, backend, lang, server_url, start_page_i
                 p_lang_list=lang_list,
                 backend=backend,
                 parse_method=method,
+                p_formula_enable=formula_enable,
+                p_table_enable=table_enable,
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id
