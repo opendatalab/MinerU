@@ -2,7 +2,6 @@
 import os
 import click
 from pathlib import Path
-import torch
 from loguru import logger
 
 from mineru.utils.config_reader import get_device
