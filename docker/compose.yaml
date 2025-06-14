@@ -1,0 +1,26 @@
+services:
+  mineru-sglang:
+    image: mineru-sglang:latest
+    container_name: mineru-sglang
+    restart: always
+    ports:
+      - 30000:30000
+    environment:
+      MINERU_MODEL_SOURCE: local
+    entrypoint: mineru-sglang-server
+    command:
+      --host 0.0.0.0
+      --port 30000
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:30000/health || exit 1"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]

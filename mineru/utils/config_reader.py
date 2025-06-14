@@ -86,22 +86,16 @@ def get_device():
         return "cpu"
 
 
-def get_table_recog_config():
-    table_enable = os.getenv('MINERU_TABLE_ENABLE', None)
-    if table_enable is not None:
-        return json.loads(f'{{"enable": {table_enable}}}')
-    else:
-        # logger.warning(f"not found 'MINERU_TABLE_ENABLE' in environment variable, use 'true' as default.")
-        return json.loads(f'{{"enable": true}}')
+def get_formula_enable(formula_enable):
+    formula_enable_env = os.getenv('MINERU_FORMULA_ENABLE')
+    formula_enable = formula_enable if formula_enable_env is None else formula_enable_env.lower() == 'true'
+    return formula_enable
 
 
-def get_formula_config():
-    formula_enable = os.getenv('MINERU_FORMULA_ENABLE', None)
-    if formula_enable is not None:
-        return json.loads(f'{{"enable": {formula_enable}}}')
-    else:
-        # logger.warning(f"not found 'MINERU_FORMULA_ENABLE' in environment variable, use 'true' as default.")
-        return json.loads(f'{{"enable": true}}')
+def get_table_enable(table_enable):
+    table_enable_env = os.getenv('MINERU_TABLE_ENABLE')
+    table_enable = table_enable if table_enable_env is None else table_enable_env.lower() == 'true'
+    return table_enable
 
 
 def get_latex_delimiter_config():
