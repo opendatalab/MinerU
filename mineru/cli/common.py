@@ -115,6 +115,9 @@ def do_parse(
             pdf_doc = all_pdf_docs[idx]
             _lang = lang_list[idx]
             _ocr_enable = ocr_enabled_list[idx]
+
+            if os.getenv('MINERU_FORMULA_ENABLE', None) is not None:
+                p_formula_enable = os.getenv('MINERU_FORMULA_ENABLE').lower() == 'true'
             middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable, p_formula_enable)
 
             pdf_info = middle_json["pdf_info"]

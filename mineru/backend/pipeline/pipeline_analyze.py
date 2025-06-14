@@ -5,7 +5,7 @@ import PIL.Image
 import torch
 
 from .model_init import MineruPipelineModel
-from mineru.utils.config_reader import get_device, get_formula_config, get_table_recog_config
+from mineru.utils.config_reader import get_device
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf
 
@@ -44,20 +44,15 @@ class ModelSingleton:
 
 def custom_model_init(
     lang=None,
-    formula_enable=None,
-    table_enable=None,
+    formula_enable=True,
+    table_enable=True,
 ):
     model_init_start = time.time()
     # 从配置文件读取model-dir和device
     device = get_device()
 
-    formula_config = get_formula_config()
-    if formula_enable is not None:
-        formula_config['enable'] = formula_enable
-
-    table_config = get_table_recog_config()
-    if table_enable is not None:
-        table_config['enable'] = table_enable
+    formula_config = {"enable": formula_enable}
+    table_config = {"enable": table_enable}
 
     model_input = {
         'device': device,
@@ -78,8 +73,8 @@ def doc_analyze(
         pdf_bytes_list,
         lang_list,
         parse_method: str = 'auto',
-        formula_enable=None,
-        table_enable=None,
+        formula_enable=True,
+        table_enable=True,
 ):
     MIN_BATCH_INFERENCE_SIZE = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 100))
 
@@ -152,8 +147,8 @@ def doc_analyze(
 
 def batch_image_analyze(
         images_with_extra_info: List[Tuple[PIL.Image.Image, bool, str]],
-        formula_enable=None,
-        table_enable=None):
+        formula_enable=True,
+        table_enable=True):
     # os.environ['CUDA_VISIBLE_DEVICES'] = str(idx)
 
     from .batch_analyze import BatchAnalyze
@@ -194,6 +189,10 @@ def batch_image_analyze(
             batch_ratio = 1
             logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_ratio}')
 
+    if os.getenv('MINERU_FORMULA_ENABLE', None) is not None:
+        formula_enable = os.getenv('MINERU_FORMULA_ENABLE').lower() == 'true'
+    if os.getenv('MINERU_TABLE_ENABLE', None) is not None:
+        table_enable = os.getenv('MINERU_TABLE_ENABLE').lower() == 'true'
     batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable)
     results = batch_model(images_with_extra_info)
 
