@@ -189,10 +189,6 @@ def batch_image_analyze(
             batch_ratio = 1
             logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_ratio}')
 
-    if os.getenv('MINERU_FORMULA_ENABLE', None) is not None:
-        formula_enable = os.getenv('MINERU_FORMULA_ENABLE').lower() == 'true'
-    if os.getenv('MINERU_TABLE_ENABLE', None) is not None:
-        table_enable = os.getenv('MINERU_TABLE_ENABLE').lower() == 'true'
     batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable)
     results = batch_model(images_with_extra_info)
 

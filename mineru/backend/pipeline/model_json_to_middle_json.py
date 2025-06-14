@@ -4,7 +4,7 @@ import time
 from loguru import logger
 from tqdm import tqdm
 
-from mineru.utils.config_reader import get_device, get_llm_aided_config
+from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
@@ -78,7 +78,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 
     """将所有区块的bbox整理到一起"""
-    if formula_enabled:
+    if get_formula_enable(formula_enabled):
         interline_equation_blocks = []
 
     if len(interline_equation_blocks) > 0:
