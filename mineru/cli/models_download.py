@@ -42,9 +42,8 @@ def download_and_modify_json(url, local_filename, modifications):
 
 def configure_model(model_dir, model_type):
     """配置模型"""
-    # json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json'
-    json_url = 'https://gcore.jsdelivr.net/gh/myhloli/Magic-PDF@dev/mineru.template.json'
-    config_file_name = 'mineru.json'
+    json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json'
+    config_file_name = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
     home_dir = os.path.expanduser('~')
     config_file = os.path.join(home_dir, config_file_name)
 
@@ -120,13 +119,13 @@ def download_models(model_source, model_type):
             click.echo(f"Downloading model: {model_path}")
             download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode='pipeline')
         click.echo(f"Pipeline models downloaded successfully to: {download_finish_path}")
-        configure_model(download_finish_path, model_type)
+        configure_model(download_finish_path, "pipeline")
 
     def download_vlm_models():
         """下载VLM模型"""
         download_finish_path = auto_download_and_get_model_root_path("/", repo_mode='vlm')
         click.echo(f"VLM models downloaded successfully to: {download_finish_path}")
-        configure_model(download_finish_path, model_type)
+        configure_model(download_finish_path, "vlm")
 
     try:
         if model_type == 'pipeline':

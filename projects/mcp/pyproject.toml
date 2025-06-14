@@ -1,0 +1,39 @@
+[project]
+name = "mineru-mcp"
+version = "1.0.0"
+description = "MinerU MCP Server for PDF to Markdown conversion"
+authors = [
+    {name = "minerU",email = "OpenDataLab@pjlab.org.cn"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10,<4.0"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "fastmcp>=2.5.2",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "aiohttp>=3.9.0",
+    "httpx>=0.24.0",
+    "uvicorn>=0.20.0",
+    "starlette>=0.27.0",
+]
+
+[project.scripts]
+mineru-mcp = "mineru.cli:main"
+
+[tool.poetry]
+packages = [{include = "mineru", from = "src"}]
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "primary"
+
+[build-system]
+requires = ["setuptools>=42.0", "wheel"]
+build-backend = "setuptools.build_meta"
