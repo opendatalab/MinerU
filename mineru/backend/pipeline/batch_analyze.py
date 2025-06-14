@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 
 from .model_init import AtomModelSingleton
+from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
 
@@ -16,8 +17,8 @@ MFR_BASE_BATCH_SIZE = 16
 class BatchAnalyze:
     def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = True):
         self.batch_ratio = batch_ratio
-        self.formula_enable = formula_enable
-        self.table_enable = table_enable
+        self.formula_enable = get_formula_enable(formula_enable)
+        self.table_enable = get_table_enable(table_enable)
         self.model_manager = model_manager
         self.enable_ocr_det_batch = enable_ocr_det_batch
 
