@@ -78,7 +78,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 
     """将所有区块的bbox整理到一起"""
-    if get_formula_enable(formula_enabled):
+    if formula_enabled:
         interline_equation_blocks = []
 
     if len(interline_equation_blocks) > 0:
@@ -165,6 +165,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enabled=True):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
+    formula_enabled = get_formula_enable(formula_enabled)
     for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
