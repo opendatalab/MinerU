@@ -513,6 +513,12 @@ If you need to use **sglang to accelerate VLM model inference**, you can choose 
   ```bash
   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
   docker build -t mineru-sglang:latest -f Dockerfile .
+  docker run --gpus all \
+    --shm-size 32g \
+    -p 30000:30000 \
+    --ipc=host \
+    mineru-sglang:latest \
+    mineru-sglang-server --host 0.0.0.0 --port 30000
   ```
   
 > [!TIP]
