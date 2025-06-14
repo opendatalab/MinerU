@@ -51,6 +51,10 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/06/15 2.0.2 released
+  - Fixed a configuration file key-value update error that occurred when downloading model type was set to `all`
+  - Fixed an issue where formula and table feature toggle parameters in the command line interface could not be effectively disabled
+  - Updated Dockerfile and installation documentation for deploying the full version of MinerU in sglang environment
 - 2025/06/13 2.0.0 Released
   - MinerU 2.0 represents a comprehensive reconstruction and upgrade from architecture to functionality, delivering a more streamlined design, enhanced performance, and more flexible user experience.
     - **New Architecture**: MinerU 2.0 has been deeply restructured in code organization and interaction methods, significantly improving system usability, maintainability, and extensibility.
