@@ -1,0 +1,12 @@
+downloads
+.env
+uv.lock
+.venv
+src/mineru/__pycache__
+dist
+.DS_Store
+.cursor
+build
+*.lock
+src/mineru_mcp.egg-info
+test
