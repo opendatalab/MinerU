@@ -43,7 +43,7 @@ vlm = [
     "pydantic",
 ]
 sglang = [
-    "sglang[all]>=0.4.7",
+    "sglang[all]==0.4.7",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",
