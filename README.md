@@ -53,7 +53,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 # Changelog
 - 2025/06/15 2.0.3 released
   - Fixed a configuration file key-value update error that occurred when downloading model type was set to `all`
-  - Fixed an issue where formula and table feature toggle parameters in the command line interface could not be effectively disabled
+  - Fixed the issue where the formula and table feature toggle switches were not working in `command line mode`, causing the features to remain enabled.
   - Fixed compatibility issues with sglang version 0.4.7 in the `sglang-engine` mode.
   - Updated Dockerfile and installation documentation for deploying the full version of MinerU in sglang environment
 - 2025/06/13 2.0.0 Released
@@ -367,7 +367,7 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
         <li><a href="#quick-start">Quick Start</a>
             <ul>
             <li><a href="#online-demo">Online Demo</a></li>
-            <li><a href="#quick-cpu-demo">Local Deployment</a></li>
+            <li><a href="#local-deployment">Local Deployment</a></li>
             </ul>
         </li>
       </ul>
