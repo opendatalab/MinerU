@@ -50,6 +50,11 @@
 </div>
 
 # 更新记录
+- 2025/06/15 2.0.3发布
+  - 修复了当下载模型类型设置为`all`时，配置文件出现键值更新错误的问题
+  - 修复了命令行模式下公式和表格功能开关不生效导致功能无法关闭的问题
+  - 修复了`sglang-engine`模式下，0.4.7版本sglang的兼容性问题
+  - 更新了sglang环境下部署完整版MinerU的Dockerfile和相关安装文档
 - 2025/06/13 2.0.0发布
   - MinerU 2.0 是一次从架构到功能的全面重构与升级，带来了更简洁的设计、更强的性能以及更灵活的使用体验。
     - **全新架构**：MinerU 2.0 在代码结构和交互方式上进行了深度重构，显著提升了系统的易用性、可维护性与扩展能力。
@@ -472,7 +477,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 ```bash
 pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple
 pip install uv -i https://mirrors.aliyun.com/pypi/simple
-uv pip install "mineru[core]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple 
+uv pip install -U "mineru[core]" -i https://mirrors.aliyun.com/pypi/simple 
 ```
 
 #### 1.2 源码安装
@@ -485,17 +490,38 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 
 #### 1.3 安装完整版（支持 sglang 加速）
 
-如需使用 **sglang 加速 VLM 模型推理**，请安装完整版本：
+如需使用 **sglang 加速 VLM 模型推理**，请选择合适的方式安装完整版本：
 
-```bash
-uv pip install "mineru[all]>=2.0.0" -i https://mirrors.aliyun.com/pypi/simple
-```
-
-或从源码安装：
-
-```bash
-uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
-```
+- 使用uv或pip安装
+  ```bash
+  uv pip install -U "mineru[all]" -i https://mirrors.aliyun.com/pypi/simple
+  ```
+- 从源码安装：
+  ```bash
+  uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
+  ```
+- 使用 Dockerfile 构建镜像：
+  ```bash
+  wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
+  docker build -t mineru-sglang:latest -f Dockerfile .
+  ```
+  启动 Docker 容器：
+  ```bash
+  docker run --gpus all \
+    --shm-size 32g \
+    -p 30000:30000 \
+    --ipc=host \
+    mineru-sglang:latest \
+    mineru-sglang-server --host 0.0.0.0 --port 30000
+  ```
+  或使用 Docker Compose 启动：
+  ```bash
+    wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
+    docker compose -f compose.yaml up -d
+  ```
+  
+> [!TIP]
+> Dockerfile默认使用`lmsysorg/sglang:v0.4.7-cu124`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
 
 ---
 
@@ -619,7 +645,8 @@ mineru-sglang-server --port 30000
 mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
 ```
 
-> 💡 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
+> [!TIP]
+> 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
 
 ---
 

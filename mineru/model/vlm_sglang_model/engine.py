@@ -183,8 +183,8 @@ async def _one_request(
     created_time: Optional[float],
 ):
     tokenized_obj = await self._tokenize_one_request(obj)
-    self._send_one_request(obj, tokenized_obj, created_time)
-    async for out in self._wait_one_response(obj, request):
+    state = self._send_one_request(obj, tokenized_obj, created_time)
+    async for out in self._wait_one_response(obj, state, request):
         yield out
 
 
@@ -256,8 +256,8 @@ async def _generate_request(
         is_single = obj.is_single
         if is_single:
             tokenized_obj = await self._tokenize_one_request(obj)
-            self._send_one_request(obj, tokenized_obj, created_time)
-            async for response in self._wait_one_response(obj, request):
+            state = self._send_one_request(obj, tokenized_obj, created_time)
+            async for response in self._wait_one_response(obj, state, request):
                 yield response
         else:
             async for response in _handle_batch_request(self, obj, request, created_time):
