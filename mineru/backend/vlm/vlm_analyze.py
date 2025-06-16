@@ -27,7 +27,7 @@ class ModelSingleton:
         model_path: str | None,
         server_url: str | None,
     ) -> BasePredictor:
-        key = (backend,)
+        key = (backend, server_url)
         if key not in self._models:
             if backend in ['transformers', 'sglang-engine'] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
