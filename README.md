@@ -51,6 +51,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/06/17 2.0.4 Released 
+  - Fixed the issue where models were still required to be downloaded in the `sglang-client` mode  
+  - Fixed the issue where only the first instance would take effect when attempting to launch multiple `sglang-client` instances via multiple URLs within the same process
 - 2025/06/15 2.0.3 released
   - Fixed a configuration file key-value update error that occurred when downloading model type was set to `all`
   - Fixed the issue where the formula and table feature toggle switches were not working in `command line mode`, causing the features to remain enabled.
@@ -532,6 +535,14 @@ If you need to use **sglang to accelerate VLM model inference**, you can choose 
   
 > [!TIP]
 > The Dockerfile uses `lmsysorg/sglang:v0.4.7-cu124` as the default base image. If necessary, you can modify it to another platform version.
+
+
+#### 1.4 Install client  (for connecting to sglang-server on edge devices that require only CPU and network connectivity)
+
+```bash
+uv pip install -U mineru
+mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<host_ip>:<port>
+```
 
 ---
 
