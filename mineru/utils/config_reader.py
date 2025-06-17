@@ -1,8 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import json
 import os
-
 from loguru import logger
+
+try:
+    import torch
+    import torch_npu
+except ImportError:
+    pass
+
 
 # 定义配置文件名常量
 CONFIG_FILE_NAME = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
@@ -71,15 +77,12 @@ def get_device():
     if device_mode is not None:
         return device_mode
     else:
-        import torch
-
         if torch.cuda.is_available():
             return "cuda"
         elif torch.backends.mps.is_available():
             return "mps"
         else:
             try:
-                import torch_npu
                 if torch_npu.npu.is_available():
                     return "npu"
             except Exception as e:
