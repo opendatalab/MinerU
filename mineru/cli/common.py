@@ -8,15 +8,12 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from loguru import logger
 
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
-from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 
 pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg"]
@@ -99,6 +96,11 @@ def do_parse(
 ):
 
     if backend == "pipeline":
+
+        from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+        from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
+        from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+
         for idx, pdf_bytes in enumerate(pdf_bytes_list):
             new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             pdf_bytes_list[idx] = new_pdf_bytes
@@ -163,6 +165,7 @@ def do_parse(
 
             logger.info(f"local output dir is {local_md_dir}")
     else:
+
         if backend.startswith("vlm-"):
             backend = backend[4:]
 

@@ -9,7 +9,6 @@ from mineru.utils.model_utils import get_vram
 from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
-
 @click.command()
 @click.version_option(__version__,
                       '--version',
@@ -139,25 +138,26 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
 
-    def get_device_mode() -> str:
-        if device_mode is not None:
-            return device_mode
-        else:
-            return get_device()
-    if os.getenv('MINERU_DEVICE_MODE', None) is None:
-        os.environ['MINERU_DEVICE_MODE'] = get_device_mode()
+    if not backend.endswith('-client'):
+        def get_device_mode() -> str:
+            if device_mode is not None:
+                return device_mode
+            else:
+                return get_device()
+        if os.getenv('MINERU_DEVICE_MODE', None) is None:
+            os.environ['MINERU_DEVICE_MODE'] = get_device_mode()
 
-    def get_virtual_vram_size() -> int:
-        if virtual_vram is not None:
-            return virtual_vram
-        if get_device_mode().startswith("cuda") or get_device_mode().startswith("npu"):
-            return round(get_vram(get_device_mode()))
-        return 1
-    if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
-        os.environ['MINERU_VIRTUAL_VRAM_SIZE']= str(get_virtual_vram_size())
+        def get_virtual_vram_size() -> int:
+            if virtual_vram is not None:
+                return virtual_vram
+            if get_device_mode().startswith("cuda") or get_device_mode().startswith("npu"):
+                return round(get_vram(get_device_mode()))
+            return 1
+        if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
+            os.environ['MINERU_VIRTUAL_VRAM_SIZE']= str(get_virtual_vram_size())
 
-    if os.getenv('MINERU_MODEL_SOURCE', None) is None:
-        os.environ['MINERU_MODEL_SOURCE'] = model_source
+        if os.getenv('MINERU_MODEL_SOURCE', None) is None:
+            os.environ['MINERU_MODEL_SOURCE'] = model_source
 
     os.makedirs(output_dir, exist_ok=True)
 

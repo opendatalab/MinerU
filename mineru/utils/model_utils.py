@@ -1,11 +1,16 @@
 import time
-import torch
 import gc
 from PIL import Image
 from loguru import logger
 import numpy as np
 
 from mineru.utils.boxbase import get_minbox_if_overlap_by_ratio
+
+try:
+    import torch
+    import torch_npu
+except ImportError:
+    pass
 
 
 def crop_img(input_res, input_img, crop_paste_x=0, crop_paste_y=0):
@@ -303,7 +308,6 @@ def clean_memory(device='cuda'):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
     elif str(device).startswith("npu"):
-        import torch_npu
         if torch_npu.npu.is_available():
             torch_npu.npu.empty_cache()
     elif str(device).startswith("mps"):
@@ -325,7 +329,6 @@ def get_vram(device):
         total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)  # 将字节转换为 GB
         return total_memory
     elif str(device).startswith("npu"):
-        import torch_npu
         if torch_npu.npu.is_available():
             total_memory = torch_npu.npu.get_device_properties(device).total_memory / (1024 ** 3)  # 转为 GB
             return total_memory

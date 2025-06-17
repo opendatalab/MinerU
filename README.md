@@ -51,8 +51,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
-- 2025/06/17 2.0.4 Released 
+- 2025/06/17 2.0.5 Released 
   - Fixed the issue where models were still required to be downloaded in the `sglang-client` mode  
+  - Fixed the issue where the `sglang-client` mode unnecessarily depended on packages like `torch` during runtime.
   - Fixed the issue where only the first instance would take effect when attempting to launch multiple `sglang-client` instances via multiple URLs within the same process
 - 2025/06/15 2.0.3 released
   - Fixed a configuration file key-value update error that occurred when downloading model type was set to `all`

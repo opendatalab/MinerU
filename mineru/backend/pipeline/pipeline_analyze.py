@@ -2,15 +2,12 @@ import os
 import time
 from typing import List, Tuple
 import PIL.Image
-import torch
+from loguru import logger
 
 from .model_init import MineruPipelineModel
 from mineru.utils.config_reader import get_device
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf
-
-from loguru import logger
-
 from ...utils.model_utils import get_vram, clean_memory
 
 
@@ -166,7 +163,7 @@ def batch_image_analyze(
         try:
             import torch_npu
             if torch_npu.npu.is_available():
-                torch.npu.set_compile_mode(jit_compile=False)
+                torch_npu.npu.set_compile_mode(jit_compile=False)
         except Exception as e:
             raise RuntimeError(
                 "NPU is selected as device, but torch_npu is not available. "
