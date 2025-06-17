@@ -1,5 +1,4 @@
 import time
-import torch
 import gc
 from PIL import Image
 from loguru import logger
@@ -298,6 +297,8 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
 
 
 def clean_memory(device='cuda'):
+    import torch
+
     if device == 'cuda':
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -321,6 +322,8 @@ def clean_vram(device, vram_threshold=8):
 
 
 def get_vram(device):
+    import torch
+
     if torch.cuda.is_available() and str(device).startswith("cuda"):
         total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)  # 将字节转换为 GB
         return total_memory
