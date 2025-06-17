@@ -7,7 +7,6 @@ from loguru import logger
 from mineru.utils.config_reader import get_device
 from mineru.utils.model_utils import get_vram
 from ..version import __version__
-from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
 @click.command()
@@ -138,6 +137,8 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
 def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
+
+    from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
     def get_device_mode() -> str:
         if device_mode is not None:
