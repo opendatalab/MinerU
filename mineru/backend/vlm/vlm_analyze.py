@@ -8,7 +8,6 @@ from mineru.utils.pdf_image_tools import load_images_from_pdf
 from .base_predictor import BasePredictor
 from .predictor import get_predictor
 from .token_to_middle_json import result_to_middle_json
-from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 
@@ -27,9 +26,9 @@ class ModelSingleton:
         model_path: str | None,
         server_url: str | None,
     ) -> BasePredictor:
-        key = (backend,)
+        key = (backend, model_path, server_url)
         if key not in self._models:
-            if not model_path:
+            if backend in ['transformers', 'sglang-engine'] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
             self._models[key] = get_predictor(
                 backend=backend,

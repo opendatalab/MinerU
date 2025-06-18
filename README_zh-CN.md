@@ -50,6 +50,10 @@
 </div>
 
 # 更新记录
+- 2025/06/17 2.0.5发布
+  - 修复了`sglang-client`模式下依然需要下载模型的问题
+  - 修复了`sglang-client`模式需要依赖`torch`等实际运行不需要的包的问题
+  - 修复了同一进程内尝试通过多个url启动多个`sglang-client`实例时，只有第一个生效的问题
 - 2025/06/15 2.0.3发布
   - 修复了当下载模型类型设置为`all`时，配置文件出现键值更新错误的问题
   - 修复了命令行模式下公式和表格功能开关不生效导致功能无法关闭的问题
@@ -522,6 +526,13 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   
 > [!TIP]
 > Dockerfile默认使用`lmsysorg/sglang:v0.4.7-cu124`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
+  
+#### 1.4 安装client（用于在仅需 CPU 和网络连接的边缘设备上连接 sglang-server）
+
+```bash
+uv pip install -U mineru -i https://mirrors.aliyun.com/pypi/simple
+mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<host_ip>:<port>
+```
 
 ---
 

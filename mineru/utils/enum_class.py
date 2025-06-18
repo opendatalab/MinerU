@@ -33,9 +33,11 @@ class CategoryId:
     TableCaption = 6
     TableFootnote = 7
     InterlineEquation_Layout = 8
+    InterlineEquationNumber_Layout = 9
     InlineEquation = 13
     InterlineEquation_YOLO = 14
     OcrText = 15
+    LowScoreText = 16
     ImageFootnote = 101
 
 
