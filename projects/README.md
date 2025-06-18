@@ -4,6 +4,7 @@
 
 - Projects compatible with version 2.0:
   - [gradio_app](./gradio_app/README.md): Web application based on Gradio
+  - [multi_gpu_v2](./multi_gpu_v2/README.md): Multi-GPU parallel processing based on LitServe
 
 - Projects not yet compatible with version 2.0:
   - [web_api](./web_api/README.md): Web API based on FastAPI
