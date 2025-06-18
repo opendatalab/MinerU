@@ -1,12 +1,12 @@
-# MinerU v2.0 Multi-GPU Server
+# MinerU v2.0 多GPU服务器
 
-[简体中文](README_zh.md)
+[English](README.md)
 
-A streamlined multi-GPU server implementation.
+这是一个精简的多GPU服务器实现。
 
-## Quick Start
+## 快速开始
 
-### 1. install MinerU
+### 1. 安装 MinerU
 
 ```bash
 pip install --upgrade pip
@@ -15,37 +15,39 @@ uv pip install -U "mineru[core]"
 uv pip install litserve aiohttp loguru
 ```
 
-### 2. Start the Server
+### 2. 启动服务器
+
 ```bash
 python server.py
 ```
 
-### 3. Start the Client
+### 3. 启动客户端
+
 ```bash
 python client.py
 ```
 
-Now, pdf files under folder [demo](../../demo/) will be processed in parallel. Assuming you have 2 gpus, if you change the `workers_per_device` to `2`, 4 pdf files will be processed at the same time!
+现在，`[demo](../../demo/)` 文件夹下的PDF文件将并行处理。假设您有2个GPU，如果您将 `workers_per_device` 更改为 `2`，则可以同时处理4个PDF文件！
 
-## Customize
+## 自定义
 
-### Server 
+### 服务器
 
-Example showing how to start the server with custom settings:
+以下示例展示了如何启动带有自定义设置的服务器：
 ```python
 server = ls.LitServer(
-    MinerUAPI(output_dir='/tmp/mineru_output'),
-    accelerator='auto',  # You can specify 'cuda'
-    devices='auto',  # "auto" uses all available GPUs
-    workers_per_device=1,  # One worker instance per GPU
-    timeout=False  # Disable timeout for long processing
+    MinerUAPI(output_dir='/tmp/mineru_output'),  # 自定义输出文件夹
+    accelerator='auto',  # 您可以指定 'cuda'
+    devices='auto',  # "auto" 使用所有可用的GPU
+    workers_per_device=1,  # 每个GPU启动一个工作实例
+    timeout=False  # 禁用超时，用于长时间处理
 )
 server.run(port=8000, generate_client_file=False)
 ```
 
-### Client 
+### 客户端
 
-The client supports both synchronous and asynchronous processing:
+客户端支持同步和异步处理：
 
 ```python
 import asyncio
@@ -54,10 +56,10 @@ from client import mineru_parse_async
 
 async def process_documents():
     async with aiohttp.ClientSession() as session:
-        # Basic usage
+        # 基本用法
         result = await mineru_parse_async(session, 'document.pdf')
         
-        # With custom options
+        # 带自定义选项
         result = await mineru_parse_async(
             session, 
             'document.pdf',
@@ -67,12 +69,12 @@ async def process_documents():
             table_enable=True
         )
 
-# Run async processing
+# 运行异步处理
 asyncio.run(process_documents())
 ```
 
-### Concurrent Processing
-Process multiple files simultaneously:
+### 并行处理
+同时处理多个文件：
 ```python
 async def process_multiple_files():
     files = ['doc1.pdf', 'doc2.pdf', 'doc3.pdf']
