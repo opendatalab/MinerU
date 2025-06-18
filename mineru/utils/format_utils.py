@@ -145,11 +145,14 @@ def otsl_parse_texts(texts, tokens):
     def count_down(tokens, c_idx, r_idx, which_tokens):
         span = 0
         r_idx_iter = r_idx
-        while tokens[r_idx_iter][c_idx] in which_tokens:
-            r_idx_iter += 1
-            span += 1
-            if r_idx_iter >= len(tokens):
-                return span
+        while r_idx_iter < len(tokens):  
+            if c_idx >= len(tokens[r_idx_iter]): 
+                break
+            if tokens[r_idx_iter][c_idx] in which_tokens:
+                span += 1
+                r_idx_iter += 1
+            else:
+                break
         return span
 
     for i, text in enumerate(texts):
