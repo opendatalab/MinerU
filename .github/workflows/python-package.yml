@@ -32,14 +32,14 @@ jobs:
 
       - name: Verify version.py
         run: |
-          ls -l magic_pdf/libs/version.py
-          cat magic_pdf/libs/version.py
+          ls -l mineru/version.py
+          cat mineru/version.py
 
       - name: Commit changes
         run: |
           git config --local user.email "moe@myhloli.com"
           git config --local user.name "myhloli"
-          git add magic_pdf/libs/version.py
+          git add mineru/version.py
           if git diff-index --quiet HEAD; then
             echo "No changes to commit"
           else
@@ -54,13 +54,13 @@ jobs:
         run: |
           git push origin HEAD:master
 
-  build:
+  check-install:
     needs: [ update-version ]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
     - name: Checkout code
@@ -71,26 +71,43 @@ jobs:
 
     - name: Verify version.py
       run: |
-        ls -l magic_pdf/libs/version.py
-        cat magic_pdf/libs/version.py
+        ls -l mineru/version.py
+        cat mineru/version.py
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
+    - name: Install mineru
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -e .[core]
+
+  build:
+    needs: [ check-install ]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.10"]
+
+    steps:
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: master
+        fetch-depth: 0
 
     - name: Install wheel
       run: |
         python -m pip install wheel
+        pip install build
 
     - name: Build wheel
       run: |
-        python setup.py bdist_wheel
+        python -m build --wheel
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
