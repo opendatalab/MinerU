@@ -1,0 +1,61 @@
+name: Docker Build Image-WebAPI-GitHub
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Lower Case Image Name, Owner Name and Repository Name
+      run: |
+        IMAGE_NAME=$(echo ${{ vars.IMAGE_NAME }} | tr '[:upper:]' '[:lower:]')
+        echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_ENV
+        OWNER_NAME=$(echo ${{ github.actor }} | tr '[:upper:]' '[:lower:]')
+        echo "OWNER_NAME=${OWNER_NAME}" >> $GITHUB_ENV
+        REPO_NAME=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')
+        echo "REPO_NAME=${REPO_NAME}" >> $GITHUB_ENV
+
+    - name: Clean up unnecessary large folders
+      run: |
+        # Delete unnecessary large folders
+        sudo rm -rf /opt/hostedtoolcache
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/share/boost
+        # Clean apt cache
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+        # Show available disk space
+        df -h
+        
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      with:
+        buildkitd-flags: --debug
+        
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./projects/web_api
+        file: ./projects/web_api/Dockerfile
+        push: true
+        tags: ghcr.io/${{ env.OWNER_NAME }}/${{ env.REPO_NAME }}-webapi:latest
+        cache-from: type=registry,ref=ghcr.io/${{ env.OWNER_NAME }}/${{ env.REPO_NAME }}-webapi:buildcache
+        cache-to: type=registry,ref=ghcr.io/${{ env.OWNER_NAME }}/${{ env.REPO_NAME }}-webapi:buildcache,mode=max
