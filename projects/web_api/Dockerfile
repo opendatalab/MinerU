@@ -49,7 +49,7 @@ RUN apt-get update && \
 
 # Copy the app and its configuration file
 COPY entrypoint.sh /app/entrypoint.sh
-COPY magic-pdf.json /root/magic-pdf.json
+COPY mineru.json /root/mineru.json
 COPY app.py /app/app.py
 
 # Expose the port that FastAPI will run on
