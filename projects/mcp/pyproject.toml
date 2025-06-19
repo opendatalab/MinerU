@@ -1,6 +1,6 @@
 [project]
 name = "mineru-mcp"
-version = "0.1.12"
+version = "1.0.0"
 description = "MinerU MCP Server for PDF to Markdown conversion"
 authors = [
     {name = "minerU",email = "OpenDataLab@pjlab.org.cn"}
