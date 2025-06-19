@@ -1,4 +1,4 @@
-magic-pdf[full]
+mineru[full]
 
 fastapi
 uvicorn

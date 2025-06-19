@@ -1,3 +1,0 @@
-[console_scripts]
-magic-pdf = magic_pdf.tools.cli:cli
-magic-pdf-dev = magic_pdf.tools.cli_dev:cli

@@ -24,16 +24,12 @@ COPY requirements.txt .
 RUN python -m venv /app/venv && \
     . /app/venv/bin/activate && \
     pip install --no-cache-dir -r requirements.txt && \
-#     pip uninstall -y paddlepaddle && \
-#     pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
-#         paddlepaddle-gpu==3.0.0rc1
     find /app/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Download models
-COPY download_models.py .
 RUN . /app/venv/bin/activate && \
-    python download_models.py
-
+    export HF_HOME=/opt/models && \
+    python -m mineru.cli.models_download
 
 FROM base AS prod
 
@@ -50,10 +46,6 @@ RUN apt-get update && \
         libgomp1 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Create volume for paddleocr models
-# RUN mkdir -p /root/.paddleocr
-# VOLUME [ "/root/.paddleocr" ]
 
 # Copy the app and its configuration file
 COPY entrypoint.sh /app/entrypoint.sh

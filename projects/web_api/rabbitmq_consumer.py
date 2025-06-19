@@ -6,10 +6,7 @@ import tempfile
 
 import pika
 
-from app import MemoryDataWriter, init_writers, process_file
-import magic_pdf.model as model_config
-
-model_config.__use_inside_model__ = True
+from app import init_writers, process_file_mineru
 
 
 def handle_message(ch, method, properties, body):
@@ -28,6 +25,9 @@ def handle_message(ch, method, properties, body):
             f.write(base64.b64decode(file_content_base64))
 
         parse_method = message.get("parse_method", "auto")
+        lang = message.get("lang", "ch")
+        formula_enable = message.get("formula_enable", True)
+        table_enable = message.get("table_enable", True)
 
         output_path = os.path.join(temp_dir, os.path.splitext(file_name)[0])
         output_image_path = os.path.join(output_path, "images")
@@ -39,27 +39,22 @@ def handle_message(ch, method, properties, body):
             output_image_path=output_image_path,
         )
 
-        infer_result, pipe_result = process_file(
-            file_bytes, file_extension, parse_method, image_writer
+        (
+            model_json,
+            middle_json,
+            content_list,
+            md_content,
+            processed_bytes,
+            pdf_info,
+        ) = process_file_mineru(
+            file_bytes,
+            file_extension,
+            image_writer,
+            parse_method,
+            lang,
+            formula_enable,
+            table_enable,
         )
-
-        # Use MemoryDataWriter to get results in memory
-        content_list_writer = MemoryDataWriter()
-        md_content_writer = MemoryDataWriter()
-        middle_json_writer = MemoryDataWriter()
-
-        pipe_result.dump_content_list(content_list_writer, "", "images")
-        pipe_result.dump_md(md_content_writer, "", "images")
-        pipe_result.dump_middle_json(middle_json_writer, "")
-
-        # Get content from memory writers
-        content_list = json.loads(content_list_writer.get_value())
-        md_content = md_content_writer.get_value()
-        middle_json = json.loads(middle_json_writer.get_value())
-
-        content_list_writer.close()
-        md_content_writer.close()
-        middle_json_writer.close()
 
         result_queue = os.getenv("RABBITMQ_RESULT_QUEUE", "mineru_results_queue")
         result_message = {
@@ -68,13 +63,13 @@ def handle_message(ch, method, properties, body):
             "content_list": content_list,
             "middle_json": middle_json,
         }
-        
+
         # Add correlation_id to result message if it was provided
         if correlation_id:
             result_message["correlation_id"] = correlation_id
-        
+
         print(f"correlation_id: {correlation_id}")
-            
+
         ch.queue_declare(queue=result_queue, durable=True)
         ch.basic_publish(
             exchange="",
@@ -116,4 +111,5 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
     main()
