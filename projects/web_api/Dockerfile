@@ -35,7 +35,7 @@ FROM base AS prod
 
 # Copy Python dependencies and models from the build stage
 COPY --from=build /app/venv /app/venv
-COPY --from=build /opt/models /root/.cache/models
+COPY --from=build /opt/models /root/.cache/huggingface
 
 # Update the package list and install necessary packages
 RUN apt-get update && \
