@@ -1,4 +1,4 @@
-mineru[full]
+mineru[pipeline]
 
 fastapi
 uvicorn
