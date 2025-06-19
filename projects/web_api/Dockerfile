@@ -29,7 +29,7 @@ RUN python -m venv /app/venv && \
 # Download models
 RUN . /app/venv/bin/activate && \
     export HF_HOME=/opt/models && \
-    python -m mineru.cli.models_download
+    python -m mineru.cli.models_download --source huggingface --model_type all
 
 FROM base AS prod
 
