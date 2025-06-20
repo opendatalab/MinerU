@@ -217,9 +217,7 @@ async def file_parse(
             )
 
         # Get PDF filename
-        file_name = os.path.basename(file_path if file_path else file.filename).split(
-            "."
-        )[0]
+        file_name = os.path.splitext(os.path.basename(file_path if file_path else file.filename))[0]
         output_path = f"{output_dir}/{file_name}"
         output_image_path = f"{output_path}/images"
 
