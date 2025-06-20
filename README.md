@@ -51,6 +51,9 @@ Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple inte
 </div>
 
 # Changelog
+- 2025/06/20 2.0.6 Released
+  - Fixed occasional parsing interruptions caused by invalid block content in `vlm` mode
+  - Fixed parsing interruptions caused by incomplete table structures in `vlm` mode
 - 2025/06/17 2.0.5 Released 
   - Fixed the issue where models were still required to be downloaded in the `sglang-client` mode  
   - Fixed the issue where the `sglang-client` mode unnecessarily depended on packages like `torch` during runtime.
