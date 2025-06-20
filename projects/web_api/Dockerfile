@@ -23,23 +23,19 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN python -m venv /app/venv && \
     . /app/venv/bin/activate && \
-    pip install -r requirements.txt
-#     pip uninstall -y paddlepaddle && \
-#     pip install -i https://www.paddlepaddle.org.cn/packages/stable/cu118/ \
-#         paddlepaddle-gpu==3.0.0rc1
+    pip install --no-cache-dir -r requirements.txt && \
+    find /app/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Download models
-COPY download_models.py .
 RUN . /app/venv/bin/activate && \
-    ./download_models.py
-
+    export HF_HOME=/opt/models && \
+    python -m mineru.cli.models_download --source huggingface --model_type all
 
 FROM base AS prod
 
 # Copy Python dependencies and models from the build stage
 COPY --from=build /app/venv /app/venv
 COPY --from=build /opt/models /opt/models
-COPY --from=build /opt/layoutreader /opt/layoutreader
 
 # Update the package list and install necessary packages
 RUN apt-get update && \
@@ -50,18 +46,14 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create volume for paddleocr models
-# RUN mkdir -p /root/.paddleocr
-# VOLUME [ "/root/.paddleocr" ]
-
 # Copy the app and its configuration file
 COPY entrypoint.sh /app/entrypoint.sh
-COPY magic-pdf.json /root/magic-pdf.json
+COPY mineru.json /root/mineru.json
 COPY app.py /app/app.py
 
 # Expose the port that FastAPI will run on
-EXPOSE 8000
+EXPOSE 8888
 
 # Command to run FastAPI using Uvicorn, pointing to app.py and binding to 0.0.0.0:8000
 ENTRYPOINT [ "/app/entrypoint.sh" ]
-CMD ["--host", "0.0.0.0", "--port", "8000"]
+CMD ["--host", "0.0.0.0", "--port", "8888"]
