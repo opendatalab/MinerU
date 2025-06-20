@@ -665,6 +665,12 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 mineru-sglang-server --port 30000
 ```
 
+> [!TIP]
+> sglang acceleration requires a GPU with Ampere architecture or newer, and at least 24GB VRAM. If you have two 12GB or 16GB GPUs, you can use Tensor Parallelism (TP) mode:  
+> `mineru-sglang-server --port 30000 --tp 2`  
+> 
+> If you still encounter out-of-memory errors with two GPUs, or if you need to improve throughput or inference speed using multi-GPU parallelism, please refer to the [sglang official documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands).
+
 2. Use Client in another terminal:
 
 ```bash
