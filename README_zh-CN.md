@@ -493,8 +493,8 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!TIP]
-> Linux和macOS系统安装后自动支持cuda/mps加速，Windows用户如需使用cuda加速，请前往 [Pytorch官网](https://pytorch.org/get-started/locally/)
-> 选择合适的cuda版本安装pytorch。
+> Linux和macOS系统安装后自动支持cuda/mps加速，Windows用户如需使用cuda加速，
+> 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择合适的cuda版本安装pytorch。
 
 #### 1.3 安装完整版（支持 sglang 加速）（需确保设备有Ampere及以后架构，24G显存及以上显卡）
 
@@ -653,6 +653,12 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 ```bash
 mineru-sglang-server --port 30000
 ```
+
+> [!TIP]
+> sglang加速需设备有Ampere及以后架构，24G显存及以上显卡，如您有两张12G或16G显卡，可以通过张量并行（TP）模式使用。
+>  `mineru-sglang-server --port 30000 --tp 2`
+> 
+> 如使用两张卡仍出现显存不足错误或需要使用多卡并行增加吞吐量或推理速度，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
 
 2. 在另一个终端中使用 Client 调用：
 
