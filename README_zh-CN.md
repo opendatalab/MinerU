@@ -492,7 +492,11 @@ cd MinerU
 uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-#### 1.3 安装完整版（支持 sglang 加速）
+> [!TIP]
+> Linux和macOS系统安装后自动支持cuda/mps加速，Windows用户如需使用cuda加速，请前往 [Pytorch官网](https://pytorch.org/get-started/locally/)
+> 选择合适的cuda版本安装pytorch。
+
+#### 1.3 安装完整版（支持 sglang 加速）（需确保设备有Ampere及以后架构，24G显存及以上显卡）
 
 如需使用 **sglang 加速 VLM 模型推理**，请选择合适的方式安装完整版本：
 

@@ -502,7 +502,11 @@ cd MinerU
 uv pip install -e .[core]
 ```
 
-#### 1.3 Install the Full Version (Supports sglang Acceleration)
+> [!TIP]  
+> Linux and macOS systems automatically support CUDA/MPS acceleration after installation. For Windows users who want to use CUDA acceleration, 
+> please visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to install PyTorch with the appropriate CUDA version.
+
+#### 1.3 Install Full Version (supports sglang acceleration) (requires device with Ampere or newer architecture and at least 24GB GPU memory)
 
 If you need to use **sglang to accelerate VLM model inference**, you can choose any of the following methods to install the full version:
 

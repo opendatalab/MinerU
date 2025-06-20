@@ -109,14 +109,11 @@ body:
   - type: dropdown
     id: software_version
     attributes:
-      label: Software version | 软件版本 (magic-pdf --version)
+      label: Software version | 软件版本 (mineru --version)
       #multiple: false
       options:
         -
-        - "1.0.x"
-        - "1.1.x"
-        - "1.2.x"
-        - "1.3.x"
+        - "2.0.x"
     validations:
       required: true
 
