@@ -132,6 +132,35 @@ def otsl_parse_texts(texts, tokens):
     r_idx = 0
     c_idx = 0
 
+    # Check and complete the matrix
+    if split_row_tokens:
+        max_cols = max(len(row) for row in split_row_tokens)
+
+        # Insert additional <ecel> to tags
+        for row_idx, row in enumerate(split_row_tokens):
+            while len(row) < max_cols:
+                row.append(OTSL_ECEL)
+
+        # Insert additional <ecel> to texts
+        new_texts = []
+        text_idx = 0
+
+        for row_idx, row in enumerate(split_row_tokens):
+            for col_idx, token in enumerate(row):
+                new_texts.append(token)
+                if text_idx < len(texts) and texts[text_idx] == token:
+                    text_idx += 1
+                    if (text_idx < len(texts) and 
+                        texts[text_idx] not in [OTSL_NL, OTSL_FCEL, OTSL_ECEL, OTSL_LCEL, OTSL_UCEL, OTSL_XCEL]):
+                        new_texts.append(texts[text_idx])
+                        text_idx += 1
+
+            new_texts.append(OTSL_NL)
+            if text_idx < len(texts) and texts[text_idx] == OTSL_NL:
+                text_idx += 1
+
+        texts = new_texts
+
     def count_right(tokens, c_idx, r_idx, which_tokens):
         span = 0
         c_idx_iter = c_idx
@@ -235,10 +264,11 @@ def export_to_html(table_data: TableData):
 
     body = ""
 
+    grid = table_data.grid
     for i in range(nrows):
         body += "<tr>"
         for j in range(ncols):
-            cell: TableCell = table_data.grid[i][j]
+            cell: TableCell = grid[i][j]
 
             rowspan, rowstart = (
                 cell.row_span,
