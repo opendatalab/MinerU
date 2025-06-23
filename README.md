@@ -439,7 +439,7 @@ There are three different ways to experience MinerU:
         <td>Parsing Backend</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sgslang</td>
+        <td>vlm-sglang</td>
     </tr>
     <tr>
         <td>Operating System</td>

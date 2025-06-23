@@ -429,7 +429,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sgslang</td>
+        <td>vlm-sglang</td>
     </tr>
     <tr>
         <td>操作系统</td>
