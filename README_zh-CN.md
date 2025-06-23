@@ -429,7 +429,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sgslang</td>
+        <td>vlm-sglang</td>
     </tr>
     <tr>
         <td>操作系统</td>
@@ -492,7 +492,7 @@ cd MinerU
 uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-> [!TIP]
+> [!NOTE]
 > Linux和macOS系统安装后自动支持cuda/mps加速，Windows用户如需使用cuda加速，
 > 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择合适的cuda版本安装pytorch。
 
@@ -640,13 +640,13 @@ mineru -p <input_path> -o <output_path>
 
 #### 2.3 使用 sglang 加速 VLM 模型推理
 
-##### 启动 sglang-engine 模式
+##### 通过 sglang-engine 模式
 
 ```bash
 mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 ```
 
-##### 启动 sglang-server/client 模式
+##### 通过 sglang-server/client 模式
 
 1. 启动 Server：
 
@@ -655,10 +655,12 @@ mineru-sglang-server --port 30000
 ```
 
 > [!TIP]
-> sglang加速需设备有Ampere及以后架构，24G显存及以上显卡，如您有两张12G或16G显卡，可以通过张量并行（TP）模式使用:
-> `mineru-sglang-server --port 30000 --tp 2`
-> 
-> 如使用两张卡仍出现显存不足错误或需要使用多卡并行增加吞吐量或推理速度，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
+> sglang-server 有一些常用参数可以配置：
+> - 如您有两张显存为`12G`或`16G`的显卡，可以通过张量并行（TP）模式使用：`--tp 2`
+> - 如您有两张`11G`显卡，除了张量并行外，还需要调低KV缓存大小，可以使用：`--tp 2 --mem-fraction-static 0.7`
+> - 如果您有超过多张`24G`以上显卡，可以使用sglang的多卡并行模式来增加吞吐量：`--dp 2`
+> - 同时您可以启用`torch.compile`来将推理速度加速约15%：`--enable-torch-compile`
+> - 如果您想了解更多有关`sglang`的参数使用方法，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
 
 2. 在另一个终端中使用 Client 调用：
 
