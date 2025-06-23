@@ -57,15 +57,17 @@ class DocLayoutYOLOModel:
         batch_size: int = 4
     ) -> List[List[Dict]]:
         results = []
-        for idx in tqdm(range(0, len(images), batch_size), desc="Layout Predict"):
-            batch = images[idx: idx + batch_size]
-            predictions = self.model.predict(
-                batch,
-                imgsz=self.imgsz,
-                conf=self.conf,
-                iou=self.iou,
-                verbose=False,
-            )
-            for pred in predictions:
-                results.append(self._parse_prediction(pred))
+        with tqdm(total=len(images), desc="Layout Predict") as pbar:
+            for idx in range(0, len(images), batch_size):
+                batch = images[idx: idx + batch_size]
+                predictions = self.model.predict(
+                    batch,
+                    imgsz=self.imgsz,
+                    conf=self.conf,
+                    iou=self.iou,
+                    verbose=False,
+                )
+                for pred in predictions:
+                    results.append(self._parse_prediction(pred))
+                pbar.update(len(batch))
         return results

@@ -44,8 +44,10 @@ class YOLOv8MFDModel:
         batch_size: int = 4
     ) -> List:
         results = []
-        for idx in tqdm(range(0, len(images), batch_size), desc="MFD Predict"):
-            batch = images[idx: idx + batch_size]
-            batch_preds = self._run_predict(batch, is_batch=True)
-            results.extend(batch_preds)
+        with tqdm(total=len(images), desc="MFD Predict") as pbar:
+            for idx in range(0, len(images), batch_size):
+                batch = images[idx: idx + batch_size]
+                batch_preds = self._run_predict(batch, is_batch=True)
+                results.extend(batch_preds)
+                pbar.update(len(batch))
         return results
