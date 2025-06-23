@@ -657,8 +657,8 @@ mineru-sglang-server --port 30000
 > [!TIP]
 > sglang-server 有一些常用参数可以配置：
 > - 如您有两张显存为`12G`或`16G`的显卡，可以通过张量并行（TP）模式使用：`--tp 2`
-> - 如您有两张`11G显存`显卡，除了张量并行外，还需要调低KV缓存大小，可以使用：`--tp 2 --mem-fraction-static 0.7`
-> - 如果您有超过多张`24G显存`以上显卡，可以使用sglang的多卡并行模式来增加吞吐量：`--dp 2`
+> - 如您有两张`11G`显卡，除了张量并行外，还需要调低KV缓存大小，可以使用：`--tp 2 --mem-fraction-static 0.7`
+> - 如果您有超过多张`24G`以上显卡，可以使用sglang的多卡并行模式来增加吞吐量：`--dp 2`
 > - 同时您可以启用`torch.compile`来将推理速度加速约15%：`--enable-torch-compile`
 > - 如果您想了解更多有关`sglang`的参数使用方法，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
 
