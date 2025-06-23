@@ -502,7 +502,7 @@ cd MinerU
 uv pip install -e .[core]
 ```
 
-> [!TIP]  
+> [!NOTE]  
 > Linux and macOS systems automatically support CUDA/MPS acceleration after installation. For Windows users who want to use CUDA acceleration, 
 > please visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to install PyTorch with the appropriate CUDA version.
 
@@ -665,6 +665,7 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 mineru-sglang-server --port 30000
 ```
 
+> [!TIP]
 > sglang-server has some commonly used parameters for configuration:
 > - If you have two GPUs with `12GB` or `16GB` VRAM, you can use the Tensor Parallel (TP) mode: `--tp 2`
 > - If you have two GPUs with `11GB` VRAM, in addition to Tensor Parallel mode, you need to reduce the KV cache size: `--tp 2 --mem-fraction-static 0.7`
