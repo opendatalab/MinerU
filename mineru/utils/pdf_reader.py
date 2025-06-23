@@ -15,7 +15,7 @@ def page_to_image(
     scale = dpi / 72
 
     long_side_length = max(*page.get_size())
-    if long_side_length > max_width_or_height:
+    if (long_side_length*scale) > max_width_or_height:
         scale = max_width_or_height / long_side_length
 
     bitmap: PdfBitmap = page.render(scale=scale)  # type: ignore
