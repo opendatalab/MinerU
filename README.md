@@ -592,6 +592,7 @@ Options:
   -e, --end INTEGER               Ending page number (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: on, pipeline backend only)
   -t, --table BOOLEAN             Enable table parsing (default: on, pipeline backend only)
+  --md-image BOOLEAN             Embed images into markdown (default: on)
   -d, --device TEXT               Inference device (e.g., cpu/cuda/cuda:0/npu/mps, pipeline backend only)
   --vram INTEGER                  Maximum GPU VRAM usage per process (pipeline backend only)
   --source [huggingface|modelscope|local]

@@ -36,6 +36,7 @@ def do_parse(
     f_dump_orig_pdf=True,  # Whether to dump original PDF files
     f_dump_content_list=True,  # Whether to dump content list files
     f_make_md_mode=MakeMode.MM_MD,  # The mode for making markdown content, default is MM_MD
+    f_md_image_enable=True,
     start_page_id=0,  # Start page ID for parsing, default is 0
     end_page_id=None,  # End page ID for parsing, default is None (parse all pages until the end of the document)
 ):
@@ -76,7 +77,7 @@ def do_parse(
 
             if f_dump_md:
                 image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir)
+                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir, f_md_image_enable)
                 md_writer.write_string(
                     f"{pdf_file_name}.md",
                     md_content_str,
@@ -132,7 +133,7 @@ def do_parse(
 
             if f_dump_md:
                 image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir)
+                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir, f_md_image_enable)
                 md_writer.write_string(
                     f"{pdf_file_name}.md",
                     md_content_str,
@@ -211,6 +212,7 @@ def parse_doc(
             backend=backend,
             parse_method=method,
             server_url=server_url,
+            f_md_image_enable=True,
             start_page_id=start_page_id,
             end_page_id=end_page_id
         )

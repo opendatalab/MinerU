@@ -111,6 +111,13 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     default=True,
 )
 @click.option(
+    '--md-image',
+    'md_image_enable',
+    type=bool,
+    help='Embed images into markdown. Default is True.',
+    default=True,
+)
+@click.option(
     '-d',
     '--device',
     'device_mode',
@@ -136,7 +143,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 )
 
 
-def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
+def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, md_image_enable, device_mode, virtual_vram, model_source):
 
     if not backend.endswith('-client'):
         def get_device_mode() -> str:
@@ -182,6 +189,7 @@ def main(input_path, output_dir, method, backend, lang, server_url, start_page_i
                 p_formula_enable=formula_enable,
                 p_table_enable=table_enable,
                 server_url=server_url,
+                f_md_image_enable=md_image_enable,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id
             )

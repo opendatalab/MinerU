@@ -1,4 +1,4 @@
-from mineru.utils.config_reader import get_latex_delimiter_config
+from mineru.utils.config_reader import get_latex_delimiter_config, get_markdown_image_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
 
@@ -39,7 +39,7 @@ def merge_para_with_text(para_block):
                     para_text += content
     return para_text
 
-def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
+def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', md_image_enable=True):
     page_markdown = []
     for para_block in para_blocks:
         para_text = ''
@@ -65,7 +65,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
                             for line in block['lines']:
                                 for span in line['spans']:
                                     if span['type'] == ContentType.IMAGE:
-                                        if span.get('image_path', ''):
+                                        if span.get('image_path', '') and md_image_enable:
                                             para_text += f"![]({img_buket_path}/{span['image_path']})"
                     for block in para_block['blocks']:  # 3rd.拼image_footnote
                         if block['type'] == BlockType.IMAGE_FOOTNOTE:
@@ -76,7 +76,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
                             for line in block['lines']:
                                 for span in line['spans']:
                                     if span['type'] == ContentType.IMAGE:
-                                        if span.get('image_path', ''):
+                                        if span.get('image_path', '') and md_image_enable:
                                             para_text += f"![]({img_buket_path}/{span['image_path']})"
                     for block in para_block['blocks']:  # 2nd.拼image_caption
                         if block['type'] == BlockType.IMAGE_CAPTION:
@@ -97,7 +97,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
                                     # if processed by table model
                                     if span.get('html', ''):
                                         para_text += f"\n{span['html']}\n"
-                                    elif span.get('image_path', ''):
+                                    elif span.get('image_path', '') and md_image_enable:
                                         para_text += f"![]({img_buket_path}/{span['image_path']})"
                 for block in para_block['blocks']:  # 3rd.拼table_footnote
                     if block['type'] == BlockType.TABLE_FOOTNOTE:
@@ -176,7 +176,9 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
 def union_make(pdf_info_dict: list,
                make_mode: str,
                img_buket_path: str = '',
+               md_image_enable: bool = True,
                ):
+    md_image_enable = get_markdown_image_enable(md_image_enable)
     output_content = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
@@ -184,7 +186,7 @@ def union_make(pdf_info_dict: list,
         if not paras_of_layout:
             continue
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
+            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path, md_image_enable)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             for para_block in paras_of_layout:

@@ -581,6 +581,7 @@ Options:
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启，仅 pipeline 后端）
   -t, --table BOOLEAN             是否启用表格解析（默认开启，仅 pipeline 后端）
+  --md-image BOOLEAN             是否在 Markdown 中嵌入图片（默认开启）
   -d, --device TEXT               推理设备（如 cpu/cuda/cuda:0/npu/mps，仅 pipeline 后端）
   --vram INTEGER                  单进程最大 GPU 显存占用（仅 pipeline 后端）
   --source [huggingface|modelscope|local]

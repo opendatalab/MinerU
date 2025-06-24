@@ -91,6 +91,7 @@ def do_parse(
     f_dump_orig_pdf=True,
     f_dump_content_list=True,
     f_make_md_mode=MakeMode.MM_MD,
+    f_md_image_enable=True,
     start_page_id=0,
     end_page_id=None,
 ):
@@ -137,7 +138,7 @@ def do_parse(
 
             if f_dump_md:
                 image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir)
+                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir, f_md_image_enable)
                 md_writer.write_string(
                     f"{pdf_file_name}.md",
                     md_content_str,
@@ -194,7 +195,7 @@ def do_parse(
 
             if f_dump_md:
                 image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir)
+                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir, f_md_image_enable)
                 md_writer.write_string(
                     f"{pdf_file_name}.md",
                     md_content_str,

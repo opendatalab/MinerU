@@ -102,6 +102,12 @@ def get_table_enable(table_enable):
     return table_enable
 
 
+def get_markdown_image_enable(md_image_enable):
+    md_image_enable_env = os.getenv('MINERU_MARKDOWN_IMAGE_ENABLE')
+    md_image_enable = md_image_enable if md_image_enable_env is None else md_image_enable_env.lower() == 'true'
+    return md_image_enable
+
+
 def get_latex_delimiter_config():
     config = read_config()
     if config is None:
