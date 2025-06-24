@@ -75,15 +75,15 @@ async def aio_doc_analyze(
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url)
 
-    load_images_start = time.time()
+    # load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
     images_base64_list = [image_dict["img_base64"] for image_dict in images_list]
-    load_images_time = round(time.time() - load_images_start, 2)
-    logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
+    # load_images_time = round(time.time() - load_images_start, 2)
+    # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
 
-    infer_start = time.time()
+    # infer_start = time.time()
     results = await predictor.aio_batch_predict(images=images_base64_list)
-    infer_time = round(time.time() - infer_start, 2)
-    logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    # infer_time = round(time.time() - infer_start, 2)
+    # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
     middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
-    return middle_json
+    return middle_json, results
