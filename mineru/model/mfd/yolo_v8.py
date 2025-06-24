@@ -1,33 +1,53 @@
+from typing import List, Union
 from tqdm import tqdm
 from ultralytics import YOLO
+import numpy as np
+from PIL import Image
 
 
-class YOLOv8MFDModel(object):
-    def __init__(self, weight, device="cpu"):
-        self.mfd_model = YOLO(weight)
+class YOLOv8MFDModel:
+    def __init__(
+        self,
+        weight: str,
+        device: str = "cpu",
+        imgsz: int = 1888,
+        conf: float = 0.25,
+        iou: float = 0.45,
+    ):
+        self.model = YOLO(weight).to(device)
         self.device = device
+        self.imgsz = imgsz
+        self.conf = conf
+        self.iou = iou
 
-    def predict(self, image):
-        mfd_res = self.mfd_model.predict(
-            image, imgsz=1888, conf=0.25, iou=0.45, verbose=False, device=self.device
-        )[0]
-        return mfd_res
+    def _run_predict(
+        self,
+        inputs: Union[np.ndarray, Image.Image, List],
+        is_batch: bool = False
+    ) -> List:
+        preds = self.model.predict(
+            inputs,
+            imgsz=self.imgsz,
+            conf=self.conf,
+            iou=self.iou,
+            verbose=False,
+            device=self.device
+        )
+        return [pred.cpu() for pred in preds] if is_batch else preds[0].cpu()
 
-    def batch_predict(self, images: list, batch_size: int) -> list:
-        images_mfd_res = []
-        # for index in range(0, len(images), batch_size):
-        for index in tqdm(range(0, len(images), batch_size), desc="MFD Predict"):
-            mfd_res = [
-                image_res.cpu()
-                for image_res in self.mfd_model.predict(
-                    images[index : index + batch_size],
-                    imgsz=1888,
-                    conf=0.25,
-                    iou=0.45,
-                    verbose=False,
-                    device=self.device,
-                )
-            ]
-            for image_res in mfd_res:
-                images_mfd_res.append(image_res)
-        return images_mfd_res
+    def predict(self, image: Union[np.ndarray, Image.Image]):
+        return self._run_predict(image)
+
+    def batch_predict(
+        self,
+        images: List[Union[np.ndarray, Image.Image]],
+        batch_size: int = 4
+    ) -> List:
+        results = []
+        with tqdm(total=len(images), desc="MFD Predict") as pbar:
+            for idx in range(0, len(images), batch_size):
+                batch = images[idx: idx + batch_size]
+                batch_preds = self._run_predict(batch, is_batch=True)
+                results.extend(batch_preds)
+                pbar.update(len(batch))
+        return results
