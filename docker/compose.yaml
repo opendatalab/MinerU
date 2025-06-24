@@ -1,26 +1,22 @@
 # Documentation:
-# https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/server_args.py
-# https://github.com/opendatalab/MinerU/tree/master?tab=readme-ov-file#23-using-sglang-to-accelerate-vlm-model-inference
+# https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands
 services:
   mineru-sglang:
     image: mineru-sglang:latest
     container_name: mineru-sglang
-    volumes:
-      # - ${HF_HOME}:/root/.cache/huggingface
-      # - ${MODELSCOPE_CACHE}:/root/.cache/modelscope
-      - ./inductor_root_cache:/root/inductor_root_cache
     restart: always
     ports:
       - 30000:30000
     environment:
       MINERU_MODEL_SOURCE: local
-      # TORCHINDUCTOR_CACHE_DIR: /root/inductor_root_cache
-      # NO_PROXY: 0.0.0.0,localhost,127.0.0.1
     entrypoint: mineru-sglang-server
     command:
       --host 0.0.0.0
       --port 30000
-      # --enable-torch-compile
+      # --enable-torch-compile  # You can also enable torch.compile to accelerate inference speed by approximately 15%
+      # --dp 2  # If you have more than two GPUs with 24GB VRAM or above, you can use sglang's multi-GPU parallel mode to increase throughput  
+      # --tp 2  # If you have two GPUs with 12GB or 16GB VRAM, you can use the Tensor Parallel (TP) mode
+      # --mem-fraction-static 0.7  # If you have two GPUs with 11GB VRAM, in addition to Tensor Parallel mode, you need to reduce the KV cache size
     ulimits:
       memlock: -1
       stack: 67108864
