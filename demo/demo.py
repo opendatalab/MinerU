@@ -169,8 +169,8 @@ def parse_doc(
         backend="pipeline",
         method="auto",
         server_url=None,
-        start_page_id=0,  # Start page ID for parsing, default is 0
-        end_page_id=None  # End page ID for parsing, default is None (parse all pages until the end of the document)
+        start_page_id=0,
+        end_page_id=None
 ):
     """
         Parameter description:
@@ -192,6 +192,8 @@ def parse_doc(
             Without method specified, 'auto' will be used by default.
             Adapted only for the case where the backend is set to "pipeline".
         server_url: When the backend is `sglang-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+        start_page_id: Start page ID for parsing, default is 0
+        end_page_id: End page ID for parsing, default is None (parse all pages until the end of the document)
     """
     try:
         file_name_list = []
