@@ -450,7 +450,7 @@ There are three different ways to experience MinerU:
         <td>Parsing Backend</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sgslang</td>
+        <td>vlm-sglang</td>
     </tr>
     <tr>
         <td>Operating System</td>
@@ -513,7 +513,7 @@ cd MinerU
 uv pip install -e .[core]
 ```
 
-> [!TIP]  
+> [!NOTE]  
 > Linux and macOS systems automatically support CUDA/MPS acceleration after installation. For Windows users who want to use CUDA acceleration, 
 > please visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to install PyTorch with the appropriate CUDA version.
 
@@ -662,13 +662,13 @@ mineru -p <input_path> -o <output_path>
 
 #### 2.3 Using sglang to Accelerate VLM Model Inference
 
-##### Start sglang-engine Mode
+##### Through the sglang-engine Mode
 
 ```bash
 mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 ```
 
-##### Start sglang-server/client Mode
+##### Through the sglang-server/client Mode
 
 1. Start Server:
 
@@ -677,10 +677,13 @@ mineru-sglang-server --port 30000
 ```
 
 > [!TIP]
-> sglang acceleration requires a GPU with Ampere architecture or newer, and at least 24GB VRAM. If you have two 12GB or 16GB GPUs, you can use Tensor Parallelism (TP) mode:  
-> `mineru-sglang-server --port 30000 --tp 2`  
-> 
-> If you still encounter out-of-memory errors with two GPUs, or if you need to improve throughput or inference speed using multi-GPU parallelism, please refer to the [sglang official documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands).
+> sglang-server has some commonly used parameters for configuration:
+> - If you have two GPUs with `12GB` or `16GB` VRAM, you can use the Tensor Parallel (TP) mode: `--tp 2`
+> - If you have two GPUs with `11GB` VRAM, in addition to Tensor Parallel mode, you need to reduce the KV cache size: `--tp 2 --mem-fraction-static 0.7`
+> - If you have more than two GPUs with `24GB` VRAM or above, you can use sglang's multi-GPU parallel mode to increase throughput: `--dp 2`
+> - You can also enable `torch.compile` to accelerate inference speed by approximately 15%: `--enable-torch-compile`
+> - If you want to learn more about the usage of `sglang` parameters, please refer to the [official sglang documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
+
 
 2. Use Client in another terminal:
 
