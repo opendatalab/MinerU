@@ -90,7 +90,7 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages, is_ocr, formula_enable, table_enable, language, backend, url):
+def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
     local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
@@ -172,7 +172,7 @@ def to_pdf(file_path):
     return tmp_file_path
 
 
-if __name__ == '__main__':
+def main():
     example_enable = False
 
     with gr.Blocks() as demo:
@@ -248,3 +248,7 @@ if __name__ == '__main__':
         clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
 
     demo.launch(server_name='localhost')
+
+
+if __name__ == '__main__':
+    main()

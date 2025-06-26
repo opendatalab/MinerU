@@ -109,6 +109,7 @@ mineru = "mineru.cli:client.main"
 mineru-sglang-server = "mineru.cli.vlm_sglang_server:main"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
+mineru-gradio = "mineru.cli.gradio_app:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "mineru.version.__version__"}
