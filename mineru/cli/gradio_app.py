@@ -11,15 +11,15 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
-from mineru.cli.common import prepare_env, do_parse, read_fn
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse
 from mineru.utils.hash_utils import str_sha256
 
 
-def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language, backend, url):
+async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language, backend, url):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        file_name = f'{str(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
+        file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
         if is_ocr:
             parse_method = 'ocr'
@@ -29,7 +29,7 @@ def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_e
         if backend.startswith("vlm"):
             parse_method = "vlm"
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
-        do_parse(
+        await aio_do_parse(
             output_dir=output_dir,
             pdf_file_names=[file_name],
             pdf_bytes_list=[pdf_data],
@@ -90,10 +90,10 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
+async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
+    local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -175,6 +175,15 @@ def to_pdf(file_path):
 def main():
     example_enable = False
 
+    # try:
+    #     print("预初始化SgLang引擎...")
+    #     from mineru.backend.vlm.vlm_analyze import ModelSingleton
+    #     modelsingleton = ModelSingleton()
+    #     predictor = modelsingleton.get_model("sglang-engine", None, 'http://localhost:30000')
+    #     print("SgLang引擎初始化完成")
+    # except Exception as e:
+    #     print(f"预初始化SgLang引擎失败: {e}")
+
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
@@ -183,7 +192,7 @@ def main():
                     file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
 
                 with gr.Row():
-                    backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-engine", "vlm-sglang-client"], label="Backend", value="pipeline")
+                    backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-client"], label="Backend", value="pipeline")
 
                 with gr.Row():
                     with gr.Column():
