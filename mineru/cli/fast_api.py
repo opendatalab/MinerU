@@ -150,7 +150,6 @@ async def parse_pdf(
         return JSONResponse(
             status_code=200,
             content={
-                "status": "success",
                 "backend": backend,
                 "version": __version__,
                 "results": result_dict
