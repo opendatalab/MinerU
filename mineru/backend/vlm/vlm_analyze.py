@@ -25,6 +25,7 @@ class ModelSingleton:
         backend: str,
         model_path: str | None,
         server_url: str | None,
+        **kwargs,
     ) -> BasePredictor:
         key = (backend, model_path, server_url)
         if key not in self._models:
@@ -34,6 +35,7 @@ class ModelSingleton:
                 backend=backend,
                 model_path=model_path,
                 server_url=server_url,
+                **kwargs,
             )
         return self._models[key]
 
