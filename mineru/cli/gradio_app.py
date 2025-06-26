@@ -175,28 +175,17 @@ def to_pdf(file_path):
 def main():
     example_enable = False
 
-    # try:
-    #     print("预初始化SgLang引擎...")
-    #     from mineru.backend.vlm.vlm_analyze import ModelSingleton
-    #     modelsingleton = ModelSingleton()
-    #     predictor = modelsingleton.get_model("sglang-engine", None, 'http://localhost:30000')
-    #     print("SgLang引擎初始化完成")
-    # except Exception as e:
-    #     print(f"预初始化SgLang引擎失败: {e}")
-
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
                     file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
-
-                with gr.Row():
-                    backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-client"], label="Backend", value="pipeline")
-
                 with gr.Row():
                     with gr.Column():
                         max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
+                with gr.Row():
+                    backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-client"], label="Backend", value="pipeline")
                 with gr.Row(visible=True) as ocr_options:
                     with gr.Column():
                         language = gr.Dropdown(all_lang, label='Language', value='ch')
