@@ -32,6 +32,7 @@ try:
 
     engine_loaded = True
 except Exception as e:
+    logger.exception(e)
     logger.warning("sglang is not installed. If you are not using sglang, you can ignore this warning.")
 
 
