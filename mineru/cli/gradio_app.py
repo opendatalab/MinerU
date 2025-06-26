@@ -182,16 +182,13 @@ def main():
                 with gr.Row():
                     file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
                 with gr.Row():
-                    with gr.Column():
-                        max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
+                    max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
                     backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-client"], label="Backend", value="pipeline")
                 with gr.Row(visible=True) as ocr_options:
-                    with gr.Column():
-                        language = gr.Dropdown(all_lang, label='Language', value='ch')
+                    language = gr.Dropdown(all_lang, label='Language', value='ch')
                 with gr.Row(visible=False) as client_options:
-                    with gr.Column():
-                        url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
+                    url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
                 with gr.Row(visible=True) as pipeline_options:
                     is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
