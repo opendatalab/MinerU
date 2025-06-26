@@ -68,8 +68,8 @@ api = [
     "uvicorn",
 ]
 gradio = [
-    "gradio",
-    "gradio-pdf",
+    "gradio>=5.34,<6",
+    "gradio-pdf>=0.0.22",
 ]
 core = [
     "mineru[vlm]",
