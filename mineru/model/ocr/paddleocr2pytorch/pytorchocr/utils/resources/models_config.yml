@@ -30,11 +30,11 @@ lang:
   japan:
     det: ch_PP-OCRv5_det_infer.pth
     rec: ch_PP-OCRv5_rec_server_infer.pth
-    dict: japan_dict.txt
+    dict: ppocrv5_dict.txt
   chinese_cht:
     det: ch_PP-OCRv5_det_infer.pth
     rec: ch_PP-OCRv5_rec_server_infer.pth
-    dict: chinese_cht_dict.txt
+    dict: ppocrv5_dict.txt
   ta:
     det: Multilingual_PP-OCRv3_det_infer.pth
     rec: ta_PP-OCRv3_rec_infer.pth
