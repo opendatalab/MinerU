@@ -28,6 +28,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
 
         if backend.startswith("vlm"):
             parse_method = "vlm"
+            url = None
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         await aio_do_parse(
             output_dir=output_dir,
@@ -44,6 +45,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
         return local_md_dir, file_name
     except Exception as e:
         logger.exception(e)
+        return None
 
 
 def compress_directory_to_zip(directory_path, output_zip_path):
@@ -174,6 +176,21 @@ def to_pdf(file_path):
 
 def main():
     example_enable = False
+
+    # try:
+    #     print("Start init SgLang engine...")
+    #     from mineru.backend.vlm.vlm_analyze import ModelSingleton
+    #     modelsingleton = ModelSingleton()
+    #     predictor = modelsingleton.get_model(
+    #         "sglang-engine",
+    #         None,
+    #         None,
+    #         mem_fraction_static=0.5,
+    #         enable_torch_compile=True,
+    #     )
+    #     print("SgLang engine init successfully.")
+    # except Exception as e:
+    #     logger.exception(e)
 
     with gr.Blocks() as demo:
         gr.HTML(header)
