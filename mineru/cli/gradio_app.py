@@ -28,6 +28,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
 
         if backend.startswith("vlm"):
             parse_method = "vlm"
+        if not backend.endswith("client"):
             url = None
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         await aio_do_parse(
