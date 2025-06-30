@@ -47,10 +47,10 @@ class MagicModel:
     def __fix_by_remove_high_iou_and_low_confidence(self):
         need_remove_list = []
         layout_dets = self.__page_model_info['layout_dets']
-        for layout_det1 in layout_dets:
-            for layout_det2 in layout_dets:
-                if layout_det1 == layout_det2:
-                    continue
+        for i in range(len(layout_dets)):
+            for j in range(i + 1, len(layout_dets)):
+                layout_det1 = layout_dets[i]
+                layout_det2 = layout_dets[j]
                 if layout_det1['category_id'] in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] and layout_det2['category_id'] in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
                     if (
                         calculate_iou(layout_det1['bbox'], layout_det2['bbox'])
