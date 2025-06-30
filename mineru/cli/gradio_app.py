@@ -175,6 +175,19 @@ def to_pdf(file_path):
 
     return tmp_file_path
 
+
+# 更新界面函数
+def update_interface(backend_choice):
+    if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
+        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+    elif backend_choice in ["vlm-sglang-client"]:  # pipeline
+        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+    elif backend_choice in ["pipeline"]:
+        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
+    else:
+        pass
+
+
 @click.command()
 @click.option(
     '--enable-example',
@@ -200,12 +213,19 @@ def to_pdf(file_path):
 )
 @click.option(
     '--enable-torch-compile',
-    'enable_torch_compile',
+    'torch_compile_enable',
     type=bool,
     help="Enable torch compile for SgLang engine. ",
     default=True,
 )
-def main(example_enable, sglang_engine_enable, mem_fraction_static, enable_torch_compile):
+@click.option(
+    '--enable-api',
+    'api_enable',
+    type=bool,
+    help="Enable gradio API for serving the application.",
+    default=True,
+)
+def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable):
     if sglang_engine_enable:
         try:
             print("Start init SgLang engine...")
@@ -216,7 +236,7 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, enable_torch
                 None,
                 None,
                 mem_fraction_static=mem_fraction_static,
-                enable_torch_compile=enable_torch_compile,
+                enable_torch_compile=torch_compile_enable,
             )
             print("SgLang engine init successfully.")
         except Exception as e:
@@ -271,36 +291,34 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, enable_torch
                     with gr.Tab('Markdown text'):
                         md_text = gr.TextArea(lines=45, show_copy_button=True)
 
-
-        # 更新界面函数
-        def update_interface(backend_choice):
-            if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
-                return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-            elif backend_choice in ["vlm-sglang-client"]:  # pipeline
-                return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-            elif backend_choice in ["pipeline"]:
-                return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
-            else:
-                pass
-
-
         # 添加事件处理
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, pipeline_options]
+            outputs=[client_options, ocr_options, pipeline_options],
+            api_name=False
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, pipeline_options]
+            outputs=[client_options, ocr_options, pipeline_options],
+            api_name=False
         )
-
-        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
-                        outputs=[md, md_text, output_file, pdf_show])
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
+
+        if api_enable:
+            api_name = None
+        else:
+            api_name = False
+
+        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show, api_name=api_name)
+        change_bu.click(
+            fn=to_markdown,
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
+            outputs=[md, md_text, output_file, pdf_show],
+            api_name=api_name
+        )
 
     demo.launch()
 
