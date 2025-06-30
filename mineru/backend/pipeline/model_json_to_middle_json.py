@@ -236,7 +236,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
 
     """清理内存"""
     pdf_doc.close()
-    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(model_list) > 10:
+    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(model_list) >= 10:
         clean_memory(get_device())
 
     return middle_json
