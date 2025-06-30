@@ -182,7 +182,7 @@ def to_pdf(file_path):
     type=bool,
     help="Enable example files for input."
          "The example files to be input need to be placed in the `example` folder within the directory where the command is currently executed.",
-    default=False,
+    default=True,
 )
 @click.option(
     '--enable-sglang-engine',
