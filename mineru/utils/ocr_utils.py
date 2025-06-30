@@ -5,7 +5,7 @@ import numpy as np
 
 
 class OcrConfidence:
-    min_confidence = 0.68
+    min_confidence = 0.6
     min_width = 3
 
 
