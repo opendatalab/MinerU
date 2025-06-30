@@ -1,5 +1,5 @@
 # Use the official sglang image
-FROM lmsysorg/sglang:v0.4.8-cu124
+FROM lmsysorg/sglang:v0.4.8.post1-cu126
 
 # install mineru latest
 RUN python3 -m pip install -U 'mineru[core]' --break-system-packages

@@ -77,7 +77,7 @@ def get_predictor(
             raise ImportError(
                 "sglang is not installed, so sglang-engine backend cannot be used. "
                 "If you need to use sglang-engine backend for inference, "
-                "please install sglang[all]==0.4.7 or a newer version."
+                "please install sglang[all]==0.4.8 or a newer version."
             )
         predictor = SglangEnginePredictor(
             server_args=ServerArgs(model_path, **kwargs),

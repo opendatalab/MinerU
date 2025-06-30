@@ -7,11 +7,12 @@ import time
 import zipfile
 from pathlib import Path
 
+import click
 import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -28,8 +29,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
 
         if backend.startswith("vlm"):
             parse_method = "vlm"
-        if not backend.endswith("client"):
-            url = None
+
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         await aio_do_parse(
             output_dir=output_dir,
@@ -100,9 +100,9 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
-        logger.info('压缩成功')
+        logger.info('Compression successful')
     else:
-        logger.error('压缩失败')
+        logger.error('Compression failed')
     md_path = os.path.join(local_md_dir, file_name + '.md')
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
@@ -121,8 +121,8 @@ latex_delimiters = [
 ]
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
-with open(header_path, 'r') as file:
-    header = file.read()
+with open(header_path, 'r') as header_file:
+    header = header_file.read()
 
 
 latin_lang = [
@@ -175,40 +175,75 @@ def to_pdf(file_path):
 
     return tmp_file_path
 
+@click.command()
+@click.option(
+    '--enable-example',
+    'example_enable',
+    type=bool,
+    help="Enable example files for input."
+         "The example files to be input need to be placed in the `example` folder within the directory where the command is currently executed.",
+    default=True,
+)
+@click.option(
+    '--enable-sglang-engine',
+    'sglang_engine_enable',
+    type=bool,
+    help="Enable SgLang engine backend for faster processing.",
+    default=False,
+)
+@click.option(
+    '--mem-fraction-static',
+    'mem_fraction_static',
+    type=float,
+    help="Set the static memory fraction for SgLang engine. ",
+    default=0.5,
+)
+@click.option(
+    '--enable-torch-compile',
+    'enable_torch_compile',
+    type=bool,
+    help="Enable torch compile for SgLang engine. ",
+    default=True,
+)
+def main(example_enable, sglang_engine_enable, mem_fraction_static, enable_torch_compile):
+    if sglang_engine_enable:
+        try:
+            print("Start init SgLang engine...")
+            from mineru.backend.vlm.vlm_analyze import ModelSingleton
+            modelsingleton = ModelSingleton()
+            predictor = modelsingleton.get_model(
+                "sglang-engine",
+                None,
+                None,
+                mem_fraction_static=mem_fraction_static,
+                enable_torch_compile=enable_torch_compile,
+            )
+            print("SgLang engine init successfully.")
+        except Exception as e:
+            logger.exception(e)
 
-def main():
-    example_enable = False
-
-    # try:
-    #     print("Start init SgLang engine...")
-    #     from mineru.backend.vlm.vlm_analyze import ModelSingleton
-    #     modelsingleton = ModelSingleton()
-    #     predictor = modelsingleton.get_model(
-    #         "sglang-engine",
-    #         None,
-    #         None,
-    #         mem_fraction_static=0.5,
-    #         enable_torch_compile=True,
-    #     )
-    #     print("SgLang engine init successfully.")
-    # except Exception as e:
-    #     logger.exception(e)
-
+    suffixes = pdf_suffixes + image_suffixes
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
-                    file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
+                    input_file = gr.File(label='Please upload a PDF or image', file_types=suffixes)
                 with gr.Row():
                     max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
-                    backend = gr.Dropdown(["pipeline", "vlm-transformers", "vlm-sglang-client"], label="Backend", value="pipeline")
-                with gr.Row(visible=True) as ocr_options:
+                    if sglang_engine_enable:
+                        drop_list = ["pipeline", "vlm-sglang-engine"]
+                        preferred_option = "vlm-sglang-engine"
+                    else:
+                        drop_list = ["pipeline", "vlm-transformers", "vlm-sglang-client"]
+                        preferred_option = "pipeline"
+                    backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
+                with gr.Row(visible=False) as ocr_options:
                     language = gr.Dropdown(all_lang, label='Language', value='ch')
                 with gr.Row(visible=False) as client_options:
                     url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
-                with gr.Row(visible=True) as pipeline_options:
+                with gr.Row(visible=False) as pipeline_options:
                     is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                     formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                     table_enable = gr.Checkbox(label='Enable table recognition(test)', value=True)
@@ -217,13 +252,13 @@ def main():
                     clear_bu = gr.ClearButton(value='Clear')
                 pdf_show = PDF(label='PDF preview', interactive=False, visible=True, height=800)
                 if example_enable:
-                    example_root = os.path.join(os.path.dirname(__file__), 'examples')
+                    example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
                         with gr.Accordion('Examples:'):
                             gr.Examples(
                                 examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
-                                          _.endswith('pdf')],
-                                inputs=file
+                                          _.endswith(tuple(suffixes))],
+                                inputs=input_file
                             )
 
             with gr.Column(variant='panel', scale=5):
@@ -255,13 +290,19 @@ def main():
             inputs=[backend],
             outputs=[client_options, ocr_options, pipeline_options]
         )
+        # 添加demo.load事件，在页面加载时触发一次界面更新
+        demo.load(
+            fn=update_interface,
+            inputs=[backend],
+            outputs=[client_options, ocr_options, pipeline_options]
+        )
 
-        file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
+        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show)
+        change_bu.click(fn=to_markdown, inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
                         outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
+        clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
-    demo.launch(server_name='localhost')
+    demo.launch()
 
 
 if __name__ == '__main__':

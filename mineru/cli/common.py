@@ -17,7 +17,7 @@ from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 
 pdf_suffixes = [".pdf"]
-image_suffixes = [".png", ".jpeg", ".jpg"]
+image_suffixes = [".png", ".jpeg", ".jpg", ".webp", ".gif"]
 
 
 def read_fn(path):
