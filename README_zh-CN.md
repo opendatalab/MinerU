@@ -423,7 +423,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 >
 > 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
-<table border="1">
+<table>
     <tr>
         <td>解析后端</td>
         <td>pipeline</td>
@@ -437,6 +437,16 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>windows(wsl2)/linux</td>
     </tr>
     <tr>
+        <td>CPU推理支持</td>
+        <td>✅</td>
+        <td colspan="2">❌</td>
+    </tr>
+    <tr>
+        <td>GPU要求</td>
+        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
+        <td colspan="2">Ampere及以后架构，8G显存以上</td>
+    </tr>
+    <tr>
         <td>内存要求</td>
         <td colspan="3">最低16G以上，推荐32G以上</td>
     </tr>
@@ -447,18 +457,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
         <td>python版本</td>
         <td colspan="3">3.10-3.13</td>
-    </tr>
-    <tr>
-        <td>CPU推理支持</td>
-        <td>✅</td>
-        <td>❌</td>
-        <td>❌</td>
-    </tr>
-    <tr>
-        <td>GPU要求</td>
-        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
-        <td>Ampere及以后架构，8G显存以上</td>
-        <td>Ampere及以后架构，24G显存及以上</td>
     </tr>
 </table>
 
@@ -525,7 +523,7 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   ```
   
 > [!TIP]
-> Dockerfile默认使用`lmsysorg/sglang:v0.4.7-cu124`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
+> Dockerfile默认使用`lmsysorg/sglang:v0.4.8.post1-cu126`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
   
 #### 1.4 安装client（用于在仅需 CPU 和网络连接的边缘设备上连接 sglang-server）
 

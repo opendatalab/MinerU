@@ -433,7 +433,7 @@ There are three different ways to experience MinerU:
 >
 > In non-mainline environments, due to the diversity of hardware and software configurations, as well as third-party dependency compatibility issues, we cannot guarantee 100% project availability. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first. Most issues already have corresponding solutions in the FAQ. We also encourage community feedback to help us gradually expand support.
 
-<table border="1">
+<table>
     <tr>
         <td>Parsing Backend</td>
         <td>pipeline</td>
@@ -447,6 +447,16 @@ There are three different ways to experience MinerU:
         <td>windows(wsl2)/linux</td>
     </tr>
     <tr>
+        <td>CPU Inference Support</td>
+        <td>✅</td>
+        <td colspan="2">❌</td>
+    </tr>
+    <tr>
+        <td>GPU Requirements</td>
+        <td>Turing architecture or later, 6GB+ VRAM or Apple Silicon</td>
+        <td colspan="2">Ampere architecture or later, 8GB+ VRAM</td>
+    </tr>
+    <tr>
         <td>Memory Requirements</td>
         <td colspan="3">Minimum 16GB+, 32GB+ recommended</td>
     </tr>
@@ -457,18 +467,6 @@ There are three different ways to experience MinerU:
     <tr>
         <td>Python Version</td>
         <td colspan="3">3.10-3.13</td>
-    </tr>
-    <tr>
-        <td>CPU Inference Support</td>
-        <td>✅</td>
-        <td>❌</td>
-        <td>❌</td>
-    </tr>
-    <tr>
-        <td>GPU Requirements</td>
-        <td>Turing architecture or later, 6GB+ VRAM or Apple Silicon</td>
-        <td>Ampere architecture or later, 8GB+ VRAM</td>
-        <td>Ampere architecture or later, 24GB+ VRAM</td>
     </tr>
 </table>
 
@@ -535,7 +533,7 @@ If you need to use **sglang to accelerate VLM model inference**, you can choose 
   ```
   
 > [!TIP]
-> The Dockerfile uses `lmsysorg/sglang:v0.4.7-cu124` as the default base image. If necessary, you can modify it to another platform version.
+> The Dockerfile uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the default base image. If necessary, you can modify it to another platform version.
 
 
 #### 1.4 Install client  (for connecting to sglang-server on edge devices that require only CPU and network connectivity)
