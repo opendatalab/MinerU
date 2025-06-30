@@ -55,7 +55,7 @@ def configure_model(model_dir, model_type):
     }
 
     download_and_modify_json(json_url, config_file, json_mods)
-    print(f'The configuration file has been successfully configured, the path is: {config_file}')
+    logger.info(f'The configuration file has been successfully configured, the path is: {config_file}')
 
 
 def download_pipeline_models():
@@ -70,16 +70,16 @@ def download_pipeline_models():
     ]
     download_finish_path = ""
     for model_path in model_paths:
-        click.echo(f"Downloading model: {model_path}")
+        logger.info(f"Downloading model: {model_path}")
         download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode='pipeline')
-    click.echo(f"Pipeline models downloaded successfully to: {download_finish_path}")
+    logger.info(f"Pipeline models downloaded successfully to: {download_finish_path}")
     configure_model(download_finish_path, "pipeline")
 
 
 def download_vlm_models():
     """下载VLM模型"""
     download_finish_path = auto_download_and_get_model_root_path("/", repo_mode='vlm')
-    click.echo(f"VLM models downloaded successfully to: {download_finish_path}")
+    logger.info(f"VLM models downloaded successfully to: {download_finish_path}")
     configure_model(download_finish_path, "vlm")
 
 
