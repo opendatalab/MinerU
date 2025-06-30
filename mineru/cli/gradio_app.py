@@ -11,7 +11,7 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -121,8 +121,8 @@ latex_delimiters = [
 ]
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
-with open(header_path, 'r') as file:
-    header = file.read()
+with open(header_path, 'r') as header_file:
+    header = header_file.read()
 
 
 latin_lang = [
@@ -199,7 +199,8 @@ def main():
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
-                    file = gr.File(label='Please upload a PDF or image', file_types=['.pdf', '.png', '.jpeg', '.jpg'])
+                    suffixes = pdf_suffixes + image_suffixes
+                    input_file = gr.File(label='Please upload a PDF or image', file_types=suffixes)
                 with gr.Row():
                     max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
                 with gr.Row():
@@ -223,7 +224,7 @@ def main():
                             gr.Examples(
                                 examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
                                           _.endswith('pdf')],
-                                inputs=file
+                                inputs=input_file
                             )
 
             with gr.Column(variant='panel', scale=5):
@@ -256,10 +257,10 @@ def main():
             outputs=[client_options, ocr_options, pipeline_options]
         )
 
-        file.change(fn=to_pdf, inputs=file, outputs=pdf_show)
-        change_bu.click(fn=to_markdown, inputs=[file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
+        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show)
+        change_bu.click(fn=to_markdown, inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
                         outputs=[md, md_text, output_file, pdf_show])
-        clear_bu.add([file, md, pdf_show, md_text, output_file, is_ocr])
+        clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
     demo.launch(server_name='localhost')
 
