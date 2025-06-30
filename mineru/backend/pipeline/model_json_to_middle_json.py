@@ -88,6 +88,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
                 "type": ContentType.INTERLINE_EQUATION,
                 'score': block['score'],
                 "bbox": block['bbox'],
+                "content": block.get("latex", "") 
             })
 
         all_bboxes, all_discarded_blocks, footnote_blocks = prepare_block_bboxes(
