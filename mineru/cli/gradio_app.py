@@ -100,9 +100,9 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
-        logger.info('压缩成功')
+        logger.info('Compression successful')
     else:
-        logger.error('压缩失败')
+        logger.error('Compression failed')
     md_path = os.path.join(local_md_dir, file_name + '.md')
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
