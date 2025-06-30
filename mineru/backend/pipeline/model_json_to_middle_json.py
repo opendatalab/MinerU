@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import os
 import time
 
 from loguru import logger
@@ -235,7 +236,8 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
 
     """清理内存"""
     pdf_doc.close()
-    clean_memory(get_device())
+    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None:
+        clean_memory(get_device())
 
     return middle_json
 
