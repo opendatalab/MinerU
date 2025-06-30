@@ -60,7 +60,8 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     '-l',
     '--lang',
     'lang',
-    type=click.Choice(['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']),
+    type=click.Choice(['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka',
+                       'latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']),
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
     Without languages specified, 'ch' will be used by default.

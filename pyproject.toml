@@ -43,7 +43,7 @@ vlm = [
     "pydantic",
 ]
 sglang = [
-    "sglang[all]==0.4.7",
+    "sglang[all]>=0.4.7,<0.4.9",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",
@@ -62,9 +62,20 @@ pipeline = [
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
     "fast-langdetect>=0.2.3,<0.3.0",
 ]
+api = [
+    "fastapi",
+    "python-multipart",
+    "uvicorn",
+]
+gradio = [
+    "gradio>=5.34,<6",
+    "gradio-pdf>=0.0.22",
+]
 core = [
     "mineru[vlm]",
     "mineru[pipeline]",
+    "mineru[api]",
+    "mineru[gradio]",
 ]
 all = [
     "mineru[core]",
@@ -97,6 +108,8 @@ Repository = "https://github.com/opendatalab/MinerU"
 mineru = "mineru.cli:client.main"
 mineru-sglang-server = "mineru.cli.vlm_sglang_server:main"
 mineru-models-download = "mineru.cli.models_download:download_models"
+mineru-api = "mineru.cli.fast_api:main"
+mineru-gradio = "mineru.cli.gradio_app:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "mineru.version.__version__"}
