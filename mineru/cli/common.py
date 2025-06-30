@@ -229,6 +229,8 @@ async def _async_process_vlm(
     """异步处理VLM后端逻辑"""
     parse_method = "vlm"
     f_draw_span_bbox = False
+    if not backend.endswith("client"):
+        server_url = None
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -267,6 +269,8 @@ def _process_vlm(
     """同步处理VLM后端逻辑"""
     parse_method = "vlm"
     f_draw_span_bbox = False
+    if not backend.endswith("client"):
+        server_url = None
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
