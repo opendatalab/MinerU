@@ -133,15 +133,16 @@ latin_lang = [
 ]
 arabic_lang = ['ar', 'fa', 'ug', 'ur']
 cyrillic_lang = [
-        'ru', 'rs_cyrillic', 'be', 'bg', 'uk', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
+        'rs_cyrillic', 'bg', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
         'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
 ]
+east_slavic_lang = ["ru", "be", "uk"]
 devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
 other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
-add_lang = ['latin', 'arabic', 'cyrillic', 'devanagari']
+add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']
 
 # all_lang = ['', 'auto']
 all_lang = []
