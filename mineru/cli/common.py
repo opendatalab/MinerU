@@ -326,8 +326,8 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        os.environ['MINERU_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_TABLE_ENABLE'] = str(table_enable)
+        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         _process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
@@ -373,8 +373,8 @@ async def aio_do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        os.environ['MINERU_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_TABLE_ENABLE'] = str(table_enable)
+        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         await _async_process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,

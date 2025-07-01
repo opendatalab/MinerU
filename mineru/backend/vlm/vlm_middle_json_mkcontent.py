@@ -1,6 +1,6 @@
 import os
 
-from mineru.utils.config_reader import get_latex_delimiter_config
+from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
 
@@ -188,8 +188,8 @@ def union_make(pdf_info_dict: list,
                img_buket_path: str = '',
                ):
 
-    formula_enable = os.getenv('MINERU_FORMULA_ENABLE', 'True').lower() == 'true'
-    table_enable = os.getenv('MINERU_TABLE_ENABLE', 'True').lower() == 'true'
+    formula_enable = get_formula_enable(os.getenv('MINERU_VLM_FORMULA_ENABLE', 'True').lower() == 'true')
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
 
     output_content = []
     for page_info in pdf_info_dict:
