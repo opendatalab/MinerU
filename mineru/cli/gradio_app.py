@@ -209,7 +209,7 @@ def update_interface(backend_choice):
     'mem_fraction_static',
     type=float,
     help="Set the static memory fraction for SgLang engine. ",
-    default=0.5,
+    default=None,  # 改为默认值为None
 )
 @click.option(
     '--enable-torch-compile',
@@ -231,12 +231,20 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
             print("Start init SgLang engine...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             modelsingleton = ModelSingleton()
+
+            # 构建参数字典
+            model_params = {
+                "enable_torch_compile": torch_compile_enable
+            }
+            # 只有当mem_fraction_static不为None时才添加该参数
+            if mem_fraction_static is not None:
+                model_params["mem_fraction_static"] = mem_fraction_static
+
             predictor = modelsingleton.get_model(
                 "sglang-engine",
                 None,
                 None,
-                mem_fraction_static=mem_fraction_static,
-                enable_torch_compile=torch_compile_enable,
+                **model_params  # 使用解包运算符传递参数
             )
             print("SgLang engine init successfully.")
         except Exception as e:
