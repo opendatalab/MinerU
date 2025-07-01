@@ -12,8 +12,7 @@ COPY example /tmp/example
 ENV GRADIO_SERVER_NAME=0.0.0.0
 
 WORKDIR /tmp/example
-RUN /bin/bash -c "source /opt/mineru_venv/bin/activate && \
-    pip3 install -r requirements.txt"
+RUN /bin/bash -c "pip3 install -r requirements.txt"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

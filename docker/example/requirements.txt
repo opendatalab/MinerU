@@ -1,0 +1,3 @@
+mineru[core]>=2.0.6
+sglang[all]>=0.4.8,<0.4.9
+gradio-pdf>=0.0.21
