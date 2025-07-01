@@ -180,7 +180,7 @@ def to_pdf(file_path):
 def update_interface(backend_choice):
     if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
-    elif backend_choice in ["vlm-sglang-client"]:  # pipeline
+    elif backend_choice in ["vlm-sglang-client"]:
         return gr.update(visible=True), gr.update(visible=False)
     elif backend_choice in ["pipeline"]:
         return gr.update(visible=False), gr.update(visible=True)
@@ -230,7 +230,7 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
         try:
             print("Start init SgLang engine...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
-            modelsingleton = ModelSingleton()
+            model_singleton = ModelSingleton()
 
             model_params = {
                 "enable_torch_compile": torch_compile_enable
@@ -239,7 +239,7 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
             if mem_fraction_static is not None:
                 model_params["mem_fraction_static"] = mem_fraction_static
 
-            predictor = modelsingleton.get_model(
+            predictor = model_singleton.get_model(
                 "sglang-engine",
                 None,
                 None,
@@ -266,8 +266,6 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
                         drop_list = ["pipeline", "vlm-transformers", "vlm-sglang-client"]
                         preferred_option = "pipeline"
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
-                # with gr.Row(visible=False) as lang_options:
-
                 with gr.Row(visible=False) as client_options:
                     url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
                 with gr.Row(equal_height=True):
