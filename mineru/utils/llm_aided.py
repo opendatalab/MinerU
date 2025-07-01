@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from loguru import logger
 from openai import OpenAI
-import ast
+import json_repair
 
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 
@@ -91,7 +91,6 @@ Corrected title list:
             if "</think>" in content:
                 idx = content.index("</think>") + len("</think>")
                 content = content[idx:].strip()
-            import json_repair
             dict_completion = json_repair.loads(content)
             dict_completion = {int(k): int(v) for k, v in dict_completion.items()}
 
