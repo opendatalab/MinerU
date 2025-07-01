@@ -11,7 +11,8 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
+    
+    steps:
     #清理空间
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main
@@ -19,8 +20,7 @@ jobs:
         # this might remove tools that are actually needed,
         # when set to "true" but frees about 6 GB
         tool-cache: true
-        
-    steps:
+
     - uses: actions/checkout@v4
     - name: Build the Docker image
       run: docker build . --file docker/china/Dockerfile --tag jianjungki/mineru_base:latest
