@@ -298,8 +298,8 @@ def do_parse(
         p_lang_list: list[str],
         backend="pipeline",
         parse_method="auto",
-        p_formula_enable=True,
-        p_table_enable=True,
+        formula_enable=True,
+        table_enable=True,
         server_url=None,
         f_draw_layout_bbox=True,
         f_draw_span_bbox=True,
@@ -318,13 +318,16 @@ def do_parse(
     if backend == "pipeline":
         _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-            parse_method, p_formula_enable, p_table_enable,
+            parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
         )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
+
+        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         _process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
@@ -341,8 +344,8 @@ async def aio_do_parse(
         p_lang_list: list[str],
         backend="pipeline",
         parse_method="auto",
-        p_formula_enable=True,
-        p_table_enable=True,
+        formula_enable=True,
+        table_enable=True,
         server_url=None,
         f_draw_layout_bbox=True,
         f_draw_span_bbox=True,
@@ -362,13 +365,16 @@ async def aio_do_parse(
         # pipeline模式暂不支持异步，使用同步处理方式
         _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-            parse_method, p_formula_enable, p_table_enable,
+            parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
         )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
+
+        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         await _async_process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,

@@ -180,8 +180,8 @@ def main(input_path, output_dir, method, backend, lang, server_url, start_page_i
                 p_lang_list=lang_list,
                 backend=backend,
                 parse_method=method,
-                p_formula_enable=formula_enable,
-                p_table_enable=table_enable,
+                formula_enable=formula_enable,
+                table_enable=table_enable,
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id
