@@ -38,8 +38,8 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
             p_lang_list=[language],
             parse_method=parse_method,
             end_page_id=end_page_id,
-            p_formula_enable=formula_enable,
-            p_table_enable=table_enable,
+            formula_enable=formula_enable,
+            table_enable=table_enable,
             backend=backend,
             server_url=url,
         )
@@ -179,11 +179,11 @@ def to_pdf(file_path):
 # 更新界面函数
 def update_interface(backend_choice):
     if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
-        return gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
+        return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-sglang-client"]:  # pipeline
-        return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
+        return gr.update(visible=True), gr.update(visible=False)
     elif backend_choice in ["pipeline"]:
-        return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
+        return gr.update(visible=False), gr.update(visible=True)
     else:
         pass
 
@@ -266,14 +266,18 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
                         drop_list = ["pipeline", "vlm-transformers", "vlm-sglang-client"]
                         preferred_option = "pipeline"
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
-                with gr.Row(visible=False) as ocr_options:
-                    language = gr.Dropdown(all_lang, label='Language', value='ch')
+                # with gr.Row(visible=False) as lang_options:
+
                 with gr.Row(visible=False) as client_options:
                     url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
-                with gr.Row(visible=False) as pipeline_options:
-                    is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
-                    formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
-                    table_enable = gr.Checkbox(label='Enable table recognition(test)', value=True)
+                with gr.Row(equal_height=True):
+                    with gr.Column():
+                        gr.Markdown("**Recognition Options:**")
+                        formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
+                        table_enable = gr.Checkbox(label='Enable table recognition', value=True)
+                    with gr.Column(visible=False) as ocr_options:
+                        language = gr.Dropdown(all_lang, label='Language', value='ch')
+                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
@@ -302,14 +306,14 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, pipeline_options],
+            outputs=[client_options, ocr_options],
             api_name=False
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, pipeline_options],
+            outputs=[client_options, ocr_options],
             api_name=False
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])

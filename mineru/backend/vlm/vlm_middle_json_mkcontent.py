@@ -1,3 +1,5 @@
+import os
+
 from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
@@ -16,7 +18,7 @@ display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
-def merge_para_with_text(para_block):
+def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
     para_text = ''
     for line in para_block['lines']:
         for j, span in enumerate(line['spans']):
@@ -27,7 +29,11 @@ def merge_para_with_text(para_block):
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
-                content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
+                if formula_enable:
+                    content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
+                else:
+                    if span.get('image_path', ''):
+                        content = f"![]({img_buket_path}/{span['image_path']})"
             # content = content.strip()
             if content:
                 if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
@@ -39,13 +45,13 @@ def merge_para_with_text(para_block):
                     para_text += content
     return para_text
 
-def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
+def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, img_buket_path=''):
     page_markdown = []
     for para_block in para_blocks:
         para_text = ''
         para_type = para_block['type']
         if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]:
-            para_text = merge_para_with_text(para_block)
+            para_text = merge_para_with_text(para_block, formula_enable=formula_enable, img_buket_path=img_buket_path)
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
@@ -95,10 +101,14 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
                                     # if processed by table model
-                                    if span.get('html', ''):
-                                        para_text += f"\n{span['html']}\n"
-                                    elif span.get('image_path', ''):
-                                        para_text += f"![]({img_buket_path}/{span['image_path']})"
+                                    if table_enable:
+                                        if span.get('html', ''):
+                                            para_text += f"\n{span['html']}\n"
+                                        elif span.get('image_path', ''):
+                                            para_text += f"![]({img_buket_path}/{span['image_path']})"
+                                    else:
+                                        if span.get('image_path', ''):
+                                            para_text += f"![]({img_buket_path}/{span['image_path']})"
                 for block in para_block['blocks']:  # 3rd.拼table_footnote
                     if block['type'] == BlockType.TABLE_FOOTNOTE:
                         para_text += '\n' + merge_para_with_text(block) + '  '
@@ -177,6 +187,10 @@ def union_make(pdf_info_dict: list,
                make_mode: str,
                img_buket_path: str = '',
                ):
+
+    formula_enable = os.getenv('MINERU_FORMULA_ENABLE', 'True').lower() == 'true'
+    table_enable = os.getenv('MINERU_TABLE_ENABLE', 'True').lower() == 'true'
+
     output_content = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
@@ -184,7 +198,7 @@ def union_make(pdf_info_dict: list,
         if not paras_of_layout:
             continue
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
+            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, formula_enable, table_enable, img_buket_path)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             for para_block in paras_of_layout:
