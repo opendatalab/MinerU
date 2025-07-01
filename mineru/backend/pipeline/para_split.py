@@ -368,6 +368,10 @@ def para_split(page_info_list):
             if block['page_num'] == page_info['page_idx']:
                 page_info['para_blocks'].append(block)
 
+            # 从block中删除不需要的page_num和page_size字段
+            del block['page_num']
+            del block['page_size']
+
 
 if __name__ == '__main__':
     input_blocks = []
