@@ -232,7 +232,24 @@ def update_interface(backend_choice):
     help="Set the maximum number of pages to convert from PDF to Markdown.",
     default=1000,
 )
-def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable, max_convert_pages):
+@click.option(
+    '--server-name',
+    'server_name',
+    type=str,
+    help="Set the server name for the Gradio app.",
+    default=None,
+)
+@click.option(
+    '--server-port',
+    'server_port',
+    type=int,
+    help="Set the server port for the Gradio app.",
+    default=None,
+)
+def main(
+        example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable, max_convert_pages,
+        server_name, server_port
+):
     if sglang_engine_enable:
         try:
             print("Start init SgLang engine...")
@@ -336,7 +353,7 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
             api_name=api_name
         )
 
-    demo.launch()
+    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable)
 
 
 if __name__ == '__main__':
