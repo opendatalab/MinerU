@@ -225,7 +225,14 @@ def update_interface(backend_choice):
     help="Enable gradio API for serving the application.",
     default=True,
 )
-def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable):
+@click.option(
+    '--max-convert-pages',
+    'max_convert_pages',
+    type=int,
+    help="Set the maximum number of pages to convert from PDF to Markdown.",
+    default=1000,
+)
+def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable, max_convert_pages):
     if sglang_engine_enable:
         try:
             print("Start init SgLang engine...")
@@ -257,7 +264,7 @@ def main(example_enable, sglang_engine_enable, mem_fraction_static, torch_compil
                 with gr.Row():
                     input_file = gr.File(label='Please upload a PDF or image', file_types=suffixes)
                 with gr.Row():
-                    max_pages = gr.Slider(1, 20, 10, step=1, label='Max convert pages')
+                    max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
                     if sglang_engine_enable:
                         drop_list = ["pipeline", "vlm-sglang-engine"]

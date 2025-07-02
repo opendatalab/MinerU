@@ -157,9 +157,11 @@ def merge_para_with_text(para_block):
             if span_type == ContentType.TEXT:
                 content = escape_special_markdown_char(span['content'])
             elif span_type == ContentType.INLINE_EQUATION:
-                content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
+                if span.get('content', ''):
+                    content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:
-                content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
+                if span.get('content', ''):
+                    content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
 
             content = content.strip()
 
