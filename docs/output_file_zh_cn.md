@@ -1,20 +1,20 @@
 ## 概览
 
-`magic-pdf` 命令执行后除了输出和 markdown 有关的文件以外，还会生成若干个和 markdown 无关的文件。现在将一一介绍这些文件
+`mineru` 命令执行后除了输出 markdown 文件以外，还可能会生成若干个和 markdown 无关的文件。现在将一一介绍这些文件
 
 ### some_pdf_layout.pdf
 
-每一页的 layout 均由一个或多个框组成。 每个框左上脚的数字表明它们的序号。此外 layout.pdf 框内用不同的背景色块圈定不同的内容块。
+每一页的 layout 均由一个或多个框组成。 每个框右上角的数字表明它们的阅读顺序。此外 layout.pdf 框内用不同的背景色块圈定不同的内容块。
 
 ![layout 页面示例](images/layout_example.png)
 
-### some_pdf_spans.pdf
+### some_pdf_spans.pdf(仅适用于pipeline后端)
 
-根据 span 类型的不同，采用不同颜色线框绘制页面上所有 span。该文件可以用于质检，可以快速排查出文本丢失、行间公式未识别等问题。
+根据 span 类型的不同，采用不同颜色线框绘制页面上所有 span。该文件可以用于质检，可以快速排查出文本丢失、行内公式未识别等问题。
 
 ![span 页面示例](images/spans_example.png)
 
-### some_pdf_model.json
+### some_pdf_model.json(仅适用于pipeline后端)
 
 #### 结构定义
 
@@ -117,13 +117,39 @@ poly 坐标的格式 \[x0, y0, x1, y1, x2, y2, x3, y3\], 分别表示左上、�
 ]
 ```
 
+### some_pdf_model_output.txt(仅适用于vlm后端)
+
+该文件是vlm模型的输出结果，使用`----`分割每一页的输出结果。  
+每一页的输出结果一些以`<|box_start|>`开头，`<|md_end|>`结尾的文本块。  
+其中字段的含义：  
+- `<|box_start|>x0 y0 x1 y1<|box_end|>`  
+    其中x0 y0 x1 y1是四边形的坐标，分别表示左上、右下的两点坐标，值为将页面缩放至1000x1000后，四边形的坐标值。
+- `<|ref_start|>type<|ref_end|>`  
+  type是该block的类型，可能的值有：
+  ```json
+  {
+      "text": "文本",
+      "title": "标题",
+      "image": "图片",
+      "image_caption": "图片描述",
+      "image_footnote": "图片脚注",
+      "table": "表格",
+      "table_caption": "表格描述",
+      "table_footnote": "表格脚注",
+      "equation": "行间公式"
+  }
+  ```
+- `<|md_start|>markdown内容<|md_end|>`  
+    该字段是该block的markdown内容，如type为text，文本末尾可能存在`<|txt_contd|>`标记，表示该文本块可以后后续text块连接。
+    如type为table，内容为`otsl`格式表示的表格内容，需要转换为html格式才能在markdown中渲染。
+
 ### some_pdf_middle.json
 
-| 字段名         | 解释                                                               |
-| :------------- | :----------------------------------------------------------------- |
+| 字段名            | 解释                                        |
+|:---------------|:------------------------------------------|
 | pdf_info       | list，每个元素都是一个dict,这个dict是每一页pdf的解析结果，详见下表 |
-| \_parse_type   | ocr \| txt，用来标识本次解析的中间态使用的模式                     |
-| \_version_name | string, 表示本次解析使用的 magic-pdf 的版本号                      |
+| \_backend      | pipeline \| vlm，用来标识本次解析的中间态使用的模式         |
+| \_version_name | string, 表示本次解析使用的 mineru 的版本号             |
 
 <br>
 
@@ -323,7 +349,14 @@ para_blocks内存储的元素为区块信息
             ]
         }
     ],
-    "_parse_type": "txt",
+    "_backend": "pipeline",
     "_version_name": "0.6.1"
 }
 ```
+
+### some_pdf_content_list.json
+
+该文件是一个json数组，每个元素是一个dict，按阅读顺序平铺存储文档中所有可阅读的内容块。  
+content_list可以看成简化后的middle.json，内容块的类型基本和middle.json一致，但不包含布局信息。  
+需要注意的是，content_list中的title和text块统一使用text类型表示，通过`text_level`字段来区分文本块的层级，不含`text_level`字段或`text_level`为0的文本块表示正文文本，`text_level`为1的文本块表示一级标题，`text_level`为2的文本块表示二级标题，以此类推。  
+每个dict包含`page_idx`字段，表示该内容块所在的页码，从0开始。
