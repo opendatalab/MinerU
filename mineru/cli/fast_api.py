@@ -70,12 +70,12 @@ async def parse_pdf(
                 except Exception as e:
                     return JSONResponse(
                         status_code=400,
-                        content={"error": f"处理文件失败: {str(e)}"}
+                        content={"error": f"Failed to load file: {str(e)}"}
                     )
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"不支持的文件类型: {file_path.suffix}"}
+                    content={"error": f"Unsupported file type: {file_path.suffix}"}
                 )
 
 
@@ -159,7 +159,7 @@ async def parse_pdf(
         logger.exception(e)
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": f"Failed to process file: {str(e)}"}
         )
 
 
