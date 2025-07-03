@@ -289,7 +289,7 @@ def merge_det_boxes(dt_boxes):
         line_height = max_y - min_y
 
         # 只有当行宽度超过高度4倍时才进行合并
-        if line_width > line_height * 4:
+        if line_width > line_height * LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD:
 
             # Merge overlapping text regions within the same line
             merged_spans = merge_overlapping_spans(line_bbox_list)
