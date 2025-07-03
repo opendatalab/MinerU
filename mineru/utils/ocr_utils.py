@@ -5,7 +5,7 @@ import numpy as np
 
 
 class OcrConfidence:
-    min_confidence = 0.6
+    min_confidence = 0.5
     min_width = 3
 
 
@@ -266,12 +266,27 @@ def merge_det_boxes(dt_boxes):
         for span in line:
             line_bbox_list.append(span['bbox'])
 
-        # Merge overlapping text regions within the same line
-        merged_spans = merge_overlapping_spans(line_bbox_list)
+        # 计算整行的宽度和高度
+        min_x = min(bbox[0] for bbox in line_bbox_list)
+        max_x = max(bbox[2] for bbox in line_bbox_list)
+        min_y = min(bbox[1] for bbox in line_bbox_list)
+        max_y = max(bbox[3] for bbox in line_bbox_list)
+        line_width = max_x - min_x
+        line_height = max_y - min_y
 
-        # Convert the merged text regions back to point format and add them to the new detection box list
-        for span in merged_spans:
-            new_dt_boxes.append(bbox_to_points(span))
+        # 只有当行宽度超过高度4倍时才进行合并
+        if line_width > line_height * 4:
+
+            # Merge overlapping text regions within the same line
+            merged_spans = merge_overlapping_spans(line_bbox_list)
+
+            # Convert the merged text regions back to point format and add them to the new detection box list
+            for span in merged_spans:
+                new_dt_boxes.append(bbox_to_points(span))
+        else:
+            # 不进行合并，直接添加原始区域
+            for bbox in line_bbox_list:
+                new_dt_boxes.append(bbox_to_points(bbox))
 
     new_dt_boxes.extend(angle_boxes_list)
 
