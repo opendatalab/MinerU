@@ -45,7 +45,21 @@ def __is_overlaps_y_exceeds_threshold(bbox1,
     # max_height = max(height1, height2)
     min_height = min(height1, height2)
 
-    return (overlap / min_height) > overlap_ratio_threshold
+    return (overlap / min_height) > overlap_ratio_threshold if min_height > 0 else False
+
+
+def __is_overlaps_x_exceeds_threshold(bbox1,
+                                     bbox2,
+                                     overlap_ratio_threshold=0.8):
+    """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""
+    x0_1, _, x1_1, _ = bbox1
+    x0_2, _, x1_2, _ = bbox2
+
+    overlap = max(0, min(x1_1, x1_2) - max(x0_1, x0_2))
+    width1, width2 = x1_1 - x0_1, x1_2 - x0_2
+    min_width = min(width1, width2)
+
+    return (overlap / min_width) > overlap_ratio_threshold if min_width > 0 else False
 
 
 def img_decode(content: bytes):
