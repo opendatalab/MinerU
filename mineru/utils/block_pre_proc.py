@@ -90,8 +90,8 @@ def prepare_block_bboxes(
     """经过以上处理后，还存在大框套小框的情况，则删除小框"""
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
-    """将剩余的bbox做分离处理，防止后面分layout时出错"""
-    # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
+
+    """粗排序后返回"""
     all_bboxes.sort(key=lambda x: x[0]+x[1])
     return all_bboxes, all_discarded_blocks, footnote_blocks
 
