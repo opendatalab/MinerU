@@ -73,11 +73,11 @@ def fix_text_block(block):
             span['type'] = ContentType.INLINE_EQUATION
 
     # 假设block中的span超过80%的数量高度是宽度的两倍以上，则认为是纵向文本块
-    VERTICAL_SPAN_HEIGHT_WIDTH_THRESHOLD = 2  # Threshold for determining vertical text blocks
+    VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2  # Threshold for determining vertical text blocks
     VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8  # Threshold for determining vertical text blocks
     vertical_span_count = sum(
         1 for span in block['spans']
-        if (span['bbox'][3] - span['bbox'][1]) / (span['bbox'][2] - span['bbox'][0]) > VERTICAL_SPAN_HEIGHT_WIDTH_THRESHOLD
+        if (span['bbox'][3] - span['bbox'][1]) / (span['bbox'][2] - span['bbox'][0]) > VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
     )
     total_span_count = len(block['spans'])
     if total_span_count == 0:
