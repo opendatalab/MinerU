@@ -8,6 +8,8 @@ class OcrConfidence:
     min_confidence = 0.5
     min_width = 3
 
+LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = 4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
+
 
 def merge_spans_to_line(spans, threshold=0.6):
     if len(spans) == 0:

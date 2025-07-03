@@ -3,6 +3,8 @@ from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.ocr_utils import __is_overlaps_y_exceeds_threshold, __is_overlaps_x_exceeds_threshold
 
+VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
+VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
 
 def fill_spans_in_blocks(blocks, spans, radio):
     """将allspans中的span按位置关系，放入blocks中."""
@@ -73,8 +75,6 @@ def fix_text_block(block):
             span['type'] = ContentType.INLINE_EQUATION
 
     # 假设block中的span超过80%的数量高度是宽度的两倍以上，则认为是纵向文本块
-    VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2  # Threshold for determining vertical text blocks
-    VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8  # Threshold for determining vertical text blocks
     vertical_span_count = sum(
         1 for span in block['spans']
         if (span['bbox'][3] - span['bbox'][1]) / (span['bbox'][2] - span['bbox'][0]) > VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
