@@ -18,7 +18,6 @@ class MagicModel:
         """处理重叠的image_body和table_body"""
         self.__fix_by_remove_overlap_image_table_body()
 
-
     def __fix_by_remove_overlap_image_table_body(self):
         need_remove_list = []
         layout_dets = self.__page_model_info['layout_dets']
@@ -28,6 +27,7 @@ class MagicModel:
         table_blocks = list(filter(
             lambda x: x['category_id'] == CategoryId.TableBody, layout_dets
         ))
+
         def add_need_remove_block(blocks):
             for i in range(len(blocks)):
                 for j in range(i + 1, len(blocks)):
@@ -37,15 +37,19 @@ class MagicModel:
                         block1['bbox'], block2['bbox'], 0.8
                     )
                     if overlap_box is not None:
-                        block_to_remove = next(
-                            (block for block in blocks if block['bbox'] == overlap_box),
-                            None,
-                        )
-                        if (
-                            block_to_remove is not None
-                            and block_to_remove not in need_remove_list
-                        ):
-                            large_block = block1 if block1 != block_to_remove else block2
+                        # 判断哪个区块的面积更小，移除较小的区块
+                        area1 = (block1['bbox'][2] - block1['bbox'][0]) * (block1['bbox'][3] - block1['bbox'][1])
+                        area2 = (block2['bbox'][2] - block2['bbox'][0]) * (block2['bbox'][3] - block2['bbox'][1])
+
+                        if area1 <= area2:
+                            block_to_remove = block1
+                            large_block = block2
+                        else:
+                            block_to_remove = block2
+                            large_block = block1
+
+                        if block_to_remove not in need_remove_list:
+                            # 扩展大区块的边界框
                             x1, y1, x2, y2 = large_block['bbox']
                             sx1, sy1, sx2, sy2 = block_to_remove['bbox']
                             x1 = min(x1, sx1)
@@ -55,11 +59,15 @@ class MagicModel:
                             large_block['bbox'] = [x1, y1, x2, y2]
                             need_remove_list.append(block_to_remove)
 
+        # 处理图像-图像重叠
         add_need_remove_block(image_blocks)
+        # 处理表格-表格重叠
         add_need_remove_block(table_blocks)
 
+        # 从布局中移除标记的区块
         for need_remove in need_remove_list:
-            layout_dets.remove(need_remove)
+            if need_remove in layout_dets:
+                layout_dets.remove(need_remove)
 
 
     def __fix_axis(self):
