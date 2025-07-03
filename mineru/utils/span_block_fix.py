@@ -84,7 +84,7 @@ def fix_text_block(block):
     else:
         vertical_ratio = vertical_span_count / total_span_count
 
-    if vertical_ratio > 0.8:
+    if vertical_ratio > VERTICAL_TEXT_BLOCK_THRESHOLD:
         # 如果是纵向文本块，则按纵向lines处理
         block_lines = merge_spans_to_vertical_line(block['spans'])
         sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
