@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import BlockType, ContentType
-from mineru.utils.ocr_utils import __is_overlaps_y_exceeds_threshold, __is_overlaps_x_exceeds_threshold
+from mineru.utils.ocr_utils import _is_overlaps_y_exceeds_threshold, _is_overlaps_x_exceeds_threshold
 
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
@@ -123,7 +123,7 @@ def merge_spans_to_line(spans, threshold=0.6):
                 continue
 
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
+            if _is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 # 否则，开始新行
@@ -162,7 +162,7 @@ def merge_spans_to_vertical_line(spans, threshold=0.6):
                 continue
 
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_x_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
+            if _is_overlaps_x_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 vertical_lines.append(current_line)

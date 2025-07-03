@@ -22,7 +22,7 @@ def merge_spans_to_line(spans, threshold=0.6):
         current_line = [spans[0]]
         for span in spans[1:]:
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
+            if _is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 # 否则，开始新行
@@ -35,9 +35,9 @@ def merge_spans_to_line(spans, threshold=0.6):
 
         return lines
 
-def __is_overlaps_y_exceeds_threshold(bbox1,
-                                      bbox2,
-                                      overlap_ratio_threshold=0.8):
+def _is_overlaps_y_exceeds_threshold(bbox1,
+                                     bbox2,
+                                     overlap_ratio_threshold=0.8):
     """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
     _, y0_1, _, y1_1 = bbox1
     _, y0_2, _, y1_2 = bbox2
@@ -50,7 +50,7 @@ def __is_overlaps_y_exceeds_threshold(bbox1,
     return (overlap / min_height) > overlap_ratio_threshold if min_height > 0 else False
 
 
-def __is_overlaps_x_exceeds_threshold(bbox1,
+def _is_overlaps_x_exceeds_threshold(bbox1,
                                      bbox2,
                                      overlap_ratio_threshold=0.8):
     """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""
@@ -194,7 +194,7 @@ def update_det_boxes(dt_boxes, mfd_res):
         masks_list = []
         for mf_box in mfd_res:
             mf_bbox = mf_box['bbox']
-            if __is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
+            if _is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
                 masks_list.append([mf_bbox[0], mf_bbox[2]])
         text_x_range = [text_bbox[0], text_bbox[2]]
         text_remove_mask_range = remove_intervals(text_x_range, masks_list)
