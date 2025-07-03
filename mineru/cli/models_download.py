@@ -72,8 +72,8 @@ def download_pipeline_models():
     for model_path in model_paths:
         logger.info(f"Downloading model: {model_path}")
         download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode='pipeline')
-    logger.info(f"Pipeline models downloaded successfully to: {download_finish_path}")
-    configure_model(download_finish_path, "pipeline")
+        logger.info(f"Pipeline models downloaded successfully to: {download_finish_path}")
+        configure_model(download_finish_path, "pipeline")
 
 
 def download_vlm_models():
