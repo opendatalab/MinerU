@@ -34,10 +34,10 @@ async def parse_pdf(
         formula_enable: bool = Form(True),
         table_enable: bool = Form(True),
         server_url: Optional[str] = Form(None),
-        reuturn_md: bool = Form(True),
-        reuturn_middle_json: bool = Form(False),
+        return_md: bool = Form(True),
+        return_middle_json: bool = Form(False),
         return_model_output: bool = Form(False),
-        reuturn_content_list: bool = Form(False),
+        return_content_list: bool = Form(False),
         return_images: bool = Form(False),
         start_page_id: int = Form(0),
         end_page_id: int = Form(99999),
@@ -98,11 +98,11 @@ async def parse_pdf(
             server_url=server_url,
             f_draw_layout_bbox=False,
             f_draw_span_bbox=False,
-            f_dump_md=reuturn_md,
-            f_dump_middle_json=reuturn_middle_json,
+            f_dump_md=return_md,
+            f_dump_middle_json=return_middle_json,
             f_dump_model_output=return_model_output,
             f_dump_orig_pdf=False,
-            f_dump_content_list=reuturn_content_list,
+            f_dump_content_list=return_content_list,
             start_page_id=start_page_id,
             end_page_id=end_page_id,
         )
@@ -128,16 +128,16 @@ async def parse_pdf(
 
 
             if os.path.exists(parse_dir):
-                if reuturn_md:
+                if return_md:
                     data["md_content"] = get_infer_result(".md")
-                if reuturn_middle_json:
+                if return_middle_json:
                     data["middle_json"] = get_infer_result("_middle.json")
                 if return_model_output:
                     if backend.startswith("pipeline"):
                         data["model_output"] = get_infer_result("_model.json")
                     else:
                         data["model_output"] = get_infer_result("_model_output.txt")
-                if reuturn_content_list:
+                if return_content_list:
                     data["content_list"] = get_infer_result("_content_list.json")
                 if return_images:
                     image_paths = glob(f"{parse_dir}/images/*.jpg")
