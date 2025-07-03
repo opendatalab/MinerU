@@ -90,8 +90,8 @@ def prepare_block_bboxes(
     """经过以上处理后，还存在大框套小框的情况，则删除小框"""
     all_bboxes = remove_overlaps_min_blocks(all_bboxes)
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
-    """将剩余的bbox做分离处理，防止后面分layout时出错"""
-    # all_bboxes, drop_reasons = remove_overlap_between_bbox_for_block(all_bboxes)
+
+    """粗排序后返回"""
     all_bboxes.sort(key=lambda x: x[0]+x[1])
     return all_bboxes, all_discarded_blocks, footnote_blocks
 
@@ -213,35 +213,39 @@ def remove_overlaps_min_blocks(all_bboxes):
     #  重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
     #  删除重叠blocks中较小的那些
     need_remove = []
-    for block1 in all_bboxes:
-        for block2 in all_bboxes:
-            if block1 != block2:
-                block1_bbox = block1[:4]
-                block2_bbox = block2[:4]
-                overlap_box = get_minbox_if_overlap_by_ratio(
-                    block1_bbox, block2_bbox, 0.8
-                )
-                if overlap_box is not None:
-                    block_to_remove = next(
-                        (block for block in all_bboxes if block[:4] == overlap_box),
-                        None,
-                    )
-                    if (
-                        block_to_remove is not None
-                        and block_to_remove not in need_remove
-                    ):
-                        large_block = block1 if block1 != block_to_remove else block2
-                        x1, y1, x2, y2 = large_block[:4]
-                        sx1, sy1, sx2, sy2 = block_to_remove[:4]
-                        x1 = min(x1, sx1)
-                        y1 = min(y1, sy1)
-                        x2 = max(x2, sx2)
-                        y2 = max(y2, sy2)
-                        large_block[:4] = [x1, y1, x2, y2]
-                        need_remove.append(block_to_remove)
+    for i in range(len(all_bboxes)):
+        for j in range(i + 1, len(all_bboxes)):
+            block1 = all_bboxes[i]
+            block2 = all_bboxes[j]
+            block1_bbox = block1[:4]
+            block2_bbox = block2[:4]
+            overlap_box = get_minbox_if_overlap_by_ratio(
+                block1_bbox, block2_bbox, 0.8
+            )
+            if overlap_box is not None:
+                # 判断哪个区块的面积更小，移除较小的区块
+                area1 = (block1[2] - block1[0]) * (block1[3] - block1[1])
+                area2 = (block2[2] - block2[0]) * (block2[3] - block2[1])
 
-    if len(need_remove) > 0:
-        for block in need_remove:
+                if area1 <= area2:
+                    block_to_remove = block1
+                    large_block = block2
+                else:
+                    block_to_remove = block2
+                    large_block = block1
+
+                if block_to_remove not in need_remove:
+                    x1, y1, x2, y2 = large_block[:4]
+                    sx1, sy1, sx2, sy2 = block_to_remove[:4]
+                    x1 = min(x1, sx1)
+                    y1 = min(y1, sy1)
+                    x2 = max(x2, sx2)
+                    y2 = max(y2, sy2)
+                    large_block[:4] = [x1, y1, x2, y2]
+                    need_remove.append(block_to_remove)
+
+    for block in need_remove:
+        if block in all_bboxes:
             all_bboxes.remove(block)
 
     return all_bboxes
