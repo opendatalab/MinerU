@@ -34,8 +34,7 @@
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
 <br>
 <br>
-<a href="https://mineru.net/client?source=github">更便捷的使用方式：MinerU桌面端。无需编程，无需登录，图形界面，简单交互，畅用无忧。</a>🚀🚀🚀
-
+🚀<a href="https://mineru.net/?source=github">MinerU 官网入口→✅ 免装在线版 ✅ 全功能客户端 ✅ 开发者API在线调用，省去部署麻烦，多种产品形态一键get，速冲！</a>
 </p>
 
 <!-- join us -->
