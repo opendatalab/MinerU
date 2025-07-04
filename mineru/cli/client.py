@@ -9,7 +9,7 @@ from mineru.utils.model_utils import get_vram
 from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
-@click.command()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.version_option(__version__,
                       '--version',
                       '-v',
@@ -137,7 +137,11 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 )
 
 
-def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
+def main(
+        input_path, output_dir, method, backend, lang, server_url,
+        start_page_id, end_page_id, formula_enable, table_enable,
+        device_mode, virtual_vram, model_source, **kwargs
+):
 
     if not backend.endswith('-client'):
         def get_device_mode() -> str:
@@ -185,6 +189,7 @@ def main(input_path, output_dir, method, backend, lang, server_url, start_page_i
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id
+                **kwargs,
             )
         except Exception as e:
             logger.exception(e)
