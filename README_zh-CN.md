@@ -566,7 +566,7 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   
 > [!TIP]
 > Dockerfile默认使用`lmsysorg/sglang:v0.4.8.post1-cu126`作为基础镜像，支持Turing/Ampere/Ada Lovelace/Hopper平台，
-> 如您使用较新的Blackwell平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.8.post1-cu128-b200`。
+> 如您使用较新的`Blackwell`平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.8.post1-cu128-b200`。
   
 #### 1.4 安装client（用于在仅需 CPU 和网络连接的边缘设备上连接 sglang-server）
 
@@ -727,7 +727,7 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 > - sglang加速模式目前支持在最低8G显存的Turing架构显卡上运行，但在显存<24G的显卡上可能会遇到显存不足的问题, 可以通过使用以下参数来优化显存使用：
 >   - 如果您使用单张显卡遇到显存不足的情况时，可能需要调低KV缓存大小，`--mem-fraction-static 0.5`，如仍出现显存不足问题，可尝试进一步降低到`0.4`或更低。
 >   - 如您有两张以上显卡，可尝试通过张量并行（TP）模式简单扩充可用显存：`--tp 2`
-> - 如果您已经可用正常使用sglang对vlm模型进行加速推理，但仍然希望进一步提升推理速度，可以尝试以下参数：
+> - 如果您已经可以正常使用sglang对vlm模型进行加速推理，但仍然希望进一步提升推理速度，可以尝试以下参数：
 >   - 如果您有超过多张显卡，可以使用sglang的多卡并行模式来增加吞吐量：`--dp 2`
 >   - 同时您可以启用`torch.compile`来将推理速度加速约15%：`--enable-torch-compile`
 > - 如果您想了解更多有关`sglang`的参数使用方法，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
