@@ -76,8 +76,8 @@ class MinerUAPI(ls.LitAPI):
                 p_lang_list=[inputs['lang']],
                 backend=inputs['backend'],
                 parse_method=inputs['method'],
-                p_formula_enable=inputs['formula_enable'],
-                p_table_enable=inputs['table_enable'],
+                formula_enable=inputs['formula_enable'],
+                table_enable=inputs['table_enable'],
                 server_url=inputs['server_url'],
                 start_page_id=inputs['start_page_id'],
                 end_page_id=inputs['end_page_id']
