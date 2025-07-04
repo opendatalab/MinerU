@@ -87,10 +87,11 @@ Corrected title list:
                 temperature=0.7,
                 stream=True,
             )
-            content = ""
+            content_pieces = []
             for chunk in completion:
                 if chunk.choices:
-                    content += chunk.choices[0].delta.content
+                    content_pieces.append(chunk.choices[0].delta.content)
+            content = "".join(content_pieces)
             # logger.info(f"Title completion: {content}")
             if "</think>" in content:
                 idx = content.index("</think>") + len("</think>")
