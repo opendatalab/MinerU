@@ -34,9 +34,7 @@
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: High-Quality PDF Extraction Toolkit</a>🔥🔥🔥
 <br>
 <br>
-<a href="https://mineru.net/client?source=github">
-Easier to use: Just grab MinerU Desktop. No coding, no login, just a simple interface and smooth interactions. Enjoy it without any fuss!</a>🚀🚀🚀
-
+🚀<a href="https://mineru.net/?source=github">Access MinerU Now→✅ Zero-Install Web Version ✅ Full-Featured Desktop Client ✅ Instant API Access; Skip deployment headaches – get all product formats in one click. Developers, dive in!</a>
 </p>
 
 <!-- join us -->
