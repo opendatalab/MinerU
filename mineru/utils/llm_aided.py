@@ -90,8 +90,8 @@ Corrected title list:
             content_pieces = []
             for chunk in completion:
                 if chunk.choices:
-                    content_pieces.append(chunk.choices[0].delta.content.strip())
-            content = "".join(content_pieces)
+                    content_pieces.append(chunk.choices[0].delta.content)
+            content = "".join(content_pieces).strip()
             # logger.info(f"Title completion: {content}")
             if "</think>" in content:
                 idx = content.index("</think>") + len("</think>")
