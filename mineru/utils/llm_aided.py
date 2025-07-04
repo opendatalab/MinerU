@@ -90,8 +90,13 @@ Corrected title list:
                 messages=[
                     {'role': 'user', 'content': title_optimize_prompt}],
                 temperature=0.7,
+                stream=True,
             )
-            content = completion.choices[0].message.content.strip()
+            content_pieces = []
+            for chunk in completion:
+                if chunk.choices and chunk.choices[0].delta.content is not None:
+                    content_pieces.append(chunk.choices[0].delta.content)
+            content = "".join(content_pieces).strip()
             # logger.info(f"Title completion: {content}")
             if "</think>" in content:
                 idx = content.index("</think>") + len("</think>")
