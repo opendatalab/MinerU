@@ -38,7 +38,7 @@ def config_endpoint():
     
     elif os.environ['MINERU_MODEL_SOURCE'] == 'modelscope':
         try:
-            response = requests.head(model_list_url, timeout=TIMEOUT)
+            response = requests.head(modelscope_url, timeout=TIMEOUT)
             if response.ok:
                 logging.info(f"Successfully connected to ModelScope. Using 'modelscope' as model source.")
                 return True
