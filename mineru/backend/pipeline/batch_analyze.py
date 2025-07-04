@@ -9,7 +9,7 @@ from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
 
-YOLO_LAYOUT_BASE_BATCH_SIZE = 1
+YOLO_LAYOUT_BASE_BATCH_SIZE = 8
 MFD_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 
@@ -318,6 +318,13 @@ class BatchAnalyze:
                         layout_res_item['score'] = float(f"{ocr_score:.3f}")
                         if ocr_score < OcrConfidence.min_confidence:
                             layout_res_item['category_id'] = 16
+                        else:
+                            layout_res_bbox = [layout_res_item['poly'][0], layout_res_item['poly'][1],
+                                               layout_res_item['poly'][4], layout_res_item['poly'][5]]
+                            layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
+                            layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
+                            if ocr_text in ['（204号', '（20', '（2', '（2号', '（20号'] and ocr_score < 0.8 and layout_res_width < layout_res_height:
+                                layout_res_item['category_id'] = 16
 
                     total_processed += len(img_crop_list)
 

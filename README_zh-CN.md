@@ -10,19 +10,16 @@
 [![forks](https://img.shields.io/github/forks/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
 [![open issues](https://img.shields.io/github/issues-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
 [![issue resolution](https://img.shields.io/github/issues-closed-raw/opendatalab/MinerU)](https://github.com/opendatalab/MinerU/issues)
-
 [![PyPI version](https://img.shields.io/pypi/v/mineru)](https://pypi.org/project/mineru/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/mineru)](https://pypi.org/project/mineru/)
 [![Downloads](https://static.pepy.tech/badge/mineru)](https://pepy.tech/project/mineru)
 [![Downloads](https://static.pepy.tech/badge/mineru/month)](https://pepy.tech/project/mineru)
-
 [![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
-
-[![HuggingFace](https://img.shields.io/badge/VLM_Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAF8AAABYCAMAAACkl9t/AAAAk1BMVEVHcEz/nQv/nQv/nQr/nQv/nQr/nQv/nQv/nQr/wRf/txT/pg7/yRr/rBD/zRz/ngv/oAz/zhz/nwv/txT/ngv/0B3+zBz/nQv/0h7/wxn/vRb/thXkuiT/rxH/pxD/ogzcqyf/nQvTlSz/czCxky7/SjifdjT/Mj3+Mj3wMj15aTnDNz+DSD9RTUBsP0FRO0Q6O0WyIxEIAAAAGHRSTlMADB8zSWF3krDDw8TJ1NbX5efv8ff9/fxKDJ9uAAAGKklEQVR42u2Z63qjOAyGC4RwCOfB2JAGqrSb2WnTw/1f3UaWcSGYNKTdf/P+mOkTrE+yJBulvfvLT2A5ruenaVHyIks33npl/6C4s/ZLAM45SOi/1FtZPyFur1OYofBX3w7d54Bxm+E8db+nDr12ttmESZ4zludJEG5S7TO72YPlKZFyE+YCYUJTBZsMiNS5Sd7NlDmKM2Eg2JQg8awbglfqgbhArjxkS7dgp2RH6hc9AMLdZYUtZN5DJr4molC8BfKrEkPKEnEVjLbgW1fLy77ZVOJagoIcLIl+IxaQZGjiX597HopF5CkaXVMDO9Pyix3AFV3kw4lQLCbHuMovz8FallbcQIJ5Ta0vks9RnolbCK84BtjKRS5uA43hYoZcOBGIG2Epbv6CvFVQ8m8loh66WNySsnN7htL58LNp+NXT8/PhXiBXPMjLSxtwp8W9f/1AngRierBkA+kk/IpUSOeKByzn8y3kAAAfh//0oXgV4roHm/kz4E2z//zRc3/lgwBzbM2mJxQEa5pqgX7d1L0htrhx7LKxOZlKbwcAWyEOWqYSI8YPtgDQVjpB5nvaHaSnBaQSD6hweDi8PosxD6/PT09YY3xQA7LTCTKfYX+QHpA0GCcqmEHvr/cyfKQTEuwgbs2kPxJEB0iNjfJcCTPyocx+A0griHSmADiC91oNGVwJ69RudYe65vJmoqfpul0lrqXadW0jFKH5BKwAeCq+Den7s+3zfRJzA61/Uj/9H/VzLKTx9jFPPdXeeP+L7WEvDLAKAIoF8bPTKT0+TM7W8ePj3Rz/Yn3kOAp2f1Kf0Weony7pn/cPydvhQYV+eFOfmOu7VB/ViPe34/EN3RFHY/yRuT8ddCtMPH/McBAT5s+vRde/gf2c/sPsjLK+m5IBQF5tO+h2tTlBGnP6693JdsvofjOPnnEHkh2TnV/X1fBl9S5zrwuwF8NFrAVJVwCAPTe8gaJlomqlp0pv4Pjn98tJ/t/fL++6unpR1YGC2n/KCoa0tTLoKiEeUPDl94nj+5/Tv3/eT5vBQ60X1S0oZr+IWRR8Ldhu7AlLjPISlJcO9vrFotky9SpzDequlwEir5beYAc0R7D9KS1DXva0jhYRDXoExPdc6yw5GShkZXe9QdO/uOvHofxjrV/TNS6iMJS+4TcSTgk9n5agJdBQbB//IfF/HpvPt3Tbi7b6I6K0R72p6ajryEJrENW2bbeVUGjfgoals4L443c7BEE4mJO2SpbRngxQrAKRudRzGQ8jVOL2qDVjjI8K1gc3TIJ5KiFZ1q+gdsARPB4NQS4AjwVSt72DSoXNyOWUrU5mQ9nRYyjp89Xo7oRI6Bga9QNT1mQ/ptaJq5T/7WcgAZywR/XlPGAUDdet3LE+qS0TI+g+aJU8MIqjo0Kx8Ly+maxLjJmjQ18rA0YCkxLQbUZP1WqdmyQGJLUm7VnQFqodmXSqmRrdVpqdzk5LvmvgtEcW8PMGdaS23EOWyDVbACZzUJPaqMbjDxpA3Qrgl0AikimGDbqmyT8P8NOYiqrldF8rX+YN7TopX4UoHuSCYY7cgX4gHwclQKl1zhx0THf+tCAUValzjI7Wg9EhptrkIcfIJjA94evOn8B2eHaVzvBrnl2ig0So6hvPaz0IGcOvTHvUIlE2+prqAxLSQxZlU2stql1NqCCLdIiIN/i1DBEHUoElM9dBravbiAnKqgpi4IBkw+utSPIoBijDXJipSVV7MpOEJUAc5Qmm3BnUN+w3hteEieYKfRZSIUcXKMVf0u5wD4EwsUNVvZOtUT7A2GkffHjByWpHqvRBYrTV72a6j8zZ6W0DTE86Hn04bmyWX3Ri9WH7ZU6Q7h+ZHo0nHUAcsQvVhXRDZHChwiyi/hnPuOsSEF6Exk3o6Y9DT1eZ+6cASXk2Y9k+6EOQMDGm6WBK10wOQJCBwren86cPPWUcRAnTVjGcU1LBgs9FURiX/e6479yZcLwCBmTxiawEwrOcleuu12t3tbLv/N4RLYIBhYexm7Fcn4OJcn0+zc+s8/VfPeddZHAGN6TT8eGczHdR/Gts1/MzDkThr23zqrVfAMFT33Nx1RJsx1k5zuWILLnG/vsH+Fv5D4NTVcp1Gzo8AAAAAElFTkSuQmCC&labelColor=white)](https://huggingface.co/spaces/opendatalab/mineru2)
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/3b3a00a4a0a61577b6c30f989092d20d/mineru_demo.ipynb)
-[![Paper](https://img.shields.io/badge/Paper-arXiv-green)](https://arxiv.org/abs/2409.18839)
+[![arXiv](https://img.shields.io/badge/arXiv-2409.18839-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -37,8 +34,7 @@
 <a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
 <br>
 <br>
-<a href="https://mineru.net/client?source=github">更便捷的使用方式：MinerU桌面端。无需编程，无需登录，图形界面，简单交互，畅用无忧。</a>🚀🚀🚀
-
+🚀<a href="https://mineru.net/?source=github">MinerU 官网入口→✅ 免装在线版 ✅ 全功能客户端 ✅ 开发者API在线调用，省去部署麻烦，多种产品形态一键get，速冲！</a>
 </p>
 
 <!-- join us -->
@@ -50,36 +46,79 @@
 </div>
 
 # 更新记录
-- 2025/06/17 2.0.5发布
-  - 修复了`sglang-client`模式下依然需要下载模型的问题
-  - 修复了`sglang-client`模式需要依赖`torch`等实际运行不需要的包的问题
-  - 修复了同一进程内尝试通过多个url启动多个`sglang-client`实例时，只有第一个生效的问题
-- 2025/06/15 2.0.3发布
-  - 修复了当下载模型类型设置为`all`时，配置文件出现键值更新错误的问题
-  - 修复了命令行模式下公式和表格功能开关不生效导致功能无法关闭的问题
-  - 修复了`sglang-engine`模式下，0.4.7版本sglang的兼容性问题
-  - 更新了sglang环境下部署完整版MinerU的Dockerfile和相关安装文档
-- 2025/06/13 2.0.0发布
-  - MinerU 2.0 是一次从架构到功能的全面重构与升级，带来了更简洁的设计、更强的性能以及更灵活的使用体验。
-    - **全新架构**：MinerU 2.0 在代码结构和交互方式上进行了深度重构，显著提升了系统的易用性、可维护性与扩展能力。
-      - **去除第三方依赖限制**：彻底移除对 `pymupdf` 的依赖，推动项目向更开放、合规的开源方向迈进。
-      - **开箱即用，配置便捷**：无需手动编辑 JSON 配置文件，绝大多数参数已支持命令行或 API 直接设置。
-      - **模型自动管理**：新增模型自动下载与更新机制，用户无需手动干预即可完成模型部署。
-      - **离线部署友好**：提供内置模型下载命令，支持完全断网环境下的部署需求。
-      - **代码结构精简**：移除数千行冗余代码，简化类继承逻辑，显著提升代码可读性与开发效率。
-      - **统一中间格式输出**：采用标准化的 `middle_json` 格式，兼容多数基于该格式的二次开发场景，确保生态业务无缝迁移。
-    - **全新模型**：MinerU 2.0 集成了我们最新研发的小参数量、高性能多模态文档解析模型，实现端到端的高速、高精度文档理解。
-      - **小模型，大能力**：模型参数不足 1B，却在解析精度上超越传统 72B 级别的视觉语言模型（VLM）。
-      - **多功能合一**：单模型覆盖多语言识别、手写识别、版面分析、表格解析、公式识别、阅读顺序排序等核心任务。
-      - **极致推理速度**：在单卡 NVIDIA 4090 上通过 `sglang` 加速，达到峰值吞吐量超过 10,000 token/s，轻松应对大规模文档处理需求。
-      - **在线体验**：您可在我们的huggingface demo上在线体验该模型：[![HuggingFace](https://img.shields.io/badge/VLM_Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/mineru2)
-    - **不兼容变更说明**:为提升整体架构合理性与长期可维护性，本版本包含部分不兼容的变更：
-      - Python 包名从 `magic-pdf` 更改为 `mineru`，命令行工具也由 `magic-pdf` 改为 `mineru`，请同步更新脚本与调用命令。
-      - 出于对系统模块化设计与生态一致性的考虑，MinerU 2.0 已不再内置 LibreOffice 文档转换模块。如需处理 Office 文档，建议通过独立部署的 LibreOffice 服务先行转换为 PDF 格式，再进行后续解析操作。
-
+- 2025/07/05 2.1.0发布
+  - 这是 Miner2 的第一个大版本更新，包含了大量新功能和改进，包含众多性能优化、体验优化和bug修复，具体更新内容如下： 
+  - 性能优化： 
+    - 大幅提升某些特定分辨率（长边2000像素左右）文档的预处理速度
+    - 大幅提升`pipeline`后端批量处理大量页数较少（<10）文档时的后处理速度
+    - `pipline`后端的layout分析速度提升约20%
+  - 体验优化：
+    - 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](#3-api-调用-或-可视化调用)
+    - `sglang`适配`0.4.8`版本，大幅降低`vlm-sglang`后端的显存要求，最低可在`8G显存`(Turing及以后架构)的显卡上运行
+    - 对所有命令增加`sglang`的参数透传，使得`sglang-engine`后端可以`sglang-server`一致，接收`sglang`的所有参数
+    - 支持基于配置文件的功能扩展，包含`自定义公式标识符`、`开启标题分级功能`、`自定义本地模型目录`，详细使用方法请参考[文档](#4-基于配置文件扩展-mineru-功能)
+  - 新特性：  
+    - `pipeline`后端更新 PP-OCRv5 多语种文本识别模型，支持法语、西班牙语、葡萄牙语、俄语、韩语等 37 种语言的文字识别，平均精度涨幅超30%。[详情](https://paddlepaddle.github.io/PaddleOCR/latest/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html)
+    - `pipeline`后端增加对竖排文本的有限支持
 
 <details>
   <summary>历史日志</summary>
+  <details>
+    <summary>2025/06/20 2.0.6发布</summary>
+    <ul>
+      <li>修复<code>vlm</code>模式下，某些偶发的无效块内容导致解析中断问题</li>
+      <li>修复<code>vlm</code>模式下，某些不完整的表结构导致的解析中断问题</li>
+    </ul>
+  </details>
+  
+  <details>
+    <summary>2025/06/17 2.0.5发布</summary>
+    <ul>
+      <li>修复了<code>sglang-client</code>模式下依然需要下载模型的问题</li>
+      <li>修复了<code>sglang-client</code>模式需要依赖<code>torch</code>等实际运行不需要的包的问题</li>
+      <li>修复了同一进程内尝试通过多个url启动多个<code>sglang-client</code>实例时，只有第一个生效的问题</li>
+    </ul>
+  </details>
+  
+  <details>
+    <summary>2025/06/15 2.0.3发布</summary>
+    <ul>
+      <li>修复了当下载模型类型设置为<code>all</code>时，配置文件出现键值更新错误的问题</li>
+      <li>修复了命令行模式下公式和表格功能开关不生效导致功能无法关闭的问题</li>
+      <li>修复了<code>sglang-engine</code>模式下，0.4.7版本sglang的兼容性问题</li>
+      <li>更新了sglang环境下部署完整版MinerU的Dockerfile和相关安装文档</li>
+    </ul>
+  </details>
+  
+  <details>
+    <summary>2025/06/13 2.0.0发布</summary>
+    <ul>
+      <li><strong>全新架构</strong>：MinerU 2.0 在代码结构和交互方式上进行了深度重构，显著提升了系统的易用性、可维护性与扩展能力。
+        <ul>
+          <li><strong>去除第三方依赖限制</strong>：彻底移除对 <code>pymupdf</code> 的依赖，推动项目向更开放、合规的开源方向迈进。</li>
+          <li><strong>开箱即用，配置便捷</strong>：无需手动编辑 JSON 配置文件，绝大多数参数已支持命令行或 API 直接设置。</li>
+          <li><strong>模型自动管理</strong>：新增模型自动下载与更新机制，用户无需手动干预即可完成模型部署。</li>
+          <li><strong>离线部署友好</strong>：提供内置模型下载命令，支持完全断网环境下的部署需求。</li>
+          <li><strong>代码结构精简</strong>：移除数千行冗余代码，简化类继承逻辑，显著提升代码可读性与开发效率。</li>
+          <li><strong>统一中间格式输出</strong>：采用标准化的 <code>middle_json</code> 格式，兼容多数基于该格式的二次开发场景，确保生态业务无缝迁移。</li>
+        </ul>
+      </li>
+      <li><strong>全新模型</strong>：MinerU 2.0 集成了我们最新研发的小参数量、高性能多模态文档解析模型，实现端到端的高速、高精度文档理解。
+        <ul>
+          <li><strong>小模型，大能力</strong>：模型参数不足 1B，却在解析精度上超越传统 72B 级别的视觉语言模型（VLM）。</li>
+          <li><strong>多功能合一</strong>：单模型覆盖多语言识别、手写识别、版面分析、表格解析、公式识别、阅读顺序排序等核心任务。</li>
+          <li><strong>极致推理速度</strong>：在单卡 NVIDIA 4090 上通过 <code>sglang</code> 加速，达到峰值吞吐量超过 10,000 token/s，轻松应对大规模文档处理需求。</li>
+          <li><strong>在线体验</strong>：您可以在<a href="https://mineru.net/OpenSourceTools/Extractor">MinerU.net</a>、<a href="https://huggingface.co/spaces/opendatalab/MinerU">Hugging Face</a>, 以及<a href="https://www.modelscope.cn/studios/OpenDataLab/MinerU">ModelScope</a>体验我们的全新VLM模型</li>
+        </ul>
+      </li>
+      <li><strong>不兼容变更说明</strong>:为提升整体架构合理性与长期可维护性，本版本包含部分不兼容的变更：
+        <ul>
+          <li>Python 包名从 <code>magic-pdf</code> 更改为 <code>mineru</code>，命令行工具也由 <code>magic-pdf</code> 改为 <code>mineru</code>，请同步更新脚本与调用命令。</li>
+          <li>出于对系统模块化设计与生态一致性的考虑，MinerU 2.0 已不再内置 LibreOffice 文档转换模块。如需处理 Office 文档，建议通过独立部署的 LibreOffice 服务先行转换为 PDF 格式，再进行后续解析操作。</li>
+        </ul>
+      </li>
+    </ul>
+  </details>
   <details>
   <summary>2025/05/24 1.3.12 发布</summary>
   <ul>
@@ -373,8 +412,6 @@
     <li><a href="#acknowledgments">Acknowledgements</a></li>
     <li><a href="#citation">Citation</a></li>
     <li><a href="#star-history">Star History</a></li>
-    <li><a href="#magic-doc">magic-doc快速提取PPT/DOC/PDF</a></li>
-    <li><a href="#magic-html">magic-html提取混合网页内容</a></li>
     <li><a href="#links">Links</a></li>
   </ol>
 </details>
@@ -424,18 +461,28 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 >
 > 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
-<table border="1">
+<table>
     <tr>
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sgslang</td>
+        <td>vlm-sglang</td>
     </tr>
     <tr>
         <td>操作系统</td>
         <td>windows/linux/mac</td>
         <td>windows/linux</td>
         <td>windows(wsl2)/linux</td>
+    </tr>
+    <tr>
+        <td>CPU推理支持</td>
+        <td>✅</td>
+        <td colspan="2">❌</td>
+    </tr>
+    <tr>
+        <td>GPU要求</td>
+        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
+        <td colspan="2">Turing及以后架构，8G显存以上</td>
     </tr>
     <tr>
         <td>内存要求</td>
@@ -449,18 +496,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>python版本</td>
         <td colspan="3">3.10-3.13</td>
     </tr>
-    <tr>
-        <td>CPU推理支持</td>
-        <td>✅</td>
-        <td>❌</td>
-        <td>❌</td>
-    </tr>
-    <tr>
-        <td>GPU要求</td>
-        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
-        <td>Ampere及以后架构，8G显存以上</td>
-        <td>Ampere及以后架构，24G显存及以上</td>
-    </tr>
 </table>
 
 ## 在线体验
@@ -468,9 +503,6 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 [![OpenDataLab](https://img.shields.io/badge/Demo_on_OpenDataLab-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
 [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
 [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
-
-### 🚀🚀🚀VLM demo
-[![HuggingFace](https://img.shields.io/badge/VLM_Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,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&labelColor=white)](https://huggingface.co/spaces/opendatalab/mineru2)
 
 ## 本地部署
 
@@ -492,7 +524,11 @@ cd MinerU
 uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
-#### 1.3 安装完整版（支持 sglang 加速）
+> [!NOTE]
+> Linux和macOS系统安装后自动支持cuda/mps加速，Windows用户如需使用cuda加速，
+> 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择合适的cuda版本安装pytorch。
+
+#### 1.3 安装完整版（支持 sglang 加速）（需确保设备有Turing及以后架构，8G显存及以上显卡）
 
 如需使用 **sglang 加速 VLM 模型推理**，请选择合适的方式安装完整版本：
 
@@ -504,6 +540,10 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   ```bash
   uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
   ```
+  
+> [!TIP]
+> sglang安装过程中如发生异常，请参考[sglang官方文档](https://docs.sglang.ai/start/install.html)尝试解决或直接使用docker方式安装。
+
 - 使用 Dockerfile 构建镜像：
   ```bash
   wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
@@ -525,7 +565,8 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
   ```
   
 > [!TIP]
-> Dockerfile默认使用`lmsysorg/sglang:v0.4.7-cu124`作为基础镜像，如有需要，您可以自行修改为其他平台版本。
+> Dockerfile默认使用`lmsysorg/sglang:v0.4.8.post1-cu126`作为基础镜像，支持Turing/Ampere/Ada Lovelace/Hopper平台，
+> 如您使用较新的Blackwell平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.8.post1-cu128-b200`。
   
 #### 1.4 安装client（用于在仅需 CPU 和网络连接的边缘设备上连接 sglang-server）
 
@@ -548,7 +589,7 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<host_ip>
 mineru -p <input_path> -o <output_path>
 ```
 
-- `<input_path>`：本地 PDF 文件或目录（支持 pdf/png/jpg/jpeg）
+- `<input_path>`：本地 PDF/图片 文件或目录（支持 pdf/png/jpg/jpeg/webp/gif）
 - `<output_path>`：输出目录
 
 ##### 查看帮助信息
@@ -571,14 +612,15 @@ Options:
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
   -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
                                   解析后端（默认为 pipeline）
-  -l, --lang [ch|ch_server|... ]  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
+  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|latin|arabic|east_slavic|cyrillic|devanagari]
+                                  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
   -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
-  -f, --formula BOOLEAN           是否启用公式解析（默认开启，仅 pipeline 后端）
-  -t, --table BOOLEAN             是否启用表格解析（默认开启，仅 pipeline 后端）
+  -f, --formula BOOLEAN           是否启用公式解析（默认开启）
+  -t, --table BOOLEAN             是否启用表格解析（默认开启）
   -d, --device TEXT               推理设备（如 cpu/cuda/cuda:0/npu/mps，仅 pipeline 后端）
-  --vram INTEGER                  单进程最大 GPU 显存占用（仅 pipeline 后端）
+  --vram INTEGER                  单进程最大 GPU 显存占用(GB)（仅 pipeline 后端）
   --source [huggingface|modelscope|local]
                                   模型来源，默认 huggingface
   --help                          显示帮助信息
@@ -636,13 +678,13 @@ mineru -p <input_path> -o <output_path>
 
 #### 2.3 使用 sglang 加速 VLM 模型推理
 
-##### 启动 sglang-engine 模式
+##### 通过 sglang-engine 模式
 
 ```bash
 mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
 ```
 
-##### 启动 sglang-server/client 模式
+##### 通过 sglang-server/client 模式
 
 1. 启动 Server：
 
@@ -661,29 +703,75 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 
 ---
 
-### 3. API 调用方式
+### 3. API 调用 或 可视化调用
 
-您也可以通过 Python 代码调用 MinerU，示例代码请参考：
-👉 [Python 调用示例](demo/demo.py)
+1. 使用python api直接调用：[Python 调用示例](demo/demo.py)
+2. 使用fast api方式调用：
+    ```bash
+    mineru-api --host 127.0.0.1 --port 8000
+    ```
+    在浏览器中访问 http://127.0.0.1:8000/docs 查看API文档。
+
+3. 使用gradio webui 或 gradio api调用
+    ```bash
+    # 使用 pipeline/vlm-transformers/vlm-sglang-client 后端
+    mineru-gradio --server-name 127.0.0.1 --server-port 7860
+    # 或使用 vlm-sglang-engine/pipeline 后端
+    mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine
+    ```
+    在浏览器中访问 http://127.0.0.1:7860 使用 Gradio WebUI 或访问 http://127.0.0.1:7860/?view=api 使用 Gradio API。
+
+
+> [!TIP]
+> 以下是一些使用sglang加速模式的建议和注意事项：
+> - sglang加速模式目前支持在最低8G显存的Turing架构显卡上运行，但在显存<24G的显卡上可能会遇到显存不足的问题, 可以通过使用以下参数来优化显存使用：
+>   - 如果您使用单张显卡遇到显存不足的情况时，可能需要调低KV缓存大小，`--mem-fraction-static 0.5`，如仍出现显存不足问题，可尝试进一步降低到`0.4`或更低。
+>   - 如您有两张以上显卡，可尝试通过张量并行（TP）模式简单扩充可用显存：`--tp 2`
+> - 如果您已经可用正常使用sglang对vlm模型进行加速推理，但仍然希望进一步提升推理速度，可以尝试以下参数：
+>   - 如果您有超过多张显卡，可以使用sglang的多卡并行模式来增加吞吐量：`--dp 2`
+>   - 同时您可以启用`torch.compile`来将推理速度加速约15%：`--enable-torch-compile`
+> - 如果您想了解更多有关`sglang`的参数使用方法，请参考 [sglang官方文档](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
+> - 所有sglang官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-sglang-server`、`mineru-gradio`、`mineru-api`
+
+> [!TIP]
+> - 任何情况下，您都可以通过在命令行的开头添加`CUDA_VISIBLE_DEVICES` 环境变量来指定可见的 GPU 设备。例如：
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
+>   ```
+> - 这种指定方式对所有的命令行调用都有效，包括 `mineru`、`mineru-sglang-server`、`mineru-gradio` 和 `mineru-api`，且对`pipeline`、`vlm`后端均适用。
+> - 以下是一些常见的 `CUDA_VISIBLE_DEVICES` 设置示例：
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=1 Only device 1 will be seen
+>   CUDA_VISIBLE_DEVICES=0,1 Devices 0 and 1 will be visible
+>   CUDA_VISIBLE_DEVICES=“0,1” Same as above, quotation marks are optional
+>   CUDA_VISIBLE_DEVICES=0,2,3 Devices 0, 2, 3 will be visible; device 1 is masked
+>   CUDA_VISIBLE_DEVICES="" No GPU will be visible
+>   ```
+> - 以下是一些可能的使用场景：
+>   - 如果您有多张显卡，需要指定卡0和卡1，并使用多卡并行来启动'sglang-server'，可以使用以下命令：
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp 2
+>   ```
+>   - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令：
+>   ```bash
+>   # 在终端1中
+>   CUDA_VISIBLE_DEVICES=0 mineru-api --host 127.0.0.1 --port 8000
+>   # 在终端2中
+>   CUDA_VISIBLE_DEVICES=1 mineru-api --host 127.0.0.1 --port 8001
+>   ```
 
 ---
 
-### 4. 部署衍生项目
+### 4. 基于配置文件扩展 MinerU 功能
 
-社区开发者基于 MinerU 进行了多种二次开发，包括：
+- MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可以在用户目录下创建 `mineru.json` 文件，添加自定义配置。
+- `mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](./mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。
+- 以下是一些可用的配置选项：
+  - `latex-delimiter-config`：用于配置 LaTeX 公式的分隔符，默认为`$`符号，可根据需要修改为其他符号或字符串。
+  - `llm-aided-config`：用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型，默认使用`阿里云百练`的`qwen2.5-32b-instruct`模型，您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
+  - `models-dir`：用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。
 
-- 基于 Gradio 的图形界面
-- 基于 FastAPI 的 Web API
-- 多卡负载均衡的客户端/服务端架构
-- 基于官网API的MCP Server
-
-这些项目通常提供更好的用户体验和更多功能。
-
-详细部署方式请参阅：
-👉 [衍生项目说明](projects/README_zh-CN.md)
-
---- 
-
+---
 
 # TODO
 
@@ -698,7 +786,7 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 # Known Issues
 
 - 阅读顺序基于模型对可阅读内容在空间中的分布进行排序，在极端复杂的排版下可能会部分区域乱序
-- 不支持竖排文字
+- 对竖排文字的支持较为有限
 - 目录和列表通过规则进行识别，少部分不常见的列表形式可能无法识别
 - 代码块在layout模型里还没有支持
 - 漫画书、艺术图册、小学教材、习题尚不能很好解析
@@ -707,11 +795,10 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 - 部分公式可能会无法在markdown中渲染
 
 # FAQ
-
-[常见问题](docs/FAQ_zh_cn.md)
-
-
-[FAQ](docs/FAQ_en_us.md)
+ 
+- 如果您在使用过程中遇到问题，可以先查看[常见问题](docs/FAQ_zh_cn.md)是否有解答。  
+- 如果未能解决您的问题，您也可以使用[DeepWiki](https://deepwiki.com/opendatalab/MinerU)与AI助手交流，这可以解决大部分常见问题。  
+- 如果您仍然无法解决问题，您可通过[Discord](https://discord.gg/Tdedn9GTXq)或[WeChat](http://mineru.space/s/V85Yl)加入社区，与其他用户和开发者交流。
 
 # All Thanks To Our Contributors
 
@@ -772,16 +859,13 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
  </picture>
 </a>
 
-# Magic-doc
-
-[Magic-Doc](https://github.com/InternLM/magic-doc) Fast speed ppt/pptx/doc/docx/pdf extraction tool
-
-# Magic-html
-
-[Magic-HTML](https://github.com/opendatalab/magic-html) Mixed web page extraction tool
 
 # Links
 
 - [LabelU (A Lightweight Multi-modal Data Annotation Tool)](https://github.com/opendatalab/labelU)
 - [LabelLLM (An Open-source LLM Dialogue Annotation Platform)](https://github.com/opendatalab/LabelLLM)
 - [PDF-Extract-Kit (A Comprehensive Toolkit for High-Quality PDF Content Extraction)](https://github.com/opendatalab/PDF-Extract-Kit)
+- [Vis3 (OSS browser based on s3)](https://github.com/opendatalab/Vis3)
+- [OmniDocBench (A Comprehensive Benchmark for Document Parsing and Evaluation)](https://github.com/opendatalab/OmniDocBench)
+- [Magic-HTML (Mixed web page extraction tool)](https://github.com/opendatalab/magic-html)
+- [Magic-Doc (Fast speed ppt/pptx/doc/docx/pdf extraction tool)](https://github.com/InternLM/magic-doc) 

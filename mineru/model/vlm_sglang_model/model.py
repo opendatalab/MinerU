@@ -62,7 +62,7 @@ class Mineru2QwenForCausalLM(nn.Module):
 
         # load vision tower
         mm_vision_tower = self.config.mm_vision_tower
-        model_root_path = auto_download_and_get_model_root_path("/", "vlm")
+        model_root_path = auto_download_and_get_model_root_path(mm_vision_tower, "vlm")
         mm_vision_tower = f"{model_root_path}/{mm_vision_tower}"
 
         if "clip" in mm_vision_tower:

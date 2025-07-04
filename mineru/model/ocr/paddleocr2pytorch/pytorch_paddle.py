@@ -26,9 +26,10 @@ latin_lang = [
 ]
 arabic_lang = ['ar', 'fa', 'ug', 'ur']
 cyrillic_lang = [
-        'ru', 'rs_cyrillic', 'be', 'bg', 'uk', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
+        'rs_cyrillic', 'bg', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
         'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
 ]
+east_slavic_lang = ["ru", "be", "uk"]
 devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
@@ -58,7 +59,7 @@ class PytorchPaddleOCR(TextSystem):
 
         device = get_device()
         if device == 'cpu' and self.lang in ['ch', 'ch_server', 'japan', 'chinese_cht']:
-            logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
+            # logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
             self.lang = 'ch_lite'
 
         if self.lang in latin_lang:
@@ -69,6 +70,8 @@ class PytorchPaddleOCR(TextSystem):
             self.lang = 'cyrillic'
         elif self.lang in devanagari_lang:
             self.lang = 'devanagari'
+        elif self.lang in east_slavic_lang:
+            self.lang = 'east_slavic'
         else:
             pass
 

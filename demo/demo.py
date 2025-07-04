@@ -25,8 +25,8 @@ def do_parse(
     p_lang_list: list[str],  # List of languages for each PDF, default is 'ch' (Chinese)
     backend="pipeline",  # The backend for parsing PDF, default is 'pipeline'
     parse_method="auto",  # The method for parsing PDF, default is 'auto'
-    p_formula_enable=True,  # Enable formula parsing
-    p_table_enable=True,  # Enable table parsing
+    formula_enable=True,  # Enable formula parsing
+    table_enable=True,  # Enable table parsing
     server_url=None,  # Server URL for vlm-sglang-client backend
     f_draw_layout_bbox=True,  # Whether to draw layout bounding boxes
     f_draw_span_bbox=True,  # Whether to draw span bounding boxes
@@ -45,7 +45,7 @@ def do_parse(
             new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             pdf_bytes_list[idx] = new_pdf_bytes
 
-        infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=p_formula_enable,table_enable=p_table_enable)
+        infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(pdf_bytes_list, p_lang_list, parse_method=parse_method, formula_enable=formula_enable,table_enable=table_enable)
 
         for idx, model_list in enumerate(infer_results):
             model_json = copy.deepcopy(model_list)
@@ -57,7 +57,7 @@ def do_parse(
             pdf_doc = all_pdf_docs[idx]
             _lang = lang_list[idx]
             _ocr_enable = ocr_enabled_list[idx]
-            middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable, p_formula_enable)
+            middle_json = pipeline_result_to_middle_json(model_list, images_list, pdf_doc, image_writer, _lang, _ocr_enable, formula_enable)
 
             pdf_info = middle_json["pdf_info"]
 
@@ -169,8 +169,8 @@ def parse_doc(
         backend="pipeline",
         method="auto",
         server_url=None,
-        start_page_id=0,  # Start page ID for parsing, default is 0
-        end_page_id=None  # End page ID for parsing, default is None (parse all pages until the end of the document)
+        start_page_id=0,
+        end_page_id=None
 ):
     """
         Parameter description:
@@ -192,6 +192,8 @@ def parse_doc(
             Without method specified, 'auto' will be used by default.
             Adapted only for the case where the backend is set to "pipeline".
         server_url: When the backend is `sglang-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+        start_page_id: Start page ID for parsing, default is 0
+        end_page_id: End page ID for parsing, default is None (parse all pages until the end of the document)
     """
     try:
         file_name_list = []

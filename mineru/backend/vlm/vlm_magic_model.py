@@ -1,6 +1,8 @@
 import re
 from typing import Literal
 
+from loguru import logger
+
 from mineru.utils.boxbase import bbox_distance, is_in
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
@@ -22,25 +24,30 @@ class MagicModel:
         # 解析每个块
         for index, block_info in enumerate(block_infos):
             block_bbox = block_info[0].strip()
-            x1, y1, x2, y2 = map(int, block_bbox.split())
-            x_1, y_1, x_2, y_2 = (
-                int(x1 * width / 1000),
-                int(y1 * height / 1000),
-                int(x2 * width / 1000),
-                int(y2 * height / 1000),
-            )
-            if x_2 < x_1:
-                x_1, x_2 = x_2, x_1
-            if y_2 < y_1:
-                y_1, y_2 = y_2, y_1
-            block_bbox = (x_1, y_1, x_2, y_2)
-            block_type = block_info[1].strip()
-            block_content = block_info[2].strip()
+            try:
+                x1, y1, x2, y2 = map(int, block_bbox.split())
+                x_1, y_1, x_2, y_2 = (
+                    int(x1 * width / 1000),
+                    int(y1 * height / 1000),
+                    int(x2 * width / 1000),
+                    int(y2 * height / 1000),
+                )
+                if x_2 < x_1:
+                    x_1, x_2 = x_2, x_1
+                if y_2 < y_1:
+                    y_1, y_2 = y_2, y_1
+                block_bbox = (x_1, y_1, x_2, y_2)
+                block_type = block_info[1].strip()
+                block_content = block_info[2].strip()
 
-            # print(f"坐标: {block_bbox}")
-            # print(f"类型: {block_type}")
-            # print(f"内容: {block_content}")
-            # print("-" * 50)
+                # print(f"坐标: {block_bbox}")
+                # print(f"类型: {block_type}")
+                # print(f"内容: {block_content}")
+                # print("-" * 50)
+            except Exception as e:
+                # 如果解析失败，可能是因为格式不正确，跳过这个块
+                logger.warning(f"Invalid block format: {block_info}, error: {e}")
+                continue
 
             span_type = "unknown"
             if block_type in [

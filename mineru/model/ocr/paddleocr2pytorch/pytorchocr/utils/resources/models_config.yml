@@ -24,17 +24,17 @@ lang:
     rec: en_PP-OCRv4_rec_infer.pth
     dict: en_dict.txt
   korean:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: korean_PP-OCRv3_rec_infer.pth
-    dict: korean_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: korean_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_korean_dict.txt
   japan:
     det: ch_PP-OCRv5_det_infer.pth
     rec: ch_PP-OCRv5_rec_server_infer.pth
-    dict: japan_dict.txt
+    dict: ppocrv5_dict.txt
   chinese_cht:
     det: ch_PP-OCRv5_det_infer.pth
     rec: ch_PP-OCRv5_rec_server_infer.pth
-    dict: chinese_cht_dict.txt
+    dict: ppocrv5_dict.txt
   ta:
     det: Multilingual_PP-OCRv3_det_infer.pth
     rec: ta_PP-OCRv3_rec_infer.pth
@@ -48,9 +48,9 @@ lang:
     rec: ka_PP-OCRv3_rec_infer.pth
     dict: ka_dict.txt
   latin:
-    det: en_PP-OCRv3_det_infer.pth
-    rec: latin_PP-OCRv3_rec_infer.pth
-    dict: latin_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: latin_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_latin_dict.txt
   arabic:
     det: Multilingual_PP-OCRv3_det_infer.pth
     rec: arabic_PP-OCRv3_rec_infer.pth
@@ -63,3 +63,7 @@ lang:
     det: Multilingual_PP-OCRv3_det_infer.pth
     rec: devanagari_PP-OCRv3_rec_infer.pth
     dict: devanagari_dict.txt
+  east_slavic:
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: eslav_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_eslav_dict.txt

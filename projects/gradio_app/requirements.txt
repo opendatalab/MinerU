@@ -1,3 +1,0 @@
-magic-pdf[full]>=0.8.0
-gradio
-gradio-pdf
