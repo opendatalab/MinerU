@@ -13,6 +13,7 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
+from mineru.utils.cli_parser import arg_parse
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -237,42 +238,8 @@ def main(ctx,
         example_enable, sglang_engine_enable, api_enable, max_convert_pages,
         server_name, server_port, **kwargs
 ):
-    # 解析额外参数
-    extra_kwargs = {}
-    i = 0
-    while i < len(ctx.args):
-        arg = ctx.args[i]
-        if arg.startswith('--'):
-            param_name = arg[2:].replace('-', '_')  # 转换参数名格式
-            i += 1
-            if i < len(ctx.args) and not ctx.args[i].startswith('--'):
-                # 参数有值
-                try:
-                    # 尝试转换为适当的类型
-                    if ctx.args[i].lower() == 'true':
-                        extra_kwargs[param_name] = True
-                    elif ctx.args[i].lower() == 'false':
-                        extra_kwargs[param_name] = False
-                    elif '.' in ctx.args[i]:
-                        try:
-                            extra_kwargs[param_name] = float(ctx.args[i])
-                        except ValueError:
-                            extra_kwargs[param_name] = ctx.args[i]
-                    else:
-                        try:
-                            extra_kwargs[param_name] = int(ctx.args[i])
-                        except ValueError:
-                            extra_kwargs[param_name] = ctx.args[i]
-                except:
-                    extra_kwargs[param_name] = ctx.args[i]
-            else:
-                # 布尔型标志参数
-                extra_kwargs[param_name] = True
-                i -= 1
-        i += 1
 
-    # 将解析出的参数合并到kwargs
-    kwargs.update(extra_kwargs)
+    kwargs.update(arg_parse(ctx))
 
     if sglang_engine_enable:
         try:

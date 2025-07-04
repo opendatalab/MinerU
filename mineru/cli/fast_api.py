@@ -1,7 +1,7 @@
 import uuid
 import os
 import uvicorn
-import argparse
+import click
 from pathlib import Path
 from glob import glob
 from fastapi import FastAPI, UploadFile, File, Form
@@ -12,6 +12,7 @@ from loguru import logger
 from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn
+from mineru.utils.cli_parser import arg_parse
 from mineru.version import __version__
 
 app = FastAPI()
@@ -50,6 +51,10 @@ async def parse_pdf(
         start_page_id: int = Form(0),
         end_page_id: int = Form(99999),
 ):
+
+    # 获取命令行配置参数
+    config = getattr(app.state, "config", {})
+
     try:
         # 创建唯一的输出目录
         unique_dir = os.path.join(output_dir, str(uuid.uuid4()))
@@ -113,6 +118,7 @@ async def parse_pdf(
             f_dump_content_list=return_content_list,
             start_page_id=start_page_id,
             end_page_id=end_page_id,
+            **config
         )
 
         # 构建结果路径
@@ -162,24 +168,29 @@ async def parse_pdf(
         )
 
 
-def main():
-    """启动MinerU FastAPI服务器的命令行入口"""
-    parser = argparse.ArgumentParser(description='Start MinerU FastAPI Service')
-    parser.add_argument('--host', type=str, default='127.0.0.1', help='Server host (default: 127.0.0.1)')
-    parser.add_argument('--port', type=int, default=8000, help='Server port (default: 8000)')
-    parser.add_argument('--reload', action='store_true', help='Enable auto-reload (development mode)')
-    args = parser.parse_args()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.pass_context
+@click.option('--host', default='127.0.0.1', help='Server host (default: 127.0.0.1)')
+@click.option('--port', default=8000, type=int, help='Server port (default: 8000)')
+@click.option('--reload', is_flag=True, help='Enable auto-reload (development mode)')
+def main(ctx, host, port, reload, **kwargs):
 
-    print(f"Start MinerU FastAPI Service: http://{args.host}:{args.port}")
+    kwargs.update(arg_parse(ctx))
+
+    # 将配置参数存储到应用状态中
+    app.state.config = kwargs
+
+    """启动MinerU FastAPI服务器的命令行入口"""
+    print(f"Start MinerU FastAPI Service: http://{host}:{port}")
     print("The API documentation can be accessed at the following address:")
-    print(f"- Swagger UI: http://{args.host}:{args.port}/docs")
-    print(f"- ReDoc: http://{args.host}:{args.port}/redoc")
+    print(f"- Swagger UI: http://{host}:{port}/docs")
+    print(f"- ReDoc: http://{host}:{port}/redoc")
 
     uvicorn.run(
         "mineru.cli.fast_api:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload
+        host=host,
+        port=port,
+        reload=reload
     )
 
 
