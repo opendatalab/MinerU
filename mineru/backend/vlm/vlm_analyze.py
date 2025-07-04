@@ -47,9 +47,10 @@ def doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    **kwargs,
 ):
     if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url)
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
@@ -73,9 +74,10 @@ async def aio_doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    **kwargs,
 ):
     if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url)
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
