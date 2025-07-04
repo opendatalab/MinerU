@@ -15,7 +15,8 @@ def config_endpoint():
     """
 
     os.environ.setdefault('MINERU_MODEL_SOURCE', 'huggingface')
-    model_list_url = f'https://huggingface.co/models'
+    model_list_url = f"https://huggingface.co/models"
+    modelscope_url = f"https://modelscope.cn/models"
     
     # Use a specific check for the Hugging Face source
     if os.environ['MINERU_MODEL_SOURCE'] == 'huggingface':
