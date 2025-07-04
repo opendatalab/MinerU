@@ -21,6 +21,7 @@ class ContentType:
     TEXT = 'text'
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
+    EQUATION = 'equation'
 
 
 class CategoryId:

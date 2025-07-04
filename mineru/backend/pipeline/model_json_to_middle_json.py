@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import os
 import time
 
 from loguru import logger
@@ -151,9 +152,6 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     """对block进行fix操作"""
     fix_blocks = fix_block_spans(block_with_spans)
 
-    """同一行被断开的titile合并"""
-    # merge_title_blocks(fix_blocks)
-
     """对block进行排序"""
     sorted_blocks = sort_blocks_by_bbox(fix_blocks, page_w, page_h, footnote_blocks)
 
@@ -235,7 +233,8 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
 
     """清理内存"""
     pdf_doc.close()
-    clean_memory(get_device())
+    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(model_list) >= 10:
+        clean_memory(get_device())
 
     return middle_json
 

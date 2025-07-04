@@ -5,8 +5,10 @@ import numpy as np
 
 
 class OcrConfidence:
-    min_confidence = 0.68
+    min_confidence = 0.5
     min_width = 3
+
+LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = 4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
 
 
 def merge_spans_to_line(spans, threshold=0.6):
@@ -20,7 +22,7 @@ def merge_spans_to_line(spans, threshold=0.6):
         current_line = [spans[0]]
         for span in spans[1:]:
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if __is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
+            if _is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
                 current_line.append(span)
             else:
                 # 否则，开始新行
@@ -33,9 +35,9 @@ def merge_spans_to_line(spans, threshold=0.6):
 
         return lines
 
-def __is_overlaps_y_exceeds_threshold(bbox1,
-                                      bbox2,
-                                      overlap_ratio_threshold=0.8):
+def _is_overlaps_y_exceeds_threshold(bbox1,
+                                     bbox2,
+                                     overlap_ratio_threshold=0.8):
     """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
     _, y0_1, _, y1_1 = bbox1
     _, y0_2, _, y1_2 = bbox2
@@ -45,7 +47,21 @@ def __is_overlaps_y_exceeds_threshold(bbox1,
     # max_height = max(height1, height2)
     min_height = min(height1, height2)
 
-    return (overlap / min_height) > overlap_ratio_threshold
+    return (overlap / min_height) > overlap_ratio_threshold if min_height > 0 else False
+
+
+def _is_overlaps_x_exceeds_threshold(bbox1,
+                                     bbox2,
+                                     overlap_ratio_threshold=0.8):
+    """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""
+    x0_1, _, x1_1, _ = bbox1
+    x0_2, _, x1_2, _ = bbox2
+
+    overlap = max(0, min(x1_1, x1_2) - max(x0_1, x0_2))
+    width1, width2 = x1_1 - x0_1, x1_2 - x0_2
+    min_width = min(width1, width2)
+
+    return (overlap / min_width) > overlap_ratio_threshold if min_width > 0 else False
 
 
 def img_decode(content: bytes):
@@ -178,7 +194,7 @@ def update_det_boxes(dt_boxes, mfd_res):
         masks_list = []
         for mf_box in mfd_res:
             mf_bbox = mf_box['bbox']
-            if __is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
+            if _is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
                 masks_list.append([mf_bbox[0], mf_bbox[2]])
         text_x_range = [text_bbox[0], text_bbox[2]]
         text_remove_mask_range = remove_intervals(text_x_range, masks_list)
@@ -266,12 +282,27 @@ def merge_det_boxes(dt_boxes):
         for span in line:
             line_bbox_list.append(span['bbox'])
 
-        # Merge overlapping text regions within the same line
-        merged_spans = merge_overlapping_spans(line_bbox_list)
+        # 计算整行的宽度和高度
+        min_x = min(bbox[0] for bbox in line_bbox_list)
+        max_x = max(bbox[2] for bbox in line_bbox_list)
+        min_y = min(bbox[1] for bbox in line_bbox_list)
+        max_y = max(bbox[3] for bbox in line_bbox_list)
+        line_width = max_x - min_x
+        line_height = max_y - min_y
 
-        # Convert the merged text regions back to point format and add them to the new detection box list
-        for span in merged_spans:
-            new_dt_boxes.append(bbox_to_points(span))
+        # 只有当行宽度超过高度4倍时才进行合并
+        if line_width > line_height * LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD:
+
+            # Merge overlapping text regions within the same line
+            merged_spans = merge_overlapping_spans(line_bbox_list)
+
+            # Convert the merged text regions back to point format and add them to the new detection box list
+            for span in merged_spans:
+                new_dt_boxes.append(bbox_to_points(span))
+        else:
+            # 不进行合并，直接添加原始区域
+            for bbox in line_bbox_list:
+                new_dt_boxes.append(bbox_to_points(bbox))
 
     new_dt_boxes.extend(angle_boxes_list)
 
