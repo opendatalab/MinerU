@@ -43,9 +43,9 @@ class MinerUAPI(ls.LitAPI):
         options = request.get('options', {})
         
         file_bytes = base64.b64decode(file_b64)
-        temp_file = Path(tempfile.mktemp(suffix='.pdf'))
-        temp_file.write_bytes(file_bytes)
-        
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp:
+            temp.write(file_bytes)
+            temp_file = Path(temp.name)
         return {
             'input_path': str(temp_file),
             'backend': options.get('backend', 'pipeline'),
