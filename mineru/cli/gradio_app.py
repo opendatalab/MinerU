@@ -13,6 +13,7 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
+from mineru.utils.cli_parser import arg_parse
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -188,7 +189,8 @@ def update_interface(backend_choice):
         pass
 
 
-@click.command()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.pass_context
 @click.option(
     '--enable-example',
     'example_enable',
@@ -202,20 +204,6 @@ def update_interface(backend_choice):
     'sglang_engine_enable',
     type=bool,
     help="Enable SgLang engine backend for faster processing.",
-    default=False,
-)
-@click.option(
-    '--mem-fraction-static',
-    'mem_fraction_static',
-    type=float,
-    help="Set the static memory fraction for SgLang engine. ",
-    default=None,
-)
-@click.option(
-    '--enable-torch-compile',
-    'torch_compile_enable',
-    type=bool,
-    help="Enable torch compile for SgLang engine. ",
     default=False,
 )
 @click.option(
@@ -246,28 +234,23 @@ def update_interface(backend_choice):
     help="Set the server port for the Gradio app.",
     default=None,
 )
-def main(
-        example_enable, sglang_engine_enable, mem_fraction_static, torch_compile_enable, api_enable, max_convert_pages,
-        server_name, server_port
+def main(ctx,
+        example_enable, sglang_engine_enable, api_enable, max_convert_pages,
+        server_name, server_port, **kwargs
 ):
+
+    kwargs.update(arg_parse(ctx))
+
     if sglang_engine_enable:
         try:
             print("Start init SgLang engine...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
-
-            model_params = {
-                "enable_torch_compile": torch_compile_enable
-            }
-            # 只有当mem_fraction_static不为None时才添加该参数
-            if mem_fraction_static is not None:
-                model_params["mem_fraction_static"] = mem_fraction_static
-
             predictor = model_singleton.get_model(
                 "sglang-engine",
                 None,
                 None,
-                **model_params
+                **kwargs
             )
             print("SgLang engine init successfully.")
         except Exception as e:
