@@ -2,7 +2,7 @@
 FROM lmsysorg/sglang:v0.4.8.post1-cu126
 
 # Install libgl for opencv support
-RUN apt-get update && apt-get install -y libgl1 && apt-get clean
+RUN apt-get update && apt-get install -y libgl1 && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
 RUN python3 -m pip install -U 'mineru[core]' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages
