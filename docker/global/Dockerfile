@@ -1,7 +1,10 @@
 # Use the official sglang image
 FROM lmsysorg/sglang:v0.4.8.post1-cu126
 
-# install mineru latest
+# Install libgl for opencv support
+RUN apt-get update && apt-get install -y libgl1 && apt-get clean
+
+# Install mineru latest
 RUN python3 -m pip install -U 'mineru[core]' --break-system-packages
 
 # Download models and update the configuration file
