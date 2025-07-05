@@ -728,7 +728,7 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
    # Using pipeline/vlm-transformers/vlm-sglang-client backend
    mineru-gradio --server-name 127.0.0.1 --server-port 7860
    # Or using vlm-sglang-engine/pipeline backend
-   mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine
+   mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
    ```
    Access http://127.0.0.1:7860 in your browser to use the Gradio WebUI, or visit http://127.0.0.1:7860/?view=api to use the Gradio API.
 
