@@ -48,7 +48,7 @@
 # Changelog
 
 - 2025/07/05 Version 2.1.0 Released
-  - This is the first major update of Miner2, which includes a large number of new features and improvements, covering significant performance optimizations, user experience enhancements, and bug fixes. The detailed update contents are as follows:
+  - This is the first major update of MinerU 2, which includes a large number of new features and improvements, covering significant performance optimizations, user experience enhancements, and bug fixes. The detailed update contents are as follows:
   - **Performance Optimizations:**
     - Significantly improved preprocessing speed for documents with specific resolutions (around 2000 pixels on the long side).
     - Greatly enhanced post-processing speed when the `pipeline` backend handles batch processing of documents with fewer pages (<10 pages).
