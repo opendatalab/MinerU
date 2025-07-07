@@ -76,11 +76,14 @@ class RapidTableModel(object):
 
 
         if ocr_result:
-            table_results = self.table_model(np.asarray(image), ocr_result)
-            html_code = table_results.pred_html
-            table_cell_bboxes = table_results.cell_bboxes
-            logic_points = table_results.logic_points
-            elapse = table_results.elapse
-            return html_code, table_cell_bboxes, logic_points, elapse
-        else:
-            return None, None, None, None
+            try:
+                table_results = self.table_model(np.asarray(image), ocr_result)
+                html_code = table_results.pred_html
+                table_cell_bboxes = table_results.cell_bboxes
+                logic_points = table_results.logic_points
+                elapse = table_results.elapse
+                return html_code, table_cell_bboxes, logic_points, elapse
+            except Exception as e:
+                logger.exception(e)
+
+        return None, None, None, None
