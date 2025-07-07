@@ -1,0 +1,82 @@
+site_name: MinerU
+site_url: https://sidney233.github.io/MinerU/
+theme:
+  name: material
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      scheme: default
+      primary: black
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - content.tabs.link
+    - content.code.annotate
+    - content.code.copy
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.path
+    - navigation.indexes
+
+nav:
+  - Home:
+    - "MinerU": index.md
+    - Quick Start:
+      - quick_start/index.md
+      - Online Demo: quick_start/online_demo.md
+      - Local Deployment: quick_start/local_deployment.md
+    - Usage:
+      - usage/index.md
+      - API Calls or Visual Invocation: usage/api.md
+      - Extending MinerU Functionality Through Configuration Files: usage/config.md
+  - FAQ: FAQ.md
+  - Output File Format: output_file.md
+
+plugins:
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+          nav_translations:
+            Home: 主页
+            Quick Start: 快速开始
+            Online Demo: 在线体验
+            Local Deployment: 本地部署
+            Usage: 使用方法
+            API Calls or Visual Invocation: API 调用 或 可视化调用
+            Extending MinerU Functionality Through Configuration Files: 基于配置文件扩展 MinerU 功能
+            FAQ: 常见问题
+            Output File Format: 输出文件格式
+  - mkdocs-video
+
+markdown_extensions:
+  - gfm_admonition
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences

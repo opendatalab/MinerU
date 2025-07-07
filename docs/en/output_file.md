@@ -5,13 +5,13 @@ After executing the `mineru` command, in addition to outputting files related to
 ### some_pdf_layout.pdf
 
 Each page's layout consists of one or more bounding boxes. The number in the top-right corner of each box indicates the reading order. Additionally, different content blocks are highlighted with distinct background colors within the layout.pdf.
-![layout example](images/layout_example.png)
+![layout example](../images/layout_example.png)
 
 ### some_pdf_spans.pdf(Applicable only to the pipeline backend)
 
 All spans on the page are drawn with different colored line frames according to the span type. This file can be used for quality control, allowing for quick identification of issues such as missing text or unrecognized inline formulas.
 
-![spans example](images/spans_example.png)
+![spans example](../images/spans_example.png)
 
 ### some_pdf_model.json(Applicable only to the pipeline backend)
 
@@ -61,7 +61,7 @@ inference_result: list[PageInferenceResults] = []
 ```
 
 The format of the poly coordinates is \[x0, y0, x1, y1, x2, y2, x3, y3\], representing the coordinates of the top-left, top-right, bottom-right, and bottom-left points respectively.
-![Poly Coordinate Diagram](images/poly.png)
+![Poly Coordinate Diagram](../images/poly.png)
 
 #### example
 
