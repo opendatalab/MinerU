@@ -29,7 +29,7 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to system preference
-  logo: images/MinerU-logo.png
+  logo: images/logo.png
   favicon: images/logo.svg
   features:
     - content.tabs.link
@@ -55,7 +55,8 @@ nav:
       - usage/index.md
       - API Calls or Visual Invocation: usage/api.md
       - Extending MinerU Functionality Through Configuration Files: usage/config.md
-  - FAQ: FAQ.md
+  - FAQ:
+      - FAQ: FAQ/index.md
   - Output File Format: output_file.md
   - Known Issues: known_issues.md
   - TODO: todo.md
