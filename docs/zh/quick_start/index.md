@@ -1,7 +1,11 @@
 # 快速开始
 
-如果遇到任何安装问题，请先查询 [FAQ](../FAQ.md) </br>
-如果遇到解析效果不及预期，参考 [Known Issues](../known_issues.md) </br>
+如果遇到任何安装问题，请先查询 [FAQ](../FAQ/index.md) 
+
+
+如果遇到解析效果不及预期，参考 [Known Issues](../known_issues.md) 
+
+
 有2种不同方式可以体验MinerU的效果：
 
 - [在线体验](local_deployment.md)

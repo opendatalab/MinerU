@@ -1,11 +1,15 @@
 # Quick Start
 
-If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
-If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
+If you encounter any installation issues, please first consult the [FAQ](../FAQ/index.md).
+
+
+If the parsing results are not as expected, refer to the [Known Issues](../known_issues.md).
+
+
 There are three different ways to experience MinerU:
 
-- [Online Demo](#online-demo)
-- [Local Deployment](#local-deployment)
+- [Online Demo](online_demo.md)
+- [Local Deployment](local_deployment.md)
 
 
 > [!WARNING]
