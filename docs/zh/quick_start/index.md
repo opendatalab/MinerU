@@ -8,8 +8,8 @@
 
 有2种不同方式可以体验MinerU的效果：
 
-- [在线体验](local_deployment.md)
-- [本地部署](online_demo.md)
+- [在线体验](online_demo.md)
+- [本地部署](local_deployment.md)
 
 
 > [!WARNING]
