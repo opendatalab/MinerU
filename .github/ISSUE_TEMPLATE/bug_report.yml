@@ -24,6 +24,15 @@ body:
         - label: I have searched the MinerU [Discussions](https://github.com/opendatalab/MinerU/discussions) and found no similar bug report.
           required: true
 
+  - type: checkboxes
+    attributes:
+      label: 🤖 Consult the online AI assistant for assistance | 在线 AI 助手咨询
+      description: >
+        This [online AI assistant](https://deepwiki.com/opendatalab/MinerU) is specifically trained to help with MinerU and related topics! It's available 24/7 and ready to provide insights.
+      options:
+        - label: I have consulted the [online AI assistant](https://deepwiki.com/opendatalab/MinerU) but was unable to obtain a solution to the issue.
+          required: true
+
   - type: textarea
     id: description
     attributes:
