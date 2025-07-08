@@ -81,7 +81,10 @@ plugins:
             Usage: 使用方法
             API Calls or Visual Invocation: API 调用 或 可视化调用
             Extending MinerU Functionality Through Configuration Files: 基于配置文件扩展 MinerU 功能
+            FAQ: FAQ
             Output File Format: 输出文件格式
+            Known Issues: Known Issues
+            TODO: TODO
   - mkdocs-video
 
 markdown_extensions:
