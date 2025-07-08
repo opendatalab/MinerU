@@ -1,21 +1,21 @@
-## Overview
+# Overview
 
 After executing the `mineru` command, in addition to outputting files related to markdown, several other files unrelated to markdown will also be generated. These files will be introduced one by one.
 
-### some_pdf_layout.pdf
+## some_pdf_layout.pdf
 
 Each page's layout consists of one or more bounding boxes. The number in the top-right corner of each box indicates the reading order. Additionally, different content blocks are highlighted with distinct background colors within the layout.pdf.
-![layout example](images/layout_example.png)
+![layout example](../images/layout_example.png)
 
-### some_pdf_spans.pdf(Applicable only to the pipeline backend)
+## some_pdf_spans.pdf(Applicable only to the pipeline backend)
 
 All spans on the page are drawn with different colored line frames according to the span type. This file can be used for quality control, allowing for quick identification of issues such as missing text or unrecognized inline formulas.
 
-![spans example](images/spans_example.png)
+![spans example](../images/spans_example.png)
 
-### some_pdf_model.json(Applicable only to the pipeline backend)
+## some_pdf_model.json(Applicable only to the pipeline backend)
 
-#### Structure Definition
+### Structure Definition
 
 ```python
 from pydantic import BaseModel, Field
@@ -61,9 +61,9 @@ inference_result: list[PageInferenceResults] = []
 ```
 
 The format of the poly coordinates is \[x0, y0, x1, y1, x2, y2, x3, y3\], representing the coordinates of the top-left, top-right, bottom-right, and bottom-left points respectively.
-![Poly Coordinate Diagram](images/poly.png)
+![Poly Coordinate Diagram](../images/poly.png)
 
-#### example
+### example
 
 ```json
 [
@@ -116,7 +116,7 @@ The format of the poly coordinates is \[x0, y0, x1, y1, x2, y2, x3, y3\], repres
 ]
 ```
 
-### some_pdf_model_output.txt (Applicable only to the VLM backend)
+## some_pdf_model_output.txt (Applicable only to the VLM backend)
 
 This file contains the output of the VLM model, with each page's output separated by `----`.  
 Each page's output consists of text blocks starting with `<|box_start|>` and ending with `<|md_end|>`.  
@@ -142,7 +142,7 @@ The meaning of each field is as follows:
   This field contains the Markdown content of the block. If `type` is `text`, the end of the text may contain the `<|txt_contd|>` tag, indicating that this block can be connected with the following `text` block(s).
   If `type` is `table`, the content is in `otsl` format and needs to be converted into HTML for rendering in Markdown.
 
-### some_pdf_middle.json
+## some_pdf_middle.json
 
 | Field Name     | Description                                                                                                    |
 |:---------------| :------------------------------------------------------------------------------------------------------------- |
@@ -251,7 +251,7 @@ The block structure is as follows:
 
 First-level block (if any) -> Second-level block -> Line -> Span
 
-#### example
+### example
 
 ```json
 {
@@ -355,7 +355,7 @@ First-level block (if any) -> Second-level block -> Line -> Span
 ```
 
 
-### some_pdf_content_list.json
+## some_pdf_content_list.json
 
 This file is a JSON array where each element is a dict storing all readable content blocks in the document in reading order.  
 `content_list` can be viewed as a simplified version of `middle.json`. The content block types are mostly consistent with those in `middle.json`, but layout information is not included.  
@@ -376,7 +376,7 @@ Please note that both `title` and text blocks in `content_list` are uniformly re
 
 Each content contains the `page_idx` field, indicating the page number (starting from 0) where the content block resides.
 
-#### example
+### example
 
 ```json
 [
