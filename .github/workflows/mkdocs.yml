@@ -1,0 +1,22 @@
+name: Publish docs via GitHub Pages
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    name: Deploy docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v2
+
+      - name: Deploy docs
+        uses: mhausenblas/mkdocs-deploy-gh-pages@master
+        # Or use mhausenblas/mkdocs-deploy-gh-pages@nomaterial to build without the mkdocs-material theme
+        env:
+          PERSONAL_TOKEN: ${{ secrets.MINERU_DOCS }}
+          CONFIG_FILE: folder/mkdocs.yml
+          REQUIREMENTS: folder/docs/requirements.txt
