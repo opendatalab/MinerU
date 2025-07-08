@@ -140,7 +140,7 @@ poly 坐标的格式 \[x0, y0, x1, y1, x2, y2, x3, y3\], 分别表示左上、�
   }
   ```
 - `<|md_start|>markdown内容<|md_end|>`  
-    该字段是该block的markdown内容，如type为text，文本末尾可能存在`<|txt_contd|>`标记，表示该文本块可以后后续text块连接。
+    该字段是该block的markdown内容，如type为text，文本末尾可能存在`<|txt_contd|>`标记，表示该文本块可以后续text块连接。
     如type为table，内容为`otsl`格式表示的表格内容，需要转换为html格式才能在markdown中渲染。
 
 ## some_pdf_middle.json
@@ -166,7 +166,7 @@ poly 坐标的格式 \[x0, y0, x1, y1, x2, y2, x3, y3\], 分别表示左上、�
 | images              | list，每个元素是一个dict，每个dict表示一个img_block                  |
 | tables              | list，每个元素是一个dict，每个dict表示一个table_block                |
 | interline_equations | list，每个元素是一个dict，每个dict表示一个interline_equation_block   |
-| discarded_blocks    | List, 模型返回的需要drop的block信息                                  |
+| discarded_blocks    | list, 模型返回的需要drop的block信息                                  |
 | para_blocks         | 将preproc_blocks进行分段之后的结果                                   |
 
 上表中 `para_blocks` 是个dict的数组，每个dict是一个block结构，block最多支持一次嵌套

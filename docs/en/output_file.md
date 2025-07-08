@@ -166,7 +166,7 @@ Field structure description
 | images              | list, each element is a dict representing an img_block                                                             |
 | tables              | list, each element is a dict representing a table_block                                                            |
 | interline_equations | list, each element is a dict representing an interline_equation_block                                              |
-| discarded_blocks    | List, block information returned by the model that needs to be dropped                                             |
+| discarded_blocks    | list, block information returned by the model that needs to be dropped                                             |
 | para_blocks         | Result after segmenting preproc_blocks                                                                             |
 
 In the above table, `para_blocks` is an array of dicts, each dict representing a block structure. A block can support up to one level of nesting.

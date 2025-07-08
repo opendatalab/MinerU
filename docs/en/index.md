@@ -47,7 +47,7 @@ MinerU is a tool that converts PDFs into machine-readable formats (e.g., markdow
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant PDF**.
 
-![type:video](https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c)
+https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Key Features
 
