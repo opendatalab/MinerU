@@ -13,10 +13,10 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v4
         with:
-          ref: master
+          ref: dev
       - name: Deploy docs
         uses: mhausenblas/mkdocs-deploy-gh-pages@master
         # Or use mhausenblas/mkdocs-deploy-gh-pages@nomaterial to build without the mkdocs-material theme
         env:
-          PERSONAL_TOKEN: ${{ secrets.MINERU_DOCS }}
+          PERSONAL_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           REQUIREMENTS: /docs/requirements.txt
