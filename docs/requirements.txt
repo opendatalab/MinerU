@@ -1,0 +1,3 @@
+mkdocs
+markdown-gfm-admonition
+mkdocs-video
