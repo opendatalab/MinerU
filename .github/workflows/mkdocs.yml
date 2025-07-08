@@ -19,5 +19,4 @@ jobs:
         # Or use mhausenblas/mkdocs-deploy-gh-pages@nomaterial to build without the mkdocs-material theme
         env:
           PERSONAL_TOKEN: ${{ secrets.MINERU_DOCS }}
-          CONFIG_FILE: folder/mkdocs.yml
-          REQUIREMENTS: folder/docs/requirements.txt
+          REQUIREMENTS: /docs/requirements.txt
