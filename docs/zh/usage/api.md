@@ -1,6 +1,6 @@
 # API 调用 或 可视化调用
 
-1. 使用python api直接调用：[Python 调用示例](demo/demo.py)
+1. 使用python api直接调用：[Python 调用示例](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
 2. 使用fast api方式调用：
     ```bash
     mineru-api --host 127.0.0.1 --port 8000

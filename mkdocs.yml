@@ -1,5 +1,8 @@
 site_name: MinerU
 site_url: https://sidney233.github.io/MinerU/
+repo_name: opendatalab/MinerU
+repo_url: https://github.com/opendatalab/MinerU
+
 theme:
   name: material
   palette:
@@ -26,6 +29,8 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to system preference
+  logo: images/MinerU-logo.png
+  favicon: images/logo.svg
   features:
     - content.tabs.link
     - content.code.annotate
@@ -37,6 +42,7 @@ theme:
     - navigation.sections
     - navigation.path
     - navigation.indexes
+    - search.suggest
 
 nav:
   - Home:
@@ -51,8 +57,11 @@ nav:
       - Extending MinerU Functionality Through Configuration Files: usage/config.md
   - FAQ: FAQ.md
   - Output File Format: output_file.md
+  - Known Issues: known_issues.md
+  - TODO: todo.md
 
 plugins:
+  - search
   - i18n:
       docs_structure: folder
       languages:
@@ -71,7 +80,6 @@ plugins:
             Usage: 使用方法
             API Calls or Visual Invocation: API 调用 或 可视化调用
             Extending MinerU Functionality Through Configuration Files: 基于配置文件扩展 MinerU 功能
-            FAQ: 常见问题
             Output File Format: 输出文件格式
   - mkdocs-video
 
@@ -80,3 +88,5 @@ markdown_extensions:
   - pymdownx.highlight:
       use_pygments: true
   - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true

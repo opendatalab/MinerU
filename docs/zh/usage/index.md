@@ -120,6 +120,6 @@ mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1
 ```
 
 > [!TIP]
-> 更多关于输出文件的信息，请参考 [输出文件说明](docs/output_file_zh_cn.md)
+> 更多关于输出文件的信息，请参考 [输出文件说明](../output_file.md)
 
 ---
