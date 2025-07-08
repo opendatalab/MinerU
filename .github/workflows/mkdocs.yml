@@ -19,6 +19,4 @@ jobs:
         env:
           PERSONAL_TOKEN: ${{ secrets.MINERU_DOCS }}
           CONFIG_FILE: folder/mkdocs.yml
-          EXTRA_PACKAGES: build-base
-          # GITHUB_DOMAIN: github.myenterprise.com
           REQUIREMENTS: folder/docs/requirements.txt
