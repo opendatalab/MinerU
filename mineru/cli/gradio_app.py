@@ -259,7 +259,7 @@ def main(ctx,
     elif latex_delimiters_type == 'all':
         latex_delimiters = latex_delimiters_type_all
     else:
-        raise Exception (f"Invalid latex delimiters type: {latex_delimiters_type}. ")
+        raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
     if sglang_engine_enable:
         try:
