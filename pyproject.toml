@@ -33,6 +33,8 @@ dependencies = [
     "modelscope>=1.26.0",
     "huggingface-hub>=0.32.4",
     "json-repair>=0.46.2",
+    "opencv-python>=4.11.0.86",
+    "fast-langdetect>=0.2.3,<0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +62,6 @@ pipeline = [
     "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
     "torchvision",
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
-    "fast-langdetect>=0.2.3,<0.3.0",
 ]
 api = [
     "fastapi",
@@ -97,7 +98,6 @@ pipeline_old_linux = [
     "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
     "torchvision",
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
-    "fast-langdetect>=0.2.3,<0.3.0",
 ]
 
 [project.urls]
