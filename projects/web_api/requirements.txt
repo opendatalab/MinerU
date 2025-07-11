@@ -1,5 +1,0 @@
-magic-pdf[full]
-
-fastapi
-uvicorn
-python-multipart

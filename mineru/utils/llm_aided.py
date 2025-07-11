@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from loguru import logger
 from openai import OpenAI
-import ast
+import json_repair
 
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 
@@ -20,14 +20,19 @@ def llm_aided_title(page_info_list, title_aided_config):
             if block["type"] == "title":
                 origin_title_list.append(block)
                 title_text = merge_para_with_text(block)
-                page_line_height_list = []
-                for line in block['lines']:
-                    bbox = line['bbox']
-                    page_line_height_list.append(int(bbox[3] - bbox[1]))
-                if len(page_line_height_list) > 0:
-                    line_avg_height = sum(page_line_height_list) / len(page_line_height_list)
+
+                if 'line_avg_height' in block:
+                    line_avg_height = block['line_avg_height']
                 else:
-                    line_avg_height = int(block['bbox'][3] - block['bbox'][1])
+                    title_block_line_height_list = []
+                    for line in block['lines']:
+                        bbox = line['bbox']
+                        title_block_line_height_list.append(int(bbox[3] - bbox[1]))
+                    if len(title_block_line_height_list) > 0:
+                        line_avg_height = sum(title_block_line_height_list) / len(title_block_line_height_list)
+                    else:
+                        line_avg_height = int(block['bbox'][3] - block['bbox'][1])
+
                 title_dict[f"{i}"] = [title_text, line_avg_height, int(page_info['page_idx']) + 1]
                 i += 1
     # logger.info(f"Title list: {title_dict}")
@@ -85,13 +90,17 @@ Corrected title list:
                 messages=[
                     {'role': 'user', 'content': title_optimize_prompt}],
                 temperature=0.7,
+                stream=True,
             )
-            content = completion.choices[0].message.content.strip()
+            content_pieces = []
+            for chunk in completion:
+                if chunk.choices and chunk.choices[0].delta.content is not None:
+                    content_pieces.append(chunk.choices[0].delta.content)
+            content = "".join(content_pieces).strip()
             # logger.info(f"Title completion: {content}")
             if "</think>" in content:
                 idx = content.index("</think>") + len("</think>")
                 content = content[idx:].strip()
-            import json_repair
             dict_completion = json_repair.loads(content)
             dict_completion = {int(k): int(v) for k, v in dict_completion.items()}
 

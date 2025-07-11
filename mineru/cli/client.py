@@ -4,12 +4,14 @@ import click
 from pathlib import Path
 from loguru import logger
 
+from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device
 from mineru.utils.model_utils import get_vram
 from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
-@click.command()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.pass_context
 @click.version_option(__version__,
                       '--version',
                       '-v',
@@ -60,7 +62,8 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     '-l',
     '--lang',
     'lang',
-    type=click.Choice(['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']),
+    type=click.Choice(['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka',
+                       'latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']),
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
     Without languages specified, 'ch' will be used by default.
@@ -136,7 +139,14 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 )
 
 
-def main(input_path, output_dir, method, backend, lang, server_url, start_page_id, end_page_id, formula_enable, table_enable, device_mode, virtual_vram, model_source):
+def main(
+        ctx,
+        input_path, output_dir, method, backend, lang, server_url,
+        start_page_id, end_page_id, formula_enable, table_enable,
+        device_mode, virtual_vram, model_source, **kwargs
+):
+
+    kwargs.update(arg_parse(ctx))
 
     if not backend.endswith('-client'):
         def get_device_mode() -> str:
@@ -179,11 +189,12 @@ def main(input_path, output_dir, method, backend, lang, server_url, start_page_i
                 p_lang_list=lang_list,
                 backend=backend,
                 parse_method=method,
-                p_formula_enable=formula_enable,
-                p_table_enable=table_enable,
+                formula_enable=formula_enable,
+                table_enable=table_enable,
                 server_url=server_url,
                 start_page_id=start_page_id,
-                end_page_id=end_page_id
+                end_page_id=end_page_id,
+                **kwargs,
             )
         except Exception as e:
             logger.exception(e)
