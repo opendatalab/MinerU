@@ -883,11 +883,12 @@ Currently, some models in this project are trained based on YOLO. However, since
 
 
 # Links
-
+- [Easy Data Preparation with latest LLMs-based Operators and Pipelines](https://github.com/OpenDCAI/DataFlow)
+- [Vis3 (OSS browser based on s3)](https://github.com/opendatalab/Vis3)
 - [LabelU (A Lightweight Multi-modal Data Annotation Tool)](https://github.com/opendatalab/labelU)
 - [LabelLLM (An Open-source LLM Dialogue Annotation Platform)](https://github.com/opendatalab/LabelLLM)
 - [PDF-Extract-Kit (A Comprehensive Toolkit for High-Quality PDF Content Extraction)](https://github.com/opendatalab/PDF-Extract-Kit)
-- [Vis3 (OSS browser based on s3)](https://github.com/opendatalab/Vis3)
+
 - [OmniDocBench (A Comprehensive Benchmark for Document Parsing and Evaluation)](https://github.com/opendatalab/OmniDocBench)
 - [Magic-HTML (Mixed web page extraction tool)](https://github.com/opendatalab/magic-html)
 - [Magic-Doc (Fast speed ppt/pptx/doc/docx/pdf extraction tool)](https://github.com/InternLM/magic-doc) 
