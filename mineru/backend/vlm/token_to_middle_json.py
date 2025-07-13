@@ -12,7 +12,8 @@ from mineru.version import __version__
 
 heading_level_import_success = False
 llm_aided_config = get_llm_aided_config()
-if llm_aided_config and llm_aided_config.get('title_aided', {}).get('enable', False):
+title_aided_config = llm_aided_config.get('title_aided', {})
+if llm_aided_config and title_aided_config.get('enable', False):
     try:
         from mineru.utils.llm_aided import llm_aided_title
         from mineru.backend.pipeline.model_init import AtomModelSingleton
