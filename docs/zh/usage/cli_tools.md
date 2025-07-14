@@ -63,6 +63,8 @@ Options:
 ## 环境变量说明
 
 MinerU命令行工具的某些参数存在相同功能的环境变量配置，通常环境变量配置的优先级高于命令行参数，且在所有命令行工具中都生效。
+以下是常用的环境变量及其说明： 
+
 - `MINERU_DEVICE_MODE`：用于指定推理设备，支持`cpu/cuda/cuda:0/npu/mps`等设备类型，仅对`pipeline`后端生效。
 - `MINERU_VIRTUAL_VRAM_SIZE`：用于指定单进程最大 GPU 显存占用(GB)，仅对`pipeline`后端生效。
 - `MINERU_MODEL_SOURCE`：用于指定模型来源，支持`huggingface/modelscope/local`，默认为`huggingface`，可通过环境变量切换为`modelscope`或使用本地模型。
