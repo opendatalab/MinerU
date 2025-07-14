@@ -206,37 +206,49 @@ def filter_nested_tables(table_res_list, overlap_threshold=0.8, area_threshold=0
 
 
 def remove_overlaps_min_blocks(res_list):
-    #  重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
-    #  删除重叠blocks中较小的那些
+    # 重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
+    # 删除重叠blocks中较小的那些
     need_remove = []
-    for res1 in res_list:
-        for res2 in res_list:
-            if res1 != res2:
-                overlap_box = get_minbox_if_overlap_by_ratio(
-                    res1['bbox'], res2['bbox'], 0.8
-                )
-                if overlap_box is not None:
-                    res_to_remove = next(
-                        (res for res in res_list if res['bbox'] == overlap_box),
-                        None,
-                    )
-                    if (
-                        res_to_remove is not None
-                        and res_to_remove not in need_remove
-                    ):
-                        large_res = res1 if res1 != res_to_remove else res2
-                        x1, y1, x2, y2 = large_res['bbox']
-                        sx1, sy1, sx2, sy2 = res_to_remove['bbox']
-                        x1 = min(x1, sx1)
-                        y1 = min(y1, sy1)
-                        x2 = max(x2, sx2)
-                        y2 = max(y2, sy2)
-                        large_res['bbox'] = [x1, y1, x2, y2]
-                        need_remove.append(res_to_remove)
+    for i in range(len(res_list)):
+        # 如果当前元素已在需要移除列表中，则跳过
+        if res_list[i] in need_remove:
+            continue
 
-    if len(need_remove) > 0:
-        for res in need_remove:
-            res_list.remove(res)
+        for j in range(i + 1, len(res_list)):
+            # 如果比较对象已在需要移除列表中，则跳过
+            if res_list[j] in need_remove:
+                continue
+
+            overlap_box = get_minbox_if_overlap_by_ratio(
+                res_list[i]['bbox'], res_list[j]['bbox'], 0.8
+            )
+
+            if overlap_box is not None:
+                res_to_remove = None
+                large_res = None
+
+                # 确定哪个是小块（要移除的）
+                if overlap_box == res_list[i]['bbox']:
+                    res_to_remove = res_list[i]
+                    large_res = res_list[j]
+                elif overlap_box == res_list[j]['bbox']:
+                    res_to_remove = res_list[j]
+                    large_res = res_list[i]
+
+                if res_to_remove is not None and res_to_remove not in need_remove:
+                    # 更新大块的边界为两者的并集
+                    x1, y1, x2, y2 = large_res['bbox']
+                    sx1, sy1, sx2, sy2 = res_to_remove['bbox']
+                    x1 = min(x1, sx1)
+                    y1 = min(y1, sy1)
+                    x2 = max(x2, sx2)
+                    y2 = max(y2, sy2)
+                    large_res['bbox'] = [x1, y1, x2, y2]
+                    need_remove.append(res_to_remove)
+
+    # 从列表中移除标记的元素
+    for res in need_remove:
+        res_list.remove(res)
 
     return res_list, need_remove
 
