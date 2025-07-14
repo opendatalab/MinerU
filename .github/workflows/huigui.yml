@@ -13,23 +13,25 @@ on:
 jobs:
   cli-test:
     # if: github.repository == 'opendatalab/MinerU'
-    runs-on: pdf
+    runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: true
 
     steps:
     - name: PDF cli
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
+        ref: dev
         fetch-depth: 2
+
+    - name: install uv
+      uses: astral-sh/setup-uv@v5
 
     - name: install&test
       run: |
-        source activate mineru
-        conda env list
-        pip show coverage
-        cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
+        uv --version
+        uv pip install .[test]
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
         cd $GITHUB_WORKSPACE && coverage run
         cd $GITHUB_WORKSPACE && python tests/get_coverage.py
