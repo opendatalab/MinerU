@@ -3,7 +3,7 @@
 MinerU使用 `HuggingFace` 和 `ModelScope` 作为模型仓库，用户可以根据需要切换模型源或使用本地模型。
 
 - `HuggingFace` 是默认的模型源，在全球范围内提供了优异的加载速度和极高稳定性。
-- `ModelScope` 是中国大陆地区用户的最佳选择，提供了无缝兼容`hf`的SDK模块，适用于无法访问HuggingFace的用户。
+- `ModelScope` 是中国大陆地区用户的最佳选择，提供了无缝兼容的SDK模块，适用于无法访问`HuggingFace`的用户。
 
 ## 模型源的切换方法
 

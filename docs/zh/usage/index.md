@@ -18,6 +18,7 @@ mineru -p <input_path> -o <output_path>
 > [!TIP]
 > - `<input_path>`：本地 PDF/图片 文件或目录
 > - `<output_path>`：输出目录
+> 
 > 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
 
 > [!NOTE]

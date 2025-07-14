@@ -59,8 +59,6 @@ nav:
       - Output File Format: usage/output_file.md
   - FAQ:
       - FAQ: FAQ/index.md
-  - Known Issues: known_issues.md
-  - TODO: todo.md
 
 plugins:
   - search
@@ -85,8 +83,6 @@ plugins:
             Advanced CLI Parameters: 命令行参数进阶技巧
             FAQ: FAQ
             Output File Format: 输出文件格式
-            Known Issues: 已知问题
-            TODO: TODO
   - mkdocs-video
 
 markdown_extensions:
