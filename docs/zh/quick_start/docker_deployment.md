@@ -18,6 +18,7 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 Mineru的docker使用了`lmsysorg/sglang`作为基础镜像，因此在docker中默认集成了`sglang`推理加速框架和必需的依赖环境。因此在满足条件的设备上，您可以直接使用`sglang`加速VLM模型推理。
 > [!NOTE]
 > 使用`sglang`加速VLM模型推理需要满足的条件是：
+> 
 > - 设备包含Turing及以后架构的显卡，且可用显存大于等于8G。
 > - 物理机的显卡驱动应支持CUDA 12.6或更高版本，`Blackwell`平台应支持CUDA 12.8及更高版本，可通过`nvidia-smi`命令检查驱动版本。
 > - docker中能够访问物理机的显卡设备。
@@ -58,9 +59,11 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
-  在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
+  >[!TIP]
+  >在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
 - 启动 Gradio WebUI 服务：
   ```bash
   docker compose -f compose.yaml --profile mineru-gradio up -d
   ```
-  在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI 或访问 `http://<server_ip>:7860/?view=api` 使用 Gradio API。
+  >[!TIP]
+  >在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI 或访问 `http://<server_ip>:7860/?view=api` 使用 Gradio API。

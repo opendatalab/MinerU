@@ -15,15 +15,15 @@ MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU�
 # 默认使用pipeline后端解析
 mineru -p <input_path> -o <output_path>
 ```
-- `<input_path>`：本地 PDF/图片 文件或目录
-- `<output_path>`：输出目录
+> [!TIP]
+> - `<input_path>`：本地 PDF/图片 文件或目录
+> - `<output_path>`：输出目录
+> 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
 
 > [!NOTE]
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
 > 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
 
-> [!TIP]
-> 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
 
 ```bash
 # 或指定vlm后端解析
