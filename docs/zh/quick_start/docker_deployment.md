@@ -38,6 +38,7 @@ docker run --gpus all \
 执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[MinerU使用文档](../usage/index_back.md)。
 
+
 ## 通过 Docker Compose 直接启动服务
 
 我们提供了`compose.yml`文件，您可以通过它来快速启动MinerU服务。
@@ -46,6 +47,7 @@ docker run --gpus all \
 # 下载 compose.yaml 文件
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ```
+
 - 启动`sglang-server`服务，并通过`vlm-sglang-client`后端连接`sglang-server`：
   ```bash
   docker compose -f compose.yaml --profile mineru-sglang-server up -d

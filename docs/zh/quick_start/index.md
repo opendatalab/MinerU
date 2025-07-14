@@ -77,7 +77,7 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 
 > [!TIP]
 > `mineru[core]`包含除`sglang`加速外的所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
-> 如果您有使用`sglang`加速VLM模型推理，或是在边缘设备安装轻量版client端等需求，可以参考文档[安装扩展模块指南](./extension_modules.md)。
+> 如果您有使用`sglang`加速VLM模型推理，或是在边缘设备安装轻量版client端等需求，可以参考文档[扩展模块安装指南](./extension_modules.md)。
 
 ---
  
