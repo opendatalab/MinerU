@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mineru"
 dynamic = ["version"]
-license = {text = "AGPL-3.0"}
+license = { text = "AGPL-3.0" }
 description = "A practical tool for converting PDF to Markdown"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
@@ -38,6 +38,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+test = [
+    "mineru[core]",
+    "pytest",
+    "pytest-cov",
+    "beautifulsoup4"
+]
 vlm = [
     "transformers>=4.51.1",
     "torch>=2.6.0",
@@ -112,7 +118,7 @@ mineru-api = "mineru.cli.fast_api:main"
 mineru-gradio = "mineru.cli.gradio_app:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "mineru.version.__version__"}
+version = { attr = "mineru.version.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["mineru*"]
@@ -125,3 +131,35 @@ namespaces = false
 [tool.setuptools]
 include-package-data = true
 zip-safe = false
+
+[tool.pytest.ini_options]
+addopts = "-s --cov=mineru --cov-report html"
+
+[tool.coverage.run]
+command_line = "-m pytest tests/unittest/test_e2e.py"
+source = ["mineru/"]
+omit = [
+    "*/vlm_sglang_model/*",
+    "*/gradio_app.py",
+    "*/models_download.py",
+    "*/fast_api.py",
+    "*/cli/client.py",
+    "*/sglang_engine_predictor.py",
+    "*/vlm_sglang_server.py",
+    "*/cli_parser.py",
+    "*/run_async.py"
+]
+[tool.coverage.html]
+exclude_also = [
+    'def __repr__',
+    'if self.debug:',
+    'if settings.DEBUG',
+    'raise AssertionError',
+    'raise NotImplementedError',
+    'if 0:',
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+    'class .*\bProtocol\):',
+    '@(abc\.)?abstractmethod',
+]
+directory = "tests/htmelcov"
