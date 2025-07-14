@@ -42,6 +42,7 @@ test = [
     "mineru[core]",
     "pytest",
     "pytest-cov",
+    "coverage",
     "beautifulsoup4"
 ]
 vlm = [
