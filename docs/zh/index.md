@@ -3,7 +3,7 @@
 <p align="center">
   <img src="../images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
-</div>
+
 <!-- icon -->
 
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
@@ -21,15 +21,12 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2409.18839-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
-<div align="center" xmlns="http://www.w3.org/1999/html">
+
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- hot link -->
 
 <p align="center">
-<a href="https://github.com/opendatalab/PDF-Extract-Kit">PDF-Extract-Kit: 高质量PDF解析工具箱</a>🔥🔥🔥
-<br>
-<br>
 🚀<a href="https://mineru.net/?source=github">MinerU 官网入口→✅ 免装在线版 ✅ 全功能客户端 ✅ 开发者API在线调用，省去部署麻烦，多种产品形态一键get，速冲！</a>
 </p>
 
@@ -63,3 +60,9 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
 - 兼容Windows、Linux和Mac平台
+
+
+## 使用指南
+
+- [快速上手指南](./quick_start/index.md)
+- [详细使用说明](./usage/index.md)
