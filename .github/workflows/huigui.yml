@@ -32,6 +32,7 @@ jobs:
       run: |
         uv --version
         uv venv --python 3.12
+        source .venv/bin/activate
         uv pip install .[test]
         cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
         cd $GITHUB_WORKSPACE && coverage run
