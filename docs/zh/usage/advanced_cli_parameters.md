@@ -46,10 +46,12 @@
 
 > [!TIP]
 > 以下是一些可能的使用场景：
+> 
 > - 如果您有多张显卡，需要指定卡0和卡1，并使用多卡并行来启动'sglang-server'，可以使用以下命令： 
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp-size 2
 >   ```
+>   
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令： 
 >   ```bash
 >   # 在终端1中
