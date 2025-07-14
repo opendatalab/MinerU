@@ -1,125 +1,72 @@
 # Using MinerU
 
-## Command Line Usage
-
-### Basic Usage
-
-The simplest command line invocation is:
-
-```bash
-mineru -p <input_path> -o <output_path>
-```
-
-- `<input_path>`: Local PDF/Image file or directory (supports pdf/png/jpg/jpeg/webp/gif)
-- `<output_path>`: Output directory
-
-### View Help Information
-
-Get all available parameter descriptions:
-
-```bash
-mineru --help
-```
-
-### Parameter Details
-
-```text
-Usage: mineru [OPTIONS]
-
-Options:
-  -v, --version                   Show version and exit
-  -p, --path PATH                 Input file path or directory (required)
-  -o, --output PATH              Output directory (required)
-  -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline backend only)
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
-                                  Parsing backend (default: pipeline)
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|latin|arabic|east_slavic|cyrillic|devanagari]
-                                  Specify document language (improves OCR accuracy, pipeline backend only)
-  -u, --url TEXT                  Service address when using sglang-client
-  -s, --start INTEGER             Starting page number (0-based)
-  -e, --end INTEGER               Ending page number (0-based)
-  -f, --formula BOOLEAN           Enable formula parsing (default: on)
-  -t, --table BOOLEAN             Enable table parsing (default: on)
-  -d, --device TEXT               Inference device (e.g., cpu/cuda/cuda:0/npu/mps, pipeline backend only)
-  --vram INTEGER                  Maximum GPU VRAM usage per process (GB)(pipeline backend only)
-  --source [huggingface|modelscope|local]
-                                  Model source, default: huggingface
-  --help                          Show help information
-```
-
----
-
-## Model Source Configuration
-
-MinerU automatically downloads required models from HuggingFace on first run. If HuggingFace is inaccessible, you can switch model sources:
-
-### Switch to ModelScope Source
-
-```bash
-mineru -p <input_path> -o <output_path> --source modelscope
-```
-
-Or set environment variable:
-
+## Quick Model Source Configuration
+MinerU uses `huggingface` as the default model source. If users cannot access `huggingface` due to network restrictions, they can conveniently switch the model source to `modelscope` through environment variables:
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
-mineru -p <input_path> -o <output_path>
 ```
-
-### Using Local Models
-
-#### 1. Download Models Locally
-
-```bash
-mineru-models-download --help
-```
-
-Or use interactive command-line tool to select models:
-
-```bash
-mineru-models-download
-```
-
-After download, model paths will be displayed in current terminal and automatically written to `mineru.json` in user directory.
-
-#### 2. Parse Using Local Models
-
-```bash
-mineru -p <input_path> -o <output_path> --source local
-```
-
-Or enable via environment variable:
-
-```bash
-export MINERU_MODEL_SOURCE=local
-mineru -p <input_path> -o <output_path>
-```
+For more information about model source configuration and custom local model paths, please refer to the [Model Source Documentation](./model_source.md) in the documentation.
 
 ---
 
-## Using sglang to Accelerate VLM Model Inference
-
-### Through the sglang-engine Mode
-
+## Quick Usage via Command Line
+MinerU has built-in command line tools that allow users to quickly use MinerU for PDF parsing through the command line:
 ```bash
-mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
+# Default parsing using pipeline backend
+mineru -p <input_path> -o <output_path>
 ```
+- `<input_path>`: Local PDF/image file or directory
+- `<output_path>`: Output directory
 
-### Through the sglang-server/client Mode
-
-1. Start Server:
-
-```bash
-mineru-sglang-server --port 30000
-```
-
-2. Use Client in another terminal:
-
-```bash
-mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
-```
+> [!NOTE]
+> The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
 
 > [!TIP]
-> For more information about output files, please refer to [Output File Documentation](../output_file.md)
+> For more information about output files, please refer to [Output File Documentation](./output_file.md).
+
+```bash
+# Or specify vlm backend for parsing
+mineru -p <input_path> -o <output_path> -b vlm-transformers
+```
+> [!TIP]
+> The vlm backend additionally supports `sglang` acceleration. Compared to the `transformers` backend, `sglang` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `sglang` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
+
+If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
 ---
+
+## Advanced Usage via API, WebUI, sglang-client/server
+
+- Direct Python API calls: [Python Usage Example](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+- FastAPI calls:
+  ```bash
+  mineru-api --host 127.0.0.1 --port 8000
+  ```
+  Access http://127.0.0.1:8000/docs in your browser to view the API documentation.
+- Start Gradio WebUI visual frontend:
+  ```bash
+  # Using pipeline/vlm-transformers/vlm-sglang-client backends
+  mineru-gradio --server-name 127.0.0.1 --server-port 7860
+  # Or using vlm-sglang-engine/pipeline backends (requires sglang environment)
+  mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
+  ```
+  Access http://127.0.0.1:7860 in your browser to use Gradio WebUI or access http://127.0.0.1:7860/?view=api to use the Gradio API.
+- Using `sglang-client/server` method:
+  ```bash
+  # Start sglang server (requires sglang environment)
+  mineru-sglang-server --port 30000
+  # In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
+  mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
+  ``` 
+> [!TIP]
+> All officially supported sglang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`.
+> We have compiled some commonly used parameters and usage methods for `sglang`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
+
+## Extending MinerU Functionality with Configuration Files
+
+- MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can create a `mineru.json` file in your user directory to add custom configurations.
+- The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-models-download`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.
+- Here are some available configuration options:
+  - `latex-delimiter-config`: Used to configure LaTeX formula delimiters, defaults to `$` symbol, can be modified to other symbols or strings as needed.
+  - `llm-aided-config`: Used to configure parameters for LLM-assisted title hierarchy, compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. You need to configure your own API key and set `enable` to `true` to enable this feature.
+  - `models-dir`: Used to specify local model storage directory, please specify model directories for `pipeline` and `vlm` backends separately. After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.

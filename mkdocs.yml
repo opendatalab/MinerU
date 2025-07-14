@@ -49,15 +49,16 @@ nav:
     - "MinerU": index.md
     - Quick Start:
       - quick_start/index.md
-      - Online Demo: quick_start/online_demo.md
-      - Local Deployment: quick_start/local_deployment.md
+      - Extension Modules: quick_start/extension_modules.md
+      - Docker Deployment: quick_start/docker_deployment.md
     - Usage:
       - usage/index.md
-      - API Calls or Visual Invocation: usage/api.md
-      - Extending MinerU Functionality Through Configuration Files: usage/config.md
+      - CLI Tools: usage/cli_tools.md
+      - Model Source: usage/model_source.md
+      - Advanced CLI Parameters: usage/advanced_cli_parameters.md
+      - Output File Format: usage/output_file.md
   - FAQ:
       - FAQ: FAQ/index.md
-  - Output File Format: output_file.md
   - Known Issues: known_issues.md
   - TODO: todo.md
 
@@ -76,14 +77,15 @@ plugins:
           nav_translations:
             Home: 主页
             Quick Start: 快速开始
-            Online Demo: 在线体验
-            Local Deployment: 本地部署
+            Extension Modules: 扩展模块
+            Docker Deployment: Docker部署
             Usage: 使用方法
-            API Calls or Visual Invocation: API 调用 或 可视化调用
-            Extending MinerU Functionality Through Configuration Files: 基于配置文件扩展 MinerU 功能
+            CLI Tools: 命令行工具
+            Model Source: 模型源
+            Advanced CLI Parameters: 命令行参数进阶技巧
             FAQ: FAQ
             Output File Format: 输出文件格式
-            Known Issues: Known Issues
+            Known Issues: 已知问题
             TODO: TODO
   - mkdocs-video
 

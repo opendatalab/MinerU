@@ -12,14 +12,16 @@ from mineru.version import __version__
 
 heading_level_import_success = False
 llm_aided_config = get_llm_aided_config()
-if llm_aided_config and llm_aided_config.get('title_aided', {}).get('enable', False):
-    try:
-        from mineru.utils.llm_aided import llm_aided_title
-        from mineru.backend.pipeline.model_init import AtomModelSingleton
-        heading_level_import_success = True
-    except Exception as e:
-        logger.warning("The heading level feature cannot be used. If you need to use the heading level feature, "
-                        "please execute `pip install mineru[core]` to install the required packages.")
+if llm_aided_config:
+    title_aided_config = llm_aided_config.get('title_aided', {})
+    if title_aided_config.get('enable', False):
+        try:
+            from mineru.utils.llm_aided import llm_aided_title
+            from mineru.backend.pipeline.model_init import AtomModelSingleton
+            heading_level_import_success = True
+        except Exception as e:
+            logger.warning("The heading level feature cannot be used. If you need to use the heading level feature, "
+                            "please execute `pip install mineru[core]` to install the required packages.")
 
 
 def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dict:
