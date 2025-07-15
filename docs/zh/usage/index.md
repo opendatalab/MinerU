@@ -1,125 +1,75 @@
 # 使用 MinerU
 
-## 命令行使用方式
-
-### 基础用法
-
-最简单的命令行调用方式如下：
-
-```bash
-mineru -p <input_path> -o <output_path>
-```
-
-- `<input_path>`：本地 PDF/图片 文件或目录（支持 pdf/png/jpg/jpeg/webp/gif）
-- `<output_path>`：输出目录
-
-### 查看帮助信息
-
-获取所有可用参数说明：
-
-```bash
-mineru --help
-```
-
-### 参数详解
-
-```text
-Usage: mineru [OPTIONS]
-
-Options:
-  -v, --version                   显示版本并退出
-  -p, --path PATH                 输入文件路径或目录（必填）
-  -o, --output PATH               输出目录（必填）
-  -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
-                                  解析后端（默认为 pipeline）
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|latin|arabic|east_slavic|cyrillic|devanagari]
-                                  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
-  -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
-  -s, --start INTEGER             开始解析的页码（从 0 开始）
-  -e, --end INTEGER               结束解析的页码（从 0 开始）
-  -f, --formula BOOLEAN           是否启用公式解析（默认开启）
-  -t, --table BOOLEAN             是否启用表格解析（默认开启）
-  -d, --device TEXT               推理设备（如 cpu/cuda/cuda:0/npu/mps，仅 pipeline 后端）
-  --vram INTEGER                  单进程最大 GPU 显存占用(GB)（仅 pipeline 后端）
-  --source [huggingface|modelscope|local]
-                                  模型来源，默认 huggingface
-  --help                          显示帮助信息
-```
-
----
-
-## 模型源配置
-
-MinerU 默认在首次运行时自动从 HuggingFace 下载所需模型。若无法访问 HuggingFace，可通过以下方式切换模型源：
-
-### 切换至 ModelScope 源
-
-```bash
-mineru -p <input_path> -o <output_path> --source modelscope
-```
-
-或设置环境变量：
-
+## 快速配置模型源
+MinerU默认使用`huggingface`作为模型源，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
-mineru -p <input_path> -o <output_path>
 ```
-
-### 使用本地模型
-
-#### 1. 下载模型到本地
-
-```bash
-mineru-models-download --help
-```
-
-或使用交互式命令行工具选择模型下载：
-
-```bash
-mineru-models-download
-```
-
-下载完成后，模型路径会在当前终端窗口输出，并自动写入用户目录下的 `mineru.json`。
-
-#### 2. 使用本地模型进行解析
-
-```bash
-mineru -p <input_path> -o <output_path> --source local
-```
-
-或通过环境变量启用：
-
-```bash
-export MINERU_MODEL_SOURCE=local
-mineru -p <input_path> -o <output_path>
-```
+有关模型源配置和自定义本地模型路径的更多信息，请参考文档中的[模型源说明](./model_source.md)。
 
 ---
 
-## 使用 sglang 加速 VLM 模型推理
-
-### 通过 sglang-engine 模式
-
+## 通过命令行快速使用
+MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行PDF解析：
 ```bash
-mineru -p <input_path> -o <output_path> -b vlm-sglang-engine
+# 默认使用pipeline后端解析
+mineru -p <input_path> -o <output_path>
 ```
-
-### 通过 sglang-server/client 模式
-
-1. 启动 Server：
-
-```bash
-mineru-sglang-server --port 30000
-```
-
-2. 在另一个终端中使用 Client 调用：
-
-```bash
-mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
-```
-
 > [!TIP]
-> 更多关于输出文件的信息，请参考 [输出文件说明](../output_file.md)
+> - `<input_path>`：本地 PDF/图片 文件或目录
+> - `<output_path>`：输出目录
+> 
+> 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
+
+> [!NOTE]
+> 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
+> 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
+
+
+```bash
+# 或指定vlm后端解析
+mineru -p <input_path> -o <output_path> -b vlm-transformers
+```
+> [!TIP]
+> vlm后端另外支持`sglang`加速，与`transformers`后端相比，`sglang`的加速比可达20～30倍，可以在[扩展模块安装指南](../quick_start/extension_modules.md)中查看支持`sglang`加速的完整包安装方法。
+
+如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
 ---
+
+## 通过api、webui、sglang-client/server进阶使用
+
+- 通过python api直接调用：[Python 调用示例](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+- 通过fast api方式调用：
+  ```bash
+  mineru-api --host 127.0.0.1 --port 8000
+  ```
+  在浏览器中访问 http://127.0.0.1:8000/docs 查看API文档。
+- 启动gradio webui 可视化前端：
+  ```bash
+  # 使用 pipeline/vlm-transformers/vlm-sglang-client 后端
+  mineru-gradio --server-name 127.0.0.1 --server-port 7860
+  # 或使用 vlm-sglang-engine/pipeline 后端（需安装sglang环境）
+  mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
+  ```
+  在浏览器中访问 http://127.0.0.1:7860 使用 Gradio WebUI 或访问 http://127.0.0.1:7860/?view=api 使用 Gradio API。
+- 使用`sglang-client/server`方式调用：
+  ```bash
+  # 启动sglang server(需要安装sglang环境)
+  mineru-sglang-server --port 30000
+  # 在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
+  mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
+  ``` 
+> [!TIP]
+> 所有sglang官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-sglang-server`、`mineru-gradio`、`mineru-api`，
+> 我们整理了一些`sglang`使用中的常用参数和使用方法，可以在文档[命令行参数进阶技巧](./advanced_cli_parameters.md)中获取。
+
+
+## 基于配置文件扩展 MinerU 功能
+
+- MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可以在用户目录下创建 `mineru.json` 文件，添加自定义配置。
+- `mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。
+- 以下是一些可用的配置选项：
+  - `latex-delimiter-config`：用于配置 LaTeX 公式的分隔符，默认为`$`符号，可根据需要修改为其他符号或字符串。
+  - `llm-aided-config`：用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型，默认使用`阿里云百炼`的`qwen2.5-32b-instruct`模型，您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
+  - `models-dir`：用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。
