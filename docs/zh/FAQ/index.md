@@ -12,7 +12,7 @@
     sudo apt-get install libgl1-mesa-glx
     ```
     
-    参考：https://github.com/opendatalab/MinerU/issues/388
+    参考：[#388](https://github.com/opendatalab/MinerU/issues/388)
 
 
 ??? question "在 CentOS 7 或 Ubuntu 18 系统安装MinerU时报错`ERROR: Failed building wheel for simsimd`"
@@ -24,7 +24,7 @@
     pip install -U "mineru[pipeline_old_linux]"
     ```
     
-    参考：https://github.com/opendatalab/MinerU/issues/1004
+    参考：[#1004](https://github.com/opendatalab/MinerU/issues/1004)
 
 ??? question "在 Linux 系统安装并使用时，解析结果缺失部份文字信息。"
 
@@ -38,4 +38,4 @@
     ```
     也可以直接使用我们的[Docker部署](../quick_start/docker_deployment.md)方式构建镜像，镜像中默认包含以上字体包。
     
-    参考：https://github.com/opendatalab/MinerU/issues/2915
+    参考：[#2915](https://github.com/opendatalab/MinerU/issues/2915)
