@@ -35,11 +35,11 @@
 > [!TIP]
 > 以下是一些常见的 `CUDA_VISIBLE_DEVICES` 设置示例：
 >   ```bash
->   CUDA_VISIBLE_DEVICES=1 Only device 1 will be seen
->   CUDA_VISIBLE_DEVICES=0,1 Devices 0 and 1 will be visible
->   CUDA_VISIBLE_DEVICES="0,1" Same as above, quotation marks are optional
->   CUDA_VISIBLE_DEVICES=0,2,3 Devices 0, 2, 3 will be visible; device 1 is masked
->   CUDA_VISIBLE_DEVICES="" No GPU will be visible
+>   CUDA_VISIBLE_DEVICES=1  # Only device 1 will be seen
+>   CUDA_VISIBLE_DEVICES=0,1  # Devices 0 and 1 will be visible
+>   CUDA_VISIBLE_DEVICES="0,1"  # Same as above, quotation marks are optional
+>   CUDA_VISIBLE_DEVICES=0,2,3  # Devices 0, 2, 3 will be visible; device 1 is masked
+>   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
 
 ### 实际应用场景
@@ -50,6 +50,11 @@
 > - 如果您有多张显卡，需要指定卡0和卡1，并使用多卡并行来启动'sglang-server'，可以使用以下命令： 
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp-size 2
+>   ```
+>   
+> - 如果您有多张显卡，需要指定卡0-3，并使用多卡数据并行和张量并行来启动'sglang-server'，可以使用以下命令： 
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-sglang-server --port 30000 --dp-size 2 --tp-size 2
 >   ```
 >   
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令： 

@@ -35,11 +35,11 @@
 > [!TIP]
 > Here are some common `CUDA_VISIBLE_DEVICES` setting examples:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=1 Only device 1 will be seen
->   CUDA_VISIBLE_DEVICES=0,1 Devices 0 and 1 will be visible
->   CUDA_VISIBLE_DEVICES="0,1" Same as above, quotation marks are optional
->   CUDA_VISIBLE_DEVICES=0,2,3 Devices 0, 2, 3 will be visible; device 1 is masked
->   CUDA_VISIBLE_DEVICES="" No GPU will be visible
+>   CUDA_VISIBLE_DEVICES=1  # Only device 1 will be seen
+>   CUDA_VISIBLE_DEVICES=0,1  # Devices 0 and 1 will be visible
+>   CUDA_VISIBLE_DEVICES="0,1"  # Same as above, quotation marks are optional
+>   CUDA_VISIBLE_DEVICES=0,2,3  # Devices 0, 2, 3 will be visible; device 1 is masked
+>   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
 
 ### Practical Application Scenarios
@@ -50,7 +50,12 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp-size 2
 >   ```
->   
+> 
+> - If you have multiple GPUs and need to specify GPU 0–3, and start the 'sglang-server' using multi-GPU data parallelism and tensor parallelism, you can use the following command:
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-sglang-server --port 30000 --dp-size 2 --tp-size 2
+>   ```
+>       
 > - If you have multiple graphics cards and need to start two `fastapi` services on cards 0 and 1, listening on different ports respectively, you can use the following commands:
 >   ```bash
 >   # In terminal 1

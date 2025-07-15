@@ -37,7 +37,7 @@ docker run --gpus all \
 ```
 
 执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
-您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[MinerU使用文档](../usage/index_back.md)。
+您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[MinerU使用文档](../usage/index.md)。
 
 
 ## 通过 Docker Compose 直接启动服务
@@ -48,19 +48,29 @@ docker run --gpus all \
 # 下载 compose.yaml 文件
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ```
+>[!NOTE]
+>  
+>- `compose.yaml`文件中包含了MinerU的多个服务配置，您可以根据需要选择启动特定的服务。
+>- 不同的服务可能会有额外的参数配置，您可以在`compose.yaml`文件中查看并编辑。
+>- 由于`sglang`推理加速框架预分配显存的特性，您可能无法在同一台机器上同时运行多个`sglang`服务，因此请确保在启动`vlm-sglang-server`服务或使用`vlm-sglang-engine`后端时，其他可能使用显存的服务已停止。
 
 - 启动`sglang-server`服务，并通过`vlm-sglang-client`后端连接`sglang-server`：
   ```bash
   docker compose -f compose.yaml --profile mineru-sglang-server up -d
-  # 在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
-  mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
   ```
+  >[!TIP]
+  >在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
+  > ```bash
+  > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
+  > ```
+
 - 启动 API 服务：
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
   >[!TIP]
   >在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
+
 - 启动 Gradio WebUI 服务：
   ```bash
   docker compose -f compose.yaml --profile mineru-gradio up -d
