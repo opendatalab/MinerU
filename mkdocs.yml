@@ -60,13 +60,13 @@ nav:
       - CLI Tools: usage/cli_tools.md
       - Model Source: usage/model_source.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-    - Output File Format:
+    - Reference:
       - Output File Format: reference/output_files.md
     - FAQ:
       - FAQ: faq/index.md
     - Demo:
       - Demo: demo/index.md
-  - Output File Format:
+  - Reference:
     - Output File Format: reference/output_files.md
   - FAQ:
     - FAQ: faq/index.md
@@ -89,13 +89,14 @@ plugins:
           nav_translations:
             Home: 主页
             Quick Start: 快速开始
-            Extension Modules: 扩展模块
+            Extension Modules: 扩展模块安装
             Docker Deployment: Docker部署
             Usage: 使用方法
             CLI Tools: 命令行工具
             Model Source: 模型源
-            Advanced CLI Parameters: 命令行参数进阶技巧
+            Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答
+            Reference: 参考资料
             Output File Format: 输出文件格式
   - mkdocs-video
 
