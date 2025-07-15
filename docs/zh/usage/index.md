@@ -19,7 +19,7 @@ mineru -p <input_path> -o <output_path>
 > - `<input_path>`：本地 PDF/图片 文件或目录
 > - `<output_path>`：输出目录
 > 
-> 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
+> 更多关于输出文件的信息，请参考[输出文件说明](../output_files.md)。
 
 > [!NOTE]
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，

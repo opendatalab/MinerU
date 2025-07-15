@@ -90,3 +90,7 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 您可以在文档中获取[Docker部署说明](./docker_deployment.md)。
 
 ---
+
+### 使用 MinerU
+
+您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](../usage/index.md)。

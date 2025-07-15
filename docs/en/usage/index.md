@@ -19,7 +19,7 @@ mineru -p <input_path> -o <output_path>
 >- `<input_path>`: Local PDF/image file or directory
 >- `<output_path>`: Output directory
 >
-> For more information about output files, please refer to [Output File Documentation](./output_file.md).
+> For more information about output files, please refer to [Output File Documentation](../output_files.md).
 
 > [!NOTE]
 > The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
