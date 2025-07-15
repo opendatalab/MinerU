@@ -44,7 +44,10 @@ theme:
     - navigation.sections
     - navigation.path
     - navigation.indexes
+    - navigation.top
+    - navigation.tracking
     - search.suggest
+    - toc.follow
 
 nav:
   - Home:
