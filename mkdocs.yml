@@ -30,7 +30,7 @@ theme:
         icon: material/brightness-4
         name: Switch to system preference
   logo: images/logo.png
-  favicon: images/logo.svg
+  favicon: images/icon.svg
   features:
     - content.tabs.link
     - content.code.annotate
