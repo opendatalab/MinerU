@@ -422,7 +422,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 # Quick Start
 
-If you encounter any installation issues, please check the [FAQ](../FAQ/index.md) first.
+If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
+If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
 
 ## Online Experience
 
