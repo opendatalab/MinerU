@@ -18,8 +18,8 @@
 
 ### Parameter Passing Instructions
 > [!TIP]
-> - If you want to learn more about `sglang` parameter usage, please refer to the [SGLang official documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
 > - All officially supported SGLang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`
+> - If you want to learn more about `sglang` parameter usage, please refer to the [SGLang official documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
 
 ## GPU Device Selection and Configuration
 
