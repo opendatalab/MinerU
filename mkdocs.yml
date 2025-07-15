@@ -52,20 +52,26 @@ nav:
   - Home:
     - "MinerU": index.md
     - Quick Start:
-      - quick_start/index.md
+      - Quick Start: quick_start/index.md
       - Extension Modules: quick_start/extension_modules.md
       - Docker Deployment: quick_start/docker_deployment.md
     - Usage:
-      - usage/index.md
+      - Usage: usage/index.md
       - CLI Tools: usage/cli_tools.md
       - Model Source: usage/model_source.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-    - Output File Format: output_files.md
-    - FAQ: faq.md
-    - Demo: demo.md
-  - Output File Format: output_files.md
-  - FAQ: faq.md
-  - Demo: demo.md
+    - Output File Format:
+      - Output File Format: reference/output_files.md
+    - FAQ:
+      - FAQ: faq/index.md
+    - Demo:
+      - Demo: demo/index.md
+  - Output File Format:
+    - Output File Format: reference/output_files.md
+  - FAQ:
+    - FAQ: faq/index.md
+  - Demo:
+    - Demo: demo/index.md
 
 
 plugins:
