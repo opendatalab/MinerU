@@ -5,12 +5,14 @@
 ### Memory Optimization Parameters
 > [!TIP]
 > SGLang acceleration mode currently supports running on Turing architecture graphics cards with a minimum of 8GB VRAM, but graphics cards with <24GB VRAM may encounter insufficient memory issues. You can optimize memory usage with the following parameters:
+> 
 > - If you encounter insufficient VRAM when using a single graphics card, you may need to reduce the KV cache size with `--mem-fraction-static 0.5`. If VRAM issues persist, try reducing it further to `0.4` or lower.
 > - If you have two or more graphics cards, you can try using tensor parallelism (TP) mode to simply expand available VRAM: `--tp-size 2`
 
 ### Performance Optimization Parameters
 > [!TIP]
 > If you can already use SGLang normally for accelerated VLM model inference but still want to further improve inference speed, you can try the following parameters:
+> 
 > - If you have multiple graphics cards, you can use SGLang's multi-card parallel mode to increase throughput: `--dp-size 2`
 > - You can also enable `torch.compile` to accelerate inference speed by approximately 15%: `--enable-torch-compile`
 
@@ -31,7 +33,7 @@
 
 ### Common Device Configuration Examples
 > [!TIP]
-> - Here are some common `CUDA_VISIBLE_DEVICES` setting examples:
+> Here are some common `CUDA_VISIBLE_DEVICES` setting examples:
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 Only device 1 will be seen
 >   CUDA_VISIBLE_DEVICES=0,1 Devices 0 and 1 will be visible
@@ -43,10 +45,12 @@
 ### Practical Application Scenarios
 > [!TIP]
 > Here are some possible usage scenarios:
+> 
 > - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start 'sglang-server', you can use the following command:
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp-size 2
 >   ```
+>   
 > - If you have multiple graphics cards and need to start two `fastapi` services on cards 0 and 1, listening on different ports respectively, you can use the following commands:
 >   ```bash
 >   # In terminal 1

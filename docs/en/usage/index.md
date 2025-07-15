@@ -15,14 +15,16 @@ MinerU has built-in command line tools that allow users to quickly use MinerU fo
 # Default parsing using pipeline backend
 mineru -p <input_path> -o <output_path>
 ```
-- `<input_path>`: Local PDF/image file or directory
-- `<output_path>`: Output directory
+> [!TIP]
+>- `<input_path>`: Local PDF/image file or directory
+>- `<output_path>`: Output directory
+>
+> For more information about output files, please refer to [Output File Documentation](./output_file.md).
 
 > [!NOTE]
-> The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
+> The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
+> Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
 
-> [!TIP]
-> For more information about output files, please refer to [Output File Documentation](./output_file.md).
 
 ```bash
 # Or specify vlm backend for parsing

@@ -4,6 +4,7 @@
   <img src="../images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 </div>
+
 <!-- icon -->
 
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)

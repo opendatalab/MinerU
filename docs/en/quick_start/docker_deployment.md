@@ -19,6 +19,7 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 
 > [!NOTE]
 > Requirements for using `sglang` to accelerate VLM model inference:
+> 
 > - Device must have Turing architecture or later graphics cards with 8GB+ available VRAM.
 > - The host machine's graphics driver should support CUDA 12.6 or higher; `Blackwell` platform should support CUDA 12.8 or higher. You can check the driver version using the `nvidia-smi` command.
 > - Docker container must have access to the host machine's graphics devices.
@@ -59,10 +60,14 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
-  Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
+  >[!TIP]
+  >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
 
 - Start Gradio WebUI service:
   ```bash
   docker compose -f compose.yaml --profile mineru-gradio up -d
   ```
-  Access `http://<server_ip>:7860` in your browser to use the Gradio WebUI or access `http://<server_ip>:7860/?view=api` to use the Gradio API.
+  >[!TIP]
+  >
+  >- Access `http://<server_ip>:7860` in your browser to use the Gradio WebUI.
+  >- Access `http://<server_ip>:7860/?view=api` to use the Gradio API.

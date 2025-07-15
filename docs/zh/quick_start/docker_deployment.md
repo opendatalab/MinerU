@@ -67,5 +67,5 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   ```
   >[!TIP]
   > 
-  >- 在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI 
-  >- 访问 `http://<server_ip>:7860/?view=api` 使用 Gradio API
+  >- 在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI。
+  >- 访问 `http://<server_ip>:7860/?view=api` 使用 Gradio API。
