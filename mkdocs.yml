@@ -56,7 +56,7 @@ nav:
       - CLI Tools: usage/cli_tools.md
       - Model Source: usage/model_source.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-      - Output File Format: usage/output_file.md
+      - Output File Format: usage/output_files.md
   - FAQ:
       - FAQ: FAQ/index.md
 
