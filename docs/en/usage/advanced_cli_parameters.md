@@ -46,12 +46,12 @@
 > [!TIP]
 > Here are some possible usage scenarios:
 > 
-> - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start 'sglang-server', you can use the following command:
+> - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start `sglang-server`, you can use the following command:
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --dp-size 2
 >   ```
 > 
-> - If you have multiple GPUs and need to specify GPU 0–3, and start the 'sglang-server' using multi-GPU data parallelism and tensor parallelism, you can use the following command:
+> - If you have multiple GPUs and need to specify GPU 0–3, and start the `sglang-server` using multi-GPU data parallelism and tensor parallelism, you can use the following command:
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-sglang-server --port 30000 --dp-size 2 --tp-size 2
 >   ```
