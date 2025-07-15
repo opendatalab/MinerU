@@ -1,7 +1,7 @@
 <div align="center" xmlns="http://www.w3.org/1999/html">
 <!-- logo -->
 <p align="center">
-  <img src="../images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
+  <img src="https://opendatalab.github.io/MinerU/images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
 </div>
 

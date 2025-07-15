@@ -5,7 +5,7 @@ MinerU provides a convenient Docker deployment method, which helps quickly set u
 ## Build Docker Image using Dockerfile:
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
 docker build -t mineru-sglang:latest -f Dockerfile .
 ```
 
@@ -49,12 +49,21 @@ We provide a `compose.yml` file that you can use to quickly start MinerU service
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ```
 
+>[!NOTE]
+>
+>- The `compose.yaml` file contains configurations for multiple services of MinerU, you can choose to start specific services as needed.
+>- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
+>- Due to the pre-allocation of GPU memory by the `sglang` inference acceleration framework, you may not be able to run multiple `sglang` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-sglang-server` service or using the `vlm-sglang-engine` backend.
+
 - Start `sglang-server` service and connect to `sglang-server` via `vlm-sglang-client` backend:
   ```bash
   docker compose -f compose.yaml --profile mineru-sglang-server up -d
-  # In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
-  mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
   ```
+  >[!TIP]
+  >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
+  > ```bash
+  > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
+  > ```
 
 - Start API service:
   ```bash
