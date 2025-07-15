@@ -12,7 +12,7 @@ If you still cannot resolve the issue, you can join the community through [Disco
     sudo apt-get install libgl1-mesa-glx
     ```
     
-    Reference: https://github.com/opendatalab/MinerU/issues/388
+    Reference: [#388](https://github.com/opendatalab/MinerU/issues/388)
 
 
 ??? question "Error when installing MinerU on CentOS 7 or Ubuntu 18: `ERROR: Failed building wheel for simsimd`"
@@ -24,7 +24,7 @@ If you still cannot resolve the issue, you can join the community through [Disco
     pip install -U "mineru[pipeline_old_linux]"
     ```
     
-    Reference: https://github.com/opendatalab/MinerU/issues/1004
+    Reference: [#1004](https://github.com/opendatalab/MinerU/issues/1004)
 
 
 ??? question "Missing text information in parsing results when installing and using on Linux systems."
@@ -39,4 +39,4 @@ If you still cannot resolve the issue, you can join the community through [Disco
     ```
     You can also directly use our [Docker deployment](../quick_start/docker_deployment.md) method to build the image, which includes the above font packages by default.
     
-    Reference: https://github.com/opendatalab/MinerU/issues/2915
+    Reference: [#2915](https://github.com/opendatalab/MinerU/issues/2915)
