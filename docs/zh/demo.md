@@ -1,1 +1,4 @@
 <iframe title="iframe" allowfullscreen="" class="iframeResizer___U3wJg" src="https://opendatalab-mineru.ms.show?t=1752577214918&amp;__theme=dark&amp;studio_token=1d5b1c59-136a-4bee-9812-20113cb91762&amp;backend_url=/" allow="accelerometer; ambient-light-sensor; autoplay; battery; camera; clipboard-read; clipboard-write; display-capture; document-domain; encrypted-media; fullscreen; geolocation; gyroscope; layout-animations; legacy-image-formats; magnetometer; microphone; midi; oversized-images; payment; picture-in-picture; publickey-credentials-get; sync-xhr; usb; vr ; wake-lock; xr-spatial-tracking" id="iFrameResizer0" style="min-height: calc(-40px + 100vh); width: 100%; flex-grow: 1; border: medium; overflow: auto; height: 1746px;"></iframe>
+
+<script type="module" src="https://gradio.s3-us-west-2.amazonaws.com/5.35.0/gradio.js"></script>
+<gradio-app src="https://opendatalab-mineru.ms.show"></gradio-app>
