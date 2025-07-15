@@ -1,17 +1,5 @@
 # MinerU 输出文件说明
 
-## 目录
-
-- [概览](#概览)
-- [可视化调试文件](#可视化调试文件)
-  - [布局分析文件 (layout.pdf)](#布局分析文件-layoutpdf)
-  - [文本片段文件 (spans.pdf)](#文本片段文件-spanspdf)
-- [结构化数据文件](#结构化数据文件)
-  - [模型推理结果 (model.json)](#模型推理结果-modeljson)
-  - [VLM 输出结果 (model_output.txt)](#vlm-输出结果-model_outputtxt)
-  - [中间处理结果 (middle.json)](#中间处理结果-middlejson)
-  - [内容列表 (content_list.json)](#内容列表-content_listjson)
-
 ## 概览
 
 `mineru` 命令执行后，除了输出主要的 markdown 文件外，还会生成多个辅助文件用于调试、质检和进一步处理。这些文件包括：
@@ -28,11 +16,13 @@
 **文件命名格式**：`{原文件名}_layout.pdf`
 
 **功能说明**：
+
 - 可视化展示每一页的布局分析结果
 - 每个检测框右上角的数字表示阅读顺序
 - 使用不同背景色块区分不同类型的内容块
 
 **使用场景**：
+
 - 检查布局分析是否正确
 - 确认阅读顺序是否合理
 - 调试布局相关问题
@@ -41,15 +31,18 @@
 
 ### 文本片段文件 (spans.pdf)
 
-> **注意**：仅适用于 pipeline 后端
+> [!NOTE]
+> 仅适用于 pipeline 后端
 
 **文件命名格式**：`{原文件名}_spans.pdf`
 
 **功能说明**：
+
 - 根据 span 类型使用不同颜色线框标注页面内容
 - 用于质量检查和问题排查
 
 **使用场景**：
+
 - 快速排查文本丢失问题
 - 检查行内公式识别情况
 - 验证文本分割准确性
@@ -60,7 +53,8 @@
 
 ### 模型推理结果 (model.json)
 
-> **注意**：仅适用于 pipeline 后端
+> [!NOTE]
+> 仅适用于 pipeline 后端
 
 **文件命名格式**：`{原文件名}_model.json`
 
@@ -112,6 +106,7 @@ inference_result: list[PageInferenceResults] = []
 #### 坐标系统说明
 
 `poly` 坐标格式：`[x0, y0, x1, y1, x2, y2, x3, y3]`
+
 - 分别表示左上、右上、右下、左下四点的坐标
 - 坐标原点在页面左上角
 
@@ -145,7 +140,8 @@ inference_result: list[PageInferenceResults] = []
 
 ### VLM 输出结果 (model_output.txt)
 
-> **注意**：仅适用于 VLM 后端
+> [!NOTE]
+> 仅适用于 VLM 后端
 
 **文件命名格式**：`{原文件名}_model_output.txt`
 
@@ -324,6 +320,7 @@ inference_result: list[PageInferenceResults] = []
 #### 文本层级标识
 
 通过 `text_level` 字段区分文本层级：
+
 - 无 `text_level` 或 `text_level: 0`：正文文本
 - `text_level: 1`：一级标题
 - `text_level: 2`：二级标题
