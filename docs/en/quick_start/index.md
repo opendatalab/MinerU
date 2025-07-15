@@ -90,3 +90,7 @@ MinerU provides a convenient Docker deployment method, which helps quickly set u
 You can get the [Docker Deployment Instructions](./docker_deployment.md) in the documentation.
 
 ---
+
+### Using MinerU
+
+You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

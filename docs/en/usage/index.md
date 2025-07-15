@@ -19,7 +19,7 @@ mineru -p <input_path> -o <output_path>
 >- `<input_path>`: Local PDF/image file or directory
 >- `<output_path>`: Output directory
 >
-> For more information about output files, please refer to [Output File Documentation](./output_file.md).
+> For more information about output files, please refer to [Output File Documentation](../output_files.md).
 
 > [!NOTE]
 > The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
@@ -67,16 +67,18 @@ If you need to adjust parsing options through custom parameters, you can also ch
   > ```bash
   > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
   > ```
+
 > [!TIP]
 > All officially supported sglang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`.
 > We have compiled some commonly used parameters and usage methods for `sglang`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
 ## Extending MinerU Functionality with Configuration Files
 
-- MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can create a `mineru.json` file in your user directory to add custom configurations.
-- The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-models-download`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.
-- Here are some available configuration options:
+MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can create a `mineru.json` file in your user directory to add custom configurations.  
+The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-models-download`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.  
+Here are some available configuration options:  
 
-  - `latex-delimiter-config`: Used to configure LaTeX formula delimiters, defaults to `$` symbol, can be modified to other symbols or strings as needed.
-  - `llm-aided-config`: Used to configure parameters for LLM-assisted title hierarchy, compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. You need to configure your own API key and set `enable` to `true` to enable this feature.
-  - `models-dir`: Used to specify local model storage directory, please specify model directories for `pipeline` and `vlm` backends separately. After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.
+- `latex-delimiter-config`: Used to configure LaTeX formula delimiters, defaults to `$` symbol, can be modified to other symbols or strings as needed.
+- `llm-aided-config`: Used to configure parameters for LLM-assisted title hierarchy, compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. You need to configure your own API key and set `enable` to `true` to enable this feature.
+- `models-dir`: Used to specify local model storage directory, please specify model directories for `pipeline` and `vlm` backends separately. After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.
+

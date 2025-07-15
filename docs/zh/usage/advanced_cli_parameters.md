@@ -42,7 +42,7 @@
 >   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
 
-### 实际应用场景
+## 实际应用场景
 
 > [!TIP]
 > 以下是一些可能的使用场景：
