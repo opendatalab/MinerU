@@ -42,7 +42,7 @@ docker run --gpus all \
 
 ## 通过 Docker Compose 直接启动服务
 
-我们提供了`compose.yml`文件，您可以通过它来快速启动MinerU服务。
+我们提供了[compose.yml](https://github.com/opendatalab/MinerU/blob/master/docker/compose.yaml)文件，您可以通过它来快速启动MinerU服务。
 
 ```bash
 # 下载 compose.yaml 文件

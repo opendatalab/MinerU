@@ -10,7 +10,7 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 ```
 
 > [!TIP]
-> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
+> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
 > If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.8.post1-cu128-b200` before executing the build operation.
 
 ## Docker Description
@@ -42,7 +42,7 @@ You can also directly start MinerU services by replacing `/bin/bash` with servic
 
 ## Start Services Directly with Docker Compose
 
-We provide a `compose.yml` file that you can use to quickly start MinerU services.
+We provide a [compose.yaml](https://github.com/opendatalab/MinerU/blob/master/docker/compose.yaml) file that you can use to quickly start MinerU services.
 
 ```bash
 # Download compose.yaml file
