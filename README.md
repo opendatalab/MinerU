@@ -544,7 +544,7 @@ You can use MinerU for PDF parsing through various methods such as command line,
 
 # FAQ
 
-- If you encounter any issues during usage, you can first check the [FAQ](https://opendatalab.github.io/MinerU/FAQ/) for solutions.  
+- If you encounter any issues during usage, you can first check the [FAQ](https://opendatalab.github.io/MinerU/faq/) for solutions.  
 - If your issue remains unresolved, you may also use [DeepWiki](https://deepwiki.com/opendatalab/MinerU) to interact with an AI assistant, which can address most common problems.  
 - If you still cannot resolve the issue, you are welcome to join our community via [Discord](https://discord.gg/Tdedn9GTXq) or [WeChat](http://mineru.space/s/V85Yl) to discuss with other users and developers.
 
