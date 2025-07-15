@@ -3,7 +3,7 @@
 <p align="center">
   <img src="../images/MinerU-logo.png" width="300px" style="vertical-align:middle;">
 </p>
-
+</div>
 <!-- icon -->
 
 [![stars](https://img.shields.io/github/stars/opendatalab/MinerU.svg)](https://github.com/opendatalab/MinerU)
@@ -21,7 +21,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2409.18839-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
-
+<div align="center">
 <a href="https://trendshift.io/repositories/11174" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11174" alt="opendatalab%2FMinerU | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 <!-- hot link -->
