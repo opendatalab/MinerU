@@ -163,4 +163,4 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
 ]
-directory = "tests/htmelcov"
+directory = "tests/htmlcov"
