@@ -58,9 +58,13 @@ nav:
       - CLI Tools: usage/cli_tools.md
       - Model Source: usage/model_source.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
+    - Output File Format: output_files.md
+    - FAQ: faq.md
+    - Demo: demo.md
   - Output File Format: output_files.md
-  - FAQ:
-      - FAQ: FAQ/index.md
+  - FAQ: faq.md
+  - Demo: demo.md
+
 
 plugins:
   - search
@@ -83,7 +87,7 @@ plugins:
             CLI Tools: 命令行工具
             Model Source: 模型源
             Advanced CLI Parameters: 命令行参数进阶技巧
-            FAQ: FAQ
+            FAQ: 常见问题解答
             Output File Format: 输出文件格式
   - mkdocs-video
 
