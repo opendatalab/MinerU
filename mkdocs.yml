@@ -36,11 +36,10 @@ theme:
     - content.code.annotate
     - content.code.copy
     - navigation.footer
-    - navigation.instant.prefetch
-    - navigation.instant
-    - navigation.instant.progress
     - navigation.tabs
-    - navigation.tabs.sticky
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
     - navigation.sections
     - navigation.path
     - navigation.indexes
