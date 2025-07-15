@@ -35,6 +35,8 @@ theme:
     - content.tabs.link
     - content.code.annotate
     - content.code.copy
+    - navigation.footer
+    - navigation.instant.prefetch
     - navigation.instant
     - navigation.instant.progress
     - navigation.tabs
@@ -86,6 +88,9 @@ plugins:
   - mkdocs-video
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - attr_list
   - gfm_admonition
   - pymdownx.highlight:
       use_pygments: true
