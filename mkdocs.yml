@@ -64,7 +64,7 @@ extra:
     - icon: fontawesome/brands/weixin
       link: https://mineru.space/common/qun/?qid=362634
       name: WeChat
-    - icon: fontawesome/classic/envelope
+    - icon: material/email
       link: OpenDataLab@pjlab.org.cn
       name: E-mail
 
