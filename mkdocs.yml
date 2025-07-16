@@ -65,7 +65,7 @@ extra:
       link: https://mineru.space/common/qun/?qid=362634
       name: WeChat
     - icon: material/email
-      link: OpenDataLab@pjlab.org.cn
+      link: mailto:OpenDataLab@pjlab.org.cn
       name: E-mail
 
 copyright: © 2024 - 2025 MinerU. All Rights Reserved.
