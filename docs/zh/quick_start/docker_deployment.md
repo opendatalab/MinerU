@@ -2,7 +2,7 @@
 
 MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并解决一些棘手的环境兼容问题。
 
-## 使用 Dockerfile 构建镜像：
+## 使用 Dockerfile 构建镜像
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
@@ -59,6 +59,8 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >- 不同的服务可能会有额外的参数配置，您可以在`compose.yaml`文件中查看并编辑。
 >- 由于`sglang`推理加速框架预分配显存的特性，您可能无法在同一台机器上同时运行多个`sglang`服务，因此请确保在启动`vlm-sglang-server`服务或使用`vlm-sglang-engine`后端时，其他可能使用显存的服务已停止。
 
+---
+
 ### 启动 sglang-server 服务
 并通过`vlm-sglang-client`后端连接`sglang-server`
   ```bash
@@ -70,12 +72,16 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
   > ```
 
+---
+
 ### 启动 Web API 服务
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
   >[!TIP]
   >在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
+
+---
 
 ### 启动 Gradio WebUI 服务
   ```bash
