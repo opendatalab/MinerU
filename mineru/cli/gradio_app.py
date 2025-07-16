@@ -114,12 +114,15 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     return md_content, txt_content, archive_zip_path, new_pdf_path
 
 
-latex_delimiters = [
+latex_delimiters_type_a = [
     {'left': '$$', 'right': '$$', 'display': True},
     {'left': '$', 'right': '$', 'display': False},
+]
+latex_delimiters_type_b = [
     {'left': '\\(', 'right': '\\)', 'display': False},
     {'left': '\\[', 'right': '\\]', 'display': True},
 ]
+latex_delimiters_type_all = latex_delimiters_type_a + latex_delimiters_type_b
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
 with open(header_path, 'r') as header_file:
@@ -234,12 +237,29 @@ def update_interface(backend_choice):
     help="Set the server port for the Gradio app.",
     default=None,
 )
+@click.option(
+    '--latex-delimiters-type',
+    'latex_delimiters_type',
+    type=click.Choice(['a', 'b', 'all']),
+    help="Set the type of LaTeX delimiters to use in Markdown rendering:"
+         "'a' for type '$', 'b' for type '()[]', 'all' for both types.",
+    default='all',
+)
 def main(ctx,
         example_enable, sglang_engine_enable, api_enable, max_convert_pages,
-        server_name, server_port, **kwargs
+        server_name, server_port, latex_delimiters_type, **kwargs
 ):
 
     kwargs.update(arg_parse(ctx))
+
+    if latex_delimiters_type == 'a':
+        latex_delimiters = latex_delimiters_type_a
+    elif latex_delimiters_type == 'b':
+        latex_delimiters = latex_delimiters_type_b
+    elif latex_delimiters_type == 'all':
+        latex_delimiters = latex_delimiters_type_all
+    else:
+        raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
     if sglang_engine_enable:
         try:

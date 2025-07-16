@@ -1,0 +1,140 @@
+site_name: MinerU
+site_url: https://opendatalab.github.io/MinerU
+repo_name: opendatalab/MinerU
+repo_url: https://github.com/opendatalab/MinerU
+
+theme:
+  icon:
+    repo: fontawesome/brands/github
+  name: material
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      scheme: default
+      primary: black
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  logo: images/logo.png
+  favicon: images/logo.png
+  features:
+    - content.tabs.link
+    - content.code.annotate
+    - content.code.copy
+    - navigation.expand
+    - navigation.footer
+    - navigation.tabs
+    - navigation.sections
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/opendatalab/MinerU
+      name: GitHub
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/OpenDataLab_AI
+      name: X-Twitter
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/Tdedn9GTXq
+      name: Discord
+    - icon: fontawesome/brands/weixin
+      link: http://mineru.space/s/V85Yl
+      name: WeChat
+    - icon: material/email
+      link: mailto:OpenDataLab@pjlab.org.cn
+      name: E-mail
+
+copyright: © 2024 - 2025 MinerU. All Rights Reserved.
+
+nav:
+  - Home:
+    - "MinerU": index.md
+    - Quick Start:
+      - Quick Start: quick_start/index.md
+      - Extension Modules: quick_start/extension_modules.md
+      - Docker Deployment: quick_start/docker_deployment.md
+    - Usage:
+      - Usage: usage/index.md
+      - Quick Usage: usage/quick_usage.md
+      - Model Source: usage/model_source.md
+      - CLI Tools: usage/cli_tools.md
+      - Advanced CLI Parameters: usage/advanced_cli_parameters.md
+    - Reference:
+      - Output File Format: reference/output_files.md
+    - FAQ:
+      - FAQ: faq/index.md
+    - Demo:
+      - Demo: demo/index.md
+  - Reference:
+    - Output File Format: reference/output_files.md
+  - FAQ:
+    - FAQ: faq/index.md
+  - Demo:
+    - Demo: demo/index.md
+
+
+plugins:
+  - search
+  - i18n:
+      reconfigure_material: true
+      docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+          nav_translations:
+            Home: 主页
+            Quick Start: 快速开始
+            Extension Modules: 扩展模块安装
+            Docker Deployment: Docker部署
+            Usage: 使用方法
+            Quick Usage: 快速使用
+            CLI Tools: 命令行工具
+            Model Source: 模型源
+            Advanced CLI Parameters: 命令行进阶参数
+            FAQ: 常见问题解答
+            Reference: 参考资料
+            Output File Format: 输出文件格式
+            Demo: 在线演示
+  - mkdocs-video
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - gfm_admonition
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
