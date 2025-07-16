@@ -56,12 +56,12 @@ extra:
       name: GitHub
     - icon: fontawesome/brands/x-twitter
       link: https://x.com/OpenDataLab_AI
-      name: Twitter
+      name: X-Twitter
     - icon: fontawesome/brands/discord
       link: https://discord.gg/Tdedn9GTXq
       name: Discord
     - icon: fontawesome/brands/weixin
-      link: https://mineru.space/common/qun/?qid=362634
+      link: http://mineru.space/s/V85Yl
       name: WeChat
     - icon: material/email
       link: mailto:OpenDataLab@pjlab.org.cn

@@ -36,7 +36,7 @@ or use the interactive command line tool to select model downloads:
 ```bash
 mineru-models-download
 ```
->[!TIP]
+> [!NOTE]
 >- After download completion, the model path will be output in the current terminal window and automatically written to `mineru.json` in the user directory.
 >- You can also create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.
 >- After downloading models locally, you can freely move the model folder to other locations while updating the model path in `mineru.json`.

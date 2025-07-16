@@ -1,8 +1,8 @@
 # Frequently Asked Questions
 
-If your question is not listed, you can also use [DeepWiki](https://deepwiki.com/opendatalab/MinerU) to communicate with the AI assistant, which can solve most common problems.
+If your question is not listed, try using [DeepWiki](https://deepwiki.com/opendatalab/MinerU)'s AI assistant for common issues.
 
-If you still cannot resolve the issue, you can join the community through [Discord](https://discord.gg/Tdedn9GTXq) or [WeChat](http://mineru.space/s/V85Yl) to communicate with other users and developers.
+For unresolved problems, join our [Discord](https://discord.gg/Tdedn9GTXq) or [WeChat](http://mineru.space/s/V85Yl) community for support.
 
 ??? question "Encountered the error `ImportError: libGL.so.1: cannot open shared object file: No such file or directory` in Ubuntu 22.04 on WSL2"
 
