@@ -38,16 +38,16 @@ If you need to adjust parsing options through custom parameters, you can also ch
 - Direct Python API calls: [Python Usage Example](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
 - FastAPI calls:
   ```bash
-  mineru-api --host 127.0.0.1 --port 8000
+  mineru-api --host 0.0.0.0 --port 8000
   ```
   >[!TIP]
   >Access `http://127.0.0.1:8000/docs` in your browser to view the API documentation.
 - Start Gradio WebUI visual frontend:
   ```bash
   # Using pipeline/vlm-transformers/vlm-sglang-client backends
-  mineru-gradio --server-name 127.0.0.1 --server-port 7860
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860
   # Or using vlm-sglang-engine/pipeline backends (requires sglang environment)
-  mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-sglang-engine true
   ```
   >[!TIP]
   >
