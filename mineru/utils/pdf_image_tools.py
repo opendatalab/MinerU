@@ -45,11 +45,10 @@ def load_images_from_pdf(
         logger.warning("end_page_id is out of range, use images length")
         end_page_id = pdf_page_num - 1
 
-    for index in range(0, pdf_page_num):
-        if start_page_id <= index <= end_page_id:
-            page = pdf_doc[index]
-            image_dict = pdf_page_to_image(page, dpi=dpi)
-            images_list.append(image_dict)
+    for index in range(start_page_id, end_page_id + 1):
+        page = pdf_doc[index]
+        image_dict = pdf_page_to_image(page, dpi=dpi)
+        images_list.append(image_dict)
 
     return images_list, pdf_doc
 
