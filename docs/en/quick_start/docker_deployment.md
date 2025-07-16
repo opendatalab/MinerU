@@ -13,8 +13,6 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 > The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
 > If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.8.post1-cu128-b200` before executing the build operation.
 
----
-
 ## Docker Description
 
 MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sglang` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `sglang` to accelerate VLM model inference.
@@ -27,8 +25,6 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 > - Docker container must have access to the host machine's graphics devices.
 >
 > If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
-
----
 
 ## Start Docker Container:
 
@@ -43,8 +39,6 @@ docker run --gpus all \
 
 After executing this command, you will enter the Docker container's interactive terminal with some ports mapped for potential services. You can directly run MinerU-related commands within the container to use MinerU's features.
 You can also directly start MinerU services by replacing `/bin/bash` with service startup commands. For detailed instructions, please refer to the [MinerU Usage Documentation](../usage/index.md).
-
----
 
 ## Start Services Directly with Docker Compose
 

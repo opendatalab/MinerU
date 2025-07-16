@@ -7,8 +7,6 @@ export MINERU_MODEL_SOURCE=modelscope
 ```
 有关模型源配置和自定义本地模型路径的更多信息，请参考文档中的[模型源说明](./model_source.md)。
 
----
-
 ## 通过命令行快速使用
 MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行PDF解析：
 ```bash
@@ -25,7 +23,6 @@ mineru -p <input_path> -o <output_path>
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
 > 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
 
-
 ```bash
 # 或指定vlm后端解析
 mineru -p <input_path> -o <output_path> -b vlm-transformers
@@ -34,8 +31,6 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 > vlm后端另外支持`sglang`加速，与`transformers`后端相比，`sglang`的加速比可达20～30倍，可以在[扩展模块安装指南](../quick_start/extension_modules.md)中查看支持`sglang`加速的完整包安装方法。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
-
----
 
 ## 通过api、webui、sglang-client/server进阶使用
 
@@ -71,8 +66,6 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 > [!NOTE]
 > 所有sglang官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-sglang-server`、`mineru-gradio`、`mineru-api`，
 > 我们整理了一些`sglang`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
-
----
 
 ## 基于配置文件扩展 MinerU 功能
 

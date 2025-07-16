@@ -7,8 +7,6 @@ export MINERU_MODEL_SOURCE=modelscope
 ```
 For more information about model source configuration and custom local model paths, please refer to the [Model Source Documentation](./model_source.md) in the documentation.
 
----
-
 ## Quick Usage via Command Line
 MinerU has built-in command line tools that allow users to quickly use MinerU for PDF parsing through the command line:
 ```bash
@@ -34,8 +32,6 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 > The vlm backend additionally supports `sglang` acceleration. Compared to the `transformers` backend, `sglang` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `sglang` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
-
----
 
 ## Advanced Usage via API, WebUI, sglang-client/server
 
@@ -71,8 +67,6 @@ If you need to adjust parsing options through custom parameters, you can also ch
 > [!NOTE]
 > All officially supported sglang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`.
 > We have compiled some commonly used parameters and usage methods for `sglang`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
-
----
 
 ## Extending MinerU Functionality with Configuration Files
 
