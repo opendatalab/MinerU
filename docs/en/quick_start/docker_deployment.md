@@ -2,7 +2,7 @@
 
 MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
 
-## Build Docker Image using Dockerfile:
+## Build Docker Image using Dockerfile
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
@@ -12,6 +12,8 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 > [!TIP]
 > The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
 > If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.8.post1-cu128-b200` before executing the build operation.
+
+---
 
 ## Docker Description
 
@@ -26,6 +28,8 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 >
 > If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
 
+---
+
 ## Start Docker Container:
 
 ```bash
@@ -39,6 +43,8 @@ docker run --gpus all \
 
 After executing this command, you will enter the Docker container's interactive terminal with some ports mapped for potential services. You can directly run MinerU-related commands within the container to use MinerU's features.
 You can also directly start MinerU services by replacing `/bin/bash` with service startup commands. For detailed instructions, please refer to the [MinerU Usage Documentation](../usage/index.md).
+
+---
 
 ## Start Services Directly with Docker Compose
 
@@ -55,7 +61,10 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
 >- Due to the pre-allocation of GPU memory by the `sglang` inference acceleration framework, you may not be able to run multiple `sglang` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-sglang-server` service or using the `vlm-sglang-engine` backend.
 
-- Start `sglang-server` service and connect to `sglang-server` via `vlm-sglang-client` backend:
+---
+
+### Start sglang-server service
+connect to `sglang-server` via `vlm-sglang-client` backend
   ```bash
   docker compose -f compose.yaml --profile mineru-sglang-server up -d
   ```
@@ -65,14 +74,18 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
   > ```
 
-- Start API service:
+---
+
+### Start Web API service
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
 
-- Start Gradio WebUI service:
+---
+
+### Start Gradio WebUI service
   ```bash
   docker compose -f compose.yaml --profile mineru-gradio up -d
   ```

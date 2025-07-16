@@ -37,11 +37,9 @@ theme:
     - content.tabs.link
     - content.code.annotate
     - content.code.copy
+    - navigation.expand
     - navigation.footer
     - navigation.tabs
-    - navigation.instant
-    - navigation.instant.prefetch
-    - navigation.instant.progress
     - navigation.sections
     - navigation.path
     - navigation.indexes
@@ -49,6 +47,7 @@ theme:
     - navigation.tracking
     - search.suggest
     - toc.follow
+    - toc.integrate
 
 extra:
   social:
@@ -65,7 +64,7 @@ extra:
       link: https://mineru.space/common/qun/?qid=362634
       name: WeChat
     - icon: material/email
-      link: OpenDataLab@pjlab.org.cn
+      link: mailto:OpenDataLab@pjlab.org.cn
       name: E-mail
 
 copyright: © 2024 - 2025 MinerU. All Rights Reserved.
@@ -99,6 +98,7 @@ nav:
 plugins:
   - search
   - i18n:
+      reconfigure_material: true
       docs_structure: folder
       fallback_to_default: true
       reconfigure_material: true
@@ -123,6 +123,7 @@ plugins:
             FAQ: 常见问题解答
             Reference: 参考资料
             Output File Format: 输出文件格式
+            Demo: 在线演示
   - mkdocs-video
 
 markdown_extensions:
