@@ -19,7 +19,7 @@ mineru -p <input_path> -o <output_path>
 > - `<input_path>`：本地 PDF/图片 文件或目录
 > - `<output_path>`：输出目录
 > 
-> 更多关于输出文件的信息，请参考[输出文件说明](./output_file.md)。
+> 更多关于输出文件的信息，请参考[输出文件说明](../output_files.md)。
 
 > [!NOTE]
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
@@ -44,7 +44,8 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   ```bash
   mineru-api --host 127.0.0.1 --port 8000
   ```
-  在浏览器中访问 http://127.0.0.1:8000/docs 查看API文档。
+  >[!TIP]
+  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
 - 启动gradio webui 可视化前端：
   ```bash
   # 使用 pipeline/vlm-transformers/vlm-sglang-client 后端
@@ -52,14 +53,21 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   # 或使用 vlm-sglang-engine/pipeline 后端（需安装sglang环境）
   mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
   ```
-  在浏览器中访问 http://127.0.0.1:7860 使用 Gradio WebUI 或访问 http://127.0.0.1:7860/?view=api 使用 Gradio API。
+  >[!TIP]
+  > 
+  >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
+  >- 访问 `http://127.0.0.1:7860/?view=api` 使用 Gradio API。
 - 使用`sglang-client/server`方式调用：
   ```bash
   # 启动sglang server(需要安装sglang环境)
   mineru-sglang-server --port 30000
-  # 在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
-  mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
   ``` 
+  >[!TIP]
+  >在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
+  > ```bash
+  > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
+  > ```
+
 > [!TIP]
 > 所有sglang官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-sglang-server`、`mineru-gradio`、`mineru-api`，
 > 我们整理了一些`sglang`使用中的常用参数和使用方法，可以在文档[命令行参数进阶技巧](./advanced_cli_parameters.md)中获取。
@@ -67,9 +75,10 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 
 ## 基于配置文件扩展 MinerU 功能
 
-- MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可以在用户目录下创建 `mineru.json` 文件，添加自定义配置。
-- `mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。
-- 以下是一些可用的配置选项：
-  - `latex-delimiter-config`：用于配置 LaTeX 公式的分隔符，默认为`$`符号，可根据需要修改为其他符号或字符串。
-  - `llm-aided-config`：用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型，默认使用`阿里云百炼`的`qwen2.5-32b-instruct`模型，您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
-  - `models-dir`：用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。
+MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可以在用户目录下创建 `mineru.json` 文件，添加自定义配置。  
+`mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。  
+以下是一些可用的配置选项： 
+
+- `latex-delimiter-config`：用于配置 LaTeX 公式的分隔符，默认为`$`符号，可根据需要修改为其他符号或字符串。
+- `llm-aided-config`：用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型，默认使用`阿里云百炼`的`qwen2.5-32b-instruct`模型，您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
+- `models-dir`：用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。

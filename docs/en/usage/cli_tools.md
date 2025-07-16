@@ -63,6 +63,8 @@ Options:
 ## Environment Variables Description
 
 Some parameters of MinerU command line tools have equivalent environment variable configurations. Generally, environment variable configurations have higher priority than command line parameters and take effect across all command line tools.
+Here are the environment variables and their descriptions:
+
 - `MINERU_DEVICE_MODE`: Used to specify inference device, supports device types like `cpu/cuda/cuda:0/npu/mps`, only effective for `pipeline` backend.
 - `MINERU_VIRTUAL_VRAM_SIZE`: Used to specify maximum GPU VRAM usage per process (GB), only effective for `pipeline` backend.
 - `MINERU_MODEL_SOURCE`: Used to specify model source, supports `huggingface/modelscope/local`, defaults to `huggingface`, can be switched to `modelscope` or local models through environment variables.

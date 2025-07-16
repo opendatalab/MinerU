@@ -30,35 +30,49 @@ theme:
         icon: material/brightness-4
         name: Switch to system preference
   logo: images/logo.png
-  favicon: images/logo.svg
+  favicon: images/logo.png
   features:
     - content.tabs.link
     - content.code.annotate
     - content.code.copy
-    - navigation.instant
-    - navigation.instant.progress
+    - navigation.footer
     - navigation.tabs
-    - navigation.tabs.sticky
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
     - navigation.sections
     - navigation.path
     - navigation.indexes
+    - navigation.top
+    - navigation.tracking
     - search.suggest
+    - toc.follow
 
 nav:
   - Home:
     - "MinerU": index.md
     - Quick Start:
-      - quick_start/index.md
+      - Quick Start: quick_start/index.md
       - Extension Modules: quick_start/extension_modules.md
       - Docker Deployment: quick_start/docker_deployment.md
     - Usage:
-      - usage/index.md
+      - Usage: usage/index.md
       - CLI Tools: usage/cli_tools.md
       - Model Source: usage/model_source.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
-      - Output File Format: usage/output_files.md
+    - Reference:
+      - Output File Format: reference/output_files.md
+    - FAQ:
+      - FAQ: faq/index.md
+    - Demo:
+      - Demo: demo/index.md
+  - Reference:
+    - Output File Format: reference/output_files.md
   - FAQ:
-      - FAQ: FAQ/index.md
+    - FAQ: faq/index.md
+  - Demo:
+    - Demo: demo/index.md
+
 
 plugins:
   - search
@@ -75,17 +89,21 @@ plugins:
           nav_translations:
             Home: 主页
             Quick Start: 快速开始
-            Extension Modules: 扩展模块
+            Extension Modules: 扩展模块安装
             Docker Deployment: Docker部署
             Usage: 使用方法
             CLI Tools: 命令行工具
             Model Source: 模型源
-            Advanced CLI Parameters: 命令行参数进阶技巧
-            FAQ: FAQ
+            Advanced CLI Parameters: 命令行进阶参数
+            FAQ: 常见问题解答
+            Reference: 参考资料
             Output File Format: 输出文件格式
   - mkdocs-video
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - attr_list
   - gfm_admonition
   - pymdownx.highlight:
       use_pygments: true

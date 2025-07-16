@@ -38,6 +38,7 @@ mineru-models-download
 ```
 >[!TIP]
 >- After download completion, the model path will be output in the current terminal window and automatically written to `mineru.json` in the user directory.
+>- You can also create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.
 >- After downloading models locally, you can freely move the model folder to other locations while updating the model path in `mineru.json`.
 >- If you deploy the model folder to another server, please ensure you move the `mineru.json` file to the user directory of the new device and configure the model path correctly.
 >- If you need to update model files, you can run the `mineru-models-download` command again. Model updates do not support custom paths currently - if you haven't moved the local model folder, model files will be incrementally updated; if you have moved the model folder, model files will be re-downloaded to the default location and `mineru.json` will be updated.
