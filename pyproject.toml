@@ -43,7 +43,8 @@ test = [
     "pytest",
     "pytest-cov",
     "coverage",
-    "beautifulsoup4"
+    "beautifulsoup4",
+    "fuzzywuzzy"
 ]
 vlm = [
     "transformers>=4.51.1",
@@ -150,7 +151,11 @@ omit = [
     "*/cli_parser.py",
     "*/run_async.py"
 ]
+
 [tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.report]
 exclude_also = [
     'def __repr__',
     'if self.debug:',
@@ -163,4 +168,3 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
 ]
-directory = "htmlcov"
