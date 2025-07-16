@@ -4,6 +4,8 @@ repo_name: opendatalab/MinerU
 repo_url: https://github.com/opendatalab/MinerU
 
 theme:
+  icon:
+    repo: fontawesome/brands/github
   name: material
   palette:
     # Palette toggle for automatic mode
