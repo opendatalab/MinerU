@@ -1,5 +1,7 @@
 # Advanced Command Line Parameters
 
+---
+
 ## SGLang Acceleration Parameter Optimization
 
 ### Memory Optimization Parameters
@@ -9,6 +11,8 @@
 > - If you encounter insufficient VRAM when using a single graphics card, you may need to reduce the KV cache size with `--mem-fraction-static 0.5`. If VRAM issues persist, try reducing it further to `0.4` or lower.
 > - If you have two or more graphics cards, you can try using tensor parallelism (TP) mode to simply expand available VRAM: `--tp-size 2`
 
+---
+
 ### Performance Optimization Parameters
 > [!TIP]
 > If you can already use SGLang normally for accelerated VLM model inference but still want to further improve inference speed, you can try the following parameters:
@@ -16,10 +20,14 @@
 > - If you have multiple graphics cards, you can use SGLang's multi-card parallel mode to increase throughput: `--dp-size 2`
 > - You can also enable `torch.compile` to accelerate inference speed by approximately 15%: `--enable-torch-compile`
 
+---
+
 ### Parameter Passing Instructions
 > [!TIP]
 > - All officially supported SGLang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`
 > - If you want to learn more about `sglang` parameter usage, please refer to the [SGLang official documentation](https://docs.sglang.ai/backend/server_arguments.html#common-launch-commands)
+
+---
 
 ## GPU Device Selection and Configuration
 
@@ -31,6 +39,8 @@
 >   ```
 > - This specification method is effective for all command line calls, including `mineru`, `mineru-sglang-server`, `mineru-gradio`, and `mineru-api`, and applies to both `pipeline` and `vlm` backends.
 
+---
+
 ### Common Device Configuration Examples
 > [!TIP]
 > Here are some common `CUDA_VISIBLE_DEVICES` setting examples:
@@ -41,6 +51,8 @@
 >   CUDA_VISIBLE_DEVICES=0,2,3  # Devices 0, 2, 3 will be visible; device 1 is masked
 >   CUDA_VISIBLE_DEVICES=""  # No GPU will be visible
 >   ```
+
+---
 
 ## Practical Application Scenarios
 > [!TIP]
