@@ -70,13 +70,16 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 
 > [!TIP]
 > 所有sglang官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-sglang-server`、`mineru-gradio`、`mineru-api`，
-> 我们整理了一些`sglang`使用中的常用参数和使用方法，可以在文档[命令行参数进阶技巧](./advanced_cli_parameters.md)中获取。
+> 我们整理了一些`sglang`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
 
 
 ## 基于配置文件扩展 MinerU 功能
 
-MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可以在用户目录下创建 `mineru.json` 文件，添加自定义配置。  
-`mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。  
+MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可通过编辑用户目录下的 `mineru.json` 文件，添加自定义配置。
+
+>[!TIP]
+>`mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。  
+
 以下是一些可用的配置选项： 
 
 - `latex-delimiter-config`：用于配置 LaTeX 公式的分隔符，默认为`$`符号，可根据需要修改为其他符号或字符串。

@@ -74,8 +74,11 @@ If you need to adjust parsing options through custom parameters, you can also ch
 
 ## Extending MinerU Functionality with Configuration Files
 
-MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can create a `mineru.json` file in your user directory to add custom configurations.  
-The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-models-download`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.  
+MinerU is now ready to use out of the box, but also supports extending functionality through configuration files. You can edit `mineru.json` file in your user directory to add custom configurations.  
+
+>[!TIP]
+>The `mineru.json` file will be automatically generated when you use the built-in model download command `mineru-models-download`, or you can create it by copying the [configuration template file](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json) to your user directory and renaming it to `mineru.json`.  
+
 Here are some available configuration options:  
 
 - `latex-delimiter-config`: Used to configure LaTeX formula delimiters, defaults to `$` symbol, can be modified to other symbols or strings as needed.
