@@ -43,6 +43,14 @@
 </div>
 
 # 更新记录
+- 2025/07/16 2.1.1发布
+  - bug修复 
+    - 修复`pipeline`在某些情况可能发生的文本块内容丢失问题 #3005
+    - 修复`sglang-client`需要安装`torch`等不必要的包的问题 #2968
+    - 更新`dockerfile`以修复linux字体缺失导致的解析文本内容不完整问题 #2915
+  - 易用性更新
+    - 更新`compose.yaml`，便于用户直接启动`sglang-server`、`mineru-api`、`mineru-gradio`服务
+    - 启用全新的[在线文档站点](https://opendatalab.github.io/MinerU/zh/)，简化readme，提供更好的文档体验
 - 2025/07/05 2.1.0发布
   - 这是 MinerU 2 的第一个大版本更新，包含了大量新功能和改进，包含众多性能优化、体验优化和bug修复，具体更新内容如下： 
   - 性能优化： 
@@ -503,6 +511,12 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 ---
 
 ### 使用 MinerU
+
+最简单的命令行调用方式:
+```bash
+mineru -p <input_path> -o <output_path>
+```
+
 您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
 # TODO
