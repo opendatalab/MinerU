@@ -2,7 +2,7 @@
 
 MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
 
-## Build Docker Image using Dockerfile:
+## Build Docker Image using Dockerfile
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
@@ -61,6 +61,8 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
 >- Due to the pre-allocation of GPU memory by the `sglang` inference acceleration framework, you may not be able to run multiple `sglang` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-sglang-server` service or using the `vlm-sglang-engine` backend.
 
+---
+
 ### Start sglang-server service
 connect to `sglang-server` via `vlm-sglang-client` backend
   ```bash
@@ -72,12 +74,16 @@ connect to `sglang-server` via `vlm-sglang-client` backend
   > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
   > ```
 
+---
+
 ### Start Web API service
   ```bash
   docker compose -f compose.yaml --profile mineru-api up -d
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
+
+---
 
 ### Start Gradio WebUI service
   ```bash
