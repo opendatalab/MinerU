@@ -37,7 +37,7 @@ docker run --gpus all \
 ```
 
 执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
-您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[MinerU使用文档](../usage/index.md)。
+您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuisglang-clientserver)。
 
 ## 通过 Docker Compose 直接启动服务
 

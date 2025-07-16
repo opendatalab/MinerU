@@ -1,6 +1,6 @@
 # Quick Start
 
-If you encounter any installation issues, please check the [FAQ](../FAQ/index.md) first.
+If you encounter any installation issues, please check the [FAQ](../faq/index.md) first.
 
 ## Online Experience
 

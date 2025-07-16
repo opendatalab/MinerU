@@ -37,16 +37,16 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 - 通过python api直接调用：[Python 调用示例](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
 - 通过fast api方式调用：
   ```bash
-  mineru-api --host 127.0.0.1 --port 8000
+  mineru-api --host 0.0.0.0 --port 8000
   ```
   >[!TIP]
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
 - 启动gradio webui 可视化前端：
   ```bash
   # 使用 pipeline/vlm-transformers/vlm-sglang-client 后端
-  mineru-gradio --server-name 127.0.0.1 --server-port 7860
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860
   # 或使用 vlm-sglang-engine/pipeline 后端（需安装sglang环境）
-  mineru-gradio --server-name 127.0.0.1 --server-port 7860 --enable-sglang-engine true
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-sglang-engine true
   ```
   >[!TIP]
   > 
