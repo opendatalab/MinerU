@@ -13,8 +13,6 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 > [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile)默认使用`lmsysorg/sglang:v0.4.8.post1-cu126`作为基础镜像，支持Turing/Ampere/Ada Lovelace/Hopper平台，
 > 如您使用较新的`Blackwell`平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.8.post1-cu128-b200` 再执行build操作。
 
----
-
 ## Docker说明
 
 Mineru的docker使用了`lmsysorg/sglang`作为基础镜像，因此在docker中默认集成了`sglang`推理加速框架和必需的依赖环境。因此在满足条件的设备上，您可以直接使用`sglang`加速VLM模型推理。
@@ -26,8 +24,6 @@ Mineru的docker使用了`lmsysorg/sglang`作为基础镜像，因此在docker中
 > - docker中能够访问物理机的显卡设备。
 >
 > 如果您的设备不满足上述条件，您仍然可以使用MinerU的其他功能，但无法使用`sglang`加速VLM模型推理，即无法使用`vlm-sglang-engine`后端和启动`vlm-sglang-server`服务。
-
----
 
 ## 启动 Docker 容器：
 
@@ -41,9 +37,7 @@ docker run --gpus all \
 ```
 
 执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
-您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[MinerU使用文档](../usage/index.md)。
-
----
+您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuisglang-clientserver)。
 
 ## 通过 Docker Compose 直接启动服务
 
