@@ -44,6 +44,14 @@
 
 # Changelog
 
+- 2025/07/16 2.1.1 Released
+  - Bug fixes
+    - Fixed text block content loss issue that could occur in certain `pipeline` scenarios #3005
+    - Fixed issue where `sglang-client` required unnecessary packages like `torch` #2968
+    - Updated `dockerfile` to fix incomplete text content parsing due to missing fonts in Linux #2915
+  - Usability improvements
+    - Updated `compose.yaml` to facilitate direct startup of `sglang-server`, `mineru-api`, and `mineru-gradio` services
+    - Launched brand new [online documentation site](https://opendatalab.github.io/MinerU/), simplified readme, providing better documentation experience
 - 2025/07/05 Version 2.1.0 Released
   - This is the first major update of MinerU 2, which includes a large number of new features and improvements, covering significant performance optimizations, user experience enhancements, and bug fixes. The detailed update contents are as follows:
   - **Performance Optimizations:**
@@ -516,6 +524,11 @@ You can get the [Docker Deployment Instructions](https://opendatalab.github.io/M
 ---
 
 ### Using MinerU
+
+The simplest command line invocation is:
+```bash
+mineru -p <input_path> -o <output_path>
+```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
