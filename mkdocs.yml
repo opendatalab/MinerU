@@ -126,10 +126,10 @@ plugins:
             Output File Format: 输出文件格式
             Demo: 在线演示
           admonition_translations:
-            - Tip: 提示
-            - Warning: 警告
-            - Note: 注意
-            - Important: 重要
+            Tip: 提示
+            Warning: 警告
+            Note: 注意
+            Important: 重要
   - mkdocs-video
 
 markdown_extensions:
