@@ -26,7 +26,7 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 >
 > If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
 
-## Start Docker Container:
+## Start Docker Container
 
 ```bash
 docker run --gpus all \
@@ -60,7 +60,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ### Start sglang-server service
 connect to `sglang-server` via `vlm-sglang-client` backend
   ```bash
-  docker compose -f compose.yaml --profile mineru-sglang-server up -d
+  docker compose -f compose.yaml --profile sglang-server up -d
   ```
   >[!TIP]
   >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
@@ -72,7 +72,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Web API service
   ```bash
-  docker compose -f compose.yaml --profile mineru-api up -d
+  docker compose -f compose.yaml --profile api up -d
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
@@ -81,7 +81,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Gradio WebUI service
   ```bash
-  docker compose -f compose.yaml --profile mineru-gradio up -d
+  docker compose -f compose.yaml --profile gradio up -d
   ```
   >[!TIP]
   >
