@@ -25,7 +25,7 @@ Mineru的docker使用了`lmsysorg/sglang`作为基础镜像，因此在docker中
 >
 > 如果您的设备不满足上述条件，您仍然可以使用MinerU的其他功能，但无法使用`sglang`加速VLM模型推理，即无法使用`vlm-sglang-engine`后端和启动`vlm-sglang-server`服务。
 
-## 启动 Docker 容器：
+## 启动 Docker 容器
 
 ```bash
 docker run --gpus all \

@@ -26,7 +26,7 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 >
 > If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
 
-## Start Docker Container:
+## Start Docker Container
 
 ```bash
 docker run --gpus all \
