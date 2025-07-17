@@ -58,7 +58,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ### 启动 sglang-server 服务
 并通过`vlm-sglang-client`后端连接`sglang-server`
   ```bash
-  docker compose -f compose.yaml --profile mineru-sglang-server up -d
+  docker compose -f compose.yaml --profile sglang-server up -d
   ```
   >[!TIP]
   >在另一个终端中通过sglang client连接sglang server（只需cpu与网络，不需要sglang环境）
@@ -70,7 +70,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 
 ### 启动 Web API 服务
   ```bash
-  docker compose -f compose.yaml --profile mineru-api up -d
+  docker compose -f compose.yaml --profile api up -d
   ```
   >[!TIP]
   >在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
@@ -79,7 +79,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 
 ### 启动 Gradio WebUI 服务
   ```bash
-  docker compose -f compose.yaml --profile mineru-gradio up -d
+  docker compose -f compose.yaml --profile gradio up -d
   ```
   >[!TIP]
   > 

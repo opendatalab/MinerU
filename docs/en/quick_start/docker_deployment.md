@@ -60,7 +60,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ### Start sglang-server service
 connect to `sglang-server` via `vlm-sglang-client` backend
   ```bash
-  docker compose -f compose.yaml --profile mineru-sglang-server up -d
+  docker compose -f compose.yaml --profile sglang-server up -d
   ```
   >[!TIP]
   >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
@@ -72,7 +72,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Web API service
   ```bash
-  docker compose -f compose.yaml --profile mineru-api up -d
+  docker compose -f compose.yaml --profile api up -d
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
@@ -81,7 +81,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Gradio WebUI service
   ```bash
-  docker compose -f compose.yaml --profile mineru-gradio up -d
+  docker compose -f compose.yaml --profile gradio up -d
   ```
   >[!TIP]
   >
