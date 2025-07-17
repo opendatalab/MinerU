@@ -14,33 +14,37 @@ on:
 jobs:
   cli-test:
     if: github.repository == 'opendatalab/MinerU'
-    runs-on: pdf
+    runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: true
 
     steps:
     - name: PDF cli
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
+        ref: dev
         fetch-depth: 2
+
+    - name: install uv
+      uses: astral-sh/setup-uv@v5
 
     - name: install&test
       run: |
-        source activate mineru
-        conda env list
-        pip show coverage
-        cd $GITHUB_WORKSPACE && sh tests/retry_env.sh
-        # cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
-        # cd $GITHUB_WORKSPACE && coverage run -m pytest tests/unittest/ --cov=magic_pdf/  --cov-report html --cov-report term-missing
-        # cd $GITHUB_WORKSPACE && python tests/get_coverage.py
-        cd $GITHUB_WORKSPACE && pytest -m P0 -s -v tests/test_cli/test_cli_sdk.py
+        uv --version
+        uv venv --python 3.12
+        source .venv/bin/activate
+        uv pip install .[test]
+        cd $GITHUB_WORKSPACE && python tests/clean_coverage.py      
+        cd $GITHUB_WORKSPACE && coverage run
+        cd $GITHUB_WORKSPACE && python tests/get_coverage.py
+
 
   notify_to_feishu:
     if: ${{ always() && !cancelled() && contains(needs.*.result, 'failure')}}
     needs: cli-test
-    runs-on: pdf
+    runs-on: ubuntu-latest
     steps:
     - name: notify
       run: |
-        curl -X POST -H "Content-Type: application/json" -d '{"msg_type":"post","content":{"post":{"zh_cn":{"title":"'${{ github.repository }}' GitHubAction Failed","content":[[{"tag":"text","text":""},{"tag":"a","text":"Please click here for details ","href":"https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"},{"tag":"at","user_id":"'$USER_ID'"}]]}}}}'  $WEBHOOK_URL
+        curl -X POST -H "Content-Type: application/json" -d '{"msg_type":"post","content":{"post":{"zh_cn":{"title":"'${{ github.repository }}' GitHubAction Failed","content":[[{"tag":"text","text":""},{"tag":"a","text":"Please click here for details ","href":"https://github.com/'${{ github.repository }}'/actions/runs/'${GITHUB_RUN_ID}'"}]]}}}}'  ${{ secrets.FEISHU_WEBHOOK_URL }}

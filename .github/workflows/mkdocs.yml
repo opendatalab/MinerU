@@ -1,0 +1,22 @@
+name: Publish docs via GitHub Pages
+on:
+  push:
+    branches:
+      - "master"
+      - "dev"
+
+jobs:
+  build:
+    name: Deploy docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: Deploy docs
+        uses: mhausenblas/mkdocs-deploy-gh-pages@master
+        # Or use mhausenblas/mkdocs-deploy-gh-pages@nomaterial to build without the mkdocs-material theme
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          REQUIREMENTS: /docs/requirements.txt
