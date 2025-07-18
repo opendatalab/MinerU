@@ -1,6 +1,6 @@
 # 快速开始
 
-如果遇到任何安装问题，请先查询 [FAQ](../FAQ/index.md) 
+如果遇到任何安装问题，请先查询 [FAQ](../faq/index.md) 
 
 ## 在线体验
 
@@ -92,5 +92,10 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 ---
 
 ### 使用 MinerU
+
+最简单的命令行调用方式:
+```bash
+mineru -p <input_path> -o <output_path>
+```
 
 您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](../usage/index.md)。

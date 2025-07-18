@@ -31,33 +31,28 @@ mineru-api --help
 Usage: mineru-api [OPTIONS]
 
 Options:
-  --host TEXT     Server host (default: 127.0.0.1)
-  --port INTEGER  Server port (default: 8000)
-  --reload        Enable auto-reload (development mode)
-  --help          Show this message and exit.
+  --host TEXT     服务器主机地址（默认：127.0.0.1）
+  --port INTEGER  服务器端口（默认：8000）
+  --reload        启用自动重载（开发模式）
+  --help          显示此帮助信息并退出
 ```
 ```bash
 mineru-gradio --help
 Usage: mineru-gradio [OPTIONS]
 
 Options:
-  --enable-example BOOLEAN        Enable example files for input.The example
-                                  files to be input need to be placed in the
-                                  `example` folder within the directory where
-                                  the command is currently executed.
-  --enable-sglang-engine BOOLEAN  Enable SgLang engine backend for faster
-                                  processing.
-  --enable-api BOOLEAN            Enable gradio API for serving the
-                                  application.
-  --max-convert-pages INTEGER     Set the maximum number of pages to convert
-                                  from PDF to Markdown.
-  --server-name TEXT              Set the server name for the Gradio app.
-  --server-port INTEGER           Set the server port for the Gradio app.
+  --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
+                                  执行命令目录下的 `example` 文件夹中)
+  --enable-sglang-engine BOOLEAN  启用 SgLang 引擎后端以提高处理速度
+  --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
+  --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
+  --server-name TEXT              设置 Gradio 应用程序的服务器主机名
+  --server-port INTEGER           设置 Gradio 应用程序的服务器端口
   --latex-delimiters-type [a|b|all]
-                                  Set the type of LaTeX delimiters to use in
-                                  Markdown rendering:'a' for type '$', 'b' for
-                                  type '()[]', 'all' for both types.
-  --help                          Show this message and exit.
+                                  设置在 Markdown 渲染中使用的 LaTeX 分隔符类型
+                                  ('a' 表示 '$' 类型，'b' 表示 '()[]' 类型，
+                                  'all' 表示两种类型都使用)
+  --help                          显示此帮助信息并退出
 ```
 
 ## 环境变量说明
@@ -71,5 +66,3 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_TOOLS_CONFIG_JSON`：用于指定配置文件路径，默认为用户目录下的`mineru.json`，可通过环境变量指定其他配置文件路径。
 - `MINERU_FORMULA_ENABLE`：用于启用公式解析，默认为`true`，可通过环境变量设置为`false`来禁用公式解析。
 - `MINERU_TABLE_ENABLE`：用于启用表格解析，默认为`true`，可通过环境变量设置为`false`来禁用表格解析。
-
-

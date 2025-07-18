@@ -1,6 +1,6 @@
 # Quick Start
 
-If you encounter any installation issues, please check the [FAQ](../FAQ/index.md) first.
+If you encounter any installation issues, please check the [FAQ](../faq/index.md) first.
 
 ## Online Experience
 
@@ -92,5 +92,10 @@ You can get the [Docker Deployment Instructions](./docker_deployment.md) in the 
 ---
 
 ### Using MinerU
+
+The simplest command line invocation is:
+```bash
+mineru -p <input_path> -o <output_path>
+```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

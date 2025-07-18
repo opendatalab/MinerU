@@ -44,6 +44,14 @@
 
 # Changelog
 
+- 2025/07/16 2.1.1 Released
+  - Bug fixes
+    - Fixed text block content loss issue that could occur in certain `pipeline` scenarios #3005
+    - Fixed issue where `sglang-client` required unnecessary packages like `torch` #2968
+    - Updated `dockerfile` to fix incomplete text content parsing due to missing fonts in Linux #2915
+  - Usability improvements
+    - Updated `compose.yaml` to facilitate direct startup of `sglang-server`, `mineru-api`, and `mineru-gradio` services
+    - Launched brand new [online documentation site](https://opendatalab.github.io/MinerU/), simplified readme, providing better documentation experience
 - 2025/07/05 Version 2.1.0 Released
   - This is the first major update of MinerU 2, which includes a large number of new features and improvements, covering significant performance optimizations, user experience enhancements, and bug fixes. The detailed update contents are as follows:
   - **Performance Optimizations:**
@@ -51,10 +59,10 @@
     - Greatly enhanced post-processing speed when the `pipeline` backend handles batch processing of documents with fewer pages (<10 pages).
     - Layout analysis speed of the `pipeline` backend has been increased by approximately 20%.
   - **Experience Enhancements:**
-    - Built-in ready-to-use `fastapi service` and `gradio webui`. For detailed usage instructions, please refer to [Documentation](#3-api-calls-or-visual-invocation).
+    - Built-in ready-to-use `fastapi service` and `gradio webui`. For detailed usage instructions, please refer to [Documentation](https://opendatalab.github.io/MinerU/usage/quick_usage/#advanced-usage-via-api-webui-sglang-clientserver).
     - Adapted to `sglang` version `0.4.8`, significantly reducing the GPU memory requirements for the `vlm-sglang` backend. It can now run on graphics cards with as little as `8GB GPU memory` (Turing architecture or newer).
     - Added transparent parameter passing for all commands related to `sglang`, allowing the `sglang-engine` backend to receive all `sglang` parameters consistently with the `sglang-server`.
-    - Supports feature extensions based on configuration files, including `custom formula delimiters`, `enabling heading classification`, and `customizing local model directories`. For detailed usage instructions, please refer to [Documentation](#4-extending-mineru-functionality-through-configuration-files).
+    - Supports feature extensions based on configuration files, including `custom formula delimiters`, `enabling heading classification`, and `customizing local model directories`. For detailed usage instructions, please refer to [Documentation](https://opendatalab.github.io/MinerU/usage/quick_usage/#extending-mineru-functionality-with-configuration-files).
   - **New Features:**
     - Updated the `pipeline` backend with the PP-OCRv5 multilingual text recognition model, supporting text recognition in 37 languages such as French, Spanish, Portuguese, Russian, and Korean, with an average accuracy improvement of over 30%. [Details](https://paddlepaddle.github.io/PaddleOCR/latest/en/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html)
     - Introduced limited support for vertical text layout in the `pipeline` backend.
@@ -516,6 +524,11 @@ You can get the [Docker Deployment Instructions](https://opendatalab.github.io/M
 ---
 
 ### Using MinerU
+
+The simplest command line invocation is:
+```bash
+mineru -p <input_path> -o <output_path>
+```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 

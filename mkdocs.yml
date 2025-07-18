@@ -56,12 +56,12 @@ extra:
       name: GitHub
     - icon: fontawesome/brands/x-twitter
       link: https://x.com/OpenDataLab_AI
-      name: Twitter
+      name: X-Twitter
     - icon: fontawesome/brands/discord
       link: https://discord.gg/Tdedn9GTXq
       name: Discord
     - icon: fontawesome/brands/weixin
-      link: https://mineru.space/common/qun/?qid=362634
+      link: http://mineru.space/s/V85Yl
       name: WeChat
     - icon: material/email
       link: mailto:OpenDataLab@pjlab.org.cn
@@ -78,8 +78,9 @@ nav:
       - Docker Deployment: quick_start/docker_deployment.md
     - Usage:
       - Usage: usage/index.md
-      - CLI Tools: usage/cli_tools.md
+      - Quick Usage: usage/quick_usage.md
       - Model Source: usage/model_source.md
+      - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
     - Reference:
       - Output File Format: reference/output_files.md
@@ -117,6 +118,7 @@ plugins:
             Extension Modules: 扩展模块安装
             Docker Deployment: Docker部署
             Usage: 使用方法
+            Quick Usage: 快速使用
             CLI Tools: 命令行工具
             Model Source: 模型源
             Advanced CLI Parameters: 命令行进阶参数

@@ -13,8 +13,6 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 > The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
 > If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.8.post1-cu128-b200` before executing the build operation.
 
----
-
 ## Docker Description
 
 MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sglang` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `sglang` to accelerate VLM model inference.
@@ -28,9 +26,7 @@ MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sg
 >
 > If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
 
----
-
-## Start Docker Container:
+## Start Docker Container
 
 ```bash
 docker run --gpus all \
@@ -42,9 +38,7 @@ docker run --gpus all \
 ```
 
 After executing this command, you will enter the Docker container's interactive terminal with some ports mapped for potential services. You can directly run MinerU-related commands within the container to use MinerU's features.
-You can also directly start MinerU services by replacing `/bin/bash` with service startup commands. For detailed instructions, please refer to the [MinerU Usage Documentation](../usage/index.md).
-
----
+You can also directly start MinerU services by replacing `/bin/bash` with service startup commands. For detailed instructions, please refer to the [Start the service via command](https://opendatalab.github.io/MinerU/usage/quick_usage/#advanced-usage-via-api-webui-sglang-clientserver).
 
 ## Start Services Directly with Docker Compose
 
@@ -66,7 +60,7 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 ### Start sglang-server service
 connect to `sglang-server` via `vlm-sglang-client` backend
   ```bash
-  docker compose -f compose.yaml --profile mineru-sglang-server up -d
+  docker compose -f compose.yaml --profile sglang-server up -d
   ```
   >[!TIP]
   >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
@@ -78,7 +72,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Web API service
   ```bash
-  docker compose -f compose.yaml --profile mineru-api up -d
+  docker compose -f compose.yaml --profile api up -d
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
@@ -87,7 +81,7 @@ connect to `sglang-server` via `vlm-sglang-client` backend
 
 ### Start Gradio WebUI service
   ```bash
-  docker compose -f compose.yaml --profile mineru-gradio up -d
+  docker compose -f compose.yaml --profile gradio up -d
   ```
   >[!TIP]
   >
