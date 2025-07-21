@@ -1,0 +1,30 @@
+# Manifest file for including additional files in the package distribution
+# This helps with dependency detection and package completeness
+
+include README.md
+include README_zh-CN.md
+include LICENSE.md
+include requirements.txt
+include requirements-dev.txt
+include pyproject.toml
+include mineru.template.json
+
+# Include documentation
+recursive-include docs *
+recursive-include demo *
+
+# Include test files
+recursive-include tests *
+
+# Include package data
+recursive-include mineru/resources *
+recursive-include mineru *.json *.yaml *.yml *.toml
+
+# Exclude unnecessary files
+exclude .gitignore
+exclude .gitattributes
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
+recursive-exclude * *.so
+recursive-exclude * .git*

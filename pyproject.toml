@@ -11,10 +11,19 @@ readme = "README.md"
 requires-python = ">=3.10,<3.14"
 keywords = ["magic-pdf", "mineru", "MinerU", "convert", "pdf", "markdown"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Utilities",
 ]
 dependencies = [
     "boto3>=1.28.43",
@@ -113,6 +122,8 @@ homepage = "https://mineru.net/"
 documentation = "https://opendatalab.github.io/MinerU/"
 repository = "https://github.com/opendatalab/MinerU"
 issues = "https://github.com/opendatalab/MinerU/issues"
+changelog = "https://github.com/opendatalab/MinerU/releases"
+funding = "https://github.com/sponsors/opendatalab"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"

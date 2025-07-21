@@ -1,0 +1,22 @@
+# Core dependencies for mineru
+# This file mirrors the dependencies defined in pyproject.toml
+# and is provided for better GitHub dependency graph support
+
+boto3>=1.28.43
+click>=8.1.7
+loguru>=0.7.2
+numpy>=1.21.6
+pdfminer.six==20250506
+tqdm>=4.67.1
+requests
+httpx
+pillow>=11.0.0
+pypdfium2>=4.30.0
+pypdf>=5.6.0
+reportlab
+pdftext>=0.6.2
+modelscope>=1.26.0
+huggingface-hub>=0.32.4
+json-repair>=0.46.2
+opencv-python>=4.11.0.86
+fast-langdetect>=0.2.3,<0.3.0
