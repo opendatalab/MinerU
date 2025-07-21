@@ -56,12 +56,12 @@
   - 性能优化： 
     - 大幅提升某些特定分辨率（长边2000像素左右）文档的预处理速度
     - 大幅提升`pipeline`后端批量处理大量页数较少（<10）文档时的后处理速度
-    - `pipline`后端的layout分析速度提升约20%
+    - `pipeline`后端的layout分析速度提升约20%
   - 体验优化：
-    - 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](#3-api-调用-或-可视化调用)
+    - 内置开箱即用的`fastapi服务`和`gradio webui`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuisglang-clientserver)
     - `sglang`适配`0.4.8`版本，大幅降低`vlm-sglang`后端的显存要求，最低可在`8G显存`(Turing及以后架构)的显卡上运行
     - 对所有命令增加`sglang`的参数透传，使得`sglang-engine`后端可以与`sglang-server`一致，接收`sglang`的所有参数
-    - 支持基于配置文件的功能扩展，包含`自定义公式标识符`、`开启标题分级功能`、`自定义本地模型目录`，详细使用方法请参考[文档](#4-基于配置文件扩展-mineru-功能)
+    - 支持基于配置文件的功能扩展，包含`自定义公式标识符`、`开启标题分级功能`、`自定义本地模型目录`，详细使用方法请参考[文档](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#mineru_1)
   - 新特性：  
     - `pipeline`后端更新 PP-OCRv5 多语种文本识别模型，支持法语、西班牙语、葡萄牙语、俄语、韩语等 37 种语言的文字识别，平均精度涨幅超30%。[详情](https://paddlepaddle.github.io/PaddleOCR/latest/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html)
     - `pipeline`后端增加对竖排文本的有限支持
