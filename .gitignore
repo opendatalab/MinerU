@@ -51,3 +51,9 @@ _build/
 
 
 output/
+
+# Build artifacts  
+build/
+dist/
+*.egg-info/
+*.egg
