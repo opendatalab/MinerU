@@ -109,8 +109,10 @@ pipeline_old_linux = [
 ]
 
 [project.urls]
-Home = "https://mineru.net/"
-Repository = "https://github.com/opendatalab/MinerU"
+homepage = "https://mineru.net/"
+documentation = "https://opendatalab.github.io/MinerU/"
+repository = "https://github.com/opendatalab/MinerU"
+issues = "https://github.com/opendatalab/MinerU/issues"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
