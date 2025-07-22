@@ -115,7 +115,7 @@ class UnimernetModel(object):
                 mf_img = mf_img.to(dtype=self.model.dtype)
                 mf_img = mf_img.to(self.device)
                 with torch.no_grad():
-                    output = self.model.generate({"image": mf_img})
+                    output = self.model.generate({"image": mf_img}, batch_size=batch_size)
                 mfr_res.extend(output["fixed_str"])
 
                 # 更新进度条，每次增加batch_size，但要注意最后一个batch可能不足batch_size
