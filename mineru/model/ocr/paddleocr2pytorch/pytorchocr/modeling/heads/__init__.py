@@ -17,14 +17,12 @@ __all__ = ["build_head"]
 
 def build_head(config, **kwargs):
     # det head
-    from .det_db_head import DBHead, PFHeadLocal
-
-    # rec head
-    from .rec_ctc_head import CTCHead
-    from .rec_multi_head import MultiHead
-
     # cls head
-    from .cls_head import ClsHead
+    # from .cls_head import ClsHead
+    # from .det_db_head import DBHead, PFHeadLocal
+    # # rec head
+    # from .rec_ctc_head import CTCHead
+    # from .rec_multi_head import MultiHead
 
     support_dict = [
         "DBHead",
@@ -35,7 +33,6 @@ def build_head(config, **kwargs):
     ]
 
     module_name = config.pop("name")
-    char_num = config.pop("char_num", 6625)
     assert module_name in support_dict, Exception(
         "head only support {}".format(support_dict)
     )

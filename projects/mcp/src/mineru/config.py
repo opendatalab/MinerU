@@ -1,8 +1,9 @@
 """MinerU File转Markdown转换服务的配置工具。"""
 
-import os
 import logging
+import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # 从 .env 文件加载环境变量

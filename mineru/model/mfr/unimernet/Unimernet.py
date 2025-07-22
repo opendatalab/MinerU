@@ -21,8 +21,11 @@ class MathDataset(Dataset):
 class UnimernetModel(object):
     def __init__(self, weight_dir, _device_="cpu"):
         from .unimernet_hf import UnimernetModel
+
         if _device_.startswith("mps") or _device_.startswith("npu"):
-            self.model = UnimernetModel.from_pretrained(weight_dir, attn_implementation="eager")
+            self.model = UnimernetModel.from_pretrained(
+                weight_dir, attn_implementation="eager"
+            )
         else:
             self.model = UnimernetModel.from_pretrained(weight_dir)
         self.device = _device_
@@ -61,7 +64,9 @@ class UnimernetModel(object):
             res["latex"] = latex
         return formula_list
 
-    def batch_predict(self, images_mfd_res: list, images: list, batch_size: int = 64) -> list:
+    def batch_predict(
+        self, images_mfd_res: list, images: list, batch_size: int = 64
+    ) -> list:
         images_formula_list = []
         mf_image_list = []
         backfill_list = []
@@ -73,9 +78,9 @@ class UnimernetModel(object):
             pil_img = images[image_index]
             formula_list = []
 
-            for idx, (xyxy, conf, cla) in enumerate(zip(
-                    mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
-            )):
+            for idx, (xyxy, conf, cla) in enumerate(
+                zip(mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls)
+            ):
                 xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
                 new_item = {
                     "category_id": 13 + int(cla.item()),
@@ -100,7 +105,9 @@ class UnimernetModel(object):
         sorted_images = [x[2] for x in image_info]
 
         # Create mapping for results
-        index_mapping = {new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)}
+        index_mapping = {
+            new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
+        }
 
         # Create dataset with sorted images
         dataset = MathDataset(sorted_images, transform=self.model.transform)
@@ -119,7 +126,9 @@ class UnimernetModel(object):
                 mfr_res.extend(output["fixed_str"])
 
                 # 更新进度条，每次增加batch_size，但要注意最后一个batch可能不足batch_size
-                current_batch_size = min(batch_size, len(sorted_images) - index * batch_size)
+                current_batch_size = min(
+                    batch_size, len(sorted_images) - index * batch_size
+                )
                 pbar.update(current_batch_size)
 
         # Restore original order

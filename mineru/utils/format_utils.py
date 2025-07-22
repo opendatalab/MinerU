@@ -1,16 +1,14 @@
-
-import re
-import itertools
 import html
+import itertools
+import re
 from typing import Any, Dict, List
-from pydantic import (
-    BaseModel,
-    computed_field,
-    model_validator,
-)
+
+from pydantic import BaseModel, computed_field, model_validator
+
 
 class TableCell(BaseModel):
     """TableCell."""
+
     row_span: int = 1
     col_span: int = 1
     start_row_offset_idx: int
@@ -29,11 +27,10 @@ class TableCell(BaseModel):
         if isinstance(data, Dict):
             # Check if this is a native BoundingBox or a bbox from docling-ibm-models
             if (
-                    # "bbox" not in data
-                    # or data["bbox"] is None
-                    # or isinstance(data["bbox"], BoundingBox)
-                    "text"
-                    in data
+                # "bbox" not in data
+                # or data["bbox"] is None
+                # or isinstance(data["bbox"], BoundingBox)
+                "text" in data
             ):
                 return data
             text = data["bbox"].get("token", "")
@@ -59,7 +56,7 @@ class TableData(BaseModel):  # TBD
     @computed_field  # type: ignore
     @property
     def grid(
-            self,
+        self,
     ) -> List[List[TableCell]]:
         """grid."""
         # Initialise empty table data grid (only empty cells)
@@ -80,12 +77,12 @@ class TableData(BaseModel):  # TBD
         # Overwrite cells in table data for which there is actual cell content.
         for cell in self.table_cells:
             for i in range(
-                    min(cell.start_row_offset_idx, self.num_rows),
-                    min(cell.end_row_offset_idx, self.num_rows),
+                min(cell.start_row_offset_idx, self.num_rows),
+                min(cell.end_row_offset_idx, self.num_rows),
             ):
                 for j in range(
-                        min(cell.start_col_offset_idx, self.num_cols),
-                        min(cell.end_col_offset_idx, self.num_cols),
+                    min(cell.start_col_offset_idx, self.num_cols),
+                    min(cell.end_col_offset_idx, self.num_cols),
                 ):
                     table_data[i][j] = cell
 
@@ -107,7 +104,11 @@ def otsl_extract_tokens_and_text(s: str):
     # Pattern to match anything enclosed by < >
     # (including the angle brackets themselves)
     # pattern = r"(<[^>]+>)"
-    pattern = r"(" + r"|".join([OTSL_NL, OTSL_FCEL, OTSL_ECEL, OTSL_LCEL, OTSL_UCEL, OTSL_XCEL]) + r")"
+    pattern = (
+        r"("
+        + r"|".join([OTSL_NL, OTSL_FCEL, OTSL_ECEL, OTSL_LCEL, OTSL_UCEL, OTSL_XCEL])
+        + r")"
+    )
     # Find all tokens (e.g. "<otsl>", "<loc_140>", etc.)
     tokens = re.findall(pattern, s)
     # Remove any tokens that start with "<loc_"
@@ -145,13 +146,19 @@ def otsl_parse_texts(texts, tokens):
         new_texts = []
         text_idx = 0
 
-        for row_idx, row in enumerate(split_row_tokens):
-            for col_idx, token in enumerate(row):
+        for _row_idx, row in enumerate(split_row_tokens):
+            for _col_idx, token in enumerate(row):
                 new_texts.append(token)
                 if text_idx < len(texts) and texts[text_idx] == token:
                     text_idx += 1
-                    if (text_idx < len(texts) and 
-                        texts[text_idx] not in [OTSL_NL, OTSL_FCEL, OTSL_ECEL, OTSL_LCEL, OTSL_UCEL, OTSL_XCEL]):
+                    if text_idx < len(texts) and texts[text_idx] not in [
+                        OTSL_NL,
+                        OTSL_FCEL,
+                        OTSL_ECEL,
+                        OTSL_LCEL,
+                        OTSL_UCEL,
+                        OTSL_XCEL,
+                    ]:
                         new_texts.append(texts[text_idx])
                         text_idx += 1
 
@@ -257,8 +264,6 @@ def export_to_html(table_data: TableData):
     nrows = table_data.num_rows
     ncols = table_data.num_cols
 
-    text = ""
-
     if len(table_data.table_cells) == 0:
         return ""
 
@@ -310,9 +315,7 @@ def convert_otsl_to_html(otsl_content: str):
 
     table_data = TableData(
         num_rows=len(split_row_tokens),
-        num_cols=(
-            max(len(row) for row in split_row_tokens) if split_row_tokens else 0
-        ),
+        num_cols=(max(len(row) for row in split_row_tokens) if split_row_tokens else 0),
         table_cells=table_cells,
     )
 

@@ -3,9 +3,9 @@ from typing import Literal
 
 from loguru import logger
 
-from mineru.utils.boxbase import bbox_distance, is_in
-from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
+from mineru.utils.boxbase import bbox_distance, is_in
+from mineru.utils.enum_class import BlockType, ContentType, SplitFlag
 from mineru.utils.format_utils import convert_otsl_to_html
 
 
@@ -14,9 +14,7 @@ class MagicModel:
         self.token = token
 
         # 使用正则表达式查找所有块
-        pattern = (
-            r"<\|box_start\|>(.*?)<\|box_end\|><\|ref_start\|>(.*?)<\|ref_end\|><\|md_start\|>(.*?)(?:<\|md_end\|>|<\|im_end\|>)"
-        )
+        pattern = r"<\|box_start\|>(.*?)<\|box_end\|><\|ref_start\|>(.*?)<\|ref_end\|><\|md_start\|>(.*?)(?:<\|md_end\|>|<\|im_end\|>)"
         block_infos = re.findall(pattern, token, re.DOTALL)
 
         blocks = []
@@ -94,32 +92,39 @@ class MagicModel:
                     "content": isolated_formula_clean(block_content),
                 }
             else:
-                if block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
+                if (
+                    block_content.count("\\(") == block_content.count("\\)")
+                    and block_content.count("\\(") > 0
+                ):
                     # 生成包含文本和公式的span列表
                     spans = []
                     last_end = 0
 
                     # 查找所有公式
-                    for match in re.finditer(r'\\\((.+?)\\\)', block_content):
+                    for match in re.finditer(r"\\\((.+?)\\\)", block_content):
                         start, end = match.span()
 
                         # 添加公式前的文本
                         if start > last_end:
                             text_before = block_content[last_end:start]
                             if text_before.strip():
-                                spans.append({
-                                    "bbox": block_bbox,
-                                    "type": ContentType.TEXT,
-                                    "content": text_before
-                                })
+                                spans.append(
+                                    {
+                                        "bbox": block_bbox,
+                                        "type": ContentType.TEXT,
+                                        "content": text_before,
+                                    }
+                                )
 
                         # 添加公式（去除\(和\)）
                         formula = match.group(1)
-                        spans.append({
-                            "bbox": block_bbox,
-                            "type": ContentType.INLINE_EQUATION,
-                            "content": formula.strip()
-                        })
+                        spans.append(
+                            {
+                                "bbox": block_bbox,
+                                "type": ContentType.INLINE_EQUATION,
+                                "content": formula.strip(),
+                            }
+                        )
 
                         last_end = end
 
@@ -127,11 +132,13 @@ class MagicModel:
                     if last_end < len(block_content):
                         text_after = block_content[last_end:]
                         if text_after.strip():
-                            spans.append({
-                                "bbox": block_bbox,
-                                "type": ContentType.TEXT,
-                                "content": text_after
-                            })
+                            spans.append(
+                                {
+                                    "bbox": block_bbox,
+                                    "type": ContentType.TEXT,
+                                    "content": text_after,
+                                }
+                            )
 
                     span = spans
                 else:
@@ -154,7 +161,9 @@ class MagicModel:
                     "spans": span,
                 }
             else:
-                raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
+                raise ValueError(
+                    f"Invalid span type: {span_type}, expected dict or list, got {type(span)}"
+                )
 
             blocks.append(
                 {
@@ -171,9 +180,17 @@ class MagicModel:
         self.text_blocks = []
         self.title_blocks = []
         for block in blocks:
-            if block["type"] in [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]:
+            if block["type"] in [
+                BlockType.IMAGE_BODY,
+                BlockType.IMAGE_CAPTION,
+                BlockType.IMAGE_FOOTNOTE,
+            ]:
                 self.image_blocks.append(block)
-            elif block["type"] in [BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]:
+            elif block["type"] in [
+                BlockType.TABLE_BODY,
+                BlockType.TABLE_CAPTION,
+                BlockType.TABLE_FOOTNOTE,
+            ]:
                 self.table_blocks.append(block)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
                 self.interline_equation_blocks.append(block)
@@ -205,8 +222,10 @@ class MagicModel:
 
 def isolated_formula_clean(txt):
     latex = txt[:]
-    if latex.startswith("\\["): latex = latex[2:]
-    if latex.endswith("\\]"): latex = latex[:-2]
+    if latex.startswith("\\["):
+        latex = latex[2:]
+    if latex.endswith("\\]"):
+        latex = latex[:-2]
     latex = latex_fix(latex.strip())
     return latex
 
@@ -219,34 +238,34 @@ def latex_fix(latex):
     # \left\| ... \right\|
     # \left[ ... \right]
 
-    LEFT_COUNT_PATTERN = re.compile(r'\\left(?![a-zA-Z])')
-    RIGHT_COUNT_PATTERN = re.compile(r'\\right(?![a-zA-Z])')
+    LEFT_COUNT_PATTERN = re.compile(r"\\left(?![a-zA-Z])")
+    RIGHT_COUNT_PATTERN = re.compile(r"\\right(?![a-zA-Z])")
     left_count = len(LEFT_COUNT_PATTERN.findall(latex))  # 不匹配\lefteqn等
     right_count = len(RIGHT_COUNT_PATTERN.findall(latex))  # 不匹配\rightarrow
 
     if left_count != right_count:
         for _ in range(2):
             # replace valid pairs
-            latex = re.sub(r'\\left\\\{', "{", latex) # \left\{
-            latex = re.sub(r"\\left\|", "|", latex) # \left|
-            latex = re.sub(r"\\left\\\|", "|", latex) # \left\|
-            latex = re.sub(r"\\left\(", "(", latex) # \left(
-            latex = re.sub(r"\\left\[", "[", latex) # \left[
+            latex = re.sub(r"\\left\\\{", "{", latex)  # \left\{
+            latex = re.sub(r"\\left\|", "|", latex)  # \left|
+            latex = re.sub(r"\\left\\\|", "|", latex)  # \left\|
+            latex = re.sub(r"\\left\(", "(", latex)  # \left(
+            latex = re.sub(r"\\left\[", "[", latex)  # \left[
 
-            latex = re.sub(r"\\right\\\}", "}", latex) # \right\}
-            latex = re.sub(r"\\right\|", "|", latex) # \right|
-            latex = re.sub(r"\\right\\\|", "|", latex) # \right\|
-            latex = re.sub(r"\\right\)", ")", latex) # \right)
-            latex = re.sub(r"\\right\]", "]", latex) # \right]
-            latex = re.sub(r"\\right\.", "", latex) # \right.
+            latex = re.sub(r"\\right\\\}", "}", latex)  # \right\}
+            latex = re.sub(r"\\right\|", "|", latex)  # \right|
+            latex = re.sub(r"\\right\\\|", "|", latex)  # \right\|
+            latex = re.sub(r"\\right\)", ")", latex)  # \right)
+            latex = re.sub(r"\\right\]", "]", latex)  # \right]
+            latex = re.sub(r"\\right\.", "", latex)  # \right.
 
             # replace invalid pairs first
-            latex = re.sub(r'\\left\{', "{", latex)
-            latex = re.sub(r'\\right\}', "}", latex) # \left{ ... \right}
-            latex = re.sub(r'\\left\\\(', "(", latex)
-            latex = re.sub(r'\\right\\\)', ")", latex) # \left\( ... \right\)
-            latex = re.sub(r'\\left\\\[', "[", latex)
-            latex = re.sub(r'\\right\\\]', "]", latex) # \left\[ ... \right\]
+            latex = re.sub(r"\\left\{", "{", latex)
+            latex = re.sub(r"\\right\}", "}", latex)  # \left{ ... \right}
+            latex = re.sub(r"\\left\\\(", "(", latex)
+            latex = re.sub(r"\\right\\\)", ")", latex)  # \left\( ... \right\)
+            latex = re.sub(r"\\left\\\[", "[", latex)
+            latex = re.sub(r"\\right\\\]", "]", latex)  # \left\[ ... \right\]
 
     return latex
 
@@ -292,15 +311,19 @@ def __tie_up_category_by_distance_v3(
     )
 
     ret = []
-    N, M = len(subjects), len(objects)
+    N = len(subjects)
     subjects.sort(key=lambda x: x["bbox"][0] ** 2 + x["bbox"][1] ** 2)
     objects.sort(key=lambda x: x["bbox"][0] ** 2 + x["bbox"][1] ** 2)
 
     OBJ_IDX_OFFSET = 10000
     SUB_BIT_KIND, OBJ_BIT_KIND = 0, 1
 
-    all_boxes_with_idx = [(i, SUB_BIT_KIND, sub["bbox"][0], sub["bbox"][1]) for i, sub in enumerate(subjects)] + [
-        (i + OBJ_IDX_OFFSET, OBJ_BIT_KIND, obj["bbox"][0], obj["bbox"][1]) for i, obj in enumerate(objects)
+    all_boxes_with_idx = [
+        (i, SUB_BIT_KIND, sub["bbox"][0], sub["bbox"][1])
+        for i, sub in enumerate(subjects)
+    ] + [
+        (i + OBJ_IDX_OFFSET, OBJ_BIT_KIND, obj["bbox"][0], obj["bbox"][1])
+        for i, obj in enumerate(objects)
     ]
     seen_idx = set()
     seen_sub_idx = set()
@@ -341,7 +364,10 @@ def __tie_up_category_by_distance_v3(
         for i in range(N):
             if i in seen_idx or i == sub_idx:
                 continue
-            nearest_dis = min(nearest_dis, bbox_distance(subjects[i]["bbox"], objects[obj_idx]["bbox"]))
+            nearest_dis = min(
+                nearest_dis,
+                bbox_distance(subjects[i]["bbox"], objects[obj_idx]["bbox"]),
+            )
 
         if pair_dis >= 3 * nearest_dis:
             seen_idx.add(sub_idx)
@@ -359,7 +385,11 @@ def __tie_up_category_by_distance_v3(
                     "index": subjects[sub_idx]["index"],
                 },
                 "obj_bboxes": [
-                    {"bbox": objects[obj_idx]["bbox"], "lines": objects[obj_idx]["lines"], "index": objects[obj_idx]["index"]}
+                    {
+                        "bbox": objects[obj_idx]["bbox"],
+                        "lines": objects[obj_idx]["lines"],
+                        "index": objects[obj_idx]["index"],
+                    }
                 ],
                 "sub_idx": sub_idx,
             }
@@ -384,7 +414,11 @@ def __tie_up_category_by_distance_v3(
                 for kk in range(len(ret)):
                     if ret[kk]["sub_idx"] == k:
                         ret[kk]["obj_bboxes"].append(
-                            {"bbox": objects[i]["bbox"], "lines": objects[i]["lines"], "index": objects[i]["index"]}
+                            {
+                                "bbox": objects[i]["bbox"],
+                                "lines": objects[i]["lines"],
+                                "index": objects[i]["index"],
+                            }
                         )
                         break
             else:
@@ -396,7 +430,11 @@ def __tie_up_category_by_distance_v3(
                             "index": subjects[k]["index"],
                         },
                         "obj_bboxes": [
-                            {"bbox": objects[i]["bbox"], "lines": objects[i]["lines"], "index": objects[i]["index"]}
+                            {
+                                "bbox": objects[i]["bbox"],
+                                "lines": objects[i]["lines"],
+                                "index": objects[i]["index"],
+                            }
                         ],
                         "sub_idx": k,
                     }
@@ -423,8 +461,12 @@ def __tie_up_category_by_distance_v3(
 
 
 def get_type_blocks(blocks, block_type: Literal["image", "table"]):
-    with_captions = __tie_up_category_by_distance_v3(blocks, f"{block_type}_body", f"{block_type}_caption")
-    with_footnotes = __tie_up_category_by_distance_v3(blocks, f"{block_type}_body", f"{block_type}_footnote")
+    with_captions = __tie_up_category_by_distance_v3(
+        blocks, f"{block_type}_body", f"{block_type}_caption"
+    )
+    with_footnotes = __tie_up_category_by_distance_v3(
+        blocks, f"{block_type}_body", f"{block_type}_footnote"
+    )
     ret = []
     for v in with_captions:
         record = {
@@ -472,38 +514,40 @@ def fix_title_blocks(blocks):
         if block["type"] == BlockType.TITLE:
             title_content = merge_para_with_text(block)
             title_level = count_leading_hashes(title_content)
-            block['level'] = title_level
-            for line in block['lines']:
-                for span in line['spans']:
-                    span['content'] = strip_leading_hashes(span['content'])
+            block["level"] = title_level
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    span["content"] = strip_leading_hashes(span["content"])
                     break
                 break
     return blocks
 
 
 def count_leading_hashes(text):
-    match = re.match(r'^(#+)', text)
+    match = re.match(r"^(#+)", text)
     return len(match.group(1)) if match else 0
 
 
 def strip_leading_hashes(text):
     # 去除开头的#和紧随其后的空格
-    return re.sub(r'^#+\s*', '', text)
+    return re.sub(r"^#+\s*", "", text)
 
 
 def fix_text_blocks(blocks):
     i = 0
     while i < len(blocks):
         block = blocks[i]
-        last_line = block["lines"][-1]if block["lines"] else None
+        last_line = block["lines"][-1] if block["lines"] else None
         if last_line:
             last_span = last_line["spans"][-1] if last_line["spans"] else None
-            if last_span and last_span['content'].endswith('<|txt_contd|>'):
-                last_span['content'] = last_span['content'][:-len('<|txt_contd|>')]
+            if last_span and last_span["content"].endswith("<|txt_contd|>"):
+                last_span["content"] = last_span["content"][: -len("<|txt_contd|>")]
 
                 # 查找下一个未被清空的块
                 next_idx = i + 1
-                while next_idx < len(blocks) and blocks[next_idx].get(SplitFlag.LINES_DELETED, False):
+                while next_idx < len(blocks) and blocks[next_idx].get(
+                    SplitFlag.LINES_DELETED, False
+                ):
                     next_idx += 1
 
                 # 如果找到下一个有效块，则合并

@@ -12,17 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import re
+
 import numpy as np
 import torch
 
 
 class BaseRecLabelDecode(object):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self,
-                 character_dict_path=None,
-                 use_space_char=False):
-
+    def __init__(self, character_dict_path=None, use_space_char=False):
         self.beg_str = "sos"
         self.end_str = "eos"
         self.reverse = False
@@ -35,7 +33,7 @@ class BaseRecLabelDecode(object):
             with open(character_dict_path, "rb") as fin:
                 lines = fin.readlines()
                 for line in lines:
-                    line = line.decode('utf-8').strip("\n").strip("\r\n")
+                    line = line.decode("utf-8").strip("\n").strip("\r\n")
                     self.character_str.append(line)
             if use_space_char:
                 self.character_str.append(" ")
@@ -89,7 +87,7 @@ class BaseRecLabelDecode(object):
         word_list = []
         word_col_list = []
         state_list = []
-        valid_col = np.where(selection == True)[0]
+        valid_col = np.where(selection)[0]
 
         for c_i, char in enumerate(text):
             if "\u4e00" <= char <= "\u9fff":
@@ -111,7 +109,7 @@ class BaseRecLabelDecode(object):
             ):  # grouping word with '-', such as 'state-of-the-art'
                 c_state = "en&num"
 
-            if state == None:
+            if state is None:
                 state = c_state
 
             if state != c_state:
@@ -135,13 +133,13 @@ class BaseRecLabelDecode(object):
         return word_list, word_col_list, state_list
 
     def decode(
-            self,
-            text_index,
-            text_prob=None,
-            is_remove_duplicate=False,
-            return_word_box=False,
+        self,
+        text_index,
+        text_prob=None,
+        is_remove_duplicate=False,
+        return_word_box=False,
     ):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         batch_size = len(text_index)
@@ -153,16 +151,17 @@ class BaseRecLabelDecode(object):
                     continue
                 if is_remove_duplicate:
                     # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
+                    if (
+                        idx > 0
+                        and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]
+                    ):
                         continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = "".join(char_list)
             result_list.append((text, np.mean(conf_list)))
         return result_list
 
@@ -171,14 +170,10 @@ class BaseRecLabelDecode(object):
 
 
 class CTCLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self,
-                 character_dict_path=None,
-                 use_space_char=False,
-                 **kwargs):
-        super(CTCLabelDecode, self).__init__(character_dict_path,
-                                             use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(CTCLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, return_word_box=False, *args, **kwargs):
         if isinstance(preds, torch.Tensor):
@@ -203,19 +198,17 @@ class CTCLabelDecode(BaseRecLabelDecode):
         return text, label
 
     def add_special_char(self, dict_character):
-        dict_character = ['blank'] + dict_character
+        dict_character = ["blank"] + dict_character
         return dict_character
 
 
 class NRTRLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
     def __init__(self, character_dict_path=None, use_space_char=True, **kwargs):
-        super(NRTRLabelDecode, self).__init__(character_dict_path,
-                                              use_space_char)
+        super(NRTRLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, *args, **kwargs):
-
         if len(preds) == 2:
             preds_id = preds[0]
             preds_prob = preds[1]
@@ -244,11 +237,11 @@ class NRTRLabelDecode(BaseRecLabelDecode):
         return text, label
 
     def add_special_char(self, dict_character):
-        dict_character = ['blank', '<unk>', '<s>', '</s>'] + dict_character
+        dict_character = ["blank", "<unk>", "<s>", "</s>"] + dict_character
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         batch_size = len(text_index)
         for batch_idx in range(batch_size):
@@ -257,26 +250,25 @@ class NRTRLabelDecode(BaseRecLabelDecode):
             for idx in range(len(text_index[batch_idx])):
                 try:
                     char_idx = self.character[int(text_index[batch_idx][idx])]
-                except:
+                except (IndexError, ValueError, KeyError):
                     continue
-                if char_idx == '</s>':  # end
+                if char_idx == "</s>":  # end
                     break
                 char_list.append(char_idx)
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = "".join(char_list)
             result_list.append((text.lower(), np.mean(conf_list).tolist()))
         return result_list
 
-class ViTSTRLabelDecode(NRTRLabelDecode):
-    """ Convert between text-label and text-index """
 
-    def __init__(self, character_dict_path=None, use_space_char=False,
-                 **kwargs):
-        super(ViTSTRLabelDecode, self).__init__(character_dict_path,
-                                                use_space_char)
+class ViTSTRLabelDecode(NRTRLabelDecode):
+    """Convert between text-label and text-index"""
+
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(ViTSTRLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, *args, **kwargs):
         if isinstance(preds, torch.Tensor):
@@ -292,19 +284,15 @@ class ViTSTRLabelDecode(NRTRLabelDecode):
         return text, label
 
     def add_special_char(self, dict_character):
-        dict_character = ['<s>', '</s>'] + dict_character
+        dict_character = ["<s>", "</s>"] + dict_character
         return dict_character
 
 
 class AttnLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self,
-                 character_dict_path=None,
-                 use_space_char=False,
-                 **kwargs):
-        super(AttnLabelDecode, self).__init__(character_dict_path,
-                                              use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(AttnLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def add_special_char(self, dict_character):
         self.beg_str = "sos"
@@ -314,7 +302,7 @@ class AttnLabelDecode(BaseRecLabelDecode):
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         [beg_idx, end_idx] = self.get_ignored_tokens()
@@ -329,16 +317,17 @@ class AttnLabelDecode(BaseRecLabelDecode):
                     break
                 if is_remove_duplicate:
                     # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
+                    if (
+                        idx > 0
+                        and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]
+                    ):
                         continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = "".join(char_list)
             result_list.append((text, np.mean(conf_list)))
         return result_list
 
@@ -373,18 +362,15 @@ class AttnLabelDecode(BaseRecLabelDecode):
         elif beg_or_end == "end":
             idx = np.array(self.dict[self.end_str])
         else:
-            assert False, "unsupport type %s in get_beg_end_flag_idx" \
-                          % beg_or_end
+            assert False, "unsupport type %s in get_beg_end_flag_idx" % beg_or_end
         return idx
 
 
 class RFLLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self, character_dict_path=None, use_space_char=False,
-                 **kwargs):
-        super(RFLLabelDecode, self).__init__(character_dict_path,
-                                             use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(RFLLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def add_special_char(self, dict_character):
         self.beg_str = "sos"
@@ -394,7 +380,7 @@ class RFLLabelDecode(BaseRecLabelDecode):
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         [beg_idx, end_idx] = self.get_ignored_tokens()
@@ -409,16 +395,17 @@ class RFLLabelDecode(BaseRecLabelDecode):
                     break
                 if is_remove_duplicate:
                     # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
+                    if (
+                        idx > 0
+                        and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]
+                    ):
                         continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = "".join(char_list)
             result_list.append((text, np.mean(conf_list).tolist()))
         return result_list
 
@@ -462,24 +449,19 @@ class RFLLabelDecode(BaseRecLabelDecode):
         elif beg_or_end == "end":
             idx = np.array(self.dict[self.end_str])
         else:
-            assert False, "unsupport type %s in get_beg_end_flag_idx" \
-                          % beg_or_end
+            assert False, "unsupport type %s in get_beg_end_flag_idx" % beg_or_end
         return idx
 
 
 class SRNLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self,
-                 character_dict_path=None,
-                 use_space_char=False,
-                 **kwargs):
-        self.max_text_length = kwargs.get('max_text_length', 25)
-        super(SRNLabelDecode, self).__init__(character_dict_path,
-                                             use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        self.max_text_length = kwargs.get("max_text_length", 25)
+        super(SRNLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, *args, **kwargs):
-        pred = preds['predict']
+        pred = preds["predict"]
         char_num = len(self.character_str) + 2
         if isinstance(pred, torch.Tensor):
             pred = pred.numpy()
@@ -501,7 +483,7 @@ class SRNLabelDecode(BaseRecLabelDecode):
         return text, label
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
         batch_size = len(text_index)
@@ -514,17 +496,18 @@ class SRNLabelDecode(BaseRecLabelDecode):
                     continue
                 if is_remove_duplicate:
                     # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
+                    if (
+                        idx > 0
+                        and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]
+                    ):
                         continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
 
-            text = ''.join(char_list)
+            text = "".join(char_list)
             result_list.append((text, np.mean(conf_list)))
         return result_list
 
@@ -543,17 +526,14 @@ class SRNLabelDecode(BaseRecLabelDecode):
         elif beg_or_end == "end":
             idx = np.array(self.dict[self.end_str])
         else:
-            assert False, "unsupport type %s in get_beg_end_flag_idx" \
-                          % beg_or_end
+            assert False, "unsupport type %s in get_beg_end_flag_idx" % beg_or_end
         return idx
 
 
 class TableLabelDecode(object):
-    """  """
+    """ """
 
-    def __init__(self,
-                 character_dict_path,
-                 **kwargs):
+    def __init__(self, character_dict_path, **kwargs):
         list_character, list_elem = self.load_char_elem_dict(character_dict_path)
         list_character = self.add_special_char(list_character)
         list_elem = self.add_special_char(list_elem)
@@ -573,14 +553,14 @@ class TableLabelDecode(object):
         list_elem = []
         with open(character_dict_path, "rb") as fin:
             lines = fin.readlines()
-            substr = lines[0].decode('utf-8').strip("\n").strip("\r\n").split("\t")
+            substr = lines[0].decode("utf-8").strip("\n").strip("\r\n").split("\t")
             character_num = int(substr[0])
             elem_num = int(substr[1])
             for cno in range(1, 1 + character_num):
-                character = lines[cno].decode('utf-8').strip("\n").strip("\r\n")
+                character = lines[cno].decode("utf-8").strip("\n").strip("\r\n")
                 list_character.append(character)
             for eno in range(1 + character_num, 1 + character_num + elem_num):
-                elem = lines[eno].decode('utf-8').strip("\n").strip("\r\n")
+                elem = lines[eno].decode("utf-8").strip("\n").strip("\r\n")
                 list_elem.append(elem)
         return list_character, list_elem
 
@@ -591,16 +571,20 @@ class TableLabelDecode(object):
         return list_character
 
     def __call__(self, preds):
-        structure_probs = preds['structure_probs']
-        loc_preds = preds['loc_preds']
-        if isinstance(structure_probs,torch.Tensor):
+        structure_probs = preds["structure_probs"]
+        loc_preds = preds["loc_preds"]
+        if isinstance(structure_probs, torch.Tensor):
             structure_probs = structure_probs.numpy()
-        if isinstance(loc_preds,torch.Tensor):
+        if isinstance(loc_preds, torch.Tensor):
             loc_preds = loc_preds.numpy()
         structure_idx = structure_probs.argmax(axis=2)
         structure_probs = structure_probs.max(axis=2)
-        structure_str, structure_pos, result_score_list, result_elem_idx_list = self.decode(structure_idx,
-                                                                                            structure_probs, 'elem')
+        (
+            structure_str,
+            structure_pos,
+            result_score_list,
+            result_elem_idx_list,
+        ) = self.decode(structure_idx, structure_probs, "elem")
         res_html_code_list = []
         res_loc_list = []
         batch_num = len(structure_str)
@@ -608,24 +592,28 @@ class TableLabelDecode(object):
             res_loc = []
             for sno in range(len(structure_str[bno])):
                 text = structure_str[bno][sno]
-                if text in ['<td>', '<td']:
+                if text in ["<td>", "<td"]:
                     pos = structure_pos[bno][sno]
                     res_loc.append(loc_preds[bno, pos])
-            res_html_code = ''.join(structure_str[bno])
+            res_html_code = "".join(structure_str[bno])
             res_loc = np.array(res_loc)
             res_html_code_list.append(res_html_code)
             res_loc_list.append(res_loc)
-        return {'res_html_code': res_html_code_list, 'res_loc': res_loc_list, 'res_score_list': result_score_list,
-                'res_elem_idx_list': result_elem_idx_list,'structure_str_list':structure_str}
+        return {
+            "res_html_code": res_html_code_list,
+            "res_loc": res_loc_list,
+            "res_score_list": result_score_list,
+            "res_elem_idx_list": result_elem_idx_list,
+            "structure_str_list": structure_str,
+        }
 
     def decode(self, text_index, structure_probs, char_or_elem):
-        """convert text-label into text-index.
-        """
+        """convert text-label into text-index."""
         if char_or_elem == "char":
             current_dict = self.dict_idx_character
         else:
             current_dict = self.dict_idx_elem
-            ignored_tokens = self.get_ignored_tokens('elem')
+            ignored_tokens = self.get_ignored_tokens("elem")
             beg_idx, end_idx = ignored_tokens
 
         result_list = []
@@ -667,31 +655,30 @@ class TableLabelDecode(object):
             elif beg_or_end == "end":
                 idx = self.dict_character[self.end_str]
             else:
-                assert False, "Unsupport type %s in get_beg_end_flag_idx of char" \
-                              % beg_or_end
+                assert False, (
+                    "Unsupport type %s in get_beg_end_flag_idx of char" % beg_or_end
+                )
         elif char_or_elem == "elem":
             if beg_or_end == "beg":
                 idx = self.dict_elem[self.beg_str]
             elif beg_or_end == "end":
                 idx = self.dict_elem[self.end_str]
             else:
-                assert False, "Unsupport type %s in get_beg_end_flag_idx of elem" \
-                              % beg_or_end
+                assert False, (
+                    "Unsupport type %s in get_beg_end_flag_idx of elem" % beg_or_end
+                )
         else:
-            assert False, "Unsupport type %s in char_or_elem" \
-                          % char_or_elem
+            assert False, "Unsupport type %s in char_or_elem" % char_or_elem
         return idx
 
 
 class SARLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+    """Convert between text-label and text-index"""
 
-    def __init__(self, character_dict_path=None, use_space_char=False,
-                 **kwargs):
-        super(SARLabelDecode, self).__init__(character_dict_path,
-                                             use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(SARLabelDecode, self).__init__(character_dict_path, use_space_char)
 
-        self.rm_symbol = kwargs.get('rm_symbol', False)
+        self.rm_symbol = kwargs.get("rm_symbol", False)
 
     def add_special_char(self, dict_character):
         beg_end_str = "<BOS/EOS>"
@@ -707,7 +694,7 @@ class SARLabelDecode(BaseRecLabelDecode):
         return dict_character
 
     def decode(self, text_index, text_prob=None, is_remove_duplicate=False):
-        """ convert text-index into text-label. """
+        """convert text-index into text-label."""
         result_list = []
         ignored_tokens = self.get_ignored_tokens()
 
@@ -725,20 +712,21 @@ class SARLabelDecode(BaseRecLabelDecode):
                         break
                 if is_remove_duplicate:
                     # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
+                    if (
+                        idx > 0
+                        and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]
+                    ):
                         continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
                 if text_prob is not None:
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = "".join(char_list)
             if self.rm_symbol:
-                comp = re.compile('[^A-Z^a-z^0-9^\u4e00-\u9fa5]')
+                comp = re.compile("[^A-Z^a-z^0-9^\u4e00-\u9fa5]")
                 text = text.lower()
-                text = comp.sub('', text)
+                text = comp.sub("", text)
             result_list.append((text, np.mean(conf_list).tolist()))
         return result_list
 
@@ -760,12 +748,10 @@ class SARLabelDecode(BaseRecLabelDecode):
 
 
 class CANLabelDecode(BaseRecLabelDecode):
-    """ Convert between latex-symbol and symbol-index """
+    """Convert between latex-symbol and symbol-index"""
 
-    def __init__(self, character_dict_path=None, use_space_char=False,
-                 **kwargs):
-        super(CANLabelDecode, self).__init__(character_dict_path,
-                                             use_space_char)
+    def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
+        super(CANLabelDecode, self).__init__(character_dict_path, use_space_char)
 
     def decode(self, text_index, preds_prob=None):
         result_list = []
@@ -776,9 +762,9 @@ class CANLabelDecode(BaseRecLabelDecode):
             symbol_list = [self.character[idx] for idx in idx_list]
             probs = []
             if preds_prob is not None:
-                probs = preds_prob[batch_idx][:len(symbol_list)].tolist()
+                probs = preds_prob[batch_idx][: len(symbol_list)].tolist()
 
-            result_list.append([' '.join(symbol_list), probs])
+            result_list.append([" ".join(symbol_list), probs])
         return result_list
 
     def __call__(self, preds, label=None, *args, **kwargs):

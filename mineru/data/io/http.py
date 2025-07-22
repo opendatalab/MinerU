@@ -1,4 +1,3 @@
-
 import io
 
 import requests
@@ -7,7 +6,6 @@ from .base import IOReader, IOWriter
 
 
 class HttpReader(IOReader):
-
     def read(self, url: str) -> bytes:
         """Read the file.
 
@@ -32,6 +30,6 @@ class HttpWriter(IOWriter):
             path (str): the path of file, if the path is relative path, it will be joined with parent_dir.
             data (bytes): the data want to write
         """
-        files = {'file': io.BytesIO(data)}
+        files = {"file": io.BytesIO(data)}
         response = requests.post(url, files=files)
         assert 300 > response.status_code and response.status_code > 199

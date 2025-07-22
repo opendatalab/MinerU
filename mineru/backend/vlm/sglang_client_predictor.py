@@ -57,9 +57,13 @@ class SglangClientPredictor(BasePredictor):
 
     def check_server_health(self, base_url: str):
         try:
-            response = httpx.get(f"{base_url}/health_generate", timeout=self.http_timeout)
+            response = httpx.get(
+                f"{base_url}/health_generate", timeout=self.http_timeout
+            )
         except httpx.ConnectError:
-            raise RuntimeError(f"Failed to connect to server {base_url}. Please check if the server is running.")
+            raise RuntimeError(
+                f"Failed to connect to server {base_url}. Please check if the server is running."
+            )
         if response.status_code != 200:
             raise RuntimeError(
                 f"Server {base_url} is not healthy. Status code: {response.status_code}, response body: {response.text}"
@@ -67,9 +71,13 @@ class SglangClientPredictor(BasePredictor):
 
     def get_model_path(self, base_url: str) -> str:
         try:
-            response = httpx.get(f"{base_url}/get_model_info", timeout=self.http_timeout)
+            response = httpx.get(
+                f"{base_url}/get_model_info", timeout=self.http_timeout
+            )
         except httpx.ConnectError:
-            raise RuntimeError(f"Failed to connect to server {base_url}. Please check if the server is running.")
+            raise RuntimeError(
+                f"Failed to connect to server {base_url}. Please check if the server is running."
+            )
         if response.status_code != 200:
             raise RuntimeError(
                 f"Failed to get model info from {base_url}. Status code: {response.status_code}, response body: {response.text}"
@@ -157,7 +165,9 @@ class SglangClientPredictor(BasePredictor):
             image = load_resource(image)
 
         request_body = self.build_request_body(image, prompt, sampling_params)
-        response = httpx.post(self.server_url, json=request_body, timeout=self.http_timeout)
+        response = httpx.post(
+            self.server_url, json=request_body, timeout=self.http_timeout
+        )
         response_body = response.json()
         return response_body["text"]
 

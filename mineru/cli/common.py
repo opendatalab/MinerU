@@ -1,20 +1,20 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import copy
 import io
 import json
 import os
-import copy
 from pathlib import Path
 
 import pypdfium2 as pdfium
 from loguru import logger
 
+from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 
 pdf_suffixes = [".pdf"]
 image_suffixes = [".png", ".jpeg", ".jpg", ".webp", ".gif"]
@@ -41,13 +41,16 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
     return local_image_dir, local_md_dir
 
 
-def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
-
+def convert_pdf_bytes_to_bytes_by_pypdfium2(
+    pdf_bytes, start_page_id=0, end_page_id=None
+):
     # 从字节数据加载PDF
     pdf = pdfium.PdfDocument(pdf_bytes)
 
     # 确定结束页
-    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
+    end_page_id = (
+        end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
+    )
     if end_page_id > len(pdf) - 1:
         logger.warning("end_page_id is out of range, use pdf_docs length")
         end_page_id = len(pdf) - 1
@@ -78,34 +81,41 @@ def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
     result = []
     for pdf_bytes in pdf_bytes_list:
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(
+            pdf_bytes, start_page_id, end_page_id
+        )
         result.append(new_pdf_bytes)
     return result
 
 
 def _process_output(
-        pdf_info,
-        pdf_bytes,
-        pdf_file_name,
-        local_md_dir,
-        local_image_dir,
-        md_writer,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_orig_pdf,
-        f_dump_md,
-        f_dump_content_list,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_make_md_mode,
-        middle_json,
-        model_output=None,
-        is_pipeline=True
+    pdf_info,
+    pdf_bytes,
+    pdf_file_name,
+    local_md_dir,
+    local_image_dir,
+    md_writer,
+    f_draw_layout_bbox,
+    f_draw_span_bbox,
+    f_dump_orig_pdf,
+    f_dump_md,
+    f_dump_content_list,
+    f_dump_middle_json,
+    f_dump_model_output,
+    f_make_md_mode,
+    middle_json,
+    model_output=None,
+    is_pipeline=True,
 ):
-    from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+    from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
+        union_make as pipeline_union_make,
+    )
+
     """处理输出文件"""
     if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+        draw_layout_bbox(
+            pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf"
+        )
 
     if f_draw_span_bbox:
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
@@ -157,38 +167,54 @@ def _process_output(
 
 
 def _process_pipeline(
-        output_dir,
-        pdf_file_names,
-        pdf_bytes_list,
-        p_lang_list,
-        parse_method,
-        p_formula_enable,
-        p_table_enable,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_md,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_dump_orig_pdf,
-        f_dump_content_list,
-        f_make_md_mode,
+    output_dir,
+    pdf_file_names,
+    pdf_bytes_list,
+    p_lang_list,
+    parse_method,
+    p_formula_enable,
+    p_table_enable,
+    f_draw_layout_bbox,
+    f_draw_span_bbox,
+    f_dump_md,
+    f_dump_middle_json,
+    f_dump_model_output,
+    f_dump_orig_pdf,
+    f_dump_content_list,
+    f_make_md_mode,
 ):
     """处理pipeline后端逻辑"""
-    from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+    from mineru.backend.pipeline.model_json_to_middle_json import (
+        result_to_middle_json as pipeline_result_to_middle_json,
+    )
+    from mineru.backend.pipeline.pipeline_analyze import (
+        doc_analyze as pipeline_doc_analyze,
+    )
 
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list, p_lang_list, parse_method=parse_method,
-            formula_enable=p_formula_enable, table_enable=p_table_enable
-        )
+    (
+        infer_results,
+        all_image_lists,
+        all_pdf_docs,
+        lang_list,
+        ocr_enabled_list,
+    ) = pipeline_doc_analyze(
+        pdf_bytes_list,
+        p_lang_list,
+        parse_method=parse_method,
+        formula_enable=p_formula_enable,
+        table_enable=p_table_enable,
     )
 
     for idx, model_list in enumerate(infer_results):
         model_json = copy.deepcopy(model_list)
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        local_image_dir, local_md_dir = prepare_env(
+            output_dir, pdf_file_name, parse_method
+        )
+        image_writer, md_writer = (
+            FileBasedDataWriter(local_image_dir),
+            FileBasedDataWriter(local_md_dir),
+        )
 
         images_list = all_image_lists[idx]
         pdf_doc = all_pdf_docs[idx]
@@ -196,36 +222,54 @@ def _process_pipeline(
         _ocr_enable = ocr_enabled_list[idx]
 
         middle_json = pipeline_result_to_middle_json(
-            model_list, images_list, pdf_doc, image_writer,
-            _lang, _ocr_enable, p_formula_enable
+            model_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            _lang,
+            _ocr_enable,
+            p_formula_enable,
         )
 
         pdf_info = middle_json["pdf_info"]
         pdf_bytes = pdf_bytes_list[idx]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, is_pipeline=True
+            pdf_info,
+            pdf_bytes,
+            pdf_file_name,
+            local_md_dir,
+            local_image_dir,
+            md_writer,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_orig_pdf,
+            f_dump_md,
+            f_dump_content_list,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_make_md_mode,
+            middle_json,
+            model_json,
+            is_pipeline=True,
         )
 
 
 async def _async_process_vlm(
-        output_dir,
-        pdf_file_names,
-        pdf_bytes_list,
-        backend,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_md,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_dump_orig_pdf,
-        f_dump_content_list,
-        f_make_md_mode,
-        server_url=None,
-        **kwargs,
+    output_dir,
+    pdf_file_names,
+    pdf_bytes_list,
+    backend,
+    f_draw_layout_bbox,
+    f_draw_span_bbox,
+    f_dump_md,
+    f_dump_middle_json,
+    f_dump_model_output,
+    f_dump_orig_pdf,
+    f_dump_content_list,
+    f_make_md_mode,
+    server_url=None,
+    **kwargs,
 ):
     """异步处理VLM后端逻辑"""
     parse_method = "vlm"
@@ -235,38 +279,60 @@ async def _async_process_vlm(
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        local_image_dir, local_md_dir = prepare_env(
+            output_dir, pdf_file_name, parse_method
+        )
+        image_writer, md_writer = (
+            FileBasedDataWriter(local_image_dir),
+            FileBasedDataWriter(local_md_dir),
+        )
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            pdf_info,
+            pdf_bytes,
+            pdf_file_name,
+            local_md_dir,
+            local_image_dir,
+            md_writer,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_orig_pdf,
+            f_dump_md,
+            f_dump_content_list,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_make_md_mode,
+            middle_json,
+            infer_result,
+            is_pipeline=False,
         )
 
 
 def _process_vlm(
-        output_dir,
-        pdf_file_names,
-        pdf_bytes_list,
-        backend,
-        f_draw_layout_bbox,
-        f_draw_span_bbox,
-        f_dump_md,
-        f_dump_middle_json,
-        f_dump_model_output,
-        f_dump_orig_pdf,
-        f_dump_content_list,
-        f_make_md_mode,
-        server_url=None,
-        **kwargs,
+    output_dir,
+    pdf_file_names,
+    pdf_bytes_list,
+    backend,
+    f_draw_layout_bbox,
+    f_draw_span_bbox,
+    f_dump_md,
+    f_dump_middle_json,
+    f_dump_model_output,
+    f_dump_orig_pdf,
+    f_dump_content_list,
+    f_make_md_mode,
+    server_url=None,
+    **kwargs,
 ):
     """同步处理VLM后端逻辑"""
     parse_method = "vlm"
@@ -276,91 +342,134 @@ def _process_vlm(
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        local_image_dir, local_md_dir = prepare_env(
+            output_dir, pdf_file_name, parse_method
+        )
+        image_writer, md_writer = (
+            FileBasedDataWriter(local_image_dir),
+            FileBasedDataWriter(local_md_dir),
+        )
 
         middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            server_url=server_url,
+            **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
 
         _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            pdf_info,
+            pdf_bytes,
+            pdf_file_name,
+            local_md_dir,
+            local_image_dir,
+            md_writer,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_orig_pdf,
+            f_dump_md,
+            f_dump_content_list,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_make_md_mode,
+            middle_json,
+            infer_result,
+            is_pipeline=False,
         )
 
 
 def do_parse(
-        output_dir,
-        pdf_file_names: list[str],
-        pdf_bytes_list: list[bytes],
-        p_lang_list: list[str],
-        backend="pipeline",
-        parse_method="auto",
-        formula_enable=True,
-        table_enable=True,
-        server_url=None,
-        f_draw_layout_bbox=True,
-        f_draw_span_bbox=True,
-        f_dump_md=True,
-        f_dump_middle_json=True,
-        f_dump_model_output=True,
-        f_dump_orig_pdf=True,
-        f_dump_content_list=True,
-        f_make_md_mode=MakeMode.MM_MD,
-        start_page_id=0,
-        end_page_id=None,
-        **kwargs,
+    output_dir,
+    pdf_file_names: list[str],
+    pdf_bytes_list: list[bytes],
+    p_lang_list: list[str],
+    backend="pipeline",
+    parse_method="auto",
+    formula_enable=True,
+    table_enable=True,
+    server_url=None,
+    f_draw_layout_bbox=True,
+    f_draw_span_bbox=True,
+    f_dump_md=True,
+    f_dump_middle_json=True,
+    f_dump_model_output=True,
+    f_dump_orig_pdf=True,
+    f_dump_content_list=True,
+    f_make_md_mode=MakeMode.MM_MD,
+    start_page_id=0,
+    end_page_id=None,
+    **kwargs,
 ):
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 
     if backend == "pipeline":
         _process_pipeline(
-            output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-            parse_method, formula_enable, table_enable,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            output_dir,
+            pdf_file_names,
+            pdf_bytes_list,
+            p_lang_list,
+            parse_method,
+            formula_enable,
+            table_enable,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_md,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_dump_orig_pdf,
+            f_dump_content_list,
+            f_make_md_mode,
         )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
+        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
 
         _process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            output_dir,
+            pdf_file_names,
+            pdf_bytes_list,
+            backend,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_md,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_dump_orig_pdf,
+            f_dump_content_list,
+            f_make_md_mode,
+            server_url,
+            **kwargs,
         )
 
 
 async def aio_do_parse(
-        output_dir,
-        pdf_file_names: list[str],
-        pdf_bytes_list: list[bytes],
-        p_lang_list: list[str],
-        backend="pipeline",
-        parse_method="auto",
-        formula_enable=True,
-        table_enable=True,
-        server_url=None,
-        f_draw_layout_bbox=True,
-        f_draw_span_bbox=True,
-        f_dump_md=True,
-        f_dump_middle_json=True,
-        f_dump_model_output=True,
-        f_dump_orig_pdf=True,
-        f_dump_content_list=True,
-        f_make_md_mode=MakeMode.MM_MD,
-        start_page_id=0,
-        end_page_id=None,
-        **kwargs,
+    output_dir,
+    pdf_file_names: list[str],
+    pdf_bytes_list: list[bytes],
+    p_lang_list: list[str],
+    backend="pipeline",
+    parse_method="auto",
+    formula_enable=True,
+    table_enable=True,
+    server_url=None,
+    f_draw_layout_bbox=True,
+    f_draw_span_bbox=True,
+    f_dump_md=True,
+    f_dump_middle_json=True,
+    f_dump_model_output=True,
+    f_dump_orig_pdf=True,
+    f_dump_content_list=True,
+    f_make_md_mode=MakeMode.MM_MD,
+    start_page_id=0,
+    end_page_id=None,
+    **kwargs,
 ):
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
@@ -368,36 +477,62 @@ async def aio_do_parse(
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
         _process_pipeline(
-            output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-            parse_method, formula_enable, table_enable,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            output_dir,
+            pdf_file_names,
+            pdf_bytes_list,
+            p_lang_list,
+            parse_method,
+            formula_enable,
+            table_enable,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_md,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_dump_orig_pdf,
+            f_dump_content_list,
+            f_make_md_mode,
         )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+        os.environ["MINERU_VLM_FORMULA_ENABLE"] = str(formula_enable)
+        os.environ["MINERU_VLM_TABLE_ENABLE"] = str(table_enable)
 
         await _async_process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            output_dir,
+            pdf_file_names,
+            pdf_bytes_list,
+            backend,
+            f_draw_layout_bbox,
+            f_draw_span_bbox,
+            f_dump_md,
+            f_dump_middle_json,
+            f_dump_model_output,
+            f_dump_orig_pdf,
+            f_dump_content_list,
+            f_make_md_mode,
+            server_url,
+            **kwargs,
         )
-
 
 
 if __name__ == "__main__":
     # pdf_path = "../../demo/pdfs/demo3.pdf"
-    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/4546d0e2-ba60-40a5-a17e-b68555cec741.pdf"
+    pdf_path = (
+        "C:/Users/zhaoxiaomeng/Downloads/4546d0e2-ba60-40a5-a17e-b68555cec741.pdf"
+    )
 
     try:
-       do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"],
-                end_page_id=10,
-                backend='vlm-huggingface'
-                # backend = 'pipeline'
-                )
+        do_parse(
+            "./output",
+            [Path(pdf_path).stem],
+            [read_fn(Path(pdf_path))],
+            ["ch"],
+            end_page_id=10,
+            backend="vlm-huggingface",
+            # backend = 'pipeline'
+        )
     except Exception as e:
         logger.exception(e)

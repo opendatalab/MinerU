@@ -11,7 +11,6 @@ from sglang.srt.managers.tokenizer_manager import (
     dataclass_to_string_truncated,
     logger,
 )
-from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
 
 from ...utils.run_async import run_async
@@ -200,7 +199,9 @@ async def _handle_batch_request(
     rids = []
 
     if getattr(obj, "parallel_sample_num", 1) != 1:
-        raise Exception("parallel_sample_num != 1 is not supported in this patched code.")
+        raise Exception(
+            "parallel_sample_num != 1 is not supported in this patched code."
+        )
 
     # Send all requests
     for i in range(batch_size):
@@ -217,7 +218,9 @@ async def _handle_batch_request(
         rid_to_index = {rid: i for i, rid in enumerate(rids)}
         task_map = {asyncio.create_task(gen.__anext__()): gen for gen in generators}
         while task_map:
-            done, _ = await asyncio.wait(task_map.keys(), return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(
+                task_map.keys(), return_when=asyncio.FIRST_COMPLETED
+            )
 
             for task in done:
                 gen = task_map.pop(task)
@@ -250,7 +253,9 @@ async def _generate_request(
 
     if self.log_requests:
         max_length, skip_names, _ = self.log_request_metadata
-        logger.info(f"Receive: obj={dataclass_to_string_truncated(obj, max_length, skip_names=skip_names)}")
+        logger.info(
+            f"Receive: obj={dataclass_to_string_truncated(obj, max_length, skip_names=skip_names)}"
+        )
 
     async with self.model_update_lock.reader_lock:
         is_single = obj.is_single
@@ -260,5 +265,7 @@ async def _generate_request(
             async for response in self._wait_one_response(obj, state, request):
                 yield response
         else:
-            async for response in _handle_batch_request(self, obj, request, created_time):
+            async for response in _handle_batch_request(
+                self, obj, request, created_time
+            ):
                 yield response

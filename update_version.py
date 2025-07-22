@@ -10,18 +10,20 @@ def get_version():
         if len(version_parts) > 1 and version_parts[0].startswith("mineru"):
             return version_parts[1]
         else:
-            raise ValueError(f"Invalid version tag {version}. Expected format is mineru-<version>-released.")
+            raise ValueError(
+                f"Invalid version tag {version}. Expected format is mineru-<version>-released."
+            )
     except Exception as e:
         print(e)
         return "0.0.0"
 
 
 def write_version_to_commons(version):
-    commons_path = os.path.join(os.path.dirname(__file__), 'mineru', 'version.py')
-    with open(commons_path, 'w') as f:
+    commons_path = os.path.join(os.path.dirname(__file__), "mineru", "version.py")
+    with open(commons_path, "w") as f:
         f.write(f'__version__ = "{version}"\n')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     version_name = get_version()
     write_version_to_commons(version_name)

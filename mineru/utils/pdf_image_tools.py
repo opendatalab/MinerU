@@ -7,6 +7,7 @@ from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+
 from .hash_utils import str_sha256
 
 
@@ -40,7 +41,11 @@ def load_images_from_pdf(
     images_list = []
     pdf_doc = pdfium.PdfDocument(pdf_bytes)
     pdf_page_num = len(pdf_doc)
-    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
+    end_page_id = (
+        end_page_id
+        if end_page_id is not None and end_page_id >= 0
+        else pdf_page_num - 1
+    )
     if end_page_id > pdf_page_num - 1:
         logger.warning("end_page_id is out of range, use images length")
         end_page_id = pdf_page_num - 1
@@ -54,7 +59,14 @@ def load_images_from_pdf(
     return images_list, pdf_doc
 
 
-def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, image_writer: FileBasedDataWriter, scale=2):
+def cut_image(
+    bbox: tuple,
+    page_num: int,
+    page_pil_img,
+    return_path,
+    image_writer: FileBasedDataWriter,
+    scale=2,
+):
     """从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径 save_path：需要同时支持s3和本地,
     图片存放在save_path下，文件名是:
     {page_num}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg , bbox内数字取整。"""

@@ -12,7 +12,8 @@ except ImportError:
         IMAGE_PROCESSOR_MAPPING as PROCESSOR_MAPPING,
     )
 
-from .. import vlm_hf_model as _
+# 导入 vlm_hf_model 以确保其被初始化
+from .. import vlm_hf_model  # noqa: F401
 from .image_processor import Mineru2ImageProcessor
 from .model import Mineru2QwenForCausalLM
 

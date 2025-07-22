@@ -3,7 +3,7 @@ from mineru.utils.boxbase import (
     calculate_iou,
     calculate_overlap_area_in_bbox1_area_ratio,
     calculate_vertical_projection_overlap_ratio,
-    get_minbox_if_overlap_by_ratio
+    get_minbox_if_overlap_by_ratio,
 )
 from mineru.utils.enum_class import BlockType
 
@@ -14,19 +14,23 @@ def process_groups(groups, body_key, caption_key, footnote_key):
     footnote_blocks = []
     maybe_text_image_blocks = []
     for i, group in enumerate(groups):
-        if body_key == 'image_body' and len(group[caption_key]) == 0 and len(group[footnote_key]) == 0:
+        if (
+            body_key == "image_body"
+            and len(group[caption_key]) == 0
+            and len(group[footnote_key]) == 0
+        ):
             # 如果没有caption和footnote，则不需要将group_id添加到image_body中
-            group[body_key]['group_id'] = i
+            group[body_key]["group_id"] = i
             maybe_text_image_blocks.append(group[body_key])
             continue
         else:
-            group[body_key]['group_id'] = i
+            group[body_key]["group_id"] = i
             body_blocks.append(group[body_key])
             for caption_block in group[caption_key]:
-                caption_block['group_id'] = i
+                caption_block["group_id"] = i
                 caption_blocks.append(caption_block)
             for footnote_block in group[footnote_key]:
-                footnote_block['group_id'] = i
+                footnote_block["group_id"] = i
                 footnote_blocks.append(footnote_block)
     return body_blocks, caption_blocks, footnote_blocks, maybe_text_image_blocks
 
@@ -76,7 +80,7 @@ def prepare_block_bboxes(
     """footnote识别：宽度超过1/3页面宽度的，高度超过10的，处于页面下半30%区域的"""
     footnote_blocks = []
     for discarded in discarded_blocks:
-        x0, y0, x1, y1 = discarded['bbox']
+        x0, y0, x1, y1 = discarded["bbox"]
         if (x1 - x0) > (page_w / 3) and (y1 - y0) > 10 and y0 > (page_h * 0.7):
             footnote_blocks.append([x0, y0, x1, y1])
 
@@ -92,13 +96,13 @@ def prepare_block_bboxes(
     all_discarded_blocks = remove_overlaps_min_blocks(all_discarded_blocks)
 
     """粗排序后返回"""
-    all_bboxes.sort(key=lambda x: x[0]+x[1])
+    all_bboxes.sort(key=lambda x: x[0] + x[1])
     return all_bboxes, all_discarded_blocks, footnote_blocks
 
 
 def add_bboxes(blocks, block_type, bboxes):
     for block in blocks:
-        x0, y0, x1, y1 = block['bbox']
+        x0, y0, x1, y1 = block["bbox"]
         if block_type in [
             BlockType.IMAGE_BODY,
             BlockType.IMAGE_CAPTION,
@@ -107,9 +111,42 @@ def add_bboxes(blocks, block_type, bboxes):
             BlockType.TABLE_CAPTION,
             BlockType.TABLE_FOOTNOTE,
         ]:
-            bboxes.append([x0, y0, x1, y1, None, None, None, block_type, None, None, None, None, block['score'], block['group_id']])
+            bboxes.append(
+                [
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    None,
+                    None,
+                    None,
+                    block_type,
+                    None,
+                    None,
+                    None,
+                    None,
+                    block["score"],
+                    block["group_id"],
+                ]
+            )
         else:
-            bboxes.append([x0, y0, x1, y1, None, None, None, block_type, None, None, None, None, block['score']])
+            bboxes.append(
+                [
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    None,
+                    None,
+                    None,
+                    block_type,
+                    None,
+                    None,
+                    None,
+                    None,
+                    block["score"],
+                ]
+            )
 
 
 def fix_text_overlap_title_blocks(all_bboxes):
@@ -147,7 +184,7 @@ def remove_need_drop_blocks(all_bboxes, discarded_blocks):
             block_bbox = block[:4]
             if (
                 calculate_overlap_area_in_bbox1_area_ratio(
-                    block_bbox, discarded_block['bbox']
+                    block_bbox, discarded_block["bbox"]
                 )
                 > 0.6
             ):
@@ -219,9 +256,7 @@ def remove_overlaps_min_blocks(all_bboxes):
             block2 = all_bboxes[j]
             block1_bbox = block1[:4]
             block2_bbox = block2[:4]
-            overlap_box = get_minbox_if_overlap_by_ratio(
-                block1_bbox, block2_bbox, 0.8
-            )
+            overlap_box = get_minbox_if_overlap_by_ratio(block1_bbox, block2_bbox, 0.8)
             if overlap_box is not None:
                 # 判断哪个区块的面积更小，移除较小的区块
                 area1 = (block1[2] - block1[0]) * (block1[3] - block1[1])

@@ -36,12 +36,16 @@ class SiglipVisionTower(nn.Module):
             image_features = []
             for image in images:
                 image_forward_out = self.vision_tower(
-                    image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True
+                    image.to(device=self.device, dtype=self.dtype).unsqueeze(0),
+                    output_hidden_states=True,
                 )
                 image_feature = image_forward_out.hidden_states[-1].to(image.dtype)
                 image_features.append(image_feature)
         else:
-            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
+            image_forward_outs = self.vision_tower(
+                images.to(device=self.device, dtype=self.dtype),
+                output_hidden_states=True,
+            )
             image_features = image_forward_outs.hidden_states[-1].to(images.dtype)
 
         return image_features
@@ -78,7 +82,9 @@ class SiglipVisionTower(nn.Module):
 
 
 def build_vision_tower(config: Mineru2QwenConfig):
-    vision_tower = getattr(config, "mm_vision_tower", getattr(config, "vision_tower", ""))
+    vision_tower = getattr(
+        config, "mm_vision_tower", getattr(config, "vision_tower", "")
+    )
     model_path = getattr(config, "_name_or_path", "")
     if "siglip" in vision_tower.lower():
         if model_path:
@@ -119,7 +125,9 @@ class Mineru2QwenModel(Qwen2Model):
         self.mm_projector = build_vision_projector(config)
 
         if "unpad" in getattr(config, "mm_patch_merge_type", ""):
-            self.image_newline = nn.Parameter(torch.empty(config.hidden_size, dtype=self.dtype))
+            self.image_newline = nn.Parameter(
+                torch.empty(config.hidden_size, dtype=self.dtype)
+            )
 
 
 class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
@@ -146,11 +154,25 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
         return image_features
 
     def prepare_inputs_labels_for_multimodal(
-        self, input_ids, position_ids, attention_mask, past_key_values, labels, images, image_sizes=None
+        self,
+        input_ids,
+        position_ids,
+        attention_mask,
+        past_key_values,
+        labels,
+        images,
+        image_sizes=None,
     ):
         vision_tower = self.get_model().vision_tower
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
-            return input_ids, position_ids, attention_mask, past_key_values, None, labels
+            return (
+                input_ids,
+                position_ids,
+                attention_mask,
+                past_key_values,
+                None,
+                labels,
+            )
 
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
@@ -169,21 +191,35 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                     if image_feature.shape[0] > 1:
                         base_image_feature = image_feature[0]
                         image_feature = image_feature[1:]
-                        height = width = self.get_model().vision_tower.num_patches_per_side
+                        height = width = (
+                            self.get_model().vision_tower.num_patches_per_side
+                        )
                         assert height * width == base_image_feature.shape[0]
 
                         if "anyres_max" in image_aspect_ratio:
-                            matched_anyres_max_num_patches = re.match(r"square_anyres_max_(\d+)", image_aspect_ratio)
+                            matched_anyres_max_num_patches = re.match(
+                                r"square_anyres_max_(\d+)", image_aspect_ratio
+                            )
                             if matched_anyres_max_num_patches:
-                                max_num_patches = int(matched_anyres_max_num_patches.group(1))
+                                max_num_patches = int(
+                                    matched_anyres_max_num_patches.group(1)
+                                )
 
-                        if image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
-                            num_patch_width, num_patch_height = get_anyres_image_grid_shape(
+                        if (
+                            image_aspect_ratio == "anyres"
+                            or "anyres_max" in image_aspect_ratio
+                        ):
+                            (
+                                num_patch_width,
+                                num_patch_height,
+                            ) = get_anyres_image_grid_shape(
                                 image_sizes[image_idx],
                                 self.config.image_grid_pinpoints,
                                 self.get_model().vision_tower.config.image_size,
                             )
-                            image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
+                            image_feature = image_feature.view(
+                                num_patch_height, num_patch_width, height, width, -1
+                            )
                         else:
                             raise NotImplementedError
                         if (
@@ -192,14 +228,18 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                             and matched_anyres_max_num_patches
                         ):
                             unit = image_feature.shape[2]
-                            image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+                            image_feature = image_feature.permute(
+                                4, 0, 2, 1, 3
+                            ).contiguous()
                             image_feature = image_feature.flatten(1, 2).flatten(2, 3)
                             c, h, w = image_feature.shape
                             times = math.sqrt(h * w / (max_num_patches * unit**2))
                             if times > 1.1:
                                 image_feature = image_feature[None]
                                 image_feature = nn.functional.interpolate(
-                                    image_feature, [int(h // times), int(w // times)], mode="bilinear"
+                                    image_feature,
+                                    [int(h // times), int(w // times)],
+                                    mode="bilinear",
                                 )[0]
                             image_feature = torch.cat(
                                 (
@@ -212,7 +252,9 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                             )
                             image_feature = image_feature.flatten(1, 2).transpose(0, 1)
                         elif "unpad" in mm_patch_merge_type:
-                            image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
+                            image_feature = image_feature.permute(
+                                4, 0, 2, 1, 3
+                            ).contiguous()
                             image_feature = image_feature.flatten(1, 2).flatten(2, 3)
                             image_feature = torch.cat(
                                 (
@@ -225,19 +267,31 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                             )
                             image_feature = image_feature.flatten(1, 2).transpose(0, 1)
                         else:
-                            image_feature = image_feature.permute(0, 2, 1, 3, 4).contiguous()
+                            image_feature = image_feature.permute(
+                                0, 2, 1, 3, 4
+                            ).contiguous()
                             image_feature = image_feature.flatten(0, 3)
-                        image_feature = torch.cat((base_image_feature, image_feature), dim=0)
+                        image_feature = torch.cat(
+                            (base_image_feature, image_feature), dim=0
+                        )
                     else:
                         image_feature = image_feature[0]
                         if "unpad" in mm_patch_merge_type:
                             image_feature = torch.cat(
-                                (image_feature, self.model.image_newline[None].to(image_feature.device)), dim=0
+                                (
+                                    image_feature,
+                                    self.model.image_newline[None].to(
+                                        image_feature.device
+                                    ),
+                                ),
+                                dim=0,
                             )
                     new_image_features.append(image_feature)
                 image_features = new_image_features
             else:
-                raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
+                raise ValueError(
+                    f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}"
+                )
         else:
             image_features = self.encode_images(images)
 
@@ -249,14 +303,22 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
         else:
             attention_mask = attention_mask.bool()
         if position_ids is None:
-            position_ids = torch.arange(0, input_ids.shape[1], dtype=torch.long, device=input_ids.device)
+            position_ids = torch.arange(
+                0, input_ids.shape[1], dtype=torch.long, device=input_ids.device
+            )
         if labels is None:
             labels = torch.full_like(input_ids, self.ignore_index)
 
         # remove the padding using attention_mask -- FIXME
         _input_ids = input_ids
-        input_ids = [cur_input_ids[cur_attention_mask] for cur_input_ids, cur_attention_mask in zip(input_ids, attention_mask)]
-        labels = [cur_labels[cur_attention_mask] for cur_labels, cur_attention_mask in zip(labels, attention_mask)]
+        input_ids = [
+            cur_input_ids[cur_attention_mask]
+            for cur_input_ids, cur_attention_mask in zip(input_ids, attention_mask)
+        ]
+        labels = [
+            cur_labels[cur_attention_mask]
+            for cur_labels, cur_attention_mask in zip(labels, attention_mask)
+        ]
 
         new_input_embeds = []
         new_labels = []
@@ -266,23 +328,35 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
-                cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
+                cur_input_embeds = torch.cat(
+                    [cur_input_embeds_1, cur_image_features[0:0]], dim=0
+                )
                 new_input_embeds.append(cur_input_embeds)
                 new_labels.append(labels[batch_idx])
                 cur_image_idx += 1
                 continue
 
             image_token_indices = (
-                [-1] + torch.where(cur_input_ids == self.image_token_index)[0].tolist() + [cur_input_ids.shape[0]]
+                [-1]
+                + torch.where(cur_input_ids == self.image_token_index)[0].tolist()
+                + [cur_input_ids.shape[0]]
             )
             cur_input_ids_noim = []
             cur_labels = labels[batch_idx]
             cur_labels_noim = []
             for i in range(len(image_token_indices) - 1):
-                cur_input_ids_noim.append(cur_input_ids[image_token_indices[i] + 1 : image_token_indices[i + 1]])
-                cur_labels_noim.append(cur_labels[image_token_indices[i] + 1 : image_token_indices[i + 1]])
+                cur_input_ids_noim.append(
+                    cur_input_ids[
+                        image_token_indices[i] + 1 : image_token_indices[i + 1]
+                    ]
+                )
+                cur_labels_noim.append(
+                    cur_labels[image_token_indices[i] + 1 : image_token_indices[i + 1]]
+                )
             split_sizes = [x.shape[0] for x in cur_labels_noim]
-            cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
+            cur_input_embeds = self.get_model().embed_tokens(
+                torch.cat(cur_input_ids_noim)
+            )
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             cur_new_input_embeds = []
             cur_new_labels = []
@@ -296,7 +370,10 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(
                         torch.full(
-                            (cur_image_features.shape[0],), self.ignore_index, device=cur_labels.device, dtype=cur_labels.dtype
+                            (cur_image_features.shape[0],),
+                            self.ignore_index,
+                            device=cur_labels.device,
+                            dtype=cur_labels.dtype,
                         )
                     )
 
@@ -309,9 +386,13 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
             new_labels.append(cur_new_labels)
 
         # Truncate sequences to max length as image embeddings can make the sequence longer
-        tokenizer_model_max_length = getattr(self.config, "tokenizer_model_max_length", None)
+        tokenizer_model_max_length = getattr(
+            self.config, "tokenizer_model_max_length", None
+        )
         if tokenizer_model_max_length is not None:
-            new_input_embeds = [x[:tokenizer_model_max_length] for x in new_input_embeds]
+            new_input_embeds = [
+                x[:tokenizer_model_max_length] for x in new_input_embeds
+            ]
             new_labels = [x[:tokenizer_model_max_length] for x in new_labels]
 
         # Combine them
@@ -320,12 +401,23 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
 
         new_input_embeds_padded = []
         new_labels_padded = torch.full(
-            (batch_size, max_len), self.ignore_index, dtype=new_labels[0].dtype, device=new_labels[0].device
+            (batch_size, max_len),
+            self.ignore_index,
+            dtype=new_labels[0].dtype,
+            device=new_labels[0].device,
         )
-        attention_mask = torch.zeros((batch_size, max_len), dtype=attention_mask.dtype, device=attention_mask.device)
-        position_ids = torch.zeros((batch_size, max_len), dtype=position_ids.dtype, device=position_ids.device)
+        attention_mask = torch.zeros(
+            (batch_size, max_len),
+            dtype=attention_mask.dtype,
+            device=attention_mask.device,
+        )
+        position_ids = torch.zeros(
+            (batch_size, max_len), dtype=position_ids.dtype, device=position_ids.device
+        )
 
-        for i, (cur_new_embed, cur_new_labels) in enumerate(zip(new_input_embeds, new_labels)):
+        for i, (cur_new_embed, cur_new_labels) in enumerate(
+            zip(new_input_embeds, new_labels)
+        ):
             cur_len = cur_new_embed.shape[0]
             if getattr(self.config, "tokenizer_padding_side", "right") == "left":
                 new_input_embeds_padded.append(
@@ -344,7 +436,9 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                 if cur_len > 0:
                     new_labels_padded[i, -cur_len:] = cur_new_labels
                     attention_mask[i, -cur_len:] = True
-                    position_ids[i, -cur_len:] = torch.arange(0, cur_len, dtype=position_ids.dtype, device=position_ids.device)
+                    position_ids[i, -cur_len:] = torch.arange(
+                        0, cur_len, dtype=position_ids.dtype, device=position_ids.device
+                    )
             else:
                 new_input_embeds_padded.append(
                     torch.cat(
@@ -362,7 +456,9 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
                 if cur_len > 0:
                     new_labels_padded[i, :cur_len] = cur_new_labels
                     attention_mask[i, :cur_len] = True
-                    position_ids[i, :cur_len] = torch.arange(0, cur_len, dtype=position_ids.dtype, device=position_ids.device)
+                    position_ids[i, :cur_len] = torch.arange(
+                        0, cur_len, dtype=position_ids.dtype, device=position_ids.device
+                    )
 
         new_input_embeds = torch.stack(new_input_embeds_padded, dim=0)
 
@@ -379,7 +475,14 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
         if _position_ids is None:
             position_ids = None
 
-        return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
+        return (
+            None,
+            position_ids,
+            attention_mask,
+            past_key_values,
+            new_input_embeds,
+            new_labels,
+        )
 
     def forward(
         self,
@@ -397,12 +500,22 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-
         if inputs_embeds is None:
-            (input_ids, position_ids, attention_mask, past_key_values, inputs_embeds, labels) = (
-                self.prepare_inputs_labels_for_multimodal(
-                    input_ids, position_ids, attention_mask, past_key_values, labels, images, image_sizes
-                )
+            (
+                input_ids,
+                position_ids,
+                attention_mask,
+                past_key_values,
+                inputs_embeds,
+                labels,
+            ) = self.prepare_inputs_labels_for_multimodal(
+                input_ids,
+                position_ids,
+                attention_mask,
+                past_key_values,
+                labels,
+                images,
+                image_sizes,
             )
         return super().forward(
             input_ids=input_ids,
@@ -430,17 +543,40 @@ class Mineru2QwenForCausalLM(Qwen2ForCausalLM):
         if "inputs_embeds" in kwargs:
             raise NotImplementedError("`inputs_embeds` is not supported")
 
-        inputs, position_ids, attention_mask, _, inputs_embeds, _ = self.prepare_inputs_labels_for_multimodal(
-            inputs, position_ids, attention_mask, None, None, images, image_sizes=image_sizes
+        (
+            inputs,
+            position_ids,
+            attention_mask,
+            _,
+            inputs_embeds,
+            _,
+        ) = self.prepare_inputs_labels_for_multimodal(
+            inputs,
+            position_ids,
+            attention_mask,
+            None,
+            None,
+            images,
+            image_sizes=image_sizes,
         )
 
-        return super().generate(position_ids=position_ids, attention_mask=attention_mask, inputs_embeds=inputs_embeds, **kwargs)
+        return super().generate(
+            position_ids=position_ids,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            **kwargs,
+        )
 
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs
+    ):
         images = kwargs.pop("images", None)
         image_sizes = kwargs.pop("image_sizes", None)
         inputs = super().prepare_inputs_for_generation(
-            input_ids, past_key_values=past_key_values, inputs_embeds=inputs_embeds, **kwargs
+            input_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            **kwargs,
         )
         if images is not None:
             inputs["images"] = images

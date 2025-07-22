@@ -1,5 +1,3 @@
-"""MinerU File转Markdown转换的API客户端。"""
-
 import asyncio
 import os
 import zipfile
@@ -137,7 +135,7 @@ class MinerUClient:
 
         elif isinstance(urls, list):
             # 处理URL列表或URL配置列表
-            for i, url_item in enumerate(urls):
+            for url_item in enumerate(urls):
                 if isinstance(url_item, str):
                     # 简单的URL字符串
                     urls_config.append(
@@ -275,7 +273,7 @@ class MinerUClient:
 
         elif isinstance(files, list):
             # 处理文件路径列表或文件配置列表
-            for i, file_item in enumerate(files):
+            for _i, file_item in enumerate(files):
                 if isinstance(file_item, str):
                     # 简单的文件路径
                     file_path = Path(file_item)
@@ -393,7 +391,7 @@ class MinerUClient:
         # 步骤3: 上传所有文件
         uploaded_files = []
 
-        for i, (file_config, upload_url) in enumerate(zip(files_config, file_urls)):
+        for file_config, upload_url in enumerate(zip(files_config, file_urls)):
             file_path = file_config["path"]
             if file_path is None:
                 raise ValueError(f"文件 {file_config['name']} 没有有效的路径")
@@ -508,7 +506,7 @@ class MinerUClient:
             for i in range(max_retries):
                 status_info = await self.get_batch_task_status(batch_id)
 
-                config.logger.debug(f"轮训结果：{status_info}")
+                config.logger.debug(f"轮巡结果：{status_info}")
 
                 if (
                     "data" not in status_info
@@ -600,7 +598,7 @@ class MinerUClient:
 
                 # 如果没有进度信息，只显示简单的等待消息
                 if not has_progress:
-                    config.logger.info(f"等待文件处理完成... ({i+1}/{max_retries})")
+                    config.logger.info(f"等待文件处理完成... ({i + 1}/{max_retries})")
 
                 await asyncio.sleep(retry_interval)
             else:

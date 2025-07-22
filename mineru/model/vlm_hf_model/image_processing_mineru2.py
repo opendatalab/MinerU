@@ -35,12 +35,18 @@ def select_best_resolution(original_size: tuple, possible_resolutions: list) -> 
 
     for width, height in possible_resolutions:
         scale = min(width / original_width, height / original_height)
-        downscaled_width, downscaled_height = int(original_width * scale), int(original_height * scale)
-        effective_resolution = min(downscaled_width * downscaled_height, original_width * original_height)
+        downscaled_width, downscaled_height = (
+            int(original_width * scale),
+            int(original_height * scale),
+        )
+        effective_resolution = min(
+            downscaled_width * downscaled_height, original_width * original_height
+        )
         wasted_resolution = (width * height) - effective_resolution
 
         if effective_resolution > max_effective_resolution or (
-            effective_resolution == max_effective_resolution and wasted_resolution < min_wasted_resolution
+            effective_resolution == max_effective_resolution
+            and wasted_resolution < min_wasted_resolution
         ):
             max_effective_resolution = effective_resolution
             min_wasted_resolution = wasted_resolution
@@ -78,12 +84,20 @@ def expand2square(pil_img, background_color):
 
 def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
     if isinstance(grid_pinpoints, str) and "x" in grid_pinpoints:
-        assert patch_size in [224, 336, 384, 448, 512], "patch_size should be in [224, 336, 384, 448, 512]"
+        assert patch_size in [
+            224,
+            336,
+            384,
+            448,
+            512,
+        ], "patch_size should be in [224, 336, 384, 448, 512]"
         matches = re.findall(r"\((\d+)x(\d+)\)", grid_pinpoints)
         range_start = tuple(map(int, matches[0]))
         range_end = tuple(map(int, matches[-1]))
         grid_pinpoints = [
-            (i, j) for i in range(range_start[0], range_end[0] + 1) for j in range(range_start[1], range_end[1] + 1)
+            (i, j)
+            for i in range(range_start[0], range_end[0] + 1)
+            for j in range(range_start[1], range_end[1] + 1)
         ]
         grid_pinpoints = [[dim * patch_size for dim in pair] for pair in grid_pinpoints]
     if type(grid_pinpoints) is list:
@@ -124,12 +138,20 @@ def resize_and_pad_image(image, target_resolution):
 def process_anyres_image(image, processor, grid_pinpoints):
     if isinstance(grid_pinpoints, str) and "x" in grid_pinpoints:
         patch_size = processor.crop_size["height"]
-        assert patch_size in [224, 336, 384, 448, 512], "patch_size should be in [224, 336, 384, 448, 512]"
+        assert patch_size in [
+            224,
+            336,
+            384,
+            448,
+            512,
+        ], "patch_size should be in [224, 336, 384, 448, 512]"
         matches = re.findall(r"\((\d+)x(\d+)\)", grid_pinpoints)
         range_start = tuple(map(int, matches[0]))
         range_end = tuple(map(int, matches[-1]))
         grid_pinpoints = [
-            (i, j) for i in range(range_start[0], range_end[0] + 1) for j in range(range_start[1], range_end[1] + 1)
+            (i, j)
+            for i in range(range_start[0], range_end[0] + 1)
+            for j in range(range_start[1], range_end[1] + 1)
         ]
         grid_pinpoints = [[dim * patch_size for dim in pair] for pair in grid_pinpoints]
 
@@ -144,10 +166,15 @@ def process_anyres_image(image, processor, grid_pinpoints):
 
     patches = divide_to_patches(image_padded, processor.crop_size["height"])
 
-    image_original_resize = image.resize((processor.crop_size["height"], processor.crop_size["height"]))
+    image_original_resize = image.resize(
+        (processor.crop_size["height"], processor.crop_size["height"])
+    )
 
     image_patches = [image_original_resize] + patches
-    image_patches = [processor.preprocess(image_patch, return_tensors="pt")["pixel_values"][0] for image_patch in image_patches]
+    image_patches = [
+        processor.preprocess(image_patch, return_tensors="pt")["pixel_values"][0]
+        for image_patch in image_patches
+    ]
     return torch.stack(image_patches, dim=0)
 
 
@@ -156,12 +183,18 @@ def process_images(images, image_processor, model_cfg):
     new_images = []
     if image_aspect_ratio == "pad":
         for image in images:
-            image = expand2square(image, tuple(int(x * 255) for x in image_processor.image_mean))
-            image = image_processor.preprocess(image, return_tensors="pt")["pixel_values"][0]
+            image = expand2square(
+                image, tuple(int(x * 255) for x in image_processor.image_mean)
+            )
+            image = image_processor.preprocess(image, return_tensors="pt")[
+                "pixel_values"
+            ][0]
             new_images.append(image)
     elif image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
         for image in images:
-            image = process_anyres_image(image, image_processor, model_cfg.image_grid_pinpoints)
+            image = process_anyres_image(
+                image, image_processor, model_cfg.image_grid_pinpoints
+            )
             new_images.append(image)
     else:
         return image_processor(images, return_tensors="pt")["pixel_values"]
@@ -188,8 +221,12 @@ class Mineru2ImageProcessor(BaseImageProcessor):
     ) -> None:
         super().__init__(**kwargs)
 
-        crop_size = crop_size if crop_size is not None else {"height": 384, "width": 384}
-        crop_size = get_size_dict(crop_size, default_to_square=True, param_name="crop_size")
+        crop_size = (
+            crop_size if crop_size is not None else {"height": 384, "width": 384}
+        )
+        crop_size = get_size_dict(
+            crop_size, default_to_square=True, param_name="crop_size"
+        )
 
         self.image_mean = image_mean
         self.image_std = image_std
@@ -213,10 +250,24 @@ class Mineru2ImageProcessor(BaseImageProcessor):
         transforms = [
             convert_to_rgb,
             to_numpy_array,
-            partial(resize, size=self.size, resample=self.resample, data_format=self.data_format),
+            partial(
+                resize,
+                size=self.size,
+                resample=self.resample,
+                data_format=self.data_format,
+            ),
             partial(rescale, scale=self.rescale_factor, data_format=self.data_format),
-            partial(normalize, mean=self.image_mean, std=self.image_std, data_format=self.data_format),
-            partial(to_channel_dimension_format, channel_dim=self.data_format, input_channel_dim=self.data_format),
+            partial(
+                normalize,
+                mean=self.image_mean,
+                std=self.image_std,
+                data_format=self.data_format,
+            ),
+            partial(
+                to_channel_dimension_format,
+                channel_dim=self.data_format,
+                input_channel_dim=self.data_format,
+            ),
         ]
 
         images = reduce(lambda x, f: [*map(f, x)], transforms, images)
@@ -231,7 +282,9 @@ class Mineru2ImageProcessor(BaseImageProcessor):
         pixel_values = []
         if image_aspect_ratio == "pad":
             for image in images:
-                image = expand2square(image, tuple(int(x * 255) for x in self.image_mean))
+                image = expand2square(
+                    image, tuple(int(x * 255) for x in self.image_mean)
+                )
                 image = self._preprocess(image)["pixel_values"][0]
                 pixel_values.append(image)
         elif image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
@@ -241,7 +294,9 @@ class Mineru2ImageProcessor(BaseImageProcessor):
         else:
             pixel_values = self._preprocess(images)["pixel_values"]
 
-        if isinstance(pixel_values, list) and all(x.shape == pixel_values[0].shape for x in pixel_values):
+        if isinstance(pixel_values, list) and all(
+            x.shape == pixel_values[0].shape for x in pixel_values
+        ):
             pixel_values = np.stack(pixel_values, axis=0)
 
         # CAUTION: here used (height, width).

@@ -17,7 +17,6 @@
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -101,7 +100,10 @@ class UnimerMBartConfig(PretrainedConfig):
 
     model_type = "unimer-mbart"
     keys_to_ignore_at_inference = ["past_key_values"]
-    attribute_map = {"num_attention_heads": "encoder_attention_heads", "hidden_size": "d_model"}
+    attribute_map = {
+        "num_attention_heads": "encoder_attention_heads",
+        "hidden_size": "d_model",
+    }
 
     def __init__(
         self,
@@ -152,7 +154,9 @@ class UnimerMBartConfig(PretrainedConfig):
         self.classifier_dropout = classifier_dropout
         self.use_cache = use_cache
         self.num_hidden_layers = encoder_layers
-        self.scale_embedding = scale_embedding  # scale factor will be sqrt(d_model) if True
+        self.scale_embedding = (
+            scale_embedding  # scale factor will be sqrt(d_model) if True
+        )
         super().__init__(
             pad_token_id=pad_token_id,
             bos_token_id=bos_token_id,

@@ -102,8 +102,8 @@ class ConvMixer(nn.Module):
         self,
         dim,
         num_heads=8,
-        HW=[8, 25],
-        local_k=[3, 3],
+        HW=(8, 25),
+        local_k=(3, 3),
     ):
         super().__init__()
         self.HW = HW
@@ -266,11 +266,11 @@ class PatchEmbed(nn.Module):
 
     def __init__(
         self,
-        img_size=[32, 100],
+        img_size=(32, 100),
         in_channels=3,
         embed_dim=768,
         sub_num=2,
-        patch_size=[4, 4],
+        patch_size=(4, 4),
         mode="pope",
     ):
         super().__init__()
@@ -341,10 +341,10 @@ class PatchEmbed(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.shape
-        assert (
-            H == self.img_size[0] and W == self.img_size[1]
-        ), "Input image size ({}*{}) doesn't match model ({}*{}).".format(
-            H, W, self.img_size[0], self.img_size[1]
+        assert H == self.img_size[0] and W == self.img_size[1], (
+            "Input image size ({}*{}) doesn't match model ({}*{}).".format(
+                H, W, self.img_size[0], self.img_size[1]
+            )
         )
         x = self.proj(x).flatten(2).permute(0, 2, 1)
         return x
@@ -356,7 +356,7 @@ class SubSample(nn.Module):
         in_channels,
         out_channels,
         types="Pool",
-        stride=[2, 1],
+        stride=(2, 1),
         sub_norm="nn.LayerNorm",
         act=None,
     ):
@@ -403,13 +403,13 @@ class SubSample(nn.Module):
 class SVTRNet(nn.Module):
     def __init__(
         self,
-        img_size=[32, 100],
+        img_size=(32, 100),
         in_channels=3,
-        embed_dim=[64, 128, 256],
-        depth=[3, 6, 3],
-        num_heads=[2, 4, 8],
-        mixer=["Local"] * 6 + ["Global"] * 6,  # Local atten, Global atten, Conv
-        local_mixer=[[7, 11], [7, 11], [7, 11]],
+        embed_dim=(64, 128, 256),
+        depth=(3, 6, 3),
+        num_heads=(2, 4, 8),
+        mixer=("Local",) * 6 + ("Global",) * 6,  # Local atten, Global atten, Conv
+        local_mixer=((7, 11), (7, 11), (7, 11)),
         patch_merging="Conv",  # Conv, Pool, None
         mlp_ratio=4,
         qkv_bias=True,
@@ -429,7 +429,7 @@ class SVTRNet(nn.Module):
         sub_num=2,
         prenorm=True,
         use_lenhead=False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.img_size = img_size

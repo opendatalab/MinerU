@@ -30,7 +30,6 @@ class IOReader(ABC):
 
 
 class IOWriter(ABC):
-
     @abstractmethod
     def write(self, path: str, data: bytes) -> None:
         """Write file with data.

@@ -1,8 +1,9 @@
-from typing import List, Dict, Union
-from doclayout_yolo import YOLOv10
-from tqdm import tqdm
+from typing import Dict, List, Union
+
 import numpy as np
+from doclayout_yolo import YOLOv10
 from PIL import Image
+from tqdm import tqdm
 
 
 class DocLayoutYOLOModel:
@@ -34,32 +35,28 @@ class DocLayoutYOLOModel:
         ):
             coords = list(map(int, xyxy.tolist()))
             xmin, ymin, xmax, ymax = coords
-            layout_res.append({
-                "category_id": int(cls.item()),
-                "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-                "score": round(float(conf.item()), 3),
-            })
+            layout_res.append(
+                {
+                    "category_id": int(cls.item()),
+                    "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
+                    "score": round(float(conf.item()), 3),
+                }
+            )
         return layout_res
 
     def predict(self, image: Union[np.ndarray, Image.Image]) -> List[Dict]:
         prediction = self.model.predict(
-            image,
-            imgsz=self.imgsz,
-            conf=self.conf,
-            iou=self.iou,
-            verbose=False
+            image, imgsz=self.imgsz, conf=self.conf, iou=self.iou, verbose=False
         )[0]
         return self._parse_prediction(prediction)
 
     def batch_predict(
-        self,
-        images: List[Union[np.ndarray, Image.Image]],
-        batch_size: int = 4
+        self, images: List[Union[np.ndarray, Image.Image]], batch_size: int = 4
     ) -> List[List[Dict]]:
         results = []
         with tqdm(total=len(images), desc="Layout Predict") as pbar:
             for idx in range(0, len(images), batch_size):
-                batch = images[idx: idx + batch_size]
+                batch = images[idx : idx + batch_size]
                 predictions = self.model.predict(
                     batch,
                     imgsz=self.imgsz,

@@ -2,9 +2,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import AsyncIterable, Iterable, List, Optional, Union
 
-DEFAULT_SYSTEM_PROMPT = (
-    "A conversation between a user and an LLM-based AI assistant. The assistant gives helpful and honest answers."
-)
+DEFAULT_SYSTEM_PROMPT = "A conversation between a user and an LLM-based AI assistant. The assistant gives helpful and honest answers."
 DEFAULT_USER_PROMPT = "Document Parsing:"
 DEFAULT_TEMPERATURE = 0.0
 DEFAULT_TOP_P = 0.8
@@ -182,5 +180,6 @@ class BasePredictor(ABC):
         # else:
         #     return f"<|im_start|>system\n{self.system_prompt}<|im_end|><|im_start|>user\n<image>\n{prompt}<|im_end|><|im_start|>assistant\n"
 
+    @abstractmethod
     def close(self):
         pass

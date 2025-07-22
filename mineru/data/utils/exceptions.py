@@ -1,12 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-class FileNotExisted(Exception):
 
+class FileNotExisted(Exception):
     def __init__(self, path):
         self.path = path
 
     def __str__(self):
-        return f'File {self.path} does not exist.'
+        return f"File {self.path} does not exist."
 
 
 class InvalidConfig(Exception):
@@ -14,7 +14,7 @@ class InvalidConfig(Exception):
         self.msg = msg
 
     def __str__(self):
-        return f'Invalid config: {self.msg}'
+        return f"Invalid config: {self.msg}"
 
 
 class InvalidParams(Exception):
@@ -22,7 +22,7 @@ class InvalidParams(Exception):
         self.msg = msg
 
     def __str__(self):
-        return f'Invalid params: {self.msg}'
+        return f"Invalid params: {self.msg}"
 
 
 class EmptyData(Exception):
@@ -30,11 +30,12 @@ class EmptyData(Exception):
         self.msg = msg
 
     def __str__(self):
-        return f'Empty data: {self.msg}'
+        return f"Empty data: {self.msg}"
+
 
 class CUDA_NOT_AVAILABLE(Exception):
     def __init__(self, msg):
         self.msg = msg
 
     def __str__(self):
-        return f'CUDA not available: {self.msg}'
+        return f"CUDA not available: {self.msg}"

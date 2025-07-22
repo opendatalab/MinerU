@@ -355,10 +355,10 @@ class PPLCNetV3(nn.Module):
         self,
         scale=1.0,
         conv_kxk_num=4,
-        lr_mult_list=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        lr_mult_list=(1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
         lab_lr=0.1,
         det=False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.scale = scale
@@ -367,14 +367,14 @@ class PPLCNetV3(nn.Module):
 
         self.net_config = NET_CONFIG_det if self.det else NET_CONFIG_rec
 
-        assert isinstance(
-            self.lr_mult_list, (list, tuple)
-        ), "lr_mult_list should be in (list, tuple) but got {}".format(
-            type(self.lr_mult_list)
+        assert isinstance(self.lr_mult_list, (list, tuple)), (
+            "lr_mult_list should be in (list, tuple) but got {}".format(
+                type(self.lr_mult_list)
+            )
         )
-        assert (
-            len(self.lr_mult_list) == 6
-        ), "lr_mult_list length should be 6 but got {}".format(len(self.lr_mult_list))
+        assert len(self.lr_mult_list) == 6, (
+            "lr_mult_list length should be 6 but got {}".format(len(self.lr_mult_list))
+        )
 
         self.conv1 = ConvBNLayer(
             in_channels=3,

@@ -310,7 +310,7 @@ async def convert_file_path(
         else:
             # 多个文件路径，转换为文件配置列表
             files_to_process = []
-            for i, path in enumerate(file_paths):
+            for path in enumerate(file_paths):
                 files_to_process.append(
                     {
                         "path": path,

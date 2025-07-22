@@ -1,21 +1,21 @@
-from PIL import Image, ImageOps
-from transformers.image_processing_utils import BaseImageProcessor
-import numpy as np
-import cv2
 import albumentations as alb
+import cv2
+import numpy as np
 from albumentations.pytorch import ToTensorV2
+from PIL import Image, ImageOps
 from torchvision.transforms.functional import resize
+from transformers.image_processing_utils import BaseImageProcessor
 
 
 # TODO: dereference cv2 if possible
 class UnimerSwinImageProcessor(BaseImageProcessor):
     def __init__(
-            self,
-            image_size = (192, 672),
-        ):
+        self,
+        image_size=(192, 672),
+    ):
         self.input_size = [int(_) for _ in image_size]
         assert len(self.input_size) == 2
-    
+
         self.transform = alb.Compose(
             [
                 alb.ToGray(),
@@ -27,7 +27,7 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
 
     def __call__(self, item):
         image = self.prepare_input(item)
-        return self.transform(image=image)['image'][:1]
+        return self.transform(image=image)["image"][:1]
 
     @staticmethod
     def crop_margin(img: Image.Image) -> Image.Image:
@@ -57,7 +57,9 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
         if gray.max() == gray.min():
             return img
 
-        normalized = (((gray - gray.min()) / (gray.max() - gray.min())) * 255).astype(np.uint8)
+        normalized = (((gray - gray.min()) / (gray.max() - gray.min())) * 255).astype(
+            np.uint8
+        )
         binary = 255 * (normalized < 200).astype(np.uint8)
 
         # Find bounding box
@@ -65,7 +67,7 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
         x, y, w, h = cv2.boundingRect(coords)  # Find minimum spanning bounding box
 
         # Return cropped image
-        return img[y:y + h, x:x + w]
+        return img[y : y + h, x : x + w]
 
     def prepare_input(self, img, random_padding: bool = False):
         """
@@ -105,7 +107,9 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
             delta_width = target_w - new_w
             delta_height = target_h - new_h
 
-            pad_width, pad_height = self._get_padding_values(new_w, new_h, random_padding)
+            pad_width, pad_height = self._get_padding_values(
+                new_w, new_h, random_padding
+            )
 
             # Apply padding (convert PIL padding format to OpenCV format)
             padding_color = [0, 0, 0] if len(img.shape) == 3 else [0]
@@ -117,7 +121,7 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
                 pad_width,  # left
                 delta_width - pad_width,  # right
                 cv2.BORDER_CONSTANT,
-                value=padding_color
+                value=padding_color,
             )
 
             return padded_img

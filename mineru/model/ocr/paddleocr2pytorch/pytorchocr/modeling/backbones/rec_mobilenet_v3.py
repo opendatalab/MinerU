@@ -11,7 +11,7 @@ class MobileNetV3(nn.Module):
         scale=0.5,
         large_stride=None,
         small_stride=None,
-        **kwargs
+        **kwargs,
     ):
         super(MobileNetV3, self).__init__()
         if small_stride is None:
@@ -19,18 +19,18 @@ class MobileNetV3(nn.Module):
         if large_stride is None:
             large_stride = [1, 2, 2, 2]
 
-        assert isinstance(
-            large_stride, list
-        ), "large_stride type must " "be list but got {}".format(type(large_stride))
-        assert isinstance(
-            small_stride, list
-        ), "small_stride type must " "be list but got {}".format(type(small_stride))
-        assert (
-            len(large_stride) == 4
-        ), "large_stride length must be " "4 but got {}".format(len(large_stride))
-        assert (
-            len(small_stride) == 4
-        ), "small_stride length must be " "4 but got {}".format(len(small_stride))
+        assert isinstance(large_stride, list), (
+            "large_stride type must be list but got {}".format(type(large_stride))
+        )
+        assert isinstance(small_stride, list), (
+            "small_stride type must be list but got {}".format(type(small_stride))
+        )
+        assert len(large_stride) == 4, (
+            "large_stride length must be 4 but got {}".format(len(large_stride))
+        )
+        assert len(small_stride) == 4, (
+            "small_stride length must be 4 but got {}".format(len(small_stride))
+        )
 
         if model_name == "large":
             cfg = [
@@ -74,10 +74,10 @@ class MobileNetV3(nn.Module):
             )
 
         supported_scale = [0.35, 0.5, 0.75, 1.0, 1.25]
-        assert (
-            scale in supported_scale
-        ), "supported scales are {} but input scale is {}".format(
-            supported_scale, scale
+        assert scale in supported_scale, (
+            "supported scales are {} but input scale is {}".format(
+                supported_scale, scale
+            )
         )
 
         inplanes = 16

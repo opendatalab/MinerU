@@ -21,8 +21,10 @@ try:
     from .hf_predictor import HuggingfacePredictor
 
     hf_loaded = True
-except ImportError as e:
-    logger.warning("hf is not installed. If you are not using transformers, you can ignore this warning.")
+except ImportError:
+    logger.warning(
+        "hf is not installed. If you are not using transformers, you can ignore this warning."
+    )
 
 engine_loaded = False
 try:
@@ -31,8 +33,10 @@ try:
     from .sglang_engine_predictor import SglangEnginePredictor
 
     engine_loaded = True
-except Exception as e:
-    logger.warning("sglang is not installed. If you are not using sglang, you can ignore this warning.")
+except Exception:
+    logger.warning(
+        "sglang is not installed. If you are not using sglang, you can ignore this warning."
+    )
 
 
 def get_predictor(
@@ -104,7 +108,9 @@ def get_predictor(
             http_timeout=http_timeout,
         )
     else:
-        raise ValueError(f"Unsupported backend: {backend}. Supports: transformers, sglang-engine, sglang-client.")
+        raise ValueError(
+            f"Unsupported backend: {backend}. Supports: transformers, sglang-engine, sglang-client."
+        )
 
     elapsed = round(time.time() - start_time, 2)
     logger.info(f"get_predictor cost: {elapsed}s")

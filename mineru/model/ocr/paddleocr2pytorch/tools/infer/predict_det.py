@@ -1,12 +1,13 @@
 import sys
+import time
 
 import numpy as np
-import time
 import torch
+
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
 from ...pytorchocr.data import create_operators, transform
 from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextDetector(BaseOCRV20):
@@ -14,28 +15,27 @@ class TextDetector(BaseOCRV20):
         self.args = args
         self.det_algorithm = args.det_algorithm
         self.device = args.device
-        pre_process_list = [{
-            'DetResizeForTest': {
-                'limit_side_len': args.det_limit_side_len,
-                'limit_type': args.det_limit_type,
-            }
-        }, {
-            'NormalizeImage': {
-                'std': [0.229, 0.224, 0.225],
-                'mean': [0.485, 0.456, 0.406],
-                'scale': '1./255.',
-                'order': 'hwc'
-            }
-        }, {
-            'ToCHWImage': None
-        }, {
-            'KeepKeys': {
-                'keep_keys': ['image', 'shape']
-            }
-        }]
+        pre_process_list = [
+            {
+                "DetResizeForTest": {
+                    "limit_side_len": args.det_limit_side_len,
+                    "limit_type": args.det_limit_type,
+                }
+            },
+            {
+                "NormalizeImage": {
+                    "std": [0.229, 0.224, 0.225],
+                    "mean": [0.485, 0.456, 0.406],
+                    "scale": "1./255.",
+                    "order": "hwc",
+                }
+            },
+            {"ToCHWImage": None},
+            {"KeepKeys": {"keep_keys": ["image", "shape"]}},
+        ]
         postprocess_params = {}
         if self.det_algorithm == "DB":
-            postprocess_params['name'] = 'DBPostProcess'
+            postprocess_params["name"] = "DBPostProcess"
             postprocess_params["thresh"] = args.det_db_thresh
             postprocess_params["box_thresh"] = args.det_db_box_thresh
             postprocess_params["max_candidates"] = 1000
@@ -43,7 +43,7 @@ class TextDetector(BaseOCRV20):
             postprocess_params["use_dilation"] = args.use_dilation
             postprocess_params["score_mode"] = args.det_db_score_mode
         elif self.det_algorithm == "DB++":
-            postprocess_params['name'] = 'DBPostProcess'
+            postprocess_params["name"] = "DBPostProcess"
             postprocess_params["thresh"] = args.det_db_thresh
             postprocess_params["box_thresh"] = args.det_db_box_thresh
             postprocess_params["max_candidates"] = 1000
@@ -51,26 +51,23 @@ class TextDetector(BaseOCRV20):
             postprocess_params["use_dilation"] = args.use_dilation
             postprocess_params["score_mode"] = args.det_db_score_mode
             pre_process_list[1] = {
-                'NormalizeImage': {
-                    'std': [1.0, 1.0, 1.0],
-                    'mean':
-                        [0.48109378172549, 0.45752457890196, 0.40787054090196],
-                    'scale': '1./255.',
-                    'order': 'hwc'
+                "NormalizeImage": {
+                    "std": [1.0, 1.0, 1.0],
+                    "mean": [0.48109378172549, 0.45752457890196, 0.40787054090196],
+                    "scale": "1./255.",
+                    "order": "hwc",
                 }
             }
         elif self.det_algorithm == "EAST":
-            postprocess_params['name'] = 'EASTPostProcess'
+            postprocess_params["name"] = "EASTPostProcess"
             postprocess_params["score_thresh"] = args.det_east_score_thresh
             postprocess_params["cover_thresh"] = args.det_east_cover_thresh
             postprocess_params["nms_thresh"] = args.det_east_nms_thresh
         elif self.det_algorithm == "SAST":
             pre_process_list[0] = {
-                'DetResizeForTest': {
-                    'resize_long': args.det_limit_side_len
-                }
+                "DetResizeForTest": {"resize_long": args.det_limit_side_len}
             }
-            postprocess_params['name'] = 'SASTPostProcess'
+            postprocess_params["name"] = "SASTPostProcess"
             postprocess_params["score_thresh"] = args.det_sast_score_thresh
             postprocess_params["nms_thresh"] = args.det_sast_nms_thresh
             self.det_sast_polygon = args.det_sast_polygon
@@ -83,7 +80,7 @@ class TextDetector(BaseOCRV20):
                 postprocess_params["expand_scale"] = 1.0
                 postprocess_params["shrink_ratio_of_width"] = 0.3
         elif self.det_algorithm == "PSE":
-            postprocess_params['name'] = 'PSEPostProcess'
+            postprocess_params["name"] = "PSEPostProcess"
             postprocess_params["thresh"] = args.det_pse_thresh
             postprocess_params["box_thresh"] = args.det_pse_box_thresh
             postprocess_params["min_area"] = args.det_pse_min_area
@@ -91,12 +88,8 @@ class TextDetector(BaseOCRV20):
             postprocess_params["scale"] = args.det_pse_scale
             self.det_pse_box_type = args.det_pse_box_type
         elif self.det_algorithm == "FCE":
-            pre_process_list[0] = {
-                'DetResizeForTest': {
-                    'rescale_img': [1080, 736]
-                }
-            }
-            postprocess_params['name'] = 'FCEPostProcess'
+            pre_process_list[0] = {"DetResizeForTest": {"rescale_img": [1080, 736]}}
+            postprocess_params["name"] = "FCEPostProcess"
             postprocess_params["scales"] = args.scales
             postprocess_params["alpha"] = args.alpha
             postprocess_params["beta"] = args.beta
@@ -119,15 +112,15 @@ class TextDetector(BaseOCRV20):
 
     def _batch_process_same_size(self, img_list):
         """
-            对相同尺寸的图像进行批处理
+        对相同尺寸的图像进行批处理
 
-            Args:
-                img_list: 相同尺寸的图像列表
+        Args:
+            img_list: 相同尺寸的图像列表
 
-            Returns:
-                batch_results: 批处理结果列表
-                total_elapse: 总耗时
-            """
+        Returns:
+            batch_results: 批处理结果列表
+            total_elapse: 总耗时
+        """
         starttime = time.time()
 
         # 预处理所有图像
@@ -139,7 +132,7 @@ class TextDetector(BaseOCRV20):
             ori_im = img.copy()
             ori_imgs.append(ori_im)
 
-            data = {'image': img}
+            data = {"image": img}
             data = transform(data, self.preprocess_op)
             if data is None:
                 # 如果预处理失败，返回空结果
@@ -153,7 +146,7 @@ class TextDetector(BaseOCRV20):
         try:
             batch_tensor = np.stack(batch_data, axis=0)
             batch_shapes = np.stack(batch_shapes, axis=0)
-        except Exception as e:
+        except Exception:
             # 如果堆叠失败，回退到逐个处理
             batch_results = []
             for img in img_list:
@@ -170,18 +163,18 @@ class TextDetector(BaseOCRV20):
         # 处理输出
         preds = {}
         if self.det_algorithm == "EAST":
-            preds['f_geo'] = outputs['f_geo'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-        elif self.det_algorithm == 'SAST':
-            preds['f_border'] = outputs['f_border'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-            preds['f_tco'] = outputs['f_tco'].cpu().numpy()
-            preds['f_tvo'] = outputs['f_tvo'].cpu().numpy()
-        elif self.det_algorithm in ['DB', 'PSE', 'DB++']:
-            preds['maps'] = outputs['maps'].cpu().numpy()
-        elif self.det_algorithm == 'FCE':
+            preds["f_geo"] = outputs["f_geo"].cpu().numpy()
+            preds["f_score"] = outputs["f_score"].cpu().numpy()
+        elif self.det_algorithm == "SAST":
+            preds["f_border"] = outputs["f_border"].cpu().numpy()
+            preds["f_score"] = outputs["f_score"].cpu().numpy()
+            preds["f_tco"] = outputs["f_tco"].cpu().numpy()
+            preds["f_tvo"] = outputs["f_tvo"].cpu().numpy()
+        elif self.det_algorithm in ["DB", "PSE", "DB++"]:
+            preds["maps"] = outputs["maps"].cpu().numpy()
+        elif self.det_algorithm == "FCE":
             for i, (k, output) in enumerate(outputs.items()):
-                preds['level_{}'.format(i)] = output.cpu().numpy()
+                preds["level_{}".format(i)] = output.cpu().numpy()
         else:
             raise NotImplementedError
 
@@ -194,19 +187,22 @@ class TextDetector(BaseOCRV20):
             single_preds = {}
             for key, value in preds.items():
                 if isinstance(value, np.ndarray):
-                    single_preds[key] = value[i:i + 1]  # 保持批次维度
+                    single_preds[key] = value[i : i + 1]  # 保持批次维度
                 else:
                     single_preds[key] = value
 
             # 后处理
-            post_result = self.postprocess_op(single_preds, batch_shapes[i:i + 1])
-            dt_boxes = post_result[0]['points']
+            post_result = self.postprocess_op(single_preds, batch_shapes[i : i + 1])
+            dt_boxes = post_result[0]["points"]
 
             # 过滤和裁剪检测框
-            if (self.det_algorithm == "SAST" and
-                self.det_sast_polygon) or (self.det_algorithm in ["PSE", "FCE"] and
-                                           self.postprocess_op.box_type == 'poly'):
-                dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_imgs[i].shape)
+            if (self.det_algorithm == "SAST" and self.det_sast_polygon) or (
+                self.det_algorithm in ["PSE", "FCE"]
+                and self.postprocess_op.box_type == "poly"
+            ):
+                dt_boxes = self.filter_tag_det_res_only_clip(
+                    dt_boxes, ori_imgs[i].shape
+                )
             else:
                 dt_boxes = self.filter_tag_det_res(dt_boxes, ori_imgs[i].shape)
 
@@ -232,7 +228,7 @@ class TextDetector(BaseOCRV20):
 
         # 分批处理
         for i in range(0, len(img_list), max_batch_size):
-            batch_imgs = img_list[i:i + max_batch_size]
+            batch_imgs = img_list[i : i + max_batch_size]
             # assert尺寸一致
             batch_dt_boxes, batch_elapse = self._batch_process_same_size(batch_imgs)
             batch_results.extend(batch_dt_boxes)
@@ -294,7 +290,7 @@ class TextDetector(BaseOCRV20):
 
     def __call__(self, img):
         ori_im = img.copy()
-        data = {'image': img}
+        data = {"image": img}
         data = transform(data, self.preprocess_op)
         img, shape_list = data
         if img is None:
@@ -311,26 +307,27 @@ class TextDetector(BaseOCRV20):
 
         preds = {}
         if self.det_algorithm == "EAST":
-            preds['f_geo'] = outputs['f_geo'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-        elif self.det_algorithm == 'SAST':
-            preds['f_border'] = outputs['f_border'].cpu().numpy()
-            preds['f_score'] = outputs['f_score'].cpu().numpy()
-            preds['f_tco'] = outputs['f_tco'].cpu().numpy()
-            preds['f_tvo'] = outputs['f_tvo'].cpu().numpy()
-        elif self.det_algorithm in ['DB', 'PSE', 'DB++']:
-            preds['maps'] = outputs['maps'].cpu().numpy()
-        elif self.det_algorithm == 'FCE':
+            preds["f_geo"] = outputs["f_geo"].cpu().numpy()
+            preds["f_score"] = outputs["f_score"].cpu().numpy()
+        elif self.det_algorithm == "SAST":
+            preds["f_border"] = outputs["f_border"].cpu().numpy()
+            preds["f_score"] = outputs["f_score"].cpu().numpy()
+            preds["f_tco"] = outputs["f_tco"].cpu().numpy()
+            preds["f_tvo"] = outputs["f_tvo"].cpu().numpy()
+        elif self.det_algorithm in ["DB", "PSE", "DB++"]:
+            preds["maps"] = outputs["maps"].cpu().numpy()
+        elif self.det_algorithm == "FCE":
             for i, (k, output) in enumerate(outputs.items()):
-                preds['level_{}'.format(i)] = output
+                preds["level_{}".format(i)] = output
         else:
             raise NotImplementedError
 
         post_result = self.postprocess_op(preds, shape_list)
-        dt_boxes = post_result[0]['points']
-        if (self.det_algorithm == "SAST" and
-            self.det_sast_polygon) or (self.det_algorithm in ["PSE", "FCE"] and
-                                       self.postprocess_op.box_type == 'poly'):
+        dt_boxes = post_result[0]["points"]
+        if (self.det_algorithm == "SAST" and self.det_sast_polygon) or (
+            self.det_algorithm in ["PSE", "FCE"]
+            and self.postprocess_op.box_type == "poly"
+        ):
             dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_im.shape)
         else:
             dt_boxes = self.filter_tag_det_res(dt_boxes, ori_im.shape)

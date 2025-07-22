@@ -11,7 +11,7 @@ class S3Reader(IOReader):
         ak: str,
         sk: str,
         endpoint_url: str,
-        addressing_style: str = 'auto',
+        addressing_style: str = "auto",
     ):
         """s3 reader client.
 
@@ -27,13 +27,13 @@ class S3Reader(IOReader):
         self._ak = ak
         self._sk = sk
         self._s3_client = boto3.client(
-            service_name='s3',
+            service_name="s3",
             aws_access_key_id=ak,
             aws_secret_access_key=sk,
             endpoint_url=endpoint_url,
             config=Config(
-                s3={'addressing_style': addressing_style},
-                retries={'max_attempts': 5, 'mode': 'standard'},
+                s3={"addressing_style": addressing_style},
+                retries={"max_attempts": 5, "mode": "standard"},
             ),
         )
 
@@ -60,15 +60,15 @@ class S3Reader(IOReader):
             bytes: the content of file
         """
         if limit > -1:
-            range_header = f'bytes={offset}-{offset+limit-1}'
+            range_header = f"bytes={offset}-{offset + limit - 1}"
             res = self._s3_client.get_object(
                 Bucket=self._bucket, Key=key, Range=range_header
             )
         else:
             res = self._s3_client.get_object(
-                Bucket=self._bucket, Key=key, Range=f'bytes={offset}-'
+                Bucket=self._bucket, Key=key, Range=f"bytes={offset}-"
             )
-        return res['Body'].read()
+        return res["Body"].read()
 
 
 class S3Writer(IOWriter):
@@ -78,7 +78,7 @@ class S3Writer(IOWriter):
         ak: str,
         sk: str,
         endpoint_url: str,
-        addressing_style: str = 'auto',
+        addressing_style: str = "auto",
     ):
         """s3 reader client.
 
@@ -94,13 +94,13 @@ class S3Writer(IOWriter):
         self._ak = ak
         self._sk = sk
         self._s3_client = boto3.client(
-            service_name='s3',
+            service_name="s3",
             aws_access_key_id=ak,
             aws_secret_access_key=sk,
             endpoint_url=endpoint_url,
             config=Config(
-                s3={'addressing_style': addressing_style},
-                retries={'max_attempts': 5, 'mode': 'standard'},
+                s3={"addressing_style": addressing_style},
+                retries={"max_attempts": 5, "mode": "standard"},
             ),
         )
 

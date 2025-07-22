@@ -1,12 +1,14 @@
-import cv2
 import copy
-import numpy as np
 import math
 import time
+
+import cv2
+import numpy as np
 import torch
+
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
 from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextClassifier(BaseOCRV20):
@@ -16,7 +18,7 @@ class TextClassifier(BaseOCRV20):
         self.cls_batch_num = args.cls_batch_num
         self.cls_thresh = args.cls_thresh
         postprocess_params = {
-            'name': 'ClsPostProcess',
+            "name": "ClsPostProcess",
             "label_list": args.label_list,
         }
         self.postprocess_op = build_post_process(postprocess_params)
@@ -48,7 +50,7 @@ class TextClassifier(BaseOCRV20):
         else:
             resized_w = int(math.ceil(imgH * ratio))
         resized_image = cv2.resize(img, (resized_w, imgH))
-        resized_image = resized_image.astype('float32')
+        resized_image = resized_image.astype("float32")
         if self.cls_image_shape[0] == 1:
             resized_image = resized_image / 255
             resized_image = resized_image[np.newaxis, :]
@@ -70,7 +72,7 @@ class TextClassifier(BaseOCRV20):
         # Sorting can speed up the cls process
         indices = np.argsort(np.array(width_list))
 
-        cls_res = [['', 0.0]] * img_num
+        cls_res = [["", 0.0]] * img_num
         batch_num = self.cls_batch_num
         elapse = 0
         for beg_img_no in range(0, img_num, batch_num):
@@ -100,7 +102,8 @@ class TextClassifier(BaseOCRV20):
             for rno in range(len(cls_result)):
                 label, score = cls_result[rno]
                 cls_res[indices[beg_img_no + rno]] = [label, score]
-                if '180' in label and score > self.cls_thresh:
+                if "180" in label and score > self.cls_thresh:
                     img_list[indices[beg_img_no + rno]] = cv2.rotate(
-                        img_list[indices[beg_img_no + rno]], 1)
+                        img_list[indices[beg_img_no + rno]], 1
+                    )
         return img_list, cls_res, elapse

@@ -1,7 +1,8 @@
 """演示如何使用 MinerU File转Markdown客户端的示例。"""
 
-import os
 import asyncio
+import os
+
 from mcp.client import MCPClient
 
 

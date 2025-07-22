@@ -1,17 +1,20 @@
 import json
 from io import BytesIO
 
-from loguru import logger
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from .enum_class import BlockType, ContentType
 
 
+def draw_bbox(image):
+    pass
+
+
 def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
-    page_width, page_height = page.cropbox[2], page.cropbox[3]
+    _, page_height = page.cropbox[2], page.cropbox[3]
 
     for bbox in page_data:
         width = bbox[2] - bbox[0]
@@ -27,11 +30,13 @@ def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     return c
 
 
-def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_bbox=True):
+def draw_bbox_with_number(
+    i, bbox_list, page, c, rgb_config, fill_config, draw_bbox=True
+):
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
     # 强制转换为 float
-    page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
+    _, page_height = float(page.cropbox[2]), float(page.cropbox[3])
 
     for j, bbox in enumerate(page_data):
         # 确保bbox的每个元素都是float
@@ -75,8 +80,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         lists = []
         indices = []
 
-        for dropped_bbox in page['discarded_blocks']:
-            page_dropped_list.append(dropped_bbox['bbox'])
+        for dropped_bbox in page["discarded_blocks"]:
+            page_dropped_list.append(dropped_bbox["bbox"])
         dropped_bbox_list.append(page_dropped_list)
         for block in page["para_blocks"]:
             bbox = block["bbox"]
@@ -145,7 +150,9 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                     bbox = sub_block["bbox"]
                     page_block_list.append(bbox)
             elif block["type"] in [BlockType.TABLE]:
-                sorted_blocks = sorted(block["blocks"], key=lambda x: table_type_order[x["type"]])
+                sorted_blocks = sorted(
+                    block["blocks"], key=lambda x: table_type_order[x["type"]]
+                )
                 for sub_block in sorted_blocks:
                     bbox = sub_block["bbox"]
                     page_block_list.append(bbox)
@@ -165,19 +172,31 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         # 使用原始PDF的尺寸创建canvas
         c = canvas.Canvas(packet, pagesize=custom_page_size)
 
-        c = draw_bbox_without_number(i, dropped_bbox_list, page, c, [158, 158, 158], True)
+        c = draw_bbox_without_number(
+            i, dropped_bbox_list, page, c, [158, 158, 158], True
+        )
         c = draw_bbox_without_number(i, tables_body_list, page, c, [204, 204, 0], True)
-        c = draw_bbox_without_number(i, tables_caption_list, page, c, [255, 255, 102], True)
-        c = draw_bbox_without_number(i, tables_footnote_list, page, c, [229, 255, 204], True)
+        c = draw_bbox_without_number(
+            i, tables_caption_list, page, c, [255, 255, 102], True
+        )
+        c = draw_bbox_without_number(
+            i, tables_footnote_list, page, c, [229, 255, 204], True
+        )
         c = draw_bbox_without_number(i, imgs_body_list, page, c, [153, 255, 51], True)
-        c = draw_bbox_without_number(i, imgs_caption_list, page, c, [102, 178, 255], True)
-        c = draw_bbox_without_number(i, imgs_footnote_list, page, c, [255, 178, 102], True)
+        c = draw_bbox_without_number(
+            i, imgs_caption_list, page, c, [102, 178, 255], True
+        )
+        c = draw_bbox_without_number(
+            i, imgs_footnote_list, page, c, [255, 178, 102], True
+        )
         c = draw_bbox_without_number(i, titles_list, page, c, [102, 102, 255], True)
         c = draw_bbox_without_number(i, texts_list, page, c, [153, 0, 76], True)
         c = draw_bbox_without_number(i, interequations_list, page, c, [0, 255, 0], True)
         c = draw_bbox_without_number(i, lists_list, page, c, [40, 169, 92], True)
         c = draw_bbox_without_number(i, indexs_list, page, c, [40, 169, 92], True)
-        c = draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False, draw_bbox=False)
+        c = draw_bbox_with_number(
+            i, layout_bbox_list, page, c, [255, 0, 0], False, draw_bbox=False
+        )
 
         c.save()
         packet.seek(0)
@@ -209,22 +228,22 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     next_page_inline_equation_list = []
 
     def get_span_info(span):
-        if span['type'] == ContentType.TEXT:
-            if span.get('cross_page', False):
-                next_page_text_list.append(span['bbox'])
+        if span["type"] == ContentType.TEXT:
+            if span.get("cross_page", False):
+                next_page_text_list.append(span["bbox"])
             else:
-                page_text_list.append(span['bbox'])
-        elif span['type'] == ContentType.INLINE_EQUATION:
-            if span.get('cross_page', False):
-                next_page_inline_equation_list.append(span['bbox'])
+                page_text_list.append(span["bbox"])
+        elif span["type"] == ContentType.INLINE_EQUATION:
+            if span.get("cross_page", False):
+                next_page_inline_equation_list.append(span["bbox"])
             else:
-                page_inline_equation_list.append(span['bbox'])
-        elif span['type'] == ContentType.INTERLINE_EQUATION:
-            page_interline_equation_list.append(span['bbox'])
-        elif span['type'] == ContentType.IMAGE:
-            page_image_list.append(span['bbox'])
-        elif span['type'] == ContentType.TABLE:
-            page_table_list.append(span['bbox'])
+                page_inline_equation_list.append(span["bbox"])
+        elif span["type"] == ContentType.INTERLINE_EQUATION:
+            page_interline_equation_list.append(span["bbox"])
+        elif span["type"] == ContentType.IMAGE:
+            page_image_list.append(span["bbox"])
+        elif span["type"] == ContentType.TABLE:
+            page_table_list.append(span["bbox"])
 
     for page in pdf_info:
         page_text_list = []
@@ -243,29 +262,29 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
             next_page_inline_equation_list.clear()
 
         # 构造dropped_list
-        for block in page['discarded_blocks']:
-            if block['type'] == BlockType.DISCARDED:
-                for line in block['lines']:
-                    for span in line['spans']:
-                        page_dropped_list.append(span['bbox'])
+        for block in page["discarded_blocks"]:
+            if block["type"] == BlockType.DISCARDED:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        page_dropped_list.append(span["bbox"])
         dropped_list.append(page_dropped_list)
         # 构造其余useful_list
         # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
-        for block in page['preproc_blocks']:
-            if block['type'] in [
+        for block in page["preproc_blocks"]:
+            if block["type"] in [
                 BlockType.TEXT,
                 BlockType.TITLE,
                 BlockType.INTERLINE_EQUATION,
                 BlockType.LIST,
                 BlockType.INDEX,
             ]:
-                for line in block['lines']:
-                    for span in line['spans']:
+                for line in block["lines"]:
+                    for span in line["spans"]:
                         get_span_info(span)
-            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE]:
-                for sub_block in block['blocks']:
-                    for line in sub_block['lines']:
-                        for span in line['spans']:
+            elif block["type"] in [BlockType.IMAGE, BlockType.TABLE]:
+                for sub_block in block["blocks"]:
+                    for line in sub_block["lines"]:
+                        for span in line["spans"]:
                             get_span_info(span)
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
@@ -287,9 +306,11 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         c = canvas.Canvas(packet, pagesize=custom_page_size)
 
         # 获取当前页面的数据
-        draw_bbox_without_number(i, text_list, page, c,[255, 0, 0], False)
+        draw_bbox_without_number(i, text_list, page, c, [255, 0, 0], False)
         draw_bbox_without_number(i, inline_equation_list, page, c, [0, 255, 0], False)
-        draw_bbox_without_number(i, interline_equation_list, page, c, [0, 0, 255], False)
+        draw_bbox_without_number(
+            i, interline_equation_list, page, c, [0, 0, 255], False
+        )
         draw_bbox_without_number(i, image_list, page, c, [255, 204, 0], False)
         draw_bbox_without_number(i, table_list, page, c, [204, 0, 255], False)
         draw_bbox_without_number(i, dropped_list, page, c, [158, 158, 158], False)

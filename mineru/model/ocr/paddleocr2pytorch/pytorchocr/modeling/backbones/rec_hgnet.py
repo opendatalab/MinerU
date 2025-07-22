@@ -116,7 +116,7 @@ class HG_Stage(nn.Module):
         block_num,
         layer_num,
         downsample=True,
-        stride=[2, 1],
+        stride=(2, 1),
     ):
         super().__init__()
         self.downsample = downsample
@@ -285,6 +285,6 @@ def PPHGNet_small(pretrained=False, use_ssld=False, det=False, **kwargs):
         stage_config=stage_config_det if det else stage_config_rec,
         layer_num=6,
         det=det,
-        **kwargs
+        **kwargs,
     )
     return model

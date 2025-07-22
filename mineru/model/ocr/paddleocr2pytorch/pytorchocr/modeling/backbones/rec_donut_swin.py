@@ -1,6 +1,6 @@
 import collections.abc
-from collections import OrderedDict
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -23,8 +23,8 @@ class DonutSwinConfig(object):
         patch_size=4,
         num_channels=3,
         embed_dim=96,
-        depths=[2, 2, 6, 2],
-        num_heads=[3, 6, 12, 24],
+        depths=(2, 2, 6, 2),
+        num_heads=(3, 6, 12, 24),
         window_size=7,
         mlp_ratio=4.0,
         qkv_bias=True,
@@ -196,7 +196,9 @@ class DonutSwinEmbeddings(nn.Module):
             #     [1, 1, config.embed_dim], dtype="float32"
             # )
             self.mask_token = nn.Parameter(
-                nn.init.xavier_uniform_(torch.zeros(1, 1, config.embed_dim).to(torch.float32))
+                nn.init.xavier_uniform_(
+                    torch.zeros(1, 1, config.embed_dim).to(torch.float32)
+                )
             )
             nn.init.zeros_(self.mask_token)
         else:
@@ -206,7 +208,9 @@ class DonutSwinEmbeddings(nn.Module):
             #     [1, num_patches + 1, config.embed_dim], dtype="float32"
             # )
             self.position_embeddings = nn.Parameter(
-                nn.init.xavier_uniform_(torch.zeros(1, num_patches + 1, config.embed_dim).to(torch.float32))
+                nn.init.xavier_uniform_(
+                    torch.zeros(1, num_patches + 1, config.embed_dim).to(torch.float32)
+                )
             )
             nn.init.zeros_(self.position_embedding)
         else:
@@ -216,7 +220,6 @@ class DonutSwinEmbeddings(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, pixel_values, bool_masked_pos=None):
-
         embeddings, output_dimensions = self.patch_embeddings(pixel_values)
         embeddings = self.norm(embeddings)
 
@@ -261,14 +264,14 @@ class MyConv2d(nn.Conv2d):
         # )
         self.weight = torch.Parameter(
             nn.init.xavier_uniform_(
-                torch.zeros(out_channels, in_channel, kernel_size[0], kernel_size[1]).to(torch.float32)
+                torch.zeros(
+                    out_channels, in_channel, kernel_size[0], kernel_size[1]
+                ).to(torch.float32)
             )
         )
         # self.bias = paddle.create_parameter([out_channels], dtype="float32")
         self.bias = torch.Parameter(
-            nn.init.xavier_uniform_(
-                torch.zeros(out_channels).to(torch.float32)
-            )
+            nn.init.xavier_uniform_(torch.zeros(out_channels).to(torch.float32))
         )
         nn.init.ones_(self.weight)
         nn.init.zeros_(self.bias)
@@ -473,7 +476,10 @@ class DonutSwinSelfAttention(nn.Module):
         # )
         self.relative_position_bias_table = torch.Parameter(
             nn.init.xavier_normal_(
-                torch.zeros((2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1), num_heads).to(torch.float32)
+                torch.zeros(
+                    (2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1),
+                    num_heads,
+                ).to(torch.float32)
             )
         )
 
@@ -682,7 +688,6 @@ class DonutSwinLayer(nn.Module):
             self.window_size = min(input_resolution)
 
     def get_attn_mask_export(self, height, width, dtype):
-
         attn_mask = None
         height_slices = (
             slice(0, -self.window_size),
@@ -1099,7 +1104,7 @@ class DonutSwinModel(DonutSwinPreTrainedModel):
         in_channels=3,
         hidden_size=1024,
         num_layers=4,
-        num_heads=[4, 8, 16, 32],
+        num_heads=(4, 8, 16, 32),
         add_pooling_layer=True,
         use_mask_token=False,
         is_export=False,

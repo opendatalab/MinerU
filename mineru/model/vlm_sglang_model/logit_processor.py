@@ -71,7 +71,9 @@ class Mineru2LogitProcessor(CustomLogitProcessor):
             last_token = output_ids[-1]
 
             # Store this n-gram occurrence
-            self._generated_ngrams[rid][prev_ngram] = self._generated_ngrams[rid].get(prev_ngram, []) + [last_token]
+            self._generated_ngrams[rid][prev_ngram] = self._generated_ngrams[rid].get(
+                prev_ngram, []
+            ) + [last_token]
 
             # Get the next-token candidates to ban based on current prefix
             current_prefix = tuple(output_ids[-ngram_size + 1 :])
@@ -82,7 +84,9 @@ class Mineru2LogitProcessor(CustomLogitProcessor):
                 logits[idx][token] = -float("inf")
 
         # Clean up cache for expired requests
-        expired_rids = [rid for rid, last_used in self._time.items() if last_used < self._gen_step]
+        expired_rids = [
+            rid for rid, last_used in self._time.items() if last_used < self._gen_step
+        ]
         for rid in expired_rids:
             self._generated_ngrams.pop(rid, None)
             self._time.pop(rid, None)

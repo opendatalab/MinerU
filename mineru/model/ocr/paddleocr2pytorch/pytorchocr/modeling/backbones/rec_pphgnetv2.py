@@ -1,10 +1,12 @@
 import math
+from typing import Callable, Dict, List, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 from .rec_donut_swin import DonutSwinModelOutput
-from typing import List, Dict, Union, Callable
 
 
 class IdentityBasedConv1x1(nn.Conv2d):
@@ -475,8 +477,6 @@ class TheseusLayer(nn.Module):
         # init the output of net
         if return_patterns or return_stages:
             if return_patterns and return_stages:
-                msg = f"The 'return_patterns' would be ignored when 'return_stages' is set."
-
                 return_stages = None
 
             if return_stages is True:
@@ -487,8 +487,6 @@ class TheseusLayer(nn.Module):
                 return_stages = [return_stages]
             if isinstance(return_stages, list):
                 if max(return_stages) > len(stages_pattern) or min(return_stages) < 0:
-                    msg = f"The 'return_stages' set error. Illegal value(s) have been ignored. The stages' pattern list is {stages_pattern}."
-
                     return_stages = [
                         val
                         for val in return_stages
@@ -512,7 +510,6 @@ class TheseusLayer(nn.Module):
             self.stop_after(stop_after)
 
     def init_res(self, stages_pattern, return_patterns=None, return_stages=None):
-
         if return_patterns and return_stages:
             return_stages = None
 
@@ -624,7 +621,6 @@ class TheseusLayer(nn.Module):
         for layer_dict in layer_list:
             name, index_list = layer_dict["name"], layer_dict["index_list"]
             if not set_identity(parent_layer, name, index_list):
-                msg = f"Failed to set the layers that after stop_layer_name('{stop_layer_name}') to IdentityLayer. The error layer's name is '{name}'."
                 return False
             parent_layer = layer_dict["layer"]
 
@@ -656,11 +652,12 @@ class TheseusLayer(nn.Module):
 
         res = self.upgrade_sublayer(layer_name, stop_grad)
         if len(res) == 0:
-            msg = "Failed to stop the gradient before the layer named '{layer_name}'"
             return False
         return True
 
-    def update_res(self, return_patterns: Union[str, List[str]]) -> Dict[str, nn.Module]:
+    def update_res(
+        self, return_patterns: Union[str, List[str]]
+    ) -> Dict[str, nn.Module]:
         """update the result(s) to be returned.
 
         Args:
@@ -765,7 +762,6 @@ def parse_pattern_str(
 
     pattern_list = pattern.split(".")
     if not pattern_list:
-        msg = f"The pattern('{pattern}') is illegal. Please check and retry."
         return None
 
     layer_list = []
@@ -782,7 +778,6 @@ def parse_pattern_str(
         target_layer = getattr(parent_layer, target_layer_name, None)
 
         if target_layer is None:
-            msg = f"Not found layer named('{target_layer_name}') specified in pattern('{pattern}')."
             return None
 
         if target_layer_index_list:
@@ -790,7 +785,6 @@ def parse_pattern_str(
                 if int(target_layer_index) < 0 or int(target_layer_index) >= len(
                     target_layer
                 ):
-                    msg = f"Not found layer by index('{target_layer_index}') specified in pattern('{pattern}'). The index should < {len(target_layer)} and > 0."
                     return None
                 target_layer = target_layer[target_layer_index]
 
@@ -830,9 +824,7 @@ class LearnableAffineBlock(TheseusLayer):
         # )
         # self.add_parameter("scale", self.scale)
         self.scale = torch.Parameter(
-            nn.init.constant_(
-                torch.ones(1).to(torch.float32), val=scale_value
-            )
+            nn.init.constant_(torch.ones(1).to(torch.float32), val=scale_value)
         )
         self.register_parameter("scale", self.scale)
 
@@ -845,9 +837,7 @@ class LearnableAffineBlock(TheseusLayer):
         # )
         # self.add_parameter("bias", self.bias)
         self.bias = torch.Parameter(
-            nn.init.constant_(
-                torch.ones(1).to(torch.float32), val=bias_value
-            )
+            nn.init.constant_(torch.ones(1).to(torch.float32), val=bias_value)
         )
         self.register_parameter("bias", self.bias)
 
@@ -968,11 +958,17 @@ class PaddingSameAsPaddleMaxPool2d(torch.nn.Module):
 
     def forward(self, x):
         _, _, h, w = x.shape
-        pad_h_total = max(0, (math.ceil(h / self.stride) - 1) * self.stride + self.kernel_size - h)
-        pad_w_total = max(0, (math.ceil(w / self.stride) - 1) * self.stride + self.kernel_size - w)
+        pad_h_total = max(
+            0, (math.ceil(h / self.stride) - 1) * self.stride + self.kernel_size - h
+        )
+        pad_w_total = max(
+            0, (math.ceil(w / self.stride) - 1) * self.stride + self.kernel_size - w
+        )
         pad_h = pad_h_total // 2
         pad_w = pad_w_total // 2
-        x = torch.nn.functional.pad(x, [pad_w, pad_w_total - pad_w, pad_h, pad_h_total - pad_h])
+        x = torch.nn.functional.pad(
+            x, [pad_w, pad_w_total - pad_w, pad_h, pad_h_total - pad_h]
+        )
         return self.pool(x)
 
 
@@ -1041,7 +1037,8 @@ class StemBlock(TheseusLayer):
             lr_mult=lr_mult,
         )
         self.pool = PaddingSameAsPaddleMaxPool2d(
-            kernel_size=2, stride=1,
+            kernel_size=2,
+            stride=1,
         )
 
     def forward(self, x):
@@ -1167,7 +1164,6 @@ class HGV2_Stage(TheseusLayer):
         stride=2,
         lr_mult=1.0,
     ):
-
         super().__init__()
         self.is_downsample = is_downsample
         if self.is_downsample:
@@ -1226,16 +1222,16 @@ class PPHGNetV2(TheseusLayer):
     def __init__(
         self,
         stage_config,
-        stem_channels=[3, 32, 64],
+        stem_channels=(3, 32, 64),
         use_lab=False,
         use_last_conv=True,
         class_expand=2048,
         dropout_prob=0.0,
         class_num=1000,
-        lr_mult_list=[1.0, 1.0, 1.0, 1.0, 1.0],
+        lr_mult_list=(1.0, 1.0, 1.0, 1.0, 1.0),
         det=False,
         text_rec=False,
-        out_indices=None,
+        out_indices=(0, 1, 2, 3),
         **kwargs,
     ):
         super().__init__()
@@ -1245,7 +1241,7 @@ class PPHGNetV2(TheseusLayer):
         self.use_last_conv = use_last_conv
         self.class_expand = class_expand
         self.class_num = class_num
-        self.out_indices = out_indices if out_indices is not None else [0, 1, 2, 3]
+        self.out_indices = out_indices
         self.out_channels = []
 
         # stem
@@ -1358,14 +1354,14 @@ def PPHGNetV2_B0(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [16, 16, 64, 1, False, False, 3, 3],
-        "stage2": [64, 32, 256, 1, True, False, 3, 3],
-        "stage3": [256, 64, 512, 2, True, True, 5, 3],
-        "stage4": [512, 128, 1024, 1, True, True, 5, 3],
+        "stage1": (16, 16, 64, 1, False, False, 3, 3),
+        "stage2": (64, 32, 256, 1, True, False, 3, 3),
+        "stage3": (256, 64, 512, 2, True, True, 5, 3),
+        "stage4": (512, 128, 1024, 1, True, True, 5, 3),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 16, 16], stage_config=stage_config, use_lab=True, **kwargs
+        stem_channels=(3, 16, 16), stage_config=stage_config, use_lab=True, **kwargs
     )
     return model
 
@@ -1382,14 +1378,14 @@ def PPHGNetV2_B1(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [32, 32, 64, 1, False, False, 3, 3],
-        "stage2": [64, 48, 256, 1, True, False, 3, 3],
-        "stage3": [256, 96, 512, 2, True, True, 5, 3],
-        "stage4": [512, 192, 1024, 1, True, True, 5, 3],
+        "stage1": (32, 32, 64, 1, False, False, 3, 3),
+        "stage2": (64, 48, 256, 1, True, False, 3, 3),
+        "stage3": (256, 96, 512, 2, True, True, 5, 3),
+        "stage4": (512, 192, 1024, 1, True, True, 5, 3),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 24, 32], stage_config=stage_config, use_lab=True, **kwargs
+        stem_channels=(3, 24, 32), stage_config=stage_config, use_lab=True, **kwargs
     )
     return model
 
@@ -1406,14 +1402,14 @@ def PPHGNetV2_B2(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [32, 32, 96, 1, False, False, 3, 4],
-        "stage2": [96, 64, 384, 1, True, False, 3, 4],
-        "stage3": [384, 128, 768, 3, True, True, 5, 4],
-        "stage4": [768, 256, 1536, 1, True, True, 5, 4],
+        "stage1": (32, 32, 96, 1, False, False, 3, 4),
+        "stage2": (96, 64, 384, 1, True, False, 3, 4),
+        "stage3": (384, 128, 768, 3, True, True, 5, 4),
+        "stage4": (768, 256, 1536, 1, True, True, 5, 4),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 24, 32], stage_config=stage_config, use_lab=True, **kwargs
+        stem_channels=(3, 24, 32), stage_config=stage_config, use_lab=True, **kwargs
     )
     return model
 
@@ -1430,14 +1426,14 @@ def PPHGNetV2_B3(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [32, 32, 128, 1, False, False, 3, 5],
-        "stage2": [128, 64, 512, 1, True, False, 3, 5],
-        "stage3": [512, 128, 1024, 3, True, True, 5, 5],
-        "stage4": [1024, 256, 2048, 1, True, True, 5, 5],
+        "stage1": (32, 32, 128, 1, False, False, 3, 5),
+        "stage2": (128, 64, 512, 1, True, False, 3, 5),
+        "stage3": (512, 128, 1024, 3, True, True, 5, 5),
+        "stage4": (1024, 256, 2048, 1, True, True, 5, 5),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 24, 32], stage_config=stage_config, use_lab=True, **kwargs
+        stem_channels=(3, 24, 32), stage_config=stage_config, use_lab=True, **kwargs
     )
     return model
 
@@ -1454,21 +1450,21 @@ def PPHGNetV2_B4(pretrained=False, use_ssld=False, det=False, text_rec=False, **
     """
     stage_config_rec = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num, stride
-        "stage1": [48, 48, 128, 1, True, False, 3, 6, [2, 1]],
-        "stage2": [128, 96, 512, 1, True, False, 3, 6, [1, 2]],
-        "stage3": [512, 192, 1024, 3, True, True, 5, 6, [2, 1]],
-        "stage4": [1024, 384, 2048, 1, True, True, 5, 6, [2, 1]],
+        "stage1": (48, 48, 128, 1, True, False, 3, 6, (2, 1)),
+        "stage2": (128, 96, 512, 1, True, False, 3, 6, (1, 2)),
+        "stage3": (512, 192, 1024, 3, True, True, 5, 6, (2, 1)),
+        "stage4": (1024, 384, 2048, 1, True, True, 5, 6, (2, 1)),
     }
 
     stage_config_det = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [48, 48, 128, 1, False, False, 3, 6, 2],
-        "stage2": [128, 96, 512, 1, True, False, 3, 6, 2],
-        "stage3": [512, 192, 1024, 3, True, True, 5, 6, 2],
-        "stage4": [1024, 384, 2048, 1, True, True, 5, 6, 2],
+        "stage1": (48, 48, 128, 1, False, False, 3, 6, 2),
+        "stage2": (128, 96, 512, 1, True, False, 3, 6, 2),
+        "stage3": (512, 192, 1024, 3, True, True, 5, 6, 2),
+        "stage4": (1024, 384, 2048, 1, True, True, 5, 6, 2),
     }
     model = PPHGNetV2(
-        stem_channels=[3, 32, 48],
+        stem_channels=(3, 32, 48),
         stage_config=stage_config_det if det else stage_config_rec,
         use_lab=False,
         det=det,
@@ -1490,14 +1486,14 @@ def PPHGNetV2_B5(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [64, 64, 128, 1, False, False, 3, 6],
-        "stage2": [128, 128, 512, 2, True, False, 3, 6],
-        "stage3": [512, 256, 1024, 5, True, True, 5, 6],
-        "stage4": [1024, 512, 2048, 2, True, True, 5, 6],
+        "stage1": (64, 64, 128, 1, False, False, 3, 6),
+        "stage2": (128, 128, 512, 2, True, False, 3, 6),
+        "stage3": (512, 256, 1024, 5, True, True, 5, 6),
+        "stage4": (1024, 512, 2048, 2, True, True, 5, 6),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 32, 64], stage_config=stage_config, use_lab=False, **kwargs
+        stem_channels=(3, 32, 64), stage_config=stage_config, use_lab=False, **kwargs
     )
     return model
 
@@ -1514,14 +1510,14 @@ def PPHGNetV2_B6(pretrained=False, use_ssld=False, **kwargs):
     """
     stage_config = {
         # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-        "stage1": [96, 96, 192, 2, False, False, 3, 6],
-        "stage2": [192, 192, 512, 3, True, False, 3, 6],
-        "stage3": [512, 384, 1024, 6, True, True, 5, 6],
-        "stage4": [1024, 768, 2048, 3, True, True, 5, 6],
+        "stage1": (96, 96, 192, 2, False, False, 3, 6),
+        "stage2": (192, 192, 512, 3, True, False, 3, 6),
+        "stage3": (512, 384, 1024, 6, True, True, 5, 6),
+        "stage4": (1024, 768, 2048, 3, True, True, 5, 6),
     }
 
     model = PPHGNetV2(
-        stem_channels=[3, 48, 96], stage_config=stage_config, use_lab=False, **kwargs
+        stem_channels=(3, 48, 96), stage_config=stage_config, use_lab=False, **kwargs
     )
     return model
 
@@ -1542,14 +1538,14 @@ class PPHGNetV2_B4_Formula(nn.Module):
         self.out_channels = 2048
         stage_config = {
             # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-            "stage1": [48, 48, 128, 1, False, False, 3, 6, 2],
-            "stage2": [128, 96, 512, 1, True, False, 3, 6, 2],
-            "stage3": [512, 192, 1024, 3, True, True, 5, 6, 2],
-            "stage4": [1024, 384, 2048, 1, True, True, 5, 6, 2],
+            "stage1": (48, 48, 128, 1, False, False, 3, 6, 2),
+            "stage2": (128, 96, 512, 1, True, False, 3, 6, 2),
+            "stage3": (512, 192, 1024, 3, True, True, 5, 6, 2),
+            "stage4": (1024, 384, 2048, 1, True, True, 5, 6, 2),
         }
 
         self.pphgnet_b4 = PPHGNetV2(
-            stem_channels=[3, 32, 48],
+            stem_channels=(3, 32, 48),
             stage_config=stage_config,
             class_num=class_num,
             use_lab=False,
@@ -1600,14 +1596,14 @@ class PPHGNetV2_B6_Formula(nn.Module):
         self.out_channels = 2048
         stage_config = {
             # in_channels, mid_channels, out_channels, num_blocks, is_downsample, light_block, kernel_size, layer_num
-            "stage1": [96, 96, 192, 2, False, False, 3, 6, 2],
-            "stage2": [192, 192, 512, 3, True, False, 3, 6, 2],
-            "stage3": [512, 384, 1024, 6, True, True, 5, 6, 2],
-            "stage4": [1024, 768, 2048, 3, True, True, 5, 6, 2],
+            "stage1": (96, 96, 192, 2, False, False, 3, 6, 2),
+            "stage2": (192, 192, 512, 3, True, False, 3, 6, 2),
+            "stage3": (512, 384, 1024, 6, True, True, 5, 6, 2),
+            "stage4": (1024, 768, 2048, 3, True, True, 5, 6, 2),
         }
 
         self.pphgnet_b6 = PPHGNetV2(
-            stem_channels=[3, 48, 96],
+            stem_channels=(3, 48, 96),
             class_num=class_num,
             stage_config=stage_config,
             use_lab=False,

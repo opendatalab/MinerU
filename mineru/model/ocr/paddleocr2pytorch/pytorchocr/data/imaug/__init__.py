@@ -1,24 +1,33 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, print_function, unicode_literals
+
+# from .rec_img_aug import RecAug, RecResizeImg, ClsResizeImg
+# from .randaugment import RandAugment
+from .operators import DecodeImage as DecodeImage
+from .operators import DetResizeForTest as DetResizeForTest
+from .operators import E2EResizeForTest as E2EResizeForTest
+from .operators import Fasttext as Fasttext
+from .operators import KeepKeys as KeepKeys
+from .operators import KieResize as KieResize
+from .operators import NormalizeImage as NormalizeImage
+from .operators import NRTRDecodeImage as NRTRDecodeImage
+from .operators import Resize as Resize
+from .operators import ToCHWImage as ToCHWImage
 
 # from .iaa_augment import IaaAugment
 # from .make_border_map import MakeBorderMap
 # from .make_shrink_map import MakeShrinkMap
 # from .random_crop_data import EastRandomCropData, PSERandomCrop
 
-# from .rec_img_aug import RecAug, RecResizeImg, ClsResizeImg
-# from .randaugment import RandAugment
-from .operators import *
+
 # from .label_ops import *
 
 # from .east_process import *
 # from .sast_process import *
 # from .gen_table_mask import *
 
+
 def transform(data, ops=None):
-    """ transform """
+    """transform"""
     if ops is None:
         ops = []
     for op in ops:
@@ -34,11 +43,10 @@ def create_operators(op_param_list, global_config=None):
     Args:
         params(list): a dict list, used to create some operators
     """
-    assert isinstance(op_param_list, list), ('operator config should be a list')
+    assert isinstance(op_param_list, list), "operator config should be a list"
     ops = []
     for operator in op_param_list:
-        assert isinstance(operator,
-                          dict) and len(operator) == 1, "yaml format error"
+        assert isinstance(operator, dict) and len(operator) == 1, "yaml format error"
         op_name = list(operator)[0]
         param = {} if operator[op_name] is None else operator[op_name]
         if global_config is not None:

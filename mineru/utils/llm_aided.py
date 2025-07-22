@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import json_repair
 from loguru import logger
 from openai import OpenAI
-import json_repair
 
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 
@@ -21,19 +21,25 @@ def llm_aided_title(page_info_list, title_aided_config):
                 origin_title_list.append(block)
                 title_text = merge_para_with_text(block)
 
-                if 'line_avg_height' in block:
-                    line_avg_height = block['line_avg_height']
+                if "line_avg_height" in block:
+                    line_avg_height = block["line_avg_height"]
                 else:
                     title_block_line_height_list = []
-                    for line in block['lines']:
-                        bbox = line['bbox']
+                    for line in block["lines"]:
+                        bbox = line["bbox"]
                         title_block_line_height_list.append(int(bbox[3] - bbox[1]))
                     if len(title_block_line_height_list) > 0:
-                        line_avg_height = sum(title_block_line_height_list) / len(title_block_line_height_list)
+                        line_avg_height = sum(title_block_line_height_list) / len(
+                            title_block_line_height_list
+                        )
                     else:
-                        line_avg_height = int(block['bbox'][3] - block['bbox'][1])
+                        line_avg_height = int(block["bbox"][3] - block["bbox"][1])
 
-                title_dict[f"{i}"] = [title_text, line_avg_height, int(page_info['page_idx']) + 1]
+                title_dict[f"{i}"] = [
+                    title_text,
+                    line_avg_height,
+                    int(page_info["page_idx"]) + 1,
+                ]
                 i += 1
     # logger.info(f"Title list: {title_dict}")
 
@@ -87,8 +93,7 @@ Corrected title list:
         try:
             completion = client.chat.completions.create(
                 model=title_aided_config["model"],
-                messages=[
-                    {'role': 'user', 'content': title_optimize_prompt}],
+                messages=[{"role": "user", "content": title_optimize_prompt}],
                 temperature=0.7,
                 stream=True,
             )
@@ -111,7 +116,8 @@ Corrected title list:
                 break
             else:
                 logger.warning(
-                    "The number of titles in the optimized result is not equal to the number of titles in the input.")
+                    "The number of titles in the optimized result is not equal to the number of titles in the input."
+                )
                 retry_count += 1
         except Exception as e:
             logger.exception(e)

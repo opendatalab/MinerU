@@ -1,14 +1,15 @@
-from PIL import Image
-import cv2
-import numpy as np
 import math
 import time
+
+import cv2
+import numpy as np
 import torch
+from PIL import Image
 from tqdm import tqdm
 
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
 from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextRecognizer(BaseOCRV20):
@@ -20,55 +21,55 @@ class TextRecognizer(BaseOCRV20):
         self.rec_algorithm = args.rec_algorithm
         self.max_text_length = args.max_text_length
         postprocess_params = {
-            'name': 'CTCLabelDecode',
+            "name": "CTCLabelDecode",
             "character_type": args.rec_char_type,
             "character_dict_path": args.rec_char_dict_path,
-            "use_space_char": args.use_space_char
+            "use_space_char": args.use_space_char,
         }
         if self.rec_algorithm == "SRN":
             postprocess_params = {
-                'name': 'SRNLabelDecode',
+                "name": "SRNLabelDecode",
                 "character_type": args.rec_char_type,
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
         elif self.rec_algorithm == "RARE":
             postprocess_params = {
-                'name': 'AttnLabelDecode',
+                "name": "AttnLabelDecode",
                 "character_type": args.rec_char_type,
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
-        elif self.rec_algorithm == 'NRTR':
+        elif self.rec_algorithm == "NRTR":
             postprocess_params = {
-                'name': 'NRTRLabelDecode',
+                "name": "NRTRLabelDecode",
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
         elif self.rec_algorithm == "SAR":
             postprocess_params = {
-                'name': 'SARLabelDecode',
+                "name": "SARLabelDecode",
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
-        elif self.rec_algorithm == 'ViTSTR':
+        elif self.rec_algorithm == "ViTSTR":
             postprocess_params = {
-                'name': 'ViTSTRLabelDecode',
+                "name": "ViTSTRLabelDecode",
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
         elif self.rec_algorithm == "CAN":
             self.inverse = args.rec_image_inverse
             postprocess_params = {
-                'name': 'CANLabelDecode',
+                "name": "CANLabelDecode",
                 "character_dict_path": args.rec_char_dict_path,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
-        elif self.rec_algorithm == 'RFL':
+        elif self.rec_algorithm == "RFL":
             postprocess_params = {
-                'name': 'RFLLabelDecode',
+                "name": "RFLLabelDecode",
                 "character_dict_path": None,
-                "use_space_char": args.use_space_char
+                "use_space_char": args.use_space_char,
             }
         self.postprocess_op = build_post_process(postprocess_params)
 
@@ -82,12 +83,12 @@ class TextRecognizer(BaseOCRV20):
         weights = self.read_pytorch_weights(self.weights_path)
 
         self.out_channels = self.get_out_channels(weights)
-        if self.rec_algorithm == 'NRTR':
+        if self.rec_algorithm == "NRTR":
             self.out_channels = list(weights.values())[-1].numpy().shape[0]
-        elif self.rec_algorithm == 'SAR':
+        elif self.rec_algorithm == "SAR":
             self.out_channels = list(weights.values())[-3].numpy().shape[0]
 
-        kwargs['out_channels'] = self.out_channels
+        kwargs["out_channels"] = self.out_channels
         super(TextRecognizer, self).__init__(network_config, **kwargs)
 
         self.load_state_dict(weights)
@@ -96,27 +97,26 @@ class TextRecognizer(BaseOCRV20):
 
     def resize_norm_img(self, img, max_wh_ratio):
         imgC, imgH, imgW = self.rec_image_shape
-        if self.rec_algorithm == 'NRTR' or self.rec_algorithm == 'ViTSTR':
+        if self.rec_algorithm == "NRTR" or self.rec_algorithm == "ViTSTR":
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             # return padding_im
             image_pil = Image.fromarray(np.uint8(img))
-            if self.rec_algorithm == 'ViTSTR':
+            if self.rec_algorithm == "ViTSTR":
                 img = image_pil.resize([imgW, imgH], Image.BICUBIC)
             else:
                 img = image_pil.resize([imgW, imgH], Image.ANTIALIAS)
             img = np.array(img)
             norm_img = np.expand_dims(img, -1)
             norm_img = norm_img.transpose((2, 0, 1))
-            if self.rec_algorithm == 'ViTSTR':
-                norm_img = norm_img.astype(np.float32) / 255.
+            if self.rec_algorithm == "ViTSTR":
+                norm_img = norm_img.astype(np.float32) / 255.0
             else:
-                norm_img = norm_img.astype(np.float32) / 128. - 1.
+                norm_img = norm_img.astype(np.float32) / 128.0 - 1.0
             return norm_img
-        elif self.rec_algorithm == 'RFL':
+        elif self.rec_algorithm == "RFL":
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            resized_image = cv2.resize(
-                img, (imgW, imgH), interpolation=cv2.INTER_CUBIC)
-            resized_image = resized_image.astype('float32')
+            resized_image = cv2.resize(img, (imgW, imgH), interpolation=cv2.INTER_CUBIC)
+            resized_image = resized_image.astype("float32")
             resized_image = resized_image / 255
             resized_image = resized_image[np.newaxis, :]
             resized_image -= 0.5
@@ -136,7 +136,7 @@ class TextRecognizer(BaseOCRV20):
         else:
             resized_w = int(ratio_imgH)
         resized_image = cv2.resize(img, (resized_w, imgH))
-        resized_image = resized_image.astype('float32')
+        resized_image = resized_image.astype("float32")
         resized_image = resized_image.transpose((2, 0, 1)) / 255
         resized_image -= 0.5
         resized_image /= 0.5
@@ -145,16 +145,13 @@ class TextRecognizer(BaseOCRV20):
         return padding_im
 
     def resize_norm_img_svtr(self, img, image_shape):
-
         imgC, imgH, imgW = image_shape
-        resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
-        resized_image = resized_image.astype('float32')
+        resized_image = cv2.resize(img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
+        resized_image = resized_image.astype("float32")
         resized_image = resized_image.transpose((2, 0, 1)) / 255
         resized_image -= 0.5
         resized_image /= 0.5
         return resized_image
-
 
     def resize_norm_img_srn(self, img, image_shape):
         imgC, imgH, imgW = image_shape
@@ -174,7 +171,7 @@ class TextRecognizer(BaseOCRV20):
 
         img_np = np.asarray(img_new)
         img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
-        img_black[:, 0:img_np.shape[1]] = img_np
+        img_black[:, 0 : img_np.shape[1]] = img_np
         img_black = img_black[:, :, np.newaxis]
 
         row, col, c = img_black.shape
@@ -183,53 +180,68 @@ class TextRecognizer(BaseOCRV20):
         return np.reshape(img_black, (c, row, col)).astype(np.float32)
 
     def srn_other_inputs(self, image_shape, num_heads, max_text_length):
-
         imgC, imgH, imgW = image_shape
         feature_dim = int((imgH / 8) * (imgW / 8))
 
-        encoder_word_pos = np.array(range(0, feature_dim)).reshape(
-            (feature_dim, 1)).astype('int64')
-        gsrm_word_pos = np.array(range(0, max_text_length)).reshape(
-            (max_text_length, 1)).astype('int64')
+        encoder_word_pos = (
+            np.array(range(0, feature_dim)).reshape((feature_dim, 1)).astype("int64")
+        )
+        gsrm_word_pos = (
+            np.array(range(0, max_text_length))
+            .reshape((max_text_length, 1))
+            .astype("int64")
+        )
 
         gsrm_attn_bias_data = np.ones((1, max_text_length, max_text_length))
         gsrm_slf_attn_bias1 = np.triu(gsrm_attn_bias_data, 1).reshape(
-            [-1, 1, max_text_length, max_text_length])
-        gsrm_slf_attn_bias1 = np.tile(
-            gsrm_slf_attn_bias1,
-            [1, num_heads, 1, 1]).astype('float32') * [-1e9]
+            [-1, 1, max_text_length, max_text_length]
+        )
+        gsrm_slf_attn_bias1 = np.tile(gsrm_slf_attn_bias1, [1, num_heads, 1, 1]).astype(
+            "float32"
+        ) * [-1e9]
 
         gsrm_slf_attn_bias2 = np.tril(gsrm_attn_bias_data, -1).reshape(
-            [-1, 1, max_text_length, max_text_length])
-        gsrm_slf_attn_bias2 = np.tile(
-            gsrm_slf_attn_bias2,
-            [1, num_heads, 1, 1]).astype('float32') * [-1e9]
+            [-1, 1, max_text_length, max_text_length]
+        )
+        gsrm_slf_attn_bias2 = np.tile(gsrm_slf_attn_bias2, [1, num_heads, 1, 1]).astype(
+            "float32"
+        ) * [-1e9]
 
         encoder_word_pos = encoder_word_pos[np.newaxis, :]
         gsrm_word_pos = gsrm_word_pos[np.newaxis, :]
 
         return [
-            encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1,
-            gsrm_slf_attn_bias2
+            encoder_word_pos,
+            gsrm_word_pos,
+            gsrm_slf_attn_bias1,
+            gsrm_slf_attn_bias2,
         ]
 
     def process_image_srn(self, img, image_shape, num_heads, max_text_length):
         norm_img = self.resize_norm_img_srn(img, image_shape)
         norm_img = norm_img[np.newaxis, :]
 
-        [encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1, gsrm_slf_attn_bias2] = \
-            self.srn_other_inputs(image_shape, num_heads, max_text_length)
+        [
+            encoder_word_pos,
+            gsrm_word_pos,
+            gsrm_slf_attn_bias1,
+            gsrm_slf_attn_bias2,
+        ] = self.srn_other_inputs(image_shape, num_heads, max_text_length)
 
         gsrm_slf_attn_bias1 = gsrm_slf_attn_bias1.astype(np.float32)
         gsrm_slf_attn_bias2 = gsrm_slf_attn_bias2.astype(np.float32)
         encoder_word_pos = encoder_word_pos.astype(np.int64)
         gsrm_word_pos = gsrm_word_pos.astype(np.int64)
 
-        return (norm_img, encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1,
-                gsrm_slf_attn_bias2)
+        return (
+            norm_img,
+            encoder_word_pos,
+            gsrm_word_pos,
+            gsrm_slf_attn_bias1,
+            gsrm_slf_attn_bias2,
+        )
 
-    def resize_norm_img_sar(self, img, image_shape,
-                            width_downsample_ratio=0.25):
+    def resize_norm_img_sar(self, img, image_shape, width_downsample_ratio=0.25):
         imgC, imgH, imgW_min, imgW_max = image_shape
         h = img.shape[0]
         w = img.shape[1]
@@ -247,7 +259,7 @@ class TextRecognizer(BaseOCRV20):
             valid_ratio = min(1.0, 1.0 * resize_w / imgW_max)
             resize_w = min(imgW_max, resize_w)
         resized_image = cv2.resize(img, (resize_w, imgH))
-        resized_image = resized_image.astype('float32')
+        resized_image = resized_image.astype("float32")
         # norm
         if image_shape[0] == 1:
             resized_image = resized_image / 255
@@ -263,11 +275,8 @@ class TextRecognizer(BaseOCRV20):
 
         return padding_im, resize_shape, pad_shape, valid_ratio
 
-
     def norm_img_can(self, img, image_shape):
-
-        img = cv2.cvtColor(
-            img, cv2.COLOR_BGR2GRAY)  # CAN only predict gray scale image
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # CAN only predict gray scale image
 
         if self.inverse:
             img = 255 - img
@@ -278,13 +287,16 @@ class TextRecognizer(BaseOCRV20):
             if h < imgH or w < imgW:
                 padding_h = max(imgH - h, 0)
                 padding_w = max(imgW - w, 0)
-                img_padded = np.pad(img, ((0, padding_h), (0, padding_w)),
-                                    'constant',
-                                    constant_values=(255))
+                img_padded = np.pad(
+                    img,
+                    ((0, padding_h), (0, padding_w)),
+                    "constant",
+                    constant_values=(255),
+                )
                 img = img_padded
 
         img = np.expand_dims(img, 0) / 255.0  # h,w,c -> c,h,w
-        img = img.astype('float32')
+        img = img.astype("float32")
 
         return img
 
@@ -298,11 +310,13 @@ class TextRecognizer(BaseOCRV20):
         indices = np.argsort(np.array(width_list))
 
         # rec_res = []
-        rec_res = [['', 0.0]] * img_num
+        rec_res = [["", 0.0]] * img_num
         batch_num = self.rec_batch_num
         elapse = 0
         # for beg_img_no in range(0, img_num, batch_num):
-        with tqdm(total=img_num, desc='OCR-rec Predict', disable=not tqdm_enable) as pbar:
+        with tqdm(
+            total=img_num, desc="OCR-rec Predict", disable=not tqdm_enable
+        ) as pbar:
             index = 0
             for beg_img_no in range(0, img_num, batch_num):
                 end_img_no = min(img_num, beg_img_no + batch_num)
@@ -316,7 +330,8 @@ class TextRecognizer(BaseOCRV20):
                 for ino in range(beg_img_no, end_img_no):
                     if self.rec_algorithm == "SAR":
                         norm_img, _, _, valid_ratio = self.resize_norm_img_sar(
-                            img_list[indices[ino]], self.rec_image_shape)
+                            img_list[indices[ino]], self.rec_image_shape
+                        )
                         norm_img = norm_img[np.newaxis, :]
                         valid_ratio = np.expand_dims(valid_ratio, axis=0)
                         valid_ratios = []
@@ -324,14 +339,18 @@ class TextRecognizer(BaseOCRV20):
                         norm_img_batch.append(norm_img)
 
                     elif self.rec_algorithm == "SVTR":
-                        norm_img = self.resize_norm_img_svtr(img_list[indices[ino]],
-                                                             self.rec_image_shape)
+                        norm_img = self.resize_norm_img_svtr(
+                            img_list[indices[ino]], self.rec_image_shape
+                        )
                         norm_img = norm_img[np.newaxis, :]
                         norm_img_batch.append(norm_img)
                     elif self.rec_algorithm == "SRN":
-                        norm_img = self.process_image_srn(img_list[indices[ino]],
-                                                          self.rec_image_shape, 8,
-                                                          self.max_text_length)
+                        norm_img = self.process_image_srn(
+                            img_list[indices[ino]],
+                            self.rec_image_shape,
+                            8,
+                            self.max_text_length,
+                        )
                         encoder_word_pos_list = []
                         gsrm_word_pos_list = []
                         gsrm_slf_attn_bias1_list = []
@@ -342,19 +361,21 @@ class TextRecognizer(BaseOCRV20):
                         gsrm_slf_attn_bias2_list.append(norm_img[4])
                         norm_img_batch.append(norm_img[0])
                     elif self.rec_algorithm == "CAN":
-                        norm_img = self.norm_img_can(img_list[indices[ino]],
-                                                     max_wh_ratio)
+                        norm_img = self.norm_img_can(
+                            img_list[indices[ino]], max_wh_ratio
+                        )
                         norm_img = norm_img[np.newaxis, :]
                         norm_img_batch.append(norm_img)
-                        norm_image_mask = np.ones(norm_img.shape, dtype='float32')
-                        word_label = np.ones([1, 36], dtype='int64')
+                        norm_image_mask = np.ones(norm_img.shape, dtype="float32")
+                        word_label = np.ones([1, 36], dtype="int64")
                         norm_img_mask_batch = []
                         word_label_list = []
                         norm_img_mask_batch.append(norm_image_mask)
                         word_label_list.append(word_label)
                     else:
-                        norm_img = self.resize_norm_img(img_list[indices[ino]],
-                                                        max_wh_ratio)
+                        norm_img = self.resize_norm_img(
+                            img_list[indices[ino]], max_wh_ratio
+                        )
                         norm_img = norm_img[np.newaxis, :]
                         norm_img_batch.append(norm_img)
                 norm_img_batch = np.concatenate(norm_img_batch)
@@ -364,26 +385,40 @@ class TextRecognizer(BaseOCRV20):
                     starttime = time.time()
                     encoder_word_pos_list = np.concatenate(encoder_word_pos_list)
                     gsrm_word_pos_list = np.concatenate(gsrm_word_pos_list)
-                    gsrm_slf_attn_bias1_list = np.concatenate(
-                        gsrm_slf_attn_bias1_list)
-                    gsrm_slf_attn_bias2_list = np.concatenate(
-                        gsrm_slf_attn_bias2_list)
+                    gsrm_slf_attn_bias1_list = np.concatenate(gsrm_slf_attn_bias1_list)
+                    gsrm_slf_attn_bias2_list = np.concatenate(gsrm_slf_attn_bias2_list)
 
                     with torch.no_grad():
                         inp = torch.from_numpy(norm_img_batch)
                         encoder_word_pos_inp = torch.from_numpy(encoder_word_pos_list)
                         gsrm_word_pos_inp = torch.from_numpy(gsrm_word_pos_list)
-                        gsrm_slf_attn_bias1_inp = torch.from_numpy(gsrm_slf_attn_bias1_list)
-                        gsrm_slf_attn_bias2_inp = torch.from_numpy(gsrm_slf_attn_bias2_list)
+                        gsrm_slf_attn_bias1_inp = torch.from_numpy(
+                            gsrm_slf_attn_bias1_list
+                        )
+                        gsrm_slf_attn_bias2_inp = torch.from_numpy(
+                            gsrm_slf_attn_bias2_list
+                        )
 
                         inp = inp.to(self.device)
                         encoder_word_pos_inp = encoder_word_pos_inp.to(self.device)
                         gsrm_word_pos_inp = gsrm_word_pos_inp.to(self.device)
-                        gsrm_slf_attn_bias1_inp = gsrm_slf_attn_bias1_inp.to(self.device)
-                        gsrm_slf_attn_bias2_inp = gsrm_slf_attn_bias2_inp.to(self.device)
+                        gsrm_slf_attn_bias1_inp = gsrm_slf_attn_bias1_inp.to(
+                            self.device
+                        )
+                        gsrm_slf_attn_bias2_inp = gsrm_slf_attn_bias2_inp.to(
+                            self.device
+                        )
 
-                        backbone_out = self.net.backbone(inp) # backbone_feat
-                        prob_out = self.net.head(backbone_out, [encoder_word_pos_inp, gsrm_word_pos_inp, gsrm_slf_attn_bias1_inp, gsrm_slf_attn_bias2_inp])
+                        backbone_out = self.net.backbone(inp)  # backbone_feat
+                        prob_out = self.net.head(
+                            backbone_out,
+                            [
+                                encoder_word_pos_inp,
+                                gsrm_word_pos_inp,
+                                gsrm_slf_attn_bias1_inp,
+                                gsrm_slf_attn_bias2_inp,
+                            ],
+                        )
                     # preds = {"predict": prob_out[2]}
                     preds = {"predict": prob_out["predict"]}
 

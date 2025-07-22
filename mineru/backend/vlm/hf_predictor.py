@@ -38,7 +38,7 @@ class HuggingfacePredictor(BasePredictor):
         presence_penalty: float = DEFAULT_PRESENCE_PENALTY,
         no_repeat_ngram_size: int = DEFAULT_NO_REPEAT_NGRAM_SIZE,
         max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS,
-        **kwargs,
+        low_cpu_mem_usage: bool = True,
     ):
         super().__init__(
             temperature=temperature,
@@ -50,34 +50,34 @@ class HuggingfacePredictor(BasePredictor):
             max_new_tokens=max_new_tokens,
         )
 
-        kwargs = {"device_map": device_map, **kwargs}
+        model_kwargs = {"device_map": device_map}
 
         if device != "cuda":
-            kwargs["device_map"] = {"": device}
+            model_kwargs["device_map"] = {"": device}
 
         if load_in_8bit:
-            kwargs["load_in_8bit"] = True
+            model_kwargs["load_in_8bit"] = True
         elif load_in_4bit:
-            kwargs["load_in_4bit"] = True
-            kwargs["quantization_config"] = BitsAndBytesConfig(
+            model_kwargs["load_in_4bit"] = True
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.float16,
                 bnb_4bit_use_double_quant=True,
                 bnb_4bit_quant_type="nf4",
             )
         else:
-            kwargs["torch_dtype"] = torch_dtype
+            model_kwargs["torch_dtype"] = torch_dtype
 
         if use_flash_attn:
-            kwargs["attn_implementation"] = "flash_attention_2"
+            model_kwargs["attn_implementation"] = "flash_attention_2"
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         self.model = Mineru2QwenForCausalLM.from_pretrained(
             model_path,
-            low_cpu_mem_usage=True,
-            **kwargs,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            **model_kwargs,
         )
-        setattr(self.model.config, "_name_or_path", model_path)
+        self.model.config._name_or_path = model_path
         self.model.eval()
 
         vision_tower = self.model.get_model().vision_tower
@@ -98,7 +98,7 @@ class HuggingfacePredictor(BasePredictor):
         presence_penalty: Optional[float] = None,
         no_repeat_ngram_size: Optional[int] = None,
         max_new_tokens: Optional[int] = None,
-        **kwargs,
+        use_cache: bool = True,
     ) -> str:
         prompt = self.build_prompt(prompt)
 
@@ -132,7 +132,9 @@ class HuggingfacePredictor(BasePredictor):
             image = load_resource(image)
 
         image_obj = Image.open(BytesIO(image))
-        image_tensor = process_images([image_obj], self.image_processor, self.model.config)
+        image_tensor = process_images(
+            [image_obj], self.image_processor, self.model.config
+        )
         image_tensor = image_tensor[0].unsqueeze(0)
         image_tensor = image_tensor.to(device=self.model.device, dtype=self.model.dtype)
         image_sizes = [[*image_obj.size]]
@@ -145,9 +147,8 @@ class HuggingfacePredictor(BasePredictor):
                 input_ids,
                 images=image_tensor,
                 image_sizes=image_sizes,
-                use_cache=True,
+                use_cache=use_cache,
                 **generate_kwargs,
-                **kwargs,
             )
 
         # Remove the last token if it is the eos_token_id
@@ -169,10 +170,10 @@ class HuggingfacePredictor(BasePredictor):
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
         repetition_penalty: Optional[float] = None,
-        presence_penalty: Optional[float] = None,  # not supported by hf
+        presence_penalty: Optional[float] = None,
         no_repeat_ngram_size: Optional[int] = None,
         max_new_tokens: Optional[int] = None,
-        **kwargs,
+        use_cache: bool = True,
     ) -> List[str]:
         if not isinstance(prompts, list):
             prompts = [prompts] * len(images)
@@ -180,7 +181,9 @@ class HuggingfacePredictor(BasePredictor):
         assert len(prompts) == len(images), "Length of prompts and images must match."
 
         outputs = []
-        for prompt, image in tqdm(zip(prompts, images), total=len(images), desc="Predict"):
+        for prompt, image in tqdm(
+            zip(prompts, images), total=len(images), desc="Predict"
+        ):
             output = self.predict(
                 image,
                 prompt,
@@ -191,7 +194,7 @@ class HuggingfacePredictor(BasePredictor):
                 presence_penalty=presence_penalty,
                 no_repeat_ngram_size=no_repeat_ngram_size,
                 max_new_tokens=max_new_tokens,
-                **kwargs,
+                use_cache=use_cache,
             )
             outputs.append(output)
         return outputs

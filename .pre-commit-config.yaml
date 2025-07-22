@@ -1,0 +1,43 @@
+repos:
+  # - repo: https://github.com/psf/black
+  #   rev: 23.7.0
+  #   hooks:
+  #     - id: black
+  #       language_version: python3
+  #       args: [--fast]
+  # - repo: https://github.com/pycqa/isort
+  #   rev: 5.12.0
+  #   hooks:
+  #     - id: isort
+  #       name: isort (python)
+  # - repo: https://github.com/pycqa/flake8
+  #   rev: 6.1.0
+  #   hooks:
+  #     - id: flake8
+  #       additional_dependencies: [flake8-bugbear==23.7.10]
+  #       args:
+  #         [
+  #           --max-line-length=480,
+  #           --extend-ignore=E203,
+  #           B008,
+  #           B007,
+  #           F841,
+  #           W291,
+  #           W605,
+  #           B006,
+  #         ]
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.4.1
+  #   hooks:
+  #     - id: mypy
+  #       additional_dependencies: [types-requests==2.31.0.1]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.12.4
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format

@@ -15,7 +15,7 @@ def page_to_image(
     scale = dpi / 72
 
     long_side_length = max(*page.get_size())
-    if (long_side_length*scale) > max_width_or_height:
+    if (long_side_length * scale) > max_width_or_height:
         scale = max_width_or_height / long_side_length
 
     bitmap: PdfBitmap = page.render(scale=scale)  # type: ignore
@@ -56,7 +56,9 @@ def pdf_to_images(
     doc = pdf if isinstance(pdf, PdfDocument) else PdfDocument(pdf)
     page_num = len(doc)
 
-    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else page_num - 1
+    end_page_id = (
+        end_page_id if end_page_id is not None and end_page_id >= 0 else page_num - 1
+    )
     if end_page_id > page_num - 1:
         logger.warning("end_page_id is out of range, use images length")
         end_page_id = page_num - 1

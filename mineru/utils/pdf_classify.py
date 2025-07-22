@@ -1,17 +1,17 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
 from io import BytesIO
+
 import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
-from pdfminer.high_level import extract_text
-from pdfminer.pdfparser import PDFParser
-from pdfminer.pdfdocument import PDFDocument
-from pdfminer.pdfpage import PDFPage
-from pdfminer.pdfinterp import PDFResourceManager
-from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.layout import LAParams, LTImage, LTFigure
 from pdfminer.converter import PDFPageAggregator
+from pdfminer.high_level import extract_text
+from pdfminer.layout import LAParams, LTFigure, LTImage
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
 
 
 def classify(pdf_bytes):
@@ -34,7 +34,7 @@ def classify(pdf_bytes):
 
         # 如果PDF页数为0，直接返回OCR
         if page_count == 0:
-            return 'ocr'
+            return "ocr"
 
         # 检查的页面数（最多检查10页）
         pages_to_check = min(page_count, 10)
@@ -42,18 +42,19 @@ def classify(pdf_bytes):
         # 设置阈值：如果每页平均少于50个有效字符，认为需要OCR
         chars_threshold = 50
 
-        if (get_avg_cleaned_chars_per_page(pdf, pages_to_check) < chars_threshold) or detect_invalid_chars(sample_pdf_bytes):
-            return 'ocr'
+        if (
+            get_avg_cleaned_chars_per_page(pdf, pages_to_check) < chars_threshold
+        ) or detect_invalid_chars(sample_pdf_bytes):
+            return "ocr"
         else:
-
             if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.8:
-                return 'ocr'
+                return "ocr"
 
-            return 'txt'
+            return "txt"
     except Exception as e:
         logger.error(f"判断PDF类型时出错: {e}")
         # 出错时默认使用OCR
-        return 'ocr'
+        return "ocr"
 
 
 def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
@@ -70,7 +71,7 @@ def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
         total_chars += len(text)
 
         # 清理提取的文本，移除空白字符
-        cleaned_text = re.sub(r'\s+', '', text)
+        cleaned_text = re.sub(r"\s+", "", text)
         cleaned_total_chars += len(cleaned_text)
 
     # 计算平均每页字符数
@@ -191,7 +192,7 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
     if total_page == 0:
         # 如果PDF没有页面，直接返回空文档
         logger.warning("PDF is empty, return empty document")
-        return b''
+        return b""
 
     # 选择最多10页
     select_page_cnt = min(10, total_page)
@@ -214,14 +215,14 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
         return output_buffer.getvalue()
     except Exception as e:
         logger.exception(e)
-        return b''  # 出错时返回空字节
+        return b""  # 出错时返回空字节
 
 
 def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:
-    """"
+    """ "
     检测PDF中是否包含非法字符
     """
-    '''pdfminer比较慢,需要先随机抽取10页左右的sample'''
+    """pdfminer比较慢,需要先随机抽取10页左右的sample"""
     # sample_pdf_bytes = extract_pages(src_pdf_bytes)
     sample_pdf_file_like_object = BytesIO(sample_pdf_bytes)
     laparams = LAParams(
@@ -236,8 +237,8 @@ def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:
     text = extract_text(pdf_file=sample_pdf_file_like_object, laparams=laparams)
     text = text.replace("\n", "")
     # logger.info(text)
-    '''乱码文本用pdfminer提取出来的文本特征是(cid:xxx)'''
-    cid_pattern = re.compile(r'\(cid:\d+\)')
+    """乱码文本用pdfminer提取出来的文本特征是(cid:xxx)"""
+    cid_pattern = re.compile(r"\(cid:\d+\)")
     matches = cid_pattern.findall(text)
     cid_count = len(matches)
     cid_len = sum(len(match) for match in matches)
@@ -245,16 +246,16 @@ def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:
     if text_len == 0:
         cid_chars_radio = 0
     else:
-        cid_chars_radio = cid_count/(cid_count + text_len - cid_len)
+        cid_chars_radio = cid_count / (cid_count + text_len - cid_len)
     # logger.debug(f"cid_count: {cid_count}, text_len: {text_len}, cid_chars_radio: {cid_chars_radio}")
-    '''当一篇文章存在5%以上的文本是乱码时,认为该文档为乱码文档'''
+    """当一篇文章存在5%以上的文本是乱码时,认为该文档为乱码文档"""
     if cid_chars_radio > 0.05:
         return True  # 乱码文档
     else:
-        return False   # 正常文档
+        return False  # 正常文档
 
 
-if __name__ == '__main__':
-    with open('/Users/myhloli/pdf/luanma2x10.pdf', 'rb') as f:
+if __name__ == "__main__":
+    with open("/Users/myhloli/pdf/luanma2x10.pdf", "rb") as f:
         p_bytes = f.read()
         logger.info(f"PDF分类结果: {classify(p_bytes)}")

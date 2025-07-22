@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import argparse
 import copy
 import os
 import warnings
@@ -12,39 +13,105 @@ from loguru import logger
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
-from .tools.infer.predict_system import TextSystem
-from .tools.infer import pytorchocr_utility as utility
-import argparse
 
+from ....utils.ocr_utils import (
+    check_img,
+    get_rotate_crop_image,
+    merge_det_boxes,
+    preprocess_image,
+    sorted_boxes,
+    update_det_boxes,
+)
+from .tools.infer import pytorchocr_utility as utility
+from .tools.infer.predict_system import TextSystem
 
 latin_lang = [
-        'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',  # noqa: E126
-        'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
-        'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
-        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+    "af",
+    "az",
+    "bs",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "es",
+    "et",
+    "fr",
+    "ga",
+    "hr",  # noqa: E126
+    "hu",
+    "id",
+    "is",
+    "it",
+    "ku",
+    "la",
+    "lt",
+    "lv",
+    "mi",
+    "ms",
+    "mt",
+    "nl",
+    "no",
+    "oc",
+    "pi",
+    "pl",
+    "pt",
+    "ro",
+    "rs_latin",
+    "sk",
+    "sl",
+    "sq",
+    "sv",
+    "sw",
+    "tl",
+    "tr",
+    "uz",
+    "vi",
+    "french",
+    "german",
 ]
-arabic_lang = ['ar', 'fa', 'ug', 'ur']
+arabic_lang = ["ar", "fa", "ug", "ur"]
 cyrillic_lang = [
-        'rs_cyrillic', 'bg', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
-        'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
+    "rs_cyrillic",
+    "bg",
+    "mn",
+    "abq",
+    "ady",
+    "kbd",
+    "ava",  # noqa: E126
+    "dar",
+    "inh",
+    "che",
+    "lbe",
+    "lez",
+    "tab",
 ]
 east_slavic_lang = ["ru", "be", "uk"]
 devanagari_lang = [
-        'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
-        'sa', 'bgc'
+    "hi",
+    "mr",
+    "ne",
+    "bh",
+    "mai",
+    "ang",
+    "bho",
+    "mah",
+    "sck",
+    "new",
+    "gom",  # noqa: E126
+    "sa",
+    "bgc",
 ]
 
 
 def get_model_params(lang, config):
-    if lang in config['lang']:
-        params = config['lang'][lang]
-        det = params.get('det')
-        rec = params.get('rec')
-        dict_file = params.get('dict')
+    if lang in config["lang"]:
+        params = config["lang"][lang]
+        det = params.get("det")
+        rec = params.get("rec")
+        dict_file = params.get("dict")
         return det, rec, dict_file
     else:
-        raise Exception (f'Language {lang} not supported')
+        raise Exception(f"Language {lang} not supported")
 
 
 root_dir = Path(__file__).resolve().parent
@@ -55,42 +122,50 @@ class PytorchPaddleOCR(TextSystem):
         parser = utility.init_args()
         args = parser.parse_args(args)
 
-        self.lang = kwargs.get('lang', 'ch')
+        self.lang = kwargs.get("lang", "ch")
 
         device = get_device()
-        if device == 'cpu' and self.lang in ['ch', 'ch_server', 'japan', 'chinese_cht']:
+        if device == "cpu" and self.lang in ["ch", "ch_server", "japan", "chinese_cht"]:
             # logger.warning("The current device in use is CPU. To ensure the speed of parsing, the language is automatically switched to ch_lite.")
-            self.lang = 'ch_lite'
+            self.lang = "ch_lite"
 
         if self.lang in latin_lang:
-            self.lang = 'latin'
+            self.lang = "latin"
         elif self.lang in arabic_lang:
-            self.lang = 'arabic'
+            self.lang = "arabic"
         elif self.lang in cyrillic_lang:
-            self.lang = 'cyrillic'
+            self.lang = "cyrillic"
         elif self.lang in devanagari_lang:
-            self.lang = 'devanagari'
+            self.lang = "devanagari"
         elif self.lang in east_slavic_lang:
-            self.lang = 'east_slavic'
+            self.lang = "east_slavic"
         else:
             pass
 
-        models_config_path = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'models_config.yml')
+        models_config_path = os.path.join(
+            root_dir, "pytorchocr", "utils", "resources", "models_config.yml"
+        )
         with open(models_config_path) as file:
             config = yaml.safe_load(file)
             det, rec, dict_file = get_model_params(self.lang, config)
         ocr_models_dir = ModelPath.pytorch_paddle
 
         det_model_path = f"{ocr_models_dir}/{det}"
-        det_model_path = os.path.join(auto_download_and_get_model_root_path(det_model_path), det_model_path)
+        det_model_path = os.path.join(
+            auto_download_and_get_model_root_path(det_model_path), det_model_path
+        )
         rec_model_path = f"{ocr_models_dir}/{rec}"
-        rec_model_path = os.path.join(auto_download_and_get_model_root_path(rec_model_path), rec_model_path)
-        kwargs['det_model_path'] = det_model_path
-        kwargs['rec_model_path'] = rec_model_path
-        kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
+        rec_model_path = os.path.join(
+            auto_download_and_get_model_root_path(rec_model_path), rec_model_path
+        )
+        kwargs["det_model_path"] = det_model_path
+        kwargs["rec_model_path"] = rec_model_path
+        kwargs["rec_char_dict_path"] = os.path.join(
+            root_dir, "pytorchocr", "utils", "resources", "dict", dict_file
+        )
         # kwargs['rec_batch_num'] = 8
 
-        kwargs['device'] = device
+        kwargs["device"] = device
 
         default_args = vars(args)
         default_args.update(kwargs)
@@ -98,16 +173,17 @@ class PytorchPaddleOCR(TextSystem):
 
         super().__init__(args)
 
-    def ocr(self,
-            img,
-            det=True,
-            rec=True,
-            mfd_res=None,
-            tqdm_enable=False,
-            ):
+    def ocr(
+        self,
+        img,
+        det=True,
+        rec=True,
+        mfd_res=None,
+        tqdm_enable=False,
+    ):
         assert isinstance(img, (np.ndarray, list, str, bytes))
-        if isinstance(img, list) and det == True:
-            logger.error('When input a list of images, det must be false')
+        if isinstance(img, list) and det:
+            logger.error("When input a list of images, det must be false")
             exit(0)
         img = check_img(img)
         imgs = [img]
@@ -121,7 +197,9 @@ class PytorchPaddleOCR(TextSystem):
                     if not dt_boxes and not rec_res:
                         ocr_res.append(None)
                         continue
-                    tmp_res = [[box.tolist(), res] for box, res in zip(dt_boxes, rec_res)]
+                    tmp_res = [
+                        [box.tolist(), res] for box, res in zip(dt_boxes, rec_res)
+                    ]
                     ocr_res.append(tmp_res)
                 return ocr_res
             elif det and not rec:
@@ -153,7 +231,6 @@ class PytorchPaddleOCR(TextSystem):
                 return ocr_res
 
     def __call__(self, img, mfd_res=None):
-
         if img is None:
             logger.debug("no valid image provided")
             return None, None
@@ -194,7 +271,8 @@ class PytorchPaddleOCR(TextSystem):
 
         return filter_boxes, filter_rec_res
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     pytorch_paddle_ocr = PytorchPaddleOCR()
     img = cv2.imread("/Users/myhloli/Downloads/screenshot-20250326-194348.png")
     dt_boxes, rec_res = pytorch_paddle_ocr(img)
@@ -205,5 +283,3 @@ if __name__ == '__main__':
         tmp_res = [[box.tolist(), res] for box, res in zip(dt_boxes, rec_res)]
         ocr_res.append(tmp_res)
     print(ocr_res)
-
-

@@ -1,10 +1,9 @@
 """MinerU File转Markdown服务的命令行界面。"""
 
-import sys
 import argparse
+import sys
 
-from . import config
-from . import server
+from . import config, server
 
 
 def main():

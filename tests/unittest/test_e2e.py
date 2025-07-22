@@ -3,9 +3,20 @@ import copy
 import json
 import os
 from pathlib import Path
-from loguru import logger
+
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
+from loguru import logger
+
+from mineru.backend.pipeline.model_json_to_middle_json import (
+    result_to_middle_json as pipeline_result_to_middle_json,
+)
+from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
+    union_make as pipeline_union_make,
+)
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.cli.common import (
     convert_pdf_bytes_to_bytes_by_pypdfium2,
     prepare_env,
@@ -13,15 +24,6 @@ from mineru.cli.common import (
 )
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
-    union_make as pipeline_union_make,
-)
-from mineru.backend.pipeline.model_json_to_middle_json import (
-    result_to_middle_json as pipeline_result_to_middle_json,
-)
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 
 
 def test_pipeline_with_two_config():
@@ -52,12 +54,16 @@ def test_pipeline_with_two_config():
         pdf_bytes_list[idx] = new_pdf_bytes
 
     # 获取 pipline 分析结果, 分别测试 txt 和 ocr 两种解析方法的结果
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list,
-            p_lang_list,
-            parse_method="txt",
-        )
+    (
+        infer_results,
+        all_image_lists,
+        all_pdf_docs,
+        lang_list,
+        ocr_enabled_list,
+    ) = pipeline_doc_analyze(
+        pdf_bytes_list,
+        p_lang_list,
+        parse_method="txt",
     )
     write_infer_result(
         infer_results,
@@ -70,12 +76,16 @@ def test_pipeline_with_two_config():
         parse_method="txt",
     )
     assert_content("tests/unittest/output/test/txt/test_content_list.json")
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list,
-            p_lang_list,
-            parse_method="ocr",
-        )
+    (
+        infer_results,
+        all_image_lists,
+        all_pdf_docs,
+        lang_list,
+        ocr_enabled_list,
+    ) = pipeline_doc_analyze(
+        pdf_bytes_list,
+        p_lang_list,
+        parse_method="ocr",
     )
     write_infer_result(
         infer_results,
@@ -120,9 +130,10 @@ def test_vlm_transformers_with_default_config():
         local_image_dir, local_md_dir = prepare_env(
             output_dir, pdf_file_name, parse_method="vlm"
         )
-        image_writer, md_writer = FileBasedDataWriter(
-            local_image_dir
-        ), FileBasedDataWriter(local_md_dir)
+        image_writer, md_writer = (
+            FileBasedDataWriter(local_image_dir),
+            FileBasedDataWriter(local_md_dir),
+        )
         middle_json, infer_result = vlm_doc_analyze(
             pdf_bytes, image_writer=image_writer, backend="transformers"
         )
@@ -174,9 +185,10 @@ def write_infer_result(
         local_image_dir, local_md_dir = prepare_env(
             output_dir, pdf_file_name, parse_method
         )
-        image_writer, md_writer = FileBasedDataWriter(
-            local_image_dir
-        ), FileBasedDataWriter(local_md_dir)
+        image_writer, md_writer = (
+            FileBasedDataWriter(local_image_dir),
+            FileBasedDataWriter(local_md_dir),
+        )
 
         images_list = all_image_lists[idx]
         pdf_doc = all_pdf_docs[idx]
@@ -223,9 +235,9 @@ def write_infer_result(
 
 def validate_html(html_content):
     try:
-        soup = BeautifulSoup(html_content, "html.parser")
+        BeautifulSoup(html_content, "html.parser")
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 

@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
+
 import cv2
 import numpy as np
 
@@ -8,7 +9,10 @@ class OcrConfidence:
     min_confidence = 0.5
     min_width = 3
 
-LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = 4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
+
+LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = (
+    4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
+)
 
 
 def merge_spans_to_line(spans, threshold=0.6):
@@ -16,13 +20,15 @@ def merge_spans_to_line(spans, threshold=0.6):
         return []
     else:
         # 按照y0坐标排序
-        spans.sort(key=lambda span: span['bbox'][1])
+        spans.sort(key=lambda span: span["bbox"][1])
 
         lines = []
         current_line = [spans[0]]
         for span in spans[1:]:
             # 如果当前的span与当前行的最后一个span在y轴上重叠，则添加到当前行
-            if _is_overlaps_y_exceeds_threshold(span['bbox'], current_line[-1]['bbox'], threshold):
+            if _is_overlaps_y_exceeds_threshold(
+                span["bbox"], current_line[-1]["bbox"], threshold
+            ):
                 current_line.append(span)
             else:
                 # 否则，开始新行
@@ -35,9 +41,8 @@ def merge_spans_to_line(spans, threshold=0.6):
 
         return lines
 
-def _is_overlaps_y_exceeds_threshold(bbox1,
-                                     bbox2,
-                                     overlap_ratio_threshold=0.8):
+
+def _is_overlaps_y_exceeds_threshold(bbox1, bbox2, overlap_ratio_threshold=0.8):
     """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
     _, y0_1, _, y1_1 = bbox1
     _, y0_2, _, y1_2 = bbox2
@@ -50,9 +55,7 @@ def _is_overlaps_y_exceeds_threshold(bbox1,
     return (overlap / min_height) > overlap_ratio_threshold if min_height > 0 else False
 
 
-def _is_overlaps_x_exceeds_threshold(bbox1,
-                                     bbox2,
-                                     overlap_ratio_threshold=0.8):
+def _is_overlaps_x_exceeds_threshold(bbox1, bbox2, overlap_ratio_threshold=0.8):
     """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""
     x0_1, _, x1_1, _ = bbox1
     x0_2, _, x1_2, _ = bbox2
@@ -67,6 +70,7 @@ def _is_overlaps_x_exceeds_threshold(bbox1,
 def img_decode(content: bytes):
     np_arr = np.frombuffer(content, dtype=np.uint8)
     return cv2.imdecode(np_arr, cv2.IMREAD_UNCHANGED)
+
 
 def check_img(img):
     if isinstance(img, bytes):
@@ -109,8 +113,9 @@ def sorted_boxes(dt_boxes):
 
     for i in range(num_boxes - 1):
         for j in range(i, -1, -1):
-            if abs(_boxes[j + 1][0][1] - _boxes[j][0][1]) < 10 and \
-                    (_boxes[j + 1][0][0] < _boxes[j][0][0]):
+            if abs(_boxes[j + 1][0][1] - _boxes[j][0][1]) < 10 and (
+                _boxes[j + 1][0][0] < _boxes[j][0][0]
+            ):
                 tmp = _boxes[j]
                 _boxes[j] = _boxes[j + 1]
                 _boxes[j + 1] = tmp
@@ -120,13 +125,13 @@ def sorted_boxes(dt_boxes):
 
 
 def bbox_to_points(bbox):
-    """ 将bbox格式转换为四个顶点的数组 """
+    """将bbox格式转换为四个顶点的数组"""
     x0, y0, x1, y1 = bbox
-    return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).astype('float32')
+    return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]).astype("float32")
 
 
 def points_to_bbox(points):
-    """ 将四个顶点的数组转换为bbox格式 """
+    """将四个顶点的数组转换为bbox格式"""
     x0, y0 = points[0]
     x1, _ = points[1]
     _, y1 = points[2]
@@ -185,7 +190,6 @@ def update_det_boxes(dt_boxes, mfd_res):
     new_dt_boxes = []
     angle_boxes_list = []
     for text_box in dt_boxes:
-
         if calculate_is_angle(text_box):
             angle_boxes_list.append(text_box)
             continue
@@ -193,14 +197,23 @@ def update_det_boxes(dt_boxes, mfd_res):
         text_bbox = points_to_bbox(text_box)
         masks_list = []
         for mf_box in mfd_res:
-            mf_bbox = mf_box['bbox']
+            mf_bbox = mf_box["bbox"]
             if _is_overlaps_y_exceeds_threshold(text_bbox, mf_bbox):
                 masks_list.append([mf_bbox[0], mf_bbox[2]])
         text_x_range = [text_bbox[0], text_bbox[2]]
         text_remove_mask_range = remove_intervals(text_x_range, masks_list)
         temp_dt_box = []
         for text_remove_mask in text_remove_mask_range:
-            temp_dt_box.append(bbox_to_points([text_remove_mask[0], text_bbox[1], text_remove_mask[1], text_bbox[3]]))
+            temp_dt_box.append(
+                bbox_to_points(
+                    [
+                        text_remove_mask[0],
+                        text_bbox[1],
+                        text_remove_mask[1],
+                        text_bbox[3],
+                    ]
+                )
+            )
         if len(temp_dt_box) > 0:
             new_dt_boxes.extend(temp_dt_box)
 
@@ -269,7 +282,7 @@ def merge_det_boxes(dt_boxes):
             angle_boxes_list.append(text_box)
             continue
 
-        text_box_dict = {'bbox': text_bbox}
+        text_box_dict = {"bbox": text_bbox}
         dt_boxes_dict_list.append(text_box_dict)
 
     # Merge adjacent text regions into lines
@@ -280,7 +293,7 @@ def merge_det_boxes(dt_boxes):
     for line in lines:
         line_bbox_list = []
         for span in line:
-            line_bbox_list.append(span['bbox'])
+            line_bbox_list.append(span["bbox"])
 
         # 计算整行的宽度和高度
         min_x = min(bbox[0] for bbox in line_bbox_list)
@@ -292,7 +305,6 @@ def merge_det_boxes(dt_boxes):
 
         # 只有当行宽度超过高度4倍时才进行合并
         if line_width > line_height * LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD:
-
             # Merge overlapping text regions within the same line
             merged_spans = merge_overlapping_spans(line_bbox_list)
 
@@ -324,9 +336,11 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
         if any([x1 < 0, y1 < 0]) or any([x0 > new_width, y0 > new_height]):
             continue
         else:
-            adjusted_mfdetrec_res.append({
-                "bbox": [x0, y0, x1, y1],
-            })
+            adjusted_mfdetrec_res.append(
+                {
+                    "bbox": [x0, y0, x1, y1],
+                }
+            )
     return adjusted_mfdetrec_res
 
 
@@ -335,7 +349,6 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
     ocr_result_list = []
     ori_im = new_image.copy()
     for box_ocr_res in ocr_res:
-
         if len(box_ocr_res) == 2:
             p1, p2, p3, p4 = box_ocr_res[0]
             text, score = box_ocr_res[1]
@@ -347,7 +360,7 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
             text, score = "", 1
 
             if ocr_enable:
-                tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype('float32'))
+                tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype("float32"))
                 img_crop = get_rotate_crop_image(ori_im, tmp_box)
 
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
@@ -378,21 +391,25 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
         p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
 
         if ocr_enable:
-            ocr_result_list.append({
-                'category_id': 15,
-                'poly': p1 + p2 + p3 + p4,
-                'score': 1,
-                'text': text,
-                'np_img': img_crop,
-                'lang': lang,
-            })
+            ocr_result_list.append(
+                {
+                    "category_id": 15,
+                    "poly": p1 + p2 + p3 + p4,
+                    "score": 1,
+                    "text": text,
+                    "np_img": img_crop,
+                    "lang": lang,
+                }
+            )
         else:
-            ocr_result_list.append({
-                'category_id': 15,
-                'poly': p1 + p2 + p3 + p4,
-                'score': float(round(score, 2)),
-                'text': text,
-            })
+            ocr_result_list.append(
+                {
+                    "category_id": 15,
+                    "poly": p1 + p2 + p3 + p4,
+                    "score": float(round(score, 2)),
+                    "text": text,
+                }
+            )
 
     return ocr_result_list
 
@@ -408,7 +425,7 @@ def calculate_is_angle(poly):
 
 
 def get_rotate_crop_image(img, points):
-    '''
+    """
     img_height, img_width = img.shape[0:2]
     left = int(np.min(points[:, 0]))
     right = int(np.max(points[:, 0]))
@@ -417,25 +434,34 @@ def get_rotate_crop_image(img, points):
     img_crop = img[top:bottom, left:right, :].copy()
     points[:, 0] = points[:, 0] - left
     points[:, 1] = points[:, 1] - top
-    '''
+    """
     assert len(points) == 4, "shape of points must be 4*2"
     img_crop_width = int(
         max(
-            np.linalg.norm(points[0] - points[1]),
-            np.linalg.norm(points[2] - points[3])))
+            np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])
+        )
+    )
     img_crop_height = int(
         max(
-            np.linalg.norm(points[0] - points[3]),
-            np.linalg.norm(points[1] - points[2])))
-    pts_std = np.float32([[0, 0], [img_crop_width, 0],
-                          [img_crop_width, img_crop_height],
-                          [0, img_crop_height]])
+            np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])
+        )
+    )
+    pts_std = np.float32(
+        [
+            [0, 0],
+            [img_crop_width, 0],
+            [img_crop_width, img_crop_height],
+            [0, img_crop_height],
+        ]
+    )
     M = cv2.getPerspectiveTransform(points, pts_std)
     dst_img = cv2.warpPerspective(
         img,
-        M, (img_crop_width, img_crop_height),
+        M,
+        (img_crop_width, img_crop_height),
         borderMode=cv2.BORDER_REPLICATE,
-        flags=cv2.INTER_CUBIC)
+        flags=cv2.INTER_CUBIC,
+    )
     dst_img_height, dst_img_width = dst_img.shape[0:2]
     if dst_img_height * 1.0 / dst_img_width >= 1.5:
         dst_img = np.rot90(dst_img)

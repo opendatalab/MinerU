@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from sglang.srt.layers.quantization.base_config import QuantizationConfig
 from sglang.srt.mm_utils import (
-    get_anyres_image_grid_shape,  # unpad_image, unpad_image_shape
-)
+    get_anyres_image_grid_shape,
+)  # unpad_image, unpad_image_shape
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.models.qwen2 import Qwen2ForCausalLM
@@ -20,14 +20,16 @@ from transformers import (
     SiglipVisionModel,
 )
 
+from ...utils.models_download_utils import auto_download_and_get_model_root_path
 from ..vlm_hf_model.configuration_mineru2 import Mineru2QwenConfig
 from ..vlm_hf_model.modeling_mineru2 import build_vision_projector
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 def flatten_nested_list(nested_list):
     if isinstance(nested_list, list):
-        return [item for sublist in nested_list for item in flatten_nested_list(sublist)]
+        return [
+            item for sublist in nested_list for item in flatten_nested_list(sublist)
+        ]
     else:
         return [nested_list]
 
@@ -87,7 +89,9 @@ class Mineru2QwenForCausalLM(nn.Module):
         )
 
         if "unpad" in getattr(config, "mm_patch_merge_type", ""):
-            self.language_model.model.image_newline = nn.Parameter(torch.empty(config.hidden_size))
+            self.language_model.model.image_newline = nn.Parameter(
+                torch.empty(config.hidden_size)
+            )
 
         language_model_device = next(self.language_model.parameters()).device
         self.vision_tower = self.vision_tower.to(language_model_device)
@@ -113,7 +117,9 @@ class Mineru2QwenForCausalLM(nn.Module):
     def pad_input_ids(self, input_ids: List[int], image_inputs):
         if hasattr(image_inputs, "mm_items"):  # MultimodalInputs
             # sglang==0.4.5.post3
-            image_sizes = flatten_nested_list([item.image_sizes for item in image_inputs.mm_items])
+            image_sizes = flatten_nested_list(
+                [item.image_sizes for item in image_inputs.mm_items]
+            )
             pad_values = [item.pad_value for item in image_inputs.mm_items]
         else:  # ImageInputs
             # sglang==0.4.4.post1
@@ -133,7 +139,9 @@ class Mineru2QwenForCausalLM(nn.Module):
         for image_idx, image_s in enumerate(image_sizes):
             if len(image_sizes) > 16:
                 # 2x2 pooling with stride 2
-                new_image_feature_len = math.ceil(self.image_size / self.patch_size / 2) ** 2
+                new_image_feature_len = (
+                    math.ceil(self.image_size / self.patch_size / 2) ** 2
+                )
             else:
                 new_image_feature_len = self.image_feature_len  # multiimage
 
@@ -147,15 +155,19 @@ class Mineru2QwenForCausalLM(nn.Module):
                 h = num_patch_height * height
                 w = num_patch_width * width
 
-                ### EDIT: remove `unpad_image_shape`
+                # EDIT: remove `unpad_image_shape`
                 # new_h, new_w = unpad_image_shape(h, w, image_s)
                 new_h, new_w = h, w
 
                 if "anyres_max" in self.config.image_aspect_ratio:
-                    matched_anyres_max_num_patches = re.match(r".*anyres_max_(\d+)", self.config.image_aspect_ratio)
+                    matched_anyres_max_num_patches = re.match(
+                        r".*anyres_max_(\d+)", self.config.image_aspect_ratio
+                    )
                     if matched_anyres_max_num_patches:
                         max_num_patches = int(matched_anyres_max_num_patches.group(1))
-                        times = math.sqrt(new_h * new_w / (max_num_patches * self.image_feature_len))
+                        times = math.sqrt(
+                            new_h * new_w / (max_num_patches * self.image_feature_len)
+                        )
                         if times > 1.1:
                             new_h = int(new_h // times)
                             new_w = int(new_w // times)
@@ -166,7 +178,11 @@ class Mineru2QwenForCausalLM(nn.Module):
             except ValueError:
                 offset = 0
             # old_len + pad_len - 1, because we need to remove image_token_id
-            input_ids = input_ids[:offset] + [pad_values[image_idx]] * new_image_feature_len + input_ids[offset + 1 :]
+            input_ids = (
+                input_ids[:offset]
+                + [pad_values[image_idx]] * new_image_feature_len
+                + input_ids[offset + 1 :]
+            )
             offset_list.append(offset)
             image_inputs.image_pad_len.append(new_image_feature_len)
 
@@ -174,7 +190,9 @@ class Mineru2QwenForCausalLM(nn.Module):
         return input_ids
 
     def encode_images(self, pixel_values: torch.Tensor) -> torch.Tensor:
-        pixel_values = pixel_values.to(device=self.vision_tower.device, dtype=self.vision_tower.dtype)
+        pixel_values = pixel_values.to(
+            device=self.vision_tower.device, dtype=self.vision_tower.dtype
+        )
         image_outputs = self.vision_tower(pixel_values, output_hidden_states=True)
         # NOTE: This is not memory efficient. (output_hidden_states=True) will save all the hidden stated.
 
@@ -184,7 +202,9 @@ class Mineru2QwenForCausalLM(nn.Module):
         elif self.vision_feature_select_strategy == "full":
             selected_image_feature = selected_image_feature
         else:
-            raise ValueError(f"Unexpected select feature strategy: {self.vision_feature_select_strategy}")
+            raise ValueError(
+                f"Unexpected select feature strategy: {self.vision_feature_select_strategy}"
+            )
 
         image_features = self.multi_modal_mlp(selected_image_feature)
         return image_features
@@ -225,12 +245,16 @@ class Mineru2QwenForCausalLM(nn.Module):
                 if im:
                     if hasattr(im, "mm_items"):
                         # sglang==0.4.5.post3
-                        modalities_list.extend([downgrade_modality(item.modality) for item in im.mm_items])
+                        modalities_list.extend(
+                            [downgrade_modality(item.modality) for item in im.mm_items]
+                        )
                     elif im.modalities is not None:
                         # sglang==0.4.4.post1
                         modalities_list.extend(im.modalities)
                 if im and im.image_offsets:
-                    max_image_offset.append(np.max(np.array(im.image_offsets) + np.array(im.image_pad_len)))
+                    max_image_offset.append(
+                        np.max(np.array(im.image_offsets) + np.array(im.image_pad_len))
+                    )
                 else:
                     max_image_offset.append(-1)
 
@@ -243,20 +267,31 @@ class Mineru2QwenForCausalLM(nn.Module):
                 if is_sglang_mm_inputs:
                     # sglang==0.4.5.post3
                     pixel_values = flatten_nested_list(
-                        [[item.pixel_values for item in image_inputs[i].mm_items] for i in range(bs) if need_vision[i]]
+                        [
+                            [item.pixel_values for item in image_inputs[i].mm_items]
+                            for i in range(bs)
+                            if need_vision[i]
+                        ]
                     )  # image_inputs[batch_idx].mm_items[item_idx].pixel_values is Tensor
                     image_sizes = [
-                        flatten_nested_list([item.image_sizes for item in image_inputs[i].mm_items])
+                        flatten_nested_list(
+                            [item.image_sizes for item in image_inputs[i].mm_items]
+                        )
                         for i in range(bs)
                         if need_vision[i]
                     ]  # image_inputs[batch_idx].mm_items[item_idx].image_sizes should be tuple, but is list of tuple for now.
                 else:
                     # sglang==0.4.4.post1
-                    pixel_values = [image_inputs[i].pixel_values for i in range(bs) if need_vision[i]]
-                    image_sizes = [image_inputs[i].image_sizes for i in range(bs) if need_vision[i]]
+                    pixel_values = [
+                        image_inputs[i].pixel_values
+                        for i in range(bs)
+                        if need_vision[i]
+                    ]
+                    image_sizes = [
+                        image_inputs[i].image_sizes for i in range(bs) if need_vision[i]
+                    ]
 
-                ########## Encode Image ########
-
+                # Encode Image
                 if pixel_values[0].ndim == 4:
                     # llava-hd: BS, num_patch, C=3, H=336, W=336, num_patch obtained from process_images
                     np.concatenate(pixel_values, axis=0)
@@ -271,7 +306,9 @@ class Mineru2QwenForCausalLM(nn.Module):
                     # hd image_features: BS, num_patch, 576, 4096
                 else:
                     # normal pixel: BS, C=3, H=336, W=336
-                    pixel_values = torch.tensor(np.array(pixel_values), device=self.vision_tower.device)
+                    pixel_values = torch.tensor(
+                        np.array(pixel_values), device=self.vision_tower.device
+                    )
                     image_features = self.encode_images(pixel_values)
                     # image_features: BS, 576, 4096
 
@@ -280,8 +317,13 @@ class Mineru2QwenForCausalLM(nn.Module):
                     height = width = self.num_patches_per_side
                     for image_idx, image_feature in enumerate(image_features):
                         if modalities_list[image_idx] == "image":
-                            image_aspect_ratio = self.config.image_aspect_ratio  # single image
-                        elif modalities_list[image_idx] == "multi-images" or modalities_list[image_idx] == "video":
+                            image_aspect_ratio = (
+                                self.config.image_aspect_ratio
+                            )  # single image
+                        elif (
+                            modalities_list[image_idx] == "multi-images"
+                            or modalities_list[image_idx] == "video"
+                        ):
                             image_aspect_ratio = "pad"  # multi image
                         # image_aspect_ratio = (
                         #     "anyres" if len(image_sizes[image_idx]) == 1 else "pad"
@@ -296,14 +338,24 @@ class Mineru2QwenForCausalLM(nn.Module):
                             assert height * width == base_image_feature.shape[0]
 
                             if "anyres_max" in image_aspect_ratio:
-                                matched_anyres_max_num_patches = re.match(r".*anyres_max_(\d+)", image_aspect_ratio)
+                                matched_anyres_max_num_patches = re.match(
+                                    r".*anyres_max_(\d+)", image_aspect_ratio
+                                )
                                 if matched_anyres_max_num_patches:
-                                    max_num_patches = int(matched_anyres_max_num_patches.group(1))
+                                    max_num_patches = int(
+                                        matched_anyres_max_num_patches.group(1)
+                                    )
 
-                            if image_aspect_ratio == "anyres" or "anyres_max" in image_aspect_ratio:
+                            if (
+                                image_aspect_ratio == "anyres"
+                                or "anyres_max" in image_aspect_ratio
+                            ):
                                 vision_tower_image_size = self.image_size
                                 try:
-                                    num_patch_width, num_patch_height = get_anyres_image_grid_shape(
+                                    (
+                                        num_patch_width,
+                                        num_patch_height,
+                                    ) = get_anyres_image_grid_shape(
                                         image_sizes[image_idx][0],
                                         self.config.image_grid_pinpoints,
                                         vision_tower_image_size,
@@ -311,21 +363,34 @@ class Mineru2QwenForCausalLM(nn.Module):
                                 except Exception as e:
                                     print(f"Error: {e}")
                                     num_patch_width, num_patch_height = 2, 2
-                                image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
+                                image_feature = image_feature.view(
+                                    num_patch_height, num_patch_width, height, width, -1
+                                )
                             else:
-                                image_feature = image_feature.view(2, 2, height, width, -1)
+                                image_feature = image_feature.view(
+                                    2, 2, height, width, -1
+                                )
 
                             if "unpad" in self.mm_patch_merge_type:
                                 unit = image_feature.shape[2]
-                                image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
-                                image_feature = image_feature.flatten(1, 2).flatten(2, 3)
+                                image_feature = image_feature.permute(
+                                    4, 0, 2, 1, 3
+                                ).contiguous()
+                                image_feature = image_feature.flatten(1, 2).flatten(
+                                    2, 3
+                                )
 
                                 ### EDIT: remove `unpad_image`
                                 # image_feature = unpad_image(image_feature, image_sizes[image_idx][0])
 
-                                if "anyres_max" in image_aspect_ratio and matched_anyres_max_num_patches:
+                                if (
+                                    "anyres_max" in image_aspect_ratio
+                                    and matched_anyres_max_num_patches
+                                ):
                                     c, h, w = image_feature.shape
-                                    times = math.sqrt(h * w / (max_num_patches * unit**2))
+                                    times = math.sqrt(
+                                        h * w / (max_num_patches * unit**2)
+                                    )
                                     if times > 1.1:
                                         image_feature = image_feature[None]
                                         image_feature = nn.functional.interpolate(
@@ -336,37 +401,55 @@ class Mineru2QwenForCausalLM(nn.Module):
                                 image_feature = torch.cat(
                                     (
                                         image_feature,
-                                        self.language_model.model.image_newline[:, None, None].expand(
-                                            *image_feature.shape[:-1], 1
-                                        ),
+                                        self.language_model.model.image_newline[
+                                            :, None, None
+                                        ].expand(*image_feature.shape[:-1], 1),
                                     ),
                                     dim=-1,
                                 )
-                                image_feature = image_feature.flatten(1, 2).transpose(0, 1)
+                                image_feature = image_feature.flatten(1, 2).transpose(
+                                    0, 1
+                                )
                             else:
-                                image_feature = image_feature.permute(0, 2, 1, 3, 4).contiguous()
+                                image_feature = image_feature.permute(
+                                    0, 2, 1, 3, 4
+                                ).contiguous()
                                 image_feature = image_feature.flatten(0, 3)
-                            image_feature = torch.cat((base_image_feature, image_feature), dim=0)
+                            image_feature = torch.cat(
+                                (base_image_feature, image_feature), dim=0
+                            )
                             image_feature = image_feature.unsqueeze(0)
                         else:
                             if modalities_list[image_idx] == "video":  # video
                                 # 2x2 pooling
                                 num_of_frames = image_feature.shape[0]
-                                image_feature = image_feature.view(num_of_frames, height, width, -1)
-                                image_feature = image_feature.permute(0, 3, 1, 2).contiguous()  # N, C, H, W
+                                image_feature = image_feature.view(
+                                    num_of_frames, height, width, -1
+                                )
+                                image_feature = image_feature.permute(
+                                    0, 3, 1, 2
+                                ).contiguous()  # N, C, H, W
                                 height, weight = image_feature.shape[2:]
                                 scaled_shape = [
                                     math.ceil(height / 2),
                                     math.ceil(weight / 2),
                                 ]
-                                image_feature = nn.functional.interpolate(image_feature, size=scaled_shape, mode="bilinear")
-                                image_feature = image_feature.flatten(2).transpose(1, 2).contiguous()  # N, C, H*W
+                                image_feature = nn.functional.interpolate(
+                                    image_feature, size=scaled_shape, mode="bilinear"
+                                )
+                                image_feature = (
+                                    image_feature.flatten(2)
+                                    .transpose(1, 2)
+                                    .contiguous()
+                                )  # N, C, H*W
                             if "unpad" in self.mm_patch_merge_type:
                                 image_feature = torch.cat(
                                     (
                                         image_feature,
                                         # Expand to (bs, 1, hidden_dim) and concat at the end of the image tokens
-                                        self.language_model.model.image_newline[None, None].expand(
+                                        self.language_model.model.image_newline[
+                                            None, None
+                                        ].expand(
                                             image_feature.shape[0],
                                             1,
                                             image_feature.shape[-1],
@@ -392,8 +475,13 @@ class Mineru2QwenForCausalLM(nn.Module):
                     prefix_len = prefix_lens_cpu[i]
 
                     # Multiple images
-                    for image_idx, image_offset in enumerate(image_inputs[i].image_offsets):
-                        if image_offset + image_inputs[i].image_pad_len[image_idx] <= prefix_len:
+                    for image_idx, image_offset in enumerate(
+                        image_inputs[i].image_offsets
+                    ):
+                        if (
+                            image_offset + image_inputs[i].image_pad_len[image_idx]
+                            <= prefix_len
+                        ):
                             continue
                         if image_offset >= prefix_len + seq_len:
                             break
@@ -409,17 +497,23 @@ class Mineru2QwenForCausalLM(nn.Module):
                             left_idx = start_idx
                             tmp_image_feature = tmp_image_feature[-input_offset:]
                         if right_idx > start_idx + seq_len:
-                            tmp_image_feature = tmp_image_feature[: start_idx + seq_len - right_idx]
+                            tmp_image_feature = tmp_image_feature[
+                                : start_idx + seq_len - right_idx
+                            ]
                             right_idx = start_idx + seq_len
                         try:
                             input_embeds[left_idx:right_idx] = tmp_image_feature
                         except RuntimeError as e:
                             print(f"RuntimeError in image encoding: {e}")
                             print(f"{input_embeds.shape=}, {tmp_image_feature.shape=}")
-                            print(f"{start_idx=}, {image_offset=}, {prefix_len=}, {pad_len=}")
+                            print(
+                                f"{start_idx=}, {image_offset=}, {prefix_len=}, {pad_len=}"
+                            )
                     pt += 1
 
-            return self.language_model(input_ids, positions, forward_batch, input_embeds=input_embeds)
+            return self.language_model(
+                input_ids, positions, forward_batch, input_embeds=input_embeds
+            )
         elif forward_batch.forward_mode.is_decode():
             return self.language_model(input_ids, positions, forward_batch)
         else:

@@ -31,6 +31,7 @@ class Im2Seq(nn.Module):
     #
     #     return x
 
+
 class EncoderWithRNN_(nn.Module):
     def __init__(self, in_channels, hidden_size):
         super(EncoderWithRNN_, self).__init__()

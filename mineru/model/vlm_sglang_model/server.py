@@ -2,14 +2,16 @@ import os
 import sys
 
 from fastapi import Request
+from sglang.srt.conversation import Conversation
 from sglang.srt.entrypoints.http_server import app, generate_request, launch_server
 from sglang.srt.managers.io_struct import GenerateReqInput
 from sglang.srt.server_args import prepare_server_args
 from sglang.srt.utils import kill_process_tree
-from sglang.srt.conversation import Conversation
 
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+
 from .logit_processor import Mineru2LogitProcessor
+
 
 # mineru2.0的chat_template与chatml在换行上有微小区别
 def custom_get_prompt(self) -> str:
@@ -25,6 +27,7 @@ def custom_get_prompt(self) -> str:
         else:
             ret += role + "\n"
     return ret
+
 
 _custom_logit_processor_str = Mineru2LogitProcessor().to_str()
 
@@ -47,7 +50,7 @@ def main():
     args = sys.argv[1:]
     has_model_path_arg = False
 
-    for i, arg in enumerate(args):
+    for _i, arg in enumerate(args):
         if arg == "--model-path" or arg.startswith("--model-path="):
             has_model_path_arg = True
             break

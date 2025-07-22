@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+
 import click
 import requests
 from loguru import logger
@@ -20,8 +21,8 @@ def download_and_modify_json(url, local_filename, modifications):
     """下载JSON并修改内容"""
     if os.path.exists(local_filename):
         data = json.load(open(local_filename))
-        config_version = data.get('config_version', '0.0.0')
-        if config_version < '1.3.0':
+        config_version = data.get("config_version", "0.0.0")
+        if config_version < "1.3.0":
             data = download_json(url)
     else:
         data = download_json(url)
@@ -37,25 +38,25 @@ def download_and_modify_json(url, local_filename, modifications):
                 data[key] = value
 
     # 保存修改后的内容
-    with open(local_filename, 'w', encoding='utf-8') as f:
+    with open(local_filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
 def configure_model(model_dir, model_type):
     """配置模型"""
-    json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json'
-    config_file_name = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
-    home_dir = os.path.expanduser('~')
+    json_url = (
+        "https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json"
+    )
+    config_file_name = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
+    home_dir = os.path.expanduser("~")
     config_file = os.path.join(home_dir, config_file_name)
 
-    json_mods = {
-        'models-dir': {
-            f'{model_type}': model_dir
-        }
-    }
+    json_mods = {"models-dir": {f"{model_type}": model_dir}}
 
     download_and_modify_json(json_url, config_file, json_mods)
-    logger.info(f'The configuration file has been successfully configured, the path is: {config_file}')
+    logger.info(
+        f"The configuration file has been successfully configured, the path is: {config_file}"
+    )
 
 
 def download_pipeline_models():
@@ -66,39 +67,41 @@ def download_pipeline_models():
         ModelPath.unimernet_small,
         ModelPath.pytorch_paddle,
         ModelPath.layout_reader,
-        ModelPath.slanet_plus
+        ModelPath.slanet_plus,
     ]
     download_finish_path = ""
     for model_path in model_paths:
         logger.info(f"Downloading model: {model_path}")
-        download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode='pipeline')
+        download_finish_path = auto_download_and_get_model_root_path(
+            model_path, repo_mode="pipeline"
+        )
     logger.info(f"Pipeline models downloaded successfully to: {download_finish_path}")
     configure_model(download_finish_path, "pipeline")
 
 
 def download_vlm_models():
     """下载VLM模型"""
-    download_finish_path = auto_download_and_get_model_root_path("/", repo_mode='vlm')
+    download_finish_path = auto_download_and_get_model_root_path("/", repo_mode="vlm")
     logger.info(f"VLM models downloaded successfully to: {download_finish_path}")
     configure_model(download_finish_path, "vlm")
 
 
 @click.command()
 @click.option(
-    '-s',
-    '--source',
-    'model_source',
-    type=click.Choice(['huggingface', 'modelscope']),
+    "-s",
+    "--source",
+    "model_source",
+    type=click.Choice(["huggingface", "modelscope"]),
     help="""
-        The source of the model repository. 
+        The source of the model repository.
         """,
     default=None,
 )
 @click.option(
-    '-m',
-    '--model_type',
-    'model_type',
-    type=click.Choice(['pipeline', 'vlm', 'all']),
+    "-m",
+    "--model_type",
+    "model_type",
+    type=click.Choice(["pipeline", "vlm", "all"]),
     help="""
         The type of the model to download.
         """,
@@ -113,29 +116,31 @@ def download_models(model_source, model_type):
     if model_source is None:
         model_source = click.prompt(
             "Please select the model download source: ",
-            type=click.Choice(['huggingface', 'modelscope']),
-            default='huggingface'
+            type=click.Choice(["huggingface", "modelscope"]),
+            default="huggingface",
         )
 
-    if os.getenv('MINERU_MODEL_SOURCE', None) is None:
-        os.environ['MINERU_MODEL_SOURCE'] = model_source
+    if os.getenv("MINERU_MODEL_SOURCE", None) is None:
+        os.environ["MINERU_MODEL_SOURCE"] = model_source
 
     # 如果未显式指定则交互式输入模型类型
     if model_type is None:
         model_type = click.prompt(
             "Please select the model type to download: ",
-            type=click.Choice(['pipeline', 'vlm', 'all']),
-            default='all'
+            type=click.Choice(["pipeline", "vlm", "all"]),
+            default="all",
         )
 
-    logger.info(f"Downloading {model_type} model from {os.getenv('MINERU_MODEL_SOURCE', None)}...")
+    logger.info(
+        f"Downloading {model_type} model from {os.getenv('MINERU_MODEL_SOURCE', None)}..."
+    )
 
     try:
-        if model_type == 'pipeline':
+        if model_type == "pipeline":
             download_pipeline_models()
-        elif model_type == 'vlm':
+        elif model_type == "vlm":
             download_vlm_models()
-        elif model_type == 'all':
+        elif model_type == "all":
             download_pipeline_models()
             download_vlm_models()
         else:
@@ -146,5 +151,6 @@ def download_models(model_source, model_type):
         logger.exception(f"An error occurred while downloading models: {str(e)}")
         sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     download_models()

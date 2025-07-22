@@ -104,8 +104,12 @@ def calculate_overlap_area_2_minbox_area_ratio(bbox1, bbox2):
 
     # The area of overlap area
     intersection_area = (x_right - x_left) * (y_bottom - y_top)
-    min_box_area = min([(bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]),
-                        (bbox2[3] - bbox2[1]) * (bbox2[2] - bbox2[0])])
+    min_box_area = min(
+        [
+            (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1]),
+            (bbox2[3] - bbox2[1]) * (bbox2[2] - bbox2[0]),
+        ]
+    )
     if min_box_area == 0:
         return 0
     else:

@@ -84,7 +84,6 @@ class SglangEnginePredictor(BasePredictor):
         no_repeat_ngram_size: Optional[int] = None,
         max_new_tokens: Optional[int] = None,
     ) -> List[str]:
-
         if not isinstance(prompts, list):
             prompts = [prompts] * len(images)
 
@@ -180,7 +179,6 @@ class SglangEnginePredictor(BasePredictor):
         no_repeat_ngram_size: Optional[int] = None,
         max_new_tokens: Optional[int] = None,
     ) -> List[str]:
-
         if not isinstance(prompts, list):
             prompts = [prompts] * len(images)
 

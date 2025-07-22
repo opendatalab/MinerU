@@ -17,7 +17,6 @@
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
-
 logger = logging.get_logger(__name__)
 
 
@@ -94,8 +93,8 @@ class UnimerSwinConfig(PretrainedConfig):
         patch_size=4,
         num_channels=3,
         embed_dim=96,
-        depths=[2, 2, 6, 2],
-        num_heads=[3, 6, 12, 24],
+        depths=(2, 2, 6, 2),
+        num_heads=(3, 6, 12, 24),
         window_size=7,
         mlp_ratio=4.0,
         qkv_bias=True,
