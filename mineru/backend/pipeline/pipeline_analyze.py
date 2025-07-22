@@ -74,10 +74,10 @@ def doc_analyze(
         table_enable=True,
 ):
     """
-    适当调大MIN_BATCH_INFERENCE_SIZE可以提高性能，可能会增加显存使用量，
-    可通过环境变量MINERU_MIN_BATCH_INFERENCE_SIZE设置，默认值为128。
+    适当调大MIN_BATCH_INFERENCE_SIZE可以提高性能，更大的 MIN_BATCH_INFERENCE_SIZE会消耗更多内存，
+    可通过环境变量MINERU_MIN_BATCH_INFERENCE_SIZE设置，默认值为384。
     """
-    min_batch_inference_size = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 128))
+    min_batch_inference_size = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 384))
 
     # 收集所有页面信息
     all_pages_info = []  # 存储(dataset_index, page_index, img, ocr, lang, width, height)
