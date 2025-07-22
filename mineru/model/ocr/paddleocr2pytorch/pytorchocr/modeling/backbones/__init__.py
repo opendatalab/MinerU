@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ["build_backbone"]
+__all__ = ["build_backbone", "PPLCNetV3"]
+
+from .rec_lcnetv3 import PPLCNetV3
 
 
 def build_backbone(config, model_type):
@@ -40,6 +42,7 @@ def build_backbone(config, model_type):
             "ResNet31",
             "ViTSTR",
             "DenseNet",
+            "PPLCNetV3",
         ]
     else:
         raise NotImplementedError

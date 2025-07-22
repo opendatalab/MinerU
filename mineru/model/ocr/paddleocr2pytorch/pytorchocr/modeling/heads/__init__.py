@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ["build_head"]
+__all__ = ["build_head", "ClsHead", "DBHead", "PFHeadLocal", "CTCHead", "MultiHead"]
 
 
 def build_head(config, **kwargs):
     # det head
     # cls head
-    # from .cls_head import ClsHead
-    # from .det_db_head import DBHead, PFHeadLocal
-    # # rec head
-    # from .rec_ctc_head import CTCHead
-    # from .rec_multi_head import MultiHead
+    from .cls_head import ClsHead  # noqa: F401
+    from .det_db_head import DBHead, PFHeadLocal  # noqa: F401
+
+    # rec head
+    from .rec_ctc_head import CTCHead  # noqa: F401
+    from .rec_multi_head import MultiHead  # noqa: F401
 
     support_dict = [
         "DBHead",

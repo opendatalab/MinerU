@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__all__ = ["build_neck"]
+__all__ = ["build_neck", "DBFPN", "LKPAN", "RSEFPN", "SequenceEncoder"]
 
 
 def build_neck(config):
-    # from .db_fpn import DBFPN, LKPAN, RSEFPN
-    # from .rnn import SequenceEncoder
+    from .db_fpn import DBFPN, LKPAN, RSEFPN  # noqa: F401
+    from .rnn import SequenceEncoder  # noqa: F401
 
     support_dict = ["DBFPN", "SequenceEncoder", "RSEFPN", "LKPAN"]
 

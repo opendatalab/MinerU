@@ -2,17 +2,36 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import copy
 
-__all__ = ["build_post_process"]
+__all__ = [
+    "build_post_process",
+    "ClsPostProcess",
+    "DBPostProcess",
+    "AttnLabelDecode",
+    "CANLabelDecode",
+    "CTCLabelDecode",
+    "NRTRLabelDecode",
+    "RFLLabelDecode",
+    "SARLabelDecode",
+    "SRNLabelDecode",
+    "TableLabelDecode",
+    "ViTSTRLabelDecode",
+]
 
 
 def build_post_process(config, global_config=None):
-    # from .cls_postprocess import ClsPostProcess
-    # from .db_postprocess import DBPostProcess
-    # from .rec_postprocess import (AttnLabelDecode, CANLabelDecode,
-    #                               CTCLabelDecode, NRTRLabelDecode,
-    #                               RFLLabelDecode, SARLabelDecode,
-    #                               SRNLabelDecode, TableLabelDecode,
-    #                               ViTSTRLabelDecode)
+    from .cls_postprocess import ClsPostProcess  # noqa: F401
+    from .db_postprocess import DBPostProcess  # noqa: F401
+    from .rec_postprocess import (  # noqa: F401
+        AttnLabelDecode,
+        CANLabelDecode,
+        CTCLabelDecode,
+        NRTRLabelDecode,
+        RFLLabelDecode,
+        SARLabelDecode,
+        SRNLabelDecode,
+        TableLabelDecode,
+        ViTSTRLabelDecode,
+    )
 
     support_dict = [
         "DBPostProcess",
