@@ -276,7 +276,7 @@ class MagicModel:
 
             fst_idx, fst_kind, left_x, top_y = candidates[0]
             fst_bbox = subjects[fst_idx]['bbox'] if fst_kind == SUB_BIT_KIND else objects[fst_idx - OBJ_IDX_OFFSET]['bbox']
-            candidates.sort(key=lambda x: bbox_distance(fst_bbox,subjects[x[0]]['bbox']) if x[1] == SUB_BIT_KIND else bbox_distance(fst_bbox, objects[x[0] - OBJ_IDX_OFFSET]['bbox']))
+            candidates.sort(key=lambda x: bbox_distance(fst_bbox, subjects[x[0]]['bbox']) if x[1] == SUB_BIT_KIND else bbox_distance(fst_bbox, objects[x[0] - OBJ_IDX_OFFSET]['bbox']))
             nxt = None
 
             for i in range(1, len(candidates)):
