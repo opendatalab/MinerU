@@ -1,5 +1,6 @@
 from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, is_in, get_minbox_if_overlap_by_ratio
 from mineru.utils.enum_class import CategoryId, ContentType
+from mineru.utils.magic_model_utils import tie_up_category_by_distance_v3, reduct_overlap
 
 
 class MagicModel:
@@ -208,170 +209,39 @@ class MagicModel:
 
         return bbox_distance(bbox1, bbox2)
 
-    def __reduct_overlap(self, bboxes):
-        N = len(bboxes)
-        keep = [True] * N
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
-                if is_in(bboxes[i]['bbox'], bboxes[j]['bbox']):
-                    keep[i] = False
-        return [bboxes[i] for i in range(N) if keep[i]]
-
-    def __tie_up_category_by_distance_v3(
-        self,
-        subject_category_id: int,
-        object_category_id: int,
-    ):
-        subjects = self.__reduct_overlap(
-            list(
-                map(
-                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
-                    filter(
-                        lambda x: x['category_id'] == subject_category_id,
-                        self.__page_model_info['layout_dets'],
-                    ),
-                )
-            )
-        )
-        objects = self.__reduct_overlap(
-            list(
-                map(
-                    lambda x: {'bbox': x['bbox'], 'score': x['score']},
-                    filter(
-                        lambda x: x['category_id'] == object_category_id,
-                        self.__page_model_info['layout_dets'],
-                    ),
-                )
-            )
-        )
-
-        ret = []
-        N, M = len(subjects), len(objects)
-        subjects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
-        objects.sort(key=lambda x: x['bbox'][0] ** 2 + x['bbox'][1] ** 2)
-
-        OBJ_IDX_OFFSET = 10000
-        SUB_BIT_KIND, OBJ_BIT_KIND = 0, 1
-
-        all_boxes_with_idx = [(i, SUB_BIT_KIND, sub['bbox'][0], sub['bbox'][1]) for i, sub in enumerate(subjects)] + [(i + OBJ_IDX_OFFSET , OBJ_BIT_KIND, obj['bbox'][0], obj['bbox'][1]) for i, obj in enumerate(objects)]
-        seen_idx = set()
-        seen_sub_idx = set()
-
-        while N > len(seen_sub_idx):
-            candidates = []
-            for idx, kind, x0, y0 in all_boxes_with_idx:
-                if idx in seen_idx:
-                    continue
-                candidates.append((idx, kind, x0, y0))
-
-            if len(candidates) == 0:
-                break
-            left_x = min([v[2] for v in candidates])
-            top_y =  min([v[3] for v in candidates])
-
-            candidates.sort(key=lambda x: (x[2]-left_x) ** 2 + (x[3] - top_y) ** 2)
-
-
-            fst_idx, fst_kind, left_x, top_y = candidates[0]
-            fst_bbox = subjects[fst_idx]['bbox'] if fst_kind == SUB_BIT_KIND else objects[fst_idx - OBJ_IDX_OFFSET]['bbox']
-            candidates.sort(key=lambda x: bbox_distance(fst_bbox, subjects[x[0]]['bbox']) if x[1] == SUB_BIT_KIND else bbox_distance(fst_bbox, objects[x[0] - OBJ_IDX_OFFSET]['bbox']))
-            nxt = None
-
-            for i in range(1, len(candidates)):
-                if candidates[i][1] ^ fst_kind == 1:
-                    nxt = candidates[i]
-                    break
-            if nxt is None:
-                break
-
-            if fst_kind == SUB_BIT_KIND:
-                sub_idx, obj_idx = fst_idx, nxt[0] - OBJ_IDX_OFFSET
-
-            else:
-                sub_idx, obj_idx = nxt[0], fst_idx - OBJ_IDX_OFFSET
-
-            pair_dis = bbox_distance(subjects[sub_idx]['bbox'], objects[obj_idx]['bbox'])
-            nearest_dis = float('inf')
-            for i in range(N):
-                # 取消原先算法中 1对1 匹配的偏置
-                # if i in seen_idx or i == sub_idx:continue
-                nearest_dis = min(nearest_dis, bbox_distance(subjects[i]['bbox'], objects[obj_idx]['bbox']))
-
-            if pair_dis >= 3*nearest_dis:
-                seen_idx.add(sub_idx)
-                continue
-
-            seen_idx.add(sub_idx)
-            seen_idx.add(obj_idx + OBJ_IDX_OFFSET)
-            seen_sub_idx.add(sub_idx)
-
-            ret.append(
-                {
-                    'sub_bbox': {
-                        'bbox': subjects[sub_idx]['bbox'],
-                        'score': subjects[sub_idx]['score'],
-                    },
-                    'obj_bboxes': [
-                        {'score': objects[obj_idx]['score'], 'bbox': objects[obj_idx]['bbox']}
-                    ],
-                    'sub_idx': sub_idx,
-                }
-            )
-
-        for i in range(len(objects)):
-            j = i + OBJ_IDX_OFFSET
-            if j in seen_idx:
-                continue
-            seen_idx.add(j)
-            nearest_dis, nearest_sub_idx = float('inf'), -1
-            for k in range(len(subjects)):
-                dis = bbox_distance(objects[i]['bbox'], subjects[k]['bbox'])
-                if dis < nearest_dis:
-                    nearest_dis = dis
-                    nearest_sub_idx = k
-
-            for k in range(len(subjects)):
-                if k != nearest_sub_idx: continue
-                if k in seen_sub_idx:
-                    for kk in range(len(ret)):
-                        if ret[kk]['sub_idx'] == k:
-                            ret[kk]['obj_bboxes'].append({'score': objects[i]['score'], 'bbox': objects[i]['bbox']})
-                            break
-                else:
-                    ret.append(
-                        {
-                            'sub_bbox': {
-                                'bbox': subjects[k]['bbox'],
-                                'score': subjects[k]['score'],
-                            },
-                            'obj_bboxes': [
-                                {'score': objects[i]['score'], 'bbox': objects[i]['bbox']}
-                            ],
-                            'sub_idx': k,
-                        }
+    def __tie_up_category_by_distance_v3(self, subject_category_id, object_category_id):
+        # 定义获取主体和客体对象的函数
+        def get_subjects():
+            return reduct_overlap(
+                list(
+                    map(
+                        lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                        filter(
+                            lambda x: x['category_id'] == subject_category_id,
+                            self.__page_model_info['layout_dets'],
+                        ),
                     )
-                seen_sub_idx.add(k)
-                seen_idx.add(k)
-
-
-        for i in range(len(subjects)):
-            if i in seen_sub_idx:
-                continue
-            ret.append(
-                {
-                    'sub_bbox': {
-                        'bbox': subjects[i]['bbox'],
-                        'score': subjects[i]['score'],
-                    },
-                    'obj_bboxes': [],
-                    'sub_idx': i,
-                }
+                )
             )
 
+        def get_objects():
+            return reduct_overlap(
+                list(
+                    map(
+                        lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                        filter(
+                            lambda x: x['category_id'] == object_category_id,
+                            self.__page_model_info['layout_dets'],
+                        ),
+                    )
+                )
+            )
 
-        return ret
+        # 调用通用方法
+        return tie_up_category_by_distance_v3(
+            get_subjects,
+            get_objects
+        )
 
     def get_imgs(self):
         with_captions = self.__tie_up_category_by_distance_v3(
