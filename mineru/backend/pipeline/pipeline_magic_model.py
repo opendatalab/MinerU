@@ -1,4 +1,4 @@
-from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, is_in, get_minbox_if_overlap_by_ratio
+from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, get_minbox_if_overlap_by_ratio
 from mineru.utils.enum_class import CategoryId, ContentType
 from mineru.utils.magic_model_utils import tie_up_category_by_distance_v3, reduct_overlap
 
