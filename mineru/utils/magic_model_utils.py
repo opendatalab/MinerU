@@ -120,7 +120,8 @@ def tie_up_category_by_distance_v3(
     seen_idx = set()
     seen_sub_idx = set()
 
-    while N > len(seen_sub_idx):
+    seen_sub_idx_len = len(seen_sub_idx)
+    while N > seen_sub_idx_len:
         candidates = []
         for idx, kind, x0, y0 in all_boxes_with_idx:
             if idx in seen_idx:
