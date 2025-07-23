@@ -43,7 +43,7 @@
 </div>
 
 # Changelog
-- 2025/07/22 2.1.3 Released
+- 2025/07/23 2.1.4 Released
   - Bug Fixes
     - Fixed the issue of excessive memory consumption during the `MFR` step in the `pipeline` backend under certain scenarios #2771
     - Fixed the inaccurate matching between `image`/`table` and `caption`/`footnote` under certain conditions #3129
