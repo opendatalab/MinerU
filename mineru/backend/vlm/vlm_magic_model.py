@@ -320,7 +320,10 @@ def __tie_up_category_by_distance_v3(
         candidates.sort(key=lambda x: (x[2] - left_x) ** 2 + (x[3] - top_y) ** 2)
 
         fst_idx, fst_kind, left_x, top_y = candidates[0]
-        candidates.sort(key=lambda x: (x[2] - left_x) ** 2 + (x[3] - top_y) ** 2)
+        fst_bbox = subjects[fst_idx]['bbox'] if fst_kind == SUB_BIT_KIND else objects[fst_idx - OBJ_IDX_OFFSET]['bbox']
+        candidates.sort(
+            key=lambda x: bbox_distance(fst_bbox, subjects[x[0]]['bbox']) if x[1] == SUB_BIT_KIND else bbox_distance(
+                fst_bbox, objects[x[0] - OBJ_IDX_OFFSET]['bbox']))
         nxt = None
 
         for i in range(1, len(candidates)):
@@ -339,8 +342,9 @@ def __tie_up_category_by_distance_v3(
         pair_dis = bbox_distance(subjects[sub_idx]["bbox"], objects[obj_idx]["bbox"])
         nearest_dis = float("inf")
         for i in range(N):
-            if i in seen_idx or i == sub_idx:
-                continue
+            # 取消原先算法中 1对1 匹配的偏置
+            # if i in seen_idx or i == sub_idx:
+            #     continue
             nearest_dis = min(nearest_dis, bbox_distance(subjects[i]["bbox"], objects[obj_idx]["bbox"]))
 
         if pair_dis >= 3 * nearest_dis:
