@@ -1,6 +1,6 @@
-from mineru.utils.boxbase import bbox_relative_pos, get_minbox_if_overlap_by_ratio
+from mineru.utils.boxbase import bbox_relative_pos, calculate_iou, bbox_distance, is_in, get_minbox_if_overlap_by_ratio
 from mineru.utils.enum_class import CategoryId, ContentType
-import mineru.utils.magic_model_utils as magic_model_utils
+from mineru.utils.magic_model_utils import tie_up_category_by_distance_v3, reduct_overlap
 
 
 class MagicModel:
@@ -90,9 +90,18 @@ class MagicModel:
             layout_dets.remove(need_remove)
 
     def __fix_by_remove_low_confidence(self):
-        magic_model_utils.remove_low_confidence(self.__page_model_info['layout_dets'])
+        need_remove_list = []
+        layout_dets = self.__page_model_info['layout_dets']
+        for layout_det in layout_dets:
+            if layout_det['score'] <= 0.05:
+                need_remove_list.append(layout_det)
+            else:
+                continue
+        for need_remove in need_remove_list:
+            layout_dets.remove(need_remove)
 
     def __fix_by_remove_high_iou_and_low_confidence(self):
+        need_remove_list = []
         layout_dets = list(filter(
             lambda x: x['category_id'] in [
                     CategoryId.Title,
@@ -107,7 +116,20 @@ class MagicModel:
                 ], self.__page_model_info['layout_dets']
             )
         )
-        magic_model_utils.remove_high_iou_low_confidence(layout_dets)
+        for i in range(len(layout_dets)):
+            for j in range(i + 1, len(layout_dets)):
+                layout_det1 = layout_dets[i]
+                layout_det2 = layout_dets[j]
+
+                if calculate_iou(layout_det1['bbox'], layout_det2['bbox']) > 0.9:
+
+                    layout_det_need_remove = layout_det1 if layout_det1['score'] < layout_det2['score'] else layout_det2
+
+                    if layout_det_need_remove not in need_remove_list:
+                        need_remove_list.append(layout_det_need_remove)
+
+        for need_remove in need_remove_list:
+            self.__page_model_info['layout_dets'].remove(need_remove)
 
     def __fix_footnote(self):
         footnotes = []
@@ -141,7 +163,7 @@ class MagicModel:
                 if pos_flag_count > 1:
                     continue
                 dis_figure_footnote[i] = min(
-                    magic_model_utils.bbox_distance_with_relative_check(figures[j]['bbox'], footnotes[i]['bbox']),
+                    self._bbox_distance(figures[j]['bbox'], footnotes[i]['bbox']),
                     dis_figure_footnote.get(i, float('inf')),
                 )
         for i in range(len(footnotes)):
@@ -160,7 +182,7 @@ class MagicModel:
                     continue
 
                 dis_table_footnote[i] = min(
-                    magic_model_utils.bbox_distance_with_relative_check(tables[j]['bbox'], footnotes[i]['bbox']),
+                    self._bbox_distance(tables[j]['bbox'], footnotes[i]['bbox']),
                     dis_table_footnote.get(i, float('inf')),
                 )
         for i in range(len(footnotes)):
@@ -169,18 +191,56 @@ class MagicModel:
             if dis_table_footnote.get(i, float('inf')) > dis_figure_footnote[i]:
                 footnotes[i]['category_id'] = CategoryId.ImageFootnote
 
-    def __tie_up_category_by_distance_v3(
-        self,
-        subject_category_id: int,
-        object_category_id: int,
-    ):
-        return magic_model_utils.tie_up_category_by_distance_v3(
-            self.__page_model_info,
-            subject_category_id,
-            object_category_id,
-            extract_bbox_func=lambda x: x['bbox'],
-            extract_score_func=lambda x: x['score'],
-            create_item_func=lambda x: {'bbox': x['bbox'], 'score': x['score']}
+    def _bbox_distance(self, bbox1, bbox2):
+        left, right, bottom, top = bbox_relative_pos(bbox1, bbox2)
+        flags = [left, right, bottom, top]
+        count = sum([1 if v else 0 for v in flags])
+        if count > 1:
+            return float('inf')
+        if left or right:
+            l1 = bbox1[3] - bbox1[1]
+            l2 = bbox2[3] - bbox2[1]
+        else:
+            l1 = bbox1[2] - bbox1[0]
+            l2 = bbox2[2] - bbox2[0]
+
+        if l2 > l1 and (l2 - l1) / l1 > 0.3:
+            return float('inf')
+
+        return bbox_distance(bbox1, bbox2)
+
+    def __tie_up_category_by_distance_v3(self, subject_category_id, object_category_id):
+        # 定义获取主体和客体对象的函数
+        def get_subjects():
+            return reduct_overlap(
+                list(
+                    map(
+                        lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                        filter(
+                            lambda x: x['category_id'] == subject_category_id,
+                            self.__page_model_info['layout_dets'],
+                        ),
+                    )
+                )
+            )
+
+        def get_objects():
+            return reduct_overlap(
+                list(
+                    map(
+                        lambda x: {'bbox': x['bbox'], 'score': x['score']},
+                        filter(
+                            lambda x: x['category_id'] == object_category_id,
+                            self.__page_model_info['layout_dets'],
+                        ),
+                    )
+                )
+            )
+
+        # 调用通用方法
+        return tie_up_category_by_distance_v3(
+            get_subjects,
+            get_objects
         )
 
     def get_imgs(self):

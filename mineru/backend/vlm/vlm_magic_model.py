@@ -6,7 +6,8 @@ from loguru import logger
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.format_utils import convert_otsl_to_html
-import mineru.utils.magic_model_utils as magic_model_utils
+from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
+
 
 class MagicModel:
     def __init__(self, token: str, width, height):
@@ -250,18 +251,38 @@ def latex_fix(latex):
     return latex
 
 
-def __tie_up_category_by_distance_v3(
-    blocks: list,
-    subject_block_type: str,
-    object_block_type: str,
-):
-    return magic_model_utils.tie_up_category_by_distance_v3(
-        blocks,
-        lambda x: x["type"] == subject_block_type,
-        lambda x: x["type"] == object_block_type,
-        extract_bbox_func=lambda x: x["bbox"],
-        extract_score_func=lambda x: x.get("score", 1.0),
-        create_item_func=lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"]}
+def __tie_up_category_by_distance_v3(blocks, subject_block_type, object_block_type):
+    # 定义获取主体和客体对象的函数
+    def get_subjects():
+        return reduct_overlap(
+            list(
+                map(
+                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"]},
+                    filter(
+                        lambda x: x["type"] == subject_block_type,
+                        blocks,
+                    ),
+                )
+            )
+        )
+
+    def get_objects():
+        return reduct_overlap(
+            list(
+                map(
+                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"]},
+                    filter(
+                        lambda x: x["type"] == object_block_type,
+                        blocks,
+                    ),
+                )
+            )
+        )
+
+    # 调用通用方法
+    return tie_up_category_by_distance_v3(
+        get_subjects,
+        get_objects
     )
 
 
