@@ -10,8 +10,8 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 ```
 
 > [!TIP]
-> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.8.post1-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
-> If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.8.post1-cu128-b200` before executing the build operation.
+> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.9.post3-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
+> If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.9.post3-cu128-b200` before executing the build operation.
 
 ## Docker Description
 

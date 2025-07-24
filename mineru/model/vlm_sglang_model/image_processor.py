@@ -5,21 +5,22 @@ from typing import List, Optional, Union
 
 import numpy as np
 
-try:
-    # sglang==0.4.5.post3
+from sglang.version import __version__ as sglang_version
+from packaging import version
+if version.parse(sglang_version) >= version.parse("0.4.9"):
+    # sglang >= 0.4.9
+    from sglang.srt.multimodal.processors.base_processor import (
+        BaseMultimodalProcessor as BaseProcessor,
+    )
+    from sglang.srt.multimodal.mm_utils import divide_to_patches, expand2square, select_best_resolution
+else:
+    # 0.4.7 <= sglang < 0.4.9
     from sglang.srt.managers.multimodal_processors.base_processor import (
         BaseMultimodalProcessor as BaseProcessor,
     )
+    from sglang.srt.mm_utils import divide_to_patches, expand2square, select_best_resolution
 
-    get_global_processor = None
-except ImportError:
-    # sglang==0.4.4.post1
-    from sglang.srt.managers.image_processors.base_image_processor import (
-        BaseImageProcessor as BaseProcessor,
-        get_global_processor,
-    )
-
-from sglang.srt.mm_utils import divide_to_patches, expand2square, select_best_resolution
+get_global_processor = None
 from sglang.srt.utils import load_image, logger
 from sglang.utils import get_exception_traceback
 
@@ -123,64 +124,6 @@ class Mineru2ImageProcessor(BaseProcessor):
                 image_processor,
             )
 
-    # sglang==0.4.4.post1
-    async def process_images_async(
-        self,
-        image_data: List[Union[str, bytes]],
-        input_text,
-        request_obj,
-        *args,
-        **kwargs,
-    ):
-        if not image_data:
-            return None
-
-        modalities = request_obj.modalities or ["image"]
-        aspect_ratio = getattr(self.hf_config, "image_aspect_ratio", "")
-
-        grid_pinpoints = (
-            self.hf_config.image_grid_pinpoints
-            if hasattr(self.hf_config, "image_grid_pinpoints") and "anyres" in aspect_ratio
-            else None
-        )
-
-        if isinstance(image_data, str):
-            image_data = [image_data]
-
-        if isinstance(image_data, list) and len(image_data) > 0:
-            if "multi-images" in modalities or "video" in modalities:
-                # Multiple images
-                aspect_ratio = "pad"  # LLaVA OneVision Handling: more than one image --> interleaved image mode or video mode. We do not use anyres
-                pixel_values, image_hashes, image_sizes = [], [], []
-                res = []
-                for img_data in image_data:
-                    res.append(self._process_single_image(img_data, aspect_ratio, grid_pinpoints))
-                res = await asyncio.gather(*res)
-                for pixel_v, image_h, image_s in res:
-                    pixel_values.append(pixel_v)
-                    image_hashes.append(image_h)
-                    image_sizes.append(image_s)
-
-                if isinstance(pixel_values[0], np.ndarray):
-                    pixel_values = np.stack(pixel_values, axis=0)
-            else:
-                # A single image
-                pixel_values, image_hash, image_size = await self._process_single_image(
-                    image_data[0], aspect_ratio, grid_pinpoints
-                )
-                image_hashes = [image_hash]
-                image_sizes = [image_size]
-        else:
-            raise ValueError(f"Invalid image data: {image_data}")
-
-        return {
-            "pixel_values": pixel_values,
-            "image_hashes": image_hashes,
-            "image_sizes": image_sizes,
-            "modalities": request_obj.modalities or ["image"],
-        }
-
-    # sglang==0.4.5.post3
     async def process_mm_data_async(
         self,
         image_data: List[Union[str, bytes]],
@@ -191,11 +134,50 @@ class Mineru2ImageProcessor(BaseProcessor):
     ):
         from sglang.srt.managers.schedule_batch import Modality, MultimodalDataItem
 
-        result = await self.process_images_async(image_data, input_text, request_obj, *args, **kwargs)
-
-        if result is None:
+        if not image_data:
             return None
 
+        modalities = request_obj.modalities or ["image"]
+        aspect_ratio = getattr(self.hf_config, "image_aspect_ratio", None)
+        grid_pinpoints = (
+            self.hf_config.image_grid_pinpoints
+            if hasattr(self.hf_config, "image_grid_pinpoints")
+               and "anyres" in aspect_ratio
+            else None
+        )
+
+        if isinstance(image_data, str):
+            image_data = [image_data]
+
+        if isinstance(image_data, list) and len(image_data) > 0:
+            if "multi-images" in modalities or "video" in modalities:
+                # Multiple images
+                aspect_ratio = "pad"  # LLaVA OneVision Handling: more than one image --> interleaved image mode or video mode. We do not use anyres
+                pixel_values, data_hashes, image_sizes = [], [], []
+                res = []
+                for img_data in image_data:
+                    res.append(
+                        self._process_single_image(
+                            img_data, aspect_ratio, grid_pinpoints
+                        )
+                    )
+
+                res = await asyncio.gather(*res)
+                for pixel_v, image_h, image_s in res:
+                    pixel_values.append(pixel_v)
+                    data_hashes.append(image_h)
+                    image_sizes.append(image_s)
+
+                if isinstance(pixel_values[0], np.ndarray):
+                    pixel_values = np.stack(pixel_values, axis=0)
+            else:
+                # A single image
+                pixel_values, image_hash, image_size = await self._process_single_image(
+                    image_data[0], aspect_ratio, grid_pinpoints
+                )
+                image_sizes = [image_size]
+        else:
+            raise ValueError(f"Invalid image data: {image_data}")
         modality = Modality.IMAGE
         if isinstance(request_obj.modalities, list):
             if request_obj.modalities[0] == "multi-images":
@@ -203,15 +185,29 @@ class Mineru2ImageProcessor(BaseProcessor):
             elif request_obj.modalities[0] == "video":
                 modality = Modality.VIDEO
 
-        return {
-            "mm_items": [
-                MultimodalDataItem(
-                    pixel_values=result["pixel_values"],
-                    image_sizes=result["image_sizes"],
-                    modality=modality,
-                )
-            ],
-        }
-
+        if version.parse(sglang_version) >= version.parse("0.4.9.post3"):
+            # sglang >= 0.4.9.post3
+            return {
+                "mm_items": [
+                    MultimodalDataItem(
+                        feature=pixel_values,
+                        model_specific_data={
+                            "image_sizes": image_sizes,
+                        },
+                        modality=modality,
+                    )
+                ],
+            }
+        else:
+            # 0.4.7 <= sglang <= 0.4.9.post2
+            return {
+                "mm_items": [
+                    MultimodalDataItem(
+                        pixel_values=pixel_values,
+                        image_sizes=image_sizes,
+                        modality=modality,
+                    )
+                ],
+            }
 
 ImageProcessorMapping = {Mineru2QwenForCausalLM: Mineru2ImageProcessor}
