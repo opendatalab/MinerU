@@ -8,15 +8,58 @@ from reportlab.pdfgen import canvas
 from .enum_class import BlockType, ContentType
 
 
+def cal_canvas_rect(page, bbox):
+    """
+    Calculate the rectangle coordinates on the canvas based on the original PDF page and bounding box.
+
+    Args:
+        page: A PyPDF2 Page object representing a single page in the PDF.
+        bbox: [x0, y0, x1, y1] representing the bounding box coordinates.
+
+    Returns:
+        rect: [x0, y0, width, height] representing the rectangle coordinates on the canvas.
+    """
+    page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
+    
+    actual_width = page_width    # The width of the final PDF display
+    actual_height = page_height  # The height of the final PDF display
+    
+    rotation = page.get("/Rotate", 0)
+    rotation = rotation % 360
+    
+    if rotation in [90, 270]:
+        # PDF is rotated 90 degrees or 270 degrees, and the width and height need to be swapped
+        actual_width, actual_height = actual_height, actual_width
+        
+    x0, y0, x1, y1 = bbox
+    rect_w = abs(x1 - x0)
+    rect_h = abs(y1 - y0)
+    
+    if 270 == rotation:
+        rect_w, rect_h = rect_h, rect_w
+        x0 = actual_height - y1
+        y0 = actual_width  - x1
+    elif 180 == rotation:
+        x0 = page_width - x1
+        y0 = y0
+    elif 90 == rotation:
+        rect_w, rect_h = rect_h, rect_w
+        x0, y0 = y0, x0 
+    else:
+        # 0 == rotation:
+        x0 = x0
+        y0 = page_height - y1
+    
+    rect = [x0, y0, rect_w, rect_h]        
+    return rect
+
+
 def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     new_rgb = [float(color) / 255 for color in rgb_config]
     page_data = bbox_list[i]
-    page_width, page_height = page.cropbox[2], page.cropbox[3]
 
     for bbox in page_data:
-        width = bbox[2] - bbox[0]
-        height = bbox[3] - bbox[1]
-        rect = [bbox[0], page_height - bbox[3], width, height]  # Define the rectangle
+        rect = cal_canvas_rect(page, bbox)  # Define the rectangle  
 
         if fill_config:  # filled rectangle
             c.setFillColorRGB(new_rgb[0], new_rgb[1], new_rgb[2], 0.3)
@@ -35,10 +78,8 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
 
     for j, bbox in enumerate(page_data):
         # 确保bbox的每个元素都是float
-        x0, y0, x1, y1 = map(float, bbox)
-        width = x1 - x0
-        height = y1 - y0
-        rect = [x0, page_height - y1, width, height]
+        rect = cal_canvas_rect(page, bbox)  # Define the rectangle  
+        
         if draw_bbox:
             if fill_config:
                 c.setFillColorRGB(*new_rgb, 0.3)
@@ -48,8 +89,23 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
                 c.rect(rect[0], rect[1], rect[2], rect[3], stroke=1, fill=0)
         c.setFillColorRGB(*new_rgb, 1.0)
         c.setFontSize(size=10)
-        # 这里也要用float
-        c.drawString(x1 + 2, page_height - y0 - 10, str(j + 1))
+        
+        c.saveState()
+        rotation = page.get("/Rotate", 0)
+        rotation = rotation % 360
+        
+        if 0 == rotation:
+            c.translate(rect[0] + rect[2] + 2, rect[1] + rect[3] - 10)  
+        elif 90 == rotation:
+            c.translate(rect[0] + 2, rect[1] + rect[3] - 10)  
+        elif 180 == rotation:
+            c.translate(rect[0] + 2, rect[1] - 10)
+        elif 270 == rotation:
+            c.translate(rect[0] + rect[2] + 2, rect[1] - 10)
+            
+        c.rotate(rotation)
+        c.drawString(0, 0, str(j + 1))
+        c.restoreState()
 
     return c
 
