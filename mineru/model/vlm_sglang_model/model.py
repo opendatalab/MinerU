@@ -14,7 +14,7 @@ if version.parse(sglang_version) >= version.parse("0.4.9"):
             get_anyres_image_grid_shape,
         )
 else:
-    #  0.4.7 <= sglang < 0.4.9
+    # 0.4.7 <= sglang < 0.4.9
     from sglang.srt.mm_utils import (
         get_anyres_image_grid_shape,
     )
