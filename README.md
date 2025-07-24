@@ -43,6 +43,8 @@
 </div>
 
 # Changelog
+- 2025/07/24 2.1.5 Released
+  - `sglang` 0.4.9 version adaptation, synchronously upgrading the dockerfile base image to sglang 0.4.9.post3
 - 2025/07/23 2.1.4 Released
   - Bug Fixes
     - Fixed the issue of excessive memory consumption during the `MFR` step in the `pipeline` backend under certain scenarios #2771
