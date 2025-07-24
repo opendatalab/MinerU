@@ -7,7 +7,8 @@ import torch
 from sglang.srt.layers.quantization.base_config import QuantizationConfig
 
 from sglang.version import __version__ as sglang_version
-if sglang_version >= "0.4.9":
+from packaging import version
+if version.parse(sglang_version) >= version.parse("0.4.9"):
     # sglang >= 0.4.9
     from sglang.srt.multimodal.mm_utils import (
             get_anyres_image_grid_shape,
@@ -234,7 +235,7 @@ class Mineru2QwenForCausalLM(nn.Module):
             if need_vision.any():
                 bs = forward_batch.batch_size
 
-                if sglang_version >= "0.4.9.post3":
+                if version.parse(sglang_version) >= version.parse("0.4.9.post3"):
                     # sglang >= 0.4.9.post3
                     pixel_values = flatten_nested_list(
                         [[item.feature for item in image_inputs[i].mm_items] for i in range(bs) if need_vision[i]]

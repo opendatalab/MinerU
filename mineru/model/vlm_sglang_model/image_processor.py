@@ -6,7 +6,8 @@ from typing import List, Optional, Union
 import numpy as np
 
 from sglang.version import __version__ as sglang_version
-if sglang_version >= "0.4.9":
+from packaging import version
+if version.parse(sglang_version) >= version.parse("0.4.9"):
     # sglang >= 0.4.9
     from sglang.srt.multimodal.processors.base_processor import (
         BaseMultimodalProcessor as BaseProcessor,
@@ -184,7 +185,7 @@ class Mineru2ImageProcessor(BaseProcessor):
             elif request_obj.modalities[0] == "video":
                 modality = Modality.VIDEO
 
-        if sglang_version >= "0.4.9.post3":
+        if version.parse(sglang_version) >= version.parse("0.4.9.post3"):
             # sglang >= 0.4.9.post3
             return {
                 "mm_items": [
