@@ -5,9 +5,19 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import torch
 from sglang.srt.layers.quantization.base_config import QuantizationConfig
-from sglang.srt.mm_utils import (
-    get_anyres_image_grid_shape,  # unpad_image, unpad_image_shape
-)
+
+from sglang.version import __version__ as sglang_version
+if sglang_version >= "0.4.9":
+    # sglang >= 0.4.9
+    from sglang.srt.multimodal.mm_utils import (
+            get_anyres_image_grid_shape,
+        )
+else:
+    #  0.4.7 <= sglang < 0.4.9
+    from sglang.srt.mm_utils import (
+        get_anyres_image_grid_shape,
+    )
+
 from sglang.srt.model_executor.forward_batch_info import ForwardBatch
 from sglang.srt.model_loader.weight_utils import default_weight_loader
 from sglang.srt.models.qwen2 import Qwen2ForCausalLM
@@ -111,14 +121,9 @@ class Mineru2QwenForCausalLM(nn.Module):
             raise ValueError(f"Unexpected select feature: {self.select_feature}")
 
     def pad_input_ids(self, input_ids: List[int], image_inputs):
-        if hasattr(image_inputs, "mm_items"):  # MultimodalInputs
-            # sglang==0.4.5.post3
-            image_sizes = flatten_nested_list([item.image_sizes for item in image_inputs.mm_items])
-            pad_values = [item.pad_value for item in image_inputs.mm_items]
-        else:  # ImageInputs
-            # sglang==0.4.4.post1
-            image_sizes = image_inputs.image_sizes
-            pad_values = image_inputs.pad_values
+
+        image_sizes = flatten_nested_list([item.image_sizes for item in image_inputs.mm_items])
+        pad_values = [item.pad_value for item in image_inputs.mm_items]
 
         # hardcode for spatial_unpad + anyres
         # if image_inputs.modalities is not None and (
@@ -196,14 +201,8 @@ class Mineru2QwenForCausalLM(nn.Module):
         positions: torch.Tensor,
         forward_batch: ForwardBatch,
     ) -> torch.Tensor:
-        if hasattr(forward_batch, "mm_inputs"):
-            # sglang==0.4.5.post3
-            image_inputs = forward_batch.mm_inputs
-            is_sglang_mm_inputs = True
-        else:
-            # sglang==0.4.4.post1
-            image_inputs = forward_batch.image_inputs
-            is_sglang_mm_inputs = False
+
+        image_inputs = forward_batch.mm_inputs
 
         if image_inputs is None:
             image_inputs = []
@@ -223,12 +222,7 @@ class Mineru2QwenForCausalLM(nn.Module):
             max_image_offset = []
             for im in image_inputs:
                 if im:
-                    if hasattr(im, "mm_items"):
-                        # sglang==0.4.5.post3
-                        modalities_list.extend([downgrade_modality(item.modality) for item in im.mm_items])
-                    elif im.modalities is not None:
-                        # sglang==0.4.4.post1
-                        modalities_list.extend(im.modalities)
+                    modalities_list.extend([downgrade_modality(item.modality) for item in im.mm_items])
                 if im and im.image_offsets:
                     max_image_offset.append(np.max(np.array(im.image_offsets) + np.array(im.image_pad_len)))
                 else:
@@ -240,8 +234,18 @@ class Mineru2QwenForCausalLM(nn.Module):
             if need_vision.any():
                 bs = forward_batch.batch_size
 
-                if is_sglang_mm_inputs:
-                    # sglang==0.4.5.post3
+                if sglang_version >= "0.4.9.post3":
+                    # sglang >= 0.4.9.post3
+                    pixel_values = flatten_nested_list(
+                        [[item.feature for item in image_inputs[i].mm_items] for i in range(bs) if need_vision[i]]
+                    )  # image_inputs[batch_idx].mm_items[item_idx].pixel_values is Tensor
+                    image_sizes = [
+                        flatten_nested_list([item.model_specific_data["image_sizes"] for item in image_inputs[i].mm_items])
+                        for i in range(bs)
+                        if need_vision[i]
+                    ]  # image_inputs[batch_idx].mm_items[item_idx].image_sizes should be tuple, but is list of tuple for now.
+                else:
+                    # 0.4.7 <= sglang <= 0.4.9.post2
                     pixel_values = flatten_nested_list(
                         [[item.pixel_values for item in image_inputs[i].mm_items] for i in range(bs) if need_vision[i]]
                     )  # image_inputs[batch_idx].mm_items[item_idx].pixel_values is Tensor
@@ -250,10 +254,6 @@ class Mineru2QwenForCausalLM(nn.Module):
                         for i in range(bs)
                         if need_vision[i]
                     ]  # image_inputs[batch_idx].mm_items[item_idx].image_sizes should be tuple, but is list of tuple for now.
-                else:
-                    # sglang==0.4.4.post1
-                    pixel_values = [image_inputs[i].pixel_values for i in range(bs) if need_vision[i]]
-                    image_sizes = [image_inputs[i].image_sizes for i in range(bs) if need_vision[i]]
 
                 ########## Encode Image ########
 

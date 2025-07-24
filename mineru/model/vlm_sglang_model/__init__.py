@@ -1,16 +1,9 @@
 from sglang.srt.configs.model_config import multimodal_model_archs
 from sglang.srt.models.registry import ModelRegistry
 
-try:
-    # sglang==0.4.5.post3
-    from sglang.srt.managers.multimodal_processor import (
-        PROCESSOR_MAPPING as PROCESSOR_MAPPING,
-    )
-except ImportError:
-    # sglang==0.4.4.post1
-    from sglang.srt.managers.image_processor import (
-        IMAGE_PROCESSOR_MAPPING as PROCESSOR_MAPPING,
-    )
+from sglang.srt.managers.multimodal_processor import (
+    PROCESSOR_MAPPING as PROCESSOR_MAPPING,
+)
 
 from .. import vlm_hf_model as _
 from .image_processor import Mineru2ImageProcessor
