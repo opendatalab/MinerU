@@ -317,3 +317,13 @@ def convert_otsl_to_html(otsl_content: str):
     )
 
     return export_to_html(table_data)
+
+
+def block_content_to_html(block_content: str) -> str:
+    lines = block_content.split("\n\n")
+    new_lines = []
+    for line in lines:
+        if "<fcel>" in line or "<ecel>" in line:
+            line = convert_otsl_to_html(line)
+        new_lines.append(line)
+    return "\n\n".join(new_lines)

@@ -5,7 +5,7 @@ from loguru import logger
 
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
-from mineru.utils.format_utils import convert_otsl_to_html
+from mineru.utils.format_utils import block_content_to_html
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
 
 
@@ -39,6 +39,10 @@ class MagicModel:
                 block_bbox = (x_1, y_1, x_2, y_2)
                 block_type = block_info[1].strip()
                 block_content = block_info[2].strip()
+
+                # 如果bbox是0,0,999,999，且type为text，按notes增加表格处理
+                if x1 == 0 and y1 == 0 and x2 == 999 and y2 == 999 and block_type == "text":
+                    block_content = block_content_to_html(block_content)
 
                 # print(f"坐标: {block_bbox}")
                 # print(f"类型: {block_type}")
@@ -77,16 +81,7 @@ class MagicModel:
                     "type": span_type,
                 }
                 if span_type == ContentType.TABLE:
-                    if "<fcel>" in block_content or "<ecel>" in block_content:
-                        lines = block_content.split("\n\n")
-                        new_lines = []
-                        for line in lines:
-                            if "<fcel>" in line or "<ecel>" in line:
-                                line = convert_otsl_to_html(line)
-                            new_lines.append(line)
-                        span["html"] = "\n\n".join(new_lines)
-                    else:
-                        span["html"] = block_content
+                    span["html"] = block_content_to_html(block_content)
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
                     "bbox": block_bbox,
