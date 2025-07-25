@@ -93,15 +93,15 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
         c.saveState()
         rotation = page.get("/Rotate", 0)
         rotation = rotation % 360
-        
+    
         if 0 == rotation:
-            c.translate(rect[0] + rect[2] + 2, rect[1] + rect[3] - 10)  
+            c.translate(rect[0] + rect[2] + 2, rect[1] + rect[3] - 10)
         elif 90 == rotation:
-            c.translate(rect[0] + 2, rect[1] + rect[3] - 10)  
+            c.translate(rect[0] + 10, rect[1] + rect[3] + 2)
         elif 180 == rotation:
-            c.translate(rect[0] + 2, rect[1] - 10)
+            c.translate(rect[0] - 2, rect[1] + 10)
         elif 270 == rotation:
-            c.translate(rect[0] + rect[2] + 2, rect[1] - 10)
+            c.translate(rect[0] + rect[2] - 10, rect[1] - 2)
             
         c.rotate(rotation)
         c.drawString(0, 0, str(j + 1))
