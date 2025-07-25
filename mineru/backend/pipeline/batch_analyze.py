@@ -256,9 +256,12 @@ class BatchAnalyze:
                 html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
                 # 判断是否返回正常
                 if html_code:
-                    expected_ending = html_code.strip().endswith('</html>') or html_code.strip().endswith('</table>')
-                    if expected_ending:
-                        table_res_dict['table_res']['html'] = html_code
+                    # 检查html_code是否包含'<table>'和'</table>'
+                    if '<table>' in html_code and '</table>' in html_code:
+                        # 选用<table>到</table>的内容，放入table_res_dict['table_res']['html']
+                        start_index = html_code.find('<table>')
+                        end_index = html_code.rfind('</table>') + len('</table>')
+                        table_res_dict['table_res']['html'] = html_code[start_index:end_index]
                     else:
                         logger.warning(
                             'table recognition processing fails, not found expected HTML table end'

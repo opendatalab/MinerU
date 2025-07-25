@@ -317,3 +317,26 @@ def convert_otsl_to_html(otsl_content: str):
     )
 
     return export_to_html(table_data)
+
+
+def block_content_to_html(block_content: str) -> str:
+    """
+    Converts block content containing OTSL (Open Table Structure Language) tags into HTML.
+
+    This function processes a block of text, splitting it into lines and converting any lines
+    containing OTSL table tags (e.g., <fcel>, <ecel>) into HTML tables. Lines without these
+    tags are left unchanged.
+
+    Parameters:
+        block_content (str): A string containing block content with potential OTSL tags.
+
+    Returns:
+        str: The processed block content with OTSL tags converted to HTML tables.
+    """
+    lines = block_content.split("\n\n")
+    new_lines = []
+    for line in lines:
+        if "<fcel>" in line or "<ecel>" in line:
+            line = convert_otsl_to_html(line)
+        new_lines.append(line)
+    return "\n\n".join(new_lines)

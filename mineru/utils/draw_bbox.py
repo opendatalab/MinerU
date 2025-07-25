@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 
 from loguru import logger
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter, PageObject
 from reportlab.pdfgen import canvas
 
 from .enum_class import BlockType, ContentType
@@ -241,6 +241,9 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
 
         # 添加检查确保overlay_pdf.pages不为空
         if len(overlay_pdf.pages) > 0:
+            new_page = PageObject(pdf=None)
+            new_page.update(page)
+            page = new_page
             page.merge_page(overlay_pdf.pages[0])
         else:
             # 记录日志并继续处理下一个页面
@@ -356,6 +359,9 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
 
         # 添加检查确保overlay_pdf.pages不为空
         if len(overlay_pdf.pages) > 0:
+            new_page = PageObject(pdf=None)
+            new_page.update(page)
+            page = new_page
             page.merge_page(overlay_pdf.pages[0])
         else:
             # 记录日志并继续处理下一个页面
