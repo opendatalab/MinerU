@@ -38,7 +38,7 @@ def cal_canvas_rect(page, bbox):
     if 270 == rotation:
         rect_w, rect_h = rect_h, rect_w
         x0 = actual_height - y1
-        y0 = actual_width  - x1
+        y0 = actual_width - x1
     elif 180 == rotation:
         x0 = page_width - x1
         y0 = y0
