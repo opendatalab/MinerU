@@ -43,6 +43,8 @@
 </div>
 
 # Changelog
+- 2025/07/27 version 2.1.7 Released
+  - `transformers` 4.54.0 version adaptation
 - 2025/07/26 2.1.6 Released
   - Fixed table parsing issues in handwritten documents when using `vlm` backend
   - Fixed visualization box position drift issue when document is rotated #3175
