@@ -245,9 +245,17 @@ def update_interface(backend_choice):
          "'a' for type '$', 'b' for type '()[]', 'all' for both types.",
     default='all',
 )
+@click.option(
+    '--enable-browser',
+    'browser_enable',
+    type=bool,
+    help="It provides an easy way to launch Gradio apps locally without manually navigating to the browser."
+         "Automatically opens the app in the default web browser.",
+    default=False,
+)
 def main(ctx,
         example_enable, sglang_engine_enable, api_enable, max_convert_pages,
-        server_name, server_port, latex_delimiters_type, **kwargs
+        server_name, server_port, latex_delimiters_type, browser_enable, **kwargs
 ):
 
     kwargs.update(arg_parse(ctx))
@@ -356,7 +364,7 @@ def main(ctx,
             api_name=api_name
         )
 
-    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable)
+    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable, inbrowser=browser_enable)
 
 
 if __name__ == '__main__':
