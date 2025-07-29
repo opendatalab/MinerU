@@ -43,6 +43,13 @@
 </div>
 
 # Changelog
+- 2025/07/28 version 2.1.8 Released
+  - `sglang` 0.4.9.post5 version adaptation
+- 2025/07/27 version 2.1.7 Released
+  - `transformers` 4.54.0 version adaptation
+- 2025/07/26 2.1.6 Released
+  - Fixed table parsing issues in handwritten documents when using `vlm` backend
+  - Fixed visualization box position drift issue when document is rotated #3175
 - 2025/07/24 2.1.5 Released
   - `sglang` 0.4.9 version adaptation, synchronously upgrading the dockerfile base image to sglang 0.4.9.post3
 - 2025/07/23 2.1.4 Released

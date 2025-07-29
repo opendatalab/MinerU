@@ -56,8 +56,8 @@ def process_anyres_image(image, processor, grid_pinpoints):
 
 
 class Mineru2ImageProcessor(BaseProcessor):
-    def __init__(self, hf_config, server_args, _processor):
-        super().__init__(hf_config, server_args, _processor)
+    def __init__(self, hf_config, server_args, _processor, *args, **kwargs):
+        super().__init__(hf_config, server_args, _processor, *args, **kwargs)
 
     @staticmethod
     def _process_single_image_task(
