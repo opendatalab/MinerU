@@ -171,7 +171,7 @@ class OrtInferSession:
         )
         self.logger.info("If you want to use DirectML acceleration, you must do:")
         self.logger.info(
-            "First, uninstall all onnxruntime pakcages in current environment."
+            "First, uninstall all onnxruntime packages in the current environment."
         )
         self.logger.info(
             "Second, install onnxruntime-directml by `pip install onnxruntime-directml`"
