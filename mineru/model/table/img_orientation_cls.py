@@ -69,8 +69,6 @@ class ImgOrientationClsModel:
 
             det_res = self.ocr_engine.ocr(bgr_image, rec=False)[0]
             # Check if table is rotated by analyzing text box aspect ratios
-            is_rotated = False
-            rotation = None
             if det_res:
                 vertical_count = 0
 
@@ -92,23 +90,23 @@ class ImgOrientationClsModel:
                 # If we have more vertical text boxes than horizontal ones,
                 # and vertical ones are significant, table might be rotated
                 if vertical_count >= len(det_res) * 0.3:
-                    is_rotated = True
                     x = self.preprocess(img)
                     (result,) = self.sess.run(None, {"x": x})
                     label = self.labels[np.argmax(result)]
 
                     if label == "90":
-                        rotation = cv2.ROTATE_90_CLOCKWISE
+                        rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
+                        img = cv2.rotate(np.asarray(img), rotation)
                     elif label == "180":
                         rotation = cv2.ROTATE_180
+                        img = cv2.rotate(np.asarray(img), rotation)
                     elif label == "270":
-                        rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
-                # logger.debug(f"Text orientation analysis: vertical={vertical_count}, det_res={len(det_res)}, rotated={is_rotated}")
+                        rotation = cv2.ROTATE_90_CLOCKWISE
+                        img = cv2.rotate(np.asarray(img), rotation)
+                    # logger.debug(f"Text orientation analysis: vertical={vertical_count}, det_res={len(det_res)}, rotated={is_rotated}")
 
-            # Rotate image if necessary
-            if is_rotated and rotation:
-                # logger.debug("Table appears to be in portrait orientation, rotating 90 degrees clockwise")
-                img = cv2.rotate(np.asarray(img), rotation)
-                img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    # Rotate image if necessary
+                    # logger.debug("Table appears to be in portrait orientation, rotating 90 degrees clockwise")
+                    img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         return img
