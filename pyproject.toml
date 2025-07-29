@@ -70,6 +70,7 @@ pipeline = [
     "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
     "torchvision",
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
+    "scikit-image",
 ]
 api = [
     "fastapi",

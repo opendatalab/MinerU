@@ -4,10 +4,14 @@ from tqdm import tqdm
 from collections import defaultdict
 import numpy as np
 
-from .model_init import AtomModelSingleton
+from .model_init import AtomModelSingleton, img_orientation_cls_model_init
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
-from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
+from ...utils.ocr_utils import (
+    get_adjusted_mfdetrec_res,
+    get_ocr_result_list,
+    OcrConfidence,
+)
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 8
 MFD_BASE_BATCH_SIZE = 1
@@ -16,7 +20,14 @@ OCR_DET_BASE_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
-    def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = True):
+    def __init__(
+        self,
+        model_manager,
+        batch_ratio: int,
+        formula_enable,
+        table_enable,
+        enable_ocr_det_batch: bool = True,
+    ):
         self.batch_ratio = batch_ratio
         self.formula_enable = get_formula_enable(formula_enable)
         self.table_enable = get_table_enable(table_enable)
@@ -42,7 +53,6 @@ class BatchAnalyze:
         layout_images = []
         for image_index, image in enumerate(images):
             layout_images.append(image)
-
 
         images_layout_res += self.model.layout_model.batch_predict(
             layout_images, YOLO_LAYOUT_BASE_BATCH_SIZE
@@ -79,20 +89,26 @@ class BatchAnalyze:
                 get_res_list_from_layout_res(layout_res)
             )
 
-            ocr_res_list_all_page.append({'ocr_res_list':ocr_res_list,
-                                          'lang':_lang,
-                                          'ocr_enable':ocr_enable,
-                                          'pil_img':pil_img,
-                                          'single_page_mfdetrec_res':single_page_mfdetrec_res,
-                                          'layout_res':layout_res,
-                                          })
+            ocr_res_list_all_page.append(
+                {
+                    "ocr_res_list": ocr_res_list,
+                    "lang": _lang,
+                    "ocr_enable": ocr_enable,
+                    "pil_img": pil_img,
+                    "single_page_mfdetrec_res": single_page_mfdetrec_res,
+                    "layout_res": layout_res,
+                }
+            )
 
             for table_res in table_res_list:
                 table_img, _ = crop_img(table_res, pil_img)
-                table_res_list_all_page.append({'table_res':table_res,
-                                                'lang':_lang,
-                                                'table_img':table_img,
-                                              })
+                table_res_list_all_page.append(
+                    {
+                        "table_res": table_res,
+                        "lang": _lang,
+                        "table_img": table_img,
+                    }
+                )
 
         # OCR检测处理
         if self.enable_ocr_det_batch:
@@ -101,22 +117,32 @@ class BatchAnalyze:
             all_cropped_images_info = []
 
             for ocr_res_list_dict in ocr_res_list_all_page:
-                _lang = ocr_res_list_dict['lang']
+                _lang = ocr_res_list_dict["lang"]
 
-                for res in ocr_res_list_dict['ocr_res_list']:
+                for res in ocr_res_list_dict["ocr_res_list"]:
                     new_image, useful_list = crop_img(
-                        res, ocr_res_list_dict['pil_img'], crop_paste_x=50, crop_paste_y=50
+                        res,
+                        ocr_res_list_dict["pil_img"],
+                        crop_paste_x=50,
+                        crop_paste_y=50,
                     )
                     adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                        ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+                        ocr_res_list_dict["single_page_mfdetrec_res"], useful_list
                     )
 
                     # BGR转换
                     new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
 
-                    all_cropped_images_info.append((
-                        new_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang
-                    ))
+                    all_cropped_images_info.append(
+                        (
+                            new_image,
+                            useful_list,
+                            ocr_res_list_dict,
+                            res,
+                            adjusted_mfdetrec_res,
+                            _lang,
+                        )
+                    )
 
             # 按语言分组
             lang_groups = defaultdict(list)
@@ -133,9 +159,7 @@ class BatchAnalyze:
 
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(
-                    atom_model_name='ocr',
-                    det_db_box_thresh=0.3,
-                    lang=lang
+                    atom_model_name="ocr", det_db_box_thresh=0.3, lang=lang
                 )
 
                 # 按分辨率分组并同时完成padding
@@ -151,7 +175,9 @@ class BatchAnalyze:
                     resolution_groups[group_key].append(crop_info)
 
                 # 对每个分辨率组进行批处理
-                for group_key, group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det {lang}"):
+                for group_key, group_crops in tqdm(
+                    resolution_groups.items(), desc=f"OCR-det {lang}"
+                ):
 
                     # 计算目标尺寸（组内最大尺寸，向上取整到32的倍数）
                     max_h = max(crop_info[0].shape[0] for crop_info in group_crops)
@@ -165,24 +191,41 @@ class BatchAnalyze:
                         img = crop_info[0]
                         h, w = img.shape[:2]
                         # 创建目标尺寸的白色背景
-                        padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
+                        padded_img = (
+                            np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
+                        )
                         # 将原图像粘贴到左上角
                         padded_img[:h, :w] = img
                         batch_images.append(padded_img)
 
                     # 批处理检测
-                    det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)  # 增加批处理大小
+                    det_batch_size = min(
+                        len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE
+                    )  # 增加批处理大小
                     # logger.debug(f"OCR-det batch: {det_batch_size} images, target size: {target_h}x{target_w}")
-                    batch_results = ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
+                    batch_results = ocr_model.text_detector.batch_predict(
+                        batch_images, det_batch_size
+                    )
 
                     # 处理批处理结果
-                    for i, (crop_info, (dt_boxes, elapse)) in enumerate(zip(group_crops, batch_results)):
-                        new_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang = crop_info
+                    for i, (crop_info, (dt_boxes, elapse)) in enumerate(
+                        zip(group_crops, batch_results)
+                    ):
+                        (
+                            new_image,
+                            useful_list,
+                            ocr_res_list_dict,
+                            res,
+                            adjusted_mfdetrec_res,
+                            _lang,
+                        ) = crop_info
 
                         if dt_boxes is not None and len(dt_boxes) > 0:
                             # 直接应用原始OCR流程中的关键处理步骤
                             from mineru.utils.ocr_utils import (
-                                merge_det_boxes, update_det_boxes, sorted_boxes
+                                merge_det_boxes,
+                                update_det_boxes,
+                                sorted_boxes,
                             )
 
                             # 1. 排序检测框
@@ -199,37 +242,51 @@ class BatchAnalyze:
 
                             # 3. 根据公式位置更新检测框（关键步骤！）
                             if dt_boxes_merged and adjusted_mfdetrec_res:
-                                dt_boxes_final = update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+                                dt_boxes_final = update_det_boxes(
+                                    dt_boxes_merged, adjusted_mfdetrec_res
+                                )
                             else:
                                 dt_boxes_final = dt_boxes_merged
 
                             # 构造OCR结果格式
-                            ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
+                            ocr_res = [
+                                box.tolist() if hasattr(box, "tolist") else box
+                                for box in dt_boxes_final
+                            ]
 
                             if ocr_res:
                                 ocr_result_list = get_ocr_result_list(
-                                    ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], new_image, _lang
+                                    ocr_res,
+                                    useful_list,
+                                    ocr_res_list_dict["ocr_enable"],
+                                    new_image,
+                                    _lang,
                                 )
 
-                                ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+                                ocr_res_list_dict["layout_res"].extend(ocr_result_list)
         else:
             # 原始单张处理模式
-            for ocr_res_list_dict in tqdm(ocr_res_list_all_page, desc="OCR-det Predict"):
+            for ocr_res_list_dict in tqdm(
+                ocr_res_list_all_page, desc="OCR-det Predict"
+            ):
                 # Process each area that requires OCR processing
-                _lang = ocr_res_list_dict['lang']
+                _lang = ocr_res_list_dict["lang"]
                 # Get OCR results for this language's images
                 ocr_model = atom_model_manager.get_atom_model(
-                    atom_model_name='ocr',
+                    atom_model_name="ocr",
                     ocr_show_log=False,
                     det_db_box_thresh=0.3,
-                    lang=_lang
+                    lang=_lang,
                 )
-                for res in ocr_res_list_dict['ocr_res_list']:
+                for res in ocr_res_list_dict["ocr_res_list"]:
                     new_image, useful_list = crop_img(
-                        res, ocr_res_list_dict['pil_img'], crop_paste_x=50, crop_paste_y=50
+                        res,
+                        ocr_res_list_dict["pil_img"],
+                        crop_paste_x=50,
+                        crop_paste_y=50,
                     )
                     adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                        ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+                        ocr_res_list_dict["single_page_mfdetrec_res"], useful_list
                     )
                     # OCR-det
                     new_image = cv2.cvtColor(np.asarray(new_image), cv2.COLOR_RGB2BGR)
@@ -240,32 +297,63 @@ class BatchAnalyze:
                     # Integration results
                     if ocr_res:
                         ocr_result_list = get_ocr_result_list(
-                            ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],new_image, _lang
+                            ocr_res,
+                            useful_list,
+                            ocr_res_list_dict["ocr_enable"],
+                            new_image,
+                            _lang,
                         )
 
-                        ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+                        ocr_res_list_dict["layout_res"].extend(ocr_result_list)
 
         # 表格识别 table recognition
         if self.table_enable:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
-                _lang = table_res_dict['lang']
-                table_model = atom_model_manager.get_atom_model(
-                    atom_model_name='table',
+                table_cls_model = atom_model_manager.get_atom_model(
+                    atom_model_name="table_cls",
+                )
+                label = table_cls_model.predict(table_res_dict["table_img"])
+                _lang = table_res_dict["lang"]
+                # 根据表格分类结果选择有线表格识别模型和无线表格识别模型
+                if label == "wired_table":
+                    table_model = atom_model_manager.get_atom_model(
+                        atom_model_name="wired_table",
+                        lang=_lang,
+                    )
+                elif label == "wireless_table":
+                    table_model = atom_model_manager.get_atom_model(
+                        atom_model_name="wireless_table",
+                        lang=_lang,
+                    )
+                else:
+                    raise ValueError(
+                        "Table classification failed, please check the model"
+                    )
+                # 调整图片方向
+                img_orientation_cls_model = atom_model_manager.get_atom_model(
+                    atom_model_name="img_ori_cls",
                     lang=_lang,
                 )
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
+                table_img = img_orientation_cls_model.predict(
+                    table_res_dict["table_img"]
+                )
+                html_code, table_cell_bboxes, logic_points, elapse = (
+                    table_model.predict(table_img)
+                )
                 # 判断是否返回正常
                 if html_code:
-                    expected_ending = html_code.strip().endswith('</html>') or html_code.strip().endswith('</table>')
+                    expected_ending = html_code.strip().endswith(
+                        "</html>"
+                    ) or html_code.strip().endswith("</table>")
                     if expected_ending:
-                        table_res_dict['table_res']['html'] = html_code
+                        table_res_dict["table_res"]["html"] = html_code
                     else:
                         logger.warning(
-                            'table recognition processing fails, not found expected HTML table end'
+                            "table recognition processing fails, not found expected HTML table end"
                         )
                 else:
                     logger.warning(
-                        'table recognition processing fails, not get html return'
+                        "table recognition processing fails, not get html return"
                     )
 
         # Create dictionaries to store items by language
@@ -274,9 +362,9 @@ class BatchAnalyze:
 
         for layout_res in images_layout_res:
             for layout_res_item in layout_res:
-                if layout_res_item['category_id'] in [15]:
-                    if 'np_img' in layout_res_item and 'lang' in layout_res_item:
-                        lang = layout_res_item['lang']
+                if layout_res_item["category_id"] in [15]:
+                    if "np_img" in layout_res_item and "lang" in layout_res_item:
+                        lang = layout_res_item["lang"]
 
                         # Initialize lists for this language if not exist
                         if lang not in need_ocr_lists_by_lang:
@@ -285,11 +373,11 @@ class BatchAnalyze:
 
                         # Add to the appropriate language-specific lists
                         need_ocr_lists_by_lang[lang].append(layout_res_item)
-                        img_crop_lists_by_lang[lang].append(layout_res_item['np_img'])
+                        img_crop_lists_by_lang[lang].append(layout_res_item["np_img"])
 
                         # Remove the fields after adding to lists
-                        layout_res_item.pop('np_img')
-                        layout_res_item.pop('lang')
+                        layout_res_item.pop("np_img")
+                        layout_res_item.pop("lang")
 
         if len(img_crop_lists_by_lang) > 0:
 
@@ -302,30 +390,42 @@ class BatchAnalyze:
                     # Get OCR results for this language's images
 
                     ocr_model = atom_model_manager.get_atom_model(
-                        atom_model_name='ocr',
-                        det_db_box_thresh=0.3,
-                        lang=lang
+                        atom_model_name="ocr", det_db_box_thresh=0.3, lang=lang
                     )
-                    ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+                    ocr_res_list = ocr_model.ocr(
+                        img_crop_list, det=False, tqdm_enable=True
+                    )[0]
 
                     # Verify we have matching counts
                     assert len(ocr_res_list) == len(
-                        need_ocr_lists_by_lang[lang]), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_lists_by_lang[lang])} for lang: {lang}'
+                        need_ocr_lists_by_lang[lang]
+                    ), f"ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_lists_by_lang[lang])} for lang: {lang}"
 
                     # Process OCR results for this language
-                    for index, layout_res_item in enumerate(need_ocr_lists_by_lang[lang]):
+                    for index, layout_res_item in enumerate(
+                        need_ocr_lists_by_lang[lang]
+                    ):
                         ocr_text, ocr_score = ocr_res_list[index]
-                        layout_res_item['text'] = ocr_text
-                        layout_res_item['score'] = float(f"{ocr_score:.3f}")
+                        layout_res_item["text"] = ocr_text
+                        layout_res_item["score"] = float(f"{ocr_score:.3f}")
                         if ocr_score < OcrConfidence.min_confidence:
-                            layout_res_item['category_id'] = 16
+                            layout_res_item["category_id"] = 16
                         else:
-                            layout_res_bbox = [layout_res_item['poly'][0], layout_res_item['poly'][1],
-                                               layout_res_item['poly'][4], layout_res_item['poly'][5]]
+                            layout_res_bbox = [
+                                layout_res_item["poly"][0],
+                                layout_res_item["poly"][1],
+                                layout_res_item["poly"][4],
+                                layout_res_item["poly"][5],
+                            ]
                             layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                             layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
-                            if ocr_text in ['（204号', '（20', '（2', '（2号', '（20号'] and ocr_score < 0.8 and layout_res_width < layout_res_height:
-                                layout_res_item['category_id'] = 16
+                            if (
+                                ocr_text
+                                in ["（204号", "（20", "（2", "（2号", "（20号"]
+                                and ocr_score < 0.8
+                                and layout_res_width < layout_res_height
+                            ):
+                                layout_res_item["category_id"] = 16
 
                     total_processed += len(img_crop_list)
 
