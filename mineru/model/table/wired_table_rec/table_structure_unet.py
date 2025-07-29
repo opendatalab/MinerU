@@ -50,7 +50,7 @@ class TSRUnet:
         )
         _, idx = sorted_ocr_boxes(
             [box_4_2_poly_to_box_4_1(poly_box) for poly_box in rotated_polygons],
-            threhold=0.4,
+            threshold=0.4,
         )
         polygons = polygons[idx]
         rotated_polygons = rotated_polygons[idx]
