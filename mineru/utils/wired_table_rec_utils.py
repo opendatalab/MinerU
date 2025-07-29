@@ -121,7 +121,7 @@ class OrtInferSession:
             "(For reference only) If you want to use GPU acceleration, you must do:"
         )
         self.logger.info(
-            "First, uninstall all onnxruntime pakcages in current environment."
+            "First, uninstall all onnxruntime packages in current environment."
         )
         self.logger.info(
             "Second, install onnxruntime-gpu by `pip install onnxruntime-gpu`."
