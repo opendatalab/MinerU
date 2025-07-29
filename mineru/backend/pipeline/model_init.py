@@ -25,7 +25,7 @@ def img_orientation_cls_model_init(lang=None):
     return cls_model
 
 
-def tabel_cls_model_init():
+def table_cls_model_init():
     return TableClsModel()
 
 
@@ -138,7 +138,7 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get("lang"),
         )
     elif model_name == AtomicModel.TableCls:
-        atom_model = tabel_cls_model_init()
+        atom_model = table_cls_model_init()
     elif model_name == AtomicModel.ImgOrientationCls:
         atom_model = img_orientation_cls_model_init(
             kwargs.get("lang"),
@@ -207,8 +207,19 @@ class MineruPipelineModel:
         )
         # init table model
         if self.apply_table:
-            self.table_model = atom_model_manager.get_atom_model(
+            self.wired_table_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.WiredTable,
+                lang=self.lang,
+            )
+            self.wireless_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WirelessTable,
+                lang=self.lang,
+            )
+            self.table_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.TableCls,
+            )
+            self.img_orientation_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.ImgOrientationCls,
                 lang=self.lang,
             )
 
