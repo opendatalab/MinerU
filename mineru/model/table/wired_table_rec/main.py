@@ -142,11 +142,11 @@ class WiredTableRecognition:
     def sort_and_gather_ocr_res(self, res):
         for i, dict_res in enumerate(res):
             _, sorted_idx = sorted_ocr_boxes(
-                [ocr_det[0] for ocr_det in dict_res["t_ocr_res"]], threhold=0.3
+                [ocr_det[0] for ocr_det in dict_res["t_ocr_res"]], threshold=0.3
             )
             dict_res["t_ocr_res"] = [dict_res["t_ocr_res"][i] for i in sorted_idx]
             dict_res["t_ocr_res"] = gather_ocr_list_by_row(
-                dict_res["t_ocr_res"], threhold=0.3
+                dict_res["t_ocr_res"], threshold=0.3
             )
         return res
 
