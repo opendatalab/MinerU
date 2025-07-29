@@ -218,19 +218,19 @@ def sorted_ocr_boxes(
     _boxes, indices = zip(*sorted_boxes_with_idx)
     indices = list(indices)
     _boxes = [dt_boxes[i] for i in indices]
-    threahold = 20
+    threshold = 20
     # 避免输出和输入格式不对应，与函数功能不符合
     if isinstance(dt_boxes, np.ndarray):
         _boxes = np.array(_boxes)
     for i in range(num_boxes - 1):
         for j in range(i, -1, -1):
             c_idx = is_single_axis_contained(
-                _boxes[j], _boxes[j + 1], axis="y", threhold=threhold
+                _boxes[j], _boxes[j + 1], axis="y", threshold=threshold
             )
             if (
                 c_idx is not None
                 and _boxes[j + 1][0] < _boxes[j][0]
-                and abs(_boxes[j][1] - _boxes[j + 1][1]) < threahold
+                and abs(_boxes[j][1] - _boxes[j + 1][1]) < threshold
             ):
                 _boxes[j], _boxes[j + 1] = _boxes[j + 1].copy(), _boxes[j].copy()
                 indices[j], indices[j + 1] = indices[j + 1], indices[j]
