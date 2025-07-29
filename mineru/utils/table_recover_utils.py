@@ -297,7 +297,7 @@ def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.nd
     return matched, not_match_orc_boxes
 
 
-def gather_ocr_list_by_row(ocr_list: List[Any], threhold: float = 0.2) -> List[Any]:
+def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[Any]:
     """
     :param ocr_list: [[[xmin,ymin,xmax,ymax], text]]
     :return:
