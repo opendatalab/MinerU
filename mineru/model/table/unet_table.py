@@ -21,7 +21,7 @@ class UnetTableModel:
 
     def predict(self, img):
         bgr_img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        ocr_result = ocr_engine.ocr(bgr_img)[0]
+        ocr_result = self.ocr_engine.ocr(bgr_img)[0]
 
         if ocr_result:
             ocr_result = [
