@@ -315,7 +315,7 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[
             cur_box = cur[0]
             next_box = next[0]
             c_idx = is_single_axis_contained(
-                cur[0], next[0], axis="y", threhold=threhold
+                cur[0], next[0], axis="y", threshold=threshold
             )
             if c_idx:
                 dis = max(next_box[0] - cur_box[2], 0)
