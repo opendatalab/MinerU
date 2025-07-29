@@ -201,7 +201,7 @@ def filter_duplicated_box(table_boxes: List[List[float]]) -> Set[int]:
 
 
 def sorted_ocr_boxes(
-    dt_boxes: Union[np.ndarray, list], threhold: float = 0.2
+    dt_boxes: Union[np.ndarray, list], threshold: float = 0.2
 ) -> Tuple[Union[np.ndarray, list], List[int]]:
     """
     Sort text boxes in order from top to bottom, left to right
