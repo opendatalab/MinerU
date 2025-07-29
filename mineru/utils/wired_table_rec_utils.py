@@ -188,7 +188,7 @@ class OrtInferSession:
 
         if self.use_cuda and first_provider != EP.CUDA_EP.value:
             self.logger.warning(
-                "%s is not avaiable for current env, the inference part is automatically shifted to be executed under %s.",
+                "%s is not available for current env, the inference part is automatically shifted to be executed under %s.",
                 EP.CUDA_EP.value,
                 first_provider,
             )
