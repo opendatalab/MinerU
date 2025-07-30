@@ -2191,6 +2191,7 @@ class UnimerMBartForCausalLM(UnimerMBartPreTrainedModel, GenerationMixin):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         count_gt: Optional[torch.LongTensor] = None,
+        **kwargs,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         Args:

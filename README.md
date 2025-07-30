@@ -43,6 +43,8 @@
 </div>
 
 # Changelog
+- 2025/07/30 version 2.1.9 Released
+  - `transformers` 4.54.1 version adaptation
 - 2025/07/28 version 2.1.8 Released
   - `sglang` 0.4.9.post5 version adaptation
 - 2025/07/27 version 2.1.7 Released
