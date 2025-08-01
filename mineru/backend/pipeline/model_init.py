@@ -8,18 +8,40 @@ from ...model.layout.doclayout_yolo import DocLayoutYOLOModel
 from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
-from ...model.table.rapid_table import RapidTableModel
+from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
+from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
+from ...model.table.rec.rapid_table import RapidTableModel
+from ...model.table.rec.unet_table.unet_table import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 
-def table_model_init(lang=None):
+def img_orientation_cls_model_init():
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
-        atom_model_name='ocr',
-        det_db_box_thresh=0.5,
-        det_db_unclip_ratio=1.6,
-        lang=lang
+        atom_model_name="ocr", det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang="ch_lite"
+    )
+    cls_model = PaddleOrientationClsModel(ocr_engine)
+    return cls_model
+
+
+def table_cls_model_init():
+    return PaddleTableClsModel()
+
+
+def wired_table_model_init(lang=None):
+    atom_model_manager = AtomModelSingleton()
+    ocr_engine = atom_model_manager.get_atom_model(
+        atom_model_name="ocr", det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang
+    )
+    table_model = UnetTableModel(ocr_engine)
+    return table_model
+
+
+def wireless_table_model_init(lang=None):
+    atom_model_manager = AtomModelSingleton()
+    ocr_engine = atom_model_manager.get_atom_model(
+        atom_model_name="ocr", det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang
     )
     table_model = RapidTableModel(ocr_engine)
     return table_model
@@ -76,12 +98,9 @@ class AtomModelSingleton:
     def get_atom_model(self, atom_model_name: str, **kwargs):
 
         lang = kwargs.get('lang', None)
-        table_model_name = kwargs.get('table_model_name', None)
 
-        if atom_model_name in [AtomicModel.OCR]:
+        if atom_model_name in [AtomicModel.OCR, AtomicModel.WiredTable, AtomicModel.WirelessTable]:
             key = (atom_model_name, lang)
-        elif atom_model_name in [AtomicModel.Table]:
-            key = (atom_model_name, table_model_name, lang)
         else:
             key = atom_model_name
 
@@ -111,10 +130,18 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('det_db_box_thresh'),
             kwargs.get('lang'),
         )
-    elif model_name == AtomicModel.Table:
-        atom_model = table_model_init(
+    elif model_name == AtomicModel.WirelessTable:
+        atom_model = wireless_table_model_init(
             kwargs.get('lang'),
         )
+    elif model_name == AtomicModel.WiredTable:
+        atom_model = wired_table_model_init(
+            kwargs.get('lang'),
+        )
+    elif model_name == AtomicModel.TableCls:
+        atom_model = table_cls_model_init()
+    elif model_name == AtomicModel.ImgOrientationCls:
+        atom_model = img_orientation_cls_model_init()
     else:
         logger.error('model name not allow')
         exit(1)
@@ -174,8 +201,19 @@ class MineruPipelineModel:
         )
         # init table model
         if self.apply_table:
-            self.table_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.Table,
+            self.wired_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WiredTable,
+                lang=self.lang,
+            )
+            self.wireless_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WirelessTable,
+                lang=self.lang,
+            )
+            self.table_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.TableCls,
+            )
+            self.img_orientation_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.ImgOrientationCls,
                 lang=self.lang,
             )
 

@@ -3,4 +3,8 @@ class AtomicModel:
     MFD = "mfd"
     MFR = "mfr"
     OCR = "ocr"
-    Table = "table"
+    WirelessTable = "wireless_table"
+    WiredTable = "wired_table"
+    TableCls = "table_cls"
+    ImgOrientationCls = "img_ori_cls"
+

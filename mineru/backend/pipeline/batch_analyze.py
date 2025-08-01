@@ -5,6 +5,7 @@ from collections import defaultdict
 import numpy as np
 
 from .model_init import AtomModelSingleton
+from .model_list import AtomicModel
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
@@ -133,7 +134,7 @@ class BatchAnalyze:
 
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(
-                    atom_model_name='ocr',
+                    atom_model_name=AtomicModel.OCR,
                     det_db_box_thresh=0.3,
                     lang=lang
                 )
@@ -219,7 +220,7 @@ class BatchAnalyze:
                 _lang = ocr_res_list_dict['lang']
                 # Get OCR results for this language's images
                 ocr_model = atom_model_manager.get_atom_model(
-                    atom_model_name='ocr',
+                    atom_model_name=AtomicModel.OCR,
                     ocr_show_log=False,
                     det_db_box_thresh=0.3,
                     lang=_lang
@@ -249,11 +250,45 @@ class BatchAnalyze:
         if self.table_enable:
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
+
+                # 有线表/无线表分类
+                table_cls_model = atom_model_manager.get_atom_model(
+                    atom_model_name=AtomicModel.TableCls,
+                )
+                try:
+                    table_label = table_cls_model.predict(table_res_dict["table_img"])
+                except Exception as e:
+                    table_label = AtomicModel.WirelessTable
+                    logger.warning(
+                        f"Table classification failed: {e}, using default model {table_label}"
+                    )
+                # logger.debug(f"Table classification result: {table_label}")
+                if table_label not in [AtomicModel.WirelessTable, AtomicModel.WiredTable]:
+                    raise ValueError(
+                        "Table classification failed, please check the model"
+                    )
+
+                # 根据表格分类结果选择有线表格识别模型和无线表格识别模型
                 table_model = atom_model_manager.get_atom_model(
-                    atom_model_name='table',
+                    atom_model_name=table_label,
                     lang=_lang,
                 )
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict['table_img'])
+
+                # 调整图片方向
+                img_orientation_cls_model = atom_model_manager.get_atom_model(
+                    atom_model_name=AtomicModel.ImgOrientationCls,
+                )
+                try:
+                    table_img = img_orientation_cls_model.predict(
+                        table_res_dict["table_img"]
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Image orientation classification failed: {e}, using original image"
+                    )
+                    table_img = table_res_dict["table_img"]
+
+                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_img)
                 # 判断是否返回正常
                 if html_code:
                     # 检查html_code是否包含'<table>'和'</table>'

@@ -35,6 +35,7 @@ dependencies = [
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
     "fast-langdetect>=0.2.3,<0.3.0",
+    "scikit-image",
 ]
 
 [project.optional-dependencies]
