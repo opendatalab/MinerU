@@ -5,7 +5,6 @@ from loguru import logger
 import numpy as np
 
 from mineru.utils.boxbase import get_minbox_if_overlap_by_ratio
-from mineru.utils.span_pre_proc import remove_overlaps_low_confidence_spans
 
 try:
     import torch
