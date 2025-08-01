@@ -55,25 +55,34 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     """某些图可能是文本块，通过简单的规则判断一下"""
     if len(maybe_text_image_blocks) > 0:
         for block in maybe_text_image_blocks:
-            span_in_block_list = []
-            for span in spans:
-                if span['type'] == 'text' and calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block['bbox']) > 0.7:
-                    span_in_block_list.append(span)
-            if len(span_in_block_list) > 0:
-                # span_in_block_list中所有bbox的面积之和
-                spans_area = sum((span['bbox'][2] - span['bbox'][0]) * (span['bbox'][3] - span['bbox'][1]) for span in span_in_block_list)
-                # 求ocr_res_area和res的面积的比值
-                block_area = (block['bbox'][2] - block['bbox'][0]) * (block['bbox'][3] - block['bbox'][1])
-                if block_area > 0:
-                    ratio = spans_area / block_area
-                    if ratio > 0.25 and ocr_enable:
-                        # 移除block的group_id
-                        block.pop('group_id', None)
-                        # 符合文本图的条件就把块加入到文本块列表中
-                        text_blocks.append(block)
-                    else:
-                        # 如果不符合文本图的条件，就把块加回到图片块列表中
-                        img_body_blocks.append(block)
+            should_add_to_text_blocks = False
+
+            if ocr_enable:
+                # 找到与当前block重叠的text spans
+                span_in_block_list = [
+                    span for span in spans
+                    if span['type'] == 'text' and
+                       calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block['bbox']) > 0.7
+                ]
+
+                if len(span_in_block_list) > 0:
+                    # 计算spans总面积
+                    spans_area = sum(
+                        (span['bbox'][2] - span['bbox'][0]) * (span['bbox'][3] - span['bbox'][1])
+                        for span in span_in_block_list
+                    )
+
+                    # 计算block面积
+                    block_area = (block['bbox'][2] - block['bbox'][0]) * (block['bbox'][3] - block['bbox'][1])
+
+                    # 判断是否符合文本图条件
+                    if block_area > 0 and spans_area / block_area > 0.25:
+                        should_add_to_text_blocks = True
+
+            # 根据条件决定添加到哪个列表
+            if should_add_to_text_blocks:
+                block.pop('group_id', None)  # 移除group_id
+                text_blocks.append(block)
             else:
                 img_body_blocks.append(block)
 
