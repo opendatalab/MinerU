@@ -249,7 +249,7 @@ def remove_overlaps_min_blocks(res_list):
     return res_list, need_remove
 
 
-def remove_overlaps_low_confidence_blocks(combined_res_list):
+def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0.8):
     # 计算每个block的坐标和面积
     block_info = []
     for block in combined_res_list:
@@ -266,7 +266,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list):
         # 查找内部的小block
         blocks_inside = [(j, j_score, j_block) for j, (xj_min, yj_min, xj_max, yj_max, j_area, j_score, j_block) in
                          enumerate(block_info)
-                         if i != j and is_inside(block_info[j], block_info[i])]
+                         if i != j and is_inside(block_info[j], block_info[i], overlap_threshold)]
 
         # 如果内部有3个及以上的小block
         if len(blocks_inside) >= 3:
@@ -362,7 +362,7 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
 
     # 检测大block内部是否包含多个小block, 合并ocr和table列表进行检测
     combined_res_list = ocr_res_list + filtered_table_res_list
-    blocks_to_remove = remove_overlaps_low_confidence_blocks(combined_res_list)
+    blocks_to_remove = remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold)
     # 移除需要删除的blocks
     for block in blocks_to_remove:
         if block in ocr_res_list:
