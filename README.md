@@ -43,11 +43,13 @@
 </div>
 
 # Changelog
-- 2025/07/30 version 2.1.9 Released
+- 2025/08/01 2.1.10 Released
+  - Fixed an issue in the `pipeline` backend where block overlap caused the parsing results to deviate from expectations #3232
+- 2025/07/30 2.1.9 Released
   - `transformers` 4.54.1 version adaptation
-- 2025/07/28 version 2.1.8 Released
+- 2025/07/28 2.1.8 Released
   - `sglang` 0.4.9.post5 version adaptation
-- 2025/07/27 version 2.1.7 Released
+- 2025/07/27 2.1.7 Released
   - `transformers` 4.54.0 version adaptation
 - 2025/07/26 2.1.6 Released
   - Fixed table parsing issues in handwritten documents when using `vlm` backend
