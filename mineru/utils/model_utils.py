@@ -249,6 +249,22 @@ def remove_overlaps_min_blocks(res_list):
 
 
 def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0.8):
+    """
+    Remove low-confidence blocks that overlap with other blocks.
+
+    This function identifies and removes blocks with low confidence scores that overlap
+    with other blocks. It calculates the coordinates and area of each block, and checks
+    for overlaps based on a specified threshold. Blocks that meet the criteria for removal
+    are returned in a list.
+
+    Parameters:
+        combined_res_list (list): A list of blocks, where each block is a dictionary containing
+            keys like 'poly' (polygon coordinates) and optionally 'score' (confidence score).
+        overlap_threshold (float): The threshold for determining overlap between blocks. Default is 0.8.
+
+    Returns:
+        list: A list of blocks to be removed, based on the overlap and confidence criteria.
+    """
     # 计算每个block的坐标和面积
     block_info = []
     for block in combined_res_list:
