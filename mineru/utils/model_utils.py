@@ -249,6 +249,22 @@ def remove_overlaps_min_blocks(res_list):
 
 
 def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0.8):
+    """
+    Remove low-confidence blocks that overlap with other blocks.
+
+    This function identifies and removes blocks with low confidence scores that overlap
+    with other blocks. It calculates the coordinates and area of each block, and checks
+    for overlaps based on a specified threshold. Blocks that meet the criteria for removal
+    are returned in a list.
+
+    Parameters:
+        combined_res_list (list): A list of blocks, where each block is a dictionary containing
+            keys like 'poly' (polygon coordinates) and optionally 'score' (confidence score).
+        overlap_threshold (float): The threshold for determining overlap between blocks. Default is 0.8.
+
+    Returns:
+        list: A list of blocks to be removed, based on the overlap and confidence criteria.
+    """
     # 计算每个block的坐标和面积
     block_info = []
     for block in combined_res_list:
@@ -259,13 +275,19 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
         block_info.append((xmin, ymin, xmax, ymax, area, score, block))
 
     blocks_to_remove = []
+    marked_indices = set()  # 跟踪已标记为删除的block索引
 
     # 检查每个block内部是否有3个及以上的小block
     for i, (xmin, ymin, xmax, ymax, area, score, block) in enumerate(block_info):
-        # 查找内部的小block
+        # 如果当前block已标记为删除，则跳过
+        if i in marked_indices:
+            continue
+
+        # 查找内部的小block (仅考虑尚未被标记为删除的block)
         blocks_inside = [(j, j_score, j_block) for j, (xj_min, yj_min, xj_max, yj_max, j_area, j_score, j_block) in
                          enumerate(block_info)
-                         if i != j and is_inside(block_info[j], block_info[i], overlap_threshold)]
+                         if i != j and j not in marked_indices and is_inside(block_info[j], block_info[i],
+                                                                             overlap_threshold)]
 
         # 如果内部有3个及以上的小block
         if len(blocks_inside) >= 3:
@@ -279,6 +301,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
                 for j, _, j_block in blocks_inside:
                     if j_block not in blocks_to_remove:
                         blocks_to_remove.append(j_block)
+                        marked_indices.add(j)  # 标记索引为已处理
 
                 # 扩展大block的边界以包含所有小block
                 new_xmin, new_ymin, new_xmax, new_ymax = xmin, ymin, xmax, ymax
@@ -298,6 +321,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
             else:
                 # 保留小blocks，删除大block
                 blocks_to_remove.append(block)
+                marked_indices.add(i)  # 标记当前索引为已处理
     return blocks_to_remove
 
 
