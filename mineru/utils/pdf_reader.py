@@ -9,8 +9,8 @@ from pypdfium2 import PdfBitmap, PdfDocument, PdfPage
 
 def page_to_image(
     page: PdfPage,
-    dpi: int = 144,  # changed from 200 to 144
-    max_width_or_height: int = 2560,  # changed from 4500 to 2560
+    dpi: int = 200,
+    max_width_or_height: int = 3500,  # changed from 4500 to 3500
 ) -> (Image.Image, float):
     scale = dpi / 72
 
@@ -31,7 +31,8 @@ def page_to_image(
 
 def image_to_bytes(
     image: Image.Image,
-    image_format: str = "PNG",  # 也可以用 "JPEG"
+    # image_format: str = "PNG",  # 也可以用 "JPEG"
+    image_format: str = "JPEG",
 ) -> bytes:
     with BytesIO() as image_buffer:
         image.save(image_buffer, format=image_format)
@@ -40,7 +41,8 @@ def image_to_bytes(
 
 def image_to_b64str(
     image: Image.Image,
-    image_format: str = "PNG",  # 也可以用 "JPEG"
+    # image_format: str = "PNG",  # 也可以用 "JPEG"
+    image_format: str = "JPEG",
 ) -> str:
     image_bytes = image_to_bytes(image, image_format)
     return base64.b64encode(image_bytes).decode("utf-8")
@@ -48,8 +50,8 @@ def image_to_b64str(
 
 def pdf_to_images(
     pdf: str | bytes | PdfDocument,
-    dpi: int = 144,
-    max_width_or_height: int = 2560,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
     start_page_id: int = 0,
     end_page_id: int | None = None,
 ) -> list[Image.Image]:
@@ -76,11 +78,12 @@ def pdf_to_images(
 
 def pdf_to_images_bytes(
     pdf: str | bytes | PdfDocument,
-    dpi: int = 144,
-    max_width_or_height: int = 2560,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
     start_page_id: int = 0,
     end_page_id: int | None = None,
-    image_format: str = "PNG",
+    # image_format: str = "PNG",  # 也可以用 "JPEG"
+    image_format: str = "JPEG",
 ) -> list[bytes]:
     images = pdf_to_images(pdf, dpi, max_width_or_height, start_page_id, end_page_id)
     return [image_to_bytes(image, image_format) for image in images]
@@ -88,11 +91,12 @@ def pdf_to_images_bytes(
 
 def pdf_to_images_b64strs(
     pdf: str | bytes | PdfDocument,
-    dpi: int = 144,
-    max_width_or_height: int = 2560,
+    dpi: int = 200,
+    max_width_or_height: int = 3500,
     start_page_id: int = 0,
     end_page_id: int | None = None,
-    image_format: str = "PNG",
+    # image_format: str = "PNG",  # 也可以用 "JPEG"
+    image_format: str = "JPEG",
 ) -> list[str]:
     images = pdf_to_images(pdf, dpi, max_width_or_height, start_page_id, end_page_id)
     return [image_to_b64str(image, image_format) for image in images]
