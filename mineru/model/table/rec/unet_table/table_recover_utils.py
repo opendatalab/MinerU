@@ -223,8 +223,15 @@ def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.nd
 
 def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[Any]:
     """
-    :param ocr_list: [[[xmin,ymin,xmax,ymax], text]]
-    :return:
+        Groups OCR results by row based on the vertical (y-axis) overlap of their bounding boxes.
+    Args:
+        ocr_list (List[Any]): A list of OCR results, where each item is a list containing a bounding box
+            in the format [xmin, ymin, xmax, ymax] and the recognized text.
+        threshold (float, optional): The threshold for determining if two boxes are in the same row,
+            based on their y-axis overlap. Default is 0.2.
+    Returns:
+        List[Any]: A new list of OCR results where texts in the same row are merged, and their bounding
+            boxes are updated to encompass the merged text.
     """
     for i in range(len(ocr_list)):
         if not ocr_list[i]:

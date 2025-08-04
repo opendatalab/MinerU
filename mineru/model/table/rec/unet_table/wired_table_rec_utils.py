@@ -115,11 +115,6 @@ class LoadImage:
         pass
 
     def __call__(self, img: InputType) -> np.ndarray:
-        if not isinstance(img, InputType.__args__):
-            raise LoadImageError(
-                f"The img type {type(img)} does not in {InputType.__args__}"
-            )
-
         img = self.load_img(img)
         img = self.convert_img(img)
         return img
@@ -133,14 +128,18 @@ class LoadImage:
                 raise LoadImageError(f"cannot identify image file {img}") from e
             return img
 
-        if isinstance(img, bytes):
-            img = np.array(Image.open(BytesIO(img)))
+        elif isinstance(img, bytes):
+            try:
+                img = np.array(Image.open(BytesIO(img)))
+            except UnidentifiedImageError as e:
+                raise LoadImageError(f"cannot identify image from bytes data") from e
             return img
 
-        if isinstance(img, np.ndarray):
+        elif isinstance(img, np.ndarray):
             return img
 
-        raise LoadImageError(f"{type(img)} is not supported!")
+        else:
+            raise LoadImageError(f"{type(img)} is not supported!")
 
     def convert_img(self, img: np.ndarray):
         if img.ndim == 2:
