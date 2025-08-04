@@ -218,7 +218,6 @@ def sorted_ocr_boxes(
     _boxes, indices = zip(*sorted_boxes_with_idx)
     indices = list(indices)
     _boxes = [dt_boxes[i] for i in indices]
-    threshold = 20
     # 避免输出和输入格式不对应，与函数功能不符合
     if isinstance(dt_boxes, np.ndarray):
         _boxes = np.array(_boxes)
@@ -230,7 +229,7 @@ def sorted_ocr_boxes(
             if (
                 c_idx is not None
                 and _boxes[j + 1][0] < _boxes[j][0]
-                and abs(_boxes[j][1] - _boxes[j + 1][1]) < threshold
+                and abs(_boxes[j][1] - _boxes[j + 1][1]) < 20
             ):
                 _boxes[j], _boxes[j + 1] = _boxes[j + 1].copy(), _boxes[j].copy()
                 indices[j], indices[j + 1] = indices[j + 1], indices[j]
@@ -302,7 +301,6 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[
     :param ocr_list: [[[xmin,ymin,xmax,ymax], text]]
     :return:
     """
-    threshold = 10
     for i in range(len(ocr_list)):
         if not ocr_list[i]:
             continue
@@ -319,7 +317,7 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[
             )
             if c_idx:
                 dis = max(next_box[0] - cur_box[2], 0)
-                blank_str = int(dis / threshold) * " "
+                blank_str = int(dis / 10) * " "
                 cur[1] = cur[1] + blank_str + next[1]
                 xmin = min(cur_box[0], next_box[0])
                 xmax = max(cur_box[2], next_box[2])
