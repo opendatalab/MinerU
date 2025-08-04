@@ -109,6 +109,17 @@ class ONNXRuntimeError(Exception):
 
 
 class LoadImage:
+    """
+    Utility class for loading and converting images from various input types to a numpy ndarray.
+
+    Supported input types:
+        - str or pathlib.Path: Path to an image file.
+        - bytes: Image data in bytes format.
+        - numpy.ndarray: Already loaded image array.
+
+    The class attempts to load the image and convert it to a numpy ndarray in BGR format.
+    Raises LoadImageError for unsupported types or if the image cannot be loaded.
+    """
     def __init__(
         self,
     ):
