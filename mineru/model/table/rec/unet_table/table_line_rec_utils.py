@@ -38,7 +38,7 @@ def min_area_rect(coords):
     box = image_location_sort_box(box)
 
     x1, y1, x2, y2, x3, y3, x4, y4 = box
-    degree, w, h, cx, cy = calculate_center_rotate_angle(box)
+    w, h = calculate_center_rotate_angle(box)
     if w < h:
         xmin = (x1 + x2) / 2
         xmax = (x3 + x4) / 2
@@ -50,9 +50,6 @@ def min_area_rect(coords):
         xmax = (x2 + x3) / 2
         ymin = (y1 + y4) / 2
         ymax = (y2 + y3) / 2
-    # degree,w,h,cx,cy = solve(box)
-    # x1,y1,x2,y2,x3,y3,x4,y4 = box
-    # return {'degree':degree,'w':w,'h':h,'cx':cx,'cy':cy}
     return [xmin, ymin, xmax, ymax]
 
 
@@ -65,21 +62,8 @@ def image_location_sort_box(box):
 
 
 def calculate_center_rotate_angle(box):
-    """
-    绕 cx,cy点 w,h 旋转 angle 的坐标,能一定程度缓解图片的内部倾斜，但是还是依赖模型稳妥
-    x = cx-w/2
-    y = cy-h/2
-    x1-cx = -w/2*cos(angle) +h/2*sin(angle)
-    y1 -cy= -w/2*sin(angle) -h/2*cos(angle)
 
-    h(x1-cx) = -wh/2*cos(angle) +hh/2*sin(angle)
-    w(y1 -cy)= -ww/2*sin(angle) -hw/2*cos(angle)
-    (hh+ww)/2sin(angle) = h(x1-cx)-w(y1 -cy)
-
-    """
     x1, y1, x2, y2, x3, y3, x4, y4 = box[:8]
-    cx = (x1 + x3 + x2 + x4) / 4.0
-    cy = (y1 + y3 + y4 + y2) / 4.0
     w = (
         np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         + np.sqrt((x3 - x4) ** 2 + (y3 - y4) ** 2)
@@ -88,11 +72,8 @@ def calculate_center_rotate_angle(box):
         np.sqrt((x2 - x3) ** 2 + (y2 - y3) ** 2)
         + np.sqrt((x1 - x4) ** 2 + (y1 - y4) ** 2)
     ) / 2
-    # x = cx-w/2
-    # y = cy-h/2
-    sinA = (h * (x1 - cx) - w * (y1 - cy)) * 1.0 / (h * h + w * w) * 2
-    angle = np.arcsin(sinA)
-    return angle, w, h, cx, cy
+
+    return w, h
 
 
 def _order_points(pts):
@@ -241,18 +222,8 @@ def min_area_rect_box(
         box = box.reshape((8,)).tolist()
         box = image_location_sort_box(box)
         x1, y1, x2, y2, x3, y3, x4, y4 = box
-        angle, w, h, cx, cy = calculate_center_rotate_angle(box)
-        # if adjustBox:
-        #     x1, y1, x2, y2, x3, y3, x4, y4 = xy_rotate_box(cx, cy, w + 5, h + 5, angle=0, degree=None)
-        #     x1, x4 = max(x1, 0), max(x4, 0)
-        #     y1, y2 = max(y1, 0), max(y2, 0)
+        w, h = calculate_center_rotate_angle(box)
 
-        # if w > 32 and h > 32 and flag:
-        #     if abs(angle / np.pi * 180) < 20:
-        #         if filtersmall and (w < 10 or h < 10):
-        #             continue
-        #         boxes.append([x1, y1, x2, y2, x3, y3, x4, y4])
-        # else:
         if w * h < 0.5 * W * H:
             if filtersmall and (
                 w < 15 or h < 15
