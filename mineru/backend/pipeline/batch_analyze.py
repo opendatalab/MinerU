@@ -340,7 +340,7 @@ class BatchAnalyze:
                     # Get OCR results for this language's images
 
                     ocr_model = atom_model_manager.get_atom_model(
-                        atom_model_name='ocr',
+                        atom_model_name=AtomicModel.OCR,
                         det_db_box_thresh=0.3,
                         lang=lang
                     )
