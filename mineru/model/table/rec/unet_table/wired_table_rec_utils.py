@@ -1,4 +1,3 @@
-# -*- encoding: utf-8 -*-
 import os
 import traceback
 from enum import Enum

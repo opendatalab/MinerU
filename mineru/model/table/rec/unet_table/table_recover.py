@@ -1,8 +1,4 @@
-# -*- encoding: utf-8 -*-
-# @Author: SWHL
-# @Contact: liekkaskono@163.com
 from typing import Dict, List, Tuple
-
 import numpy as np
 
 

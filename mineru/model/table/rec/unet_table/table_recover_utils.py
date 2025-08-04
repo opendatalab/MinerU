@@ -1,10 +1,5 @@
-# -*- encoding: utf-8 -*-
-# @Author: SWHL
-# @Contact: liekkaskono@163.com
-import random
-from typing import Any, Dict, List, Union, Set, Tuple
+from typing import Any, Dict, List, Union, Tuple
 
-import cv2
 import numpy as np
 import shapely
 from shapely.geometry import MultiPoint, Polygon
@@ -66,30 +61,6 @@ def calculate_iou(
         # 检查完全包含
     iou = i_area / u_area
     return iou
-
-
-def caculate_single_axis_iou(
-    box1: Union[np.ndarray, List], box2: Union[np.ndarray, List], axis="x"
-) -> float:
-    """
-    :param box1: Iterable [xmin,ymin,xmax,ymax]
-    :param box2: Iterable [xmin,ymin,xmax,ymax]
-    :return: iou: float 0-1
-    """
-    b1_x1, b1_y1, b1_x2, b1_y2 = box1
-    b2_x1, b2_y1, b2_x2, b2_y2 = box2
-    if axis == "x":
-        i_min = max(b1_x1, b2_x1)
-        i_max = min(b1_x2, b2_x2)
-        u_area = max(b1_x2, b2_x2) - min(b1_x1, b2_x1)
-    else:
-        i_min = max(b1_y1, b2_y1)
-        i_max = min(b1_y2, b2_y2)
-        u_area = max(b1_y2, b2_y2) - min(b1_y1, b2_y1)
-    i_area = max(i_max - i_min, 0)
-    if u_area == 0:
-        return 1
-    return i_area / u_area
 
 
 def is_box_contained(
@@ -172,34 +143,6 @@ def is_single_axis_contained(
     return None
 
 
-def filter_duplicated_box(table_boxes: List[List[float]]) -> Set[int]:
-    """
-    :param table_boxes: [[xmin,ymin,xmax,ymax]]
-    :return:
-    """
-    delete_idx = set()
-    for i in range(len(table_boxes)):
-        polygons_i = table_boxes[i]
-        if i in delete_idx:
-            continue
-        for j in range(i + 1, len(table_boxes)):
-            if j in delete_idx:
-                continue
-            # 下一个box
-            polygons_j = table_boxes[j]
-            # 重叠关系先记录，后续删除掉
-            if calculate_iou(polygons_i, polygons_j) > 0.8:
-                delete_idx.add(j)
-                continue
-            # 是否存在包含关系
-            contained_idx = is_box_contained(polygons_i, polygons_j)
-            if contained_idx == 2:
-                delete_idx.add(j)
-            elif contained_idx == 1:
-                delete_idx.add(i)
-    return delete_idx
-
-
 def sorted_ocr_boxes(
     dt_boxes: Union[np.ndarray, list], threshold: float = 0.2
 ) -> Tuple[Union[np.ndarray, list], List[int]]:
@@ -236,24 +179,6 @@ def sorted_ocr_boxes(
             else:
                 break
     return _boxes, indices
-
-
-def trans_char_ocr_res(ocr_res):
-    word_result = []
-    for res in ocr_res:
-        score = res[2]
-        for word_box, word in zip(res[3], res[4]):
-            word_res = []
-            word_res.append(word_box)
-            word_res.append(word)
-            word_res.append(score)
-            word_result.append(word_res)
-    return word_result
-
-
-def box_4_1_poly_to_box_4_2(poly_box: Union[list, np.ndarray]) -> List[List[float]]:
-    xmin, ymin, xmax, ymax = tuple(poly_box)
-    return [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
 
 
 def box_4_2_poly_to_box_4_1(poly_box: Union[list, np.ndarray]) -> List[Any]:
@@ -419,77 +344,6 @@ def combine_two_poly(polygons: np.ndarray, idxs: np.ndarray) -> np.ndarray:
     return polygons
 
 
-def get_rotate_crop_image(img: np.ndarray, points: np.ndarray) -> np.ndarray:
-    img_crop_width = int(
-        max(
-            np.linalg.norm(points[0] - points[1]),
-            np.linalg.norm(points[2] - points[3]),
-        )
-    )
-    img_crop_height = int(
-        max(
-            np.linalg.norm(points[0] - points[3]),
-            np.linalg.norm(points[1] - points[2]),
-        )
-    )
-    pts_std = np.float32(
-        [
-            [0, 0],
-            [img_crop_width, 0],
-            [img_crop_width, img_crop_height],
-            [0, img_crop_height],
-        ]
-    )
-    M = cv2.getPerspectiveTransform(
-        points.astype(np.float32), pts_std.astype(np.float32)
-    )
-    dst_img = cv2.warpPerspective(
-        img,
-        M,
-        (img_crop_width, img_crop_height),
-        borderMode=cv2.BORDER_REPLICATE,
-        flags=cv2.INTER_CUBIC,
-    )
-    dst_img_height, dst_img_width = dst_img.shape[0:2]
-    if dst_img_height * 1.0 / dst_img_width >= 1.5:
-        dst_img = np.rot90(dst_img)
-    return dst_img
-
-
-def is_inclusive_each_other(box1: np.ndarray, box2: np.ndarray):
-    """判断两个多边形框是否存在包含关系
-
-    Args:
-        box1 (np.ndarray): (4, 2)
-        box2 (np.ndarray): (4, 2)
-
-    Returns:
-        bool: 是否存在包含关系
-    """
-    poly1 = Polygon(box1)
-    poly2 = Polygon(box2)
-
-    poly1_area = poly1.convex_hull.area
-    poly2_area = poly2.convex_hull.area
-
-    if poly1_area > poly2_area:
-        box_max = box1
-        box_min = box2
-    else:
-        box_max = box2
-        box_min = box1
-
-    x0, y0 = np.min(box_min[:, 0]), np.min(box_min[:, 1])
-    x1, y1 = np.max(box_min[:, 0]), np.max(box_min[:, 1])
-
-    edge_x0, edge_y0 = np.min(box_max[:, 0]), np.min(box_max[:, 1])
-    edge_x1, edge_y1 = np.max(box_max[:, 0]), np.max(box_max[:, 1])
-
-    if x0 >= edge_x0 and y0 >= edge_y0 and x1 <= edge_x1 and y1 <= edge_y1:
-        return True
-    return False
-
-
 def plot_html_table(
     logi_points: Union[Union[np.ndarray, List]], cell_box_map: Dict[int, List[str]]
 ) -> str:
@@ -557,47 +411,3 @@ def plot_html_table(
 
     table_html += "</table></body></html>"
     return table_html
-
-
-def vis_table(img: np.ndarray, polygons: np.ndarray) -> np.ndarray:
-    for i, poly in enumerate(polygons):
-        poly = np.round(poly).astype(np.int32).reshape(4, 2)
-
-        random_color = (
-            random.randint(0, 255),
-            random.randint(0, 255),
-            random.randint(0, 255),
-        )
-        cv2.polylines(img, [poly], 3, random_color)
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img, str(i), poly[0], font, 1, (0, 0, 255), 1)
-    return img
-
-
-def format_html(html):
-    return f"""
-    <!DOCTYPE html>
-    <html lang="zh-CN">
-    <head>
-    <meta charset="UTF-8">
-    <title>Complex Table Example</title>
-    <style>
-        table {{
-            border-collapse: collapse;
-            width: 100%;
-        }}
-        th, td {{
-            border: 1px solid black;
-            padding: 8px;
-            text-align: center;
-        }}
-        th {{
-            background-color: #f2f2f2;
-        }}
-    </style>
-    </head>
-    <body>
-    {html}
-    </body>
-    </html>
-    """

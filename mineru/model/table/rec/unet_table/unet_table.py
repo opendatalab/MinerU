@@ -4,7 +4,6 @@ import os
 import time
 import traceback
 from dataclasses import dataclass, asdict
-from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
 
 import cv2
