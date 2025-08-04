@@ -19,14 +19,12 @@ def page_to_image(
         scale = max_width_or_height / long_side_length
 
     bitmap: PdfBitmap = page.render(scale=scale)  # type: ignore
-    try:
-        image = bitmap.to_pil()
-    finally:
-        try:
-            bitmap.close()
-        except Exception:
-            pass
+
+    image = bitmap.to_pil()
+    bitmap.close()
     return image, scale
+
+
 
 
 def image_to_bytes(
@@ -46,6 +44,15 @@ def image_to_b64str(
 ) -> str:
     image_bytes = image_to_bytes(image, image_format)
     return base64.b64encode(image_bytes).decode("utf-8")
+
+
+def base64_to_pil_image(
+    base64_str: str,
+) -> Image.Image:
+    """Convert base64 string to PIL Image."""
+    image_bytes = base64.b64decode(base64_str)
+    with BytesIO(image_bytes) as image_buffer:
+        return Image.open(image_buffer).convert("RGB")
 
 
 def pdf_to_images(

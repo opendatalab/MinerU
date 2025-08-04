@@ -17,6 +17,7 @@ from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence
+from mineru.utils.pdf_reader import image_to_b64str
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract
@@ -27,7 +28,8 @@ from mineru.utils.hash_utils import str_md5
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False, formula_enabled=True):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
-    page_img_md5 = str_md5(image_dict["img_base64"])
+    # page_img_md5 = str_md5(image_dict["img_base64"])
+    page_img_md5 = str_md5(image_to_b64str(page_pil_img))
     page_w, page_h = map(int, page.get_size())
     magic_model = MagicModel(page_model_info, scale)
 

@@ -67,3 +67,8 @@ class ModelPath:
 class SplitFlag:
     CROSS_PAGE = 'cross_page'
     LINES_DELETED = 'lines_deleted'
+
+
+class ImageType:
+    PIL = 'pil_img'
+    BASE64 = 'base64_img'
