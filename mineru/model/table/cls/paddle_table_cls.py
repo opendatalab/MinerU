@@ -24,8 +24,7 @@ class PaddleTableClsModel:
 
     def preprocess(self, img):
         # PIL图像转cv2
-        img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = np.array(img)
         # 放大图片，使其最短边长为256
         h, w = img.shape[:2]
         scale = 256 / min(h, w)
