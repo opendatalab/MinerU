@@ -90,7 +90,7 @@ class PaddleOrientationClsModel:
                     # elif aspect_ratio > 1.2:  # Wider than tall - horizontal text
                     #     horizontal_count += 1
 
-                if vertical_count >= len(det_res) * 0.3:
+                if vertical_count >= len(det_res) * 0.3 and vertical_count >= 3:
                     is_rotated = True
                 # logger.debug(f"Text orientation analysis: vertical={vertical_count}, det_res={len(det_res)}, rotated={is_rotated}")
 
@@ -104,9 +104,9 @@ class PaddleOrientationClsModel:
                     if label == "90":
                         rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
                         img = cv2.rotate(np.asarray(img), rotation)
-                    elif label == "180":
-                        rotation = cv2.ROTATE_180
-                        img = cv2.rotate(np.asarray(img), rotation)
+                    # elif label == "180":
+                    #     rotation = cv2.ROTATE_180
+                    #     img = cv2.rotate(np.asarray(img), rotation)
                     elif label == "270":
                         rotation = cv2.ROTATE_90_CLOCKWISE
                         img = cv2.rotate(np.asarray(img), rotation)
