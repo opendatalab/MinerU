@@ -101,15 +101,10 @@ class PaddleOrientationClsModel:
                     (result,) = self.sess.run(None, {"x": x})
                     label = self.labels[np.argmax(result)]
 
-                    if label == "90":
-                        rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
-                        img = cv2.rotate(np.asarray(img), rotation)
-                    # elif label == "180":
-                    #     rotation = cv2.ROTATE_180
-                    #     img = cv2.rotate(np.asarray(img), rotation)
-                    elif label == "270":
+                    if label == "270":
                         rotation = cv2.ROTATE_90_CLOCKWISE
                         img = cv2.rotate(np.asarray(img), rotation)
-                    else:
-                        img = np.array(img)
+                    else:  # 除了270度，都认为是90度
+                        rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
+                        img = cv2.rotate(np.asarray(img), rotation)
         return img

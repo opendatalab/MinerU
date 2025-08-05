@@ -1,5 +1,4 @@
 import html
-import logging
 import os
 import time
 import traceback
@@ -61,7 +60,7 @@ class UnetTableRecognition:
         img = self.load_img(img)
         polygons, rotated_polygons = self.table_structure(img, **kwargs)
         if polygons is None:
-            logging.warning("polygons is None.")
+            logger.warning("polygons is None.")
             return UnetTableOutput("", None, None, 0.0)
 
         try:
@@ -102,7 +101,7 @@ class UnetTableRecognition:
             elapse = time.perf_counter() - s
 
         except Exception:
-            logging.warning(traceback.format_exc())
+            logger.warning(traceback.format_exc())
             return UnetTableOutput("", None, None, 0.0)
         return UnetTableOutput(pred_html, polygons, logi_points, elapse)
 
