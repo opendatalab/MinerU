@@ -4,6 +4,8 @@ import os
 import cv2
 import numpy as np
 import onnxruntime
+from loguru import logger
+
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
@@ -90,7 +92,7 @@ class PaddleOrientationClsModel:
                     # elif aspect_ratio > 1.2:  # Wider than tall - horizontal text
                     #     horizontal_count += 1
 
-                if vertical_count >= len(det_res) * 0.3 and vertical_count >= 3:
+                if vertical_count >= len(det_res) * 0.28 and vertical_count >= 3:
                     is_rotated = True
                 # logger.debug(f"Text orientation analysis: vertical={vertical_count}, det_res={len(det_res)}, rotated={is_rotated}")
 
@@ -100,11 +102,13 @@ class PaddleOrientationClsModel:
                     x = self.preprocess(img)
                     (result,) = self.sess.run(None, {"x": x})
                     label = self.labels[np.argmax(result)]
-
+                    # logger.debug(f"Orientation classification result: {label}")
                     if label == "270":
                         rotation = cv2.ROTATE_90_CLOCKWISE
                         img = cv2.rotate(np.asarray(img), rotation)
-                    else:  # 除了270度，都认为是90度
+                    elif label == "90":
                         rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
                         img = cv2.rotate(np.asarray(img), rotation)
+                    else:
+                        pass
         return img

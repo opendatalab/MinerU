@@ -67,6 +67,6 @@ class PaddleTableClsModel:
         idx = np.argmax(result)
         conf = float(np.max(result))
         # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-        if idx == 0 and conf < 0.9:
+        if idx == 0 and conf < 0.85:
             idx = 1
-        return self.labels[idx]
+        return self.labels[idx], conf

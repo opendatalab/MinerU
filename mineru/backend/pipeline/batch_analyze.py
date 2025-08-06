@@ -269,8 +269,9 @@ class BatchAnalyze:
                 table_cls_model = atom_model_manager.get_atom_model(
                     atom_model_name=AtomicModel.TableCls,
                 )
+                table_cls_score = 0.5
                 try:
-                    table_label = table_cls_model.predict(table_img)
+                    table_label, table_cls_score = table_cls_model.predict(table_img)
                 except Exception as e:
                     table_label = AtomicModel.WirelessTable
                     logger.warning(
@@ -289,7 +290,7 @@ class BatchAnalyze:
                     lang=_lang,
                 )
 
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_img)
+                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_img, table_cls_score)
                 # 判断是否返回正常
                 if html_code:
                     # 检查html_code是否包含'<table>'和'</table>'
