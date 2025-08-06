@@ -91,7 +91,11 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
         
         c.saveState()
         rotation_obj = page.get("/Rotate", 0)
-        rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+        try:
+            rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid /Rotate value: {rotation_obj!r}, defaulting to 0")
+            rotation = 0
 
         if rotation == 0:
             c.translate(rect[0] + rect[2] + 2, rect[1] + rect[3] - 10)
