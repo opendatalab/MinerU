@@ -25,7 +25,11 @@ def cal_canvas_rect(page, bbox):
     actual_height = page_height  # The height of the final PDF display
     
     rotation_obj = page.get("/Rotate", 0)
-    rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+    try:
+        rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Invalid /Rotate value {rotation_obj!r} on page; defaulting to 0. Error: {e}")
+        rotation = 0
     
     if rotation in [90, 270]:
         # PDF is rotated 90 degrees or 270 degrees, and the width and height need to be swapped
