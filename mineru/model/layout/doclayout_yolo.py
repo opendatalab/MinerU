@@ -62,6 +62,8 @@ class DocLayoutYOLOModel:
                 batch = images[idx: idx + batch_size]
                 if batch_size == 1:
                     conf = 0.9 * self.conf
+                else:
+                    conf = self.conf
                 predictions = self.model.predict(
                     batch,
                     imgsz=self.imgsz,
