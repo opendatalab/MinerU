@@ -22,7 +22,7 @@ class RapidTableModel(object):
         self.ocr_engine = ocr_engine
 
 
-    def predict(self, image):
+    def predict(self, image, table_cls_score):
         bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
         # Continue with OCR on potentially rotated image
         ocr_result = self.ocr_engine.ocr(bgr_image)[0]

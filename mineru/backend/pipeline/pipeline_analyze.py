@@ -6,6 +6,7 @@ from loguru import logger
 
 from .model_init import MineruPipelineModel
 from mineru.utils.config_reader import get_device
+from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf
 from ...utils.model_utils import get_vram, clean_memory
@@ -98,7 +99,7 @@ def doc_analyze(
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
-        images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
+        images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
         all_image_lists.append(images_list)
         all_pdf_docs.append(pdf_doc)
         for page_idx in range(len(images_list)):

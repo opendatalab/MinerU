@@ -290,7 +290,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
                                                                              overlap_threshold)]
 
         # 如果内部有3个及以上的小block
-        if len(blocks_inside) >= 3:
+        if len(blocks_inside) >= 2:
             # 计算小block的平均分数
             avg_score = sum(s for _, s, _ in blocks_inside) / len(blocks_inside)
 

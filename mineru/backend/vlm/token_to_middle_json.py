@@ -8,6 +8,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import str_md5
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdf_reader import base64_to_pil_image
 from mineru.version import __version__
 
 heading_level_import_success = False
@@ -32,7 +33,8 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     # 提取所有完整块，每个块从<|box_start|>开始到<|md_end|>或<|im_end|>结束
 
     scale = image_dict["scale"]
-    page_pil_img = image_dict["img_pil"]
+    # page_pil_img = image_dict["img_pil"]
+    page_pil_img = base64_to_pil_image(image_dict["img_base64"])
     page_img_md5 = str_md5(image_dict["img_base64"])
     width, height = map(int, page.get_size())
 

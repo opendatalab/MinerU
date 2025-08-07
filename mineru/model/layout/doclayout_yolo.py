@@ -60,10 +60,14 @@ class DocLayoutYOLOModel:
         with tqdm(total=len(images), desc="Layout Predict") as pbar:
             for idx in range(0, len(images), batch_size):
                 batch = images[idx: idx + batch_size]
+                if batch_size == 1:
+                    conf = 0.9 * self.conf
+                else:
+                    conf = self.conf
                 predictions = self.model.predict(
                     batch,
                     imgsz=self.imgsz,
-                    conf=self.conf,
+                    conf=conf,
                     iou=self.iou,
                     verbose=False,
                 )

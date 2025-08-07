@@ -7,27 +7,30 @@ from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from .enum_class import ImageType
 from .hash_utils import str_sha256
 
 
-def pdf_page_to_image(page: pdfium.PdfPage, dpi=200) -> dict:
+def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -> dict:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
 
     Args:
         page (_type_): pdfium.PdfPage
         dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        image_type (ImageType, optional): The type of image to return. Defaults to ImageType.PIL.
 
     Returns:
         dict:  {'img_base64': str, 'img_pil': pil_img, 'scale': float }
     """
     pil_img, scale = page_to_image(page, dpi=dpi)
-    img_base64 = image_to_b64str(pil_img)
-
     image_dict = {
-        "img_base64": img_base64,
-        "img_pil": pil_img,
         "scale": scale,
     }
+    if image_type == ImageType.BASE64:
+        image_dict["img_base64"] = image_to_b64str(pil_img)
+    else:
+        image_dict["img_pil"] = pil_img
+
     return image_dict
 
 
@@ -36,6 +39,7 @@ def load_images_from_pdf(
     dpi=200,
     start_page_id=0,
     end_page_id=None,
+    image_type=ImageType.PIL,  # PIL or BASE64
 ):
     images_list = []
     pdf_doc = pdfium.PdfDocument(pdf_bytes)
@@ -48,7 +52,7 @@ def load_images_from_pdf(
     for index in range(0, pdf_page_num):
         if start_page_id <= index <= end_page_id:
             page = pdf_doc[index]
-            image_dict = pdf_page_to_image(page, dpi=dpi)
+            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
             images_list.append(image_dict)
 
     return images_list, pdf_doc

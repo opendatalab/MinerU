@@ -24,11 +24,11 @@ def classify(pdf_bytes):
     Returns:
         str: 'txt' 表示可以直接提取文本，'ocr' 表示需要OCR
     """
-    try:
-        # 从字节数据加载PDF
-        sample_pdf_bytes = extract_pages(pdf_bytes)
-        pdf = pdfium.PdfDocument(sample_pdf_bytes)
 
+    # 从字节数据加载PDF
+    sample_pdf_bytes = extract_pages(pdf_bytes)
+    pdf = pdfium.PdfDocument(sample_pdf_bytes)
+    try:
         # 获取PDF页数
         page_count = len(pdf)
 
@@ -42,18 +42,24 @@ def classify(pdf_bytes):
         # 设置阈值：如果每页平均少于50个有效字符，认为需要OCR
         chars_threshold = 50
 
+        # 检查平均字符数和无效字符
         if (get_avg_cleaned_chars_per_page(pdf, pages_to_check) < chars_threshold) or detect_invalid_chars(sample_pdf_bytes):
             return 'ocr'
-        else:
 
-            if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.8:
-                return 'ocr'
+        # 检查图像覆盖率
+        if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.8:
+            return 'ocr'
 
-            return 'txt'
+        return 'txt'
+
     except Exception as e:
         logger.error(f"判断PDF类型时出错: {e}")
         # 出错时默认使用OCR
         return 'ocr'
+
+    finally:
+        # 无论执行哪个路径，都确保PDF被关闭
+        pdf.close()
 
 
 def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
@@ -77,8 +83,6 @@ def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
     avg_cleaned_chars_per_page = cleaned_total_chars / pages_to_check
 
     # logger.debug(f"PDF分析: 平均每页清理后{avg_cleaned_chars_per_page:.1f}字符")
-
-    pdf_doc.close()  # 关闭PDF文档
 
     return avg_cleaned_chars_per_page
 
@@ -158,6 +162,9 @@ def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
 
         page_count += 1
 
+    # 关闭资源
+    pdf_stream.close()
+
     # 如果没有处理任何页面，返回0
     if page_count == 0:
         return 0.0
@@ -165,9 +172,6 @@ def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
     # 计算高图像覆盖率的页面比例
     high_coverage_ratio = high_image_coverage_pages / page_count
     # logger.debug(f"PDF分析: 高图像覆盖页面比例: {high_coverage_ratio:.2f}")
-
-    # 关闭资源
-    pdf_stream.close()
 
     return high_coverage_ratio
 
@@ -205,6 +209,7 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
     try:
         # 将选择的页面导入新文档
         sample_docs.import_pages(pdf, page_indices)
+        pdf.close()
 
         # 将新PDF保存到内存缓冲区
         output_buffer = BytesIO()
@@ -213,6 +218,7 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
         # 获取字节数据
         return output_buffer.getvalue()
     except Exception as e:
+        pdf.close()
         logger.exception(e)
         return b''  # 出错时返回空字节
 
