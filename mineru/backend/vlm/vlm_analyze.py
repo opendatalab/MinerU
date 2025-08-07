@@ -81,7 +81,7 @@ async def aio_doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
+    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.BASE64)
     images_base64_list = [image_dict["img_base64"] for image_dict in images_list]
     # load_images_time = round(time.time() - load_images_start, 2)
     # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
