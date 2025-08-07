@@ -249,7 +249,7 @@ class UnetTableModel:
                 # 判断是否使用无线表格模型的结果
                 if (
                     wired_len <= round(wireless_len * 0.5)  # 有线模型检测到的单元格数太少（低于无线模型的50%）
-                    or ((wireless_len < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.949)  # 有线模型检测到的单元格数反而更多
+                    or ((wireless_len+1 < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.949)  # 有线模型检测到的单元格数反而更多
                     or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
                     or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
                 ):
