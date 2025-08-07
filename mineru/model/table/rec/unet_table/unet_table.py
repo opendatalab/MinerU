@@ -176,8 +176,14 @@ class UnetTableRecognition:
 
         if len(img_crop_list) > 0:
             # 进行ocr识别
-            ocr_res_list = ocr_engine.ocr(img_crop_list, det=False)[0]
-            assert len(ocr_res_list) == len(img_crop_list)
+            ocr_result = ocr_engine.ocr(img_crop_list, det=False)
+            if not ocr_result or not isinstance(ocr_result, list) or len(ocr_result) == 0:
+                logger.warning("OCR engine returned no results or invalid result for image crops.")
+                return cell_box_map
+            ocr_res_list = ocr_result[0]
+            if not isinstance(ocr_res_list, list) or len(ocr_res_list) != len(img_crop_list):
+                logger.warning("OCR result list length does not match image crop list length.")
+                return cell_box_map
             for j, ocr_res in enumerate(ocr_res_list):
                 img_crop_info_list[j].append(ocr_res)
 

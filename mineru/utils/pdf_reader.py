@@ -21,7 +21,10 @@ def page_to_image(
     bitmap: PdfBitmap = page.render(scale=scale)  # type: ignore
 
     image = bitmap.to_pil()
-    bitmap.close()
+    try:
+        bitmap.close()
+    except Exception as e:
+        logger.error(f"Failed to close bitmap: {e}")
     return image, scale
 
 
