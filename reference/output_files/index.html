@@ -1,0 +1,2582 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/reference/output_files/">
+      
+      
+        <link rel="prev" href="../../demo/">
+      
+      
+        <link rel="next" href="../../faq/">
+      
+      
+      <link rel="icon" href="../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.5.3, mkdocs-material-9.5.17">
+    
+    
+      
+        <title>Output File Format - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.bcfcd587.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mineru-output-files-documentation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Output File Format
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9h-1.9M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69m-9.15 3.96h2.3L12 9l-1.15 3.65Z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12c0-2.42-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69Z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.52 17.52 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04M18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12m-2.62 7 1.62-4.33L19.12 17h-3.24Z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../zh/reference/output_files/" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+    
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+    
+  
+  FAQ
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+    
+  
+  Demo
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../.." class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            Home
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Quick Start
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            Quick Start
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Extension Modules
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Docker Deployment
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Usage
+  </span>
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            Usage
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Quick Usage
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Model Source
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    CLI Tools
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Advanced CLI Parameters
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Output File Format
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Output File Format
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visual-debugging-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visual Debugging Files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visual Debugging Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layout-analysis-file-layoutpdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout Analysis File (layout.pdf)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-spans-file-spanspdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Text Spans File (spans.pdf)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structured-data-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Structured Data Files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Structured Data Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#model-inference-results-modeljson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Inference Results (model.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Inference Results (model.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#data-structure-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Structure Definition
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coordinate-system-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      Coordinate System Description
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vlm-output-results-model_outputtxt" class="md-nav__link">
+    <span class="md-ellipsis">
+      VLM Output Results (model_output.txt)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VLM Output Results (model_output.txt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-format-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      File Format Description
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-meanings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Field Meanings
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-content-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Content Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#special-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      Special Tags
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#intermediate-processing-results-middlejson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Intermediate Processing Results (middle.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Intermediate Processing Results (middle.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#top-level-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top-level Structure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#page-information-structure-pdf_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      Page Information Structure (pdf_info)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#block-structure-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Block Structure Hierarchy
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-1-block-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 1 Block Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-2-block-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 2 Block Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-2-block-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 2 Block Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#line-and-span-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Line and Span Structure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-list-content_listjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content List (content_list.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Content List (content_list.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#functionality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Functionality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-level-identification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Text Level Identification
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    FAQ
+  </span>
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            FAQ
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Demo
+  </span>
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            Demo
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Output File Format
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Output File Format
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      Overview
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#visual-debugging-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Visual Debugging Files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Visual Debugging Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#layout-analysis-file-layoutpdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout Analysis File (layout.pdf)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-spans-file-spanspdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      Text Spans File (spans.pdf)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structured-data-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      Structured Data Files
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Structured Data Files">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#model-inference-results-modeljson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Model Inference Results (model.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Model Inference Results (model.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#data-structure-definition" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data Structure Definition
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coordinate-system-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      Coordinate System Description
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vlm-output-results-model_outputtxt" class="md-nav__link">
+    <span class="md-ellipsis">
+      VLM Output Results (model_output.txt)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VLM Output Results (model_output.txt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#file-format-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      File Format Description
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#field-meanings" class="md-nav__link">
+    <span class="md-ellipsis">
+      Field Meanings
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-content-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Supported Content Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#special-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      Special Tags
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#intermediate-processing-results-middlejson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Intermediate Processing Results (middle.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Intermediate Processing Results (middle.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#top-level-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Top-level Structure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#page-information-structure-pdf_info" class="md-nav__link">
+    <span class="md-ellipsis">
+      Page Information Structure (pdf_info)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#block-structure-hierarchy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Block Structure Hierarchy
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-1-block-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 1 Block Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-2-block-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 2 Block Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#level-2-block-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Level 2 Block Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#line-and-span-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Line and Span Structure
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-list-content_listjson" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content List (content_list.json)
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Content List (content_list.json)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#functionality" class="md-nav__link">
+    <span class="md-ellipsis">
+      Functionality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#content-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      Content Types
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#text-level-identification" class="md-nav__link">
+    <span class="md-ellipsis">
+      Text Level Identification
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      Common Fields
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sample-data_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      Sample Data
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Summary
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    FAQ
+  </span>
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            FAQ
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  <span class="md-ellipsis">
+    Demo
+  </span>
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Demo
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<div><h1 id="mineru-output-files-documentation">MinerU Output Files Documentation</h1>
+<h2 id="overview">Overview</h2>
+<p>After executing the <code>mineru</code> command, in addition to the main markdown file output, multiple auxiliary files are generated for debugging, quality inspection, and further processing. These files include:</p>
+<ul>
+<li><strong>Visual debugging files</strong>: Help users intuitively understand the document parsing process and results</li>
+<li><strong>Structured data files</strong>: Contain detailed parsing data for secondary development</li>
+</ul>
+<p>The following sections provide detailed descriptions of each file's purpose and format.</p>
+<h2 id="visual-debugging-files">Visual Debugging Files</h2>
+<h3 id="layout-analysis-file-layoutpdf">Layout Analysis File (layout.pdf)</h3>
+<p><strong>File naming format</strong>: <code>{original_filename}_layout.pdf</code></p>
+<p><strong>Functionality</strong>:</p>
+<ul>
+<li>Visualizes layout analysis results for each page</li>
+<li>Numbers in the top-right corner of each detection box indicate reading order</li>
+<li>Different background colors distinguish different types of content blocks</li>
+</ul>
+<p><strong>Use cases</strong>:</p>
+<ul>
+<li>Check if layout analysis is correct</li>
+<li>Verify if reading order is reasonable</li>
+<li>Debug layout-related issues</li>
+</ul>
+<p><img alt="layout page example" src="../../images/layout_example.png"></p>
+<h3 id="text-spans-file-spanspdf">Text Spans File (spans.pdf)</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only applicable to pipeline backend</p>
+</div>
+<p><strong>File naming format</strong>: <code>{original_filename}_spans.pdf</code></p>
+<p><strong>Functionality</strong>:</p>
+<ul>
+<li>Uses different colored line boxes to annotate page content based on span type</li>
+<li>Used for quality inspection and issue troubleshooting</li>
+</ul>
+<p><strong>Use cases</strong>:</p>
+<ul>
+<li>Quickly troubleshoot text loss issues</li>
+<li>Check inline formula recognition</li>
+<li>Verify text segmentation accuracy</li>
+</ul>
+<p><img alt="span page example" src="../../images/spans_example.png"></p>
+<h2 id="structured-data-files">Structured Data Files</h2>
+<h3 id="model-inference-results-modeljson">Model Inference Results (model.json)</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only applicable to pipeline backend</p>
+</div>
+<p><strong>File naming format</strong>: <code>{original_filename}_model.json</code></p>
+<h4 id="data-structure-definition">Data Structure Definition</h4>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">pydantic</span> <span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+<span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">IntEnum</span>
+
+<span class="k">class</span> <span class="nc">CategoryType</span><span class="p">(</span><span class="n">IntEnum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Content category enumeration"""</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="mi">0</span>               <span class="c1"># Title</span>
+    <span class="n">plain_text</span> <span class="o">=</span> <span class="mi">1</span>          <span class="c1"># Text</span>
+    <span class="n">abandon</span> <span class="o">=</span> <span class="mi">2</span>             <span class="c1"># Including headers, footers, page numbers, and page annotations</span>
+    <span class="n">figure</span> <span class="o">=</span> <span class="mi">3</span>              <span class="c1"># Image</span>
+    <span class="n">figure_caption</span> <span class="o">=</span> <span class="mi">4</span>      <span class="c1"># Image caption</span>
+    <span class="n">table</span> <span class="o">=</span> <span class="mi">5</span>               <span class="c1"># Table</span>
+    <span class="n">table_caption</span> <span class="o">=</span> <span class="mi">6</span>       <span class="c1"># Table caption</span>
+    <span class="n">table_footnote</span> <span class="o">=</span> <span class="mi">7</span>      <span class="c1"># Table footnote</span>
+    <span class="n">isolate_formula</span> <span class="o">=</span> <span class="mi">8</span>     <span class="c1"># Interline formula</span>
+    <span class="n">formula_caption</span> <span class="o">=</span> <span class="mi">9</span>     <span class="c1"># Interline formula number</span>
+    <span class="n">embedding</span> <span class="o">=</span> <span class="mi">13</span>          <span class="c1"># Inline formula</span>
+    <span class="n">isolated</span> <span class="o">=</span> <span class="mi">14</span>           <span class="c1"># Interline formula</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="mi">15</span>               <span class="c1"># OCR recognition result</span>
+
+<span class="k">class</span> <span class="nc">PageInfo</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Page information"""</span>
+    <span class="n">page_no</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Page number, first page is 0"</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">height</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Page height"</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Page width"</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">ObjectInferenceResult</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Object recognition result"""</span>
+    <span class="n">category_id</span><span class="p">:</span> <span class="n">CategoryType</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Category"</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">poly</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Quadrilateral coordinates, format: [x0,y0,x1,y1,x2,y2,x3,y3]"</span><span class="p">)</span>
+    <span class="n">score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Confidence score of inference result"</span><span class="p">)</span>
+    <span class="n">latex</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"LaTeX parsing result"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+    <span class="n">html</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"HTML parsing result"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">PageInferenceResults</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Page inference results"""</span>
+    <span class="n">layout_dets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">ObjectInferenceResult</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Page recognition results"</span><span class="p">)</span>
+    <span class="n">page_info</span><span class="p">:</span> <span class="n">PageInfo</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Page metadata"</span><span class="p">)</span>
+
+<span class="c1"># Complete inference results</span>
+<span class="n">inference_result</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PageInferenceResults</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</code></pre></div>
+<h4 id="coordinate-system-description">Coordinate System Description</h4>
+<p><code>poly</code> coordinate format: <code>[x0, y0, x1, y1, x2, y2, x3, y3]</code></p>
+<ul>
+<li>Represents coordinates of top-left, top-right, bottom-right, bottom-left points respectively</li>
+<li>Coordinate origin is at the top-left corner of the page</li>
+</ul>
+<p><img alt="poly coordinate diagram" src="../../images/poly.png"></p>
+<h4 id="sample-data">Sample Data</h4>
+<div class="highlight"><pre><span></span><code><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"layout_dets"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"category_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"poly"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                    </span><span class="mf">99.1906967163086</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">100.3119125366211</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">730.3707885742188</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">100.3119125366211</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">730.3707885742188</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">245.81326293945312</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">99.1906967163086</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">245.81326293945312</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"score"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9999997615814209</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"page_info"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"page_no"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"height"</span><span class="p">:</span><span class="w"> </span><span class="mi">2339</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"width"</span><span class="p">:</span><span class="w"> </span><span class="mi">1654</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"layout_dets"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"category_id"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">"poly"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                    </span><span class="mf">99.13092803955078</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">2210.680419921875</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">497.3183898925781</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">2210.680419921875</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">497.3183898925781</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">2264.78076171875</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">99.13092803955078</span><span class="p">,</span>
+<span class="w">                    </span><span class="mf">2264.78076171875</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"score"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.9999997019767761</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"page_info"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"page_no"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"height"</span><span class="p">:</span><span class="w"> </span><span class="mi">2339</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"width"</span><span class="p">:</span><span class="w"> </span><span class="mi">1654</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+<h3 id="vlm-output-results-model_outputtxt">VLM Output Results (model_output.txt)</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only applicable to VLM backend</p>
+</div>
+<p><strong>File naming format</strong>: <code>{original_filename}_model_output.txt</code></p>
+<h4 id="file-format-description">File Format Description</h4>
+<ul>
+<li>Uses <code>----</code> to separate output results for each page</li>
+<li>Each page contains multiple text blocks starting with <code>&lt;|box_start|&gt;</code> and ending with <code>&lt;|md_end|&gt;</code></li>
+</ul>
+<h4 id="field-meanings">Field Meanings</h4>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Format</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bounding box</td>
+<td><code>&lt;\|box_start\|&gt;x0 y0 x1 y1&lt;\|box_end\|&gt;</code></td>
+<td>Quadrilateral coordinates (top-left, bottom-right points), coordinate values after scaling page to 1000×1000</td>
+</tr>
+<tr>
+<td>Type tag</td>
+<td><code>&lt;\|ref_start\|&gt;type&lt;\|ref_end\|&gt;</code></td>
+<td>Content block type identifier</td>
+</tr>
+<tr>
+<td>Content</td>
+<td><code>&lt;\|md_start\|&gt;markdown content&lt;\|md_end\|&gt;</code></td>
+<td>Markdown content of the block</td>
+</tr>
+</tbody>
+</table>
+<h4 id="supported-content-types">Supported Content Types</h4>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Text"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"title"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Title"</span><span class="p">,</span><span class="w"> </span>
+<span class="w">    </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Image"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"image_caption"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Image caption"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"image_footnote"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Image footnote"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"table"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Table"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"table_caption"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Table caption"</span><span class="p">,</span><span class="w"> </span>
+<span class="w">    </span><span class="nt">"table_footnote"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Table footnote"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"equation"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Interline formula"</span>
+<span class="p">}</span>
+</code></pre></div>
+<h4 id="special-tags">Special Tags</h4>
+<ul>
+<li><code>&lt;|txt_contd|&gt;</code>: Appears at the end of text, indicating that this text block can be connected with subsequent text blocks</li>
+<li>Table content uses <code>otsl</code> format and needs to be converted to HTML for rendering in Markdown</li>
+</ul>
+<h3 id="intermediate-processing-results-middlejson">Intermediate Processing Results (middle.json)</h3>
+<p><strong>File naming format</strong>: <code>{original_filename}_middle.json</code></p>
+<h4 id="top-level-structure">Top-level Structure</h4>
+<table>
+<thead>
+<tr>
+<th>Field Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pdf_info</code></td>
+<td><code>list[dict]</code></td>
+<td>Array of parsing results for each page</td>
+</tr>
+<tr>
+<td><code>_backend</code></td>
+<td><code>string</code></td>
+<td>Parsing mode: <code>pipeline</code> or <code>vlm</code></td>
+</tr>
+<tr>
+<td><code>_version_name</code></td>
+<td><code>string</code></td>
+<td>MinerU version number</td>
+</tr>
+</tbody>
+</table>
+<h4 id="page-information-structure-pdf_info">Page Information Structure (pdf_info)</h4>
+<table>
+<thead>
+<tr>
+<th>Field Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>preproc_blocks</code></td>
+<td>Unsegmented intermediate results after PDF preprocessing</td>
+</tr>
+<tr>
+<td><code>layout_bboxes</code></td>
+<td>Layout segmentation results, including layout direction and bounding boxes, sorted by reading order</td>
+</tr>
+<tr>
+<td><code>page_idx</code></td>
+<td>Page number, starting from 0</td>
+</tr>
+<tr>
+<td><code>page_size</code></td>
+<td>Page width and height <code>[width, height]</code></td>
+</tr>
+<tr>
+<td><code>_layout_tree</code></td>
+<td>Layout tree structure</td>
+</tr>
+<tr>
+<td><code>images</code></td>
+<td>Image block information list</td>
+</tr>
+<tr>
+<td><code>tables</code></td>
+<td>Table block information list</td>
+</tr>
+<tr>
+<td><code>interline_equations</code></td>
+<td>Interline formula block information list</td>
+</tr>
+<tr>
+<td><code>discarded_blocks</code></td>
+<td>Block information to be discarded</td>
+</tr>
+<tr>
+<td><code>para_blocks</code></td>
+<td>Content block results after segmentation</td>
+</tr>
+</tbody>
+</table>
+<h4 id="block-structure-hierarchy">Block Structure Hierarchy</h4>
+<div class="highlight"><pre><span></span><code>Level 1 blocks (table | image)
+└── Level 2 blocks
+    └── Lines
+        └── Spans
+</code></pre></div>
+<h4 id="level-1-block-fields">Level 1 Block Fields</h4>
+<table>
+<thead>
+<tr>
+<th>Field Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>Block type: <code>table</code> or <code>image</code></td>
+</tr>
+<tr>
+<td><code>bbox</code></td>
+<td>Rectangular box coordinates of the block <code>[x0, y0, x1, y1]</code></td>
+</tr>
+<tr>
+<td><code>blocks</code></td>
+<td>List of contained level 2 blocks</td>
+</tr>
+</tbody>
+</table>
+<h4 id="level-2-block-fields">Level 2 Block Fields</h4>
+<table>
+<thead>
+<tr>
+<th>Field Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>Block type (see table below)</td>
+</tr>
+<tr>
+<td><code>bbox</code></td>
+<td>Rectangular box coordinates of the block</td>
+</tr>
+<tr>
+<td><code>lines</code></td>
+<td>List of contained line information</td>
+</tr>
+</tbody>
+</table>
+<h4 id="level-2-block-types">Level 2 Block Types</h4>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image_body</code></td>
+<td>Image body</td>
+</tr>
+<tr>
+<td><code>image_caption</code></td>
+<td>Image caption text</td>
+</tr>
+<tr>
+<td><code>image_footnote</code></td>
+<td>Image footnote</td>
+</tr>
+<tr>
+<td><code>table_body</code></td>
+<td>Table body</td>
+</tr>
+<tr>
+<td><code>table_caption</code></td>
+<td>Table caption text</td>
+</tr>
+<tr>
+<td><code>table_footnote</code></td>
+<td>Table footnote</td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td>Text block</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>Title block</td>
+</tr>
+<tr>
+<td><code>index</code></td>
+<td>Index block</td>
+</tr>
+<tr>
+<td><code>list</code></td>
+<td>List block</td>
+</tr>
+<tr>
+<td><code>interline_equation</code></td>
+<td>Interline formula block</td>
+</tr>
+</tbody>
+</table>
+<h4 id="line-and-span-structure">Line and Span Structure</h4>
+<p><strong>Line fields</strong>:
+- <code>bbox</code>: Rectangular box coordinates of the line
+- <code>spans</code>: List of contained spans</p>
+<p><strong>Span fields</strong>:
+- <code>bbox</code>: Rectangular box coordinates of the span
+- <code>type</code>: Span type (<code>image</code>, <code>table</code>, <code>text</code>, <code>inline_equation</code>, <code>interline_equation</code>)
+- <code>content</code> | <code>img_path</code>: Text content or image path</p>
+<h4 id="sample-data_1">Sample Data</h4>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">"pdf_info"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"preproc_blocks"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                        </span><span class="mi">52</span><span class="p">,</span>
+<span class="w">                        </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                        </span><span class="mi">294</span><span class="p">,</span>
+<span class="w">                        </span><span class="mf">82.99800872802734</span>
+<span class="w">                    </span><span class="p">],</span>
+<span class="w">                    </span><span class="nt">"lines"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                        </span><span class="p">{</span>
+<span class="w">                            </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                </span><span class="mi">52</span><span class="p">,</span>
+<span class="w">                                </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                                </span><span class="mi">294</span><span class="p">,</span>
+<span class="w">                                </span><span class="mf">72.0000228881836</span>
+<span class="w">                            </span><span class="p">],</span>
+<span class="w">                            </span><span class="nt">"spans"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                </span><span class="p">{</span>
+<span class="w">                                    </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                        </span><span class="mf">54.0</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">296.2261657714844</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">72.0000228881836</span>
+<span class="w">                                    </span><span class="p">],</span>
+<span class="w">                                    </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dependent on the service headway and the reliability of the departure "</span><span class="p">,</span>
+<span class="w">                                    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">                                    </span><span class="nt">"score"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
+<span class="w">                                </span><span class="p">}</span>
+<span class="w">                            </span><span class="p">]</span>
+<span class="w">                        </span><span class="p">}</span>
+<span class="w">                    </span><span class="p">]</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">],</span>
+<span class="w">            </span><span class="nt">"layout_bboxes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">"layout_bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                        </span><span class="mi">52</span><span class="p">,</span>
+<span class="w">                        </span><span class="mi">61</span><span class="p">,</span>
+<span class="w">                        </span><span class="mi">294</span><span class="p">,</span>
+<span class="w">                        </span><span class="mi">731</span>
+<span class="w">                    </span><span class="p">],</span>
+<span class="w">                    </span><span class="nt">"layout_label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"V"</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">"sub_layout"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">],</span>
+<span class="w">            </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"page_size"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="mf">612.0</span><span class="p">,</span>
+<span class="w">                </span><span class="mf">792.0</span>
+<span class="w">            </span><span class="p">],</span>
+<span class="w">            </span><span class="nt">"_layout_tree"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"images"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"tables"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"interline_equations"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"discarded_blocks"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">            </span><span class="nt">"para_blocks"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                        </span><span class="mi">52</span><span class="p">,</span>
+<span class="w">                        </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                        </span><span class="mi">294</span><span class="p">,</span>
+<span class="w">                        </span><span class="mf">82.99800872802734</span>
+<span class="w">                    </span><span class="p">],</span>
+<span class="w">                    </span><span class="nt">"lines"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                        </span><span class="p">{</span>
+<span class="w">                            </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                </span><span class="mi">52</span><span class="p">,</span>
+<span class="w">                                </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                                </span><span class="mi">294</span><span class="p">,</span>
+<span class="w">                                </span><span class="mf">72.0000228881836</span>
+<span class="w">                            </span><span class="p">],</span>
+<span class="w">                            </span><span class="nt">"spans"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                </span><span class="p">{</span>
+<span class="w">                                    </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                                        </span><span class="mf">54.0</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">61.956024169921875</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">296.2261657714844</span><span class="p">,</span>
+<span class="w">                                        </span><span class="mf">72.0000228881836</span>
+<span class="w">                                    </span><span class="p">],</span>
+<span class="w">                                    </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dependent on the service headway and the reliability of the departure "</span><span class="p">,</span>
+<span class="w">                                    </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">                                    </span><span class="nt">"score"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
+<span class="w">                                </span><span class="p">}</span>
+<span class="w">                            </span><span class="p">]</span>
+<span class="w">                        </span><span class="p">}</span>
+<span class="w">                    </span><span class="p">]</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">]</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"_backend"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pipeline"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"_version_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"0.6.1"</span>
+<span class="p">}</span>
+</code></pre></div>
+<h3 id="content-list-content_listjson">Content List (content_list.json)</h3>
+<p><strong>File naming format</strong>: <code>{original_filename}_content_list.json</code></p>
+<h4 id="functionality">Functionality</h4>
+<p>This is a simplified version of <code>middle.json</code> that stores all readable content blocks in reading order as a flat structure, removing complex layout information for easier subsequent processing.</p>
+<h4 id="content-types">Content Types</h4>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image</code></td>
+<td>Image</td>
+</tr>
+<tr>
+<td><code>table</code></td>
+<td>Table</td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td>Text/Title</td>
+</tr>
+<tr>
+<td><code>equation</code></td>
+<td>Interline formula</td>
+</tr>
+</tbody>
+</table>
+<h4 id="text-level-identification">Text Level Identification</h4>
+<p>Text levels are distinguished through the <code>text_level</code> field:</p>
+<ul>
+<li>No <code>text_level</code> or <code>text_level: 0</code>: Body text</li>
+<li><code>text_level: 1</code>: Level 1 heading</li>
+<li><code>text_level: 2</code>: Level 2 heading</li>
+<li>And so on...</li>
+</ul>
+<h4 id="common-fields">Common Fields</h4>
+<p>All content blocks include a <code>page_idx</code> field indicating the page number (starting from 0).</p>
+<h4 id="sample-data_2">Sample Data</h4>
+<div class="highlight"><pre><span></span><code><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The response of flow duration curves to afforestation "</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text_level"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Received 1 October 2003; revised 22 December 2004; accepted 3 January 2005 "</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Abstract "</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text_level"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The hydrologic effect of replacing pasture or other short crops with trees is reasonably well understood on a mean annual basis. The impact on flow regime, as described by the annual flow duration curve (FDC) is less certain. A method to assess the impact of plantation establishment on FDCs was developed. The starting point for the analyses was the assumption that rainfall and vegetation age are the principal drivers of evapotranspiration. A key objective was to remove the variability in the rainfall signal, leaving changes in streamflow solely attributable to the evapotranspiration of the plantation. A method was developed to (1) fit a model to the observed annual time series of FDC percentiles; i.e. 10th percentile for each year of record with annual rainfall and plantation age as parameters, (2) replace the annual rainfall variation with the long term mean to obtain climate adjusted FDCs, and (3) quantify changes in FDC percentiles as plantations age. Data from 10 catchments from Australia, South Africa and New Zealand were used. The model was able to represent flow variation for the majority of percentiles at eight of the 10 catchments, particularly for the 10–50th percentiles. The adjusted FDCs revealed variable patterns in flow reductions with two types of responses (groups) being identified. Group 1 catchments show a substantial increase in the number of zero flow days, with low flows being more affected than high flows. Group 2 catchments show a more uniform reduction in flows across all percentiles. The differences may be partly explained by storage characteristics. The modelled flow reductions were in accord with published results of paired catchment experiments. An additional analysis was performed to characterise the impact of afforestation on the number of zero flow days $( N _ { \\mathrm { z e r o } } )$ for the catchments in group 1. This model performed particularly well, and when adjusted for climate, indicated a significant increase in $N _ { \\mathrm { z e r o } }$ . The zero flow day method could be used to determine change in the occurrence of any given flow in response to afforestation. The methods used in this study proved satisfactory in removing the rainfall variability, and have added useful insight into the hydrologic impacts of plantation establishment. This approach provides a methodology for understanding catchment response to afforestation, where paired catchment data is not available. "</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"text"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1. Introduction "</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text_level"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"image"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"img_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"images/a8ecda1c69b27e4f79fce1589175a9d721cbdc1cf78b4cc06a015f3746f6b9d8.jpg"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"img_caption"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"img_footnote"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"equation"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"img_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"images/181ea56ef185060d04bf4e274685f3e072e922e7b839f093d482c29bf89b71e8.jpg"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text"</span><span class="p">:</span><span class="w"> </span><span class="s2">"$$\nQ _ { \\% } = f ( P ) + g ( T )\n$$"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"text_format"</span><span class="p">:</span><span class="w"> </span><span class="s2">"latex"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"table"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"img_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"images/e3cb413394a475e555807ffdad913435940ec637873d673ee1b039e3bc3496d0.jpg"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"table_caption"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"Table 2 Significance of the rainfall and time terms "</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"table_footnote"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">"indicates that the rainfall term was significant at the $5 \\%$ level, $T$ indicates that the time term was significant at the $5 \\%$ level, \\* represents significance at the $10 \\%$ level, and na denotes too few data points for meaningful analysis. "</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">"table_body"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;html&gt;&lt;body&gt;&lt;table&gt;&lt;tr&gt;&lt;td rowspan=\"2\"&gt;Site&lt;/td&gt;&lt;td colspan=\"10\"&gt;Percentile&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;10&lt;/td&gt;&lt;td&gt;20&lt;/td&gt;&lt;td&gt;30&lt;/td&gt;&lt;td&gt;40&lt;/td&gt;&lt;td&gt;50&lt;/td&gt;&lt;td&gt;60&lt;/td&gt;&lt;td&gt;70&lt;/td&gt;&lt;td&gt;80&lt;/td&gt;&lt;td&gt;90&lt;/td&gt;&lt;td&gt;100&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Traralgon Ck&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P,*&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P,&lt;/td&gt;&lt;td&gt;P,&lt;/td&gt;&lt;td&gt;P,&lt;/td&gt;&lt;td&gt;P,&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Redhill&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;，*&lt;/td&gt;&lt;td&gt;**&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P,*&lt;/td&gt;&lt;td&gt;P*&lt;/td&gt;&lt;td&gt;P*&lt;/td&gt;&lt;td&gt;*&lt;/td&gt;&lt;td&gt;，*&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Pine Ck&lt;/td&gt;&lt;td&gt;&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;na&lt;/td&gt;&lt;td&gt;na&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Stewarts Ck 5&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;na&lt;/td&gt;&lt;td&gt;na&lt;/td&gt;&lt;td&gt;na&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Glendhu 2&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,*&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P,ns&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Cathedral Peak 2&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Cathedral Peak 3&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Lambrechtsbos A&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Lambrechtsbos B&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;Biesievlei&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P.T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;*,T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;td&gt;P,T&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/body&gt;&lt;/html&gt;"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">]</span>
+</code></pre></div>
+<h2 id="summary">Summary</h2>
+<p>The above files constitute MinerU's complete output results. Users can choose appropriate files for subsequent processing based on their needs:</p>
+<ul>
+<li><strong>Model outputs</strong>: Use raw outputs (model.json, model_output.txt)</li>
+<li><strong>Debugging and verification</strong>: Use visualization files (layout.pdf, spans.pdf) </li>
+<li><strong>Content extraction</strong>: Use simplified files (*.md, content_list.json)</li>
+<li><strong>Secondary development</strong>: Use structured files (middle.json)</li>
+</ul></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var tab,labels=set.querySelector(".tabbed-labels");for(tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12Z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../demo/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Demo">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Demo
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../faq/" class="md-footer__link md-footer__link--next" aria-label="Next: FAQ">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                FAQ
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4Z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M389.2 48h70.6L305.6 224.2 487 464H345L233.7 318.6 106.5 464H35.8l164.9-188.5L26.8 48h145.6l100.5 132.9L389.2 48zm-24.8 373.8h39.1L151.1 88h-42l255.3 333.8z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M524.531 69.836a1.5 1.5 0 0 0-.764-.7A485.065 485.065 0 0 0 404.081 32.03a1.816 1.816 0 0 0-1.923.91 337.461 337.461 0 0 0-14.9 30.6 447.848 447.848 0 0 0-134.426 0 309.541 309.541 0 0 0-15.135-30.6 1.89 1.89 0 0 0-1.924-.91 483.689 483.689 0 0 0-119.688 37.107 1.712 1.712 0 0 0-.788.676C39.068 183.651 18.186 294.69 28.43 404.354a2.016 2.016 0 0 0 .765 1.375 487.666 487.666 0 0 0 146.825 74.189 1.9 1.9 0 0 0 2.063-.676A348.2 348.2 0 0 0 208.12 430.4a1.86 1.86 0 0 0-1.019-2.588 321.173 321.173 0 0 1-45.868-21.853 1.885 1.885 0 0 1-.185-3.126 251.047 251.047 0 0 0 9.109-7.137 1.819 1.819 0 0 1 1.9-.256c96.229 43.917 200.41 43.917 295.5 0a1.812 1.812 0 0 1 1.924.233 234.533 234.533 0 0 0 9.132 7.16 1.884 1.884 0 0 1-.162 3.126 301.407 301.407 0 0 1-45.89 21.83 1.875 1.875 0 0 0-1 2.611 391.055 391.055 0 0 0 30.014 48.815 1.864 1.864 0 0 0 2.063.7A486.048 486.048 0 0 0 610.7 405.729a1.882 1.882 0 0 0 .765-1.352c12.264-126.783-20.532-236.912-86.934-334.541ZM222.491 337.58c-28.972 0-52.844-26.587-52.844-59.239s23.409-59.241 52.844-59.241c29.665 0 53.306 26.82 52.843 59.239 0 32.654-23.41 59.241-52.843 59.241Zm195.38 0c-28.971 0-52.843-26.587-52.843-59.239s23.409-59.241 52.843-59.241c29.667 0 53.307 26.82 52.844 59.239 0 32.654-23.177 59.241-52.844 59.241Z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="http://mineru.space/s/V85Yl" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.5.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154zm-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4zm-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2zM563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4zm-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6zm107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow", "toc.integrate"], "search": "../../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.1e8ae164.min.js"></script>
+      
+    
+  </body>
+</html>
