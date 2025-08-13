@@ -36,7 +36,7 @@ def test_pipeline_with_two_config():
         if doc_path.suffix in pdf_suffixes + image_suffixes:
             doc_path_list.append(doc_path)
 
-    os.environ["MINERU_MODEL_SOURCE"] = "local"
+    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
 
     pdf_file_names = []
     pdf_bytes_list = []
@@ -105,7 +105,7 @@ def test_vlm_transformers_with_default_config():
         if doc_path.suffix in pdf_suffixes + image_suffixes:
             doc_path_list.append(doc_path)
 
-    os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
+    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
 
     pdf_file_names = []
     pdf_bytes_list = []
