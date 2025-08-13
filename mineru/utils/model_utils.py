@@ -377,13 +377,19 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
                 layout_res.remove(res)
 
     # Remove filtered out tables from layout_res
+    # if len(filtered_table_res_list) < len(table_res_list):
+    #     kept_tables = set(id(table) for table in filtered_table_res_list)
+    #     to_remove = [table_indices[i] for i, table in enumerate(table_res_list)
+    #                  if id(table) not in kept_tables]
+    #
+    #     for idx in sorted(to_remove, reverse=True):
+    #         del layout_res[idx]
     if len(filtered_table_res_list) < len(table_res_list):
         kept_tables = set(id(table) for table in filtered_table_res_list)
-        to_remove = [table_indices[i] for i, table in enumerate(table_res_list)
-                     if id(table) not in kept_tables]
-
-        for idx in sorted(to_remove, reverse=True):
-            del layout_res[idx]
+        tables_to_remove = [table for table in table_res_list if id(table) not in kept_tables]
+        for table in tables_to_remove:
+            if table in layout_res:
+                layout_res.remove(table)
 
     # Remove overlaps in OCR and text regions
     text_res_list, need_remove = remove_overlaps_min_blocks(text_res_list)

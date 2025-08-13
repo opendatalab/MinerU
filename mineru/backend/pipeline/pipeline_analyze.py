@@ -1,7 +1,7 @@
 import os
 import time
 from typing import List, Tuple
-import PIL.Image
+from PIL import Image
 from loguru import logger
 
 from .model_init import MineruPipelineModel
@@ -148,10 +148,9 @@ def doc_analyze(
 
 
 def batch_image_analyze(
-        images_with_extra_info: List[Tuple[PIL.Image.Image, bool, str]],
+        images_with_extra_info: List[Tuple[Image.Image, bool, str]],
         formula_enable=True,
         table_enable=True):
-    # os.environ['CUDA_VISIBLE_DEVICES'] = str(idx)
 
     from .batch_analyze import BatchAnalyze
 

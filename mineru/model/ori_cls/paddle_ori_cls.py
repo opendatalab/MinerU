@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 
+from PIL import Image
 import cv2
 import numpy as np
 import onnxruntime
@@ -23,15 +24,13 @@ class PaddleOrientationClsModel:
         self.mean = [0.485, 0.456, 0.406]
         self.labels = ["0", "90", "180", "270"]
 
-    def preprocess(self, img):
-        # PIL图像转cv2
-        img = np.array(img)
+    def preprocess(self, input_img):
         # 放大图片，使其最短边长为256
-        h, w = img.shape[:2]
+        h, w = input_img.shape[:2]
         scale = 256 / min(h, w)
         h_resize = round(h * scale)
         w_resize = round(w * scale)
-        img = cv2.resize(img, (w_resize, h_resize), interpolation=1)
+        img = cv2.resize(input_img, (w_resize, h_resize), interpolation=1)
         # 调整为224*224的正方形
         h, w = img.shape[:2]
         cw, ch = 224, 224
@@ -62,8 +61,15 @@ class PaddleOrientationClsModel:
         x = np.stack(imgs, axis=0).astype(dtype=np.float32, copy=False)
         return x
 
-    def predict(self, img):
-        bgr_image = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+    def predict(self, input_img):
+        rotate_label = "0"  # Default to 0 if no rotation detected or not portrait
+        if isinstance(input_img, Image.Image):
+            np_img = np.asarray(input_img)
+        elif isinstance(input_img, np.ndarray):
+            np_img = input_img
+        else:
+            raise ValueError("Input must be a pillow object or a numpy array.")
+        bgr_image = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
         # First check the overall image aspect ratio (height/width)
         img_height, img_width = bgr_image.shape[:2]
         img_aspect_ratio = img_height / img_width if img_width > 0 else 1.0
@@ -99,16 +105,9 @@ class PaddleOrientationClsModel:
                 # If we have more vertical text boxes than horizontal ones,
                 # and vertical ones are significant, table might be rotated
                 if is_rotated:
-                    x = self.preprocess(img)
+                    x = self.preprocess(np_img)
                     (result,) = self.sess.run(None, {"x": x})
-                    label = self.labels[np.argmax(result)]
+                    rotate_label = self.labels[np.argmax(result)]
                     # logger.debug(f"Orientation classification result: {label}")
-                    if label == "270":
-                        rotation = cv2.ROTATE_90_CLOCKWISE
-                        img = cv2.rotate(np.asarray(img), rotation)
-                    elif label == "90":
-                        rotation = cv2.ROTATE_90_COUNTERCLOCKWISE
-                        img = cv2.rotate(np.asarray(img), rotation)
-                    else:
-                        pass
-        return img
+
+        return rotate_label

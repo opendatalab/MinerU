@@ -9,6 +9,7 @@ from .model_list import AtomicModel
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
+from ...utils.pdf_image_tools import get_crop_img
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
@@ -40,10 +41,7 @@ class BatchAnalyze:
         images = [image for image, _, _ in images_with_extra_info]
 
         # doclayout_yolo
-        layout_images = []
-        for image_index, image in enumerate(images):
-            layout_images.append(image)
-
+        layout_images = images.copy()
 
         images_layout_res += self.model.layout_model.batch_predict(
             layout_images, YOLO_LAYOUT_BASE_BATCH_SIZE
@@ -89,7 +87,14 @@ class BatchAnalyze:
                                           })
 
             for table_res in table_res_list:
-                table_img, _ = crop_img(table_res, pil_img)
+                # table_img, _ = crop_img(table_res, pil_img)
+                # bbox = (241, 208, 1475, 2019)
+                scale = 10/3
+                crop_xmin, crop_ymin = int(table_res['poly'][0]), int(table_res['poly'][1])
+                crop_xmax, crop_ymax = int(table_res['poly'][4]), int(table_res['poly'][5])
+                bbox = (int(crop_xmin/scale), int(crop_ymin/scale), int(crop_xmax/scale), int(crop_ymax/scale))
+                table_img = get_crop_img(bbox, pil_img, scale=scale)
+
                 table_res_list_all_page.append({'table_res':table_res,
                                                 'lang':_lang,
                                                 'table_img':table_img,
@@ -256,14 +261,22 @@ class BatchAnalyze:
                     atom_model_name=AtomicModel.ImgOrientationCls,
                 )
                 try:
-                    table_img = img_orientation_cls_model.predict(
+                    rotate_label = img_orientation_cls_model.predict(
                         table_res_dict["table_img"]
                     )
                 except Exception as e:
                     logger.warning(
                         f"Image orientation classification failed: {e}, using original image"
                     )
-                    table_img = table_res_dict["table_img"]
+                    rotate_label = "0"
+
+                np_table_img = np.asarray(table_res_dict["table_img"])
+                if rotate_label == "270":
+                    np_table_img = cv2.rotate(np_table_img, cv2.ROTATE_90_CLOCKWISE)
+                elif rotate_label == "90":
+                    np_table_img = cv2.rotate(np_table_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                else:
+                    pass
 
                 # 有线表/无线表分类
                 table_cls_model = atom_model_manager.get_atom_model(
@@ -271,7 +284,7 @@ class BatchAnalyze:
                 )
                 table_cls_score = 0.5
                 try:
-                    table_label, table_cls_score = table_cls_model.predict(table_img)
+                    table_label, table_cls_score = table_cls_model.predict(np_table_img)
                 except Exception as e:
                     table_label = AtomicModel.WirelessTable
                     logger.warning(
@@ -289,8 +302,7 @@ class BatchAnalyze:
                     atom_model_name=table_label,
                     lang=_lang,
                 )
-
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_img, table_cls_score)
+                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(np_table_img, table_cls_score)
                 # 判断是否返回正常
                 if html_code:
                     # 检查html_code是否包含'<table>'和'</table>'
