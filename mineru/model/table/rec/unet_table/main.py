@@ -94,7 +94,7 @@ class WiredTableRecognition:
             t_rec_ocr_list = self.transform_res(cell_box_det_map, polygons, logi_points)
             # 将每个单元格中的ocr识别结果排序和同行合并，输出的html能完整保留文字的换行格式
             t_rec_ocr_list = self.sort_and_gather_ocr_res(t_rec_ocr_list)
-            # cell_box_map =
+
             logi_points = [t_box_ocr["t_logic_box"] for t_box_ocr in t_rec_ocr_list]
             cell_box_det_map = {
                 i: [ocr_box_and_text[1] for ocr_box_and_text in t_box_ocr["t_ocr_res"]]

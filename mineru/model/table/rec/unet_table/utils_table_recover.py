@@ -292,7 +292,8 @@ def plot_html_table(
                     continue
                 if row == row_start and col == col_start:
                     ocr_rec_text = cell_box_map.get(i)
-                    text = "<br>".join(ocr_rec_text)
+                    # text = "<br>".join(ocr_rec_text)
+                    text = "".join(ocr_rec_text)
                     # 如果是起始单元格
                     row_span = row_end - row_start + 1
                     col_span = col_end - col_start + 1
