@@ -14,6 +14,7 @@ YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
+ORI_TAB_CLS_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
@@ -43,7 +44,6 @@ class BatchAnalyze:
         layout_images = []
         for image_index, image in enumerate(images):
             layout_images.append(image)
-
 
         images_layout_res += self.model.layout_model.batch_predict(
             layout_images, YOLO_LAYOUT_BASE_BATCH_SIZE
@@ -248,49 +248,52 @@ class BatchAnalyze:
 
         # 表格识别 table recognition
         if self.table_enable:
+            # 图片旋转批量处理
+
+            img_orientation_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.ImgOrientationCls,
+            )
+            try:
+                img_orientation_cls_model.batch_predict(table_res_list_all_page, atom_model_manager, AtomicModel.OCR, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+            except Exception as e:
+                logger.warning(
+                    f"Image orientation classification failed: {e}, using original image"
+                )
+            # 表格分类
+            table_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.TableCls,
+            )
+            try:
+                table_cls_model.batch_predict(table_res_list_all_page)
+            except Exception as e:
+                logger.warning(
+                    f"Table classification failed: {e}, using default model"
+                )
+            # 遍历表格，根据分类识别结构
             for table_res_dict in tqdm(table_res_list_all_page, desc="Table Predict"):
                 _lang = table_res_dict['lang']
-
-                # 调整图片方向
-                img_orientation_cls_model = atom_model_manager.get_atom_model(
-                    atom_model_name=AtomicModel.ImgOrientationCls,
-                )
-                try:
-                    table_img = img_orientation_cls_model.predict(
-                        table_res_dict["table_img"]
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Image orientation classification failed: {e}, using original image"
-                    )
-                    table_img = table_res_dict["table_img"]
-
-                # 有线表/无线表分类
-                table_cls_model = atom_model_manager.get_atom_model(
-                    atom_model_name=AtomicModel.TableCls,
-                )
                 table_cls_score = 0.5
                 try:
-                    table_label, table_cls_score = table_cls_model.predict(table_img)
+                    table_label, table_cls_score = table_res_dict['table_res']["cls_label"], table_res_dict['table_res']["cls_score"]
                 except Exception as e:
-                    table_label = AtomicModel.WirelessTable
                     logger.warning(
-                        f"Table classification failed: {e}, using default model {table_label}"
+                        f"Table classification failed: {e}, return error classification result: {table_res_dict}"
                     )
-                # table_label = AtomicModel.WirelessTable
-                # logger.debug(f"Table classification result: {table_label}")
-                if table_label not in [AtomicModel.WirelessTable, AtomicModel.WiredTable]:
+                    table_label = AtomicModel.WirelessTable
+                if table_label not in [
+                    AtomicModel.WirelessTable,
+                    AtomicModel.WiredTable,
+                ]:
                     raise ValueError(
                         "Table classification failed, please check the model"
                     )
-
                 # 根据表格分类结果选择有线表格识别模型和无线表格识别模型
                 table_model = atom_model_manager.get_atom_model(
                     atom_model_name=table_label,
                     lang=_lang,
                 )
 
-                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_img, table_cls_score)
+                html_code, table_cell_bboxes, logic_points, elapse = table_model.predict(table_res_dict["table_img"], table_cls_score)
                 # 判断是否返回正常
                 if html_code:
                     # 检查html_code是否包含'<table>'和'</table>'
