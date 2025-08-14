@@ -190,10 +190,14 @@ def batch_image_analyze(
             batch_ratio = 1
             logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_ratio}')
 
-    if str(device).startswith('mps'):
+    # 检测torch的版本号
+    import torch
+    from packaging import version
+    if version.parse(torch.__version__) >= version.parse("2.8.0") or str(device).startswith('mps'):
         enable_ocr_det_batch = False
     else:
         enable_ocr_det_batch = True
+
     batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable, enable_ocr_det_batch)
     results = batch_model(images_with_extra_info)
 
