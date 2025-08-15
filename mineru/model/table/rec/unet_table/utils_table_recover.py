@@ -1,33 +1,6 @@
 from typing import Any, Dict, List, Union, Tuple
 
 import numpy as np
-import shapely
-from shapely.geometry import MultiPoint, Polygon
-
-
-def sorted_boxes(dt_boxes: np.ndarray) -> np.ndarray:
-    """
-    Sort text boxes in order from top to bottom, left to right
-    args:
-        dt_boxes(array):detected text boxes with shape (N, 4, 2)
-    return:
-        sorted boxes(array) with shape (N, 4, 2)
-    """
-    num_boxes = dt_boxes.shape[0]
-    dt_boxes = sorted(dt_boxes, key=lambda x: (x[0][1], x[0][0]))
-    _boxes = list(dt_boxes)
-
-    # 解决相邻框，后边比前面y轴小，则会被排到前面去的问题
-    for i in range(num_boxes - 1):
-        for j in range(i, -1, -1):
-            if (
-                abs(_boxes[j + 1][0][1] - _boxes[j][0][1]) < 10
-                and _boxes[j + 1][0][0] < _boxes[j][0][0]
-            ):
-                _boxes[j], _boxes[j + 1] = _boxes[j + 1], _boxes[j]
-            else:
-                break
-    return np.array(_boxes)
 
 
 def calculate_iou(
@@ -61,6 +34,7 @@ def calculate_iou(
         # 检查完全包含
     iou = i_area / u_area
     return iou
+
 
 
 def is_box_contained(
@@ -111,7 +85,7 @@ def is_single_axis_contained(
     box1: Union[np.ndarray, List],
     box2: Union[np.ndarray, List],
     axis="x",
-    threshold: float = 0.2,
+    threhold: float = 0.2,
 ) -> Union[int, None]:
     """
     :param box1: Iterable [xmin,ymin,xmax,ymax]
@@ -136,15 +110,15 @@ def is_single_axis_contained(
 
     ratio_b1 = b1_outside_area / b1_area if b1_area > 0 else 0
     ratio_b2 = b2_outside_area / b2_area if b2_area > 0 else 0
-    if ratio_b1 < threshold:
+    if ratio_b1 < threhold:
         return 1
-    if ratio_b2 < threshold:
+    if ratio_b2 < threhold:
         return 2
     return None
 
 
 def sorted_ocr_boxes(
-    dt_boxes: Union[np.ndarray, list], threshold: float = 0.2
+    dt_boxes: Union[np.ndarray, list], threhold: float = 0.2
 ) -> Tuple[Union[np.ndarray, list], List[int]]:
     """
     Sort text boxes in order from top to bottom, left to right
@@ -161,24 +135,30 @@ def sorted_ocr_boxes(
     _boxes, indices = zip(*sorted_boxes_with_idx)
     indices = list(indices)
     _boxes = [dt_boxes[i] for i in indices]
+    threahold = 20
     # 避免输出和输入格式不对应，与函数功能不符合
     if isinstance(dt_boxes, np.ndarray):
         _boxes = np.array(_boxes)
     for i in range(num_boxes - 1):
         for j in range(i, -1, -1):
             c_idx = is_single_axis_contained(
-                _boxes[j], _boxes[j + 1], axis="y", threshold=threshold
+                _boxes[j], _boxes[j + 1], axis="y", threhold=threhold
             )
             if (
                 c_idx is not None
                 and _boxes[j + 1][0] < _boxes[j][0]
-                and abs(_boxes[j][1] - _boxes[j + 1][1]) < 20
+                and abs(_boxes[j][1] - _boxes[j + 1][1]) < threahold
             ):
                 _boxes[j], _boxes[j + 1] = _boxes[j + 1].copy(), _boxes[j].copy()
                 indices[j], indices[j + 1] = indices[j + 1], indices[j]
             else:
                 break
     return _boxes, indices
+
+
+def box_4_1_poly_to_box_4_2(poly_box: Union[list, np.ndarray]) -> List[List[float]]:
+    xmin, ymin, xmax, ymax = tuple(poly_box)
+    return [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]]
 
 
 def box_4_2_poly_to_box_4_1(poly_box: Union[list, np.ndarray]) -> List[Any]:
@@ -221,18 +201,12 @@ def match_ocr_cell(dt_rec_boxes: List[List[Union[Any, str]]], pred_bboxes: np.nd
     return matched, not_match_orc_boxes
 
 
-def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[Any]:
+def gather_ocr_list_by_row(ocr_list: List[Any], threhold: float = 0.2) -> List[Any]:
     """
-        Groups OCR results by row based on the vertical (y-axis) overlap of their bounding boxes.
-    Args:
-        ocr_list (List[Any]): A list of OCR results, where each item is a list containing a bounding box
-            in the format [xmin, ymin, xmax, ymax] and the recognized text.
-        threshold (float, optional): The threshold for determining if two boxes are in the same row,
-            based on their y-axis overlap. Default is 0.2.
-    Returns:
-        List[Any]: A new list of OCR results where texts in the same row are merged, and their bounding
-            boxes are updated to encompass the merged text.
+    :param ocr_list: [[[xmin,ymin,xmax,ymax], text]]
+    :return:
     """
+    threshold = 10
     for i in range(len(ocr_list)):
         if not ocr_list[i]:
             continue
@@ -245,11 +219,11 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[
             cur_box = cur[0]
             next_box = next[0]
             c_idx = is_single_axis_contained(
-                cur[0], next[0], axis="y", threshold=threshold
+                cur[0], next[0], axis="y", threhold=threhold
             )
             if c_idx:
                 dis = max(next_box[0] - cur_box[2], 0)
-                blank_str = int(dis / 10) * " "
+                blank_str = int(dis / threshold) * " "
                 cur[1] = cur[1] + blank_str + next[1]
                 xmin = min(cur_box[0], next_box[0])
                 xmax = max(cur_box[2], next_box[2])
@@ -262,93 +236,6 @@ def gather_ocr_list_by_row(ocr_list: List[Any], threshold: float = 0.2) -> List[
                 ocr_list[j] = None
     ocr_list = [x for x in ocr_list if x]
     return ocr_list
-
-
-def compute_poly_iou(a: np.ndarray, b: np.ndarray) -> float:
-    """计算两个多边形的IOU
-
-    Args:
-        poly1 (np.ndarray): (4, 2)
-        poly2 (np.ndarray): (4, 2)
-
-    Returns:
-        float: iou
-    """
-    poly1 = Polygon(a).convex_hull
-    poly2 = Polygon(b).convex_hull
-
-    union_poly = np.concatenate((a, b))
-
-    if not poly1.intersects(poly2):
-        return 0.0
-
-    try:
-        inter_area = poly1.intersection(poly2).area
-        union_area = MultiPoint(union_poly).convex_hull.area
-    except shapely.geos.TopologicalError:
-        print("shapely.geos.TopologicalError occured, iou set to 0")
-        return 0.0
-
-    if union_area == 0:
-        return 0.0
-
-    return float(inter_area) / union_area
-
-
-def merge_adjacent_polys(polygons: np.ndarray) -> np.ndarray:
-    """合并相邻iou大于阈值的框"""
-    combine_iou_thresh = 0.1
-    pair_polygons = list(zip(polygons, polygons[1:, ...]))
-    pair_ious = np.array([compute_poly_iou(p1, p2) for p1, p2 in pair_polygons])
-    idxs = np.argwhere(pair_ious >= combine_iou_thresh)
-
-    if idxs.size <= 0:
-        return polygons
-
-    polygons = combine_two_poly(polygons, idxs)
-
-    # 注意：递归调用
-    polygons = merge_adjacent_polys(polygons)
-    return polygons
-
-
-def combine_two_poly(polygons: np.ndarray, idxs: np.ndarray) -> np.ndarray:
-    del_idxs, insert_boxes = [], []
-    idxs = idxs.squeeze(-1)
-    for idx in idxs:
-        # idx 和 idx + 1 是重合度过高的
-        # 合并，取两者各个点的最大值
-        new_poly = []
-        pre_poly, pos_poly = polygons[idx], polygons[idx + 1]
-
-        # 四个点，每个点逐一比较
-        new_poly.append(np.minimum(pre_poly[0], pos_poly[0]))
-
-        x_2 = min(pre_poly[1][0], pos_poly[1][0])
-        y_2 = max(pre_poly[1][1], pos_poly[1][1])
-        new_poly.append([x_2, y_2])
-
-        # 第3个点
-        new_poly.append(np.maximum(pre_poly[2], pos_poly[2]))
-
-        # 第4个点
-        x_4 = max(pre_poly[3][0], pos_poly[3][0])
-        y_4 = min(pre_poly[3][1], pos_poly[3][1])
-        new_poly.append([x_4, y_4])
-
-        new_poly = np.array(new_poly)
-
-        # 删除已经合并的两个框，插入新的框
-        del_idxs.extend([idx, idx + 1])
-        insert_boxes.append(new_poly)
-
-    # 整合合并后的框
-    polygons = np.delete(polygons, del_idxs, axis=0)
-
-    insert_boxes = np.array(insert_boxes)
-    polygons = np.append(polygons, insert_boxes, axis=0)
-    polygons = sorted_boxes(polygons)
-    return polygons
 
 
 def plot_html_table(
@@ -405,7 +292,8 @@ def plot_html_table(
                     continue
                 if row == row_start and col == col_start:
                     ocr_rec_text = cell_box_map.get(i)
-                    text = "<br>".join(ocr_rec_text)
+                    # text = "<br>".join(ocr_rec_text)
+                    text = "".join(ocr_rec_text)
                     # 如果是起始单元格
                     row_span = row_end - row_start + 1
                     col_span = col_end - col_start + 1
@@ -418,3 +306,6 @@ def plot_html_table(
 
     table_html += "</table></body></html>"
     return table_html
+
+
+
