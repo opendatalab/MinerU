@@ -182,9 +182,13 @@ class WiredTableRecognition:
                 logger.warning(f"No OCR engine provided for box {i}: {box}")
                 continue
             # 从img中截取对应的区域
-            x1, y1, x2, y2 = box[0][0], box[0][1], box[2][0], box[2][1]
+            x1, y1, x2, y2 = int(box[0][0]), int(box[0][1]), int(box[2][0]), int(box[2][1])
             if x1 >= x2 or y1 >= y2:
                 logger.warning(f"Invalid box coordinates: {box}")
+                continue
+            # 判断长宽比
+            if (x2 - x1) / (y2 - y1) > 20 or (y2 - y1) / (x2 - x1) > 20:
+                logger.warning(f"Box {i} has invalid aspect ratio: {x1, y1, x2, y2}")
                 continue
             img_crop = bgr_img[int(y1):int(y2), int(x1):int(x2)]
             img_crop_list.append(img_crop)
