@@ -230,16 +230,22 @@ def remove_overlaps_min_blocks(res_list):
                     res_to_remove = res_list[j]
                     large_res = res_list[i]
 
-                if res_to_remove is not None and res_to_remove not in need_remove:
-                    # 更新大块的边界为两者的并集
-                    x1, y1, x2, y2 = large_res['bbox']
-                    sx1, sy1, sx2, sy2 = res_to_remove['bbox']
-                    x1 = min(x1, sx1)
-                    y1 = min(y1, sy1)
-                    x2 = max(x2, sx2)
-                    y2 = max(y2, sy2)
-                    large_res['bbox'] = [x1, y1, x2, y2]
-                    need_remove.append(res_to_remove)
+                if res_to_remove['score'] < large_res['score']:
+                    # 如果小块的分数低于大块，则小块为需要移除的块
+                    if res_to_remove is not None and res_to_remove not in need_remove:
+                        # 更新大块的边界为两者的并集
+                        x1, y1, x2, y2 = large_res['bbox']
+                        sx1, sy1, sx2, sy2 = res_to_remove['bbox']
+                        x1 = min(x1, sx1)
+                        y1 = min(y1, sy1)
+                        x2 = max(x2, sx2)
+                        y2 = max(y2, sy2)
+                        large_res['bbox'] = [x1, y1, x2, y2]
+                        need_remove.append(res_to_remove)
+                else:
+                    # 如果大块的分数低于小块，则大块为需要移除的块, 这时不需要更新小块的边界
+                    if large_res is not None and large_res not in need_remove:
+                        need_remove.append(large_res)
 
     # 从列表中移除标记的元素
     for res in need_remove:
