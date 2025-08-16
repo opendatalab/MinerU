@@ -2,11 +2,12 @@ import uuid
 import os
 import uvicorn
 import click
+import zipfile
 from pathlib import Path
 from glob import glob
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 from loguru import logger
 from base64 import b64encode
@@ -48,6 +49,7 @@ async def parse_pdf(
         return_model_output: bool = Form(False),
         return_content_list: bool = Form(False),
         return_images: bool = Form(False),
+        response_format_zip: bool = Form(False),
         start_page_id: int = Form(0),
         end_page_id: int = Form(99999),
 ):
@@ -121,45 +123,96 @@ async def parse_pdf(
             **config
         )
 
-        # 构建结果路径
-        result_dict = {}
-        for pdf_name in pdf_file_names:
-            result_dict[pdf_name] = {}
-            data = result_dict[pdf_name]
-
-            if backend.startswith("pipeline"):
-                parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
-            else:
-                parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
-
-            if os.path.exists(parse_dir):
-                if return_md:
-                    data["md_content"] = get_infer_result(".md", pdf_name, parse_dir)
-                if return_middle_json:
-                    data["middle_json"] = get_infer_result("_middle.json", pdf_name, parse_dir)
-                if return_model_output:
+        # 根据 response_format_zip 决定返回类型
+        if response_format_zip:
+            # 打包结果为 zip 并返回
+            zip_path = os.path.join(unique_dir, "results.zip")
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for pdf_name in pdf_file_names:
                     if backend.startswith("pipeline"):
-                        data["model_output"] = get_infer_result("_model.json", pdf_name, parse_dir)
+                        parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
                     else:
-                        data["model_output"] = get_infer_result("_model_output.txt", pdf_name, parse_dir)
-                if return_content_list:
-                    data["content_list"] = get_infer_result("_content_list.json", pdf_name, parse_dir)
-                if return_images:
-                    image_paths = glob(f"{parse_dir}/images/*.jpg")
-                    data["images"] = {
-                        os.path.basename(
-                            image_path
-                        ): f"data:image/jpeg;base64,{encode_image(image_path)}"
-                        for image_path in image_paths
-                    }
-        return JSONResponse(
-            status_code=200,
-            content={
-                "backend": backend,
-                "version": __version__,
-                "results": result_dict
-            }
-        )
+                        parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
+
+                    if not os.path.exists(parse_dir):
+                        continue
+
+                    # 写入文本类结果（按需）
+                    if return_md:
+                        path = os.path.join(parse_dir, f"{pdf_name}.md")
+                        if os.path.exists(path):
+                            zf.write(path, arcname=os.path.join(pdf_name, f"{pdf_name}.md"))
+
+                    if return_middle_json:
+                        path = os.path.join(parse_dir, f"{pdf_name}_middle.json")
+                        if os.path.exists(path):
+                            zf.write(path, arcname=os.path.join(pdf_name, f"{pdf_name}_middle.json"))
+
+                    if return_model_output:
+                        if backend.startswith("pipeline"):
+                            path = os.path.join(parse_dir, f"{pdf_name}_model.json")
+                        else:
+                            path = os.path.join(parse_dir, f"{pdf_name}_model_output.txt")
+                        if os.path.exists(path):
+                            zf.write(path, arcname=os.path.join(pdf_name, os.path.basename(path)))
+
+                    if return_content_list:
+                        path = os.path.join(parse_dir, f"{pdf_name}_content_list.json")
+                        if os.path.exists(path):
+                            zf.write(path, arcname=os.path.join(pdf_name, f"{pdf_name}_content_list.json"))
+
+                    # 写入图片（按需）
+                    if return_images:
+                        image_paths = glob(f"{parse_dir}/images/*.jpg")
+                        for image_path in image_paths:
+                            zf.write(image_path, arcname=os.path.join(pdf_name, "images", os.path.basename(image_path)))
+
+            return FileResponse(
+                zip_path,
+                media_type="application/zip",
+                filename="results.zip",
+            )
+        else:
+            # 构建 JSON 结果
+            result_dict = {}
+            for pdf_name in pdf_file_names:
+                result_dict[pdf_name] = {}
+                data = result_dict[pdf_name]
+
+                if backend.startswith("pipeline"):
+                    parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
+                else:
+                    parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
+
+                if os.path.exists(parse_dir):
+                    if return_md:
+                        data["md_content"] = get_infer_result(".md", pdf_name, parse_dir)
+                    if return_middle_json:
+                        data["middle_json"] = get_infer_result("_middle.json", pdf_name, parse_dir)
+                    if return_model_output:
+                        if backend.startswith("pipeline"):
+                            data["model_output"] = get_infer_result("_model.json", pdf_name, parse_dir)
+                        else:
+                            data["model_output"] = get_infer_result("_model_output.txt", pdf_name, parse_dir)
+                    if return_content_list:
+                        data["content_list"] = get_infer_result("_content_list.json", pdf_name, parse_dir)
+                    if return_images:
+                        image_paths = glob(f"{parse_dir}/images/*.jpg")
+                        data["images"] = {
+                            os.path.basename(
+                                image_path
+                            ): f"data:image/jpeg;base64,{encode_image(image_path)}"
+                            for image_path in image_paths
+                        }
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "backend": backend,
+                    "version": __version__,
+                    "results": result_dict
+                }
+            )
     except Exception as e:
         logger.exception(e)
         return JSONResponse(
