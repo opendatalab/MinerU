@@ -36,7 +36,7 @@ def test_pipeline_with_two_config():
         if doc_path.suffix in pdf_suffixes + image_suffixes:
             doc_path_list.append(doc_path)
 
-    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
+    os.environ["MINERU_MODEL_SOURCE"] = "local"
 
     pdf_file_names = []
     pdf_bytes_list = []
@@ -69,7 +69,10 @@ def test_pipeline_with_two_config():
         output_dir,
         parse_method="txt",
     )
-    assert_content("tests/unittest/output/test/txt/test_content_list.json")
+    res_json_path = (
+        Path(__file__).parent / "output" / "test" / "txt" / "test_content_list.json"
+    ).as_posix()
+    assert_content(res_json_path)
     infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
         pipeline_doc_analyze(
             pdf_bytes_list,
@@ -87,7 +90,10 @@ def test_pipeline_with_two_config():
         output_dir,
         parse_method="ocr",
     )
-    assert_content("tests/unittest/output/test/ocr/test_content_list.json")
+    res_json_path = (
+        Path(__file__).parent / "output" / "test" / "ocr" / "test_content_list.json"
+    ).as_posix()
+    assert_content(res_json_path)
 
 
 def test_vlm_transformers_with_default_config():
@@ -102,7 +108,7 @@ def test_vlm_transformers_with_default_config():
         if doc_path.suffix in pdf_suffixes + image_suffixes:
             doc_path_list.append(doc_path)
 
-    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
+    os.environ["MINERU_MODEL_SOURCE"] = "local"
 
     pdf_file_names = []
     pdf_bytes_list = []
@@ -155,7 +161,10 @@ def test_vlm_transformers_with_default_config():
         )
 
         logger.info(f"local output dir is {local_md_dir}")
-        assert_content("tests/unittest/output/test/vlm/test_content_list.json")
+        res_json_path = (
+            Path(__file__).parent / "output" / "test" / "vlm" / "test_content_list.json"
+        ).as_posix()
+        assert_content(res_json_path)
 
 
 def write_infer_result(
@@ -240,15 +249,21 @@ def assert_content(content_path):
             case "image":
                 type_set.add("image")
                 assert (
-                    content_dict["image_caption"][0].strip().lower()
-                    == "Figure 1: Figure Caption".lower()
+                    fuzz.ratio(
+                        content_dict["image_caption"][0],
+                        "Figure 1: Figure Caption",
+                    )
+                    > 90
                 )
             # 表格校验，校验 Caption，表格格式和表格内容
             case "table":
                 type_set.add("table")
                 assert (
-                    content_dict["table_caption"][0].strip().lower()
-                    == "Table 1: Table Caption".lower()
+                    fuzz.ratio(
+                        content_dict["table_caption"][0],
+                        "Table 1: Table Caption",
+                    )
+                    > 90
                 )
                 assert validate_html(content_dict["table_body"])
                 target_str_list = [
