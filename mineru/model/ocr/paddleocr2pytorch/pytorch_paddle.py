@@ -89,7 +89,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
-        kwargs['rec_batch_num'] = 16
+        kwargs['rec_batch_num'] = 8
 
         kwargs['device'] = device
 

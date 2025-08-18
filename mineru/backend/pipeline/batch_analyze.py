@@ -9,6 +9,7 @@ from .model_list import AtomicModel
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
+from ...utils.pdf_image_tools import get_crop_img
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
@@ -41,9 +42,7 @@ class BatchAnalyze:
         images = [image for image, _, _ in images_with_extra_info]
 
         # doclayout_yolo
-        layout_images = []
-        for image_index, image in enumerate(images):
-            layout_images.append(image)
+        layout_images = images.copy()
 
         images_layout_res += self.model.layout_model.batch_predict(
             layout_images, YOLO_LAYOUT_BASE_BATCH_SIZE
@@ -89,7 +88,14 @@ class BatchAnalyze:
                                           })
 
             for table_res in table_res_list:
-                table_img, _ = crop_img(table_res, pil_img)
+                # table_img, _ = crop_img(table_res, pil_img)
+                # bbox = (241, 208, 1475, 2019)
+                scale = 10/3
+                crop_xmin, crop_ymin = int(table_res['poly'][0]), int(table_res['poly'][1])
+                crop_xmax, crop_ymax = int(table_res['poly'][4]), int(table_res['poly'][5])
+                bbox = (int(crop_xmin/scale), int(crop_ymin/scale), int(crop_xmax/scale), int(crop_ymax/scale))
+                table_img = get_crop_img(bbox, pil_img, scale=scale)
+
                 table_res_list_all_page.append({'table_res':table_res,
                                                 'lang':_lang,
                                                 'table_img':table_img,
@@ -140,14 +146,17 @@ class BatchAnalyze:
                 )
 
                 # 按分辨率分组并同时完成padding
+                # RESOLUTION_GROUP_STRIDE = 32
+                RESOLUTION_GROUP_STRIDE = 64  # 定义分辨率分组的步进值
+
                 resolution_groups = defaultdict(list)
                 for crop_info in lang_crop_list:
                     cropped_img = crop_info[0]
                     h, w = cropped_img.shape[:2]
                     # 使用更大的分组容差，减少分组数量
                     # 将尺寸标准化到32的倍数
-                    normalized_h = ((h + 32) // 32) * 32  # 向上取整到32的倍数
-                    normalized_w = ((w + 32) // 32) * 32
+                    normalized_h = ((h + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE  # 向上取整到32的倍数
+                    normalized_w = ((w + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
                     group_key = (normalized_h, normalized_w)
                     resolution_groups[group_key].append(crop_info)
 
@@ -157,8 +166,8 @@ class BatchAnalyze:
                     # 计算目标尺寸（组内最大尺寸，向上取整到32的倍数）
                     max_h = max(crop_info[0].shape[0] for crop_info in group_crops)
                     max_w = max(crop_info[0].shape[1] for crop_info in group_crops)
-                    target_h = ((max_h + 32 - 1) // 32) * 32
-                    target_w = ((max_w + 32 - 1) // 32) * 32
+                    target_h = ((max_h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+                    target_w = ((max_w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
 
                     # 对所有图像进行padding到统一尺寸
                     batch_images = []
@@ -287,6 +296,7 @@ class BatchAnalyze:
                     raise ValueError(
                         "Table classification failed, please check the model"
                     )
+
                 # 根据表格分类结果选择有线表格识别模型和无线表格识别模型
                 table_model = atom_model_manager.get_atom_model(
                     atom_model_name=table_label,

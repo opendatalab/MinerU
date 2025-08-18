@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from PIL import Image
 import cv2
 import numpy as np
 import onnxruntime
@@ -23,15 +24,13 @@ class PaddleTableClsModel:
         self.mean = [0.485, 0.456, 0.406]
         self.labels = [AtomicModel.WiredTable, AtomicModel.WirelessTable]
 
-    def preprocess(self, img):
-        # PIL图像转cv2
-        img = np.array(img)
+    def preprocess(self, input_img):
         # 放大图片，使其最短边长为256
-        h, w = img.shape[:2]
+        h, w = input_img.shape[:2]
         scale = 256 / min(h, w)
         h_resize = round(h * scale)
         w_resize = round(w * scale)
-        img = cv2.resize(img, (w_resize, h_resize), interpolation=1)
+        img = cv2.resize(input_img, (w_resize, h_resize), interpolation=1)
         # 调整为224*224的正方形
         h, w = img.shape[:2]
         cw, ch = 224, 224
@@ -61,6 +60,22 @@ class PaddleTableClsModel:
         imgs = [img]
         x = np.stack(imgs, axis=0).astype(dtype=np.float32, copy=False)
         return x
+
+    def predict(self, input_img):
+        if isinstance(input_img, Image.Image):
+            np_img = np.asarray(input_img)
+        elif isinstance(input_img, np.ndarray):
+            np_img = input_img
+        else:
+            raise ValueError("Input must be a pillow object or a numpy array.")
+        x = self.preprocess(np_img)
+        result = self.sess.run(None, {"x": x})
+        idx = np.argmax(result)
+        conf = float(np.max(result))
+        # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
+        if idx == 0 and conf < 0.8:
+            idx = 1
+        return self.labels[idx], conf
 
     def list_2_batch(self, img_list, batch_size=16):
         """
@@ -120,17 +135,6 @@ class PaddleTableClsModel:
             res_imgs.append(img)
         x = np.stack(res_imgs, axis=0).astype(dtype=np.float32, copy=False)
         return x
-
-    def predict(self, img):
-        x = self.preprocess(img)
-        result = self.sess.run(None, {"x": x})
-        idx = np.argmax(result)
-        conf = float(np.max(result))
-        # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-        if idx == 0 and conf < 0.8:
-            idx = 1
-        return self.labels[idx], conf
-
     def batch_predict(self, img_info_list, batch_size=16):
         imgs = [item["table_img"] for item in img_info_list]
         imgs = self.list_2_batch(imgs, batch_size=batch_size)
