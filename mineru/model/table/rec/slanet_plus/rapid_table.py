@@ -3,7 +3,7 @@ import html
 import cv2
 import numpy as np
 from loguru import logger
-from rapid_table import RapidTable, RapidTableInput
+from .main import RapidTable, RapidTableInput
 
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
