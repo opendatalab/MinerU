@@ -31,7 +31,7 @@ from onnxruntime import (
     get_device,
 )
 
-from rapid_table.utils import Logger
+from loguru import logger
 
 
 class EP(Enum):
@@ -42,7 +42,7 @@ class EP(Enum):
 
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
-        self.logger = Logger(logger_name=__name__).get_log()
+        self.logger = logger
 
         model_path = config.get("model_path", None)
         self._verify_model(model_path)

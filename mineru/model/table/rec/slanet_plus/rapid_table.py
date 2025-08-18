@@ -1,5 +1,7 @@
 import os
 import html
+from typing import List
+
 import cv2
 import numpy as np
 from loguru import logger
@@ -20,7 +22,6 @@ class RapidTableModel(object):
         input_args = RapidTableInput(model_type='slanet_plus', model_path=slanet_plus_model_path)
         self.table_model = RapidTable(input_args)
         self.ocr_engine = ocr_engine
-
 
     def predict(self, image, table_cls_score):
         bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
@@ -44,3 +45,7 @@ class RapidTableModel(object):
                 logger.exception(e)
 
         return None, None, None, None
+
+    def batch_predict(self, images: List[np.ndarray], batch_size: int = 1):
+        # TODO: ocr也需要batch
+        pass

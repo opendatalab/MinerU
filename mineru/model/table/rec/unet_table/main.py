@@ -10,7 +10,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
-from rapid_table import RapidTableInput, RapidTable
+from  ..slanet_plus.rapid_table import RapidTableInput, RapidTable
 
 from .table_structure_unet import TSRUnet
 
