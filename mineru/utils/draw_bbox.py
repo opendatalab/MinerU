@@ -381,6 +381,87 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         output_pdf.write(f)
 
 
+def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
+    layout_bbox_list = []
+
+    for page in pdf_info:
+        page_line_list = []
+        for block in page['preproc_blocks']:
+            if block['type'] in [BlockType.TEXT]:
+                for line in block['lines']:
+                    bbox = line['bbox']
+                    index = line['index']
+                    page_line_list.append({'index': index, 'bbox': bbox})
+            elif block['type'] in [BlockType.TITLE, BlockType.INTERLINE_EQUATION]:
+                if 'virtual_lines' in block:
+                    if len(block['virtual_lines']) > 0 and block['virtual_lines'][0].get('index', None) is not None:
+                        for line in block['virtual_lines']:
+                            bbox = line['bbox']
+                            index = line['index']
+                            page_line_list.append({'index': index, 'bbox': bbox})
+                else:
+                    for line in block['lines']:
+                        bbox = line['bbox']
+                        index = line['index']
+                        page_line_list.append({'index': index, 'bbox': bbox})
+            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE]:
+                for sub_block in block['blocks']:
+                    if sub_block['type'] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY]:
+                        if len(sub_block['virtual_lines']) > 0 and sub_block['virtual_lines'][0].get('index', None) is not None:
+                            for line in sub_block['virtual_lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
+                        else:
+                            for line in sub_block['lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
+                    elif sub_block['type'] in [BlockType.IMAGE_CAPTION, BlockType.TABLE_CAPTION, BlockType.IMAGE_FOOTNOTE, BlockType.TABLE_FOOTNOTE]:
+                        for line in sub_block['lines']:
+                            bbox = line['bbox']
+                            index = line['index']
+                            page_line_list.append({'index': index, 'bbox': bbox})
+        sorted_bboxes = sorted(page_line_list, key=lambda x: x['index'])
+        layout_bbox_list.append(sorted_bbox['bbox'] for sorted_bbox in sorted_bboxes)
+    pdf_bytes_io = BytesIO(pdf_bytes)
+    pdf_docs = PdfReader(pdf_bytes_io)
+    output_pdf = PdfWriter()
+
+    for i, page in enumerate(pdf_docs.pages):
+        # 获取原始页面尺寸
+        page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
+        custom_page_size = (page_width, page_height)
+
+        packet = BytesIO()
+        # 使用原始PDF的尺寸创建canvas
+        c = canvas.Canvas(packet, pagesize=custom_page_size)
+
+        # 获取当前页面的数据
+        draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False)
+
+        c.save()
+        packet.seek(0)
+        overlay_pdf = PdfReader(packet)
+
+        # 添加检查确保overlay_pdf.pages不为空
+        if len(overlay_pdf.pages) > 0:
+            new_page = PageObject(pdf=None)
+            new_page.update(page)
+            page = new_page
+            page.merge_page(overlay_pdf.pages[0])
+        else:
+            # 记录日志并继续处理下一个页面
+            # logger.warning(f"span.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            pass
+
+        output_pdf.add_page(page)
+
+    # Save the PDF
+    with open(f"{out_path}/{filename}", "wb") as f:
+        output_pdf.write(f)
+
+
 if __name__ == "__main__":
     # 读取PDF文件
     pdf_path = "examples/demo1.pdf"
