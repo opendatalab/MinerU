@@ -25,7 +25,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "requests",
     "httpx",
-    "pillow>=11.0.0",
+    "pillow>=10.2.0,<11.0.0",
     "pypdfium2>=4.30.0",
     "pypdf>=5.6.0",
     "reportlab",
@@ -35,6 +35,22 @@ dependencies = [
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
     "fast-langdetect>=0.2.3,<0.3.0",
+    "gradio>=5.42.0",
+    "gradio-pdf>=0.0.22",
+    "torch>=2.7.1",
+    "doclayout-yolo>=0.0.4",
+    "ultralytics>=8.3.179",
+    "rapid-table>=1.0.5",
+    "tokenizers>=0.21.4",
+    "openai>=1.99.9",
+    "dill>=0.3.8",
+    "shapely>=2.1.1",
+    "pyclipper>=1.3.0.post6",
+    "omegaconf>=2.3.0",
+    "transformers>=4.53.2",
+    "ftfy>=6.3.1",
+    "surya-ocr",
+    "pymupdf>=1.26.3",
 ]
 
 [project.optional-dependencies]
@@ -89,23 +105,6 @@ core = [
 all = [
     "mineru[core]",
     "mineru[sglang]",
-]
-pipeline_old_linux = [
-    "matplotlib>=3.10,<=3.10.1",
-    "ultralytics>=8.3.48,<=8.3.104",
-    "doclayout_yolo==0.0.4",
-    "dill==0.3.8",
-    "PyYAML==6.0.2",
-    "ftfy==6.3.1",
-    "openai==1.71.0",
-    "shapely==2.1.0",
-    "pyclipper==1.3.0.post6",
-    "omegaconf==2.3.0",
-    "albumentations==1.4.20",
-    "rapid_table==1.0.3",
-    "torch>=2.2.2,!=2.5.0,!=2.5.1,<3",
-    "torchvision",
-    "transformers>=4.49.0,!=4.51.0,<5.0.0",
 ]
 
 [project.urls]

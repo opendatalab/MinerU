@@ -146,7 +146,7 @@ devanagari_lang = [
         'sa', 'bgc'
 ]
 other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
-add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']
+add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari', 'vi']
 
 # all_lang = ['', 'auto']
 all_lang = []
