@@ -67,3 +67,7 @@ lang:
     det: ch_PP-OCRv5_det_infer.pth
     rec: eslav_PP-OCRv5_rec_infer.pth
     dict: ppocrv5_eslav_dict.txt
+  vi:
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: latin_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_latin_dict.txt

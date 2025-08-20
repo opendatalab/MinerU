@@ -12,6 +12,7 @@ from loguru import logger
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.model.ocr.surya_ocr.text_predictor import SuryaTextPredictor
 from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
 from .tools.infer.predict_system import TextSystem
 from .tools.infer import pytorchocr_utility as utility
@@ -22,7 +23,7 @@ latin_lang = [
         'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',  # noqa: E126
         'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
         'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
-        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+        'sw', 'tl', 'tr', 'uz', 'french', 'german'
 ]
 arabic_lang = ['ar', 'fa', 'ug', 'ur']
 cyrillic_lang = [
@@ -34,7 +35,7 @@ devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
-
+vi_lang = ['vi']
 
 def get_model_params(lang, config):
     if lang in config['lang']:
@@ -50,7 +51,7 @@ def get_model_params(lang, config):
 root_dir = Path(__file__).resolve().parent
 
 
-class PytorchPaddleOCR(TextSystem):
+class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
     def __init__(self, *args, **kwargs):
         parser = utility.init_args()
         args = parser.parse_args(args)
@@ -72,6 +73,8 @@ class PytorchPaddleOCR(TextSystem):
             self.lang = 'devanagari'
         elif self.lang in east_slavic_lang:
             self.lang = 'east_slavic'
+        elif self.lang in vi_lang:
+            self.lang = 'vi'
         else:
             pass
 
@@ -96,7 +99,12 @@ class PytorchPaddleOCR(TextSystem):
         default_args.update(kwargs)
         args = argparse.Namespace(**default_args)
 
+        # Initialize TextSystem first
         super().__init__(args)
+        
+        # Initialize SuryaTextPredictor for Vietnamese language
+        if self.lang == 'vi':
+            SuryaTextPredictor.__init__(self)
 
     def ocr(self,
             img,
@@ -113,7 +121,7 @@ class PytorchPaddleOCR(TextSystem):
         imgs = [img]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            if det and rec:
+            if det and rec: # table and formula recogition is enabled
                 ocr_res = []
                 for img in imgs:
                     img = preprocess_image(img)
@@ -146,8 +154,11 @@ class PytorchPaddleOCR(TextSystem):
                 for img in imgs:
                     if not isinstance(img, list):
                         img = preprocess_image(img)
-                        img = [img]
-                    rec_res, elapse = self.text_recognizer(img, tqdm_enable=tqdm_enable)
+                        img = [img]                 
+                    if self.lang == 'vi':
+                        rec_res, elapse = self._surya_text_recognizer(img)
+                    else:
+                        rec_res, elapse = self.text_recognizer(img, tqdm_enable=tqdm_enable)
                     # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
                     ocr_res.append(rec_res)
                 return ocr_res
