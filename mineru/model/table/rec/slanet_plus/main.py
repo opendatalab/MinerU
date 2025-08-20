@@ -1,10 +1,9 @@
-# -*- encoding: utf-8 -*-
-# @Author: SWHL
-# @Contact: liekkaskono@163.com
+import os
 import argparse
 import copy
 import importlib
 import time
+import html
 from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
@@ -12,10 +11,11 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
-
+from loguru import logger
 from .matcher import TableMatch
 from .table_structure import TableStructurer
-from .table_structure_unitable import TableStructureUnitable
+from mineru.utils.enum_class import ModelPath
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 root_dir = Path(__file__).resolve().parent
 
@@ -66,18 +66,16 @@ class RapidTable:
             )
 
         config.model_path = config.model_path
-        if self.model_type == ModelType.UNITABLE.value:
-            self.table_structure = TableStructureUnitable(asdict(config))
-        else:
+        if self.model_type == ModelType.SLANETPLUS.value:
             self.table_structure = TableStructurer(asdict(config))
-
+        else:
+            raise ValueError(f"{self.model_type} is not supported.")
         self.table_matcher = TableMatch()
 
         try:
             self.ocr_engine = importlib.import_module("rapidocr").RapidOCR()
         except ModuleNotFoundError:
             self.ocr_engine = None
-
 
     def __call__(
         self,
@@ -148,7 +146,6 @@ class RapidTable:
         return cell_bboxes
 
 
-
 def parse_args(arg_list: Optional[List[str]] = None):
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -172,29 +169,45 @@ def parse_args(arg_list: Optional[List[str]] = None):
     return args
 
 
-def main(arg_list: Optional[List[str]] = None):
-    args = parse_args(arg_list)
-
-    try:
-        ocr_engine = importlib.import_module("rapidocr").RapidOCR()
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "Please install the rapidocr by pip install rapidocr"
-        ) from exc
-
-    input_args = RapidTableInput(model_type=args.model_type)
-    table_engine = RapidTable(input_args)
-
-    img = cv2.imread(args.img_path)
-
-    rapid_ocr_output = ocr_engine(img)
-    ocr_result = list(
-        zip(rapid_ocr_output.boxes, rapid_ocr_output.txts, rapid_ocr_output.scores)
-    )
-    table_results = table_engine(img, ocr_result)
-    print(table_results.pred_html)
+def escape_html(input_string):
+    """Escape HTML Entities."""
+    return html.escape(input_string)
 
 
+class RapidTableModel(object):
+    def __init__(self, ocr_engine):
+        slanet_plus_model_path = os.path.join(
+            auto_download_and_get_model_root_path(ModelPath.slanet_plus),
+            ModelPath.slanet_plus,
+        )
+        input_args = RapidTableInput(
+            model_type="slanet_plus", model_path=slanet_plus_model_path
+        )
+        self.table_model = RapidTable(input_args)
+        self.ocr_engine = ocr_engine
 
-if __name__ == "__main__":
-    main()
+    def predict(self, image, table_cls_score):
+        bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
+        # Continue with OCR on potentially rotated image
+        ocr_result = self.ocr_engine.ocr(bgr_image)[0]
+        if ocr_result:
+            ocr_result = [
+                [item[0], escape_html(item[1][0]), item[1][1]]
+                for item in ocr_result
+                if len(item) == 2 and isinstance(item[1], tuple)
+            ]
+        else:
+            ocr_result = None
+
+        if ocr_result:
+            try:
+                table_results = self.table_model(np.asarray(image), ocr_result)
+                html_code = table_results.pred_html
+                table_cell_bboxes = table_results.cell_bboxes
+                logic_points = table_results.logic_points
+                elapse = table_results.elapse
+                return html_code, table_cell_bboxes, logic_points, elapse
+            except Exception as e:
+                logger.exception(e)
+
+        return None, None, None, None
