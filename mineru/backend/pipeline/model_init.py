@@ -33,7 +33,7 @@ def table_cls_model_init():
     return PaddleTableClsModel()
 
 
-def wired_table_model_init(lang=None):
+def wired_table_model_init(lang="ch"):
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.OCR,
@@ -46,7 +46,7 @@ def wired_table_model_init(lang=None):
     return table_model
 
 
-def wireless_table_model_init(lang=None):
+def wireless_table_model_init(lang="ch"):
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.OCR,

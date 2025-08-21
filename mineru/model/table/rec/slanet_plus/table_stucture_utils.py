@@ -443,6 +443,35 @@ class TablePreprocess:
         ]
 
 
+class BatchTablePreprocess:
+
+    def __init__(self):
+        self.preprocess = TablePreprocess()
+
+    def __call__(
+        self, img_list: List[np.ndarray]
+    ) -> Tuple[List[np.ndarray], List[List[float]]]:
+        """批量处理图像
+
+        Args:
+            img_list: 图像列表
+
+        Returns:
+            预处理后的图像列表和形状信息列表
+        """
+        processed_imgs = []
+        shape_lists = []
+
+        for img in img_list:
+            if img is None:
+                continue
+            data = {"image": img}
+            img_processed, shape_list = self.preprocess(data)
+            processed_imgs.append(img_processed)
+            shape_lists.append(shape_list)
+        return processed_imgs, shape_lists
+
+
 class ResizeTableImage:
     def __init__(self, max_len, resize_bboxes=False, infer_mode=False):
         super(ResizeTableImage, self).__init__()
