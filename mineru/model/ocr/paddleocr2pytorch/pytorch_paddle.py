@@ -35,7 +35,7 @@ devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
-vi_lang = ['vi']
+advanced_lang = ['vi', 'th']
 
 def get_model_params(lang, config):
     if lang in config['lang']:
@@ -51,7 +51,7 @@ def get_model_params(lang, config):
 root_dir = Path(__file__).resolve().parent
 
 
-class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
+class PytorchPaddleOCR(TextSystem):
     def __init__(self, *args, **kwargs):
         parser = utility.init_args()
         args = parser.parse_args(args)
@@ -73,8 +73,8 @@ class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
             self.lang = 'devanagari'
         elif self.lang in east_slavic_lang:
             self.lang = 'east_slavic'
-        elif self.lang in vi_lang:
-            self.lang = 'vi'
+        elif self.lang in advanced_lang:
+            self.lang = 'advanced'
         else:
             pass
 
@@ -103,8 +103,8 @@ class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
         super().__init__(args)
         
         # Initialize SuryaTextPredictor for Vietnamese language
-        if self.lang == 'vi':
-            SuryaTextPredictor.__init__(self)
+        if self.lang == 'advanced':
+            self._surya_text_recognizer = SuryaTextPredictor()
 
     def ocr(self,
             img,
@@ -155,8 +155,12 @@ class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
                     if not isinstance(img, list):
                         img = preprocess_image(img)
                         img = [img]                 
-                    if self.lang == 'vi':
-                        rec_res, elapse = self._surya_text_recognizer(img)
+                    if self.lang == 'advanced':
+                        # Use context manager for consistent resource management
+                        with self._surya_text_recognizer as surya_predictor:
+                            rec_res, elapse = surya_predictor(img)
+                        # Explicit cleanup to ensure resources are released
+                        self._surya_text_recognizer.cleanup()
                     else:
                         rec_res, elapse = self.text_recognizer(img, tqdm_enable=tqdm_enable)
                     # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
@@ -194,6 +198,16 @@ class PytorchPaddleOCR(TextSystem, SuryaTextPredictor):
             img_crop_list.append(img_crop)
 
         rec_res, elapse = self.text_recognizer(img_crop_list)
+        if self.lang == 'advanced':
+            # Use context manager to prevent semaphore leaks when processing multiple images
+            with self._surya_text_recognizer as surya_predictor:
+                vi_rec_res, vi_elapse = surya_predictor(img_crop_list)
+                for i, vi_rec_result in enumerate(vi_rec_res):
+                    if vi_rec_result[1] > 0.9:
+                        print(vi_rec_result)
+                        rec_res[i] = vi_rec_result
+            # Explicit cleanup to ensure resources are released
+            self._surya_text_recognizer.cleanup()
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
 
         filter_boxes, filter_rec_res = [], []
