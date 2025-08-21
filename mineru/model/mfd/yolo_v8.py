@@ -86,11 +86,11 @@ class YOLOv8MFDModel:
             # 使用PIL在图像上画框
             draw.rectangle([xmin, ymin, xmax, ymax], outline="red", width=2)
             # 在框旁边画置信度
-            draw.text((xmax + 10, ymin + 10), f"{res['score']:.2f}", fill="red")
+            draw.text((xmax + 10, ymin + 10), f"{res['score']:.2f}", fill="red", font_size=22)
         return image
 
 if __name__ == '__main__':
-    image_path = r"C:\Users\zhaoxiaomeng\Downloads\下载1.jpg"
+    image_path = r"C:\Users\zhaoxiaomeng\Downloads\screenshot-20250821-192948.png"
     yolo_v8_mfd_weights = os.path.join(auto_download_and_get_model_root_path(ModelPath.yolo_v8_mfd),
                                           ModelPath.yolo_v8_mfd)
     device = 'cuda'
