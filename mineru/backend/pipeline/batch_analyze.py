@@ -16,10 +16,11 @@ OCR_DET_BASE_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
-    def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, enable_ocr_det_batch: bool = True):
+    def __init__(self, model_manager, batch_ratio: int, formula_enable, table_enable, image_ocr_enable=True, enable_ocr_det_batch: bool = True):
         self.batch_ratio = batch_ratio
         self.formula_enable = get_formula_enable(formula_enable)
         self.table_enable = get_table_enable(table_enable)
+        self.image_ocr_enable = image_ocr_enable
         self.model_manager = model_manager
         self.enable_ocr_det_batch = enable_ocr_det_batch
 
@@ -76,7 +77,7 @@ class BatchAnalyze:
             pil_img = images[index]
 
             ocr_res_list, table_res_list, single_page_mfdetrec_res = (
-                get_res_list_from_layout_res(layout_res)
+                get_res_list_from_layout_res(layout_res, image_ocr_enable=self.image_ocr_enable)
             )
 
             ocr_res_list_all_page.append({'ocr_res_list':ocr_res_list,

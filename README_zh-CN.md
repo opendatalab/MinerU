@@ -536,6 +536,12 @@ mineru -p <input_path> -o <output_path>
 
 您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
+#### 新功能：图片OCR控制
+
+从版本2.1.11开始，MinerU支持通过`--image-ocr`参数控制图片区域是否进行OCR处理：
+
+该功能针对在确定大部分图片内容没有有价值的文字内容时跳过OCR处理图片环节，显著提升处理速度。
+
 # TODO
 
 - [x] 基于模型的阅读顺序  

@@ -17,7 +17,7 @@ from mineru.utils.cli_parser import arg_parse
 from mineru.utils.hash_utils import str_sha256
 
 
-async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language, backend, url):
+async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, image_ocr_enable, language, backend, url):
     os.makedirs(output_dir, exist_ok=True)
 
     try:
@@ -41,6 +41,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
             end_page_id=end_page_id,
             formula_enable=formula_enable,
             table_enable=table_enable,
+            image_ocr_enable=image_ocr_enable,
             backend=backend,
             server_url=url,
         )
@@ -94,10 +95,10 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return re.sub(pattern, replace, markdown_text)
 
 
-async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
+async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, image_ocr_enable=True, language="ch", backend="pipeline", url=None):
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
+    local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, image_ocr_enable, language, backend, url)
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -300,6 +301,7 @@ def main(ctx,
                         gr.Markdown("**Recognition Options:**")
                         formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                         table_enable = gr.Checkbox(label='Enable table recognition', value=True)
+                        image_ocr_enable = gr.Checkbox(label='Enable image OCR processing', value=True)
                     with gr.Column(visible=False) as ocr_options:
                         language = gr.Dropdown(all_lang, label='Language', value='ch')
                         is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
@@ -351,7 +353,7 @@ def main(ctx,
         input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show, api_name=api_name)
         change_bu.click(
             fn=to_markdown,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_ocr_enable, language, backend, url],
             outputs=[md, md_text, output_file, pdf_show],
             api_name=api_name
         )

@@ -57,6 +57,7 @@ def test_pipeline_with_two_config():
             pdf_bytes_list,
             p_lang_list,
             parse_method="txt",
+            image_ocr_enable=True,
         )
     )
     write_infer_result(
@@ -75,6 +76,7 @@ def test_pipeline_with_two_config():
             pdf_bytes_list,
             p_lang_list,
             parse_method="ocr",
+            image_ocr_enable=True,
         )
     )
     write_infer_result(
