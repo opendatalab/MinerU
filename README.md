@@ -548,6 +548,12 @@ mineru -p <input_path> -o <output_path>
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
+#### New Feature: Image OCR Control
+
+Starting from version 2.1.11, MinerU supports controlling whether image regions undergo OCR processing through the `--image-ocr` parameter.
+
+This feature allows you to skip OCR processing for image regions when you know the document contains only diagram images without text content, significantly improving processing speed.
+
 # TODO
 
 - [x] Reading order based on the model  

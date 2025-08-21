@@ -137,13 +137,20 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     """,
     default='huggingface',
 )
+@click.option(
+    '--image-ocr',
+    'image_ocr_enable',
+    type=bool,
+    help='Enable OCR processing for image regions. Default is True. When disabled, image regions will be skipped during OCR processing. Adapted only for the case where the backend is set to "pipeline".',
+    default=True,
+)
 
 
 def main(
         ctx,
         input_path, output_dir, method, backend, lang, server_url,
         start_page_id, end_page_id, formula_enable, table_enable,
-        device_mode, virtual_vram, model_source, **kwargs
+        device_mode, virtual_vram, model_source, image_ocr_enable, **kwargs
 ):
 
     kwargs.update(arg_parse(ctx))
@@ -191,6 +198,7 @@ def main(
                 parse_method=method,
                 formula_enable=formula_enable,
                 table_enable=table_enable,
+                image_ocr_enable=image_ocr_enable,
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
