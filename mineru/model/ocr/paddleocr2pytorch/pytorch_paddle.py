@@ -201,11 +201,12 @@ class PytorchPaddleOCR(TextSystem):
         if self.lang == 'advanced':
             # Use context manager to prevent semaphore leaks when processing multiple images
             with self._surya_text_recognizer as surya_predictor:
-                vi_rec_res, vi_elapse = surya_predictor(img_crop_list)
-                for i, vi_rec_result in enumerate(vi_rec_res):
-                    if vi_rec_result[1] > 0.9:
-                        print(vi_rec_result)
-                        rec_res[i] = vi_rec_result
+                advanced_rec_res, vi_elapse = surya_predictor(img_crop_list)
+                for i, advanced_rec_result in enumerate(advanced_rec_res):
+                    # advanced_rec_result confident is greater than a threshold (0.5) and
+                    # advanced_rec_result text does not contains '<math>' and not empty
+                    if advanced_rec_result[1] > 0.5 and '<math>' not in advanced_rec_result[0] and advanced_rec_result[0] != '':
+                        rec_res[i] = advanced_rec_result
             # Explicit cleanup to ensure resources are released
             self._surya_text_recognizer.cleanup()
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
