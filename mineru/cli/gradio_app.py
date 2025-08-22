@@ -145,8 +145,8 @@ devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
-other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
-add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari', 'vi']
+other_lang = ['vi', 'th', 'en']
+add_lang = ['latin']
 
 # all_lang = ['', 'auto']
 all_lang = []
@@ -301,7 +301,7 @@ def main(ctx,
                         formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
                         table_enable = gr.Checkbox(label='Enable table recognition', value=True)
                     with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label='Language', value='ch')
+                        language = gr.Dropdown(all_lang, label='Language', value='vi')
                         is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
                 with gr.Row():
                     change_bu = gr.Button('Convert')
