@@ -51,3 +51,6 @@ _build/
 
 
 output/
+
+# trae
+.trae/
