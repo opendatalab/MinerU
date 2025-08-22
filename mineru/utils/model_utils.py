@@ -201,6 +201,10 @@ def filter_nested_tables(table_res_list, overlap_threshold=0.8, area_threshold=0
 
 
 def remove_overlaps_min_blocks(res_list):
+
+    for res in res_list:
+        res['bbox'] = [int(res['poly'][0]), int(res['poly'][1]), int(res['poly'][4]), int(res['poly'][5])]
+
     # 重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
     # 删除重叠blocks中较小的那些
     need_remove = []
@@ -248,6 +252,14 @@ def remove_overlaps_min_blocks(res_list):
     # 从列表中移除标记的元素
     for res in need_remove:
         res_list.remove(res)
+        del res['bbox']  # 删除bbox字段
+
+    for res in res_list:
+        # 将res的poly使用bbox重构
+        res['poly'] = [res['bbox'][0], res['bbox'][1], res['bbox'][2], res['bbox'][1],
+                       res['bbox'][2], res['bbox'][3], res['bbox'][0], res['bbox'][3]]
+        # 删除res的bbox
+        del res['bbox']
 
     return res_list, need_remove
 
@@ -352,7 +364,6 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
             table_res_list.append(res)
             table_indices.append(i)
         elif category_id in [1]:  # Text regions
-            res['bbox'] = [int(res['poly'][0]), int(res['poly'][1]), int(res['poly'][4]), int(res['poly'][5])]
             text_res_list.append(res)
 
     # Process tables: merge high IoU tables first, then filter nested tables
@@ -362,23 +373,11 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
     filtered_table_res_list = filter_nested_tables(
         table_res_list, overlap_threshold, area_threshold)
 
-    for table_res in filtered_table_res_list:
-        table_res['bbox'] = [int(table_res['poly'][0]), int(table_res['poly'][1]), int(table_res['poly'][4]), int(table_res['poly'][5])]
-
     filtered_table_res_list, table_need_remove = remove_overlaps_min_blocks(filtered_table_res_list)
 
-    for res in filtered_table_res_list:
-        # 将res的poly使用bbox重构
-        res['poly'] = [res['bbox'][0], res['bbox'][1], res['bbox'][2], res['bbox'][1],
-                       res['bbox'][2], res['bbox'][3], res['bbox'][0], res['bbox'][3]]
-        # 删除res的bbox
-        del res['bbox']
-
-    if len(table_need_remove) > 0:
-        for res in table_need_remove:
-            del res['bbox']
-            if res in layout_res:
-                layout_res.remove(res)
+    for res in table_need_remove:
+        if res in layout_res:
+            layout_res.remove(res)
 
     # Remove filtered out tables from layout_res
     if len(filtered_table_res_list) < len(table_res_list):
@@ -390,20 +389,12 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
 
     # Remove overlaps in OCR and text regions
     text_res_list, need_remove = remove_overlaps_min_blocks(text_res_list)
-    for res in text_res_list:
-        # 将res的poly使用bbox重构
-        res['poly'] = [res['bbox'][0], res['bbox'][1], res['bbox'][2], res['bbox'][1],
-                       res['bbox'][2], res['bbox'][3], res['bbox'][0], res['bbox'][3]]
-        # 删除res的bbox
-        del res['bbox']
 
     ocr_res_list.extend(text_res_list)
 
-    if len(need_remove) > 0:
-        for res in need_remove:
-            del res['bbox']
-            if res in layout_res:
-                layout_res.remove(res)
+    for res in need_remove:
+        if res in layout_res:
+            layout_res.remove(res)
 
     # 检测大block内部是否包含多个小block, 合并ocr和table列表进行检测
     combined_res_list = ocr_res_list + filtered_table_res_list
