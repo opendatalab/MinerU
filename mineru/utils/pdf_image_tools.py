@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from io import BytesIO
 
+import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image
@@ -90,6 +91,24 @@ def get_crop_img(bbox: tuple, pil_img, scale=2):
     )
     return pil_img.crop(scale_bbox)
 
+
+def get_crop_np_img(bbox: tuple, input_img, scale=2):
+
+    if isinstance(input_img, Image.Image):
+        np_img = np.asarray(input_img)
+    elif isinstance(input_img, np.ndarray):
+        np_img = input_img
+    else:
+        raise ValueError("Input must be a pillow object or a numpy array.")
+
+    scale_bbox = (
+        int(bbox[0] * scale),
+        int(bbox[1] * scale),
+        int(bbox[2] * scale),
+        int(bbox[3] * scale),
+    )
+
+    return np_img[scale_bbox[1]:scale_bbox[3], scale_bbox[0]:scale_bbox[2]]
 
 def images_bytes_to_pdf_bytes(image_bytes):
     # 内存缓冲区
