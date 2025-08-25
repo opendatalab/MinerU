@@ -330,10 +330,10 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
     return adjusted_mfdetrec_res
 
 
-def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
+def get_ocr_result_list(ocr_res, useful_list, ocr_enable, bgr_image, lang):
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
-    ori_im = new_image.copy()
+    ori_im = bgr_image.copy()
     for box_ocr_res in ocr_res:
 
         if len(box_ocr_res) == 2:
