@@ -247,7 +247,7 @@ class RapidTableModel(object):
         """对传入的字典列表进行批量预测，无返回值"""
         for index in tqdm(
             range(0, len(table_res_list), batch_size),
-            desc=f"Table Batch Predict, total={len(table_res_list)}, batch_size={batch_size}",
+            desc=f"Wireless Table Batch Predict, total={len(table_res_list)}, batch_size={batch_size}",
         ):
             batch_imgs = [
                 cv2.cvtColor(np.asarray(table_res_list[i]["table_img"]), cv2.COLOR_RGB2BGR)

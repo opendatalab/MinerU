@@ -248,7 +248,7 @@ class UnetTableModel:
         self.wireless_table_model = RapidTable(wireless_input_args)
         self.ocr_engine = ocr_engine
 
-    def predict(self, input_img, table_cls_score):
+    def predict(self, input_img, table_cls_score, wireless_html_code):
         if isinstance(input_img, Image.Image):
             np_img = np.asarray(input_img)
         elif isinstance(input_img, np.ndarray):
@@ -269,29 +269,7 @@ class UnetTableModel:
             try:
                 wired_table_results = self.wired_table_model(np_img, ocr_result)
 
-                # viser = VisTable()
-                # save_html_path = f"outputs/output.html"
-                # save_drawed_path = f"outputs/output_table_vis.jpg"
-                # save_logic_path = (
-                #     f"outputs/output_table_vis_logic.jpg"
-                # )
-                # vis_imged = viser(
-                #     np_img, wired_table_results, save_html_path, save_drawed_path, save_logic_path
-                # )
-
                 wired_html_code = wired_table_results.pred_html
-                wired_table_cell_bboxes = wired_table_results.cell_bboxes
-                wired_logic_points = wired_table_results.logic_points
-                wired_elapse = wired_table_results.elapse
-
-                wireless_table_results = self.wireless_table_model(np_img, ocr_result)
-                wireless_html_code = wireless_table_results.pred_html
-                wireless_table_cell_bboxes = wireless_table_results.cell_bboxes
-                wireless_logic_points = wireless_table_results.logic_points
-                wireless_elapse = wireless_table_results.elapse
-
-                # wired_len = len(wired_table_cell_bboxes) if wired_table_cell_bboxes is not None else 0
-                # wireless_len = len(wireless_table_cell_bboxes) if wireless_table_cell_bboxes is not None else 0
 
                 wired_len = count_table_cells_physical(wired_html_code)
                 wireless_len = count_table_cells_physical(wireless_html_code)
@@ -308,15 +286,10 @@ class UnetTableModel:
                 ):
                     # logger.debug("fall back to wireless table model")
                     html_code = wireless_html_code
-                    table_cell_bboxes = wireless_table_cell_bboxes
-                    logic_points = wireless_logic_points
                 else:
                     html_code = wired_html_code
-                    table_cell_bboxes = wired_table_cell_bboxes
-                    logic_points = wired_logic_points
 
-                elapse = wired_elapse + wireless_elapse
-                return html_code, table_cell_bboxes, logic_points, elapse
+                return html_code
             except Exception as e:
                 logger.exception(e)
-        return None, None, None, None
+        return None
