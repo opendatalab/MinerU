@@ -10,8 +10,8 @@ docker build -t mineru-sglang:latest -f Dockerfile .
 ```
 
 > [!TIP]
-> [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile)默认使用`lmsysorg/sglang:v0.4.9.post6-cu126`作为基础镜像，支持Turing/Ampere/Ada Lovelace/Hopper平台，
-> 如您使用较新的`Blackwell`平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.9.post6-cu128-b200` 再执行build操作。
+> [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile)默认使用`lmsysorg/sglang:v0.4.10.post2-cu126`作为基础镜像，支持Turing/Ampere/Ada Lovelace/Hopper平台，
+> 如您使用较新的`Blackwell`平台，请将基础镜像修改为`lmsysorg/sglang:v0.4.10.post2-cu128-b200` 再执行build操作。
 
 ## Docker说明
 
