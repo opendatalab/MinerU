@@ -61,7 +61,6 @@ pipeline = [
     "ultralytics>=8.3.48,<9",
     "doclayout_yolo==0.0.4",
     "dill>=0.3.8,<1",
-    "rapid_table>=1.0.5,<2.0.0",
     "PyYAML>=6.0.2,<7",
     "ftfy>=6.3.1,<7",
     "openai>=1.70.0,<2",
