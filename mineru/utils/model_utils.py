@@ -340,7 +340,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
                 marked_indices.add(i)  # 标记当前索引为已处理
     return blocks_to_remove
 
-# @todo 这个方法以后需要重构
+
 def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshold=0.8, area_threshold=0.8):
     """Extract OCR, table and other regions from layout results."""
     ocr_res_list = []
