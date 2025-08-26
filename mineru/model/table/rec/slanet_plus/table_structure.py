@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from .table_stucture_utils import (
+from .table_structure_utils import (
     OrtInferSession,
     TableLabelDecode,
     TablePreprocess,

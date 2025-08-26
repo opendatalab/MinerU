@@ -10,7 +10,6 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
-from  ..slanet_plus.main import RapidTableInput, RapidTable
 
 from .table_structure_unet import TSRUnet
 
@@ -262,31 +261,30 @@ class UnetTableModel:
                 if len(item) == 2 and isinstance(item[1], tuple)
             ]
 
-        if ocr_result:
-            try:
-                wired_table_results = self.wired_table_model(np_img, ocr_result)
+        try:
+            wired_table_results = self.wired_table_model(np_img, ocr_result)
 
-                wired_html_code = wired_table_results.pred_html
+            wired_html_code = wired_table_results.pred_html
 
-                wired_len = count_table_cells_physical(wired_html_code)
-                wireless_len = count_table_cells_physical(wireless_html_code)
+            wired_len = count_table_cells_physical(wired_html_code)
+            wireless_len = count_table_cells_physical(wireless_html_code)
 
-                # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
-                # 计算两种模型检测的单元格数量差异
-                gap_of_len = wireless_len - wired_len
-                # 判断是否使用无线表格模型的结果
-                if (
-                    wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
-                    # or ((round(wireless_len*1.2) < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.94)  # 有线模型检测到的单元格数反而更多
-                    or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
-                    or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
-                ):
-                    # logger.debug("fall back to wireless table model")
-                    html_code = wireless_html_code
-                else:
-                    html_code = wired_html_code
+            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
+            # 计算两种模型检测的单元格数量差异
+            gap_of_len = wireless_len - wired_len
+            # 判断是否使用无线表格模型的结果
+            if (
+                wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
+                # or ((round(wireless_len*1.2) < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.94)  # 有线模型检测到的单元格数反而更多
+                or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
+                or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
+            ):
+                # logger.debug("fall back to wireless table model")
+                html_code = wireless_html_code
+            else:
+                html_code = wired_html_code
 
-                return html_code
-            except Exception as e:
-                logger.exception(e)
-        return None
+            return html_code
+        except Exception as e:
+            logger.exception(e)
+            return None

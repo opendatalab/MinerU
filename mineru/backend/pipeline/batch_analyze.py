@@ -262,7 +262,7 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.ImgOrientationCls,
             )
             try:
-                img_orientation_cls_model.batch_predict(table_res_list_all_page, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+                img_orientation_cls_model.batch_predict(table_res_list_all_page, batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
             except Exception as e:
                 logger.warning(
                     f"Image orientation classification failed: {e}, using original image"
