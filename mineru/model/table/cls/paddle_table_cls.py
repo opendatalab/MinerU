@@ -145,7 +145,8 @@ class PaddleTableClsModel:
             for img_res in result[0]:
                 idx = np.argmax(img_res)
                 conf = float(np.max(img_res))
-                if idx == 0 and conf < 0.9:
+                # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
+                if idx == 0 and conf < 0.8:
                     idx = 1
                 label_res.append((self.labels[idx],conf))
         for img_info, (label, conf) in zip(img_info_list, label_res):

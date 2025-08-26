@@ -270,9 +270,9 @@ class RapidTableModel(object):
                         table_res_list[index + i]['table_res']['html'] = result.pred_html[start_index:end_index]
                     else:
                         logger.warning(
-                            'table recognition processing fails, not found expected HTML table end'
+                            'wireless table recognition processing fails, not found expected HTML table end'
                         )
                 else:
                     logger.warning(
-                        "table recognition processing fails, not get html return"
+                        "wireless table recognition processing fails, not get html return"
                     )

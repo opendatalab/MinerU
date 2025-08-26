@@ -10,10 +10,8 @@ from .model_init import AtomModelSingleton
 from .model_list import AtomicModel
 from ...utils.config_reader import get_formula_enable, get_table_enable
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res
-from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
-from ...utils.pdf_image_tools import get_crop_img
 from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
-from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence
+from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
 from ...utils.pdf_image_tools import get_crop_np_img
 
 YOLO_LAYOUT_BASE_BATCH_SIZE = 1
@@ -195,9 +193,6 @@ class BatchAnalyze:
 
                         if dt_boxes is not None and len(dt_boxes) > 0:
                             # 直接应用原始OCR流程中的关键处理步骤
-                            from mineru.utils.ocr_utils import (
-                                merge_det_boxes, update_det_boxes, sorted_boxes
-                            )
 
                             # 1. 排序检测框
                             if len(dt_boxes) > 0:
@@ -267,7 +262,7 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.ImgOrientationCls,
             )
             try:
-                img_orientation_cls_model.batch_predict(table_res_list_all_page, atom_model_manager, AtomicModel.OCR, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+                img_orientation_cls_model.batch_predict(table_res_list_all_page, self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
             except Exception as e:
                 logger.warning(
                     f"Image orientation classification failed: {e}, using original image"
@@ -338,22 +333,25 @@ class BatchAnalyze:
             wireless_table_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.WirelessTable,
             )
-
             wireless_table_model.batch_predict(table_res_list_all_page)
+
+            # 单独拿出有线表格进行预测
+            wired_table_res_list = []
+            for table_res_dict in table_res_list_all_page:
+                if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
+                    wired_table_res_list.append(table_res_dict)
             for table_res_dict in tqdm(
-                table_res_list_all_page, desc="Wired Table Predict"
+                wired_table_res_list, desc="Wired Table Predict"
             ):
                 if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
                     wired_table_model = atom_model_manager.get_atom_model(
                         atom_model_name=AtomicModel.WiredTable,
                         lang=table_res_dict["lang"],
                     )
-                    if table_res_dict["table_res"].get("html") is None:
-                        logger.warning("Table Wireless Predict Error.")
                     html_code = wired_table_model.predict(
                         table_res_dict["table_img"],
-                        table_res_dict["table_res"]["cls_score"],
-                        table_res_dict["table_res"]["html"],
+                        table_res_dict["ocr_result"],
+                        table_res_dict["table_res"].get("html", None)
                     )
                     # 检查html_code是否包含'<table>'和'</table>'
                     if "<table>" in html_code and "</table>" in html_code:
