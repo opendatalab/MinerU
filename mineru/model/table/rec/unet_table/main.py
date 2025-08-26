@@ -10,14 +10,13 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
-from rapid_table import RapidTableInput, RapidTable
 
 from .table_structure_unet import TSRUnet
 
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from .table_recover import TableRecover
-from .utils import InputType, LoadImage, VisTable
+from .utils import InputType, LoadImage
 from .utils_table_recover import (
     match_ocr_cell,
     plot_html_table,
@@ -243,12 +242,9 @@ class UnetTableModel:
         model_path = os.path.join(auto_download_and_get_model_root_path(ModelPath.unet_structure), ModelPath.unet_structure)
         wired_input_args = WiredTableInput(model_path=model_path)
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
-        slanet_plus_model_path = os.path.join(auto_download_and_get_model_root_path(ModelPath.slanet_plus), ModelPath.slanet_plus)
-        wireless_input_args = RapidTableInput(model_type='slanet_plus', model_path=slanet_plus_model_path)
-        self.wireless_table_model = RapidTable(wireless_input_args)
         self.ocr_engine = ocr_engine
 
-    def predict(self, input_img, table_cls_score):
+    def predict(self, input_img, ocr_result, wireless_html_code):
         if isinstance(input_img, Image.Image):
             np_img = np.asarray(input_img)
         elif isinstance(input_img, np.ndarray):
@@ -256,67 +252,39 @@ class UnetTableModel:
         else:
             raise ValueError("Input must be a pillow object or a numpy array.")
         bgr_img = cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR)
-        ocr_result = self.ocr_engine.ocr(bgr_img)[0]
-        if ocr_result:
+
+        if ocr_result is None:
+            ocr_result = self.ocr_engine.ocr(bgr_img)[0]
             ocr_result = [
                 [item[0], escape_html(item[1][0]), item[1][1]]
                 for item in ocr_result
                 if len(item) == 2 and isinstance(item[1], tuple)
             ]
-        else:
-            ocr_result = None
-        if ocr_result:
-            try:
-                wired_table_results = self.wired_table_model(np_img, ocr_result)
 
-                # viser = VisTable()
-                # save_html_path = f"outputs/output.html"
-                # save_drawed_path = f"outputs/output_table_vis.jpg"
-                # save_logic_path = (
-                #     f"outputs/output_table_vis_logic.jpg"
-                # )
-                # vis_imged = viser(
-                #     np_img, wired_table_results, save_html_path, save_drawed_path, save_logic_path
-                # )
+        try:
+            wired_table_results = self.wired_table_model(np_img, ocr_result)
 
-                wired_html_code = wired_table_results.pred_html
-                wired_table_cell_bboxes = wired_table_results.cell_bboxes
-                wired_logic_points = wired_table_results.logic_points
-                wired_elapse = wired_table_results.elapse
+            wired_html_code = wired_table_results.pred_html
 
-                wireless_table_results = self.wireless_table_model(np_img, ocr_result)
-                wireless_html_code = wireless_table_results.pred_html
-                wireless_table_cell_bboxes = wireless_table_results.cell_bboxes
-                wireless_logic_points = wireless_table_results.logic_points
-                wireless_elapse = wireless_table_results.elapse
+            wired_len = count_table_cells_physical(wired_html_code)
+            wireless_len = count_table_cells_physical(wireless_html_code)
 
-                # wired_len = len(wired_table_cell_bboxes) if wired_table_cell_bboxes is not None else 0
-                # wireless_len = len(wireless_table_cell_bboxes) if wireless_table_cell_bboxes is not None else 0
+            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
+            # 计算两种模型检测的单元格数量差异
+            gap_of_len = wireless_len - wired_len
+            # 判断是否使用无线表格模型的结果
+            if (
+                wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
+                # or ((round(wireless_len*1.2) < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.94)  # 有线模型检测到的单元格数反而更多
+                or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
+                or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
+            ):
+                # logger.debug("fall back to wireless table model")
+                html_code = wireless_html_code
+            else:
+                html_code = wired_html_code
 
-                wired_len = count_table_cells_physical(wired_html_code)
-                wireless_len = count_table_cells_physical(wireless_html_code)
-
-                # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
-                # 计算两种模型检测的单元格数量差异
-                gap_of_len = wireless_len - wired_len
-                # 判断是否使用无线表格模型的结果
-                if (
-                    wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
-                    # or ((round(wireless_len*1.2) < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.94)  # 有线模型检测到的单元格数反而更多
-                    or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
-                    or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
-                ):
-                    # logger.debug("fall back to wireless table model")
-                    html_code = wireless_html_code
-                    table_cell_bboxes = wireless_table_cell_bboxes
-                    logic_points = wireless_logic_points
-                else:
-                    html_code = wired_html_code
-                    table_cell_bboxes = wired_table_cell_bboxes
-                    logic_points = wired_logic_points
-
-                elapse = wired_elapse + wireless_elapse
-                return html_code, table_cell_bboxes, logic_points, elapse
-            except Exception as e:
-                logger.exception(e)
-        return None, None, None, None
+            return html_code
+        except Exception as e:
+            logger.exception(e)
+            return None
