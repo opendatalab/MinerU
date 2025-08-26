@@ -42,12 +42,14 @@ class BatchAnalyze:
         )
         atom_model_manager = AtomModelSingleton()
 
+        pil_images = [image for image, _, _ in images_with_extra_info]
+
         np_images = [np.asarray(image) for image, _, _ in images_with_extra_info]
 
         # doclayout_yolo
 
         images_layout_res += self.model.layout_model.batch_predict(
-            np_images, YOLO_LAYOUT_BASE_BATCH_SIZE
+            pil_images, YOLO_LAYOUT_BASE_BATCH_SIZE
         )
 
         if self.formula_enable:
