@@ -203,10 +203,9 @@ class PytorchPaddleOCR(TextSystem):
             with self._surya_text_recognizer as surya_predictor:
                 advanced_rec_res, vi_elapse = surya_predictor(img_crop_list)
                 for i, advanced_rec_result in enumerate(advanced_rec_res):
-                    # advanced_rec_result confident is greater than a threshold (0.5) and
-                    # advanced_rec_result text does not contains '<math>' and not empty
-                    if advanced_rec_result[1] > 0.5 and '<math>' not in advanced_rec_result[0] and advanced_rec_result[0] != '':
+                    if self._is_valid_advanced_recognition(advanced_rec_result):
                         rec_res[i] = advanced_rec_result
+                        # logger.debug(f"Advanced OCR selected: {advanced_rec_result[0]} (confidence: {advanced_rec_result[1]:.3f})")
             # Explicit cleanup to ensure resources are released
             self._surya_text_recognizer.cleanup()
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
@@ -219,6 +218,72 @@ class PytorchPaddleOCR(TextSystem):
                 filter_rec_res.append(rec_result)
 
         return filter_boxes, filter_rec_res
+    
+    def _is_valid_advanced_recognition(self, recognition_result):
+        """
+        Validate advanced OCR recognition results with comprehensive filtering.
+        
+        Args:
+            recognition_result: Tuple of (text, confidence_score)
+            
+        Returns:
+            bool: True if the recognition result meets quality criteria
+        """
+        if not recognition_result or len(recognition_result) != 2:
+            return False
+            
+        text, confidence = recognition_result
+        
+        # Basic validation: confidence threshold and non-empty text
+        if confidence <= 0.5 or not text:
+            return False
+            
+        # Skip math expressions
+        if '<math>' in text:
+            return False
+            
+        # Clean text for analysis
+        cleaned_text = text.strip()
+        
+        # Minimum meaningful length check (only consider non-empty text)
+        if len(cleaned_text) < 1:
+            return False
+            
+        # Vietnamese check for meaningful content
+        if not self._contains_meaningful_content(cleaned_text):
+            return False
+            
+        return True
+        
+    def _contains_meaningful_content(self, text):
+        """
+        Check if text contains meaningful content.
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            bool: True if text contains meaningful content
+        """
+        # Remove spaces and check remaining content
+        content_chars = [char for char in text if char != ' ']
+        
+        if len(content_chars) == 0:
+            return False
+            
+        # Define problematic characters that should not be considered meaningful
+        problematic_chars = set('.٠۰٩٨٧٦٥٤٣٢١')
+        
+        # Check if it's mostly punctuation, symbols, or problematic characters
+        meaningful_chars = sum(1 for char in content_chars 
+                             if (char.isalnum() and char not in problematic_chars) or 
+                                char in 'àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ')
+        
+        if len(content_chars) > 0:
+            meaningful_ratio = meaningful_chars / len(content_chars)
+            return meaningful_ratio >= 0.5  # Increased threshold
+            
+        return False
 
 if __name__ == '__main__':
     pytorch_paddle_ocr = PytorchPaddleOCR()
