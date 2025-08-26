@@ -38,12 +38,14 @@ class BatchAnalyze:
         )
         atom_model_manager = AtomModelSingleton()
 
+        pil_images = [image for image, _, _ in images_with_extra_info]
+
         np_images = [np.asarray(image) for image, _, _ in images_with_extra_info]
 
         # doclayout_yolo
 
         images_layout_res += self.model.layout_model.batch_predict(
-            np_images, YOLO_LAYOUT_BASE_BATCH_SIZE
+            pil_images, YOLO_LAYOUT_BASE_BATCH_SIZE
         )
 
         if self.formula_enable:
@@ -89,6 +91,7 @@ class BatchAnalyze:
                 # table_img, _ = crop_img(table_res, pil_img)
                 # bbox = (241, 208, 1475, 2019)
                 scale = 10/3
+                # scale = 1
                 crop_xmin, crop_ymin = int(table_res['poly'][0]), int(table_res['poly'][1])
                 crop_xmax, crop_ymax = int(table_res['poly'][4]), int(table_res['poly'][5])
                 bbox = (int(crop_xmin/scale), int(crop_ymin/scale), int(crop_xmax/scale), int(crop_ymax/scale))
