@@ -171,8 +171,7 @@ class BatchAnalyze:
                     enable_merge_det_boxes=False,
                 )
                 cropped_img_list = [item["cropped_img"] for item in rec_img_list]
-                ocr_res_list = \
-                ocr_engine.ocr(cropped_img_list, det=False, tqdm_enable=True, tqdm_desc="Table-ocr rec")[0]
+                ocr_res_list = ocr_engine.ocr(cropped_img_list, det=False, tqdm_enable=True, tqdm_desc=f"Table-ocr rec {_lang}")[0]
                 # 按照 table_id 将识别结果进行回填
                 for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
                     if table_res_list_all_page[img_dict["table_id"]].get("ocr_result"):
