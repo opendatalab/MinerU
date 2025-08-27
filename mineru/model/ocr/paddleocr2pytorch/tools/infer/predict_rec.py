@@ -288,7 +288,7 @@ class TextRecognizer(BaseOCRV20):
 
         return img
 
-    def __call__(self, img_list, tqdm_enable=False):
+    def __call__(self, img_list, tqdm_enable=False, tqdm_desc="OCR-rec Predict"):
         img_num = len(img_list)
         # Calculate the aspect ratio of all text bars
         width_list = []
@@ -302,7 +302,7 @@ class TextRecognizer(BaseOCRV20):
         batch_num = self.rec_batch_num
         elapse = 0
         # for beg_img_no in range(0, img_num, batch_num):
-        with tqdm(total=img_num, desc='OCR-rec Predict', disable=not tqdm_enable) as pbar:
+        with tqdm(total=img_num, desc=tqdm_desc, disable=not tqdm_enable) as pbar:
             index = 0
             for beg_img_no in range(0, img_num, batch_num):
                 end_img_no = min(img_num, beg_img_no + batch_num)

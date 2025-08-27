@@ -114,13 +114,18 @@ class AtomModelSingleton:
         lang = kwargs.get('lang', None)
 
         if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
-            key = (atom_model_name, lang)
+            key = (
+                atom_model_name,
+                lang
+            )
         elif atom_model_name in [AtomicModel.OCR]:
-            key = (atom_model_name,
-                   kwargs.get('det_db_box_thresh', 0.3),
-                   lang, kwargs.get('det_db_unclip_ratio', 1.8),
-                   kwargs.get('enable_merge_det_boxes', True)
-                   )
+            key = (
+                atom_model_name,
+                kwargs.get('det_db_box_thresh', 0.3),
+                lang,
+                kwargs.get('det_db_unclip_ratio', 1.8),
+                kwargs.get('enable_merge_det_boxes', True)
+            )
         else:
             key = atom_model_name
 

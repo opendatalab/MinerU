@@ -134,9 +134,7 @@ class PaddleOrientationClsModel:
     def batch_preprocess(self, imgs):
         res_imgs = []
         for img_info in imgs:
-            # PIL图像转cv2
-            img = cv2.cvtColor(np.asarray(img_info["table_img"]), cv2.COLOR_RGB2BGR)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = np.asarray(img_info["table_img"])
             # 放大图片，使其最短边长为256
             h, w = img.shape[:2]
             scale = 256 / min(h, w)
@@ -174,33 +172,30 @@ class PaddleOrientationClsModel:
         return x
 
     def batch_predict(
-        self, imgs: List[Dict], batch_size: int
+        self, imgs: List[Dict], det_batch_size: int, batch_size: int = 16
     ) -> None:
         """
         批量预测传入的包含图片信息列表的旋转信息，并且将旋转过的图片正确地旋转回来
         """
-        RESOLUTION_GROUP_STRIDE = 64
+        RESOLUTION_GROUP_STRIDE = 128
         # 跳过长宽比小于1.2的图片
         resolution_groups = defaultdict(list)
         for img in imgs:
             # RGB图像转换BGR
-            table_img: np.ndarray = cv2.cvtColor(img["table_img"], cv2.COLOR_RGB2BGR)
-            img["table_img_bgr"] = table_img
-            img_height, img_width = table_img.shape[:2]
+            bgr_img: np.ndarray = cv2.cvtColor(np.asarray(img["table_img"]), cv2.COLOR_RGB2BGR)
+            img["table_img_bgr"] = bgr_img
+            img_height, img_width = bgr_img.shape[:2]
             img_aspect_ratio = img_height / img_width if img_width > 0 else 1.0
-            img_is_portrait = img_aspect_ratio > 1.2
-            if img_is_portrait:
-                h, w = img["table_img_bgr"].shape[:2]
-                normalized_h = ((h + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE  # 向上取整到RESOLUTION_GROUP_STRIDE的倍数
-                normalized_w = ((w + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+            if img_aspect_ratio > 1.2:
+                # 归一化尺寸到RESOLUTION_GROUP_STRIDE的倍数
+                normalized_h = ((img_height + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE  # 向上取整到RESOLUTION_GROUP_STRIDE的倍数
+                normalized_w = ((img_width + RESOLUTION_GROUP_STRIDE) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
                 group_key = (normalized_h, normalized_w)
                 resolution_groups[group_key].append(img)
 
-            # 对每个分辨率组进行批处理
-        for group_key, group_imgs in tqdm(
-            resolution_groups.items(), desc=f"ORI CLS OCR-det"
-        ):
-
+        # 对每个分辨率组进行批处理
+        rotated_imgs = []
+        for group_key, group_imgs in tqdm(resolution_groups.items(), desc="Table-ori cls stage1 predict"):
             # 计算目标尺寸（组内最大尺寸，向上取整到RESOLUTION_GROUP_STRIDE的倍数）
             max_h = max(img["table_img_bgr"].shape[0] for img in group_imgs)
             max_w = max(img["table_img_bgr"].shape[1] for img in group_imgs)
@@ -210,22 +205,21 @@ class PaddleOrientationClsModel:
             # 对所有图像进行padding到统一尺寸
             batch_images = []
             for img in group_imgs:
-                table_img_ndarray = img["table_img_bgr"]
-                h, w = table_img_ndarray.shape[:2]
+                bgr_img = img["table_img_bgr"]
+                h, w = bgr_img.shape[:2]
                 # 创建目标尺寸的白色背景
                 padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
                 # 将原图像粘贴到左上角
-                padded_img[:h, :w] = table_img_ndarray
+                padded_img[:h, :w] = bgr_img
                 batch_images.append(padded_img)
 
             # 批处理检测
-            det_batch_size = min(len(batch_images), batch_size)  # 增加批处理大小
             batch_results = self.ocr_engine.text_detector.batch_predict(
-                batch_images, det_batch_size
+                batch_images, min(len(batch_images), det_batch_size)
             )
 
-            rotated_imgs = []
             # 根据批处理结果检测图像是否旋转,旋转的图像放入列表中，继续进行旋转角度的预测
+
             for index, (img_info, (dt_boxes, elapse)) in enumerate(
                 zip(group_imgs, batch_results)
             ):
@@ -245,18 +239,27 @@ class PaddleOrientationClsModel:
 
                 if vertical_count >= len(dt_boxes) * 0.28 and vertical_count >= 3:
                     rotated_imgs.append(img_info)
-            if len(rotated_imgs) > 0:
-                x = self.batch_preprocess(rotated_imgs)
-                results = self.sess.run(None, {"x": x})
-                for img_info, res in zip(rotated_imgs, results[0]):
-                    label = self.labels[np.argmax(res)]
-                    if label == "270":
-                        img_info["table_img"] = cv2.rotate(
-                            np.asarray(img_info["table_img"]),
-                            cv2.ROTATE_90_CLOCKWISE,
-                        )
-                    elif label == "90":
-                        img_info["table_img"] = cv2.rotate(
-                            np.asarray(img_info["table_img"]),
-                            cv2.ROTATE_90_COUNTERCLOCKWISE,
-                        )
+
+        # 对旋转的图片进行旋转角度预测
+        if len(rotated_imgs) > 0:
+            imgs = self.list_2_batch(rotated_imgs, batch_size=batch_size)
+            with tqdm(total=len(rotated_imgs), desc="Table-ori cls stage2 predict") as pbar:
+                for img_batch in imgs:
+                    x = self.batch_preprocess(img_batch)
+                    results = self.sess.run(None, {"x": x})
+                    for img_info, res in zip(rotated_imgs, results[0]):
+                        label = self.labels[np.argmax(res)]
+                        if label == "270":
+                            img_info["table_img"] = cv2.rotate(
+                                np.asarray(img_info["table_img"]),
+                                cv2.ROTATE_90_CLOCKWISE,
+                            )
+                        elif label == "90":
+                            img_info["table_img"] = cv2.rotate(
+                                np.asarray(img_info["table_img"]),
+                                cv2.ROTATE_90_COUNTERCLOCKWISE,
+                            )
+                        else:
+                            # 180度和0度不做处理
+                            pass
+                        pbar.update(1)

@@ -245,34 +245,22 @@ class RapidTableModel(object):
 
     def batch_predict(self, table_res_list: List[Dict], batch_size: int = 4) -> None:
         """对传入的字典列表进行批量预测，无返回值"""
-        for index in tqdm(
-            range(0, len(table_res_list), batch_size),
-            desc=f"Wireless Table Batch Predict, total={len(table_res_list)}, batch_size={batch_size}",
-        ):
-            batch_imgs = [
-                cv2.cvtColor(np.asarray(table_res_list[i]["table_img"]), cv2.COLOR_RGB2BGR)
-                for i in range(index, min(index + batch_size, len(table_res_list)))
-            ]
-            batch_ocrs = [
-                table_res_list[i]["ocr_result"]
-                for i in range(index, min(index + batch_size, len(table_res_list)))
-            ]
-            results = self.table_model.batch_predict(
-                batch_imgs, batch_ocrs, batch_size=batch_size
-            )
-            for i, result in enumerate(results):
-                if result.pred_html:
-                    # 检查html_code是否包含'<table>'和'</table>'
-                    if '<table>' in result.pred_html and '</table>' in result.pred_html:
-                        # 选用<table>到</table>的内容，放入table_res_dict['table_res']['html']
-                        start_index = result.pred_html.find('<table>')
-                        end_index = result.pred_html.rfind('</table>') + len('</table>')
-                        table_res_list[index + i]['table_res']['html'] = result.pred_html[start_index:end_index]
-                    else:
-                        logger.warning(
-                            'wireless table recognition processing fails, not found expected HTML table end'
-                        )
-                else:
-                    logger.warning(
-                        "wireless table recognition processing fails, not get html return"
-                    )
+        with tqdm(total=len(table_res_list), desc="Table-wireless Predict") as pbar:
+            for index in range(0, len(table_res_list), batch_size):
+                batch_imgs = [
+                    cv2.cvtColor(np.asarray(table_res_list[i]["table_img"]), cv2.COLOR_RGB2BGR)
+                    for i in range(index, min(index + batch_size, len(table_res_list)))
+                ]
+                batch_ocrs = [
+                    table_res_list[i]["ocr_result"]
+                    for i in range(index, min(index + batch_size, len(table_res_list)))
+                ]
+                results = self.table_model.batch_predict(
+                    batch_imgs, batch_ocrs, batch_size=batch_size
+                )
+                for i, result in enumerate(results):
+                    if result.pred_html:
+                        table_res_list[index + i]['table_res']['html'] = result.pred_html
+
+                # 更新进度条
+                pbar.update(len(results))

@@ -18,7 +18,8 @@ YOLO_LAYOUT_BASE_BATCH_SIZE = 1
 MFD_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
-ORI_TAB_CLS_BATCH_SIZE = 16
+TABLE_ORI_CLS_BATCH_SIZE = 16
+TABLE_Wired_Wireless_CLS_BATCH_SIZE = 16
 
 
 class BatchAnalyze:
@@ -105,7 +106,120 @@ class BatchAnalyze:
                                                 'table_img':table_img,
                                               })
 
-        # OCR检测处理
+        # 表格识别 table recognition
+        if self.table_enable:
+
+            # 图片旋转批量处理
+            img_orientation_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.ImgOrientationCls,
+            )
+            try:
+                img_orientation_cls_model.batch_predict(table_res_list_all_page,
+                                                        det_batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE,
+                                                        batch_size=TABLE_ORI_CLS_BATCH_SIZE)
+            except Exception as e:
+                logger.warning(
+                    f"Image orientation classification failed: {e}, using original image"
+                )
+
+            # 表格分类
+            table_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.TableCls,
+            )
+            try:
+                table_cls_model.batch_predict(table_res_list_all_page,
+                                              batch_size=TABLE_Wired_Wireless_CLS_BATCH_SIZE)
+            except Exception as e:
+                logger.warning(
+                    f"Table classification failed: {e}, using default model"
+                )
+
+            # OCR det 过程，顺序执行
+            rec_img_lang_group = defaultdict(list)
+            for index, table_res_dict in enumerate(
+                    tqdm(table_res_list_all_page, desc="Table-ocr det")
+            ):
+                ocr_engine = atom_model_manager.get_atom_model(
+                    atom_model_name=AtomicModel.OCR,
+                    det_db_box_thresh=0.5,
+                    det_db_unclip_ratio=1.6,
+                    # lang= table_res_dict["lang"],
+                    enable_merge_det_boxes=False,
+                )
+                bgr_image = cv2.cvtColor(table_res_dict["table_img"], cv2.COLOR_RGB2BGR)
+                ocr_result = ocr_engine.ocr(bgr_image, rec=False)[0]
+                # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
+                for dt_box in ocr_result:
+                    rec_img_lang_group[_lang].append(
+                        {
+                            "cropped_img": get_rotate_crop_image(
+                                bgr_image, np.asarray(dt_box, dtype=np.float32)
+                            ),
+                            "dt_box": np.asarray(dt_box, dtype=np.float32),
+                            "table_id": index,
+                        }
+                    )
+
+            # OCR rec，按照语言分批处理
+            for _lang, rec_img_list in rec_img_lang_group.items():
+                ocr_engine = atom_model_manager.get_atom_model(
+                    atom_model_name=AtomicModel.OCR,
+                    det_db_box_thresh=0.5,
+                    det_db_unclip_ratio=1.6,
+                    lang=_lang,
+                    enable_merge_det_boxes=False,
+                )
+                cropped_img_list = [item["cropped_img"] for item in rec_img_list]
+                ocr_res_list = \
+                ocr_engine.ocr(cropped_img_list, det=False, tqdm_enable=True, tqdm_desc="Table-ocr rec")[0]
+                # 按照 table_id 将识别结果进行回填
+                for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
+                    if table_res_list_all_page[img_dict["table_id"]].get("ocr_result"):
+                        table_res_list_all_page[img_dict["table_id"]]["ocr_result"].append(
+                            [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
+                        )
+                    else:
+                        table_res_list_all_page[img_dict["table_id"]]["ocr_result"] = [
+                            [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
+                        ]
+
+            # 先对所有表格使用无线表格模型，然后对分类为有线的表格使用有线表格模型
+            wireless_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WirelessTable,
+            )
+            wireless_table_model.batch_predict(table_res_list_all_page)
+
+            # 单独拿出有线表格进行预测
+            wired_table_res_list = []
+            for table_res_dict in table_res_list_all_page:
+                if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
+                    wired_table_res_list.append(table_res_dict)
+            if wired_table_res_list:
+                for table_res_dict in tqdm(
+                        wired_table_res_list, desc="Table-wired Predict"
+                ):
+                    wired_table_model = atom_model_manager.get_atom_model(
+                        atom_model_name=AtomicModel.WiredTable,
+                        lang=table_res_dict["lang"],
+                    )
+                    table_res_dict["table_res"]["html"] = wired_table_model.predict(
+                        table_res_dict["table_img"],
+                        table_res_dict["ocr_result"],
+                        table_res_dict["table_res"].get("html", None)
+                    )
+
+            # 表格格式清理
+            for table_res_dict in table_res_list_all_page:
+                html_code = table_res_dict["table_res"].get("html", "")
+
+                # 检查html_code是否包含'<table>'和'</table>'
+                if "<table>" in html_code and "</table>" in html_code:
+                    # 选用<table>到</table>的内容，放入table_res_dict['table_res']['html']
+                    start_index = html_code.find("<table>")
+                    end_index = html_code.rfind("</table>") + len("</table>")
+                    table_res_dict["table_res"]["html"] = html_code[start_index:end_index]
+
+        # OCR det
         if self.enable_ocr_det_batch:
             # 批处理模式 - 按语言和分辨率分组
             # 收集所有需要OCR检测的裁剪图像
@@ -256,118 +370,7 @@ class BatchAnalyze:
 
                         ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
-        # 表格识别 table recognition
-        if self.table_enable:
-            # 图片旋转批量处理
-
-            img_orientation_cls_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.ImgOrientationCls,
-            )
-            try:
-                img_orientation_cls_model.batch_predict(table_res_list_all_page, batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            except Exception as e:
-                logger.warning(
-                    f"Image orientation classification failed: {e}, using original image"
-                )
-            # 表格分类
-            table_cls_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.TableCls,
-            )
-            try:
-                table_cls_model.batch_predict(table_res_list_all_page)
-            except Exception as e:
-                logger.warning(
-                    f"Table classification failed: {e}, using default model"
-                )
-            rec_img_lang_group = defaultdict(list)
-            # OCR det 过程，顺序执行
-            for index, table_res_dict in enumerate(
-                tqdm(table_res_list_all_page, desc="Table OCR det")
-            ):
-                _lang = table_res_dict["lang"]
-                ocr_engine = atom_model_manager.get_atom_model(
-                    atom_model_name=AtomicModel.OCR,
-                    det_db_box_thresh=0.5,
-                    det_db_unclip_ratio=1.6,
-                    lang=_lang,
-                    enable_merge_det_boxes=False,
-                )
-                bgr_image = cv2.cvtColor(
-                    np.asarray(table_res_dict["table_img"]), cv2.COLOR_RGB2BGR
-                )
-                ocr_result = ocr_engine.ocr(bgr_image, det=True, rec=False)[0]
-                # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
-                for dt_box in ocr_result:
-                    rec_img_lang_group[_lang].append(
-                        {
-                            "cropped_img": get_rotate_crop_image(
-                                bgr_image, np.asarray(dt_box, dtype=np.float32)
-                            ),
-                            "dt_box": np.asarray(dt_box, dtype=np.float32),
-                            "table_id": index,
-                        }
-                    )
-            # OCR rec，按照语言分批处理
-            for _lang, rec_img_list in rec_img_lang_group.items():
-                ocr_engine = atom_model_manager.get_atom_model(
-                    atom_model_name=AtomicModel.OCR,
-                    det_db_box_thresh=0.5,
-                    det_db_unclip_ratio=1.6,
-                    lang=_lang,
-                    enable_merge_det_boxes=False,
-                )
-                cropped_img_list = [item["cropped_img"] for item in rec_img_list]
-                ocr_res_list = ocr_engine.ocr(
-                    cropped_img_list, det=False, rec=True, tqdm_enable=True
-                )[0]
-                # 按照 table_id 将识别结果进行回填
-                for img_dict, ocr_res in zip(rec_img_list, ocr_res_list):
-                    if table_res_list_all_page[img_dict["table_id"]].get("ocr_result"):
-                        table_res_list_all_page[img_dict["table_id"]]["ocr_result"].append(
-                            [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
-                        )
-                    else:
-                        table_res_list_all_page[img_dict["table_id"]]["ocr_result"] = [
-                            [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
-                        ]
-
-            # 先对所有表格使用无线表格模型，然后对分类为有线的表格使用有线表格模型
-            wireless_table_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.WirelessTable,
-            )
-            wireless_table_model.batch_predict(table_res_list_all_page)
-
-            # 单独拿出有线表格进行预测
-            wired_table_res_list = []
-            for table_res_dict in table_res_list_all_page:
-                if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
-                    wired_table_res_list.append(table_res_dict)
-            for table_res_dict in tqdm(
-                wired_table_res_list, desc="Wired Table Predict"
-            ):
-                if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
-                    wired_table_model = atom_model_manager.get_atom_model(
-                        atom_model_name=AtomicModel.WiredTable,
-                        lang=table_res_dict["lang"],
-                    )
-                    html_code = wired_table_model.predict(
-                        table_res_dict["table_img"],
-                        table_res_dict["ocr_result"],
-                        table_res_dict["table_res"].get("html", None)
-                    )
-                    # 检查html_code是否包含'<table>'和'</table>'
-                    if "<table>" in html_code and "</table>" in html_code:
-                        # 选用<table>到</table>的内容，放入table_res_dict['table_res']['html']
-                        start_index = html_code.find("<table>")
-                        end_index = html_code.rfind("</table>") + len("</table>")
-                        table_res_dict["table_res"]["html"] = html_code[
-                            start_index:end_index
-                        ]
-                    else:
-                        logger.warning(
-                            "wired table recognition processing fails, not found expected HTML table end"
-                        )
-
+        # OCR rec
         # Create dictionaries to store items by language
         need_ocr_lists_by_lang = {}  # Dict of lists for each language
         img_crop_lists_by_lang = {}  # Dict of lists for each language

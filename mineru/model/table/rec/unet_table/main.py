@@ -16,7 +16,7 @@ from .table_structure_unet import TSRUnet
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from .table_recover import TableRecover
-from .utils import InputType, LoadImage
+from .utils import InputType, LoadImage, VisTable
 from .utils_table_recover import (
     match_ocr_cell,
     plot_html_table,
@@ -187,7 +187,7 @@ class WiredTableRecognition:
                 continue
             # 判断长宽比
             if (x2 - x1) / (y2 - y1) > 20 or (y2 - y1) / (x2 - x1) > 20:
-                logger.warning(f"Box {i} has invalid aspect ratio: {x1, y1, x2, y2}")
+                # logger.warning(f"Box {i} has invalid aspect ratio: {x1, y1, x2, y2}")
                 continue
             img_crop = bgr_img[int(y1):int(y2), int(x1):int(x2)]
             img_crop_list.append(img_crop)
@@ -264,6 +264,16 @@ class UnetTableModel:
         try:
             wired_table_results = self.wired_table_model(np_img, ocr_result)
 
+            # viser = VisTable()
+            # save_html_path = f"outputs/output.html"
+            # save_drawed_path = f"outputs/output_table_vis.jpg"
+            # save_logic_path = (
+            #     f"outputs/output_table_vis_logic.jpg"
+            # )
+            # vis_imged = viser(
+            #     np_img, wired_table_results, save_html_path, save_drawed_path, save_logic_path
+            # )
+
             wired_html_code = wired_table_results.pred_html
 
             wired_len = count_table_cells_physical(wired_html_code)
@@ -275,7 +285,6 @@ class UnetTableModel:
             # 判断是否使用无线表格模型的结果
             if (
                 wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
-                # or ((round(wireless_len*1.2) < wired_len) and (wired_len < (2 * wireless_len)) and table_cls_score <= 0.94)  # 有线模型检测到的单元格数反而更多
                 or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
                 or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
             ):

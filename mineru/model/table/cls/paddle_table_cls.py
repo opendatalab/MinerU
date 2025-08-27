@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import onnxruntime
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.backend.pipeline.model_list import AtomicModel
 from mineru.utils.enum_class import ModelPath
@@ -97,9 +98,7 @@ class PaddleTableClsModel:
     def batch_preprocess(self, imgs):
         res_imgs = []
         for img in imgs:
-            # PIL图像转cv2
-            img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = np.asarray(img)
             # 放大图片，使其最短边长为256
             h, w = img.shape[:2]
             scale = 256 / min(h, w)
@@ -139,16 +138,18 @@ class PaddleTableClsModel:
         imgs = [item["table_img"] for item in img_info_list]
         imgs = self.list_2_batch(imgs, batch_size=batch_size)
         label_res = []
-        for img_batch in imgs:
-            x = self.batch_preprocess(img_batch)
-            result = self.sess.run(None, {"x": x})
-            for img_res in result[0]:
-                idx = np.argmax(img_res)
-                conf = float(np.max(img_res))
-                # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-                if idx == 0 and conf < 0.8:
-                    idx = 1
-                label_res.append((self.labels[idx],conf))
-        for img_info, (label, conf) in zip(img_info_list, label_res):
-            img_info['table_res']["cls_label"] = label
-            img_info['table_res']["cls_score"] = conf
+        with tqdm(total=len(img_info_list), desc="Table-wired/wireless cls predict") as pbar:
+            for img_batch in imgs:
+                x = self.batch_preprocess(img_batch)
+                result = self.sess.run(None, {"x": x})
+                for img_res in result[0]:
+                    idx = np.argmax(img_res)
+                    conf = float(np.max(img_res))
+                    # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
+                    if idx == 0 and conf < 0.8:
+                        idx = 1
+                    label_res.append((self.labels[idx],conf))
+                pbar.update(len(img_batch))
+            for img_info, (label, conf) in zip(img_info_list, label_res):
+                img_info['table_res']["cls_label"] = label
+                img_info['table_res']["cls_score"] = round(conf, 3)
