@@ -429,7 +429,7 @@ class VisTable:
         :return:
         """
         # 读取原图
-        img = cv2.imread(img_path)
+        img = img_path
         img = cv2.copyMakeBorder(
             img, 0, 0, 0, 100, cv2.BORDER_CONSTANT, value=[255, 255, 255]
         )

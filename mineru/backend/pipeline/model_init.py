@@ -10,7 +10,7 @@ from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
-from ...model.table.rec.rapid_table import RapidTableModel
+from ...model.table.rec.slanet_plus.main import RapidTableModel
 from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
@@ -114,13 +114,18 @@ class AtomModelSingleton:
         lang = kwargs.get('lang', None)
 
         if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
-            key = (atom_model_name, lang)
+            key = (
+                atom_model_name,
+                lang
+            )
         elif atom_model_name in [AtomicModel.OCR]:
-            key = (atom_model_name,
-                   kwargs.get('det_db_box_thresh', 0.3),
-                   lang, kwargs.get('det_db_unclip_ratio', 1.8),
-                   kwargs.get('enable_merge_det_boxes', True)
-                   )
+            key = (
+                atom_model_name,
+                kwargs.get('det_db_box_thresh', 0.3),
+                lang,
+                kwargs.get('det_db_unclip_ratio', 1.8),
+                kwargs.get('enable_merge_det_boxes', True)
+            )
         else:
             key = atom_model_name
 
