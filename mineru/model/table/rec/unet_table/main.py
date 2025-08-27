@@ -64,7 +64,7 @@ class WiredTableRecognition:
         img = self.load_img(img)
         polygons, rotated_polygons = self.table_structure(img, **kwargs)
         if polygons is None:
-            logging.warning("polygons is None.")
+            # logging.warning("polygons is None.")
             return WiredTableOutput("", None, None, 0.0)
 
         try:

@@ -138,7 +138,7 @@ class PaddleTableClsModel:
         imgs = [item["table_img"] for item in img_info_list]
         imgs = self.list_2_batch(imgs, batch_size=batch_size)
         label_res = []
-        with tqdm(total=len(img_info_list), desc="Table-wired/wireless cls predict") as pbar:
+        with tqdm(total=len(img_info_list), desc="Table-wired/wireless cls predict", disable=True) as pbar:
             for img_batch in imgs:
                 x = self.batch_preprocess(img_batch)
                 result = self.sess.run(None, {"x": x})
