@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from PIL import Image
 import cv2
@@ -146,8 +145,8 @@ class PaddleTableClsModel:
                     idx = np.argmax(img_res)
                     conf = float(np.max(img_res))
                     # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-                    if idx == 0 and conf < 0.8:
-                        idx = 1
+                    # if idx == 0 and conf < 0.8:
+                    #     idx = 1
                     label_res.append((self.labels[idx],conf))
                 pbar.update(len(img_batch))
             for img_info, (label, conf) in zip(img_info_list, label_res):
