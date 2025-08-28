@@ -310,14 +310,13 @@ class UnetTableModel:
 
             # 判断是否使用无线表格模型的结果
             if (
-                int(wireless_len * 0.04) <= wired_len <= int(wireless_len * 0.62)+1  # 有线模型检测到的单元格数太少（低于无线模型的55%）
+                (int(wireless_len * 0.04) <= wired_len <= int(wireless_len * 0.62)+1 and wireless_blank_count <= wired_blank_count+50)
+                or int(wireless_len * 0.04) <= wired_len <= int(wireless_len * 0.55)+1 # 有线模型检测到的单元格数太少（低于无线模型的55%）
                 or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
                 or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
-                or wired_text_count <= wireless_text_count * 0.6  # 有线模型填入的文字明显少于无线模型
-            )and(
-                wireless_blank_count <= (wired_blank_count+1) * 2  # 无线模型的空单元格数量不多于有线模型的2倍
+                or (wired_text_count <= wireless_text_count * 0.6 and  wireless_text_count >=10) # 有线模型填入的文字明显少于无线模型
             ):
-                logger.debug("fall back to wireless table model")
+                # logger.debug("fall back to wireless table model")
                 html_code = wireless_html_code
             else:
                 html_code = wired_html_code
