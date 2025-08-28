@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
+from bs4 import BeautifulSoup
 
 from .table_structure_unet import TSRUnet
 
@@ -283,20 +284,40 @@ class UnetTableModel:
             # )
 
             wired_html_code = wired_table_results.pred_html
-
             wired_len = count_table_cells_physical(wired_html_code)
             wireless_len = count_table_cells_physical(wireless_html_code)
-
-            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
             # 计算两种模型检测的单元格数量差异
             gap_of_len = wireless_len - wired_len
+            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
+
+            # 使用OCR结果计算两种模型填入的文字数量
+            wireless_text_count = 0
+            wired_text_count = 0
+            for ocr_res in ocr_result:
+                if ocr_res[1] in wireless_html_code:
+                    wireless_text_count += 1
+                if ocr_res[1] in wired_html_code:
+                    wired_text_count += 1
+            # logger.debug(f"wireless table ocr text count: {wireless_text_count}, wired table ocr text count: {wired_text_count}")
+
+            # 使用HTML解析器计算空单元格数量
+            wireless_soup = BeautifulSoup(wireless_html_code, 'html.parser') if wireless_html_code else BeautifulSoup("", 'html.parser')
+            wired_soup = BeautifulSoup(wired_html_code, 'html.parser') if wired_html_code else BeautifulSoup("", 'html.parser')
+            # 计算空单元格数量(没有文本内容或只有空白字符)
+            wireless_blank_count = sum(1 for cell in wireless_soup.find_all(['td', 'th']) if not cell.text.strip())
+            wired_blank_count = sum(1 for cell in wired_soup.find_all(['td', 'th']) if not cell.text.strip())
+            # logger.debug(f"wireless table blank cell count: {wireless_blank_count}, wired table blank cell count: {wired_blank_count}")
+
             # 判断是否使用无线表格模型的结果
             if (
-                int(wireless_len * 0.1) <= wired_len <= int(wireless_len * 0.62)+1  # 有线模型检测到的单元格数太少（低于无线模型的55%）
+                int(wireless_len * 0.04) <= wired_len <= int(wireless_len * 0.62)+1  # 有线模型检测到的单元格数太少（低于无线模型的55%）
                 or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
                 or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
+                or wired_text_count <= wireless_text_count * 0.6  # 有线模型填入的文字明显少于无线模型
+            )and(
+                wireless_blank_count <= (wired_blank_count+1) * 2  # 无线模型的空单元格数量不多于有线模型的2倍
             ):
-                # logger.debug("fall back to wireless table model")
+                logger.debug("fall back to wireless table model")
                 html_code = wireless_html_code
             else:
                 html_code = wired_html_code
