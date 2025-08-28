@@ -70,6 +70,7 @@ pipeline = [
     "torch>=2.6.0,<2.8.0",
     "torchvision",
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
+    "onnxruntime>1.17.0",
 ]
 api = [
     "fastapi",
