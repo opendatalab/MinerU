@@ -1,3 +1,4 @@
+import os
 import time
 import gc
 from PIL import Image
@@ -427,6 +428,8 @@ def clean_memory(device='cuda'):
 
 def clean_vram(device, vram_threshold=8):
     total_memory = get_vram(device)
+    if total_memory is not None:
+        total_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(total_memory)))
     if total_memory and total_memory <= vram_threshold:
         gc_start = time.time()
         clean_memory(device)

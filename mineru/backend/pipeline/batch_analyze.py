@@ -9,7 +9,7 @@ import numpy as np
 from .model_init import AtomModelSingleton
 from .model_list import AtomicModel
 from ...utils.config_reader import get_formula_enable, get_table_enable
-from ...utils.model_utils import crop_img, get_res_list_from_layout_res
+from ...utils.model_utils import crop_img, get_res_list_from_layout_res, clean_vram
 from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
 from ...utils.pdf_image_tools import get_crop_np_img
@@ -71,7 +71,7 @@ class BatchAnalyze:
                 mfr_count += len(images_formula_list[image_index])
 
         # 清理显存
-        # clean_vram(self.model.device, vram_threshold=8)
+        clean_vram(self.model.device, vram_threshold=8)
 
         ocr_res_list_all_page = []
         table_res_list_all_page = []
@@ -183,6 +183,8 @@ class BatchAnalyze:
                             [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
                         ]
 
+            clean_vram(self.model.device, vram_threshold=8)
+
             # 先对所有表格使用无线表格模型，然后对分类为有线的表格使用有线表格模型
             wireless_table_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.WirelessTable,
@@ -198,6 +200,9 @@ class BatchAnalyze:
                 for table_res_dict in tqdm(
                         wired_table_res_list, desc="Table-wired Predict"
                 ):
+                    if not table_res_dict.get("ocr_result", None):
+                        continue
+
                     wired_table_model = atom_model_manager.get_atom_model(
                         atom_model_name=AtomicModel.WiredTable,
                         lang=table_res_dict["lang"],
