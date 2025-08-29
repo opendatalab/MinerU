@@ -158,18 +158,17 @@ class RapidTableModel(object):
         self.table_model = RapidTable(input_args)
         self.ocr_engine = ocr_engine
 
-    def predict(self, image, table_cls_score):
+    def predict(self, image, ocr_result=None):
         bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
         # Continue with OCR on potentially rotated image
-        ocr_result = self.ocr_engine.ocr(bgr_image)[0]
-        if ocr_result:
+
+        if not ocr_result:
+            ocr_result = self.ocr_engine.ocr(bgr_image)[0]
             ocr_result = [
                 [item[0], escape_html(item[1][0]), item[1][1]]
                 for item in ocr_result
                 if len(item) == 2 and isinstance(item[1], tuple)
             ]
-        else:
-            ocr_result = None
 
         if ocr_result:
             try:
