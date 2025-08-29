@@ -137,12 +137,14 @@ class HuggingfacePredictor(BasePredictor):
         image_tensor = image_tensor.to(device=self.model.device, dtype=self.model.dtype)
         image_sizes = [[*image_obj.size]]
 
-        input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids
-        input_ids = input_ids.to(device=self.model.device)
+        encoded_inputs = self.tokenizer(prompt, return_tensors="pt")
+        input_ids = encoded_inputs.input_ids.to(device=self.model.device)
+        attention_mask = encoded_inputs.attention_mask.to(device=self.model.device)
 
         with torch.inference_mode():
             output_ids = self.model.generate(
                 input_ids,
+                attention_mask=attention_mask,
                 images=image_tensor,
                 image_sizes=image_sizes,
                 use_cache=True,

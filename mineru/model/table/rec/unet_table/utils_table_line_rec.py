@@ -152,7 +152,7 @@ def calculate_center_rotate_angle(box):
     ) / 2
     # x = cx-w/2
     # y = cy-h/2
-    sinA = (h * (x1 - cx) - w * (y1 - cy)) * 1.0 / (h * h + w * w) * 2
+    sinA = (h * (x1 - cx) - w * (y1 - cy)) * 1.0 / (h * h + w * w + 1e-10) * 2
     angle = np.arcsin(sinA)
     return angle, w, h, cx, cy
 
