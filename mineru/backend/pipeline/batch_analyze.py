@@ -137,18 +137,17 @@ class BatchAnalyze:
 
             # OCR det 过程，顺序执行
             rec_img_lang_group = defaultdict(list)
+            det_ocr_engine = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.OCR,
+                det_db_box_thresh=0.5,
+                det_db_unclip_ratio=1.6,
+                enable_merge_det_boxes=False,
+            )
             for index, table_res_dict in enumerate(
                     tqdm(table_res_list_all_page, desc="Table-ocr det")
             ):
-                ocr_engine = atom_model_manager.get_atom_model(
-                    atom_model_name=AtomicModel.OCR,
-                    det_db_box_thresh=0.5,
-                    det_db_unclip_ratio=1.6,
-                    # lang= table_res_dict["lang"],
-                    enable_merge_det_boxes=False,
-                )
                 bgr_image = cv2.cvtColor(table_res_dict["table_img"], cv2.COLOR_RGB2BGR)
-                ocr_result = ocr_engine.ocr(bgr_image, rec=False)[0]
+                ocr_result = det_ocr_engine.ocr(bgr_image, rec=False)[0]
                 # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
                 for dt_box in ocr_result:
                     rec_img_lang_group[_lang].append(
@@ -190,14 +189,6 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.WirelessTable,
             )
             wireless_table_model.batch_predict(table_res_list_all_page)
-            # for table_res_dict in tqdm(table_res_list_all_page, desc="Table-wireless Predict"):
-            #     if not table_res_dict.get("ocr_result", None):
-            #         continue
-            #     html_code, table_cell_bboxes, logic_points, elapse = wireless_table_model.predict(
-            #         table_res_dict["table_img"], table_res_dict["ocr_result"]
-            #     )
-            #     if html_code:
-            #         table_res_dict["table_res"]["html"] = html_code
 
             # 单独拿出有线表格进行预测
             wired_table_res_list = []
