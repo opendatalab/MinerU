@@ -174,6 +174,12 @@ class PaddleOrientationClsModel:
     def batch_predict(
         self, imgs: List[Dict], det_batch_size: int, batch_size: int = 16
     ) -> None:
+
+        import torch
+        from packaging import version
+        if version.parse(torch.__version__) >= version.parse("2.8.0"):
+            return None
+
         """
         批量预测传入的包含图片信息列表的旋转信息，并且将旋转过的图片正确地旋转回来
         """
