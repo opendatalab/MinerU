@@ -190,6 +190,14 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.WirelessTable,
             )
             wireless_table_model.batch_predict(table_res_list_all_page)
+            # for table_res_dict in tqdm(table_res_list_all_page, desc="Table-wireless Predict"):
+            #     if not table_res_dict.get("ocr_result", None):
+            #         continue
+            #     html_code, table_cell_bboxes, logic_points, elapse = wireless_table_model.predict(
+            #         table_res_dict["table_img"], table_res_dict["ocr_result"]
+            #     )
+            #     if html_code:
+            #         table_res_dict["table_res"]["html"] = html_code
 
             # 单独拿出有线表格进行预测
             wired_table_res_list = []
