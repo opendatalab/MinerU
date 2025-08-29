@@ -434,7 +434,7 @@ def clean_vram(device, vram_threshold=8):
         gc_start = time.time()
         clean_memory(device)
         gc_time = round(time.time() - gc_start, 2)
-        logger.info(f"gc time: {gc_time}")
+        # logger.info(f"gc time: {gc_time}")
 
 
 def get_vram(device):
