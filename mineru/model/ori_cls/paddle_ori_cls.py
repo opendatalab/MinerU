@@ -260,9 +260,17 @@ class PaddleOrientationClsModel:
                                 np.asarray(img_info["table_img"]),
                                 cv2.ROTATE_90_CLOCKWISE,
                             )
+                            img_info["wired_table_img"] = cv2.rotate(
+                                np.asarray(img_info["wired_table_img"]),
+                                cv2.ROTATE_90_CLOCKWISE,
+                            )
                         elif label == "90":
                             img_info["table_img"] = cv2.rotate(
                                 np.asarray(img_info["table_img"]),
+                                cv2.ROTATE_90_COUNTERCLOCKWISE,
+                            )
+                            img_info["wired_table_img"] = cv2.rotate(
+                                np.asarray(img_info["wired_table_img"]),
                                 cv2.ROTATE_90_COUNTERCLOCKWISE,
                             )
                         else:
