@@ -194,8 +194,14 @@ class BatchAnalyze:
             # 单独拿出有线表格进行预测
             wired_table_res_list = []
             for table_res_dict in table_res_list_all_page:
-                if table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable:
+                # logger.debug(f"Table classification result: {table_res_dict["table_res"]["cls_label"]} with confidence {table_res_dict["table_res"]["cls_score"]}")
+                if (
+                    (table_res_dict["table_res"]["cls_label"] == AtomicModel.WirelessTable and table_res_dict["table_res"]["cls_score"] < 0.9)
+                    or table_res_dict["table_res"]["cls_label"] == AtomicModel.WiredTable
+                ):
                     wired_table_res_list.append(table_res_dict)
+                del table_res_dict["table_res"]["cls_label"]
+                del table_res_dict["table_res"]["cls_score"]
             if wired_table_res_list:
                 for table_res_dict in tqdm(
                         wired_table_res_list, desc="Table-wired Predict"
