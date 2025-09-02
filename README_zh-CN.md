@@ -37,7 +37,7 @@
 <!-- join us -->
 
 <p align="center">
-    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="http://mineru.space/s/V85Yl" target="_blank">WeChat</a>
+    👋 join us on <a href="https://discord.gg/Tdedn9GTXq" target="_blank">Discord</a> and <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank">WeChat</a>
 </p>
 
 </div>
@@ -564,7 +564,7 @@ mineru -p <input_path> -o <output_path>
  
 - 如果您在使用过程中遇到问题，可以先查看[常见问题](https://opendatalab.github.io/MinerU/zh/faq/)是否有解答。  
 - 如果未能解决您的问题，您也可以使用[DeepWiki](https://deepwiki.com/opendatalab/MinerU)与AI助手交流，这可以解决大部分常见问题。  
-- 如果您仍然无法解决问题，您可通过[Discord](https://discord.gg/Tdedn9GTXq)或[WeChat](http://mineru.space/s/V85Yl)加入社区，与其他用户和开发者交流。
+- 如果您仍然无法解决问题，您可通过[Discord](https://discord.gg/Tdedn9GTXq)或[WeChat](https://mineru.net/community-portal/?aliasId=3c430f94)加入社区，与其他用户和开发者交流。
 
 # All Thanks To Our Contributors
 
