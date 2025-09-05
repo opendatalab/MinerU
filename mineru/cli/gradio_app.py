@@ -145,7 +145,7 @@ devanagari_lang = [
         'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
         'sa', 'bgc'
 ]
-other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']
+other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka', "el", "th"]
 add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']
 
 # all_lang = ['', 'auto']
