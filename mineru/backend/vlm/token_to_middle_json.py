@@ -1,8 +1,9 @@
+import os
 import time
 from loguru import logger
 import numpy as np
 import cv2
-from mineru.utils.config_reader import get_llm_aided_config
+from mineru.utils.config_reader import get_llm_aided_config, get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import str_md5
@@ -94,7 +95,9 @@ def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
         middle_json["pdf_info"].append(page_info)
 
     """表格跨页合并"""
-    merge_table(middle_json["pdf_info"])
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    if table_enable:
+        merge_table(middle_json["pdf_info"])
 
     """llm优化标题分级"""
     if heading_level_import_success:

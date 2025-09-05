@@ -188,7 +188,7 @@ def merge_para_with_text(para_block):
     return para_text
 
 
-def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
+def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
@@ -245,6 +245,17 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             if block['type'] == BlockType.TABLE_FOOTNOTE:
                 para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_with_text(block))
 
+    page_weight, page_height = page_size
+    para_bbox = para_block.get('bbox')
+    if para_bbox:
+        x0, y0, x1, y1 = para_bbox
+        para_content['bbox'] = [
+            int(x0 * 1000 / page_weight),
+            int(y0 * 1000 / page_height),
+            int(x1 * 1000 / page_weight),
+            int(y1 * 1000 / page_height),
+        ]
+
     para_content['page_idx'] = page_idx
 
     return para_content
@@ -258,6 +269,7 @@ def union_make(pdf_info_dict: list,
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
         page_idx = page_info.get('page_idx')
+        page_size = page_info.get('page_size')
         if not paras_of_layout:
             continue
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
@@ -265,7 +277,7 @@ def union_make(pdf_info_dict: list,
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             for para_block in paras_of_layout:
-                para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx)
+                para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                 if para_content:
                     output_content.append(para_content)
 
