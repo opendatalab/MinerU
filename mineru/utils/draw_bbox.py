@@ -5,7 +5,7 @@ from loguru import logger
 from pypdf import PdfReader, PdfWriter, PageObject
 from reportlab.pdfgen import canvas
 
-from .enum_class import BlockType, ContentType
+from .enum_class import BlockType, ContentType, SplitFlag
 
 
 def cal_canvas_rect(page, bbox):
@@ -151,6 +151,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                     elif nested_block["type"] == BlockType.TABLE_CAPTION:
                         tables_caption.append(bbox)
                     elif nested_block["type"] == BlockType.TABLE_FOOTNOTE:
+                        if nested_block.get(SplitFlag.CROSS_PAGE, False):
+                            continue
                         tables_footnote.append(bbox)
             elif block["type"] == BlockType.IMAGE:
                 imgs.append(bbox)
@@ -209,6 +211,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
             elif block["type"] in [BlockType.TABLE]:
                 sorted_blocks = sorted(block["blocks"], key=lambda x: table_type_order[x["type"]])
                 for sub_block in sorted_blocks:
+                    if sub_block.get(SplitFlag.CROSS_PAGE, False):
+                        continue
                     bbox = sub_block["bbox"]
                     page_block_list.append(bbox)
 
@@ -270,20 +274,12 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     image_list = []
     table_list = []
     dropped_list = []
-    next_page_text_list = []
-    next_page_inline_equation_list = []
 
     def get_span_info(span):
         if span['type'] == ContentType.TEXT:
-            if span.get('cross_page', False):
-                next_page_text_list.append(span['bbox'])
-            else:
-                page_text_list.append(span['bbox'])
+            page_text_list.append(span['bbox'])
         elif span['type'] == ContentType.INLINE_EQUATION:
-            if span.get('cross_page', False):
-                next_page_inline_equation_list.append(span['bbox'])
-            else:
-                page_inline_equation_list.append(span['bbox'])
+            page_inline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.INTERLINE_EQUATION:
             page_interline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.IMAGE:
@@ -299,13 +295,6 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         page_table_list = []
         page_dropped_list = []
 
-        # 将跨页的span放到移动到下一页的列表中
-        if len(next_page_text_list) > 0:
-            page_text_list.extend(next_page_text_list)
-            next_page_text_list.clear()
-        if len(next_page_inline_equation_list) > 0:
-            page_inline_equation_list.extend(next_page_inline_equation_list)
-            next_page_inline_equation_list.clear()
 
         # 构造dropped_list
         for block in page['discarded_blocks']:
