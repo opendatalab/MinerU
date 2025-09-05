@@ -46,7 +46,6 @@ test = [
     "pytest",
     "pytest-cov",
     "coverage",
-    "beautifulsoup4",
     "fuzzywuzzy"
 ]
 vlm = [
