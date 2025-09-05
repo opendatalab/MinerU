@@ -8,6 +8,7 @@ from mineru.utils.pdf_image_tools import load_images_from_pdf
 from .base_predictor import BasePredictor
 from .predictor import get_predictor
 from .token_to_middle_json import result_to_middle_json
+from ...utils.enum_class import ImageType
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 
@@ -53,7 +54,7 @@ def doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
+    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.BASE64)
     images_base64_list = [image_dict["img_base64"] for image_dict in images_list]
     # load_images_time = round(time.time() - load_images_start, 2)
     # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
@@ -80,7 +81,7 @@ async def aio_doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes)
+    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.BASE64)
     images_base64_list = [image_dict["img_base64"] for image_dict in images_list]
     # load_images_time = round(time.time() - load_images_start, 2)
     # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")

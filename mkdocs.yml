@@ -50,6 +50,9 @@ theme:
     - toc.integrate
 
 extra:
+  analytics:
+    provider: google
+    property: G-44K480CC48
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/opendatalab/MinerU

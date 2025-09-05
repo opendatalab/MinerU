@@ -5,7 +5,7 @@ from loguru import logger
 from pypdf import PdfReader, PdfWriter, PageObject
 from reportlab.pdfgen import canvas
 
-from .enum_class import BlockType, ContentType
+from .enum_class import BlockType, ContentType, SplitFlag
 
 
 def cal_canvas_rect(page, bbox):
@@ -24,8 +24,12 @@ def cal_canvas_rect(page, bbox):
     actual_width = page_width    # The width of the final PDF display
     actual_height = page_height  # The height of the final PDF display
     
-    rotation = page.get("/Rotate", 0)
-    rotation = rotation % 360
+    rotation_obj = page.get("/Rotate", 0)
+    try:
+        rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Invalid /Rotate value {rotation_obj!r} on page; defaulting to 0. Error: {e}")
+        rotation = 0
     
     if rotation in [90, 270]:
         # PDF is rotated 90 degrees or 270 degrees, and the width and height need to be swapped
@@ -35,19 +39,18 @@ def cal_canvas_rect(page, bbox):
     rect_w = abs(x1 - x0)
     rect_h = abs(y1 - y0)
     
-    if 270 == rotation:
+    if rotation == 270:
         rect_w, rect_h = rect_h, rect_w
         x0 = actual_height - y1
         y0 = actual_width - x1
-    elif 180 == rotation:
+    elif rotation == 180:
         x0 = page_width - x1
-        y0 = y0
-    elif 90 == rotation:
+        # y0 stays the same
+    elif rotation == 90:
         rect_w, rect_h = rect_h, rect_w
         x0, y0 = y0, x0 
     else:
-        # 0 == rotation:
-        x0 = x0
+        # rotation == 0
         y0 = page_height - y1
     
     rect = [x0, y0, rect_w, rect_h]        
@@ -91,16 +94,20 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
         c.setFontSize(size=10)
         
         c.saveState()
-        rotation = page.get("/Rotate", 0)
-        rotation = rotation % 360
-    
-        if 0 == rotation:
+        rotation_obj = page.get("/Rotate", 0)
+        try:
+            rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid /Rotate value: {rotation_obj!r}, defaulting to 0")
+            rotation = 0
+
+        if rotation == 0:
             c.translate(rect[0] + rect[2] + 2, rect[1] + rect[3] - 10)
-        elif 90 == rotation:
+        elif rotation == 90:
             c.translate(rect[0] + 10, rect[1] + rect[3] + 2)
-        elif 180 == rotation:
+        elif rotation == 180:
             c.translate(rect[0] - 2, rect[1] + 10)
-        elif 270 == rotation:
+        elif rotation == 270:
             c.translate(rect[0] + rect[2] - 10, rect[1] - 2)
             
         c.rotate(rotation)
@@ -114,8 +121,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     dropped_bbox_list = []
     tables_list, tables_body_list = [], []
     tables_caption_list, tables_footnote_list = [], []
-    imgs_list, imgs_body_list, imgs_caption_list = [], [], []
-    imgs_footnote_list = []
+    imgs_list, imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], [], []
     titles_list = []
     texts_list = []
     interequations_list = []
@@ -145,6 +151,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                     elif nested_block["type"] == BlockType.TABLE_CAPTION:
                         tables_caption.append(bbox)
                     elif nested_block["type"] == BlockType.TABLE_FOOTNOTE:
+                        if nested_block.get(SplitFlag.CROSS_PAGE, False):
+                            continue
                         tables_footnote.append(bbox)
             elif block["type"] == BlockType.IMAGE:
                 imgs.append(bbox)
@@ -203,6 +211,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
             elif block["type"] in [BlockType.TABLE]:
                 sorted_blocks = sorted(block["blocks"], key=lambda x: table_type_order[x["type"]])
                 for sub_block in sorted_blocks:
+                    if sub_block.get(SplitFlag.CROSS_PAGE, False):
+                        continue
                     bbox = sub_block["bbox"]
                     page_block_list.append(bbox)
 
@@ -264,20 +274,12 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     image_list = []
     table_list = []
     dropped_list = []
-    next_page_text_list = []
-    next_page_inline_equation_list = []
 
     def get_span_info(span):
         if span['type'] == ContentType.TEXT:
-            if span.get('cross_page', False):
-                next_page_text_list.append(span['bbox'])
-            else:
-                page_text_list.append(span['bbox'])
+            page_text_list.append(span['bbox'])
         elif span['type'] == ContentType.INLINE_EQUATION:
-            if span.get('cross_page', False):
-                next_page_inline_equation_list.append(span['bbox'])
-            else:
-                page_inline_equation_list.append(span['bbox'])
+            page_inline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.INTERLINE_EQUATION:
             page_interline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.IMAGE:
@@ -293,13 +295,6 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         page_table_list = []
         page_dropped_list = []
 
-        # 将跨页的span放到移动到下一页的列表中
-        if len(next_page_text_list) > 0:
-            page_text_list.extend(next_page_text_list)
-            next_page_text_list.clear()
-        if len(next_page_inline_equation_list) > 0:
-            page_inline_equation_list.extend(next_page_inline_equation_list)
-            next_page_inline_equation_list.clear()
 
         # 构造dropped_list
         for block in page['discarded_blocks']:
@@ -352,6 +347,87 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         draw_bbox_without_number(i, image_list, page, c, [255, 204, 0], False)
         draw_bbox_without_number(i, table_list, page, c, [204, 0, 255], False)
         draw_bbox_without_number(i, dropped_list, page, c, [158, 158, 158], False)
+
+        c.save()
+        packet.seek(0)
+        overlay_pdf = PdfReader(packet)
+
+        # 添加检查确保overlay_pdf.pages不为空
+        if len(overlay_pdf.pages) > 0:
+            new_page = PageObject(pdf=None)
+            new_page.update(page)
+            page = new_page
+            page.merge_page(overlay_pdf.pages[0])
+        else:
+            # 记录日志并继续处理下一个页面
+            # logger.warning(f"span.pdf: 第{i + 1}页未能生成有效的overlay PDF")
+            pass
+
+        output_pdf.add_page(page)
+
+    # Save the PDF
+    with open(f"{out_path}/{filename}", "wb") as f:
+        output_pdf.write(f)
+
+
+def draw_line_sort_bbox(pdf_info, pdf_bytes, out_path, filename):
+    layout_bbox_list = []
+
+    for page in pdf_info:
+        page_line_list = []
+        for block in page['preproc_blocks']:
+            if block['type'] in [BlockType.TEXT]:
+                for line in block['lines']:
+                    bbox = line['bbox']
+                    index = line['index']
+                    page_line_list.append({'index': index, 'bbox': bbox})
+            elif block['type'] in [BlockType.TITLE, BlockType.INTERLINE_EQUATION]:
+                if 'virtual_lines' in block:
+                    if len(block['virtual_lines']) > 0 and block['virtual_lines'][0].get('index', None) is not None:
+                        for line in block['virtual_lines']:
+                            bbox = line['bbox']
+                            index = line['index']
+                            page_line_list.append({'index': index, 'bbox': bbox})
+                else:
+                    for line in block['lines']:
+                        bbox = line['bbox']
+                        index = line['index']
+                        page_line_list.append({'index': index, 'bbox': bbox})
+            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE]:
+                for sub_block in block['blocks']:
+                    if sub_block['type'] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY]:
+                        if len(sub_block['virtual_lines']) > 0 and sub_block['virtual_lines'][0].get('index', None) is not None:
+                            for line in sub_block['virtual_lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
+                        else:
+                            for line in sub_block['lines']:
+                                bbox = line['bbox']
+                                index = line['index']
+                                page_line_list.append({'index': index, 'bbox': bbox})
+                    elif sub_block['type'] in [BlockType.IMAGE_CAPTION, BlockType.TABLE_CAPTION, BlockType.IMAGE_FOOTNOTE, BlockType.TABLE_FOOTNOTE]:
+                        for line in sub_block['lines']:
+                            bbox = line['bbox']
+                            index = line['index']
+                            page_line_list.append({'index': index, 'bbox': bbox})
+        sorted_bboxes = sorted(page_line_list, key=lambda x: x['index'])
+        layout_bbox_list.append(sorted_bbox['bbox'] for sorted_bbox in sorted_bboxes)
+    pdf_bytes_io = BytesIO(pdf_bytes)
+    pdf_docs = PdfReader(pdf_bytes_io)
+    output_pdf = PdfWriter()
+
+    for i, page in enumerate(pdf_docs.pages):
+        # 获取原始页面尺寸
+        page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
+        custom_page_size = (page_width, page_height)
+
+        packet = BytesIO()
+        # 使用原始PDF的尺寸创建canvas
+        c = canvas.Canvas(packet, pagesize=custom_page_size)
+
+        # 获取当前页面的数据
+        draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False)
 
         c.save()
         packet.seek(0)

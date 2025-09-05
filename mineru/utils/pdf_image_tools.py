@@ -1,33 +1,37 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from io import BytesIO
 
+import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from .enum_class import ImageType
 from .hash_utils import str_sha256
 
 
-def pdf_page_to_image(page: pdfium.PdfPage, dpi=200) -> dict:
+def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -> dict:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
 
     Args:
         page (_type_): pdfium.PdfPage
         dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        image_type (ImageType, optional): The type of image to return. Defaults to ImageType.PIL.
 
     Returns:
         dict:  {'img_base64': str, 'img_pil': pil_img, 'scale': float }
     """
     pil_img, scale = page_to_image(page, dpi=dpi)
-    img_base64 = image_to_b64str(pil_img)
-
     image_dict = {
-        "img_base64": img_base64,
-        "img_pil": pil_img,
         "scale": scale,
     }
+    if image_type == ImageType.BASE64:
+        image_dict["img_base64"] = image_to_b64str(pil_img)
+    else:
+        image_dict["img_pil"] = pil_img
+
     return image_dict
 
 
@@ -36,6 +40,7 @@ def load_images_from_pdf(
     dpi=200,
     start_page_id=0,
     end_page_id=None,
+    image_type=ImageType.PIL,  # PIL or BASE64
 ):
     images_list = []
     pdf_doc = pdfium.PdfDocument(pdf_bytes)
@@ -48,7 +53,7 @@ def load_images_from_pdf(
     for index in range(0, pdf_page_num):
         if start_page_id <= index <= end_page_id:
             page = pdf_doc[index]
-            image_dict = pdf_page_to_image(page, dpi=dpi)
+            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
             images_list.append(image_dict)
 
     return images_list, pdf_doc
@@ -86,6 +91,24 @@ def get_crop_img(bbox: tuple, pil_img, scale=2):
     )
     return pil_img.crop(scale_bbox)
 
+
+def get_crop_np_img(bbox: tuple, input_img, scale=2):
+
+    if isinstance(input_img, Image.Image):
+        np_img = np.asarray(input_img)
+    elif isinstance(input_img, np.ndarray):
+        np_img = input_img
+    else:
+        raise ValueError("Input must be a pillow object or a numpy array.")
+
+    scale_bbox = (
+        int(bbox[0] * scale),
+        int(bbox[1] * scale),
+        int(bbox[2] * scale),
+        int(bbox[3] * scale),
+    )
+
+    return np_img[scale_bbox[1]:scale_bbox[3], scale_bbox[0]:scale_bbox[2]]
 
 def images_bytes_to_pdf_bytes(image_bytes):
     # 内存缓冲区

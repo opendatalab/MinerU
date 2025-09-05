@@ -1,13 +1,16 @@
+import os
 import time
 from loguru import logger
 import numpy as np
 import cv2
-from mineru.utils.config_reader import get_llm_aided_config
+from mineru.utils.config_reader import get_llm_aided_config, get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import str_md5
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdf_reader import base64_to_pil_image
+from mineru.utils.table_merge import merge_table
 from mineru.version import __version__
 
 heading_level_import_success = False
@@ -32,7 +35,8 @@ def token_to_page_info(token, image_dict, page, image_writer, page_index) -> dic
     # 提取所有完整块，每个块从<|box_start|>开始到<|md_end|>或<|im_end|>结束
 
     scale = image_dict["scale"]
-    page_pil_img = image_dict["img_pil"]
+    # page_pil_img = image_dict["img_pil"]
+    page_pil_img = base64_to_pil_image(image_dict["img_base64"])
     page_img_md5 = str_md5(image_dict["img_base64"])
     width, height = map(int, page.get_size())
 
@@ -89,6 +93,11 @@ def result_to_middle_json(token_list, images_list, pdf_doc, image_writer):
         image_dict = images_list[index]
         page_info = token_to_page_info(token, image_dict, page, image_writer, index)
         middle_json["pdf_info"].append(page_info)
+
+    """表格跨页合并"""
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    if table_enable:
+        merge_table(middle_json["pdf_info"])
 
     """llm优化标题分级"""
     if heading_level_import_success:

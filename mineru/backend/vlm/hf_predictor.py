@@ -4,7 +4,7 @@ from typing import Iterable, List, Optional, Union
 import torch
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoTokenizer, BitsAndBytesConfig, __version__
 
 from ...model.vlm_hf_model import Mineru2QwenForCausalLM
 from ...model.vlm_hf_model.image_processing_mineru2 import process_images
@@ -66,7 +66,11 @@ class HuggingfacePredictor(BasePredictor):
                 bnb_4bit_quant_type="nf4",
             )
         else:
-            kwargs["torch_dtype"] = torch_dtype
+            from packaging import version
+            if version.parse(__version__) >= version.parse("4.56.0"):
+                kwargs["dtype"] = torch_dtype
+            else:
+                kwargs["torch_dtype"] = torch_dtype
 
         if use_flash_attn:
             kwargs["attn_implementation"] = "flash_attention_2"
@@ -137,12 +141,14 @@ class HuggingfacePredictor(BasePredictor):
         image_tensor = image_tensor.to(device=self.model.device, dtype=self.model.dtype)
         image_sizes = [[*image_obj.size]]
 
-        input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids
-        input_ids = input_ids.to(device=self.model.device)
+        encoded_inputs = self.tokenizer(prompt, return_tensors="pt")
+        input_ids = encoded_inputs.input_ids.to(device=self.model.device)
+        attention_mask = encoded_inputs.attention_mask.to(device=self.model.device)
 
         with torch.inference_mode():
             output_ids = self.model.generate(
                 input_ids,
+                attention_mask=attention_mask,
                 images=image_tensor,
                 image_sizes=image_sizes,
                 use_cache=True,

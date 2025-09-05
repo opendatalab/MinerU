@@ -20,14 +20,16 @@ from mineru.utils.ocr_utils import OcrConfidence
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract
+from mineru.utils.table_merge import merge_table
 from mineru.version import __version__
-from mineru.utils.hash_utils import str_md5
+from mineru.utils.hash_utils import bytes_md5
 
 
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False, formula_enabled=True):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
-    page_img_md5 = str_md5(image_dict["img_base64"])
+    # page_img_md5 = str_md5(image_dict["img_base64"])
+    page_img_md5 = bytes_md5(page_pil_img.tobytes())
     page_w, page_h = map(int, page.get_size())
     magic_model = MagicModel(page_model_info, scale)
 
@@ -210,7 +212,6 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
         atom_model_manager = AtomModelSingleton()
         ocr_model = atom_model_manager.get_atom_model(
             atom_model_name='ocr',
-            ocr_show_log=False,
             det_db_box_thresh=0.3,
             lang=lang
         )
@@ -228,6 +229,9 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
 
     """分段"""
     para_split(middle_json["pdf_info"])
+
+    """表格跨页合并"""
+    merge_table(middle_json["pdf_info"])
 
     """llm优化"""
     llm_aided_config = get_llm_aided_config()

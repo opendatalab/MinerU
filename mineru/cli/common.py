@@ -9,7 +9,7 @@ import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
@@ -102,6 +102,7 @@ def _process_output(
         model_output=None,
         is_pipeline=True
 ):
+    f_draw_line_sort_bbox = False
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
     """处理输出文件"""
     if f_draw_layout_bbox:
@@ -115,6 +116,9 @@ def _process_output(
             f"{pdf_file_name}_origin.pdf",
             pdf_bytes,
         )
+
+    if f_draw_line_sort_bbox:
+        draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_line_sort.pdf")
 
     image_dir = str(os.path.basename(local_image_dir))
 

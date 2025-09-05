@@ -44,7 +44,7 @@ def config_endpoint():
                 logging.info(f"Successfully connected to ModelScope. Using 'modelscope' as model source.")
                 return True
         except requests.exceptions.RequestException as e:
-            logging.error(f"Failed to connect to ModelScope at {model_list_url}: {e}")
+            logging.error(f"Failed to connect to ModelScope at {modelscope_url}: {e}")
         
     elif os.environ['MINERU_MODEL_SOURCE'] == 'local':
         logging.info("Using 'local' as model source.")

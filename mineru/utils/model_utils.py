@@ -1,3 +1,4 @@
+import os
 import time
 import gc
 from PIL import Image
@@ -201,6 +202,10 @@ def filter_nested_tables(table_res_list, overlap_threshold=0.8, area_threshold=0
 
 
 def remove_overlaps_min_blocks(res_list):
+
+    for res in res_list:
+        res['bbox'] = [int(res['poly'][0]), int(res['poly'][1]), int(res['poly'][4]), int(res['poly'][5])]
+
     # 重叠block，小的不能直接删除，需要和大的那个合并成一个更大的。
     # 删除重叠blocks中较小的那些
     need_remove = []
@@ -219,31 +224,43 @@ def remove_overlaps_min_blocks(res_list):
             )
 
             if overlap_box is not None:
-                res_to_remove = None
-                large_res = None
 
-                # 确定哪个是小块（要移除的）
+                # 根据重叠框确定哪个是小块，哪个是大块
                 if overlap_box == res_list[i]['bbox']:
-                    res_to_remove = res_list[i]
-                    large_res = res_list[j]
+                    small_res, large_res = res_list[i], res_list[j]
                 elif overlap_box == res_list[j]['bbox']:
-                    res_to_remove = res_list[j]
-                    large_res = res_list[i]
+                    small_res, large_res = res_list[j], res_list[i]
+                else:
+                    continue  # 如果重叠框与任一块都不匹配，跳过处理
 
-                if res_to_remove is not None and res_to_remove not in need_remove:
-                    # 更新大块的边界为两者的并集
-                    x1, y1, x2, y2 = large_res['bbox']
-                    sx1, sy1, sx2, sy2 = res_to_remove['bbox']
-                    x1 = min(x1, sx1)
-                    y1 = min(y1, sy1)
-                    x2 = max(x2, sx2)
-                    y2 = max(y2, sy2)
-                    large_res['bbox'] = [x1, y1, x2, y2]
-                    need_remove.append(res_to_remove)
+                if small_res['score'] <= large_res['score']:
+                    # 如果小块的分数低于大块，则小块为需要移除的块
+                    if small_res is not None and small_res not in need_remove:
+                        # 更新大块的边界为两者的并集
+                        x1, y1, x2, y2 = large_res['bbox']
+                        sx1, sy1, sx2, sy2 = small_res['bbox']
+                        x1 = min(x1, sx1)
+                        y1 = min(y1, sy1)
+                        x2 = max(x2, sx2)
+                        y2 = max(y2, sy2)
+                        large_res['bbox'] = [x1, y1, x2, y2]
+                        need_remove.append(small_res)
+                else:
+                    # 如果大块的分数低于小块，则大块为需要移除的块, 这时不需要更新小块的边界
+                    if large_res is not None and large_res not in need_remove:
+                        need_remove.append(large_res)
 
     # 从列表中移除标记的元素
     for res in need_remove:
         res_list.remove(res)
+        del res['bbox']  # 删除bbox字段
+
+    for res in res_list:
+        # 将res的poly使用bbox重构
+        res['poly'] = [res['bbox'][0], res['bbox'][1], res['bbox'][2], res['bbox'][1],
+                       res['bbox'][2], res['bbox'][3], res['bbox'][0], res['bbox'][3]]
+        # 删除res的bbox
+        del res['bbox']
 
     return res_list, need_remove
 
@@ -290,7 +307,7 @@ def remove_overlaps_low_confidence_blocks(combined_res_list, overlap_threshold=0
                                                                              overlap_threshold)]
 
         # 如果内部有3个及以上的小block
-        if len(blocks_inside) >= 3:
+        if len(blocks_inside) >= 2:
             # 计算小block的平均分数
             avg_score = sum(s for _, s, _ in blocks_inside) / len(blocks_inside)
 
@@ -348,7 +365,6 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
             table_res_list.append(res)
             table_indices.append(i)
         elif category_id in [1]:  # Text regions
-            res['bbox'] = [int(res['poly'][0]), int(res['poly'][1]), int(res['poly'][4]), int(res['poly'][5])]
             text_res_list.append(res)
 
     # Process tables: merge high IoU tables first, then filter nested tables
@@ -358,29 +374,27 @@ def get_res_list_from_layout_res(layout_res, iou_threshold=0.7, overlap_threshol
     filtered_table_res_list = filter_nested_tables(
         table_res_list, overlap_threshold, area_threshold)
 
+    filtered_table_res_list, table_need_remove = remove_overlaps_min_blocks(filtered_table_res_list)
+
+    for res in table_need_remove:
+        if res in layout_res:
+            layout_res.remove(res)
+
     # Remove filtered out tables from layout_res
     if len(filtered_table_res_list) < len(table_res_list):
         kept_tables = set(id(table) for table in filtered_table_res_list)
-        to_remove = [table_indices[i] for i, table in enumerate(table_res_list)
-                     if id(table) not in kept_tables]
-
-        for idx in sorted(to_remove, reverse=True):
-            del layout_res[idx]
+        tables_to_remove = [table for table in table_res_list if id(table) not in kept_tables]
+        for table in tables_to_remove:
+            if table in layout_res:
+                layout_res.remove(table)
 
     # Remove overlaps in OCR and text regions
     text_res_list, need_remove = remove_overlaps_min_blocks(text_res_list)
-    for res in text_res_list:
-        # 将res的poly使用bbox重构
-        res['poly'] = [res['bbox'][0], res['bbox'][1], res['bbox'][2], res['bbox'][1],
-                       res['bbox'][2], res['bbox'][3], res['bbox'][0], res['bbox'][3]]
-        # 删除res的bbox
-        del res['bbox']
 
     ocr_res_list.extend(text_res_list)
 
-    if len(need_remove) > 0:
-        for res in need_remove:
-            del res['bbox']
+    for res in need_remove:
+        if res in layout_res:
             layout_res.remove(res)
 
     # 检测大block内部是否包含多个小block, 合并ocr和table列表进行检测
@@ -414,11 +428,13 @@ def clean_memory(device='cuda'):
 
 def clean_vram(device, vram_threshold=8):
     total_memory = get_vram(device)
+    if total_memory is not None:
+        total_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(total_memory)))
     if total_memory and total_memory <= vram_threshold:
         gc_start = time.time()
         clean_memory(device)
         gc_time = round(time.time() - gc_start, 2)
-        logger.info(f"gc time: {gc_time}")
+        # logger.info(f"gc time: {gc_time}")
 
 
 def get_vram(device):

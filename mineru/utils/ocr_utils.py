@@ -330,10 +330,10 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
     return adjusted_mfdetrec_res
 
 
-def get_ocr_result_list(ocr_res, useful_list, ocr_enable, new_image, lang):
+def get_ocr_result_list(ocr_res, useful_list, ocr_enable, bgr_image, lang):
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
-    ori_im = new_image.copy()
+    ori_im = bgr_image.copy()
     for box_ocr_res in ocr_res:
 
         if len(box_ocr_res) == 2:
@@ -437,6 +437,7 @@ def get_rotate_crop_image(img, points):
         borderMode=cv2.BORDER_REPLICATE,
         flags=cv2.INTER_CUBIC)
     dst_img_height, dst_img_width = dst_img.shape[0:2]
-    if dst_img_height * 1.0 / dst_img_width >= 1.5:
+    rotate_radio = 2
+    if dst_img_height * 1.0 / dst_img_width >= rotate_radio:
         dst_img = np.rot90(dst_img)
     return dst_img

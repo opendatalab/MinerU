@@ -4,22 +4,57 @@ import torch
 from loguru import logger
 
 from .model_list import AtomicModel
-from ...model.layout.doclayout_yolo import DocLayoutYOLOModel
+from ...model.layout.doclayoutyolo import DocLayoutYOLOModel
 from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
-from ...model.table.rapid_table import RapidTableModel
+from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
+from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
+# from ...model.table.rec.RapidTable import RapidTableModel
+from ...model.table.rec.slanet_plus.main import RapidTableModel
+from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 
-def table_model_init(lang=None):
+def img_orientation_cls_model_init():
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
-        atom_model_name='ocr',
+        atom_model_name=AtomicModel.OCR,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
-        lang=lang
+        lang="ch_lite",
+        enable_merge_det_boxes=False
+    )
+    cls_model = PaddleOrientationClsModel(ocr_engine)
+    return cls_model
+
+
+def table_cls_model_init():
+    return PaddleTableClsModel()
+
+
+def wired_table_model_init(lang=None):
+    atom_model_manager = AtomModelSingleton()
+    ocr_engine = atom_model_manager.get_atom_model(
+        atom_model_name=AtomicModel.OCR,
+        det_db_box_thresh=0.5,
+        det_db_unclip_ratio=1.6,
+        lang=lang,
+        enable_merge_det_boxes=False
+    )
+    table_model = UnetTableModel(ocr_engine)
+    return table_model
+
+
+def wireless_table_model_init(lang=None):
+    atom_model_manager = AtomModelSingleton()
+    ocr_engine = atom_model_manager.get_atom_model(
+        atom_model_name=AtomicModel.OCR,
+        det_db_box_thresh=0.5,
+        det_db_unclip_ratio=1.6,
+        lang=lang,
+        enable_merge_det_boxes=False
     )
     table_model = RapidTableModel(ocr_engine)
     return table_model
@@ -45,21 +80,23 @@ def doclayout_yolo_model_init(weight, device='cpu'):
 
 def ocr_model_init(det_db_box_thresh=0.3,
                    lang=None,
-                   use_dilation=True,
                    det_db_unclip_ratio=1.8,
+                   enable_merge_det_boxes=True
                    ):
     if lang is not None and lang != '':
         model = PytorchPaddleOCR(
             det_db_box_thresh=det_db_box_thresh,
             lang=lang,
-            use_dilation=use_dilation,
+            use_dilation=True,
             det_db_unclip_ratio=det_db_unclip_ratio,
+            enable_merge_det_boxes=enable_merge_det_boxes,
         )
     else:
         model = PytorchPaddleOCR(
             det_db_box_thresh=det_db_box_thresh,
-            use_dilation=use_dilation,
+            use_dilation=True,
             det_db_unclip_ratio=det_db_unclip_ratio,
+            enable_merge_det_boxes=enable_merge_det_boxes,
         )
     return model
 
@@ -76,12 +113,20 @@ class AtomModelSingleton:
     def get_atom_model(self, atom_model_name: str, **kwargs):
 
         lang = kwargs.get('lang', None)
-        table_model_name = kwargs.get('table_model_name', None)
 
-        if atom_model_name in [AtomicModel.OCR]:
-            key = (atom_model_name, lang)
-        elif atom_model_name in [AtomicModel.Table]:
-            key = (atom_model_name, table_model_name, lang)
+        if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
+            key = (
+                atom_model_name,
+                lang
+            )
+        elif atom_model_name in [AtomicModel.OCR]:
+            key = (
+                atom_model_name,
+                kwargs.get('det_db_box_thresh', 0.3),
+                lang,
+                kwargs.get('det_db_unclip_ratio', 1.8),
+                kwargs.get('enable_merge_det_boxes', True)
+            )
         else:
             key = atom_model_name
 
@@ -108,13 +153,23 @@ def atom_model_init(model_name: str, **kwargs):
         )
     elif model_name == AtomicModel.OCR:
         atom_model = ocr_model_init(
-            kwargs.get('det_db_box_thresh'),
+            kwargs.get('det_db_box_thresh', 0.3),
+            kwargs.get('lang'),
+            kwargs.get('det_db_unclip_ratio', 1.8),
+            kwargs.get('enable_merge_det_boxes', True)
+        )
+    elif model_name == AtomicModel.WirelessTable:
+        atom_model = wireless_table_model_init(
             kwargs.get('lang'),
         )
-    elif model_name == AtomicModel.Table:
-        atom_model = table_model_init(
+    elif model_name == AtomicModel.WiredTable:
+        atom_model = wired_table_model_init(
             kwargs.get('lang'),
         )
+    elif model_name == AtomicModel.TableCls:
+        atom_model = table_cls_model_init()
+    elif model_name == AtomicModel.ImgOrientationCls:
+        atom_model = img_orientation_cls_model_init()
     else:
         logger.error('model name not allow')
         exit(1)
@@ -174,8 +229,19 @@ class MineruPipelineModel:
         )
         # init table model
         if self.apply_table:
-            self.table_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.Table,
+            self.wired_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WiredTable,
+                lang=self.lang,
+            )
+            self.wireless_table_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.WirelessTable,
+                lang=self.lang,
+            )
+            self.table_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.TableCls,
+            )
+            self.img_orientation_cls_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.ImgOrientationCls,
                 lang=self.lang,
             )
 

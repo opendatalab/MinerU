@@ -416,7 +416,8 @@ Text levels are distinguished through the `text_level` field:
 
 #### Common Fields
 
-All content blocks include a `page_idx` field indicating the page number (starting from 0).
+- All content blocks include a `page_idx` field indicating the page number (starting from 0).
+- All content blocks include a `bbox` field representing the bounding box coordinates of the content block `[x0, y0, x1, y1]`, mapped to a range of 0-1000.
 
 #### Sample Data
 
@@ -425,30 +426,14 @@ All content blocks include a `page_idx` field indicating the page number (starti
         {
         "type": "text",
         "text": "The response of flow duration curves to afforestation ",
-        "text_level": 1,
+        "text_level": 1, 
+        "bbox": [
+            62,
+            480,
+            946,
+            904
+        ],
         "page_idx": 0
-    },
-    {
-        "type": "text",
-        "text": "Received 1 October 2003; revised 22 December 2004; accepted 3 January 2005 ",
-        "page_idx": 0
-    },
-    {
-        "type": "text",
-        "text": "Abstract ",
-        "text_level": 2,
-        "page_idx": 0
-    },
-    {
-        "type": "text",
-        "text": "The hydrologic effect of replacing pasture or other short crops with trees is reasonably well understood on a mean annual basis. The impact on flow regime, as described by the annual flow duration curve (FDC) is less certain. A method to assess the impact of plantation establishment on FDCs was developed. The starting point for the analyses was the assumption that rainfall and vegetation age are the principal drivers of evapotranspiration. A key objective was to remove the variability in the rainfall signal, leaving changes in streamflow solely attributable to the evapotranspiration of the plantation. A method was developed to (1) fit a model to the observed annual time series of FDC percentiles; i.e. 10th percentile for each year of record with annual rainfall and plantation age as parameters, (2) replace the annual rainfall variation with the long term mean to obtain climate adjusted FDCs, and (3) quantify changes in FDC percentiles as plantations age. Data from 10 catchments from Australia, South Africa and New Zealand were used. The model was able to represent flow variation for the majority of percentiles at eight of the 10 catchments, particularly for the 10–50th percentiles. The adjusted FDCs revealed variable patterns in flow reductions with two types of responses (groups) being identified. Group 1 catchments show a substantial increase in the number of zero flow days, with low flows being more affected than high flows. Group 2 catchments show a more uniform reduction in flows across all percentiles. The differences may be partly explained by storage characteristics. The modelled flow reductions were in accord with published results of paired catchment experiments. An additional analysis was performed to characterise the impact of afforestation on the number of zero flow days $( N _ { \\mathrm { z e r o } } )$ for the catchments in group 1. This model performed particularly well, and when adjusted for climate, indicated a significant increase in $N _ { \\mathrm { z e r o } }$ . The zero flow day method could be used to determine change in the occurrence of any given flow in response to afforestation. The methods used in this study proved satisfactory in removing the rainfall variability, and have added useful insight into the hydrologic impacts of plantation establishment. This approach provides a methodology for understanding catchment response to afforestation, where paired catchment data is not available. ",
-        "page_idx": 0
-    },
-    {
-        "type": "text",
-        "text": "1. Introduction ",
-        "text_level": 2,
-        "page_idx": 1
     },
     {
         "type": "image",
@@ -457,6 +442,12 @@ All content blocks include a `page_idx` field indicating the page number (starti
             "Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "
         ],
         "img_footnote": [],
+        "bbox": [
+            62,
+            480,
+            946,
+            904
+        ],
         "page_idx": 1
     },
     {
@@ -464,6 +455,12 @@ All content blocks include a `page_idx` field indicating the page number (starti
         "img_path": "images/181ea56ef185060d04bf4e274685f3e072e922e7b839f093d482c29bf89b71e8.jpg",
         "text": "$$\nQ _ { \\% } = f ( P ) + g ( T )\n$$",
         "text_format": "latex",
+        "bbox": [
+            62,
+            480,
+            946,
+            904
+        ],
         "page_idx": 2
     },
     {
@@ -476,6 +473,12 @@ All content blocks include a `page_idx` field indicating the page number (starti
             "indicates that the rainfall term was significant at the $5 \\%$ level, $T$ indicates that the time term was significant at the $5 \\%$ level, \\* represents significance at the $10 \\%$ level, and na denotes too few data points for meaningful analysis. "
         ],
         "table_body": "<html><body><table><tr><td rowspan=\"2\">Site</td><td colspan=\"10\">Percentile</td></tr><tr><td>10</td><td>20</td><td>30</td><td>40</td><td>50</td><td>60</td><td>70</td><td>80</td><td>90</td><td>100</td></tr><tr><td>Traralgon Ck</td><td>P</td><td>P,*</td><td>P</td><td>P</td><td>P,</td><td>P,</td><td>P,</td><td>P,</td><td>P</td><td>P</td></tr><tr><td>Redhill</td><td>P,T</td><td>P,T</td><td>，*</td><td>**</td><td>P.T</td><td>P,*</td><td>P*</td><td>P*</td><td>*</td><td>，*</td></tr><tr><td>Pine Ck</td><td></td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td><td>T</td><td>na</td><td>na</td></tr><tr><td>Stewarts Ck 5</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P.T</td><td>P.T</td><td>P,T</td><td>na</td><td>na</td><td>na</td></tr><tr><td>Glendhu 2</td><td>P</td><td>P,T</td><td>P,*</td><td>P,T</td><td>P.T</td><td>P,ns</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td></tr><tr><td>Cathedral Peak 2</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Cathedral Peak 3</td><td>P.T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Lambrechtsbos A</td><td>P,T</td><td>P</td><td>P</td><td>P,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>T</td></tr><tr><td>Lambrechtsbos B</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td></tr><tr><td>Biesievlei</td><td>P,T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>*,T</td><td>T</td><td>T</td><td>P,T</td><td>P,T</td></tr></table></body></html>",
+        "bbox": [
+            62,
+            480,
+            946,
+            904
+        ],  
         "page_idx": 5
     }
 ]
