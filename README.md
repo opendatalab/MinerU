@@ -670,6 +670,7 @@ Currently, some models in this project are trained based on YOLO. However, since
 - [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [UniMERNet](https://github.com/opendatalab/UniMERNet)
 - [RapidTable](https://github.com/RapidAI/RapidTable)
+- [TableStructureRec](https://github.com/RapidAI/TableStructureRec)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
 - [layoutreader](https://github.com/ppaanngggg/layoutreader)
