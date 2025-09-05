@@ -37,6 +37,7 @@ dependencies = [
     "fast-langdetect>=0.2.3,<0.3.0",
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<2",
+    "beautifulsoup4>=4.13.5,<5",
 ]
 
 [project.optional-dependencies]

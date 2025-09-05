@@ -10,6 +10,7 @@ import numpy as np
 import cv2
 from PIL import Image
 from loguru import logger
+from bs4 import BeautifulSoup
 
 from .table_structure_unet import TSRUnet
 
@@ -64,7 +65,7 @@ class WiredTableRecognition:
         img = self.load_img(img)
         polygons, rotated_polygons = self.table_structure(img, **kwargs)
         if polygons is None:
-            logging.warning("polygons is None.")
+            # logging.warning("polygons is None.")
             return WiredTableOutput("", None, None, 0.0)
 
         try:
@@ -181,9 +182,9 @@ class WiredTableRecognition:
                 logger.warning(f"No OCR engine provided for box {i}: {box}")
                 continue
             # 从img中截取对应的区域
-            x1, y1, x2, y2 = int(box[0][0]), int(box[0][1]), int(box[2][0]), int(box[2][1])
+            x1, y1, x2, y2 = int(box[0][0])+1, int(box[0][1])+1, int(box[2][0])-1, int(box[2][1])-1
             if x1 >= x2 or y1 >= y2:
-                logger.warning(f"Invalid box coordinates: {box}")
+                # logger.warning(f"Invalid box coordinates: {x1, y1, x2, y2}")
                 continue
             # 判断长宽比
             if (x2 - x1) / (y2 - y1) > 20 or (y2 - y1) / (x2 - x1) > 20:
@@ -196,6 +197,14 @@ class WiredTableRecognition:
         if len(img_crop_list) > 0:
             # 进行ocr识别
             ocr_result = self.ocr_engine.ocr(img_crop_list, det=False)
+            # ocr_result = [[]]
+            # for crop_img in img_crop_list:
+            #     tmp_ocr_result = self.ocr_engine.ocr(crop_img)
+            #     if tmp_ocr_result[0] and len(tmp_ocr_result[0]) > 0 and isinstance(tmp_ocr_result[0], list) and len(tmp_ocr_result[0][0]) == 2:
+            #         ocr_result[0].append(tmp_ocr_result[0][0][1])
+            #     else:
+            #         ocr_result[0].append(("", 0.0))
+
             if not ocr_result or not isinstance(ocr_result, list) or len(ocr_result) == 0:
                 logger.warning("OCR engine returned no results or invalid result for image crops.")
                 return cell_box_map
@@ -210,10 +219,10 @@ class WiredTableRecognition:
                 # 处理ocr结果
                 ocr_text, ocr_score = ocr_res
                 # logger.debug(f"OCR result for box {i}: {ocr_text} with score {ocr_score}")
-                if ocr_score < 0.9 or ocr_text in ['1']:
+                if ocr_score < 0.6 or ocr_text in ['1','口','■','（204号', '（20', '（2', '（2号', '（20号', '号', '（204']:
                     # logger.warning(f"Low confidence OCR result for box {i}: {ocr_text} with score {ocr_score}")
                     box = sorted_polygons[i]
-                    cell_box_map[i] = [[box, "", 0.5]]
+                    cell_box_map[i] = [[box, "", 0.1]]
                     continue
                 cell_box_map[i] = [[box, ocr_text, ocr_score]]
 
@@ -275,18 +284,51 @@ class UnetTableModel:
             # )
 
             wired_html_code = wired_table_results.pred_html
-
             wired_len = count_table_cells_physical(wired_html_code)
             wireless_len = count_table_cells_physical(wireless_html_code)
-
-            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
             # 计算两种模型检测的单元格数量差异
             gap_of_len = wireless_len - wired_len
+            # logger.debug(f"wired table cell bboxes: {wired_len}, wireless table cell bboxes: {wireless_len}")
+
+            # 使用OCR结果计算两种模型填入的文字数量
+            wireless_text_count = 0
+            wired_text_count = 0
+            for ocr_res in ocr_result:
+                if ocr_res[1] in wireless_html_code:
+                    wireless_text_count += 1
+                if ocr_res[1] in wired_html_code:
+                    wired_text_count += 1
+            # logger.debug(f"wireless table ocr text count: {wireless_text_count}, wired table ocr text count: {wired_text_count}")
+
+            # 使用HTML解析器计算空单元格数量
+            wireless_soup = BeautifulSoup(wireless_html_code, 'html.parser') if wireless_html_code else BeautifulSoup("", 'html.parser')
+            wired_soup = BeautifulSoup(wired_html_code, 'html.parser') if wired_html_code else BeautifulSoup("", 'html.parser')
+            # 计算空单元格数量(没有文本内容或只有空白字符)
+            wireless_blank_count = sum(1 for cell in wireless_soup.find_all(['td', 'th']) if not cell.text.strip())
+            wired_blank_count = sum(1 for cell in wired_soup.find_all(['td', 'th']) if not cell.text.strip())
+            # logger.debug(f"wireless table blank cell count: {wireless_blank_count}, wired table blank cell count: {wired_blank_count}")
+
+            # 计算非空单元格数量
+            wireless_non_blank_count = wireless_len - wireless_blank_count
+            wired_non_blank_count = wired_len - wired_blank_count
+            # 无线表非空格数量大于有线表非空格数量时，才考虑切换
+            switch_flag = False
+            if wireless_non_blank_count > wired_non_blank_count:
+                # 假设非空表格是接近正方表，使用非空单元格数量开平方作为表格规模的估计
+                wired_table_scale = round(wired_non_blank_count ** 0.5)
+                # logger.debug(f"wireless non-blank cell count: {wireless_non_blank_count}, wired non-blank cell count: {wired_non_blank_count}, wired table scale: {wired_table_scale}")
+                # 如果无线表非空格的数量比有线表多一列或以上，需要切换到无线表
+                wired_scale_plus_2_cols = wired_non_blank_count + (wired_table_scale * 2)
+                wired_scale_squared_plus_2_rows = wired_table_scale * (wired_table_scale + 2)
+                if (wireless_non_blank_count + 3) >= max(wired_scale_plus_2_cols, wired_scale_squared_plus_2_rows):
+                    switch_flag = True
+
             # 判断是否使用无线表格模型的结果
             if (
-                wired_len <= int(wireless_len * 0.55)+1  # 有线模型检测到的单元格数太少（低于无线模型的50%）
+                switch_flag
                 or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
                 or (gap_of_len == 0 and wired_len <= 4)  # 单元格数量完全相等且总量小于等于4
+                or (wired_text_count <= wireless_text_count * 0.6 and  wireless_text_count >=10) # 有线模型填入的文字明显少于无线模型
             ):
                 # logger.debug("fall back to wireless table model")
                 html_code = wireless_html_code

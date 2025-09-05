@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 from PIL import Image
 import cv2
@@ -73,9 +72,6 @@ class PaddleTableClsModel:
         result = self.sess.run(None, {"x": x})
         idx = np.argmax(result)
         conf = float(np.max(result))
-        # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-        if idx == 0 and conf < 0.8:
-            idx = 1
         return self.labels[idx], conf
 
     def list_2_batch(self, img_list, batch_size=16):
@@ -135,19 +131,16 @@ class PaddleTableClsModel:
         x = np.stack(res_imgs, axis=0).astype(dtype=np.float32, copy=False)
         return x
     def batch_predict(self, img_info_list, batch_size=16):
-        imgs = [item["table_img"] for item in img_info_list]
+        imgs = [item["wired_table_img"] for item in img_info_list]
         imgs = self.list_2_batch(imgs, batch_size=batch_size)
         label_res = []
-        with tqdm(total=len(img_info_list), desc="Table-wired/wireless cls predict") as pbar:
+        with tqdm(total=len(img_info_list), desc="Table-wired/wireless cls predict", disable=True) as pbar:
             for img_batch in imgs:
                 x = self.batch_preprocess(img_batch)
                 result = self.sess.run(None, {"x": x})
                 for img_res in result[0]:
                     idx = np.argmax(img_res)
                     conf = float(np.max(img_res))
-                    # logger.debug(f"Table classification result: {self.labels[idx]} with confidence {conf:.4f}")
-                    if idx == 0 and conf < 0.8:
-                        idx = 1
                     label_res.append((self.labels[idx],conf))
                 pbar.update(len(img_batch))
             for img_info, (label, conf) in zip(img_info_list, label_res):

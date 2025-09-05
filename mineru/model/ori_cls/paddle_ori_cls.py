@@ -174,6 +174,12 @@ class PaddleOrientationClsModel:
     def batch_predict(
         self, imgs: List[Dict], det_batch_size: int, batch_size: int = 16
     ) -> None:
+
+        import torch
+        from packaging import version
+        if version.parse(torch.__version__) >= version.parse("2.8.0"):
+            return None
+
         """
         批量预测传入的包含图片信息列表的旋转信息，并且将旋转过的图片正确地旋转回来
         """
@@ -195,7 +201,7 @@ class PaddleOrientationClsModel:
 
         # 对每个分辨率组进行批处理
         rotated_imgs = []
-        for group_key, group_imgs in tqdm(resolution_groups.items(), desc="Table-ori cls stage1 predict"):
+        for group_key, group_imgs in tqdm(resolution_groups.items(), desc="Table-ori cls stage1 predict", disable=True):
             # 计算目标尺寸（组内最大尺寸，向上取整到RESOLUTION_GROUP_STRIDE的倍数）
             max_h = max(img["table_img_bgr"].shape[0] for img in group_imgs)
             max_w = max(img["table_img_bgr"].shape[1] for img in group_imgs)
@@ -243,7 +249,7 @@ class PaddleOrientationClsModel:
         # 对旋转的图片进行旋转角度预测
         if len(rotated_imgs) > 0:
             imgs = self.list_2_batch(rotated_imgs, batch_size=batch_size)
-            with tqdm(total=len(rotated_imgs), desc="Table-ori cls stage2 predict") as pbar:
+            with tqdm(total=len(rotated_imgs), desc="Table-ori cls stage2 predict", disable=True) as pbar:
                 for img_batch in imgs:
                     x = self.batch_preprocess(img_batch)
                     results = self.sess.run(None, {"x": x})
@@ -254,9 +260,17 @@ class PaddleOrientationClsModel:
                                 np.asarray(img_info["table_img"]),
                                 cv2.ROTATE_90_CLOCKWISE,
                             )
+                            img_info["wired_table_img"] = cv2.rotate(
+                                np.asarray(img_info["wired_table_img"]),
+                                cv2.ROTATE_90_CLOCKWISE,
+                            )
                         elif label == "90":
                             img_info["table_img"] = cv2.rotate(
                                 np.asarray(img_info["table_img"]),
+                                cv2.ROTATE_90_COUNTERCLOCKWISE,
+                            )
+                            img_info["wired_table_img"] = cv2.rotate(
+                                np.asarray(img_info["wired_table_img"]),
                                 cv2.ROTATE_90_COUNTERCLOCKWISE,
                             )
                         else:
