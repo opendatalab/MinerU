@@ -13,7 +13,7 @@ Options:
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline backend only)
   -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
                                   Parsing backend (default: pipeline)
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|latin|arabic|east_slavic|cyrillic|devanagari]
+  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline backend only)
   -u, --url TEXT                  Service address when using sglang-client
   -s, --start INTEGER             Starting page number for parsing (0-based)

@@ -13,7 +13,7 @@ Options:
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
   -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
                                   解析后端（默认为 pipeline）
-  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|latin|arabic|east_slavic|cyrillic|devanagari]
+  -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
   -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
