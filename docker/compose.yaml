@@ -1,6 +1,6 @@
 services:
   mineru-sglang-server:
-    image: mineru-sglang:latest
+    image: alexsuntop/mineru-sglang:latest
     container_name: mineru-sglang-server
     restart: always
     profiles: ["sglang-server"]
@@ -31,7 +31,7 @@ services:
               capabilities: [gpu]
 
   mineru-api:
-    image: mineru-sglang:latest
+    image: alexsuntop/mineru-sglang:latest
     container_name: mineru-api
     restart: always
     profiles: ["api"]
@@ -61,7 +61,7 @@ services:
               capabilities: [ gpu ]
 
   mineru-gradio:
-    image: mineru-sglang:latest
+    image: alexsuntop/mineru-sglang:latest
     container_name: mineru-gradio
     restart: always
     profiles: ["gradio"]
