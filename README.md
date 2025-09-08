@@ -44,6 +44,9 @@
 
 # Changelog
 
+- 2025/09/08 2.2.1 Released  
+  - Fixed the issue where some newly added models were not downloaded when using the model download command.
+
 - 2025/09/05 2.2.0 Released
   - Major Updates
     - In this version, we focused on improving table parsing accuracy by introducing a new [wired table recognition model](https://github.com/RapidAI/TableStructureRec) and a brand-new hybrid table structure parsing algorithm, significantly enhancing the table recognition capabilities of the `pipeline` backend.
