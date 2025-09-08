@@ -66,7 +66,10 @@ def download_pipeline_models():
         ModelPath.unimernet_small,
         ModelPath.pytorch_paddle,
         ModelPath.layout_reader,
-        ModelPath.slanet_plus
+        ModelPath.slanet_plus,
+        ModelPath.unet_structure,
+        ModelPath.paddle_table_cls,
+        ModelPath.paddle_orientation_classification,
     ]
     download_finish_path = ""
     for model_path in model_paths:
