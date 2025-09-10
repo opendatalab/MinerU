@@ -337,5 +337,5 @@ class UnetTableModel:
 
             return html_code
         except Exception as e:
-            logger.exception(e)
-            return None
+            logger.warning(e)
+            return wireless_html_code
