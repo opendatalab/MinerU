@@ -14,6 +14,19 @@ class BlockType:
     INDEX = 'index'
     DISCARDED = 'discarded'
 
+    # vlm 2.5新增
+    CODE = "code"
+    CODE_BODY = "code_body"
+    CODE_CAPTION = "code_caption"
+    ALGORITHM = "algorithm"
+    REF_TEXT = "ref_text"
+    PHONETIC = "phonetic"
+    HEADER = "header"
+    FOOTER = "footer"
+    PAGE_NUMBER = "page_number"
+    ASIDE_TEXT = "aside_text"
+    PAGE_FOOTNOTE = "page_footnote"
+
 
 class ContentType:
     IMAGE = 'image'
@@ -22,6 +35,7 @@ class ContentType:
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
+    CODE = 'code'
 
 
 class CategoryId:

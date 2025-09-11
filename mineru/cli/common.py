@@ -145,17 +145,10 @@ def _process_output(
         )
 
     if f_dump_model_output:
-        if is_pipeline:
-            md_writer.write_string(
-                f"{pdf_file_name}_model.json",
-                json.dumps(model_output, ensure_ascii=False, indent=4),
-            )
-        else:
-            output_text = ("\n" + "-" * 50 + "\n").join(model_output)
-            md_writer.write_string(
-                f"{pdf_file_name}_model_output.txt",
-                output_text,
-            )
+        md_writer.write_string(
+            f"{pdf_file_name}_model.json",
+            json.dumps(model_output, ensure_ascii=False, indent=4),
+        )
 
     logger.info(f"local output dir is {local_md_dir}")
 

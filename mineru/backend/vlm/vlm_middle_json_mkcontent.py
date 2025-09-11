@@ -3,6 +3,8 @@ import os
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
+from pygments.lexers import guess_lexer
+
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -50,8 +52,12 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
     for para_block in para_blocks:
         para_text = ''
         para_type = para_block['type']
-        if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.INTERLINE_EQUATION]:
+        if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION, BlockType.PHONETIC, BlockType.REF_TEXT]:
             para_text = merge_para_with_text(para_block, formula_enable=formula_enable, img_buket_path=img_buket_path)
+        elif para_type == BlockType.LIST:
+            for block in para_block['blocks']:
+                item_text = merge_para_with_text(block, formula_enable=formula_enable, img_buket_path=img_buket_path)
+                para_text += f"{item_text}\n"
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
@@ -112,6 +118,19 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
                 for block in para_block['blocks']:  # 3rd.拼table_footnote
                     if block['type'] == BlockType.TABLE_FOOTNOTE:
                         para_text += '\n' + merge_para_with_text(block) + '  '
+        elif para_type == BlockType.CODE:
+            sub_type = para_block["sub_type"]
+            for block in para_block['blocks']:  # 1st.拼code_caption
+                if block['type'] == BlockType.CODE_CAPTION:
+                    para_text += merge_para_with_text(block) + '  \n'
+            for block in para_block['blocks']:  # 2nd.拼code_body
+                if block['type'] == BlockType.CODE_BODY:
+                    if sub_type == BlockType.CODE:
+                        content_text = merge_para_with_text(block)
+                        lexer = guess_lexer(content_text)
+                        para_text += f"```{lexer.aliases[0]}\n{merge_para_with_text(block)}\n```"
+                    elif sub_type == BlockType.ALGORITHM:
+                        para_text += merge_para_with_text(block)
 
         if para_text.strip() == '':
             continue
@@ -128,11 +147,30 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
 def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):
     para_type = para_block['type']
     para_content = {}
-    if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
+    if para_type in [
+        BlockType.TEXT,
+        BlockType.REF_TEXT,
+        BlockType.PHONETIC,
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.PAGE_NUMBER,
+        BlockType.ASIDE_TEXT,
+        BlockType.PAGE_FOOTNOTE,
+    ]:
         para_content = {
-            'type': ContentType.TEXT,
+            'type': para_type,
             'text': merge_para_with_text(para_block),
         }
+    elif para_type == BlockType.LIST:
+        para_content = {
+            'type': para_type,
+            'sub_type': para_block.get('sub_type', ''),
+            'list_items':[],
+        }
+        for block in para_block['blocks']:
+            item_text = merge_para_with_text(block)
+            if item_text.strip():
+                para_content['list_items'].append(item_text)
     elif para_type == BlockType.TITLE:
         title_level = get_title_level(para_block)
         para_content = {
@@ -178,6 +216,13 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
             if block['type'] == BlockType.TABLE_FOOTNOTE:
                 para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_with_text(block))
+    elif para_type == BlockType.CODE:
+        para_content = {'type': BlockType.CODE, 'sub_type': para_block["sub_type"], BlockType.CODE_CAPTION: []}
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CODE_BODY:
+                para_content[BlockType.CODE_BODY] = merge_para_with_text(block)
+            if block['type'] == BlockType.CODE_CAPTION:
+                para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
 
     page_weight, page_height = page_size
     para_bbox = para_block.get('bbox')
@@ -205,6 +250,7 @@ def union_make(pdf_info_dict: list,
     output_content = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
+        paras_of_discarded = page_info.get('discarded_blocks')
         page_idx = page_info.get('page_idx')
         page_size = page_info.get('page_size')
         if not paras_of_layout:
@@ -213,7 +259,7 @@ def union_make(pdf_info_dict: list,
             page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, formula_enable, table_enable, img_buket_path)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
-            for para_block in paras_of_layout:
+            for para_block in paras_of_layout+paras_of_discarded:
                 para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                 output_content.append(para_content)
 

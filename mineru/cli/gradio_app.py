@@ -182,9 +182,9 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
-    elif backend_choice in ["vlm-sglang-client"]:
+    elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
     elif backend_choice in ["pipeline"]:
         return gr.update(visible=False), gr.update(visible=True)
@@ -287,10 +287,10 @@ def main(ctx,
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
                     if sglang_engine_enable:
-                        drop_list = ["pipeline", "vlm-sglang-engine"]
-                        preferred_option = "vlm-sglang-engine"
+                        drop_list = ["pipeline", "vlm-vllm-engine"]
+                        preferred_option = "vlm-vllm-engine"
                     else:
-                        drop_list = ["pipeline", "vlm-transformers", "vlm-sglang-client"]
+                        drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         preferred_option = "pipeline"
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
                 with gr.Row(visible=False) as client_options:

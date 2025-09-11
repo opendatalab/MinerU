@@ -119,18 +119,20 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
 
 def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     dropped_bbox_list = []
-    tables_list, tables_body_list = [], []
-    tables_caption_list, tables_footnote_list = [], []
-    imgs_list, imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], [], []
+    tables_body_list, tables_caption_list, tables_footnote_list = [], [], []
+    imgs_body_list, imgs_caption_list, imgs_footnote_list = [], [], []
+    codes_body_list, codes_caption_list = [], []
     titles_list = []
     texts_list = []
     interequations_list = []
     lists_list = []
     indexs_list = []
+
     for page in pdf_info:
         page_dropped_list = []
-        tables, tables_body, tables_caption, tables_footnote = [], [], [], []
-        imgs, imgs_body, imgs_caption, imgs_footnote = [], [], [], []
+        tables_body, tables_caption, tables_footnote = [], [], []
+        imgs_body, imgs_caption, imgs_footnote = [], [], []
+        codes_body, codes_caption = [], []
         titles = []
         texts = []
         interequations = []
@@ -143,7 +145,6 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         for block in page["para_blocks"]:
             bbox = block["bbox"]
             if block["type"] == BlockType.TABLE:
-                tables.append(bbox)
                 for nested_block in block["blocks"]:
                     bbox = nested_block["bbox"]
                     if nested_block["type"] == BlockType.TABLE_BODY:
@@ -155,7 +156,6 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                             continue
                         tables_footnote.append(bbox)
             elif block["type"] == BlockType.IMAGE:
-                imgs.append(bbox)
                 for nested_block in block["blocks"]:
                     bbox = nested_block["bbox"]
                     if nested_block["type"] == BlockType.IMAGE_BODY:
@@ -164,6 +164,14 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                         imgs_caption.append(bbox)
                     elif nested_block["type"] == BlockType.IMAGE_FOOTNOTE:
                         imgs_footnote.append(bbox)
+            elif block["type"] == BlockType.CODE:
+                for nested_block in block["blocks"]:
+                    if nested_block["type"] == BlockType.CODE_BODY:
+                        bbox = nested_block["bbox"]
+                        codes_body.append(bbox)
+                    elif nested_block["type"] == BlockType.CODE_CAPTION:
+                        bbox = nested_block["bbox"]
+                        codes_caption.append(bbox)
             elif block["type"] == BlockType.TITLE:
                 titles.append(bbox)
             elif block["type"] == BlockType.TEXT:
@@ -175,11 +183,9 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
             elif block["type"] == BlockType.INDEX:
                 indices.append(bbox)
 
-        tables_list.append(tables)
         tables_body_list.append(tables_body)
         tables_caption_list.append(tables_caption)
         tables_footnote_list.append(tables_footnote)
-        imgs_list.append(imgs)
         imgs_body_list.append(imgs_body)
         imgs_caption_list.append(imgs_caption)
         imgs_footnote_list.append(imgs_footnote)
@@ -188,6 +194,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         interequations_list.append(interequations)
         lists_list.append(lists)
         indexs_list.append(indices)
+        codes_body_list.append(codes_body)
+        codes_caption_list.append(codes_caption)
 
     layout_bbox_list = []
 
@@ -215,6 +223,10 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                         continue
                     bbox = sub_block["bbox"]
                     page_block_list.append(bbox)
+            elif block["type"] in [BlockType.CODE]:
+                for sub_block in block["blocks"]:
+                    bbox = sub_block["bbox"]
+                    page_block_list.append(bbox)
 
         layout_bbox_list.append(page_block_list)
 
@@ -231,6 +243,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         # 使用原始PDF的尺寸创建canvas
         c = canvas.Canvas(packet, pagesize=custom_page_size)
 
+        c = draw_bbox_without_number(i, codes_body_list, page, c, [102, 0, 204], True)
+        c = draw_bbox_without_number(i, codes_caption_list, page, c, [204, 153, 255], True)
         c = draw_bbox_without_number(i, dropped_bbox_list, page, c, [158, 158, 158], True)
         c = draw_bbox_without_number(i, tables_body_list, page, c, [204, 204, 0], True)
         c = draw_bbox_without_number(i, tables_caption_list, page, c, [255, 255, 102], True)

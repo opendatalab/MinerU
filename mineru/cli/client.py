@@ -49,12 +49,12 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     '-b',
     '--backend',
     'backend',
-    type=click.Choice(['pipeline', 'vlm-transformers', 'vlm-sglang-engine', 'vlm-sglang-client']),
+    type=click.Choice(['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-http-client']),
     help="""the backend for parsing pdf:
     pipeline: More general.
     vlm-transformers: More general.
-    vlm-sglang-engine: Faster(engine).
-    vlm-sglang-client: Faster(client).
+    vlm-vllm-engine: Faster(engine).
+    vlm-http-client: Faster(client).
     without method specified, pipeline will be used by default.""",
     default='pipeline',
 )
@@ -77,7 +77,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     'server_url',
     type=str,
     help="""
-    When the backend is `sglang-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    When the backend is `vlm-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
     """,
     default=None,
 )

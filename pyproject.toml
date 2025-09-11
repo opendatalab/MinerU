@@ -38,6 +38,7 @@ dependencies = [
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<2",
     "beautifulsoup4>=4.13.5,<5",
+    "Pygments",
 ]
 
 [project.optional-dependencies]
@@ -49,13 +50,10 @@ test = [
     "fuzzywuzzy"
 ]
 vlm = [
-    "transformers>=4.51.1",
-    "torch>=2.6.0",
-    "accelerate>=1.5.1",
-    "pydantic",
+    "mineru_vl_utils[transformers]",
 ]
-sglang = [
-    "sglang[all]>=0.4.7,<0.4.11",
+vllm = [
+    "mineru_vl_utils[vllm]",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",
@@ -89,7 +87,7 @@ core = [
 ]
 all = [
     "mineru[core]",
-    "mineru[sglang]",
+    "mineru[vllm]",
 ]
 
 [project.urls]
