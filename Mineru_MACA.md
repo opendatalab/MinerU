@@ -73,7 +73,7 @@ outlines==0.1.11
 ```bash
 pip install -r requirments.txt
 ```
-安装doclayout_yolo，这里doclayout_yolo会依赖torch-cuda
+安装doclayout_yolo，这里doclayout_yolo会依赖torch-cuda,使用--no-deps
 ```bash
 pip install doclayout-yolo --no-deps
 ```
