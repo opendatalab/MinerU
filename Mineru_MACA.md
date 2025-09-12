@@ -93,7 +93,7 @@ pip install doclayout-yolo --no-deps
 ```bash
 mineru-models-download
 ```
-也可以在[HuggingFace](http://www.huggingface.co.)或[ModelScope](https://www.modelscope.cn/home)找到所需模型源（PDF-Extract-Kit-1.0和MinerU2.0-2505-0.9B）进行下载
+也可以在[HuggingFace](http://www.huggingface.co.)或[ModelScope](https://www.modelscope.cn/home)找到所需模型源（PDF-Extract-Kit-1.0和MinerU2.0-2505-0.9B）进行下载，
 下载完成后，创建mineru.json文件，按如下进行修改
 ```json
 {
