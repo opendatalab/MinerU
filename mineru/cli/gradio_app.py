@@ -203,10 +203,10 @@ def update_interface(backend_choice):
     default=True,
 )
 @click.option(
-    '--enable-sglang-engine',
-    'sglang_engine_enable',
+    '--enable-vllm-engine',
+    'vllm_engine_enable',
     type=bool,
-    help="Enable SgLang engine backend for faster processing.",
+    help="Enable vLLM engine backend for faster processing.",
     default=False,
 )
 @click.option(
@@ -246,7 +246,7 @@ def update_interface(backend_choice):
     default='all',
 )
 def main(ctx,
-        example_enable, sglang_engine_enable, api_enable, max_convert_pages,
+        example_enable, vllm_engine_enable, api_enable, max_convert_pages,
         server_name, server_port, latex_delimiters_type, **kwargs
 ):
 
@@ -261,18 +261,18 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    if sglang_engine_enable:
+    if vllm_engine_enable:
         try:
-            print("Start init SgLang engine...")
+            print("Start init vLLM engine...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "sglang-engine",
+                "vllm-engine",
                 None,
                 None,
                 **kwargs
             )
-            print("SgLang engine init successfully.")
+            print("vLLM engine init successfully.")
         except Exception as e:
             logger.exception(e)
 
@@ -286,7 +286,7 @@ def main(ctx,
                 with gr.Row():
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
-                    if sglang_engine_enable:
+                    if vllm_engine_enable:
                         drop_list = ["pipeline", "vlm-vllm-engine"]
                         preferred_option = "vlm-vllm-engine"
                     else:

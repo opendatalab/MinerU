@@ -98,7 +98,7 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
-mineru-sglang-server = "mineru.cli.vlm_sglang_server:main"
+mineru-vllm-server = "mineru.cli.vlm_vllm_server:main"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
 mineru-gradio = "mineru.cli.gradio_app:main"
