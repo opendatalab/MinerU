@@ -3,9 +3,10 @@
 ### 获取MACA镜像，包含torch-maca,maca,sglang-maca
 
 镜像获取地址：https://developer.metax-tech.com/softnova/docker
+选择maca-c500-pytorch:2.33.0.6-ubuntu22.04-amd64
 
+若在docker上部署镜像则需要启动GPU设备访问
 ```bash
-##docker run-测试镜像版本为sglang:maca.ai3.1.0.0-torch2.6-py310-ubuntu22.04-amd64(镜像需要支持sglang>=0.4.7) 
 docker run --device=/dev/dri --device=/dev/mxcd....
 ```
 
@@ -112,5 +113,5 @@ path为本地模型的存储路径，其中models-dir为本地模型的路径，
 export MINERU_MODEL_SOURCE=local
 export MINERU_TOOLS_CONFIG_JSON=/path/mineru.json   //此环境变量为配置文件的路径
 ```
-更改完成后即可正常使用
-**注：目前暂不支持vlm-slang-enging和vlm-sglang-clinet，待sglang发布新版本镜像之后可以支持**
+修改完成后即可正常使用<br/>
+**注：目前暂不支持vlm-slang-enging和vlm-sglang-clinet，待sglang发布新版本镜像之后可以支持，具体信息可以关注[沐曦开发者社区](https://developer.metax-tech.com/developer/news)**
