@@ -76,18 +76,25 @@ pip install -r requirments.txt
 ```bash
 pip install doclayout-yolo --no-deps
 ```
+### 在线使用
+**基础使用命令为:mineru -p <input_path> -o <output_path> -b vlm-transformers**
 
-### Demo 测试
+- `<input_path>`: Local PDF/image file or directory
+- `<output_path>`: Output directory
+- -b  --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client] (default:pipeline)<br/>
 
-**测试中用到模型为本地模型，需要设置环境变量和config配置文件**<br/>
-首先创建mineru.json文件，方便后续使用本地模型
+其他详细使用命令可参考官方文档[Quick Usage - MinerU](https://opendatalab.github.io/MinerU/usage/quick_usage/#quick-model-source-configuration)
+
+### 离线使用
+
+**所用模型为本地模型，需要设置环境变量和config配置文件**<br/>
 #### 下载模型到本地
-可以通过mineru交互式命令行工具进行下载
+通过mineru交互式命令行工具进行下载，下载完后会自动更新mineru.json配置文件
 ```bash
 mineru-models-download
 ```
 也可以在[HuggingFace](http://www.huggingface.co.)或[ModelScope](https://www.modelscope.cn/home)找到所需模型源（PDF-Extract-Kit-1.0和MinerU2.0-2505-0.9B）进行下载
-下载完成后，找到本地模型的存储路径，修改mineru.json文件
+下载完成后，创建mineru.json文件，按如下进行修改
 ```json
 {
     "models-dir": {
@@ -105,12 +112,5 @@ path为本地模型的存储路径，其中models-dir为本地模型的路径，
 export MINERU_MODEL_SOURCE=local
 export MINERU_TOOLS_CONFIG_JSON=/path/mineru.json   //此环境变量为配置文件的路径
 ```
-#### 测试
-**基础测试命令为:mineru -p <input_path> -o <output_path> -b vlm-transformers**
-
-- `<input_path>`: Local PDF/image file or directory
-- `<output_path>`: Output directory
-- -b  --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client] (default:pipeline)<br/>
-**注：目前只有vlm-transformers可以使用，其它解析后端待sglang发布新版本镜像之后可以支持**
-
-其他详细使用命令可参考官方文档[Quick Usage - MinerU](https://opendatalab.github.io/MinerU/usage/quick_usage/#quick-model-source-configuration)
+更改完成后即可正常使用
+**注：目前暂不支持vlm-slang-enging和vlm-sglang-clinet，待sglang发布新版本镜像之后可以支持**
