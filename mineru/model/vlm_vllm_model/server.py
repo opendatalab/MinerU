@@ -10,7 +10,6 @@ def main():
     has_port_arg = False
     has_gpu_memory_utilization_arg = False
     has_model_arg = False
-    has_model_tag_arg = False
 
     for i, arg in enumerate(args):
         if arg == "--port" or arg.startswith("--port="):
