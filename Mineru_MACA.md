@@ -1,4 +1,4 @@
-## MinerU run on C500+MACA
+## 在C500+MACA上部署并使用Mineru
 
 ### 获取MACA镜像，包含torch-maca,maca,sglang-maca
 
