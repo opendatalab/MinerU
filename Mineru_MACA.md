@@ -2,7 +2,7 @@
 
 ### 获取MACA镜像，包含torch-maca,maca,sglang-maca
 
-镜像获取地址：https://developer.metax-tech.com/softnova/docker
+镜像获取地址：https://developer.metax-tech.com/softnova/docker ,
 选择maca-c500-pytorch:2.33.0.6-ubuntu22.04-amd64
 
 若在docker上部署镜像则需要启动GPU设备访问
