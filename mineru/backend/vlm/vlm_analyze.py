@@ -70,7 +70,7 @@ class ModelSingleton:
                         import vllm
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
-                    logger.debug(kwargs)
+                    # logger.debug(kwargs)
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
