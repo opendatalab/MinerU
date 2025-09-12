@@ -1,7 +1,7 @@
 import sys
 
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from vllm.entrypoints.openai.api_server import main as vllm_serve
+from vllm.entrypoints.cli.main import main as vllm_main
 
 
 def main():
@@ -24,7 +24,7 @@ def main():
 
     # 启动vllm服务器
     print(f"start vllm server: {sys.argv}")
-    vllm_serve()
+    vllm_main()
 
 
 if __name__ == "__main__":
