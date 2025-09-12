@@ -71,8 +71,12 @@ class ModelSingleton:
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
                     logger.debug(kwargs)
+                    if "gpu_memory_utilization" not in kwargs:
+                        kwargs["gpu_memory_utilization"] = 0.5
+                    if "model" not in kwargs:
+                        kwargs["model"] = model_path
                     # 使用kwargs为 vllm初始化参数
-                    vllm_llm = vllm.LLM(model_path, **kwargs)
+                    vllm_llm = vllm.LLM(**kwargs)
             self._models[key] = MinerUClient(
                 backend=backend,
                 model=model,
