@@ -1,7 +1,7 @@
 import sys
 
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from vllm.entrypoints.openai_api_server import main as vllm_serve
+from vllm.entrypoints.openai.api_server import main as vllm_serve
 
 
 def main():
