@@ -128,15 +128,12 @@ addopts = "-s --cov=mineru --cov-report html"
 command_line = "-m pytest tests/unittest/test_e2e.py"
 source = ["mineru/"]
 omit = [
-    "*/vlm_sglang_model/*",
     "*/gradio_app.py",
     "*/models_download.py",
     "*/fast_api.py",
     "*/cli/client.py",
-    "*/sglang_engine_predictor.py",
-    "*/vlm_sglang_server.py",
+    "*/vlm_vllm_server.py",
     "*/cli_parser.py",
-    "*/run_async.py"
 ]
 
 [tool.coverage.html]
