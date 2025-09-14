@@ -1,4 +1,5 @@
 import json
+from collections.abc import list_iterator
 from io import BytesIO
 
 from loguru import logger
@@ -126,6 +127,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
     texts_list = []
     interequations_list = []
     lists_list = []
+    list_items_list = []
     indexs_list = []
 
     for page in pdf_info:
@@ -137,6 +139,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         texts = []
         interequations = []
         lists = []
+        list_items = []
         indices = []
 
         for dropped_bbox in page['discarded_blocks']:
@@ -180,6 +183,9 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                 interequations.append(bbox)
             elif block["type"] == BlockType.LIST:
                 lists.append(bbox)
+                if "blocks" in block:
+                    for sub_block in block["blocks"]:
+                        list_items.append(sub_block["bbox"])
             elif block["type"] == BlockType.INDEX:
                 indices.append(bbox)
 
@@ -193,6 +199,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         texts_list.append(texts)
         interequations_list.append(interequations)
         lists_list.append(lists)
+        list_items_list.append(list_items)
         indexs_list.append(indices)
         codes_body_list.append(codes_body)
         codes_caption_list.append(codes_caption)
@@ -256,6 +263,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         c = draw_bbox_without_number(i, texts_list, page, c, [153, 0, 76], True)
         c = draw_bbox_without_number(i, interequations_list, page, c, [0, 255, 0], True)
         c = draw_bbox_without_number(i, lists_list, page, c, [40, 169, 92], True)
+        c = draw_bbox_without_number(i, list_items_list, page, c, [40, 169, 92], False)
         c = draw_bbox_without_number(i, indexs_list, page, c, [40, 169, 92], True)
         c = draw_bbox_with_number(i, layout_bbox_list, page, c, [255, 0, 0], False, draw_bbox=False)
 
