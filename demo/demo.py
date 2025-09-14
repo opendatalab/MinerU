@@ -27,7 +27,7 @@ def do_parse(
     parse_method="auto",  # The method for parsing PDF, default is 'auto'
     formula_enable=True,  # Enable formula parsing
     table_enable=True,  # Enable table parsing
-    server_url=None,  # Server URL for vlm-sglang-client backend
+    server_url=None,  # Server URL for vlm-http-client backend
     f_draw_layout_bbox=True,  # Whether to draw layout bounding boxes
     f_draw_span_bbox=True,  # Whether to draw span bounding boxes
     f_dump_md=True,  # Whether to dump markdown files
@@ -182,8 +182,8 @@ def parse_doc(
         backend: the backend for parsing pdf:
             pipeline: More general.
             vlm-transformers: More general.
-            vlm-sglang-engine: Faster(engine).
-            vlm-sglang-client: Faster(client).
+            vlm-vllm-engine: Faster(engine).
+            vlm-http-client: Faster(client).
             without method specified, pipeline will be used by default.
         method: the method for parsing pdf:
             auto: Automatically determine the method based on the file type.
@@ -191,7 +191,7 @@ def parse_doc(
             ocr: Use OCR method for image-based PDFs.
             Without method specified, 'auto' will be used by default.
             Adapted only for the case where the backend is set to "pipeline".
-        server_url: When the backend is `sglang-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+        server_url: When the backend is `http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
         start_page_id: Start page ID for parsing, default is 0
         end_page_id: End page ID for parsing, default is None (parse all pages until the end of the document)
     """
@@ -241,5 +241,5 @@ if __name__ == '__main__':
 
     """To enable VLM mode, change the backend to 'vlm-xxx'"""
     # parse_doc(doc_path_list, output_dir, backend="vlm-transformers")  # more general.
-    # parse_doc(doc_path_list, output_dir, backend="vlm-sglang-engine")  # faster(engine).
-    # parse_doc(doc_path_list, output_dir, backend="vlm-sglang-client", server_url="http://127.0.0.1:30000")  # faster(client).
+    # parse_doc(doc_path_list, output_dir, backend="vlm-vllm-engine")  # faster(engine).
+    # parse_doc(doc_path_list, output_dir, backend="vlm-http-client", server_url="http://127.0.0.1:30000")  # faster(client).
