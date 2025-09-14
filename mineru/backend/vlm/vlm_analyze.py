@@ -31,6 +31,7 @@ class ModelSingleton:
     ) -> MinerUClient:
         key = (backend, model_path, server_url)
         if key not in self._models:
+            start_time = time.time()
             model = None
             processor = None
             vllm_llm = None
@@ -84,6 +85,8 @@ class ModelSingleton:
                 vllm_llm=vllm_llm,
                 server_url=server_url,
             )
+            elapsed = round(time.time() - start_time, 2)
+            logger.info(f"get {backend} predictor cost: {elapsed}s")
         return self._models[key]
 
 
