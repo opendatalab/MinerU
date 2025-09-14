@@ -44,24 +44,48 @@
 
 # Changelog
 
-- 2025/09/10 2.2.2 Released
-  - Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed
+- 2025/09/19 2.5.0 Released
+  - vlm update to 2509-2.5 version
 
-- 2025/09/08 2.2.1 Released  
-  - Fixed the issue where some newly added models were not downloaded when using the model download command.
-
-- 2025/09/05 2.2.0 Released
-  - Major Updates
-    - In this version, we focused on improving table parsing accuracy by introducing a new [wired table recognition model](https://github.com/RapidAI/TableStructureRec) and a brand-new hybrid table structure parsing algorithm, significantly enhancing the table recognition capabilities of the `pipeline` backend.
-    - We also added support for cross-page table merging, which is supported by both `pipeline` and `vlm` backends, further improving the completeness and accuracy of table parsing.
-  - Other Updates
-    - The `pipeline` backend now supports 270-degree rotated table parsing, bringing support for table parsing in 0/90/270-degree orientations
-    - `pipeline` added OCR capability support for Thai and Greek, and updated the English OCR model to the latest version. English recognition accuracy improved by 11%, Thai recognition model accuracy is 82.68%, and Greek recognition model accuracy is 89.28% (by PPOCRv5)
-    - Added `bbox` field (mapped to 0-1000 range) in the output `content_list.json`, making it convenient for users to directly obtain position information for each content block
-    - Removed the `pipeline_old_linux` installation option, no longer supporting legacy Linux systems such as `CentOS 7`, to provide better support for `uv`'s `sync`/`run` commands
 
 <details>
   <summary>History Log</summary>
+
+  <details>
+    <summary>2025/09/10 2.2.2 Released</summary>
+    <ul>
+      <li>Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/08 2.2.1 Released</summary>
+    <ul>
+      <li>Fixed the issue where some newly added models were not downloaded when using the model download command.</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/05 2.2.0 Released</summary>
+    <ul>
+      <li>
+        Major Updates
+        <ul>
+          <li>In this version, we focused on improving table parsing accuracy by introducing a new <a href="https://github.com/RapidAI/TableStructureRec">wired table recognition model</a> and a brand-new hybrid table structure parsing algorithm, significantly enhancing the table recognition capabilities of the <code>pipeline</code> backend.</li>
+          <li>We also added support for cross-page table merging, which is supported by both <code>pipeline</code> and <code>vlm</code> backends, further improving the completeness and accuracy of table parsing.</li>
+        </ul>
+      </li>
+      <li>
+        Other Updates
+        <ul>
+          <li>The <code>pipeline</code> backend now supports 270-degree rotated table parsing, bringing support for table parsing in 0/90/270-degree orientations</li>
+          <li><code>pipeline</code> added OCR capability support for Thai and Greek, and updated the English OCR model to the latest version. English recognition accuracy improved by 11%, Thai recognition model accuracy is 82.68%, and Greek recognition model accuracy is 89.28% (by PPOCRv5)</li>
+          <li>Added <code>bbox</code> field (mapped to 0-1000 range) in the output <code>content_list.json</code>, making it convenient for users to directly obtain position information for each content block</li>
+          <li>Removed the <code>pipeline_old_linux</code> installation option, no longer supporting legacy Linux systems such as <code>CentOS 7</code>, to provide better support for <code>uv</code>'s <code>sync</code>/<code>run</code> commands</li>
+        </ul>
+      </li>
+    </ul>
+  </details>
 
   <details>
     <summary>2025/08/01 2.1.10 Released</summary>
