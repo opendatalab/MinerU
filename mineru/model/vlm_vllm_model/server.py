@@ -28,7 +28,7 @@ def main():
         args.extend([default_path])
 
     # 重新构造sys.argv，以便透传所有参数给vllm
-    sys.argv = [sys.argv[0]] + args
+    sys.argv = [sys.argv[0]] + ["serve"] + args
 
     # 启动vllm服务器
     print(f"start vllm server: {sys.argv}")
