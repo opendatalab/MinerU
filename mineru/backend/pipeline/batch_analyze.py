@@ -221,7 +221,7 @@ class BatchAnalyze:
 
             # 表格格式清理
             for table_res_dict in table_res_list_all_page:
-                html_code = table_res_dict["table_res"].get("html", "")
+                html_code = table_res_dict["table_res"].get("html", "") or ""
 
                 # 检查html_code是否包含'<table>'和'</table>'
                 if "<table>" in html_code and "</table>" in html_code:

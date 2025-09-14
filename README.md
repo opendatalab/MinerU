@@ -44,6 +44,9 @@
 
 # Changelog
 
+- 2025/09/10 2.2.2 Released
+  - Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed
+
 - 2025/09/08 2.2.1 Released  
   - Fixed the issue where some newly added models were not downloaded when using the model download command.
 
