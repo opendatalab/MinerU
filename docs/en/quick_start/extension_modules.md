@@ -22,7 +22,7 @@ uv pip install mineru[all]
 
 ---
 
-### Installing Lightweight Client to Connect to sglang-server
+### Installing Lightweight Client to Connect to vllm-server
 If you need to install a lightweight client on edge devices to connect to `vllm-server`, you can install the basic mineru package, which is very lightweight and suitable for devices with only CPU and network connectivity.
 ```bash
 uv pip install mineru
