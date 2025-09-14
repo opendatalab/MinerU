@@ -40,7 +40,7 @@
 > 
 > - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start `vllm-server`, you can use the following command:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1 mineru-sglang-server --port 30000 --data-parallel-size 2
+>   CUDA_VISIBLE_DEVICES=0,1 mineru-vllm-server --port 30000 --data-parallel-size 2
 >   ```
 >       
 > - If you have multiple graphics cards and need to start two `fastapi` services on cards 0 and 1, listening on different ports respectively, you can use the following commands:

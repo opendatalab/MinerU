@@ -29,7 +29,7 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b vlm-transformers
 ```
 > [!TIP]
-> The vlm backend additionally supports `sglang` acceleration. Compared to the `transformers` backend, `sglang` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `sglang` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
+> The vlm backend additionally supports `vllm` acceleration. Compared to the `transformers` backend, `vllm` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `vllm` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
