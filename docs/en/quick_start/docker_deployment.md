@@ -6,25 +6,22 @@ MinerU provides a convenient Docker deployment method, which helps quickly set u
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
-docker build -t mineru-sglang:latest -f Dockerfile .
+docker build -t mineru-vllm:latest -f Dockerfile .
 ```
 
 > [!TIP]
-> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `lmsysorg/sglang:v0.4.10.post2-cu126` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper platforms.
-> If you are using the newer `Blackwell` platform, please modify the base image to `lmsysorg/sglang:v0.4.10.post2-cu128-b200` before executing the build operation.
+> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `vllm/vllm-openai:v0.10.1.1` as the base image by default, supporting Turing/Ampere/Ada Lovelace/Hopper/Blackwell platforms.
 
 ## Docker Description
 
-MinerU's Docker uses `lmsysorg/sglang` as the base image, so it includes the `sglang` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `sglang` to accelerate VLM model inference.
+MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `vllm` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `vllm` to accelerate VLM model inference.
 
 > [!NOTE]
-> Requirements for using `sglang` to accelerate VLM model inference:
+> Requirements for using `vllm` to accelerate VLM model inference:
 > 
 > - Device must have Turing architecture or later graphics cards with 8GB+ available VRAM.
-> - The host machine's graphics driver should support CUDA 12.6 or higher; `Blackwell` platform should support CUDA 12.8 or higher. You can check the driver version using the `nvidia-smi` command.
+> - The host machine's graphics driver should support CUDA 12.8 or higher; You can check the driver version using the `nvidia-smi` command.
 > - Docker container must have access to the host machine's graphics devices.
->
-> If your device doesn't meet the above requirements, you can still use other features of MinerU, but cannot use `sglang` to accelerate VLM model inference, meaning you cannot use the `vlm-sglang-engine` backend or start the `vlm-sglang-server` service.
 
 ## Start Docker Container
 
@@ -33,7 +30,7 @@ docker run --gpus all \
   --shm-size 32g \
   -p 30000:30000 -p 7860:7860 -p 8000:8000 \
   --ipc=host \
-  -it mineru-sglang:latest \
+  -it mineru-vllm:latest \
   /bin/bash
 ```
 
@@ -53,19 +50,19 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >
 >- The `compose.yaml` file contains configurations for multiple services of MinerU, you can choose to start specific services as needed.
 >- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
->- Due to the pre-allocation of GPU memory by the `sglang` inference acceleration framework, you may not be able to run multiple `sglang` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-sglang-server` service or using the `vlm-sglang-engine` backend.
+>- Due to the pre-allocation of GPU memory by the `vllm` inference acceleration framework, you may not be able to run multiple `vllm` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-vllm-server` service or using the `vlm-vllm-engine` backend.
 
 ---
 
-### Start sglang-server service
-connect to `sglang-server` via `vlm-sglang-client` backend
+### Start vllm-server service
+connect to `vllm-server` via `vlm-http-client` backend
   ```bash
-  docker compose -f compose.yaml --profile sglang-server up -d
+  docker compose -f compose.yaml --profile vllm-server up -d
   ```
   >[!TIP]
-  >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
+  >In another terminal, connect to vllm server via http client (only requires CPU and network, no vllm environment needed)
   > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://<server_ip>:30000
+  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://<server_ip>:30000
   > ```
 
 ---

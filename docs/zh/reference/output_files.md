@@ -165,48 +165,51 @@ inference_result: list[PageInferenceResults] = []
 ]
 ```
 
-### VLM 输出结果 (model_output.txt)
+### VLM 输出结果 (model.json)
 
 > [!NOTE]
 > 仅适用于 VLM 后端
 
-**文件命名格式**：`{原文件名}_model_output.txt`
+**文件命名格式**：`{原文件名}_model.json`
 
 #### 文件格式说明
 
-- 使用 `----` 分割每一页的输出结果
-- 每页包含多个以 `<|box_start|>` 开头、`<|md_end|>` 结尾的文本块
+- 该文件为 VLM 模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
+- 每个内容块都是一个dict，包含 `type`、`bbox`、`angle`、`content` 字段
 
-#### 字段含义
-
-| 标记 | 格式 | 说明 |
-|------|---|------|
-| 边界框 | `<\|box_start\|>x0 y0 x1 y1<\|box_end\|>` | 四边形坐标（左上、右下两点），页面缩放至 1000×1000 后的坐标值 |
-| 类型标记 | `<\|ref_start\|>type<\|ref_end\|>` | 内容块类型标识 |
-| 内容 | `<\|md_start\|>markdown内容<\|md_end\|>` | 该块的 Markdown 内容 |
 
 #### 支持的内容类型
 
 ```json
 {
-    "text": "文本",
-    "title": "标题", 
-    "image": "图片",
-    "image_caption": "图片描述",
-    "image_footnote": "图片脚注",
-    "table": "表格",
-    "table_caption": "表格描述", 
-    "table_footnote": "表格脚注",
-    "equation": "行间公式"
+    "text",
+    "title", 
+    "equation",
+    "image",
+    "image_caption",
+    "image_footnote",
+    "table",
+    "table_caption",
+    "table_footnote",
+    "phonetic",
+    "code",
+    "code_caption",
+    "ref_text",
+    "algorithm",
+    "list",
+    "header",
+    "footer",
+    "page_number",
+    "aside_text", 
+    "page_footnote", 
 }
 ```
 
-#### 特殊标记
-
-- `<|txt_contd|>`：出现在文本末尾，表示该文本块可与后续文本块连接
-- 表格内容采用 `otsl` 格式，需转换为 HTML 才能在 Markdown 中渲染
 
 ### 中间处理结果 (middle.json)
+
+> [!NOTE]
+> 仅适用于 pipeline 后端
 
 **文件命名格式**：`{原文件名}_middle.json`
 
@@ -389,6 +392,9 @@ inference_result: list[PageInferenceResults] = []
 ```
 
 ### 内容列表 (content_list.json)
+
+> [!NOTE]
+> 仅适用于 pipeline 后端
 
 **文件命名格式**：`{原文件名}_content_list.json`
 

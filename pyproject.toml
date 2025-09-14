@@ -39,6 +39,7 @@ dependencies = [
     "openai>=1.70.0,<2",
     "beautifulsoup4>=4.13.5,<5",
     "Pygments",
+    "mineru_vl_utils",
 ]
 
 [project.optional-dependencies]
@@ -50,10 +51,12 @@ test = [
     "fuzzywuzzy"
 ]
 vlm = [
-    "mineru_vl_utils[transformers]",
+    "torch>=2.6.0,<2.8.0",
+    "transformers>=4.51.1,<5.0.0",
+    "accelerate>=1.5.1",
 ]
 vllm = [
-    "mineru_vl_utils[vllm]",
+    "vllm==0.10.1.1",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",

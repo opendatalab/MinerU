@@ -583,7 +583,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <td>Parsing Backend</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>Operating System</td>
@@ -661,8 +661,8 @@ You can use MinerU for PDF parsing through various methods such as command line,
 - [x] Handwritten Text Recognition  
 - [x] Vertical Text Recognition  
 - [x] Latin Accent Mark Recognition
-- [ ] Code block recognition in the main text
-- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
+- [x] Code block recognition in the main text
+- [x] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)(mineru.net)
 - [ ] Geometric shape recognition
 
 # Known Issues

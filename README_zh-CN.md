@@ -570,7 +570,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>操作系统</td>
@@ -648,8 +648,8 @@ mineru -p <input_path> -o <output_path>
 - [x] 手写文本识别
 - [x] 竖排文本识别
 - [x] 拉丁字母重音符号识别
-- [ ] 正文中代码块识别
-- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
+- [x] 正文中代码块识别
+- [x] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)(https://mineru.net)
 - [ ] 图表内容识别
 
 # Known Issues

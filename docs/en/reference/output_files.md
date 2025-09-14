@@ -165,48 +165,50 @@ inference_result: list[PageInferenceResults] = []
 ]
 ```
 
-### VLM Output Results (model_output.txt)
+### VLM Output Results (model.json)
 
 > [!NOTE]
 > Only applicable to VLM backend
 
-**File naming format**: `{original_filename}_model_output.txt`
+**File naming format**: `{original_filename}_model.json`
 
 #### File Format Description
 
-- Uses `----` to separate output results for each page
-- Each page contains multiple text blocks starting with `<|box_start|>` and ending with `<|md_end|>`
+- This file contains the raw output results from the VLM model, with two nested list layers: the outer layer represents pages, and the inner layer represents content blocks for each page
+- Each content block is a dict containing `type`, `bbox`, `angle`, and `content` fields
 
-#### Field Meanings
-
-| Tag | Format | Description |
-|-----|--------|-------------|
-| Bounding box | `<\|box_start\|>x0 y0 x1 y1<\|box_end\|>` | Quadrilateral coordinates (top-left, bottom-right points), coordinate values after scaling page to 1000×1000 |
-| Type tag | `<\|ref_start\|>type<\|ref_end\|>` | Content block type identifier |
-| Content | `<\|md_start\|>markdown content<\|md_end\|>` | Markdown content of the block |
 
 #### Supported Content Types
 
 ```json
 {
-    "text": "Text",
-    "title": "Title", 
-    "image": "Image",
-    "image_caption": "Image caption",
-    "image_footnote": "Image footnote",
-    "table": "Table",
-    "table_caption": "Table caption", 
-    "table_footnote": "Table footnote",
-    "equation": "Interline formula"
+    "text",
+    "title", 
+    "equation",
+    "image",
+    "image_caption",
+    "image_footnote",
+    "table",
+    "table_caption",
+    "table_footnote",
+    "phonetic",
+    "code",
+    "code_caption",
+    "ref_text",
+    "algorithm",
+    "list",
+    "header",
+    "footer",
+    "page_number",
+    "aside_text", 
+    "page_footnote", 
 }
 ```
 
-#### Special Tags
-
-- `<|txt_contd|>`: Appears at the end of text, indicating that this text block can be connected with subsequent text blocks
-- Table content uses `otsl` format and needs to be converted to HTML for rendering in Markdown
-
 ### Intermediate Processing Results (middle.json)
+
+> [!NOTE]
+> Only applicable to pipeline backend
 
 **File naming format**: `{original_filename}_middle.json`
 
@@ -389,6 +391,9 @@ Level 1 blocks (table | image)
 ```
 
 ### Content List (content_list.json)
+
+> [!NOTE]
+> Only applicable to pipeline backend
 
 **File naming format**: `{original_filename}_content_list.json`
 
