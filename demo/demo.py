@@ -15,7 +15,6 @@ from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 def do_parse(
@@ -62,47 +61,12 @@ def do_parse(
             pdf_info = middle_json["pdf_info"]
 
             pdf_bytes = pdf_bytes_list[idx]
-            if f_draw_layout_bbox:
-                draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
-
-            if f_draw_span_bbox:
-                draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
-
-            if f_dump_orig_pdf:
-                md_writer.write(
-                    f"{pdf_file_name}_origin.pdf",
-                    pdf_bytes,
-                )
-
-            if f_dump_md:
-                image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = pipeline_union_make(pdf_info, f_make_md_mode, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}.md",
-                    md_content_str,
-                )
-
-            if f_dump_content_list:
-                image_dir = str(os.path.basename(local_image_dir))
-                content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}_content_list.json",
-                    json.dumps(content_list, ensure_ascii=False, indent=4),
-                )
-
-            if f_dump_middle_json:
-                md_writer.write_string(
-                    f"{pdf_file_name}_middle.json",
-                    json.dumps(middle_json, ensure_ascii=False, indent=4),
-                )
-
-            if f_dump_model_output:
-                md_writer.write_string(
-                    f"{pdf_file_name}_model.json",
-                    json.dumps(model_json, ensure_ascii=False, indent=4),
-                )
-
-            logger.info(f"local output dir is {local_md_dir}")
+            _process_output(
+                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, model_json, is_pipeline=True
+            )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
@@ -118,48 +82,77 @@ def do_parse(
 
             pdf_info = middle_json["pdf_info"]
 
-            if f_draw_layout_bbox:
-                draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+            _process_output(
+                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            )
 
-            if f_draw_span_bbox:
-                draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
-            if f_dump_orig_pdf:
-                md_writer.write(
-                    f"{pdf_file_name}_origin.pdf",
-                    pdf_bytes,
-                )
+def _process_output(
+        pdf_info,
+        pdf_bytes,
+        pdf_file_name,
+        local_md_dir,
+        local_image_dir,
+        md_writer,
+        f_draw_layout_bbox,
+        f_draw_span_bbox,
+        f_dump_orig_pdf,
+        f_dump_md,
+        f_dump_content_list,
+        f_dump_middle_json,
+        f_dump_model_output,
+        f_make_md_mode,
+        middle_json,
+        model_output=None,
+        is_pipeline=True
+):
+    """处理输出文件"""
+    if f_draw_layout_bbox:
+        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
 
-            if f_dump_md:
-                image_dir = str(os.path.basename(local_image_dir))
-                md_content_str = vlm_union_make(pdf_info, f_make_md_mode, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}.md",
-                    md_content_str,
-                )
+    if f_draw_span_bbox:
+        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
-            if f_dump_content_list:
-                image_dir = str(os.path.basename(local_image_dir))
-                content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-                md_writer.write_string(
-                    f"{pdf_file_name}_content_list.json",
-                    json.dumps(content_list, ensure_ascii=False, indent=4),
-                )
+    if f_dump_orig_pdf:
+        md_writer.write(
+            f"{pdf_file_name}_origin.pdf",
+            pdf_bytes,
+        )
 
-            if f_dump_middle_json:
-                md_writer.write_string(
-                    f"{pdf_file_name}_middle.json",
-                    json.dumps(middle_json, ensure_ascii=False, indent=4),
-                )
+    image_dir = str(os.path.basename(local_image_dir))
 
-            if f_dump_model_output:
-                model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
-                md_writer.write_string(
-                    f"{pdf_file_name}_model_output.txt",
-                    model_output,
-                )
+    if f_dump_md:
+        make_func = pipeline_union_make if is_pipeline else vlm_union_make
+        md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}.md",
+            md_content_str,
+        )
 
-            logger.info(f"local output dir is {local_md_dir}")
+    if f_dump_content_list:
+        make_func = pipeline_union_make if is_pipeline else vlm_union_make
+        content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}_content_list.json",
+            json.dumps(content_list, ensure_ascii=False, indent=4),
+        )
+
+    if f_dump_middle_json:
+        md_writer.write_string(
+            f"{pdf_file_name}_middle.json",
+            json.dumps(middle_json, ensure_ascii=False, indent=4),
+        )
+
+    if f_dump_model_output:
+        md_writer.write_string(
+            f"{pdf_file_name}_model.json",
+            json.dumps(model_output, ensure_ascii=False, indent=4),
+        )
+
+    logger.info(f"local output dir is {local_md_dir}")
 
 
 def parse_doc(
