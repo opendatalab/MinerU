@@ -1,5 +1,4 @@
 import json
-from collections.abc import list_iterator
 from io import BytesIO
 
 from loguru import logger
