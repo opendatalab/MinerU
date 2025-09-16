@@ -123,7 +123,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
             for block in para_block['blocks']:  # 2nd.拼code_body
                 if block['type'] == BlockType.CODE_BODY:
                     if sub_type == BlockType.CODE:
-                        para_text += f"```{block["guess_lang"]}\n{merge_para_with_text(block)}\n```"
+                        para_text += f"```{para_block["guess_lang"]}\n{merge_para_with_text(block)}\n```"
                     elif sub_type == BlockType.ALGORITHM:
                         para_text += merge_para_with_text(block)
 
