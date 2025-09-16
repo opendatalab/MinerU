@@ -3,9 +3,6 @@ import os
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType
 
-from pygments.lexers import guess_lexer
-
-
 latex_delimiters_config = get_latex_delimiter_config()
 
 default_delimiters = {
@@ -126,9 +123,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
             for block in para_block['blocks']:  # 2nd.拼code_body
                 if block['type'] == BlockType.CODE_BODY:
                     if sub_type == BlockType.CODE:
-                        content_text = merge_para_with_text(block)
-                        lexer = guess_lexer(content_text)
-                        para_text += f"```{lexer.aliases[0]}\n{merge_para_with_text(block)}\n```"
+                        para_text += f"```{block["guess_lang"]}\n{merge_para_with_text(block)}\n```"
                     elif sub_type == BlockType.ALGORITHM:
                         para_text += merge_para_with_text(block)
 
