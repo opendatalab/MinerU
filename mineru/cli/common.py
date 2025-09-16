@@ -11,13 +11,14 @@ from loguru import logger
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
 from mineru.utils.enum_class import MakeMode
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 
-pdf_suffixes = [".pdf"]
-image_suffixes = [".png", ".jpeg", ".jpg", ".webp", ".gif"]
+pdf_suffixes = ["pdf"]
+image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg"]
 
 
 def read_fn(path):
@@ -25,12 +26,13 @@ def read_fn(path):
         path = Path(path)
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
-        if path.suffix in image_suffixes:
+        file_suffix = guess_suffix_by_bytes(file_bytes)
+        if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
-        elif path.suffix in pdf_suffixes:
+        elif file_suffix in pdf_suffixes:
             return file_bytes
         else:
-            raise Exception(f"Unknown file suffix: {path.suffix}")
+            raise Exception(f"Unknown file suffix: {file_suffix}")
 
 
 def prepare_env(output_dir, pdf_file_name, parse_method):

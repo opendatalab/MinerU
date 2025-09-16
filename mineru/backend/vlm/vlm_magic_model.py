@@ -6,7 +6,7 @@ from loguru import logger
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.guess_code_lang import guess_language
+from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
 
 
@@ -233,7 +233,7 @@ class MagicModel:
                             code_block["sub_type"] = "code"
                 if code_block["sub_type"] in ["code"]:
                     content_text = merge_para_with_text(block)
-                    code_block["guess_lang"] = guess_language(content_text)
+                    code_block["guess_lang"] = guess_language_by_text(content_text)
         for block in not_include_image_blocks + not_include_table_blocks + not_include_code_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)

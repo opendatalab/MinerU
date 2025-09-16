@@ -6,6 +6,7 @@ from loguru import logger
 
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.utils.model_utils import get_vram
 from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
@@ -202,7 +203,7 @@ def main(
     if os.path.isdir(input_path):
         doc_path_list = []
         for doc_path in Path(input_path).glob('*'):
-            if doc_path.suffix in pdf_suffixes + image_suffixes:
+            if guess_suffix_by_path(doc_path) in pdf_suffixes + image_suffixes:
                 doc_path_list.append(doc_path)
         parse_doc(doc_path_list)
     else:

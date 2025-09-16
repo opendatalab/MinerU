@@ -275,8 +275,9 @@ def main(ctx,
             print("vLLM engine init successfully.")
         except Exception as e:
             logger.exception(e)
-
-    suffixes = pdf_suffixes + image_suffixes
+    suffixes = []
+    for suffix in pdf_suffixes + image_suffixes:
+        suffixes.append(f".{suffix}")
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
