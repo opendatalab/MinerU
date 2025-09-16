@@ -38,7 +38,7 @@ dependencies = [
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<2",
     "beautifulsoup4>=4.13.5,<5",
-    "magika",
+    "magika>=0.6.2,<0.7.0",
     "mineru_vl_utils",
 ]
 
