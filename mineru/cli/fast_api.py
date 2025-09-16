@@ -96,14 +96,14 @@ async def parse_pdf(
             content = await file.read()
             file_path = Path(file.filename)
 
-            # 如果是图像文件或PDF，使用read_fn处理
-            file_suffix = guess_suffix_by_path(file_path)
-            if file_suffix in pdf_suffixes + image_suffixes:
-                # 创建临时文件以便使用read_fn
-                temp_path = Path(unique_dir) / file_path.name
-                with open(temp_path, "wb") as f:
-                    f.write(content)
+            # 创建临时文件
+            temp_path = Path(unique_dir) / file_path.name
+            with open(temp_path, "wb") as f:
+                f.write(content)
 
+            # 如果是图像文件或PDF，使用read_fn处理
+            file_suffix = guess_suffix_by_path(temp_path)
+            if file_suffix in pdf_suffixes + image_suffixes:
                 try:
                     pdf_bytes = read_fn(temp_path)
                     pdf_bytes_list.append(pdf_bytes)
