@@ -51,14 +51,16 @@ The following sections provide detailed descriptions of each file's purpose and 
 
 ## Structured Data Files
 
-### Model Inference Results (model.json)
+> [!IMPORTANT]
+> The VLM backend output has significant changes in version 2.5 and is not backward-compatible with the pipeline backend. If you plan to build secondary development on structured outputs, please read this document carefully.
 
-> [!NOTE]
-> Only applicable to pipeline backend
+### Pipeline Backend Output Results
+
+#### Model Inference Results (model.json)
 
 **File naming format**: `{original_filename}_model.json`
 
-#### Data Structure Definition
+##### Data Structure Definition
 
 ```python
 from pydantic import BaseModel, Field
@@ -103,7 +105,7 @@ class PageInferenceResults(BaseModel):
 inference_result: list[PageInferenceResults] = []
 ```
 
-#### Coordinate System Description
+##### Coordinate System Description
 
 `poly` coordinate format: `[x0, y0, x1, y1, x2, y2, x3, y3]`
 
@@ -112,7 +114,7 @@ inference_result: list[PageInferenceResults] = []
 
 ![poly coordinate diagram](../images/poly.png)
 
-#### Sample Data
+##### Sample Data
 
 ```json
 [
@@ -165,52 +167,11 @@ inference_result: list[PageInferenceResults] = []
 ]
 ```
 
-### VLM Output Results (model_output.txt)
-
-> [!NOTE]
-> Only applicable to VLM backend
-
-**File naming format**: `{original_filename}_model_output.txt`
-
-#### File Format Description
-
-- Uses `----` to separate output results for each page
-- Each page contains multiple text blocks starting with `<|box_start|>` and ending with `<|md_end|>`
-
-#### Field Meanings
-
-| Tag | Format | Description |
-|-----|--------|-------------|
-| Bounding box | `<\|box_start\|>x0 y0 x1 y1<\|box_end\|>` | Quadrilateral coordinates (top-left, bottom-right points), coordinate values after scaling page to 1000×1000 |
-| Type tag | `<\|ref_start\|>type<\|ref_end\|>` | Content block type identifier |
-| Content | `<\|md_start\|>markdown content<\|md_end\|>` | Markdown content of the block |
-
-#### Supported Content Types
-
-```json
-{
-    "text": "Text",
-    "title": "Title", 
-    "image": "Image",
-    "image_caption": "Image caption",
-    "image_footnote": "Image footnote",
-    "table": "Table",
-    "table_caption": "Table caption", 
-    "table_footnote": "Table footnote",
-    "equation": "Interline formula"
-}
-```
-
-#### Special Tags
-
-- `<|txt_contd|>`: Appears at the end of text, indicating that this text block can be connected with subsequent text blocks
-- Table content uses `otsl` format and needs to be converted to HTML for rendering in Markdown
-
-### Intermediate Processing Results (middle.json)
+#### Intermediate Processing Results (middle.json)
 
 **File naming format**: `{original_filename}_middle.json`
 
-#### Top-level Structure
+##### Top-level Structure
 
 | Field Name | Type | Description |
 |------------|------|-------------|
@@ -218,22 +179,20 @@ inference_result: list[PageInferenceResults] = []
 | `_backend` | `string` | Parsing mode: `pipeline` or `vlm` |
 | `_version_name` | `string` | MinerU version number |
 
-#### Page Information Structure (pdf_info)
+##### Page Information Structure (pdf_info)
 
 | Field Name | Description |
 |------------|-------------|
 | `preproc_blocks` | Unsegmented intermediate results after PDF preprocessing |
-| `layout_bboxes` | Layout segmentation results, including layout direction and bounding boxes, sorted by reading order |
 | `page_idx` | Page number, starting from 0 |
 | `page_size` | Page width and height `[width, height]` |
-| `_layout_tree` | Layout tree structure |
 | `images` | Image block information list |
 | `tables` | Table block information list |
 | `interline_equations` | Interline formula block information list |
 | `discarded_blocks` | Block information to be discarded |
 | `para_blocks` | Content block results after segmentation |
 
-#### Block Structure Hierarchy
+##### Block Structure Hierarchy
 
 ```
 Level 1 blocks (table | image)
@@ -242,7 +201,7 @@ Level 1 blocks (table | image)
         └── Spans
 ```
 
-#### Level 1 Block Fields
+##### Level 1 Block Fields
 
 | Field Name | Description |
 |------------|-------------|
@@ -250,7 +209,7 @@ Level 1 blocks (table | image)
 | `bbox` | Rectangular box coordinates of the block `[x0, y0, x1, y1]` |
 | `blocks` | List of contained level 2 blocks |
 
-#### Level 2 Block Fields
+##### Level 2 Block Fields
 
 | Field Name | Description |
 |------------|-------------|
@@ -258,7 +217,7 @@ Level 1 blocks (table | image)
 | `bbox` | Rectangular box coordinates of the block |
 | `lines` | List of contained line information |
 
-#### Level 2 Block Types
+##### Level 2 Block Types
 
 | Type | Description |
 |------|-------------|
@@ -274,7 +233,7 @@ Level 1 blocks (table | image)
 | `list` | List block |
 | `interline_equation` | Interline formula block |
 
-#### Line and Span Structure
+##### Line and Span Structure
 
 **Line fields**:
 - `bbox`: Rectangular box coordinates of the line
@@ -285,7 +244,7 @@ Level 1 blocks (table | image)
 - `type`: Span type (`image`, `table`, `text`, `inline_equation`, `interline_equation`)
 - `content` | `img_path`: Text content or image path
 
-#### Sample Data
+##### Sample Data
 
 ```json
 {
@@ -388,15 +347,15 @@ Level 1 blocks (table | image)
 }
 ```
 
-### Content List (content_list.json)
+#### Content List (content_list.json)
 
 **File naming format**: `{original_filename}_content_list.json`
 
-#### Functionality
+##### Functionality
 
 This is a simplified version of `middle.json` that stores all readable content blocks in reading order as a flat structure, removing complex layout information for easier subsequent processing.
 
-#### Content Types
+##### Content Types
 
 | Type | Description |
 |------|-------------|
@@ -405,7 +364,7 @@ This is a simplified version of `middle.json` that stores all readable content b
 | `text` | Text/Title |
 | `equation` | Interline formula |
 
-#### Text Level Identification
+##### Text Level Identification
 
 Text levels are distinguished through the `text_level` field:
 
@@ -414,12 +373,12 @@ Text levels are distinguished through the `text_level` field:
 - `text_level: 2`: Level 2 heading
 - And so on...
 
-#### Common Fields
+##### Common Fields
 
 - All content blocks include a `page_idx` field indicating the page number (starting from 0).
 - All content blocks include a `bbox` field representing the bounding box coordinates of the content block `[x0, y0, x1, y1]`, mapped to a range of 0-1000.
 
-#### Sample Data
+##### Sample Data
 
 ```json
 [
@@ -481,6 +440,252 @@ Text levels are distinguished through the `text_level` field:
         ],  
         "page_idx": 5
     }
+]
+```
+
+### VLM Backend Output Results
+
+#### Model Inference Results (model.json)
+
+**File naming format**: `{original_filename}_model.json`
+
+##### File format description
+- Two-level nested list: outer list = pages; inner list = content blocks of that page
+- Each block is a dict with at least: `type`, `bbox`, `angle`, `content` (some types add extra fields like `score`, `block_tags`, `content_tags`, `format`)
+- Designed for direct, raw model inspection
+
+##### Supported content types (type field values)
+```json
+{
+  "text": "Plain text",
+  "title": "Title",
+  "equation": "Display (interline) formula",
+  "image": "Image",
+  "image_caption": "Image caption",
+  "image_footnote": "Image footnote",
+  "table": "Table",
+  "table_caption": "Table caption",
+  "table_footnote": "Table footnote",
+  "phonetic": "Phonetic annotation",
+  "code": "Code block",
+  "code_caption": "Code caption",
+  "ref_text": "Reference / citation entry",
+  "algorithm": "Algorithm block (treated as code subtype)",
+  "list": "List container",
+  "header": "Page header",
+  "footer": "Page footer",
+  "page_number": "Page number",
+  "aside_text": "Side / margin note",
+  "page_footnote": "Page footnote"
+}
+```
+
+##### Coordinate system
+- `bbox` = `[x0, y0, x1, y1]` (top-left, bottom-right)
+- Origin at top-left of the page
+- All coordinates are normalized percentages in `[0,1]`
+
+##### Sample data
+```json
+[
+  [
+    {
+      "type": "header",
+      "bbox": [0.077, 0.095, 0.18, 0.181],
+      "angle": 0,
+      "score": null,
+      "block_tags": null,
+      "content": "ELSEVIER",
+      "format": null,
+      "content_tags": null
+    },
+    {
+      "type": "title",
+      "bbox": [0.157, 0.228, 0.833, 0.253],
+      "angle": 0,
+      "score": null,
+      "block_tags": null,
+      "content": "The response of flow duration curves to afforestation",
+      "format": null,
+      "content_tags": null
+    }
+  ]
+]
+```
+
+#### Intermediate Processing Results (middle.json)
+
+**File naming format**: `{original_filename}_middle.json`
+
+Structure is broadly similar to the pipeline backend, but with these differences:
+
+1. `list` becomes a second‑level block; a new field `sub_type` distinguishes list categories:
+   - `text`: ordinary list
+   - `ref_text`: reference / bibliography style list
+2. New `code` block type with `sub_type`:
+   - `code`
+   - `algorithm`
+   A code block always has at least a `code_body`; it may optionally have a `code_caption`.
+3. `discarded_blocks` may contain additional types: `header`, `footer`, `page_number`, `aside_text`, `page_footnote`.
+4. All blocks include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
+
+##### Examples
+- Example: list block
+    ```json
+    {
+      "bbox": [174,155,818,333],
+      "type": "list",
+      "angle": 0,
+      "index": 11,
+      "blocks": [
+        {
+          "bbox": [174,157,311,175],
+          "type": "text",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [174,157,311,175],
+                "spans": [
+                  {
+                    "bbox": [174,157,311,175],
+                    "type": "text",
+                    "content": "H.1 Introduction"
+                  }
+                ]
+            }
+          ],
+          "index": 3
+        },
+        {
+          "bbox": [175,182,464,229],
+          "type": "text",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [175,182,464,229],
+              "spans": [
+                {
+                  "bbox": [175,182,464,229],
+                  "type": "text",
+                  "content": "H.2 Example: Divide by Zero without Exception Handling"
+                }
+              ]
+            }
+          ],
+          "index": 4
+        }
+      ],
+      "sub_type": "text"
+    }
+    ```
+
+- Example: code block with optional caption:
+    ```json
+    {
+      "type": "code",
+      "bbox": [114,780,885,1231],
+      "blocks": [
+        {
+          "bbox": [114,780,885,1231],
+          "lines": [
+            {
+              "bbox": [114,780,885,1231],
+              "spans": [
+                {
+                  "bbox": [114,780,885,1231],
+                  "type": "text",
+                  "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
+                }
+              ]
+            }
+          ],
+          "index": 17,
+          "angle": 0,
+          "type": "code_body"
+        },
+        {
+          "bbox": [867,160,1280,189],
+          "lines": [
+            {
+              "bbox": [867,160,1280,189],
+              "spans": [
+                {
+                  "bbox": [867,160,1280,189],
+                  "type": "text",
+                  "content": "Algorithm 1 Modules for MCTSteg"
+                }
+              ]
+            }
+          ],
+          "index": 19,
+          "angle": 0,
+          "type": "code_caption"
+        }
+      ],
+      "index": 17,
+      "sub_type": "code"
+    }
+    ```
+
+#### Content List (content_list.json)
+
+**File naming format**: `{original_filename}_content_list.json`
+
+Based on the pipeline format, with these VLM-specific extensions:
+
+1. New `code` type with `sub_type` (`code` | `algorithm`):
+   - Fields: `code_body` (string), optional `code_caption` (list of strings)
+2. New `list` type with `sub_type` (`text` | `ref_text`):
+   - Field: `list_items` (array of strings)
+3. All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
+4. Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
+5. `bbox` still uses the 0–1000 normalized coordinate mapping.
+
+
+##### Examples
+Example: code (algorithm) entry
+```json
+{
+  "type": "code",
+  "sub_type": "algorithm",
+  "code_caption": ["Algorithm 1 Modules for MCTSteg"],
+  "code_body": "1: function GETCOORDINATE(d)  \n2:  $x \\gets d / l$ ,  $y \\gets d$  mod  $l$   \n3: return  $(x, y)$   \n4: end function  \n5: function BESTCHILD(v)  \n6:  $C \\gets$  child set of  $v$   \n7:  $v' \\gets \\arg \\max_{c \\in C} \\mathrm{UCTScore}(c)$   \n8:  $v'.n \\gets v'.n + 1$   \n9: return  $v'$   \n10: end function  \n11: function BACK PROPAGATE(v)  \n12: Calculate  $R$  using Equation 11  \n13: while  $v$  is not a root node do  \n14:  $v.r \\gets v.r + R$ ,  $v \\gets v.p$   \n15: end while  \n16: end function  \n17: function RANDOMSEARCH(v)  \n18: while  $v$  is not a leaf node do  \n19: Randomly select an untried action  $a \\in A(v)$   \n20: Create a new node  $v'$   \n21:  $(x, y) \\gets \\mathrm{GETCOORDINATE}(v'.d)$   \n22:  $v'.p \\gets v$ ,  $v'.d \\gets v.d + 1$ ,  $v'.\\Gamma \\gets v.\\Gamma$   \n23:  $v'.\\gamma_{x,y} \\gets a$   \n24: if  $a = -1$  then  \n25:  $v.lc \\gets v'$   \n26: else if  $a = 0$  then  \n27:  $v.mc \\gets v'$   \n28: else  \n29:  $v.rc \\gets v'$   \n30: end if  \n31:  $v \\gets v'$   \n32: end while  \n33: return  $v$   \n34: end function  \n35: function SEARCH(v)  \n36: while  $v$  is fully expanded do  \n37:  $v \\gets$  BESTCHILD(v)  \n38: end while  \n39: if  $v$  is not a leaf node then  \n40:  $v \\gets$  RANDOMSEARCH(v)  \n41: end if  \n42: return  $v$   \n43: end function",
+  "bbox": [510,87,881,740],
+  "page_idx": 0
+}
+```
+
+Example: list (text) entry
+```json
+{
+  "type": "list",
+  "sub_type": "text",
+  "list_items": [
+    "H.1 Introduction",
+    "H.2 Example: Divide by Zero without Exception Handling",
+    "H.3 Example: Divide by Zero with Exception Handling",
+    "H.4 Summary"
+  ],
+  "bbox": [174,155,818,333],
+  "page_idx": 0
+}
+```
+
+Example: discarded blocks output
+```json
+[
+  {
+    "type": "header",
+    "text": "Journal of Hydrology 310 (2005) 253-265",
+    "bbox": [363,164,623,177],
+    "page_idx": 0
+  },
+  {
+    "type": "page_footnote",
+    "text": "* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.",
+    "bbox": [71,815,915,841],
+    "page_idx": 0
+  }
 ]
 ```
 

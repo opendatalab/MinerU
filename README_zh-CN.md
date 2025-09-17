@@ -44,25 +44,47 @@
 
 # 更新记录
 
-- 2025/09/10 2.2.2 发布
-  - 修复新的表格识别模型在部分表格解析失败时影响整体解析任务的问题
-
-- 2025/09/08 2.2.1 发布
-  - 修复使用模型下载命令时，部分新增模型未下载的问题
-
-- 2025/09/05 2.2.0 发布
-  - 主要更新
-    - 在这个版本我们重点提升了表格的解析精度，通过引入新的[有线表识别模型](https://github.com/RapidAI/TableStructureRec)和全新的混合表格结构解析算法，显著提升了`pipeline`后端的表格识别能力。
-    - 另外我们增加了对跨页表格合并的支持，这一功能同时支持`pipeline`和`vlm`后端，进一步提升了表格解析的完整性和准确性。
-  - 其他更新
-    - `pipeline`后端增加270度旋转的表格解析能力，现已支持0/90/270度三个方向的表格解析
-    - `pipeline`增加对泰文、希腊文的ocr能力支持，并更新了英文ocr模型至最新，英文识别精度提升11%，泰文识别模型精度 82.68%，希腊文识别模型精度 89.28%（by PPOCRv5）
-    - 在输出的`content_list.json`中增加了`bbox`字段(映射至0-1000范围内)，方便用户直接获取每个内容块的位置信息
-    - 移除`pipeline_old_linux`安装可选项，不再支持老版本的Linux系统如`Centos 7`等，以便对`uv`的`sync`/`run`等命令进行更好的支持
-
+- 2025/09/19 2.5.0 发布
+  - vlm模型更新2509-2.5版本
 
 <details>
   <summary>历史日志</summary>
+
+  <details>
+    <summary>2025/09/10 2.2.2 发布</summary>
+    <ul>
+      <li>修复新的表格识别模型在部分表格解析失败时影响整体解析任务的问题</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/08 2.2.1 发布</summary>
+    <ul>
+      <li>修复使用模型下载命令时，部分新增模型未下载的问题</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/05 2.2.0 发布</summary>
+    <ul>
+      <li>
+        主要更新
+        <ul>
+          <li>在这个版本我们重点提升了表格的解析精度，通过引入新的<a href="https://github.com/RapidAI/TableStructureRec">有线表识别模型</a>和全新的混合表格结构解析算法，显著提升了<code>pipeline</code>后端的表格识别能力。</li>
+          <li>另外我们增加了对跨页表格合并的支持，这一功能同时支持<code>pipeline</code>和<code>vlm</code>后端，进一步提升了表格解析的完整性和准确性。</li>
+        </ul>
+      </li>
+      <li>
+        其他更新
+        <ul>
+          <li><code>pipeline</code>后端增加270度旋转的表格解析能力，现已支持0/90/270度三个方向的表格解析</li>
+          <li><code>pipeline</code>增加对泰文、希腊文的ocr能力支持，并更新了英文ocr模型至最新，英文识别精度提升11%，泰文识别模型精度 82.68%，希腊文识别模型精度 89.28%（by PPOCRv5）</li>
+          <li>在输出的<code>content_list.json</code>中增加了<code>bbox</code>字段(映射至0-1000范围内)，方便用户直接获取每个内容块的位置信息</li>
+          <li>移除<code>pipeline_old_linux</code>安装可选项，不再支持老版本的Linux系统如<code>Centos 7</code>等，以便对<code>uv</code>的<code>sync</code>/<code>run</code>等命令进行更好的支持</li>
+        </ul>
+      </li>
+    </ul>
+  </details>
 
   <details>
     <summary>2025/08/01 2.1.10 发布</summary>
@@ -548,7 +570,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>操作系统</td>
@@ -626,8 +648,8 @@ mineru -p <input_path> -o <output_path>
 - [x] 手写文本识别
 - [x] 竖排文本识别
 - [x] 拉丁字母重音符号识别
-- [ ] 正文中代码块识别
-- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
+- [x] 正文中代码块识别
+- [x] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)(https://mineru.net)
 - [ ] 图表内容识别
 
 # Known Issues

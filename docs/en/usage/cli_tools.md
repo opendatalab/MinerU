@@ -11,11 +11,11 @@ Options:
   -p, --path PATH                 Input file path or directory (required)
   -o, --output PATH               Output directory (required)
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline backend only)
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
+  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
                                   Parsing backend (default: pipeline)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline backend only)
-  -u, --url TEXT                  Service address when using sglang-client
+  -u, --url TEXT                  Service address when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
@@ -45,7 +45,7 @@ Options:
                                   files to be input need to be placed in the
                                   `example` folder within the directory where
                                   the command is currently executed.
-  --enable-sglang-engine BOOLEAN  Enable SgLang engine backend for faster
+  --enable-vllm-engine BOOLEAN  Enable vllm engine backend for faster
                                   processing.
   --enable-api BOOLEAN            Enable gradio API for serving the
                                   application.

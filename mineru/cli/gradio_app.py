@@ -182,9 +182,9 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-sglang-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
-    elif backend_choice in ["vlm-sglang-client"]:
+    elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
     elif backend_choice in ["pipeline"]:
         return gr.update(visible=False), gr.update(visible=True)
@@ -203,10 +203,10 @@ def update_interface(backend_choice):
     default=True,
 )
 @click.option(
-    '--enable-sglang-engine',
-    'sglang_engine_enable',
+    '--enable-vllm-engine',
+    'vllm_engine_enable',
     type=bool,
-    help="Enable SgLang engine backend for faster processing.",
+    help="Enable vLLM engine backend for faster processing.",
     default=False,
 )
 @click.option(
@@ -246,7 +246,7 @@ def update_interface(backend_choice):
     default='all',
 )
 def main(ctx,
-        example_enable, sglang_engine_enable, api_enable, max_convert_pages,
+        example_enable, vllm_engine_enable, api_enable, max_convert_pages,
         server_name, server_port, latex_delimiters_type, **kwargs
 ):
 
@@ -261,22 +261,23 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    if sglang_engine_enable:
+    if vllm_engine_enable:
         try:
-            print("Start init SgLang engine...")
+            print("Start init vLLM engine...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "sglang-engine",
+                "vllm-engine",
                 None,
                 None,
                 **kwargs
             )
-            print("SgLang engine init successfully.")
+            print("vLLM engine init successfully.")
         except Exception as e:
             logger.exception(e)
-
-    suffixes = pdf_suffixes + image_suffixes
+    suffixes = []
+    for suffix in pdf_suffixes + image_suffixes:
+        suffixes.append(f".{suffix}")
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
@@ -286,11 +287,11 @@ def main(ctx,
                 with gr.Row():
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
-                    if sglang_engine_enable:
-                        drop_list = ["pipeline", "vlm-sglang-engine"]
-                        preferred_option = "vlm-sglang-engine"
+                    if vllm_engine_enable:
+                        drop_list = ["pipeline", "vlm-vllm-engine"]
+                        preferred_option = "vlm-vllm-engine"
                     else:
-                        drop_list = ["pipeline", "vlm-transformers", "vlm-sglang-client"]
+                        drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         preferred_option = "pipeline"
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
                 with gr.Row(visible=False) as client_options:

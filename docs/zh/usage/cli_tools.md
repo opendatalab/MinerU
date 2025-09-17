@@ -11,11 +11,11 @@ Options:
   -p, --path PATH                 输入文件路径或目录（必填）
   -o, --output PATH               输出目录（必填）
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
+  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
                                   解析后端（默认为 pipeline）
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
-  -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
+  -u, --url TEXT                  当使用 http-client 时，需指定服务地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
@@ -43,7 +43,7 @@ Usage: mineru-gradio [OPTIONS]
 Options:
   --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
                                   执行命令目录下的 `example` 文件夹中)
-  --enable-sglang-engine BOOLEAN  启用 SgLang 引擎后端以提高处理速度
+  --enable-vllm-engine BOOLEAN  启用 vllm 引擎后端以提高处理速度
   --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
   --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
   --server-name TEXT              设置 Gradio 应用程序的服务器主机名
