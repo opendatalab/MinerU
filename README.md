@@ -728,3 +728,4 @@ Currently, some models in this project are trained based on YOLO. However, since
 - [OmniDocBench (A Comprehensive Benchmark for Document Parsing and Evaluation)](https://github.com/opendatalab/OmniDocBench)
 - [Magic-HTML (Mixed web page extraction tool)](https://github.com/opendatalab/magic-html)
 - [Magic-Doc (Fast speed ppt/pptx/doc/docx/pdf extraction tool)](https://github.com/InternLM/magic-doc) 
+- [Dingo: A Comprehensive AI Data Quality Evaluation Tool](https://github.com/MigoXLab/dingo)
