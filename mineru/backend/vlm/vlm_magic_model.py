@@ -3,7 +3,6 @@ from typing import Literal
 
 from loguru import logger
 
-from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
@@ -46,6 +45,8 @@ class MagicModel:
                 continue
 
             span_type = "unknown"
+            line_type = None
+            guess_lang = None
 
             if block_type in [
                 "text",
@@ -75,6 +76,7 @@ class MagicModel:
                 line_type = block_type
                 block_type = BlockType.CODE_BODY
                 span_type = ContentType.TEXT
+                guess_lang = guess_language_by_text(block_content)
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION
@@ -145,34 +147,21 @@ class MagicModel:
                         "content": block_content,
                     }
 
+            # 处理span类型并添加到all_spans
             if isinstance(span, dict) and "bbox" in span:
                 self.all_spans.append(span)
-                if block_type == BlockType.CODE_BODY:
-                    line = {
-                        "bbox": block_bbox,
-                        "spans": [span],
-                        "type": line_type
-                    }
-                else:
-                    line = {
-                        "bbox": block_bbox,
-                        "spans": [span],
-                    }
+                spans = [span]
             elif isinstance(span, list):
                 self.all_spans.extend(span)
-                if block_type == BlockType.CODE_BODY:
-                    line = {
-                        "bbox": block_bbox,
-                        "spans": span,
-                        "type": line_type
-                    }
-                else:
-                    line = {
-                        "bbox": block_bbox,
-                        "spans": span,
-                    }
+                spans = span
             else:
                 raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
+
+            # 构造line对象
+            if block_type in [BlockType.CODE_BODY]:
+                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": line_type, "guess_lang": guess_lang}}
+            else:
+                line = {"bbox": block_bbox, "spans": spans}
 
             blocks.append(
                 {
@@ -225,15 +214,16 @@ class MagicModel:
         for code_block in self.code_blocks:
             for block in code_block['blocks']:
                 if block['type'] == BlockType.CODE_BODY:
-                    for line in block["lines"]:
-                        if "type" in line:
-                            code_block["sub_type"] = line["type"]
-                            del line["type"]
-                        else:
-                            code_block["sub_type"] = "code"
-                if code_block["sub_type"] in ["code"]:
-                    content_text = merge_para_with_text(block)
-                    code_block["guess_lang"] = guess_language_by_text(content_text)
+                    if len(block["lines"]) > 0:
+                        line = block["lines"][0]
+                        code_block["sub_type"] = line["extra"]["type"]
+                        if code_block["sub_type"] in ["code"]:
+                            code_block["guess_lang"] = line["extra"]["guess_lang"]
+                        del line["extra"]
+                    else:
+                        code_block["sub_type"] = "code"
+                        code_block["guess_lang"] = "txt"
+
         for block in not_include_image_blocks + not_include_table_blocks + not_include_code_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
