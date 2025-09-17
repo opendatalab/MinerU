@@ -73,6 +73,7 @@ class MagicModel:
                 block_type = BlockType.TABLE_BODY
                 span_type = ContentType.TABLE
             elif block_type in ["code", "algorithm"]:
+                block_content = code_content_clean(block_content)
                 line_type = block_type
                 block_type = BlockType.CODE_BODY
                 span_type = ContentType.TEXT
@@ -269,6 +270,29 @@ def isolated_formula_clean(txt):
     if latex.endswith("\\]"): latex = latex[:-2]
     latex = latex.strip()
     return latex
+
+
+def code_content_clean(content):
+    """清理代码内容，移除Markdown代码块的开始和结束标记"""
+    if not content:
+        return ""
+
+    lines = content.splitlines()
+    start_idx = 0
+    end_idx = len(lines)
+
+    # 处理开头的三个反引号
+    if lines and lines[0].startswith("```"):
+        start_idx = 1
+
+    # 处理结尾的三个反引号
+    if lines and end_idx > start_idx and lines[end_idx - 1].strip() == "```":
+        end_idx -= 1
+
+    # 只有在有内容时才进行join操作
+    if start_idx < end_idx:
+        return "\n".join(lines[start_idx:end_idx]).strip()
+    return ""
 
 
 def clean_content(content):
