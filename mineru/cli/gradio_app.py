@@ -182,7 +182,7 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -267,7 +267,7 @@ def main(ctx,
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "vllm-engine",
+                "vllm-async-engine",
                 None,
                 None,
                 **kwargs
@@ -288,8 +288,8 @@ def main(ctx,
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
                     if vllm_engine_enable:
-                        drop_list = ["pipeline", "vlm-vllm-engine"]
-                        preferred_option = "vlm-vllm-engine"
+                        drop_list = ["pipeline", "vlm-vllm-async-engine"]
+                        preferred_option = "vlm-vllm-async-engine"
                     else:
                         drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         preferred_option = "pipeline"

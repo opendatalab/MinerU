@@ -328,6 +328,9 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
+        if backend == "vllm-async-engine":
+            raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
+
         os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
@@ -375,6 +378,9 @@ async def aio_do_parse(
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
+
+        if backend == "vllm-engine":
+            raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
 
         os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
