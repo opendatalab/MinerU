@@ -15,6 +15,7 @@ from .base_predictor import (
     BasePredictor,
 )
 from .sglang_client_predictor import SglangClientPredictor
+from .lmdeploy_predictor import LmdeployePredictor
 
 hf_loaded = False
 try:
@@ -102,6 +103,20 @@ def get_predictor(
             no_repeat_ngram_size=no_repeat_ngram_size,
             max_new_tokens=max_new_tokens,
             http_timeout=http_timeout,
+        )
+    elif backend == "lmdeploy":
+        if not model_path:
+            raise ValueError("model_path must be provided for lmdeploy backend.")
+        predictor = LmdeployePredictor(
+            model_path=model_path,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            presence_penalty=presence_penalty,
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            max_new_tokens=max_new_tokens,
+            **kwargs,
         )
     else:
         raise ValueError(f"Unsupported backend: {backend}. Supports: transformers, sglang-engine, sglang-client.")

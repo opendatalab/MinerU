@@ -24,6 +24,7 @@ def do_parse(
     pdf_bytes_list: list[bytes],  # List of PDF bytes to be parsed
     p_lang_list: list[str],  # List of languages for each PDF, default is 'ch' (Chinese)
     backend="pipeline",  # The backend for parsing PDF, default is 'pipeline'
+    device="cuda",   # The device type, default is 'cuda'
     parse_method="auto",  # The method for parsing PDF, default is 'auto'
     formula_enable=True,  # Enable formula parsing
     table_enable=True,  # Enable table parsing
@@ -114,7 +115,7 @@ def do_parse(
             pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
+            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, device=device)
 
             pdf_info = middle_json["pdf_info"]
 
@@ -170,7 +171,8 @@ def parse_doc(
         method="auto",
         server_url=None,
         start_page_id=0,
-        end_page_id=None
+        end_page_id=None,
+        device='cuda',
 ):
     """
         Parameter description:
@@ -184,6 +186,7 @@ def parse_doc(
             vlm-transformers: More general.
             vlm-sglang-engine: Faster(engine).
             vlm-sglang-client: Faster(client).
+            vlm-lmdeploy: Faster for ascend devices.
             without method specified, pipeline will be used by default.
         method: the method for parsing pdf:
             auto: Automatically determine the method based on the file type.
@@ -214,7 +217,8 @@ def parse_doc(
             parse_method=method,
             server_url=server_url,
             start_page_id=start_page_id,
-            end_page_id=end_page_id
+            end_page_id=end_page_id,
+            device=device,
         )
     except Exception as e:
         logger.exception(e)
@@ -243,3 +247,4 @@ if __name__ == '__main__':
     # parse_doc(doc_path_list, output_dir, backend="vlm-transformers")  # more general.
     # parse_doc(doc_path_list, output_dir, backend="vlm-sglang-engine")  # faster(engine).
     # parse_doc(doc_path_list, output_dir, backend="vlm-sglang-client", server_url="http://127.0.0.1:30000")  # faster(client).
+    # parse_doc(doc_path_list, output_dir, backend="vlm-lmdeploy", device='ascend')  # faster on ascend devices.
