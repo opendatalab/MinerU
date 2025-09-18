@@ -211,6 +211,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         for block in page["para_blocks"]:
             if block["type"] in [
                 BlockType.TEXT,
+                BlockType.REF_TEXT,
                 BlockType.TITLE,
                 BlockType.INTERLINE_EQUATION,
                 BlockType.LIST,
