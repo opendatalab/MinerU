@@ -176,7 +176,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                         codes_caption.append(bbox)
             elif block["type"] == BlockType.TITLE:
                 titles.append(bbox)
-            elif block["type"] == BlockType.TEXT:
+            elif block["type"] in [BlockType.TEXT, BlockType.REF_TEXT]:
                 texts.append(bbox)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
                 interequations.append(bbox)
