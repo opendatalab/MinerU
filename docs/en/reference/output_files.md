@@ -519,15 +519,15 @@ Text levels are distinguished through the `text_level` field:
 
 Structure is broadly similar to the pipeline backend, but with these differences:
 
-1. `list` becomes a second‑level block; a new field `sub_type` distinguishes list categories:
-   - `text`: ordinary list
-   - `ref_text`: reference / bibliography style list
-2. New `code` block type with `sub_type`:
-   - `code`
-   - `algorithm`
-   A code block always has at least a `code_body`; it may optionally have a `code_caption`.
-3. `discarded_blocks` may contain additional types: `header`, `footer`, `page_number`, `aside_text`, `page_footnote`.
-4. All blocks include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
+- 1. `list` becomes a second‑level block; a new field `sub_type` distinguishes list categories:
+  - `text`: ordinary list
+  - `ref_text`: reference / bibliography style list
+- 2. New `code` block type with `sub_type`:
+  - `code`
+  - `algorithm`
+  A code block always has at least a `code_body`; it may optionally have a `code_caption`.
+- 3. `discarded_blocks` may contain additional types: `header`, `footer`, `page_number`, `aside_text`, `page_footnote`.
+- 4. All blocks include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
 
 ##### Examples
 - Example: list block
@@ -633,13 +633,13 @@ Structure is broadly similar to the pipeline backend, but with these differences
 
 Based on the pipeline format, with these VLM-specific extensions:
 
-1. New `code` type with `sub_type` (`code` | `algorithm`):
-   - Fields: `code_body` (string), optional `code_caption` (list of strings)
-2. New `list` type with `sub_type` (`text` | `ref_text`):
-   - Field: `list_items` (array of strings)
-3. All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
-4. Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
-5. `bbox` still uses the 0–1000 normalized coordinate mapping.
+- 1. New `code` type with `sub_type` (`code` | `algorithm`):
+  - Fields: `code_body` (string), optional `code_caption` (list of strings)
+- 2. New `list` type with `sub_type` (`text` | `ref_text`):
+  - Field: `list_items` (array of strings)
+- 3. All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
+- 4. Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
+- 5. `bbox` still uses the 0–1000 normalized coordinate mapping.
 
 
 ##### Examples
