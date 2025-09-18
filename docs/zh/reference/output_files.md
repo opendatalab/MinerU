@@ -809,10 +809,17 @@ vlm 后端的 content_list.json 文件结构与 pipeline 后端类似，伴随�
 以上文件为 MinerU 的完整输出结果，用户可根据需要选择合适的文件进行后续处理：
 
 - **模型输出**：
+
   * 使用原始输出（model.json、model_output.txt）
+  
 - **调试和验证**：
+
   * 使用可视化文件（layout.pdf、spans.pdf） 
+  
 - **内容提取**：
+
   * 使用简化文件（*.md、content_list.json）
+  
 - **二次开发**：
+
   * 使用结构化文件（middle.json）

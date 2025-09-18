@@ -66,22 +66,33 @@ Some parameters of MinerU command line tools have equivalent environment variabl
 Here are the environment variables and their descriptions:
 
 - `MINERU_DEVICE_MODE`:
+
   * Used to specify inference device
   * supports device types like `cpu/cuda/cuda:0/npu/mps`
   * only effective for `pipeline` backend.
+  
 - `MINERU_VIRTUAL_VRAM_SIZE`: 
+
   * Used to specify maximum GPU VRAM usage per process (GB)
   * only effective for `pipeline` backend.
+  
 - `MINERU_MODEL_SOURCE`: 
+
   * Used to specify model source
   * supports `huggingface/modelscope/local`
   * defaults to `huggingface`, can be switched to `modelscope` or local models through environment variables.
+  
 - `MINERU_TOOLS_CONFIG_JSON`: 
+
   * Used to specify configuration file path
   * defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
+  
 - `MINERU_FORMULA_ENABLE`:
+
   * Used to enable formula parsing
   * defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
+  
 - `MINERU_TABLE_ENABLE`: 
+
   * Used to enable table parsing
   * defaults to `true`, can be set to `false` through environment variables to disable table parsing.
