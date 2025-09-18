@@ -137,9 +137,6 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
     return page_markdown
 
 
-
-
-
 def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):
     para_type = para_block['type']
     para_content = {}
@@ -222,14 +219,14 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
             if block['type'] == BlockType.CODE_CAPTION:
                 para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
 
-    page_weight, page_height = page_size
+    page_width, page_height = page_size
     para_bbox = para_block.get('bbox')
     if para_bbox:
         x0, y0, x1, y1 = para_bbox
         para_content['bbox'] = [
-            int(x0 * 1000 / page_weight),
+            int(x0 * 1000 / page_width),
             int(y0 * 1000 / page_height),
-            int(x1 * 1000 / page_weight),
+            int(x1 * 1000 / page_width),
             int(y1 * 1000 / page_height),
         ]
 
