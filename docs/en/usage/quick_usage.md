@@ -78,13 +78,18 @@ MinerU is now ready to use out of the box, but also supports extending functiona
 Here are some available configuration options:  
 
 - `latex-delimiter-config`: 
+
   * Used to configure LaTeX formula delimiters
   * Defaults to `$` symbol, can be modified to other symbols or strings as needed.
+  
 - `llm-aided-config`:
+
   * Used to configure parameters for LLM-assisted title hierarchy
   * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. 
   * You need to configure your own API key and set `enable` to `true` to enable this feature.
+  
 - `models-dir`: 
+
   * Used to specify local model storage directory
   * Please specify model directories for `pipeline` and `vlm` backends separately.
   * After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.
