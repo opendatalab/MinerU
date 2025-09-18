@@ -650,8 +650,8 @@ uv pip install -e .[core]
 ```
 
 > [!TIP]
-> `mineru[core]` includes all core features except `sglang` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If you need to use `sglang` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
+> `mineru[core]` includes all core features except `vLLM` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
+> If you need to use `vLLM` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
 ---
  
@@ -728,6 +728,7 @@ Currently, some models in this project are trained based on YOLO. However, since
 - [pdftext](https://github.com/datalab-to/pdftext)
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 - [pypdf](https://github.com/py-pdf/pypdf)
+- [magika](https://github.com/google/magika)
 
 # Citation
 
