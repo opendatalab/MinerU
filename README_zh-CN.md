@@ -46,7 +46,7 @@
 
 - 2025/09/19 2.5.0 发布
 我们正式发布 MinerU2.5，当前最强文档解析多模态大模型。仅凭 1.2B 参数，MinerU2.5 在 OmniDocBench 文档解析评测中，精度已全面超越 Gemini2.5-Pro、GPT-4o、Qwen2.5-VL-72B等顶级多模态大模型，并显著领先于主流文档解析专用模型（如 dots.ocr, MonkeyOCR, PP-StructureV3 等）。
-模型已发布至[huggingface](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)和[ModelScope](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)平台，欢迎大家下载使用！
+模型已发布至[HuggingFace](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)和[ModelScope](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)平台，欢迎大家下载使用！
 - 核心亮点
   - 极致能效，性能SOTA: 以 1.2B 的轻量化规模，实现了超越百亿乃至千亿级模型的SOTA性能，重新定义了文档解析的能效比。
   - 先进架构，全面领先: 通过 “两阶段推理” (解耦布局分析与内容识别) 与 原生高分辨率架构 的结合，在布局分析、文本识别、公式识别、表格识别及阅读顺序五大方面均达到 SOTA 水平。

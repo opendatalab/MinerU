@@ -48,7 +48,7 @@
 
 We are officially releasing MinerU2.5, currently the most powerful multimodal large model for document parsing.
 With only 1.2B parameters, MinerU2.5's accuracy on the OmniDocBench benchmark comprehensively surpasses top-tier multimodal models like Gemini 2.5 Pro, GPT-4o, and Qwen2.5-VL-72B. It also significantly outperforms leading specialized models such as dots.ocr, MonkeyOCR, and PP-StructureV3.
-The model has been released on [huggingface](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B) and [ModelScope](https://modelscope.cn/models/opendatalab/MinerU2.5-2509-1.2B) platforms. Welcome to download and use!
+The model has been released on [HuggingFace](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B) and [ModelScope](https://modelscope.cn/models/opendatalab/MinerU2.5-2509-1.2B) platforms. Welcome to download and use!
 - Core Highlights:
   - SOTA Performance with Extreme Efficiency: As a 1.2B model, it achieves State-of-the-Art (SOTA) results that exceed models in the 10B and 100B+ classes, redefining the performance-per-parameter standard in document AI.
   - Advanced Architecture for Across-the-Board Leadership: By combining a two-stage inference pipeline (decoupling layout analysis from content recognition) with a native high-resolution architecture, it achieves SOTA performance across five key areas: layout analysis, text recognition, formula recognition, table recognition, and reading order.
