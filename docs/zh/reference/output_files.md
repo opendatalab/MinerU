@@ -537,17 +537,19 @@ inference_result: list[PageInferenceResults] = []
 vlm 后端的 middle.json 文件结构与 pipeline 后端类似，但存在以下差异： 
 
 - list变成二级block，增加`sub_type`字段区分list类型:
-  * `text`（文本类型）
-  * `ref_text`（引用类型）
+    * `text`（文本类型）
+    * `ref_text`（引用类型）
+
 - 增加code类型block，code类型包含两种"sub_type":
-  * 分别是"code"和"algorithm"
-  * 至少有code_body，可选code_caption
+    * 分别是`code`和`algorithm`
+    * 至少有`code_body`, 可选`code_caption`
+
 - `discarded_blocks`内元素type增加以下类型:
-  * `header`（页眉）
-  * `footer`（页脚）
-  * `page_number`（页码）
-  * `aside_text`（装订线文本）
-  * `page_footnote`（脚注）
+    * `header`（页眉）
+    * `footer`（页脚）
+    * `page_number`（页码）
+    * `aside_text`（装订线文本）
+    * `page_footnote`（脚注）
 - 所有block增加`angle`字段，用来表示旋转角度，0，90，180，270
 
 
@@ -726,17 +728,19 @@ vlm 后端的 middle.json 文件结构与 pipeline 后端类似，但存在以�
 vlm 后端的 content_list.json 文件结构与 pipeline 后端类似，伴随本次middle.json的变化，做了以下调整： 
 
 - 新增`code`类型，code类型包含两种"sub_type":
-  * 分别是"code"和"algorithm"
-  * 至少有code_body, 可选code_caption
+    * 分别是`code`和`algorithm`
+    * 至少有`code_body`, 可选`code_caption`
+  
 - 新增`list`类型，list类型包含两种"sub_type":
-  * `text`
-  * `ref_text` 
+    * `text`
+    * `ref_text` 
+
 - 增加所有所有`discarded_blocks`的输出内容
-  * `header`
-  * `footer`
-  * `page_number`
-  * `aside_text`
-  * `page_footnote`
+    * `header`
+    * `footer`
+    * `page_number`
+    * `aside_text`
+    * `page_footnote`
 
 ##### 示例数据
 - code 类型 content

@@ -520,18 +520,17 @@ Text levels are distinguished through the `text_level` field:
 Structure is broadly similar to the pipeline backend, but with these differences:
 
 - `list` becomes a second‑level block, a new field `sub_type` distinguishes list categories:
-  * `text`: ordinary list
-  * `ref_text`: reference / bibliography style list
-- New `code` block type with `sub_type`:
-  * `code`
-  * `algorithm`
-- A code block always has at least a `code_body`, it may optionally have a `code_caption`.
+    * `text`: ordinary list
+    * `ref_text`: reference / bibliography style list
+- New `code` block type with `sub_type`(a code block always has at least a `code_body`, it may optionally have a `code_caption`):
+    * `code`
+    * `algorithm`
 - `discarded_blocks` may contain additional types: 
-  * `header`
-  * `footer`
-  * `page_number`
-  * `aside_text`
-  * `page_footnote`
+    * `header`
+    * `footer`
+    * `page_number`
+    * `aside_text`
+    * `page_footnote`
 - All blocks include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
 
 ##### Examples
@@ -639,9 +638,9 @@ Structure is broadly similar to the pipeline backend, but with these differences
 Based on the pipeline format, with these VLM-specific extensions:
 
 - New `code` type with `sub_type` (`code` | `algorithm`):
-  * Fields: `code_body` (string), optional `code_caption` (list of strings)
+    * Fields: `code_body` (string), optional `code_caption` (list of strings)
 - New `list` type with `sub_type` (`text` | `ref_text`):
-  * Field: `list_items` (array of strings)
+    * Field: `list_items` (array of strings)
 - All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
 - Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
 - `bbox` still uses the 0–1000 normalized coordinate mapping.
