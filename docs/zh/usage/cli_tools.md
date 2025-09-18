@@ -11,11 +11,11 @@ Options:
   -p, --path PATH                 输入文件路径或目录（必填）
   -o, --output PATH               输出目录（必填）
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
+  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
                                   解析后端（默认为 pipeline）
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
-  -u, --url TEXT                  当使用 sglang-client 时，需指定服务地址
+  -u, --url TEXT                  当使用 http-client 时，需指定服务地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
@@ -43,7 +43,7 @@ Usage: mineru-gradio [OPTIONS]
 Options:
   --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
                                   执行命令目录下的 `example` 文件夹中)
-  --enable-sglang-engine BOOLEAN  启用 SgLang 引擎后端以提高处理速度
+  --enable-vllm-engine BOOLEAN  启用 vllm 引擎后端以提高处理速度
   --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
   --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
   --server-name TEXT              设置 Gradio 应用程序的服务器主机名
@@ -60,9 +60,28 @@ Options:
 MinerU命令行工具的某些参数存在相同功能的环境变量配置，通常环境变量配置的优先级高于命令行参数，且在所有命令行工具中都生效。
 以下是常用的环境变量及其说明： 
 
-- `MINERU_DEVICE_MODE`：用于指定推理设备，支持`cpu/cuda/cuda:0/npu/mps`等设备类型，仅对`pipeline`后端生效。
-- `MINERU_VIRTUAL_VRAM_SIZE`：用于指定单进程最大 GPU 显存占用(GB)，仅对`pipeline`后端生效。
-- `MINERU_MODEL_SOURCE`：用于指定模型来源，支持`huggingface/modelscope/local`，默认为`huggingface`，可通过环境变量切换为`modelscope`或使用本地模型。
-- `MINERU_TOOLS_CONFIG_JSON`：用于指定配置文件路径，默认为用户目录下的`mineru.json`，可通过环境变量指定其他配置文件路径。
-- `MINERU_FORMULA_ENABLE`：用于启用公式解析，默认为`true`，可通过环境变量设置为`false`来禁用公式解析。
-- `MINERU_TABLE_ENABLE`：用于启用表格解析，默认为`true`，可通过环境变量设置为`false`来禁用表格解析。
+- `MINERU_DEVICE_MODE`：
+    * 用于指定推理设备
+    * 支持`cpu/cuda/cuda:0/npu/mps`等设备类型
+    * 仅对`pipeline`后端生效。
+  
+- `MINERU_VIRTUAL_VRAM_SIZE`：
+    * 用于指定单进程最大 GPU 显存占用(GB)
+    * 仅对`pipeline`后端生效。
+  
+- `MINERU_MODEL_SOURCE`：
+    * 用于指定模型来源
+    * 支持`huggingface/modelscope/local`
+    * 默认为`huggingface`可通过环境变量切换为`modelscope`或使用本地模型。
+  
+- `MINERU_TOOLS_CONFIG_JSON`：
+    * 用于指定配置文件路径
+    * 默认为用户目录下的`mineru.json`，可通过环境变量指定其他配置文件路径。
+  
+- `MINERU_FORMULA_ENABLE`：
+    * 用于启用公式解析
+    * 默认为`true`，可通过环境变量设置为`false`来禁用公式解析。
+  
+- `MINERU_TABLE_ENABLE`：
+    * 用于启用表格解析
+    * 默认为`true`，可通过环境变量设置为`false`来禁用表格解析。

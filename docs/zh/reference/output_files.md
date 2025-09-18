@@ -51,14 +51,16 @@
 
 ## 结构化数据文件
 
-### 模型推理结果 (model.json)
+> [!IMPORTANT]
+> 2.5版本vlm后端的输出存在较大变化，与pipeline版本存在不兼容情况，如需基于结构化输出进行二次开发，请仔细阅读本文档内容。
 
-> [!NOTE]
-> 仅适用于 pipeline 后端
+### pipeline 后端 输出结果
+
+#### 模型推理结果 (model.json)
 
 **文件命名格式**：`{原文件名}_model.json`
 
-#### 数据结构定义
+##### 数据结构定义
 
 ```python
 from pydantic import BaseModel, Field
@@ -103,7 +105,7 @@ class PageInferenceResults(BaseModel):
 inference_result: list[PageInferenceResults] = []
 ```
 
-#### 坐标系统说明
+##### 坐标系统说明
 
 `poly` 坐标格式：`[x0, y0, x1, y1, x2, y2, x3, y3]`
 
@@ -112,7 +114,7 @@ inference_result: list[PageInferenceResults] = []
 
 ![poly 坐标示意图](../images/poly.png)
 
-#### 示例数据
+##### 示例数据
 
 ```json
 [
@@ -165,52 +167,11 @@ inference_result: list[PageInferenceResults] = []
 ]
 ```
 
-### VLM 输出结果 (model_output.txt)
-
-> [!NOTE]
-> 仅适用于 VLM 后端
-
-**文件命名格式**：`{原文件名}_model_output.txt`
-
-#### 文件格式说明
-
-- 使用 `----` 分割每一页的输出结果
-- 每页包含多个以 `<|box_start|>` 开头、`<|md_end|>` 结尾的文本块
-
-#### 字段含义
-
-| 标记 | 格式 | 说明 |
-|------|---|------|
-| 边界框 | `<\|box_start\|>x0 y0 x1 y1<\|box_end\|>` | 四边形坐标（左上、右下两点），页面缩放至 1000×1000 后的坐标值 |
-| 类型标记 | `<\|ref_start\|>type<\|ref_end\|>` | 内容块类型标识 |
-| 内容 | `<\|md_start\|>markdown内容<\|md_end\|>` | 该块的 Markdown 内容 |
-
-#### 支持的内容类型
-
-```json
-{
-    "text": "文本",
-    "title": "标题", 
-    "image": "图片",
-    "image_caption": "图片描述",
-    "image_footnote": "图片脚注",
-    "table": "表格",
-    "table_caption": "表格描述", 
-    "table_footnote": "表格脚注",
-    "equation": "行间公式"
-}
-```
-
-#### 特殊标记
-
-- `<|txt_contd|>`：出现在文本末尾，表示该文本块可与后续文本块连接
-- 表格内容采用 `otsl` 格式，需转换为 HTML 才能在 Markdown 中渲染
-
-### 中间处理结果 (middle.json)
+#### 中间处理结果 (middle.json)
 
 **文件命名格式**：`{原文件名}_middle.json`
 
-#### 顶层结构
+##### 顶层结构
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
@@ -218,22 +179,20 @@ inference_result: list[PageInferenceResults] = []
 | `_backend` | `string` | 解析模式：`pipeline` 或 `vlm` |
 | `_version_name` | `string` | MinerU 版本号 |
 
-#### 页面信息结构 (pdf_info)
+##### 页面信息结构 (pdf_info)
 
 | 字段名 | 说明 |
 |--------|------|
 | `preproc_blocks` | PDF 预处理后的未分段中间结果 |
-| `layout_bboxes` | 布局分割结果，包含布局方向和边界框，按阅读顺序排序 |
 | `page_idx` | 页码，从 0 开始 |
 | `page_size` | 页面的宽度和高度 `[width, height]` |
-| `_layout_tree` | 布局树状结构 |
 | `images` | 图片块信息列表 |
 | `tables` | 表格块信息列表 |
 | `interline_equations` | 行间公式块信息列表 |
 | `discarded_blocks` | 需要丢弃的块信息 |
 | `para_blocks` | 分段后的内容块结果 |
 
-#### 块结构层次
+##### 块结构层次
 
 ```
 一级块 (table | image)
@@ -242,7 +201,7 @@ inference_result: list[PageInferenceResults] = []
         └── 片段 (span)
 ```
 
-#### 一级块字段
+##### 一级块字段
 
 | 字段名 | 说明 |
 |--------|------|
@@ -250,7 +209,7 @@ inference_result: list[PageInferenceResults] = []
 | `bbox` | 块的矩形框坐标 `[x0, y0, x1, y1]` |
 | `blocks` | 包含的二级块列表 |
 
-#### 二级块字段
+##### 二级块字段
 
 | 字段名 | 说明 |
 |--------|------|
@@ -258,7 +217,7 @@ inference_result: list[PageInferenceResults] = []
 | `bbox` | 块的矩形框坐标 |
 | `lines` | 包含的行信息列表 |
 
-#### 二级块类型
+##### 二级块类型
 
 | 类型 | 说明 |
 |------|------|
@@ -274,7 +233,7 @@ inference_result: list[PageInferenceResults] = []
 | `list` | 列表块 |
 | `interline_equation` | 行间公式块 |
 
-#### 行和片段结构
+##### 行和片段结构
 
 **行 (line) 字段**：
 - `bbox`：行的矩形框坐标
@@ -285,7 +244,7 @@ inference_result: list[PageInferenceResults] = []
 - `type`：片段类型（`image`、`table`、`text`、`inline_equation`、`interline_equation`）
 - `content` | `img_path`：文本内容或图片路径
 
-#### 示例数据
+##### 示例数据
 
 ```json
 {
@@ -388,15 +347,15 @@ inference_result: list[PageInferenceResults] = []
 }
 ```
 
-### 内容列表 (content_list.json)
+#### 内容列表 (content_list.json)
 
 **文件命名格式**：`{原文件名}_content_list.json`
 
-#### 功能说明
+##### 功能说明
 
 这是一个简化版的 `middle.json`，按阅读顺序平铺存储所有可读内容块，去除了复杂的布局信息，便于后续处理。
 
-#### 内容类型
+##### 内容类型
 
 | 类型 | 说明 |
 |------|------|
@@ -405,7 +364,7 @@ inference_result: list[PageInferenceResults] = []
 | `text` | 文本/标题 |
 | `equation` | 行间公式 |
 
-#### 文本层级标识
+##### 文本层级标识
 
 通过 `text_level` 字段区分文本层级：
 
@@ -414,12 +373,12 @@ inference_result: list[PageInferenceResults] = []
 - `text_level: 2`：二级标题
 - 以此类推...
 
-#### 通用字段
+##### 通用字段
 
 - 所有内容块都包含 `page_idx` 字段，表示所在页码（从 0 开始）。
 - 所有内容块都包含 `bbox` 字段，表示内容块的边界框坐标 `[x0, y0, x1, y1]` 映射在0-1000范围内的结果。
 
-#### 示例数据
+##### 示例数据
 
 ```json
 [
@@ -484,11 +443,385 @@ inference_result: list[PageInferenceResults] = []
 ]
 ```
 
+### VLM 后端 输出结果
+
+#### 模型推理结果 (model.json)
+
+**文件命名格式**：`{原文件名}_model.json`
+
+##### 文件格式说明
+
+- 该文件为 VLM 模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
+- 每个内容块都是一个dict，包含 `type`、`bbox`、`angle`、`content` 字段
+
+
+##### 支持的内容类型
+
+```json
+{
+    "text": "文本",
+    "title": "标题", 
+    "equation": "行间公式",
+    "image": "图片",
+    "image_caption": "图片描述",
+    "image_footnote": "图片脚注",
+    "table": "表格",
+    "table_caption": "表格描述",
+    "table_footnote": "表格脚注",
+    "phonetic": "拼音",
+    "code": "代码块",
+    "code_caption": "代码描述",
+    "ref_text": "参考文献",
+    "algorithm": "算法块",
+    "list": "列表",
+    "header": "页眉",
+    "footer": "页脚",
+    "page_number": "页码",
+    "aside_text": "装订线旁注", 
+    "page_footnote": "页面脚注"
+}
+```
+
+##### 坐标系统说明
+
+`bbox` 坐标格式：`[x0, y0, x1, y1]`
+
+- 分别表示左上、右下两点的坐标
+- 坐标原点在页面左上角
+- 坐标为相对于原始页面尺寸的百分比，范围在0-1之间
+
+##### 示例数据
+
+```json
+[
+    [
+        {
+            "type": "header",
+            "bbox": [
+                0.077,
+                0.095,
+                0.18,
+                0.181
+            ],
+            "angle": 0,
+            "score": null,
+            "block_tags": null,
+            "content": "ELSEVIER",
+            "format": null,
+            "content_tags": null
+        },
+        {
+            "type": "title",
+            "bbox": [
+                0.157,
+                0.228,
+                0.833,
+                0.253
+            ],
+            "angle": 0,
+            "score": null,
+            "block_tags": null,
+            "content": "The response of flow duration curves to afforestation",
+            "format": null,
+            "content_tags": null
+        }
+    ]
+]
+```
+
+#### 中间处理结果 (middle.json)
+
+**文件命名格式**：`{原文件名}_middle.json`
+
+##### 文件格式说明
+vlm 后端的 middle.json 文件结构与 pipeline 后端类似，但存在以下差异： 
+
+- list变成二级block，增加`sub_type`字段区分list类型:
+    * `text`（文本类型）
+    * `ref_text`（引用类型）
+
+- 增加code类型block，code类型包含两种"sub_type":
+    * 分别是`code`和`algorithm`
+    * 至少有`code_body`, 可选`code_caption`
+
+- `discarded_blocks`内元素type增加以下类型:
+    * `header`（页眉）
+    * `footer`（页脚）
+    * `page_number`（页码）
+    * `aside_text`（装订线文本）
+    * `page_footnote`（脚注）
+- 所有block增加`angle`字段，用来表示旋转角度，0，90，180，270
+
+
+##### 示例数据
+- list block 示例
+    ```json
+    {
+        "bbox": [
+            174,
+            155,
+            818,
+            333
+        ],
+        "type": "list",
+        "angle": 0,
+        "index": 11,
+        "blocks": [
+            {
+                "bbox": [
+                    174,
+                    157,
+                    311,
+                    175
+                ],
+                "type": "text",
+                "angle": 0,
+                "lines": [
+                    {
+                        "bbox": [
+                            174,
+                            157,
+                            311,
+                            175
+                        ],
+                        "spans": [
+                            {
+                                "bbox": [
+                                    174,
+                                    157,
+                                    311,
+                                    175
+                                ],
+                                "type": "text",
+                                "content": "H.1 Introduction"
+                            }
+                        ]
+                    }
+                ],
+                "index": 3
+            },
+            {
+                "bbox": [
+                    175,
+                    182,
+                    464,
+                    229
+                ],
+                "type": "text",
+                "angle": 0,
+                "lines": [
+                    {
+                        "bbox": [
+                            175,
+                            182,
+                            464,
+                            229
+                        ],
+                        "spans": [
+                            {
+                                "bbox": [
+                                    175,
+                                    182,
+                                    464,
+                                    229
+                                ],
+                                "type": "text",
+                                "content": "H.2 Example: Divide by Zero without Exception Handling"
+                            }
+                        ]
+                    }
+                ],
+                "index": 4
+            }
+        ],
+        "sub_type": "text"
+    }
+    ```
+- code block 示例
+    ```json
+    {
+        "type": "code",
+        "bbox": [
+            114,
+            780,
+            885,
+            1231
+        ],
+        "blocks": [
+            {
+                "bbox": [
+                    114,
+                    780,
+                    885,
+                    1231
+                ],
+                "lines": [
+                    {
+                        "bbox": [
+                            114,
+                            780,
+                            885,
+                            1231
+                        ],
+                        "spans": [
+                            {
+                                "bbox": [
+                                    114,
+                                    780,
+                                    885,
+                                    1231
+                                ],
+                                "type": "text",
+                                "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
+                            }
+                        ]
+                    }
+                ],
+                "index": 17,
+                "angle": 0,
+                "type": "code_body"
+            },
+            {
+                "bbox": [
+                    867,
+                    160,
+                    1280,
+                    189
+                ],
+                "lines": [
+                    {
+                        "bbox": [
+                            867,
+                            160,
+                            1280,
+                            189
+                        ],
+                        "spans": [
+                            {
+                                "bbox": [
+                                    867,
+                                    160,
+                                    1280,
+                                    189
+                                ],
+                                "type": "text",
+                                "content": "Algorithm 1 Modules for MCTSteg"
+                            }
+                        ]
+                    }
+                ],
+                "index": 19,
+                "angle": 0,
+                "type": "code_caption"
+            }
+        ],
+        "index": 17,
+        "sub_type": "code"
+    }
+    ```
+
+#### 内容列表 (content_list.json)
+
+**文件命名格式**：`{原文件名}_content_list.json`
+
+##### 文件格式说明
+vlm 后端的 content_list.json 文件结构与 pipeline 后端类似，伴随本次middle.json的变化，做了以下调整： 
+
+- 新增`code`类型，code类型包含两种"sub_type":
+    * 分别是`code`和`algorithm`
+    * 至少有`code_body`, 可选`code_caption`
+  
+- 新增`list`类型，list类型包含两种"sub_type":
+    * `text`
+    * `ref_text` 
+
+- 增加所有所有`discarded_blocks`的输出内容
+    * `header`
+    * `footer`
+    * `page_number`
+    * `aside_text`
+    * `page_footnote`
+
+##### 示例数据
+- code 类型 content
+    ```json
+    {
+        "type": "code",
+        "sub_type": "algorithm",
+        "code_caption": [
+            "Algorithm 1 Modules for MCTSteg"
+        ],
+        "code_body": "1: function GETCOORDINATE(d)  \n2:  $x \\gets d / l$ ,  $y \\gets d$  mod  $l$   \n3: return  $(x, y)$   \n4: end function  \n5: function BESTCHILD(v)  \n6:  $C \\gets$  child set of  $v$   \n7:  $v' \\gets \\arg \\max_{c \\in C} \\mathrm{UCTScore}(c)$   \n8:  $v'.n \\gets v'.n + 1$   \n9: return  $v'$   \n10: end function  \n11: function BACK PROPAGATE(v)  \n12: Calculate  $R$  using Equation 11  \n13: while  $v$  is not a root node do  \n14:  $v.r \\gets v.r + R$ ,  $v \\gets v.p$   \n15: end while  \n16: end function  \n17: function RANDOMSEARCH(v)  \n18: while  $v$  is not a leaf node do  \n19: Randomly select an untried action  $a \\in A(v)$   \n20: Create a new node  $v'$   \n21:  $(x, y) \\gets \\mathrm{GETCOORDINATE}(v'.d)$   \n22:  $v'.p \\gets v$ ,  $v'.d \\gets v.d + 1$ ,  $v'.\\Gamma \\gets v.\\Gamma$   \n23:  $v'.\\gamma_{x,y} \\gets a$   \n24: if  $a = -1$  then  \n25:  $v.lc \\gets v'$   \n26: else if  $a = 0$  then  \n27:  $v.mc \\gets v'$   \n28: else  \n29:  $v.rc \\gets v'$   \n30: end if  \n31:  $v \\gets v'$   \n32: end while  \n33: return  $v$   \n34: end function  \n35: function SEARCH(v)  \n36: while  $v$  is fully expanded do  \n37:  $v \\gets$  BESTCHILD(v)  \n38: end while  \n39: if  $v$  is not a leaf node then  \n40:  $v \\gets$  RANDOMSEARCH(v)  \n41: end if  \n42: return  $v$   \n43: end function",
+        "bbox": [
+            510,
+            87,
+            881,
+            740
+        ],
+        "page_idx": 0
+    }
+    ```
+- list 类型 content
+    ```json
+    {
+        "type": "list",
+        "sub_type": "text",
+        "list_items": [
+            "H.1 Introduction",
+            "H.2 Example: Divide by Zero without Exception Handling",
+            "H.3 Example: Divide by Zero with Exception Handling",
+            "H.4 Summary"
+        ],
+        "bbox": [
+            174,
+            155,
+            818,
+            333
+        ],
+        "page_idx": 0
+    }
+    ```
+- discarded 类型 content
+  ```json
+  [{
+      "type": "header",
+      "text": "Journal of Hydrology 310 (2005) 253-265",
+      "bbox": [
+          363,
+          164,
+          623,
+          177
+      ],
+      "page_idx": 0
+  },
+  {
+      "type": "page_footnote",
+      "text": "* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.",
+      "bbox": [
+          71,
+          815,
+          915,
+          841
+      ],
+      "page_idx": 0
+  }]
+  ```
+
+
 ## 总结
 
 以上文件为 MinerU 的完整输出结果，用户可根据需要选择合适的文件进行后续处理：
 
-- **模型输出**：使用原始输出（model.json、model_output.txt）
-- **调试和验证**：使用可视化文件（layout.pdf、spans.pdf） 
-- **内容提取**：使用简化文件（*.md、content_list.json）
-- **二次开发**：使用结构化文件（middle.json）
+- **模型输出**(使用原始输出):
+    * model.json
+  
+- **调试和验证**(使用可视化文件):
+    * layout.pdf
+    * spans.pdf 
+  
+- **内容提取**(使用简化文件):
+    * *.md
+    * content_list.json
+  
+- **二次开发**(使用结构化文件):
+    * middle.json

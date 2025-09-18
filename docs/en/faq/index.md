@@ -15,18 +15,6 @@ For unresolved problems, join our [Discord](https://discord.gg/Tdedn9GTXq) or [W
     Reference: [#388](https://github.com/opendatalab/MinerU/issues/388)
 
 
-??? question "Error when installing MinerU on CentOS 7 or Ubuntu 18: `ERROR: Failed building wheel for simsimd`"
-
-    The new version of albumentations (1.4.21) introduces a dependency on simsimd. Since the pre-built package of simsimd for Linux requires a glibc version greater than or equal to 2.28, this causes installation issues on some Linux distributions released before 2019. You can resolve this issue by using the following command:
-    ```
-    conda create -n mineru python=3.11 -y
-    conda activate mineru
-    pip install -U "mineru[pipeline_old_linux]"
-    ```
-    
-    Reference: [#1004](https://github.com/opendatalab/MinerU/issues/1004)
-
-
 ??? question "Missing text information in parsing results when installing and using on Linux systems."
 
     MinerU uses `pypdfium2` instead of `pymupdf` as the PDF page rendering engine in versions >=2.0 to resolve AGPLv3 license issues. On some Linux distributions, due to missing CJK fonts, some text may be lost during the process of rendering PDFs to images.

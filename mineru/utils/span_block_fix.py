@@ -23,9 +23,11 @@ def fill_spans_in_blocks(blocks, spans, radio):
             block_dict['group_id'] = block[-1]
         block_spans = []
         for span in spans:
+            temp_radio = radio
             span_bbox = span['bbox']
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > radio and span_block_type_compatible(
-                    span['type'], block_type):
+            if span['type'] in [ContentType.IMAGE, ContentType.TABLE]:
+                temp_radio = 0.9
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > temp_radio and span_block_type_compatible(span['type'], block_type):
                 block_spans.append(span)
 
         block_dict['spans'] = block_spans
