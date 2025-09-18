@@ -103,7 +103,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
                                     # if processed by table model
                                     if table_enable:
                                         if span.get('html', ''):
-                                            para_text += f"\n{span['html']}\n"
+                                            para_text += f"\n{html_table_filter(span['html'])}\n"
                                         elif span.get('image_path', ''):
                                             para_text += f"![]({img_buket_path}/{span['image_path']})"
                                     else:
@@ -169,7 +169,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                         if span['type'] == ContentType.TABLE:
 
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = f"{html_table_filter(span['html'])}"
 
                             if span.get('image_path', ''):
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
@@ -231,3 +231,9 @@ def get_title_level(block):
     elif title_level < 1:
         title_level = 0
     return title_level
+
+def html_table_filter(table) :
+    return table.replace("&amp;lt;", "<") \
+        .replace("&amp;gt;", ">") \
+        .replace("&amp;le;", "≤") \
+        .replace("&amp;ge;", "≥")
