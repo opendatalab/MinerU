@@ -18,6 +18,7 @@ from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
 
 app = FastAPI()
@@ -95,13 +96,14 @@ async def parse_pdf(
             content = await file.read()
             file_path = Path(file.filename)
 
-            # 如果是图像文件或PDF，使用read_fn处理
-            if file_path.suffix.lower() in pdf_suffixes + image_suffixes:
-                # 创建临时文件以便使用read_fn
-                temp_path = Path(unique_dir) / file_path.name
-                with open(temp_path, "wb") as f:
-                    f.write(content)
+            # 创建临时文件
+            temp_path = Path(unique_dir) / file_path.name
+            with open(temp_path, "wb") as f:
+                f.write(content)
 
+            # 如果是图像文件或PDF，使用read_fn处理
+            file_suffix = guess_suffix_by_path(temp_path)
+            if file_suffix in pdf_suffixes + image_suffixes:
                 try:
                     pdf_bytes = read_fn(temp_path)
                     pdf_bytes_list.append(pdf_bytes)
@@ -115,7 +117,7 @@ async def parse_pdf(
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"Unsupported file type: {file_path.suffix}"}
+                    content={"error": f"Unsupported file type: {file_suffix}"}
                 )
 
 

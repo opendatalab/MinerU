@@ -38,6 +38,8 @@ dependencies = [
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<2",
     "beautifulsoup4>=4.13.5,<5",
+    "magika>=0.6.2,<0.7.0",
+    "mineru_vl_utils",
 ]
 
 [project.optional-dependencies]
@@ -49,13 +51,12 @@ test = [
     "fuzzywuzzy"
 ]
 vlm = [
-    "transformers>=4.51.1",
-    "torch>=2.6.0",
+    "torch>=2.6.0,<2.8.0",
+    "transformers>=4.51.1,<5.0.0",
     "accelerate>=1.5.1",
-    "pydantic",
 ]
-sglang = [
-    "sglang[all]>=0.4.7,<0.4.11",
+vllm = [
+    "vllm==0.10.1.1",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",
@@ -89,7 +90,7 @@ core = [
 ]
 all = [
     "mineru[core]",
-    "mineru[sglang]",
+    "mineru[vllm]",
 ]
 
 [project.urls]
@@ -100,7 +101,7 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
-mineru-sglang-server = "mineru.cli.vlm_sglang_server:main"
+mineru-vllm-server = "mineru.cli.vlm_vllm_server:main"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
 mineru-gradio = "mineru.cli.gradio_app:main"
@@ -127,15 +128,12 @@ addopts = "-s --cov=mineru --cov-report html"
 command_line = "-m pytest tests/unittest/test_e2e.py"
 source = ["mineru/"]
 omit = [
-    "*/vlm_sglang_model/*",
     "*/gradio_app.py",
     "*/models_download.py",
     "*/fast_api.py",
     "*/cli/client.py",
-    "*/sglang_engine_predictor.py",
-    "*/vlm_sglang_server.py",
+    "*/vlm_vllm_server.py",
     "*/cli_parser.py",
-    "*/run_async.py"
 ]
 
 [tool.coverage.html]

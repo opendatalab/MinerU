@@ -44,24 +44,66 @@
 
 # Changelog
 
-- 2025/09/10 2.2.2 Released
-  - Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed
+- 2025/09/19 2.5.0 Released
 
-- 2025/09/08 2.2.1 Released  
-  - Fixed the issue where some newly added models were not downloaded when using the model download command.
+We are officially releasing MinerU2.5, currently the most powerful multimodal large model for document parsing.
+With only 1.2B parameters, MinerU2.5's accuracy on the OmniDocBench benchmark comprehensively surpasses top-tier multimodal models like Gemini 2.5 Pro, GPT-4o, and Qwen2.5-VL-72B. It also significantly outperforms leading specialized models such as dots.ocr, MonkeyOCR, and PP-StructureV3.
+The model has been released on [HuggingFace](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B) and [ModelScope](https://modelscope.cn/models/opendatalab/MinerU2.5-2509-1.2B) platforms. Welcome to download and use!
+- Core Highlights:
+  - SOTA Performance with Extreme Efficiency: As a 1.2B model, it achieves State-of-the-Art (SOTA) results that exceed models in the 10B and 100B+ classes, redefining the performance-per-parameter standard in document AI.
+  - Advanced Architecture for Across-the-Board Leadership: By combining a two-stage inference pipeline (decoupling layout analysis from content recognition) with a native high-resolution architecture, it achieves SOTA performance across five key areas: layout analysis, text recognition, formula recognition, table recognition, and reading order.
+- Key Capability Enhancements:
+  - Layout Detection: Delivers more complete results by accurately covering non-body content like headers, footers, and page numbers. It also provides more precise element localization and natural format reconstruction for lists and references.
+  - Table Parsing: Drastically improves parsing for challenging cases, including rotated tables, borderless/semi-structured tables, and long/complex tables.
+  - Formula Recognition: Significantly boosts accuracy for complex, long-form, and hybrid Chinese-English formulas, greatly enhancing the parsing capability for mathematical documents.
 
-- 2025/09/05 2.2.0 Released
-  - Major Updates
-    - In this version, we focused on improving table parsing accuracy by introducing a new [wired table recognition model](https://github.com/RapidAI/TableStructureRec) and a brand-new hybrid table structure parsing algorithm, significantly enhancing the table recognition capabilities of the `pipeline` backend.
-    - We also added support for cross-page table merging, which is supported by both `pipeline` and `vlm` backends, further improving the completeness and accuracy of table parsing.
-  - Other Updates
-    - The `pipeline` backend now supports 270-degree rotated table parsing, bringing support for table parsing in 0/90/270-degree orientations
-    - `pipeline` added OCR capability support for Thai and Greek, and updated the English OCR model to the latest version. English recognition accuracy improved by 11%, Thai recognition model accuracy is 82.68%, and Greek recognition model accuracy is 89.28% (by PPOCRv5)
-    - Added `bbox` field (mapped to 0-1000 range) in the output `content_list.json`, making it convenient for users to directly obtain position information for each content block
-    - Removed the `pipeline_old_linux` installation option, no longer supporting legacy Linux systems such as `CentOS 7`, to provide better support for `uv`'s `sync`/`run` commands
+Additionally, with the release of vlm 2.5, we have made some adjustments to the repository:
+- The vlm backend has been upgraded to version 2.5, supporting the MinerU2.5 model and no longer compatible with the MinerU2.0-2505-0.9B model. The last version supporting the 2.0 model is mineru-2.2.2.
+- VLM inference-related code has been moved to [mineru_vl_utils](https://github.com/opendatalab/mineru-vl-utils), reducing coupling with the main mineru repository and facilitating independent iteration in the future.
+- The vlm accelerated inference framework has been switched from `sglang` to `vllm`, achieving full compatibility with the vllm ecosystem, allowing users to use the MinerU2.5 model and accelerated inference on any platform that supports the vllm framework.
+- Due to major upgrades in the vlm model supporting more layout types, we have made some adjustments to the structure of the parsing intermediate file `middle.json` and result file `content_list.json`. Please refer to the [documentation](https://opendatalab.github.io/MinerU/reference/output_files/) for details.
+
+Other repository optimizations:
+- Removed file extension whitelist validation for input files. When input files are PDF documents or images, there are no longer requirements for file extensions, improving usability.
 
 <details>
   <summary>History Log</summary>
+
+  <details>
+    <summary>2025/09/10 2.2.2 Released</summary>
+    <ul>
+      <li>Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/08 2.2.1 Released</summary>
+    <ul>
+      <li>Fixed the issue where some newly added models were not downloaded when using the model download command.</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/05 2.2.0 Released</summary>
+    <ul>
+      <li>
+        Major Updates
+        <ul>
+          <li>In this version, we focused on improving table parsing accuracy by introducing a new <a href="https://github.com/RapidAI/TableStructureRec">wired table recognition model</a> and a brand-new hybrid table structure parsing algorithm, significantly enhancing the table recognition capabilities of the <code>pipeline</code> backend.</li>
+          <li>We also added support for cross-page table merging, which is supported by both <code>pipeline</code> and <code>vlm</code> backends, further improving the completeness and accuracy of table parsing.</li>
+        </ul>
+      </li>
+      <li>
+        Other Updates
+        <ul>
+          <li>The <code>pipeline</code> backend now supports 270-degree rotated table parsing, bringing support for table parsing in 0/90/270-degree orientations</li>
+          <li><code>pipeline</code> added OCR capability support for Thai and Greek, and updated the English OCR model to the latest version. English recognition accuracy improved by 11%, Thai recognition model accuracy is 82.68%, and Greek recognition model accuracy is 89.28% (by PPOCRv5)</li>
+          <li>Added <code>bbox</code> field (mapped to 0-1000 range) in the output <code>content_list.json</code>, making it convenient for users to directly obtain position information for each content block</li>
+          <li>Removed the <code>pipeline_old_linux</code> installation option, no longer supporting legacy Linux systems such as <code>CentOS 7</code>, to provide better support for <code>uv</code>'s <code>sync</code>/<code>run</code> commands</li>
+        </ul>
+      </li>
+    </ul>
+  </details>
 
   <details>
     <summary>2025/08/01 2.1.10 Released</summary>
@@ -559,7 +601,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <td>Parsing Backend</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>Operating System</td>
@@ -637,8 +679,8 @@ You can use MinerU for PDF parsing through various methods such as command line,
 - [x] Handwritten Text Recognition  
 - [x] Vertical Text Recognition  
 - [x] Latin Accent Mark Recognition
-- [ ] Code block recognition in the main text
-- [ ] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)
+- [x] Code block recognition in the main text
+- [x] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)(mineru.net)
 - [ ] Geometric shape recognition
 
 # Known Issues

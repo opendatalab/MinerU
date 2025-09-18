@@ -31,7 +31,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <td>Parsing Backend</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>Operating System</td>
@@ -80,8 +80,8 @@ uv pip install -e .[core]
 ```
 
 > [!TIP]
-> `mineru[core]` includes all core features except `sglang` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If you need to use `sglang` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](./extension_modules.md).
+> `mineru[core]` includes all core features except `vllm` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
+> If you need to use `vllm` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](./extension_modules.md).
 
 ---
  

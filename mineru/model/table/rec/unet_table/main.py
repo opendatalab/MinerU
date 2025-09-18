@@ -12,6 +12,7 @@ from PIL import Image
 from loguru import logger
 from bs4 import BeautifulSoup
 
+from mineru.utils.span_pre_proc import calculate_contrast
 from .table_structure_unet import TSRUnet
 
 from mineru.utils.enum_class import ModelPath
@@ -191,6 +192,13 @@ class WiredTableRecognition:
                 # logger.warning(f"Box {i} has invalid aspect ratio: {x1, y1, x2, y2}")
                 continue
             img_crop = bgr_img[int(y1):int(y2), int(x1):int(x2)]
+
+            # 计算span的对比度，低于0.20的span不进行ocr
+            if calculate_contrast(img_crop, img_mode='bgr') <= 0.17:
+                cell_box_map[i] = [[box, "", 0.1]]
+                # logger.debug(f"Box {i} skipped due to low contrast.")
+                continue
+
             img_crop_list.append(img_crop)
             img_crop_info_list.append([i, box])
 

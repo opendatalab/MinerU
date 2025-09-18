@@ -44,25 +44,64 @@
 
 # 更新记录
 
-- 2025/09/10 2.2.2 发布
-  - 修复新的表格识别模型在部分表格解析失败时影响整体解析任务的问题
+- 2025/09/19 2.5.0 发布
+我们正式发布 MinerU2.5，当前最强文档解析多模态大模型。仅凭 1.2B 参数，MinerU2.5 在 OmniDocBench 文档解析评测中，精度已全面超越 Gemini2.5-Pro、GPT-4o、Qwen2.5-VL-72B等顶级多模态大模型，并显著领先于主流文档解析专用模型（如 dots.ocr, MonkeyOCR, PP-StructureV3 等）。
+模型已发布至[HuggingFace](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)和[ModelScope](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)平台，欢迎大家下载使用！
+- 核心亮点
+  - 极致能效，性能SOTA: 以 1.2B 的轻量化规模，实现了超越百亿乃至千亿级模型的SOTA性能，重新定义了文档解析的能效比。
+  - 先进架构，全面领先: 通过 “两阶段推理” (解耦布局分析与内容识别) 与 原生高分辨率架构 的结合，在布局分析、文本识别、公式识别、表格识别及阅读顺序五大方面均达到 SOTA 水平。
+- 关键能力提升
+  - 布局检测: 结果更完整，精准覆盖页眉、页脚、页码等非正文内容；同时提供更精准的元素定位与更自然的格式还原（如列表、参考文献）。
+  - 表格解析: 大幅优化了对旋转表格、无线/少线表、以及长难表格的解析能力。
+  - 公式识别: 显著提升中英混合公式及复杂长公式的识别准确率，大幅改善数学类文档解析能力。
 
-- 2025/09/08 2.2.1 发布
-  - 修复使用模型下载命令时，部分新增模型未下载的问题
+此外，伴随vlm 2.5的发布，我们对仓库做出一些调整：
+- vlm后端升级至2.5版本，支持MinerU2.5模型，不再兼容MinerU2.0-2505-0.9B模型，最后一个支持2.0模型的版本为mineru-2.2.2。
+- vlm推理相关代码已移至[mineru_vl_utils](https://github.com/opendatalab/mineru-vl-utils),降低与mineru主仓库的耦合度，便于后续独立迭代。
+- vlm加速推理框架从`sglang`切换至`vllm`,并实现对vllm生态的完全兼容，使得用户可以在任何支持vllm框架的平台上使用MinerU2.5模型并加速推理。
+- 由于vlm模型的重大升级，支持更多layout type，因此我们对解析的中间文件`middle.json`和结果文件`content_list.json`的结构做出一些调整，请参考[文档](https://opendatalab.github.io/MinerU/zh/reference/output_files/)了解详情。
 
-- 2025/09/05 2.2.0 发布
-  - 主要更新
-    - 在这个版本我们重点提升了表格的解析精度，通过引入新的[有线表识别模型](https://github.com/RapidAI/TableStructureRec)和全新的混合表格结构解析算法，显著提升了`pipeline`后端的表格识别能力。
-    - 另外我们增加了对跨页表格合并的支持，这一功能同时支持`pipeline`和`vlm`后端，进一步提升了表格解析的完整性和准确性。
-  - 其他更新
-    - `pipeline`后端增加270度旋转的表格解析能力，现已支持0/90/270度三个方向的表格解析
-    - `pipeline`增加对泰文、希腊文的ocr能力支持，并更新了英文ocr模型至最新，英文识别精度提升11%，泰文识别模型精度 82.68%，希腊文识别模型精度 89.28%（by PPOCRv5）
-    - 在输出的`content_list.json`中增加了`bbox`字段(映射至0-1000范围内)，方便用户直接获取每个内容块的位置信息
-    - 移除`pipeline_old_linux`安装可选项，不再支持老版本的Linux系统如`Centos 7`等，以便对`uv`的`sync`/`run`等命令进行更好的支持
-
+其他仓库优化：
+- 移除对输入文件的后缀名白名单校验，当输入文件为PDF文档或图片时，对文件的后缀名不再有要求，提升易用性。
 
 <details>
   <summary>历史日志</summary>
+
+  <details>
+    <summary>2025/09/10 2.2.2 发布</summary>
+    <ul>
+      <li>修复新的表格识别模型在部分表格解析失败时影响整体解析任务的问题</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/08 2.2.1 发布</summary>
+    <ul>
+      <li>修复使用模型下载命令时，部分新增模型未下载的问题</li>
+    </ul>
+  </details>  
+
+  <details>
+    <summary>2025/09/05 2.2.0 发布</summary>
+    <ul>
+      <li>
+        主要更新
+        <ul>
+          <li>在这个版本我们重点提升了表格的解析精度，通过引入新的<a href="https://github.com/RapidAI/TableStructureRec">有线表识别模型</a>和全新的混合表格结构解析算法，显著提升了<code>pipeline</code>后端的表格识别能力。</li>
+          <li>另外我们增加了对跨页表格合并的支持，这一功能同时支持<code>pipeline</code>和<code>vlm</code>后端，进一步提升了表格解析的完整性和准确性。</li>
+        </ul>
+      </li>
+      <li>
+        其他更新
+        <ul>
+          <li><code>pipeline</code>后端增加270度旋转的表格解析能力，现已支持0/90/270度三个方向的表格解析</li>
+          <li><code>pipeline</code>增加对泰文、希腊文的ocr能力支持，并更新了英文ocr模型至最新，英文识别精度提升11%，泰文识别模型精度 82.68%，希腊文识别模型精度 89.28%（by PPOCRv5）</li>
+          <li>在输出的<code>content_list.json</code>中增加了<code>bbox</code>字段(映射至0-1000范围内)，方便用户直接获取每个内容块的位置信息</li>
+          <li>移除<code>pipeline_old_linux</code>安装可选项，不再支持老版本的Linux系统如<code>Centos 7</code>等，以便对<code>uv</code>的<code>sync</code>/<code>run</code>等命令进行更好的支持</li>
+        </ul>
+      </li>
+    </ul>
+  </details>
 
   <details>
     <summary>2025/08/01 2.1.10 发布</summary>
@@ -548,7 +587,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <td>解析后端</td>
         <td>pipeline</td>
         <td>vlm-transformers</td>
-        <td>vlm-sglang</td>
+        <td>vlm-vllm</td>
     </tr>
     <tr>
         <td>操作系统</td>
@@ -626,8 +665,8 @@ mineru -p <input_path> -o <output_path>
 - [x] 手写文本识别
 - [x] 竖排文本识别
 - [x] 拉丁字母重音符号识别
-- [ ] 正文中代码块识别
-- [ ] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)
+- [x] 正文中代码块识别
+- [x] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)(https://mineru.net)
 - [ ] 图表内容识别
 
 # Known Issues
@@ -717,3 +756,4 @@ mineru -p <input_path> -o <output_path>
 - [OmniDocBench (A Comprehensive Benchmark for Document Parsing and Evaluation)](https://github.com/opendatalab/OmniDocBench)
 - [Magic-HTML (Mixed web page extraction tool)](https://github.com/opendatalab/magic-html)
 - [Magic-Doc (Fast speed ppt/pptx/doc/docx/pdf extraction tool)](https://github.com/InternLM/magic-doc) 
+- [Dingo: A Comprehensive AI Data Quality Evaluation Tool](https://github.com/MigoXLab/dingo)
