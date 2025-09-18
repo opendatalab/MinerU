@@ -45,7 +45,24 @@
 # 更新记录
 
 - 2025/09/19 2.5.0 发布
-  - vlm模型更新2509-2.5版本
+我们正式发布 MinerU2.5，当前最强文档解析多模态大模型。仅凭 1.2B 参数，MinerU2.5 在 OmniDocBench 文档解析评测中，精度已全面超越 Gemini2.5-Pro、GPT-4o、Qwen2.5-VL-72B等顶级多模态大模型，并显著领先于主流文档解析专用模型（如 dots.ocr, MonkeyOCR, PP-StructureV3 等）。
+模型已发布至[huggingface](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)和[ModelScope](https://huggingface.co/opendatalab/MinerU2.5-2509-1.2B)平台，欢迎大家下载使用！
+- 核心亮点
+  - 极致能效，性能SOTA: 以 1.2B 的轻量化规模，实现了超越百亿乃至千亿级模型的SOTA性能，重新定义了文档解析的能效比。
+  - 先进架构，全面领先: 通过 “两阶段推理” (解耦布局分析与内容识别) 与 原生高分辨率架构 的结合，在布局分析、文本识别、公式识别、表格识别及阅读顺序五大方面均达到 SOTA 水平。
+- 关键能力提升
+  - 布局检测: 结果更完整，精准覆盖页眉、页脚、页码等非正文内容；同时提供更精准的元素定位与更自然的格式还原（如列表、参考文献）。
+  - 表格解析: 大幅优化了对旋转表格、无线/少线表、以及长难表格的解析能力。
+  - 公式识别: 显著提升中英混合公式及复杂长公式的识别准确率，大幅改善数学类文档解析能力。
+
+此外，伴随vlm 2.5的发布，我们对仓库做出一些调整：
+- vlm后端升级至2.5版本，支持MinerU2.5模型，不再兼容MinerU2.0-2505-0.9B模型，最后一个支持2.0模型的版本为mineru-2.2.2。
+- vlm推理相关代码已移至[mineru_vl_utils](https://github.com/opendatalab/mineru-vl-utils),降低与mineru主仓库的耦合度，便于后续独立迭代。
+- vlm加速推理框架从`sglang`切换至`vllm`,并实现对vllm生态的完全兼容，使得用户可以在任何支持vllm框架的平台上使用MinerU2.5模型并加速推理。
+- 由于vlm模型的重大升级，支持更多layout type，因此我们对解析的中间文件`middle.json`和结果文件`content_list.json`的结构做出一些调整，请参考[文档](https://opendatalab.github.io/MinerU/zh/reference/output_files/)了解详情。
+
+其他仓库优化：
+- 移除对输入文件的后缀名白名单校验，当输入文件为PDF文档或图片时，对文件的后缀名不再有要求，提升易用性。
 
 <details>
   <summary>历史日志</summary>
