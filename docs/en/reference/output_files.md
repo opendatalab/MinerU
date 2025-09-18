@@ -698,18 +698,16 @@ Example: discarded blocks output
 
 The above files constitute MinerU's complete output results. Users can choose appropriate files for subsequent processing based on their needs:
 
-- **Model outputs**: 
-
-  * Use raw outputs (model.json, model_output.txt)
+- **Model outputs** (Use raw outputs):  
+    * model.json
   
-- **Debugging and verification**:
-
-  * Use visualization files (layout.pdf, spans.pdf) 
+- **Debugging and verification** (Use visualization files):
+    * layout.pdf
+    * spans.pdf 
   
-- **Content extraction**: 
-
-  * Use simplified files (*.md, content_list.json)
+- **Content extraction**: (Use simplified files):
+    * *.md
+    * content_list.json
   
-- **Secondary development**: 
-
-  * Use structured files (middle.json)
+- **Secondary development**: (Use structured files):
+    * middle.json
