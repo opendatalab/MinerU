@@ -15,6 +15,7 @@ from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 
 
 def do_parse(
@@ -218,12 +219,12 @@ if __name__ == '__main__':
     __dir__ = os.path.dirname(os.path.abspath(__file__))
     pdf_files_dir = os.path.join(__dir__, "pdfs")
     output_dir = os.path.join(__dir__, "output")
-    pdf_suffixes = [".pdf"]
-    image_suffixes = [".png", ".jpeg", ".jpg"]
+    pdf_suffixes = ["pdf"]
+    image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg"]
 
     doc_path_list = []
     for doc_path in Path(pdf_files_dir).glob('*'):
-        if doc_path.suffix in pdf_suffixes + image_suffixes:
+        if guess_suffix_by_path(doc_path) in pdf_suffixes + image_suffixes:
             doc_path_list.append(doc_path)
 
     """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
