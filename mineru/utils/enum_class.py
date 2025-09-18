@@ -14,7 +14,7 @@ class BlockType:
     INDEX = 'index'
     DISCARDED = 'discarded'
 
-    # vlm 2.5新增
+    # Added in vlm 2.5
     CODE = "code"
     CODE_BODY = "code_body"
     CODE_CAPTION = "code_caption"
