@@ -39,7 +39,7 @@ dependencies = [
     "openai>=1.70.0,<2",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<0.7.0",
-    "mineru_vl_utils>=0.1.6,<1.0.0",
+    "mineru-vl-utils>=0.1.6,<1",
 ]
 
 [project.optional-dependencies]
