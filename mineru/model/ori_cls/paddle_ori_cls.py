@@ -255,25 +255,28 @@ class PaddleOrientationClsModel:
                     results = self.sess.run(None, {"x": x})
                     for img_info, res in zip(rotated_imgs, results[0]):
                         label = self.labels[np.argmax(res)]
-                        if label == "270":
-                            img_info["table_img"] = cv2.rotate(
-                                np.asarray(img_info["table_img"]),
-                                cv2.ROTATE_90_CLOCKWISE,
-                            )
-                            img_info["wired_table_img"] = cv2.rotate(
-                                np.asarray(img_info["wired_table_img"]),
-                                cv2.ROTATE_90_CLOCKWISE,
-                            )
-                        elif label == "90":
-                            img_info["table_img"] = cv2.rotate(
-                                np.asarray(img_info["table_img"]),
-                                cv2.ROTATE_90_COUNTERCLOCKWISE,
-                            )
-                            img_info["wired_table_img"] = cv2.rotate(
-                                np.asarray(img_info["wired_table_img"]),
-                                cv2.ROTATE_90_COUNTERCLOCKWISE,
-                            )
-                        else:
-                            # 180度和0度不做处理
-                            pass
+                        self.img_rotate(img_info, label)
                         pbar.update(1)
+
+    def img_rotate(self, img_info, label):
+        if label == "270":
+            img_info["table_img"] = cv2.rotate(
+                np.asarray(img_info["table_img"]),
+                cv2.ROTATE_90_CLOCKWISE,
+            )
+            img_info["wired_table_img"] = cv2.rotate(
+                np.asarray(img_info["wired_table_img"]),
+                cv2.ROTATE_90_CLOCKWISE,
+            )
+        elif label == "90":
+            img_info["table_img"] = cv2.rotate(
+                np.asarray(img_info["table_img"]),
+                cv2.ROTATE_90_COUNTERCLOCKWISE,
+            )
+            img_info["wired_table_img"] = cv2.rotate(
+                np.asarray(img_info["wired_table_img"]),
+                cv2.ROTATE_90_COUNTERCLOCKWISE,
+            )
+        else:
+            # 180度和0度不做处理
+            pass
