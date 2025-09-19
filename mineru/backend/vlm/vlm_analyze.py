@@ -13,7 +13,7 @@ from ...utils.enum_class import ImageType
 from ...utils.model_utils import get_vram
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
-from mineru_vl_utils import MinerUClient, MinerULogitsProcessor
+from mineru_vl_utils import MinerUClient
 from packaging import version
 
 
@@ -89,6 +89,7 @@ class ModelSingleton:
                     try:
                         import vllm
                         vllm_version = vllm.__version__
+                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
@@ -104,6 +105,7 @@ class ModelSingleton:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
                         from vllm import __version__ as vllm_version
+                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
