@@ -63,7 +63,7 @@ async def main():
             'backend': 'pipeline', 'lang': 'ch', 'method': 'auto',
             'formula_enable': True, 'table_enable': True
         }
-        # 'backend': 'sglang-engine' requires 24+ GB VRAM per worker
+        # 'backend': 'vlm-vllm-engine' requires 8+ GB VRAM per worker
 
         custom_tasks = [mineru_parse_async(session, file_path, **custom_options) for file_path in existing_files[2:]]
 

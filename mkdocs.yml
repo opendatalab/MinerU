@@ -105,7 +105,6 @@ plugins:
       reconfigure_material: true
       docs_structure: folder
       fallback_to_default: true
-      reconfigure_material: true
       reconfigure_search: true
       languages:
         - locale: en
@@ -135,6 +134,7 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - attr_list
+  - def_list
   - gfm_admonition
   - pymdownx.highlight:
       use_pygments: true

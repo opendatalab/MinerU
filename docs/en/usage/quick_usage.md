@@ -29,11 +29,11 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b vlm-transformers
 ```
 > [!TIP]
-> The vlm backend additionally supports `sglang` acceleration. Compared to the `transformers` backend, `sglang` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `sglang` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
+> The vlm backend additionally supports `vllm` acceleration. Compared to the `transformers` backend, `vllm` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `vllm` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
-## Advanced Usage via API, WebUI, sglang-client/server
+## Advanced Usage via API, WebUI, http-client/server
 
 - Direct Python API calls: [Python Usage Example](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
 - FastAPI calls:
@@ -44,29 +44,29 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >Access `http://127.0.0.1:8000/docs` in your browser to view the API documentation.
 - Start Gradio WebUI visual frontend:
   ```bash
-  # Using pipeline/vlm-transformers/vlm-sglang-client backends
+  # Using pipeline/vlm-transformers/vlm-http-client backends
   mineru-gradio --server-name 0.0.0.0 --server-port 7860
-  # Or using vlm-sglang-engine/pipeline backends (requires sglang environment)
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-sglang-engine true
+  # Or using vlm-vllm-engine/pipeline backends (requires vllm environment)
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true
   ```
   >[!TIP]
   >
   >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
   >- Access `http://127.0.0.1:7860/?view=api` to use the Gradio API.
-- Using `sglang-client/server` method:
+- Using `http-client/server` method:
   ```bash
-  # Start sglang server (requires sglang environment)
-  mineru-sglang-server --port 30000
+  # Start vllm server (requires vllm environment)
+  mineru-vllm-server --port 30000
   ``` 
   >[!TIP]
-  >In another terminal, connect to sglang server via sglang client (only requires CPU and network, no sglang environment needed)
+  >In another terminal, connect to vllm server via http client (only requires CPU and network, no vllm environment needed)
   > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-sglang-client -u http://127.0.0.1:30000
+  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:30000
   > ```
 
 > [!NOTE]
-> All officially supported sglang parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-sglang-server`, `mineru-gradio`, `mineru-api`.
-> We have compiled some commonly used parameters and usage methods for `sglang`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
+> All officially supported vllm parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-vllm-server`, `mineru-gradio`, `mineru-api`.
+> We have compiled some commonly used parameters and usage methods for `vllm`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
 ## Extending MinerU Functionality with Configuration Files
 
@@ -77,7 +77,16 @@ MinerU is now ready to use out of the box, but also supports extending functiona
 
 Here are some available configuration options:  
 
-- `latex-delimiter-config`: Used to configure LaTeX formula delimiters, defaults to `$` symbol, can be modified to other symbols or strings as needed.
-- `llm-aided-config`: Used to configure parameters for LLM-assisted title hierarchy, compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. You need to configure your own API key and set `enable` to `true` to enable this feature.
-- `models-dir`: Used to specify local model storage directory, please specify model directories for `pipeline` and `vlm` backends separately. After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.
-
+- `latex-delimiter-config`: 
+    * Used to configure LaTeX formula delimiters
+    * Defaults to `$` symbol, can be modified to other symbols or strings as needed.
+  
+- `llm-aided-config`:
+    * Used to configure parameters for LLM-assisted title hierarchy
+    * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. 
+    * You need to configure your own API key and set `enable` to `true` to enable this feature.
+  
+- `models-dir`: 
+    * Used to specify local model storage directory
+    * Please specify model directories for `pipeline` and `vlm` backends separately.
+    * After specifying the directory, you can use local models by configuring the environment variable `export MINERU_MODEL_SOURCE=local`.

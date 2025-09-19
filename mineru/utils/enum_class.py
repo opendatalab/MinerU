@@ -14,6 +14,19 @@ class BlockType:
     INDEX = 'index'
     DISCARDED = 'discarded'
 
+    # Added in vlm 2.5
+    CODE = "code"
+    CODE_BODY = "code_body"
+    CODE_CAPTION = "code_caption"
+    ALGORITHM = "algorithm"
+    REF_TEXT = "ref_text"
+    PHONETIC = "phonetic"
+    HEADER = "header"
+    FOOTER = "footer"
+    PAGE_NUMBER = "page_number"
+    ASIDE_TEXT = "aside_text"
+    PAGE_FOOTNOTE = "page_footnote"
+
 
 class ContentType:
     IMAGE = 'image'
@@ -22,6 +35,7 @@ class ContentType:
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
+    CODE = 'code'
 
 
 class CategoryId:
@@ -49,8 +63,8 @@ class MakeMode:
 
 
 class ModelPath:
-    vlm_root_hf = "opendatalab/MinerU2.0-2505-0.9B"
-    vlm_root_modelscope = "OpenDataLab/MinerU2.0-2505-0.9B"
+    vlm_root_hf = "opendatalab/MinerU2.5-2509-1.2B"
+    vlm_root_modelscope = "OpenDataLab/MinerU2.5-2509-1.2B"
     pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
     pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
     doclayout_yolo = "models/Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"

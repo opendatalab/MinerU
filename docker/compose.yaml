@@ -1,21 +1,19 @@
 services:
-  mineru-sglang-server:
-    image: mineru-sglang:latest
-    container_name: mineru-sglang-server
+  mineru-vllm-server:
+    image: mineru-vllm:latest
+    container_name: mineru-vllm-server
     restart: always
-    profiles: ["sglang-server"]
+    profiles: ["vllm-server"]
     ports:
       - 30000:30000
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-sglang-server
+    entrypoint: mineru-vllm-server
     command:
       --host 0.0.0.0
       --port 30000
-      # --enable-torch-compile  # You can also enable torch.compile to accelerate inference speed by approximately 15%
-      # --dp-size 2  # If using multiple GPUs, increase throughput using sglang's multi-GPU parallel mode
-      # --tp-size 2  # If you have more than one GPU, you can expand available VRAM using tensor parallelism (TP) mode.
-      # --mem-fraction-static 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
@@ -31,7 +29,7 @@ services:
               capabilities: [gpu]
 
   mineru-api:
-    image: mineru-sglang:latest
+    image: mineru-vllm:latest
     container_name: mineru-api
     restart: always
     profiles: ["api"]
@@ -43,11 +41,9 @@ services:
     command:
       --host 0.0.0.0
       --port 8000
-      # parameters for sglang-engine
-      # --enable-torch-compile  # You can also enable torch.compile to accelerate inference speed by approximately 15%
-      # --dp-size 2  # If using multiple GPUs, increase throughput using sglang's multi-GPU parallel mode
-      # --tp-size 2  # If you have more than one GPU, you can expand available VRAM using tensor parallelism (TP) mode.
-      # --mem-fraction-static 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+      # parameters for vllm-engine
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
@@ -61,7 +57,7 @@ services:
               capabilities: [ gpu ]
 
   mineru-gradio:
-    image: mineru-sglang:latest
+    image: mineru-vllm:latest
     container_name: mineru-gradio
     restart: always
     profiles: ["gradio"]
@@ -73,14 +69,12 @@ services:
     command:
       --server-name 0.0.0.0
       --server-port 7860
-      --enable-sglang-engine true  # Enable the sglang engine for Gradio
+      --enable-vllm-engine true  # Enable the vllm engine for Gradio
       # --enable-api false  # If you want to disable the API, set this to false
       # --max-convert-pages 20  # If you want to limit the number of pages for conversion, set this to a specific number
-      # parameters for sglang-engine
-      # --enable-torch-compile  # You can also enable torch.compile to accelerate inference speed by approximately 15%
-      # --dp-size 2  # If using multiple GPUs, increase throughput using sglang's multi-GPU parallel mode
-      # --tp-size 2  # If you have more than one GPU, you can expand available VRAM using tensor parallelism (TP) mode.
-      # --mem-fraction-static 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+      # parameters for vllm-engine
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864

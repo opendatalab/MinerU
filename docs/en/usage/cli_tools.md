@@ -11,11 +11,11 @@ Options:
   -p, --path PATH                 Input file path or directory (required)
   -o, --output PATH               Output directory (required)
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline backend only)
-  -b, --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client]
+  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
                                   Parsing backend (default: pipeline)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline backend only)
-  -u, --url TEXT                  Service address when using sglang-client
+  -u, --url TEXT                  Service address when using http-client
   -s, --start INTEGER             Starting page number for parsing (0-based)
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
@@ -45,7 +45,7 @@ Options:
                                   files to be input need to be placed in the
                                   `example` folder within the directory where
                                   the command is currently executed.
-  --enable-sglang-engine BOOLEAN  Enable SgLang engine backend for faster
+  --enable-vllm-engine BOOLEAN  Enable vllm engine backend for faster
                                   processing.
   --enable-api BOOLEAN            Enable gradio API for serving the
                                   application.
@@ -65,9 +65,28 @@ Options:
 Some parameters of MinerU command line tools have equivalent environment variable configurations. Generally, environment variable configurations have higher priority than command line parameters and take effect across all command line tools.
 Here are the environment variables and their descriptions:
 
-- `MINERU_DEVICE_MODE`: Used to specify inference device, supports device types like `cpu/cuda/cuda:0/npu/mps`, only effective for `pipeline` backend.
-- `MINERU_VIRTUAL_VRAM_SIZE`: Used to specify maximum GPU VRAM usage per process (GB), only effective for `pipeline` backend.
-- `MINERU_MODEL_SOURCE`: Used to specify model source, supports `huggingface/modelscope/local`, defaults to `huggingface`, can be switched to `modelscope` or local models through environment variables.
-- `MINERU_TOOLS_CONFIG_JSON`: Used to specify configuration file path, defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
-- `MINERU_FORMULA_ENABLE`: Used to enable formula parsing, defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
-- `MINERU_TABLE_ENABLE`: Used to enable table parsing, defaults to `true`, can be set to `false` through environment variables to disable table parsing.
+- `MINERU_DEVICE_MODE`:
+    * Used to specify inference device
+    * supports device types like `cpu/cuda/cuda:0/npu/mps`
+    * only effective for `pipeline` backend.
+  
+- `MINERU_VIRTUAL_VRAM_SIZE`: 
+    * Used to specify maximum GPU VRAM usage per process (GB)
+    * only effective for `pipeline` backend.
+  
+- `MINERU_MODEL_SOURCE`: 
+    * Used to specify model source
+    * supports `huggingface/modelscope/local`
+    * defaults to `huggingface`, can be switched to `modelscope` or local models through environment variables.
+  
+- `MINERU_TOOLS_CONFIG_JSON`: 
+    * Used to specify configuration file path
+    * defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
+  
+- `MINERU_FORMULA_ENABLE`:
+    * Used to enable formula parsing
+    * defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
+  
+- `MINERU_TABLE_ENABLE`: 
+    * Used to enable table parsing
+    * defaults to `true`, can be set to `false` through environment variables to disable table parsing.
