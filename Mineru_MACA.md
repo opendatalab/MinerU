@@ -67,6 +67,8 @@ albumentations
 beautifulsoup4
 scikit-image==0.25.0
 outlines==0.1.11
+magika>=0.6.2,<0.7.0
+mineru-vl-utils>=0.1.6,<1
 
 ```
 上述内容保存为requirments.txt,进行安装
@@ -82,7 +84,7 @@ pip install doclayout-yolo --no-deps
 
 - `<input_path>`: Local PDF/image file or directory
 - `<output_path>`: Output directory
-- -b  --backend [pipeline|vlm-transformers|vlm-sglang-engine|vlm-sglang-client] (default:pipeline)<br/>
+- -b  --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client] (default:pipeline)<br/>
 
 其他详细使用命令可参考官方文档[Quick Usage - MinerU](https://opendatalab.github.io/MinerU/usage/quick_usage/#quick-model-source-configuration)
 
@@ -94,13 +96,13 @@ pip install doclayout-yolo --no-deps
 ```bash
 mineru-models-download
 ```
-也可以在[HuggingFace](http://www.huggingface.co.)或[ModelScope](https://www.modelscope.cn/home)找到所需模型源（PDF-Extract-Kit-1.0和MinerU2.0-2505-0.9B）进行下载，
+也可以在[HuggingFace](http://www.huggingface.co.)或[ModelScope](https://www.modelscope.cn/home)找到所需模型源（PDF-Extract-Kit-1.0和MinerU2.5-2509-1.2B）进行下载，
 下载完成后，创建mineru.json文件，按如下进行修改
 ```json
 {
     "models-dir": {
         "pipeline": "/path/pdf-extract-kit-1.0/",
-        "vlm": "/path/MinerU2.0-2505-0.9B"
+        "vlm": "/path/MinerU2.5-2509-1.2B"
     },
     "config_version": "1.3.0"
 }
@@ -114,4 +116,3 @@ export MINERU_MODEL_SOURCE=local
 export MINERU_TOOLS_CONFIG_JSON=/path/mineru.json   //此环境变量为配置文件的路径
 ```
 修改完成后即可正常使用<br/>
-**注：目前暂不支持vlm-slang-enging和vlm-sglang-clinet，待sglang发布新版本镜像之后可以支持，具体信息可以关注[沐曦开发者社区](https://developer.metax-tech.com/developer/news)**
