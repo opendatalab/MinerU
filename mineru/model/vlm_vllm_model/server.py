@@ -22,6 +22,8 @@ def main():
             has_port_arg = True
         if arg == "--gpu-memory-utilization" or arg.startswith("--gpu-memory-utilization="):
             has_gpu_memory_utilization_arg = True
+        if arg == "--logits-processors" or arg.startswith("--logits-processors="):
+            has_logits_processors_arg = True
         if arg == "--model":
             if i + 1 < len(args):
                 model_path = args[i + 1]
@@ -29,8 +31,6 @@ def main():
         elif arg.startswith("--model="):
             model_path = arg.split("=", 1)[1]
             model_arg_indices.append(i)
-        if arg == "--logits-processors" or arg.startswith("--logits-processors="):
-            has_logits_processors_arg = True
 
     # 从参数列表中移除 --model 参数
     if model_arg_indices:
