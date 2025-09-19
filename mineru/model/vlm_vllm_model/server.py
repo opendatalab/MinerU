@@ -9,6 +9,7 @@ def main():
 
     has_port_arg = False
     has_gpu_memory_utilization_arg = False
+    has_logits_processors_arg = False
     model_path = None
     model_arg_indices = []
 
@@ -25,6 +26,8 @@ def main():
         elif arg.startswith("--model="):
             model_path = arg.split("=", 1)[1]
             model_arg_indices.append(i)
+        if arg == "--logits-processors" or arg.startswith("--logits-processors="):
+            has_logits_processors_arg = True
 
     # 从参数列表中移除 --model 参数
     if model_arg_indices:
@@ -38,6 +41,8 @@ def main():
         args.extend(["--gpu-memory-utilization", "0.5"])
     if not model_path:
         model_path = auto_download_and_get_model_root_path("/", "vlm")
+    if not has_logits_processors_arg:
+        args.extend(["--logits-processors", "mineru_vl_utils:MinerULogitsProcessor"])
 
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", model_path] + args
