@@ -54,7 +54,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
         elif para_type == BlockType.LIST:
             for block in para_block['blocks']:
                 item_text = merge_para_with_text(block, formula_enable=formula_enable, img_buket_path=img_buket_path)
-                para_text += f"{item_text}\n"
+                para_text += f"{item_text}  \n"
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
