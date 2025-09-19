@@ -44,7 +44,7 @@
 
 # Changelog
 
-- 2025/09/19 2.5.0 Released
+- 2025/09/19 2.5.1 Released
 
   We are officially releasing MinerU2.5, currently the most powerful multimodal large model for document parsing.
   With only 1.2B parameters, MinerU2.5's accuracy on the OmniDocBench benchmark comprehensively surpasses top-tier multimodal models like Gemini 2.5 Pro, GPT-4o, and Qwen2.5-VL-72B. It also significantly outperforms leading specialized models such as dots.ocr, MonkeyOCR, and PP-StructureV3.

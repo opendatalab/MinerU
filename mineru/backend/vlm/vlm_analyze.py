@@ -14,6 +14,7 @@ from ...utils.model_utils import get_vram
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 from mineru_vl_utils import MinerUClient
+from packaging import version
 
 
 class ModelSingleton:
@@ -52,7 +53,6 @@ class ModelSingleton:
                     except ImportError:
                         raise ImportError("Please install transformers to use the transformers backend.")
 
-                    from packaging import version
                     if version.parse(transformers_version) >= version.parse("4.56.0"):
                         dtype_key = "dtype"
                     else:
@@ -88,24 +88,32 @@ class ModelSingleton:
                 elif backend == "vllm-engine":
                     try:
                         import vllm
+                        vllm_version = vllm.__version__
+                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
+                    if version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_llm = vllm.LLM(**kwargs)
                 elif backend == "vllm-async-engine":
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
+                        from vllm import __version__ as vllm_version
+                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
+                    if version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
             self._models[key] = MinerUClient(

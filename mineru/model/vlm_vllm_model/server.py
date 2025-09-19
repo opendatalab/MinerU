@@ -1,7 +1,10 @@
 import sys
 
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+
 from vllm.entrypoints.cli.main import main as vllm_main
+from vllm import __version__ as vllm_version
+from packaging import version
 
 
 def main():
@@ -9,6 +12,7 @@ def main():
 
     has_port_arg = False
     has_gpu_memory_utilization_arg = False
+    has_logits_processors_arg = False
     model_path = None
     model_arg_indices = []
 
@@ -18,6 +22,8 @@ def main():
             has_port_arg = True
         if arg == "--gpu-memory-utilization" or arg.startswith("--gpu-memory-utilization="):
             has_gpu_memory_utilization_arg = True
+        if arg == "--logits-processors" or arg.startswith("--logits-processors="):
+            has_logits_processors_arg = True
         if arg == "--model":
             if i + 1 < len(args):
                 model_path = args[i + 1]
@@ -38,6 +44,8 @@ def main():
         args.extend(["--gpu-memory-utilization", "0.5"])
     if not model_path:
         model_path = auto_download_and_get_model_root_path("/", "vlm")
+    if not has_logits_processors_arg and version.parse(vllm_version) >= version.parse("0.10.1"):
+        args.extend(["--logits-processors", "mineru_vl_utils:MinerULogitsProcessor"])
 
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", model_path] + args
