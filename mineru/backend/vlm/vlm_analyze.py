@@ -92,7 +92,6 @@ class ModelSingleton:
                 elif backend == "vllm-engine":
                     try:
                         import vllm
-                        vllm_version = vllm.__version__
                         from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
@@ -100,7 +99,7 @@ class ModelSingleton:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
-                    if custom_logits_processors and version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                    if custom_logits_processors and "logits_processors" not in kwargs:
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_llm = vllm.LLM(**kwargs)
@@ -108,7 +107,6 @@ class ModelSingleton:
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
-                        from vllm import __version__ as vllm_version
                         from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
@@ -116,7 +114,7 @@ class ModelSingleton:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
-                    if custom_logits_processors and version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                    if custom_logits_processors and "logits_processors" not in kwargs:
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
