@@ -1,7 +1,6 @@
 import sys
 
-from loguru import logger
-
+from mineru.backend.vlm.custom_logits_processors import enable_custom_logits_processors
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 from vllm.entrypoints.cli.main import main as vllm_main
@@ -39,15 +38,7 @@ def main():
         for index in sorted(model_arg_indices, reverse=True):
             args.pop(index)
 
-    import torch
-    compute_capability = 0.0
-    custom_logits_processors = False
-    if torch.cuda.is_available():
-        major, minor = torch.cuda.get_device_capability()
-        compute_capability = float(major) + (float(minor) / 10.0)
-        logger.info(f"compute_capability: {compute_capability}")
-    if compute_capability >= 8.0:
-        custom_logits_processors = True
+    custom_logits_processors = enable_custom_logits_processors()
 
     # 添加默认参数
     if not has_port_arg:
