@@ -46,7 +46,7 @@
 
 - 2025/09/20 2.5.3 Released
   - Dependency version range adjustment to enable Turing and earlier architecture GPUs to use vLLM acceleration for MinerU2.5 model inference.
-  - Pipeline backend compatibility fixes for torch 2.8.0.
+  - `pipeline` backend compatibility fixes for torch 2.8.0.
   - Reduced default concurrency for vLLM async backend to lower server pressure and avoid connection closure issues caused by high load.
   - More compatibility-related details can be found in the [announcement](https://github.com/opendatalab/MinerU/discussions/3548)
 

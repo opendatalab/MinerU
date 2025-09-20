@@ -45,7 +45,7 @@
 # 更新记录
 - 2025/09/20 2.5.3 发布
   - 依赖版本范围调整，使得Turing及更早架构显卡可以使用vLLM加速推理MinerU2.5模型。
-  - pipeline后端对torch 2.8.0的一些兼容性修复。
+  - `pipeline`后端对torch 2.8.0的一些兼容性修复。
   - 降低vLLM异步后端默认的并发数，降低服务端压力以避免高压导致的链接关闭问题。
   - 更多兼容性相关内容详见[公告](https://github.com/opendatalab/MinerU/discussions/3547)
 
