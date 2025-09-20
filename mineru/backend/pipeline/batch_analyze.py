@@ -116,16 +116,14 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.ImgOrientationCls,
             )
             try:
-                import torch
-                from packaging import version
-                if version.parse(torch.__version__) >= version.parse("2.8.0"):
-                    for table_res in table_res_list_all_page:
-                        rotate_label = img_orientation_cls_model.predict(table_res['table_img'])
-                        img_orientation_cls_model.img_rotate(table_res, rotate_label)
-                else:
+                if self.enable_ocr_det_batch:
                     img_orientation_cls_model.batch_predict(table_res_list_all_page,
                                                             det_batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE,
                                                             batch_size=TABLE_ORI_CLS_BATCH_SIZE)
+                else:
+                    for table_res in table_res_list_all_page:
+                        rotate_label = img_orientation_cls_model.predict(table_res['table_img'])
+                        img_orientation_cls_model.img_rotate(table_res, rotate_label)
             except Exception as e:
                 logger.warning(
                     f"Image orientation classification failed: {e}, using original image"
