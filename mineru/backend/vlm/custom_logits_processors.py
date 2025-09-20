@@ -18,11 +18,12 @@ def enable_custom_logits_processors():
     compute_capability = float(compute_capability)
 
     # 安全地处理环境变量
-    try:
-        vllm_use_v1 = int(os.getenv('VLLM_USE_V1', "1"))
-    except (ValueError, TypeError):
+    vllm_use_v1_str = os.getenv('VLLM_USE_V1', "1")
+    if vllm_use_v1_str.isdigit():
+        vllm_use_v1 = int(vllm_use_v1_str)
+    else:
         vllm_use_v1 = 1
-        logger.warning("Invalid VLLM_USE_V1 value")
+        logger.warning(f"Invalid VLLM_USE_V1 value: {vllm_use_v1_str!r}, defaulting to 1")
 
     if vllm_use_v1 == 0:
         logger.info("VLLM_USE_V1 is set to 0, disabling custom_logits_processors")
