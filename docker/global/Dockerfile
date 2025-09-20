@@ -1,5 +1,9 @@
-# Use the official vllm image
+# Use the official vllm image for gpu with Ampere architecture and above (Compute Capability>=8.0)
+# Compute Capability version query (https://developer.nvidia.com/cuda-gpus)
 FROM vllm/vllm-openai:v0.10.1.1
+
+# Use the official vllm image for gpu with Turing architecture and below (Compute Capability<8.0)
+# FROM vllm/vllm-openai:v0.10.2
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \

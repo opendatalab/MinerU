@@ -43,6 +43,11 @@
 </div>
 
 # 更新记录
+- 2025/09/20 2.5.3 发布
+  - 依赖版本范围调整，使得Turing及更早架构显卡可以使用vLLM加速推理MinerU2.5模型。
+  - `pipeline`后端对torch 2.8.0的一些兼容性修复。
+  - 降低vLLM异步后端默认的并发数，降低服务端压力以避免高压导致的链接关闭问题。
+  - 更多兼容性相关内容详见[公告](https://github.com/opendatalab/MinerU/discussions/3547)
 
 - 2025/09/19 2.5.2 发布
   我们正式发布 MinerU2.5，当前最强文档解析多模态大模型。仅凭 1.2B 参数，MinerU2.5 在 OmniDocBench 文档解析评测中，精度已全面超越 Gemini2.5-Pro、GPT-4o、Qwen2.5-VL-72B等顶级多模态大模型，并显著领先于主流文档解析专用模型（如 dots.ocr, MonkeyOCR, PP-StructureV3 等）。
