@@ -4,6 +4,7 @@ import time
 
 from loguru import logger
 
+from .custom_logits_processors import enable_custom_logits_processors
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
@@ -88,7 +89,6 @@ class ModelSingleton:
                 elif backend == "vllm-engine":
                     try:
                         import vllm
-                        vllm_version = vllm.__version__
                         from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
@@ -96,7 +96,7 @@ class ModelSingleton:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
-                    if version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_llm = vllm.LLM(**kwargs)
@@ -104,7 +104,6 @@ class ModelSingleton:
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
-                        from vllm import __version__ as vllm_version
                         from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
@@ -112,7 +111,7 @@ class ModelSingleton:
                         kwargs["gpu_memory_utilization"] = 0.5
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
-                    if version.parse(vllm_version) >= version.parse("0.10.1") and "logits_processors" not in kwargs:
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
