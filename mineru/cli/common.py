@@ -27,6 +27,8 @@ def read_fn(path):
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
         file_suffix = guess_suffix_by_bytes(file_bytes)
+        if file_suffix in ["ai"] and path.suffix in [".pdf"]:
+            file_suffix = "pdf"
         if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
         elif file_suffix in pdf_suffixes:
