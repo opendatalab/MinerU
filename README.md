@@ -44,6 +44,9 @@
 
 # Changelog
 
+- 2025/09/26 2.5.4 released  
+  - Fixed an issue where some `PDF` files were mistakenly identified as `AI` files, causing parsing failures
+
 - 2025/09/20 2.5.3 Released
   - Dependency version range adjustment to enable Turing and earlier architecture GPUs to use vLLM acceleration for MinerU2.5 model inference.
   - `pipeline` backend compatibility fixes for torch 2.8.0.
