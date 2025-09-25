@@ -21,6 +21,6 @@ def guess_suffix_by_path(file_path) -> str:
     if not isinstance(file_path, Path):
         file_path = Path(file_path)
     suffix = magika.identify_path(file_path).prediction.output.label
-    if suffix in ["ai"] and file_path.suffix in [".pdf"]:
+    if suffix in ["ai"] and file_path.suffix.lower() in [".pdf"]:
         suffix = "pdf"
     return suffix
