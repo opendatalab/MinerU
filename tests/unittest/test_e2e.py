@@ -154,10 +154,9 @@ def test_vlm_transformers_with_default_config():
             json.dumps(middle_json, ensure_ascii=False, indent=4),
         )
 
-        model_output = ("\n" + "-" * 50 + "\n").join(infer_result)
         md_writer.write_string(
-            f"{pdf_file_name}_model_output.txt",
-            model_output,
+            f"{pdf_file_name}_model.json",
+            json.dumps(infer_result, ensure_ascii=False, indent=4),
         )
 
         logger.info(f"local output dir is {local_md_dir}")
