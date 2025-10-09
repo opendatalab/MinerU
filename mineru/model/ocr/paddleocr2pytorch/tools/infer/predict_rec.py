@@ -9,6 +9,7 @@ from tqdm import tqdm
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
 from . import pytorchocr_utility as utility
 from ...pytorchocr.postprocess import build_post_process
+from ...pytorchocr.modeling.backbones.rec_hgnet import ConvBNAct
 
 
 class TextRecognizer(BaseOCRV20):
@@ -93,6 +94,12 @@ class TextRecognizer(BaseOCRV20):
         self.load_state_dict(weights)
         self.net.eval()
         self.net.to(self.device)
+        for module in self.net.modules():
+            if isinstance(module, ConvBNAct):
+                if module.use_act:
+                    torch.quantization.fuse_modules(module, ['conv', 'bn', 'act'], inplace=True)
+                else:
+                    torch.quantization.fuse_modules(module, ['conv', 'bn'], inplace=True)
 
     def resize_norm_img(self, img, max_wh_ratio):
         imgC, imgH, imgW = self.rec_image_shape
@@ -125,23 +132,15 @@ class TextRecognizer(BaseOCRV20):
 
         assert imgC == img.shape[2]
         max_wh_ratio = max(max_wh_ratio, imgW / imgH)
-        imgW = int((imgH * max_wh_ratio))
+        imgW = int(imgH * max_wh_ratio)
         imgW = max(min(imgW, self.limited_max_width), self.limited_min_width)
         h, w = img.shape[:2]
         ratio = w / float(h)
-        ratio_imgH = math.ceil(imgH * ratio)
-        ratio_imgH = max(ratio_imgH, self.limited_min_width)
-        if ratio_imgH > imgW:
-            resized_w = imgW
-        else:
-            resized_w = int(ratio_imgH)
-        resized_image = cv2.resize(img, (resized_w, imgH))
-        resized_image = resized_image.astype('float32')
-        resized_image = resized_image.transpose((2, 0, 1)) / 255
-        resized_image -= 0.5
-        resized_image /= 0.5
+        ratio_imgH = max(math.ceil(imgH * ratio), self.limited_min_width)
+        resized_w = min(imgW,int(ratio_imgH))
+        resized_image = cv2.resize(img, (resized_w, imgH)) /127.5 - 1
         padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
-        padding_im[:, :, 0:resized_w] = resized_image
+        padding_im[:, :, 0:resized_w] = resized_image.transpose((2, 0, 1))
         return padding_im
 
     def resize_norm_img_svtr(self, img, image_shape):
@@ -307,12 +306,7 @@ class TextRecognizer(BaseOCRV20):
             for beg_img_no in range(0, img_num, batch_num):
                 end_img_no = min(img_num, beg_img_no + batch_num)
                 norm_img_batch = []
-                max_wh_ratio = 0
-                for ino in range(beg_img_no, end_img_no):
-                    # h, w = img_list[ino].shape[0:2]
-                    h, w = img_list[indices[ino]].shape[0:2]
-                    wh_ratio = w * 1.0 / h
-                    max_wh_ratio = max(max_wh_ratio, wh_ratio)
+                max_wh_ratio = width_list[indices[end_img_no - 1]]
                 for ino in range(beg_img_no, end_img_no):
                     if self.rec_algorithm == "SAR":
                         norm_img, _, _, valid_ratio = self.resize_norm_img_sar(
@@ -420,14 +414,11 @@ class TextRecognizer(BaseOCRV20):
                     with torch.no_grad():
                         inp = torch.from_numpy(norm_img_batch)
                         inp = inp.to(self.device)
-                        prob_out = self.net(inp)
+                        preds = self.net(inp)
 
-                    if isinstance(prob_out, list):
-                        preds = [v.cpu().numpy() for v in prob_out]
-                    else:
-                        preds = prob_out.cpu().numpy()
+                with torch.no_grad():
+                    rec_result = self.postprocess_op(preds)
 
-                rec_result = self.postprocess_op(preds)
                 for rno in range(len(rec_result)):
                     rec_res[indices[beg_img_no + rno]] = rec_result[rno]
                 elapse += time.time() - starttime
