@@ -23,6 +23,7 @@ import sys
 import six
 import cv2
 import numpy as np
+from PIL import Image
 
 
 class DecodeImage(object):
@@ -104,16 +105,15 @@ class NormalizeImage(object):
         shape = (3, 1, 1) if order == 'chw' else (1, 1, 3)
         self.mean = np.array(mean).reshape(shape).astype('float32')
         self.std = np.array(std).reshape(shape).astype('float32')
+        self.scale = self.scale / self.std
+        self.mean = self.mean / self.std
+
 
     def __call__(self, data):
         img = data['image']
-        from PIL import Image
         if isinstance(img, Image.Image):
             img = np.array(img)
-        assert isinstance(img,
-                          np.ndarray), "invalid input 'img' in NormalizeImage"
-        data['image'] = (
-            img.astype('float32') * self.scale - self.mean) / self.std
+        data['image'] = img.astype('float32') * self.scale - self.mean
         return data
 
 

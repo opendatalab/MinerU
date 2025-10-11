@@ -116,6 +116,9 @@ class TextDetector(BaseOCRV20):
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
         self.net.to(self.device)
+        for module in self.net.modules():
+            if hasattr(module, 'rep'):
+                module.rep()
 
     def _batch_process_same_size(self, img_list):
         """
@@ -293,7 +296,7 @@ class TextDetector(BaseOCRV20):
         return dt_boxes
 
     def __call__(self, img):
-        ori_im = img.copy()
+        ori_shape = img.shape
         data = {'image': img}
         data = transform(data, self.preprocess_op)
         img, shape_list = data
@@ -331,9 +334,9 @@ class TextDetector(BaseOCRV20):
         if (self.det_algorithm == "SAST" and
             self.det_sast_polygon) or (self.det_algorithm in ["PSE", "FCE"] and
                                        self.postprocess_op.box_type == 'poly'):
-            dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_im.shape)
+            dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_shape)
         else:
-            dt_boxes = self.filter_tag_det_res(dt_boxes, ori_im.shape)
+            dt_boxes = self.filter_tag_det_res(dt_boxes, ori_shape)
 
         elapse = time.time() - starttime
         return dt_boxes, elapse
