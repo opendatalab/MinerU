@@ -102,7 +102,8 @@ def _process_output(
         f_make_md_mode,
         middle_json,
         model_output=None,
-        is_pipeline=True
+        is_pipeline=True,
+        f_return_result=False
 ):
     f_draw_line_sort_bbox = False
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
@@ -132,13 +133,23 @@ def _process_output(
             md_content_str,
         )
 
-    if f_dump_content_list:
+    # Prepare return data
+    result_data = None
+
+    # Always generate content_list if a return is requested, otherwise follow the flag
+    if f_dump_content_list or f_return_result:
         make_func = pipeline_union_make if is_pipeline else vlm_union_make
         content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=4),
-        )
+        
+        if f_dump_content_list:
+            md_writer.write_string(
+                f"{pdf_file_name}_content_list.json",
+                json.dumps(content_list, ensure_ascii=False, indent=4),
+            )
+        
+        # If a return is requested, assign the generated content_list to result_data
+        if f_return_result:
+            result_data = content_list
 
     if f_dump_middle_json:
         md_writer.write_string(
@@ -153,6 +164,7 @@ def _process_output(
         )
 
     logger.info(f"local output dir is {local_md_dir}")
+    return result_data
 
 
 def _process_pipeline(
@@ -171,6 +183,7 @@ def _process_pipeline(
         f_dump_orig_pdf,
         f_dump_content_list,
         f_make_md_mode,
+        f_return_result=False
 ):
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
@@ -182,6 +195,8 @@ def _process_pipeline(
             formula_enable=p_formula_enable, table_enable=p_table_enable
         )
     )
+    
+    batch_results = []
 
     for idx, model_list in enumerate(infer_results):
         model_json = copy.deepcopy(model_list)
@@ -202,12 +217,16 @@ def _process_pipeline(
         pdf_info = middle_json["pdf_info"]
         pdf_bytes = pdf_bytes_list[idx]
 
-        _process_output(
+        result_data = _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, is_pipeline=True
+            f_make_md_mode, middle_json, model_json, is_pipeline=True, f_return_result=f_return_result
         )
+        if f_return_result:
+            batch_results.append(result_data)
+
+    return batch_results if f_return_result else None
 
 
 async def _async_process_vlm(
@@ -224,6 +243,7 @@ async def _async_process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        f_return_result=False,
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
@@ -231,6 +251,8 @@ async def _async_process_vlm(
     f_draw_span_bbox = False
     if not backend.endswith("client"):
         server_url = None
+        
+    batch_results = []
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -243,12 +265,16 @@ async def _async_process_vlm(
 
         pdf_info = middle_json["pdf_info"]
 
-        _process_output(
+        result_data = _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, is_pipeline=False, f_return_result=f_return_result
         )
+        if f_return_result:
+            batch_results.append(result_data)
+
+    return batch_results if f_return_result else None
 
 
 def _process_vlm(
@@ -265,6 +291,7 @@ def _process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        f_return_result=False,
         **kwargs,
 ):
     """同步处理VLM后端逻辑"""
@@ -272,6 +299,8 @@ def _process_vlm(
     f_draw_span_bbox = False
     if not backend.endswith("client"):
         server_url = None
+
+    batch_results = []
 
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
@@ -284,12 +313,16 @@ def _process_vlm(
 
         pdf_info = middle_json["pdf_info"]
 
-        _process_output(
+        result_data = _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, is_pipeline=False, f_return_result=f_return_result
         )
+        if f_return_result:
+            batch_results.append(result_data)
+
+    return batch_results if f_return_result else None
 
 
 def do_parse(
@@ -309,6 +342,7 @@ def do_parse(
         f_dump_model_output=True,
         f_dump_orig_pdf=True,
         f_dump_content_list=True,
+        f_return_result: bool = False,
         f_make_md_mode=MakeMode.MM_MD,
         start_page_id=0,
         end_page_id=None,
@@ -318,11 +352,12 @@ def do_parse(
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 
     if backend == "pipeline":
-        _process_pipeline(
+        result_data = _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+            f_return_result=f_return_result
         )
     else:
         if backend.startswith("vlm-"):
@@ -334,12 +369,17 @@ def do_parse(
         os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
-        _process_vlm(
+        result_data = _process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            server_url, f_return_result=f_return_result, **kwargs,
         )
+    
+    if f_return_result:
+        # Since do_parse supports batch processing, but our use case is one file at a time,
+        # we return the first element of the list for convenience.
+        return result_data[0] if result_data else None
 
 
 async def aio_do_parse(
@@ -359,6 +399,7 @@ async def aio_do_parse(
         f_dump_model_output=True,
         f_dump_orig_pdf=True,
         f_dump_content_list=True,
+        f_return_result: bool = False,
         f_make_md_mode=MakeMode.MM_MD,
         start_page_id=0,
         end_page_id=None,
@@ -369,11 +410,12 @@ async def aio_do_parse(
 
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
-        _process_pipeline(
+        result_data = _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+            f_return_result=f_return_result
         )
     else:
         if backend.startswith("vlm-"):
@@ -385,13 +427,15 @@ async def aio_do_parse(
         os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
-        await _async_process_vlm(
+        result_data = await _async_process_vlm(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            server_url, f_return_result=f_return_result, **kwargs,
         )
 
+    if f_return_result:
+        return result_data[0] if result_data else None
 
 
 if __name__ == "__main__":
