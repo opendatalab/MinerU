@@ -47,7 +47,7 @@ class BaseRecLabelDecode(object):
         self.dict = {}
         for i, char in enumerate(dict_character):
             self.dict[char] = i
-        self.character = dict_character
+        self.character = np.array(dict_character)
 
     def pred_reverse(self, pred):
         pred_re = []
@@ -143,27 +143,27 @@ class BaseRecLabelDecode(object):
     ):
         """ convert text-index into text-label. """
         result_list = []
-        ignored_tokens = self.get_ignored_tokens()
-        batch_size = len(text_index)
+        batch_size = text_index.shape[0]
+        blank_word = self.get_ignored_tokens()[0]
         for batch_idx in range(batch_size):
-            char_list = []
-            conf_list = []
-            for idx in range(len(text_index[batch_idx])):
-                if text_index[batch_idx][idx] in ignored_tokens:
-                    continue
-                if is_remove_duplicate:
-                    # only for predict
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[
-                            batch_idx][idx]:
-                        continue
-                char_list.append(self.character[int(text_index[batch_idx][
-                    idx])])
-                if text_prob is not None:
-                    conf_list.append(text_prob[batch_idx][idx])
-                else:
-                    conf_list.append(1)
-            text = ''.join(char_list)
-            result_list.append((text, np.mean(conf_list)))
+            probs = None if text_prob is None else np.array(text_prob[batch_idx])
+            sequence = text_index[batch_idx]
+
+            final_mask = sequence != blank_word
+            if is_remove_duplicate:
+                duplicate_mask = np.insert(sequence[1:] != sequence[:-1], 0, True)
+                final_mask &= duplicate_mask
+
+            sequence = sequence[final_mask]
+            probs = None if probs is None else probs[final_mask]
+            text = "".join(self.character[sequence])
+
+            if text_prob is not None and probs is not None and len(probs) > 0:
+                mean_conf = np.mean(probs)
+            else:
+                # 如果没有提供概率或最终结果为空，则默认置信度为1.0
+                mean_conf = 1.0
+            result_list.append((text, mean_conf))
         return result_list
 
     def get_ignored_tokens(self):
@@ -181,13 +181,10 @@ class CTCLabelDecode(BaseRecLabelDecode):
                                              use_space_char)
 
     def __call__(self, preds, label=None, return_word_box=False, *args, **kwargs):
-        if isinstance(preds, torch.Tensor):
-            preds = preds.numpy()
-        preds_idx = preds.argmax(axis=2)
-        preds_prob = preds.max(axis=2)
+        preds_prob, preds_idx = preds.max(axis=2)
         text = self.decode(
-            preds_idx,
-            preds_prob,
+            preds_idx.cpu().numpy(),
+            preds_prob.float().cpu().numpy(),
             is_remove_duplicate=True,
             return_word_box=return_word_box,
         )
@@ -199,7 +196,7 @@ class CTCLabelDecode(BaseRecLabelDecode):
 
         if label is None:
             return text
-        label = self.decode(label)
+        label = self.decode(label.cpu().numpy())
         return text, label
 
     def add_special_char(self, dict_character):

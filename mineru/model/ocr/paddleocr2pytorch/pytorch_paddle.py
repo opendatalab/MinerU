@@ -12,9 +12,9 @@ from loguru import logger
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
-from .tools.infer.predict_system import TextSystem
-from .tools.infer import pytorchocr_utility as utility
+from mineru.utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
+from mineru.model.ocr.paddleocr2pytorch.tools.infer.predict_system import TextSystem
+from mineru.model.ocr.paddleocr2pytorch.tools.infer import pytorchocr_utility as utility
 import argparse
 
 
@@ -89,7 +89,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
-        kwargs['rec_batch_num'] = 8
+        kwargs['rec_batch_num'] = 6
 
         kwargs['device'] = device
 
