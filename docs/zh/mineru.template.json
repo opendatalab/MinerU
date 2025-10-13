@@ -1,0 +1,29 @@
+{
+    "bucket_info":{
+        "bucket-name-1":["ak", "sk", "endpoint"],
+        "bucket-name-2":["ak", "sk", "endpoint"]
+    },
+    "latex-delimiter-config": {
+        "display": {
+            "left": "$$",
+            "right": "$$"
+        },
+        "inline": {
+            "left": "$",
+            "right": "$"
+        }
+    },
+    "llm-aided-config": {
+        "title_aided": {
+            "api_key": "your_api_key",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "model": "qwen2.5-32b-instruct",
+            "enable": false
+        }
+    },
+    "models-dir": {
+        "pipeline": "",
+        "vlm": ""
+    },
+    "config_version": "1.3.0"
+}
