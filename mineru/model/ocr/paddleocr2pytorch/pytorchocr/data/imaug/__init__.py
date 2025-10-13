@@ -1,3 +1,4 @@
+import sys
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -43,6 +44,6 @@ def create_operators(op_param_list, global_config=None):
         param = {} if operator[op_name] is None else operator[op_name]
         if global_config is not None:
             param.update(global_config)
-        op = eval(op_name)(**param)
+        op = getattr(sys.modules[__name__], op_name)(**param)
         ops.append(op)
     return ops
