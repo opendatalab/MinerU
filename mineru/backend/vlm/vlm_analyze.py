@@ -42,6 +42,7 @@ class ModelSingleton:
             vllm_llm = None
             vllm_async_llm = None
             batch_size = 0
+            max_concurrency = kwargs.get("max_concurrency", 100)
             if backend in ['transformers', 'vllm-engine', "vllm-async-engine"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
@@ -123,6 +124,7 @@ class ModelSingleton:
                 vllm_async_llm=vllm_async_llm,
                 server_url=server_url,
                 batch_size=batch_size,
+                max_concurrency=max_concurrency,
             )
             elapsed = round(time.time() - start_time, 2)
             logger.info(f"get {backend} predictor cost: {elapsed}s")
