@@ -9,17 +9,17 @@
     * [命令行工具](./cli_tools.md) - 命令行工具的详细参数说明
     * [进阶优化参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
 - 插件与生态
-    * [Cherry Studio](./plugin/01_Cherry_Studio.md)
-    * [Sider](./plugin/02_Sider.md)
-    * [Dify](./plugin/03_Dify.md)
-    * [n8n](./plugin/04_n8n.md)
-    * [Coze](./plugin/05_Coze.md)
-    * [FastGPT](./plugin/06_FastGPT.md)
-    * [ModelWhale](./plugin/07_ModelWhale.md)
-    * [DingTalk](./plugin/08_DingTalk.md)
-    * [DataFlow](./plugin/09_DataFlow.md)
-    * [BISHENG](./plugin/10_BISHENG.md)
-    * [RagFlow](./plugin/11_RagFlow.md)
+    * [Cherry Studio](plugin/Cherry_Studio.md)
+    * [Sider](plugin/Sider.md)
+    * [Dify](plugin/Dify.md)
+    * [n8n](plugin/n8n.md)
+    * [Coze](plugin/Coze.md)
+    * [FastGPT](plugin/FastGPT.md)
+    * [ModelWhale](plugin/ModelWhale.md)
+    * [DingTalk](plugin/DingTalk.md)
+    * [DataFlow](plugin/DataFlow.md)
+    * [BISHENG](plugin/BISHENG.md)
+    * [RagFlow](plugin/RagFlow.md)
 
 ## 开始使用
 
