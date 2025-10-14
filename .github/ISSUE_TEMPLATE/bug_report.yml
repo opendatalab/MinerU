@@ -122,7 +122,8 @@ body:
       #multiple: false
       options:
         -
-        - "2.0.x"
+        - "2.2.x"
+        - "2.5.x"
     validations:
       required: true
 
