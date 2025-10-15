@@ -506,12 +506,15 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
             "index": body["index"],
         }
         two_layer_block["blocks"].extend([*caption_list, *footnote_list])
+        # 对blocks按index排序
+        two_layer_block["blocks"].sort(key=lambda x: x["index"])
 
         fixed_blocks.append(two_layer_block)
 
     # 添加未处理的blocks
     for block in blocks:
-        if block["index"] not in processed_indices:
+        block.pop("type", None)
+        if block["index"] not in processed_indices and block not in not_include_blocks:
             not_include_blocks.append(block)
 
     return fixed_blocks, not_include_blocks
