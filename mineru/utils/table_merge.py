@@ -263,17 +263,84 @@ def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_foo
     # 找到第一个表格的tbody，如果没有则查找table元素
     tbody1 = soup1.find("tbody") or soup1.find("table")
 
-    # 找到第二个表格的tbody，如果没有则查找table元素
-    tbody2 = soup2.find("tbody") or soup2.find("table")
+    # 获取表1和表2的所有行
+    rows1 = soup1.find_all("tr")
+    rows2 = soup2.find_all("tr")
+
+
+    if rows1 and rows2 and header_count < len(rows2):
+        # 获取表1最后一行
+        last_row1 = rows1[-1]
+        # 获取表2第一个非表头行
+        first_data_row2 = rows2[header_count]
+
+        # 分析两行的colspan结构
+        last_row1_structure = []
+        has_colspan_last_row1 = False
+        for cell in last_row1.find_all(["td", "th"]):
+            colspan = int(cell.get("colspan", 1))
+            last_row1_structure.append(colspan)
+            if colspan > 1:
+                has_colspan_last_row1 = True
+
+        first_row2_structure = []
+        has_colspan_first_row2 = False
+        for cell in first_data_row2.find_all(["td", "th"]):
+            colspan = int(cell.get("colspan", 1))
+            first_row2_structure.append(colspan)
+            if colspan > 1:
+                has_colspan_first_row2 = True
+
+        # 确定基准结构（优先使用有colspan的行）
+        if has_colspan_last_row1:
+            reference_structure = last_row1_structure
+            reference_visual_cols = calculate_visual_columns(last_row1)
+        elif has_colspan_first_row2:
+            reference_structure = first_row2_structure
+            reference_visual_cols = calculate_visual_columns(first_data_row2)
+        else:
+            # 都没有colspan时使用表1最后一行作为默认基准
+            reference_structure = last_row1_structure
+            reference_visual_cols = calculate_visual_columns(last_row1)
+
+        # 如果表1最后一行没有colspan但表2首行有，则调整表1相关行
+        if not has_colspan_last_row1 and has_colspan_first_row2:
+            # 找到表1中所有具有相同视觉列数的行
+            rows_to_adjust = []
+            for i in range(len(rows1) - 1, -1, -1):
+                if calculate_visual_columns(rows1[i]) == reference_visual_cols:
+                    rows_to_adjust.append(rows1[i])
+                else:
+                    break
+
+            # 应用参考结构到这些行
+            for row in rows_to_adjust:
+                cells = row.find_all(["td", "th"])
+                if cells and len(cells) <= len(reference_structure):
+                    for j, cell in enumerate(cells):
+                        if j < len(reference_structure) and reference_structure[j] > 1:
+                            cell["colspan"] = str(reference_structure[j])
+
+        # 如果表2首行没有colspan但表1最后一行有，则调整表2相关行
+        elif has_colspan_last_row1 and not has_colspan_first_row2:
+            # 调整表2中所有具有相同视觉列数的行
+            for i in range(header_count, len(rows2)):
+                row = rows2[i]
+                if calculate_visual_columns(row) == reference_visual_cols:
+                    cells = row.find_all(["td", "th"])
+                    if cells and len(cells) <= len(reference_structure):
+                        for j, cell in enumerate(cells):
+                            if j < len(reference_structure) and reference_structure[j] > 1:
+                                cell["colspan"] = str(reference_structure[j])
 
     # 将第二个表格的行添加到第一个表格中
-    if tbody1 and tbody2:
-        rows2 = soup2.find_all("tr")
-        # 将第二个表格的行添加到第一个表格中（跳过表头行）
-        for row in rows2[header_count:]:
-            # 从原来的位置移除行，并添加到第一个表格中
-            row.extract()
-            tbody1.append(row)
+    if tbody1:
+        tbody2 = soup2.find("tbody") or soup2.find("table")
+        if tbody2:
+            # 将第二个表格的行添加到第一个表格中（跳过表头行）
+            for row in rows2[header_count:]:
+                row.extract()
+                tbody1.append(row)
 
     # 添加待合并表格的footnote到前一个表格中
     for table_footnote in wait_merge_table_footnotes:
