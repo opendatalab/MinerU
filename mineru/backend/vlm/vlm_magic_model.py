@@ -483,6 +483,44 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
                 # 没找到合适的body，作为普通block处理
                 not_include_blocks.append(footnote)
 
+        # 第四步:将每个block的caption_list和footnote_list中不连续index的元素提出来作为普通block处理
+        for block in need_fix_blocks:
+            caption_list = block[f"{fix_type}_caption_list"]
+            footnote_list = block[f"{fix_type}_footnote_list"]
+            body_index = block[f"{fix_type}_body"]["index"]
+
+            # 处理caption_list (从body往前看,caption在body之前)
+            if caption_list:
+                # 按index降序排列,从最接近body的开始检查
+                caption_list.sort(key=lambda x: x["index"], reverse=True)
+                filtered_captions = [caption_list[0]]
+                for i in range(1, len(caption_list)):
+                    # 检查是否与前一个caption连续(降序所以是-1)
+                    if caption_list[i]["index"] == caption_list[i - 1]["index"] - 1:
+                        filtered_captions.append(caption_list[i])
+                    else:
+                        # 出现gap,后续所有caption都作为普通block
+                        not_include_blocks.extend(caption_list[i:])
+                        break
+                # 恢复升序
+                filtered_captions.reverse()
+                block[f"{fix_type}_caption_list"] = filtered_captions
+
+            # 处理footnote_list (从body往后看,footnote在body之后)
+            if footnote_list:
+                # 按index升序排列,从最接近body的开始检查
+                footnote_list.sort(key=lambda x: x["index"])
+                filtered_footnotes = [footnote_list[0]]
+                for i in range(1, len(footnote_list)):
+                    # 检查是否与前一个footnote连续
+                    if footnote_list[i]["index"] == footnote_list[i - 1]["index"] + 1:
+                        filtered_footnotes.append(footnote_list[i])
+                    else:
+                        # 出现gap,后续所有footnote都作为普通block
+                        not_include_blocks.extend(footnote_list[i:])
+                        break
+                block[f"{fix_type}_footnote_list"] = filtered_footnotes
+
     # 构建两层结构blocks
     for block in need_fix_blocks:
         body = block[f"{fix_type}_body"]
