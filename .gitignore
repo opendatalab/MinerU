@@ -21,7 +21,7 @@ debug/
 
 .DS_Store
 .env
-
+*.egg-info
 bad_words/
 bak/
 

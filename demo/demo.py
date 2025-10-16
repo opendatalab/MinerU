@@ -38,6 +38,7 @@ def do_parse(
     f_make_md_mode=MakeMode.MM_MD,  # The mode for making markdown content, default is MM_MD
     start_page_id=0,  # Start page ID for parsing, default is 0
     end_page_id=None,  # End page ID for parsing, default is None (parse all pages until the end of the document)
+    **kwargs  # Additional keyword arguments to pass to vlm_doc_analyze
 ):
 
     if backend == "pipeline":
@@ -79,7 +80,7 @@ def do_parse(
             pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
+            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs)
 
             pdf_info = middle_json["pdf_info"]
 
@@ -164,7 +165,8 @@ def parse_doc(
         method="auto",
         server_url=None,
         start_page_id=0,
-        end_page_id=None
+        end_page_id=None,
+        **kwargs
 ):
     """
         Parameter description:
@@ -208,7 +210,8 @@ def parse_doc(
             parse_method=method,
             server_url=server_url,
             start_page_id=start_page_id,
-            end_page_id=end_page_id
+            end_page_id=end_page_id,
+            **kwargs
         )
     except Exception as e:
         logger.exception(e)
@@ -230,8 +233,20 @@ if __name__ == '__main__':
     """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
     # os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
 
+    """Using HuggingFace deployed vLLM endpoint with authentication"""
+    hf_token = os.getenv("HF_TOKEN")
+    if not hf_token:
+        raise ValueError("HF_TOKEN is not set")
+    parse_doc(
+        doc_path_list, 
+        output_dir, 
+        backend="vlm-http-client", 
+        server_url="https://uw5suvzuk1s63g41.us-east-1.aws.endpoints.huggingface.cloud",
+        server_headers={"Authorization": f"Bearer {hf_token}"}
+    )
+
     """Use pipeline mode if your environment does not support VLM"""
-    parse_doc(doc_path_list, output_dir, backend="pipeline")
+    # parse_doc(doc_path_list, output_dir, backend="pipeline")
 
     """To enable VLM mode, change the backend to 'vlm-xxx'"""
     # parse_doc(doc_path_list, output_dir, backend="vlm-transformers")  # more general.

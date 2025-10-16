@@ -115,6 +115,15 @@ class ModelSingleton:
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+            
+            # Extract MinerUClient-specific kwargs for http-client backend
+            mineru_client_kwargs = {}
+            if backend == "http-client":
+                # Pass through kwargs that are specific to MinerUClient/HttpVlmClient
+                for key in ['server_headers', 'http_timeout', 'max_concurrency', 'debug']:
+                    if key in kwargs:
+                        mineru_client_kwargs[key] = kwargs[key]
+            
             self._models[key] = MinerUClient(
                 backend=backend,
                 model=model,
@@ -123,6 +132,7 @@ class ModelSingleton:
                 vllm_async_llm=vllm_async_llm,
                 server_url=server_url,
                 batch_size=batch_size,
+                **mineru_client_kwargs,
             )
             elapsed = round(time.time() - start_time, 2)
             logger.info(f"get {backend} predictor cost: {elapsed}s")
