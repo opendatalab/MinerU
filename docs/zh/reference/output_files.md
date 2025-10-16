@@ -397,10 +397,10 @@ inference_result: list[PageInferenceResults] = []
     {
         "type": "image",
         "img_path": "images/a8ecda1c69b27e4f79fce1589175a9d721cbdc1cf78b4cc06a015f3746f6b9d8.jpg",
-        "img_caption": [
+        "image_caption": [
             "Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "
         ],
-        "img_footnote": [],
+        "image_footnote": [],
         "bbox": [
             62,
             480,
