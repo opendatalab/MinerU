@@ -3,6 +3,7 @@
 from loguru import logger
 from bs4 import BeautifulSoup
 
+from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
@@ -169,7 +170,10 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
 def can_merge_tables(current_table_block, previous_table_block):
     """判断两个表格是否可以合并"""
     # 检查表格是否有caption和footnote
-    if any(block["type"] == BlockType.TABLE_CAPTION for block in current_table_block["blocks"]):
+    # if any(block["type"] == BlockType.TABLE_CAPTION for block in current_table_block["blocks"]):
+    #     return False, None, None, None, None
+    # current_table_block["blocks"]中有任何TABLE_CAPTION类型的块，且任意caption块内不以"（续）"结尾，则不合并
+    if any(block["type"] == BlockType.TABLE_CAPTION and not full_to_half(merge_para_with_text(block).strip()).endswith("(续)") for block in current_table_block["blocks"]):
         return False, None, None, None, None
 
     if any(block["type"] == BlockType.TABLE_FOOTNOTE for block in previous_table_block["blocks"]):
