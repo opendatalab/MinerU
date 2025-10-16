@@ -259,7 +259,7 @@ POST /api/v1/tasks/submit
 参数:
   file: 文件 (必需)
   backend: pipeline | vlm-transformers | vlm-vllm-engine (默认: pipeline)
-  lang: ch | en | korean | japan | ... (默认: auto)
+  lang: ch | en | korean | japan | ... (默认: ch)
   priority: 0-100 (数字越大越优先，默认: 0)
 ```
 

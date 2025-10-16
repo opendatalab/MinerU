@@ -8,6 +8,7 @@ import subprocess
 import signal
 import sys
 import time
+import os
 from loguru import logger
 from pathlib import Path
 import argparse
@@ -44,9 +45,12 @@ class TianshuLauncher:
         try:
             # 1. 启动 API Server
             logger.info("📡 [1/3] Starting API Server...")
+            env = os.environ.copy()
+            env['API_PORT'] = str(self.api_port)
             api_proc = subprocess.Popen(
                 [sys.executable, 'api_server.py'],
-                cwd=Path(__file__).parent
+                cwd=Path(__file__).parent,
+                env=env
             )
             self.processes.append(('API Server', api_proc))
             time.sleep(3)

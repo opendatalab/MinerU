@@ -9,7 +9,7 @@ import aiohttp
 from pathlib import Path
 from loguru import logger
 import time
-from typing import List, Dict
+from typing import Dict
 
 
 class TianshuClient:

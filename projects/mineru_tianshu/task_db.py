@@ -7,7 +7,6 @@ MinerU Tianshu - SQLite Task Database Manager
 import sqlite3
 import json
 import uuid
-from datetime import datetime
 from contextlib import contextmanager
 from typing import Optional, List, Dict
 from pathlib import Path
@@ -124,10 +123,10 @@ class TaskDB:
                 cursor.execute('''
                     UPDATE tasks 
                     SET status = 'processing', 
-                        started_at = ?, 
+                        started_at = CURRENT_TIMESTAMP, 
                         worker_id = ?
                     WHERE task_id = ?
-                ''', (datetime.now().isoformat(), worker_id, task['task_id']))
+                ''', (worker_id, task['task_id']))
                 
                 return dict(task)
             
@@ -149,8 +148,7 @@ class TaskDB:
             params = [status]
             
             if status == 'completed':
-                updates.append('completed_at = ?')
-                params.append(datetime.now().isoformat())
+                updates.append('completed_at = CURRENT_TIMESTAMP')
                 if result_path:
                     updates.append('result_path = ?')
                     params.append(result_path)
@@ -158,8 +156,7 @@ class TaskDB:
             if status == 'failed' and error_message:
                 updates.append('error_message = ?')
                 params.append(error_message)
-                updates.append('completed_at = ?')
-                params.append(datetime.now().isoformat())
+                updates.append('completed_at = CURRENT_TIMESTAMP')
             
             params.append(task_id)
             cursor.execute(f'''

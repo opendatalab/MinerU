@@ -5,7 +5,7 @@ MinerU Tianshu - API Server
 提供RESTful API接口用于任务提交、查询和管理
 """
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 from pathlib import Path
@@ -105,7 +105,8 @@ def process_markdown_images(md_content: str, image_dir: Path, upload_images: boo
                     minio_client.fput_object(bucket_name, object_name, str(full_image_path))
                     
                     # 生成 MinIO 访问 URL
-                    minio_url = f"https://{minio_endpoint}/{bucket_name}/{object_name}"
+                    scheme = 'https' if MINIO_CONFIG['secure'] else 'http'
+                    minio_url = f"{scheme}://{minio_endpoint}/{bucket_name}/{object_name}"
                     
                     # 返回 HTML 格式的 img 标签
                     return f'<img src="{minio_url}" alt="{alt_text}">'
@@ -137,7 +138,7 @@ async def root():
 
 @app.post("/api/v1/tasks/submit")
 async def submit_task(
-    file: UploadFile = File(..., description="PDF文件或图片"),
+    file: UploadFile = File(..., description="文档文件: PDF/图片(MinerU解析) 或 Office/HTML/文本等(MarkItDown解析)"),
     backend: str = Form('pipeline', description="处理后端: pipeline/vlm-transformers/vlm-vllm-engine"),
     lang: str = Form('ch', description="语言: ch/en/korean/japan等"),
     method: str = Form('auto', description="解析方法: auto/txt/ocr"),
@@ -153,8 +154,14 @@ async def submit_task(
     try:
         # 保存上传的文件到临时目录
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix)
-        content = await file.read()
-        temp_file.write(content)
+        
+        # 流式写入文件到磁盘，避免高内存使用
+        while True:
+            chunk = await file.read(1 << 23)  # 8MB chunks
+            if not chunk:
+                break
+            temp_file.write(chunk)
+        
         temp_file.close()
         
         # 创建任务
@@ -405,13 +412,16 @@ async def health_check():
 
 
 if __name__ == '__main__':
+    # 从环境变量读取端口，默认为8000
+    api_port = int(os.getenv('API_PORT', '8000'))
+    
     logger.info("🚀 Starting MinerU Tianshu API Server...")
-    logger.info("📖 API Documentation: http://localhost:8000/docs")
+    logger.info(f"📖 API Documentation: http://localhost:{api_port}/docs")
     
     uvicorn.run(
         app, 
         host='0.0.0.0', 
-        port=8000,
+        port=api_port,
         log_level='info'
     )
 

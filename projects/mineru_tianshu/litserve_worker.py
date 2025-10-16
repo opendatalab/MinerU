@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 import litserve as ls
 from loguru import logger
-from typing import Optional
 
 # 添加父目录到路径以导入 MinerU
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
