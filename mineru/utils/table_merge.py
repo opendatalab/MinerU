@@ -145,8 +145,9 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
                 colspan2 = int(cell2.get("colspan", 1))
                 rowspan2 = int(cell2.get("rowspan", 1))
 
-                text1 = full_to_half(cell1.get_text().strip())
-                text2 = full_to_half(cell2.get_text().strip())
+                # 去除所有空白字符（包括空格、换行、制表符等）
+                text1 = ''.join(full_to_half(cell1.get_text()).split())
+                text2 = ''.join(full_to_half(cell2.get_text()).split())
 
                 if colspan1 != colspan2 or rowspan1 != rowspan2 or text1 != text2:
                     structure_match = False
@@ -170,11 +171,12 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
 def can_merge_tables(current_table_block, previous_table_block):
     """判断两个表格是否可以合并"""
     # 检查表格是否有caption和footnote
-    # if any(block["type"] == BlockType.TABLE_CAPTION for block in current_table_block["blocks"]):
-    #     return False, None, None, None, None
-    # current_table_block["blocks"]中有任何TABLE_CAPTION类型的块，且任意caption块内不以"（续）"结尾，则不合并
-    if any(block["type"] == BlockType.TABLE_CAPTION and not full_to_half(merge_para_with_text(block).strip()).endswith("(续)") for block in current_table_block["blocks"]):
-        return False, None, None, None, None
+    # 如果有TABLE_CAPTION类型的块,检查是否至少有一个以"(续)"结尾
+    caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
+    if caption_blocks:
+        # 如果所有caption都不以"(续)"结尾,则不合并
+        if not any(full_to_half(merge_para_with_text(block).strip()).endswith("(续)") for block in caption_blocks):
+            return False, None, None, None, None
 
     if any(block["type"] == BlockType.TABLE_FOOTNOTE for block in previous_table_block["blocks"]):
         return False, None, None, None, None
@@ -257,6 +259,59 @@ def check_rows_match(soup1, soup2):
     return last_row_cols == first_row_cols or last_row_visual_cols == first_row_visual_cols
 
 
+def check_row_columns_match(row1, row2):
+    # 逐个cell检测colspan属性是否一致
+    cells1 = row1.find_all(["td", "th"])
+    cells2 = row2.find_all(["td", "th"])
+    if len(cells1) != len(cells2):
+        return False
+    for cell1, cell2 in zip(cells1, cells2):
+        colspan1 = int(cell1.get("colspan", 1))
+        colspan2 = int(cell2.get("colspan", 1))
+        if colspan1 != colspan2:
+            return False
+    return True
+
+
+def adjust_table_rows_colspan(rows, start_idx, end_idx,
+                              reference_structure, reference_visual_cols,
+                              target_cols, current_cols, reference_row):
+    """调整表格行的colspan属性以匹配目标列数
+
+    Args:
+        rows: 表格行列表
+        start_idx: 起始行索引
+        end_idx: 结束行索引（不包含）
+        reference_structure: 参考行的colspan结构列表
+        reference_visual_cols: 参考行的视觉列数
+        target_cols: 目标总列数
+        current_cols: 当前总列数
+        reference_row: 参考行对象
+    """
+    for i in range(start_idx, end_idx):
+        row = rows[i]
+        cells = row.find_all(["td", "th"])
+        if not cells:
+            continue
+
+        current_row_cols = calculate_row_columns(row)
+        if current_row_cols >= target_cols:
+            continue
+
+        # 检查是否与参考行结构匹配
+        if calculate_visual_columns(row) == reference_visual_cols and check_row_columns_match(row, reference_row):
+            # 尝试应用参考结构
+            if len(cells) <= len(reference_structure):
+                for j, cell in enumerate(cells):
+                    if j < len(reference_structure) and reference_structure[j] > 1:
+                        cell["colspan"] = str(reference_structure[j])
+        else:
+            # 扩展最后一个单元格以填补列数差异
+            last_cell = cells[-1]
+            current_last_span = int(last_cell.get("colspan", 1))
+            last_cell["colspan"] = str(current_last_span + (target_cols - current_cols))
+
+
 def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_footnotes):
     """执行表格合并操作"""
     # 检测表头有几行，并确认表头内容是否一致
@@ -273,69 +328,32 @@ def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_foo
 
 
     if rows1 and rows2 and header_count < len(rows2):
-        # 获取表1最后一行
+        # 获取表1最后一行和表2第一个非表头行
         last_row1 = rows1[-1]
-        # 获取表2第一个非表头行
         first_data_row2 = rows2[header_count]
 
-        # 分析两行的colspan结构
-        last_row1_structure = []
-        has_colspan_last_row1 = False
-        for cell in last_row1.find_all(["td", "th"]):
-            colspan = int(cell.get("colspan", 1))
-            last_row1_structure.append(colspan)
-            if colspan > 1:
-                has_colspan_last_row1 = True
-
-        first_row2_structure = []
-        has_colspan_first_row2 = False
-        for cell in first_data_row2.find_all(["td", "th"]):
-            colspan = int(cell.get("colspan", 1))
-            first_row2_structure.append(colspan)
-            if colspan > 1:
-                has_colspan_first_row2 = True
-
-        # 确定基准结构（优先使用有colspan的行）
-        if has_colspan_last_row1:
-            reference_structure = last_row1_structure
+        # 计算表格总列数
+        table_cols1 = calculate_table_total_columns(soup1)
+        table_cols2 = calculate_table_total_columns(soup2)
+        if table_cols1 >= table_cols2:
+            reference_structure = [int(cell.get("colspan", 1)) for cell in last_row1.find_all(["td", "th"])]
             reference_visual_cols = calculate_visual_columns(last_row1)
-        elif has_colspan_first_row2:
-            reference_structure = first_row2_structure
+            # 以表1的最后一行为参考，调整表2的行
+            adjust_table_rows_colspan(
+                rows2, header_count, len(rows2),
+                reference_structure, reference_visual_cols,
+                table_cols1, table_cols2, first_data_row2
+            )
+
+        else:  # table_cols2 > table_cols1
+            reference_structure = [int(cell.get("colspan", 1)) for cell in first_data_row2.find_all(["td", "th"])]
             reference_visual_cols = calculate_visual_columns(first_data_row2)
-        else:
-            # 都没有colspan时使用表1最后一行作为默认基准
-            reference_structure = last_row1_structure
-            reference_visual_cols = calculate_visual_columns(last_row1)
-
-        # 如果表1最后一行没有colspan但表2首行有，则调整表1相关行
-        if not has_colspan_last_row1 and has_colspan_first_row2:
-            # 找到表1中所有具有相同视觉列数的行
-            rows_to_adjust = []
-            for i in range(len(rows1) - 1, -1, -1):
-                if calculate_visual_columns(rows1[i]) == reference_visual_cols:
-                    rows_to_adjust.append(rows1[i])
-                else:
-                    break
-
-            # 应用参考结构到这些行
-            for row in rows_to_adjust:
-                cells = row.find_all(["td", "th"])
-                if cells and len(cells) <= len(reference_structure):
-                    for j, cell in enumerate(cells):
-                        if j < len(reference_structure) and reference_structure[j] > 1:
-                            cell["colspan"] = str(reference_structure[j])
-
-        # 如果表2首行没有colspan但表1最后一行有，则调整表2相关行
-        elif has_colspan_last_row1 and not has_colspan_first_row2:
-            # 调整表2中所有具有相同视觉列数的行
-            for i in range(header_count, len(rows2)):
-                row = rows2[i]
-                if calculate_visual_columns(row) == reference_visual_cols:
-                    cells = row.find_all(["td", "th"])
-                    if cells and len(cells) <= len(reference_structure):
-                        for j, cell in enumerate(cells):
-                            if j < len(reference_structure) and reference_structure[j] > 1:
-                                cell["colspan"] = str(reference_structure[j])
+            # 以表2的第一个数据行为参考，调整表1的行
+            adjust_table_rows_colspan(
+                rows1, 0, len(rows1),
+                reference_structure, reference_visual_cols,
+                table_cols2, table_cols1, last_row1
+            )
 
     # 将第二个表格的行添加到第一个表格中
     if tbody1:
