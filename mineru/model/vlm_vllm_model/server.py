@@ -1,3 +1,4 @@
+import os
 import sys
 
 from mineru.backend.vlm.custom_logits_processors import enable_custom_logits_processors
@@ -50,6 +51,8 @@ def main():
 
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", model_path] + args
+
+    os.environ["OMP_NUM_THREADS"] = "1"
 
     # 启动vllm服务器
     print(f"start vllm server: {sys.argv}")
