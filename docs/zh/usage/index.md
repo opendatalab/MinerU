@@ -21,10 +21,10 @@
     * [BISHENG](plugin/BISHENG.md)
     * [RagFlow](plugin/RagFlow.md)
 - 其他加速卡适配(由社区贡献)
-    * [昇腾 Ascend](acceleration_cards/Ascend.md) #3233
-    * [AMD](acceleration_cards/AMD.md)  #3662
-    * [沐曦 METAX](acceleration_cards/METAX.md) @147phoenix
-    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) @Tecorigin
+    * [昇腾 Ascend](acceleration_cards/Ascend.md) [#3233](https://github.com/opendatalab/MinerU/discussions/3233)
+    * [沐曦 METAX](acceleration_cards/METAX.md) [#3477](https://github.com/opendatalab/MinerU/pull/3477)
+    * [AMD](acceleration_cards/AMD.md)  [#3662](https://github.com/opendatalab/MinerU/discussions/3662)
+    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) [#3767](https://github.com/opendatalab/MinerU/pull/3767)
 
 ## 开始使用
 
