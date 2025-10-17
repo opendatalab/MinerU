@@ -22,7 +22,7 @@ aiohttp>=3.11.0
 loguru>=0.7.0
 
 # Office Document Parsing
-markitdown>=0.1.3
+markitdown[all]>=0.1.3
 
 # MinIO Object Storage
 minio>=7.2.0
