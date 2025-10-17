@@ -13,8 +13,8 @@ from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from mineru.utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
-from mineru.model.ocr.paddleocr2pytorch.tools.infer.predict_system import TextSystem
-from mineru.model.ocr.paddleocr2pytorch.tools.infer import pytorchocr_utility as utility
+from mineru.model.utils.tools.infer.predict_system import TextSystem
+from mineru.model.utils.tools.infer import pytorchocr_utility as utility
 import argparse
 
 
@@ -47,7 +47,7 @@ def get_model_params(lang, config):
         raise Exception (f'Language {lang} not supported')
 
 
-root_dir = Path(__file__).resolve().parent
+root_dir = os.path.join(Path(__file__).resolve().parent.parent.parent, 'utils')
 
 
 class PytorchPaddleOCR(TextSystem):
