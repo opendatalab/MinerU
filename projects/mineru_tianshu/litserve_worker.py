@@ -3,11 +3,13 @@ MinerU Tianshu - LitServe Worker
 天枢 LitServe Worker
 
 使用 LitServe 实现 GPU 资源的自动负载均衡
-从 SQLite 队列拉取任务并处理
+Worker 主动循环拉取任务并处理
 """
 import os
 import json
 import sys
+import time
+import threading
 from pathlib import Path
 import litserve as ls
 from loguru import logger
@@ -18,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from task_db import TaskDB
 from mineru.cli.common import do_parse, read_fn
 from mineru.utils.config_reader import get_device
-from mineru.utils.model_utils import get_vram
+from mineru.utils.model_utils import get_vram, clean_memory
 
 # 尝试导入 markitdown
 try:
@@ -33,10 +35,12 @@ class MinerUWorkerAPI(ls.LitAPI):
     """
     LitServe API Worker
     
-    从 SQLite 队列拉取任务，利用 LitServe 的自动 GPU 负载均衡
+    Worker 主动循环拉取任务，利用 LitServe 的自动 GPU 负载均衡
     支持两种解析方式：
     - PDF/图片 -> MinerU 解析（GPU 加速）
     - 其他所有格式 -> MarkItDown 解析（快速处理）
+    
+    新模式：每个 worker 启动后持续循环拉取任务，处理完一个立即拉取下一个
     """
     
     # 支持的文件格式定义
@@ -44,18 +48,25 @@ class MinerUWorkerAPI(ls.LitAPI):
     PDF_IMAGE_FORMATS = {'.pdf', '.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp'}
     # 其他所有格式都使用 MarkItDown 解析
     
-    def __init__(self, output_dir='/tmp/mineru_tianshu_output', worker_id_prefix='tianshu'):
+    def __init__(self, output_dir='/tmp/mineru_tianshu_output', worker_id_prefix='tianshu', 
+                 poll_interval=0.5, enable_worker_loop=True):
         super().__init__()
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.worker_id_prefix = worker_id_prefix
+        self.poll_interval = poll_interval  # Worker 拉取任务的间隔（秒）
+        self.enable_worker_loop = enable_worker_loop  # 是否启用 worker 循环拉取
         self.db = TaskDB()
         self.worker_id = None
         self.markitdown = None
+        self.running = False  # Worker 运行状态
+        self.worker_thread = None  # Worker 线程
     
     def setup(self, device):
         """
         初始化环境（每个 worker 进程调用一次）
+        
+        关键修复：使用 CUDA_VISIBLE_DEVICES 确保每个进程只使用分配的 GPU
         
         Args:
             device: LitServe 分配的设备 (cuda:0, cuda:1, etc.)
@@ -68,11 +79,21 @@ class MinerUWorkerAPI(ls.LitAPI):
         
         logger.info(f"⚙️  Worker {self.worker_id} setting up on device: {device}")
         
-        # 配置 MinerU 环境
-        if os.getenv('MINERU_DEVICE_MODE', None) is None:
-            os.environ['MINERU_DEVICE_MODE'] = device if device != 'auto' else get_device()
-        
-        device_mode = os.environ['MINERU_DEVICE_MODE']
+        # 关键修复：设置 CUDA_VISIBLE_DEVICES 限制进程只能看到分配的 GPU
+        # 这样可以防止一个进程占用多张卡的显存
+        if device != 'auto' and device != 'cpu' and ':' in str(device):
+            # 从 'cuda:0' 提取设备ID '0'
+            device_id = str(device).split(':')[-1]
+            os.environ['CUDA_VISIBLE_DEVICES'] = device_id
+            # 设置为 cuda:0，因为对进程来说只能看到一张卡（逻辑ID变为0）
+            os.environ['MINERU_DEVICE_MODE'] = 'cuda:0'
+            device_mode = 'cuda:0'
+            logger.info(f"🔒 CUDA_VISIBLE_DEVICES={device_id} (Physical GPU {device_id} → Logical GPU 0)")
+        else:
+            # 配置 MinerU 环境
+            if os.getenv('MINERU_DEVICE_MODE', None) is None:
+                os.environ['MINERU_DEVICE_MODE'] = device if device != 'auto' else get_device()
+            device_mode = os.environ['MINERU_DEVICE_MODE']
         
         # 配置显存
         if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
@@ -93,12 +114,143 @@ class MinerUWorkerAPI(ls.LitAPI):
         logger.info(f"✅ Worker {self.worker_id} ready")
         logger.info(f"   Device: {device_mode}")
         logger.info(f"   VRAM: {os.environ['MINERU_VIRTUAL_VRAM_SIZE']}GB")
+        
+        # 启动 worker 循环拉取任务（在独立线程中）
+        if self.enable_worker_loop:
+            self.running = True
+            self.worker_thread = threading.Thread(
+                target=self._worker_loop, 
+                daemon=True,
+                name=f"Worker-{self.worker_id}"
+            )
+            self.worker_thread.start()
+            logger.info(f"🔄 Worker loop started (poll_interval={self.poll_interval}s)")
+    
+    def _worker_loop(self):
+        """
+        Worker 主循环：持续拉取并处理任务
+        
+        这个方法在独立线程中运行，让每个 worker 主动拉取任务
+        而不是被动等待调度器触发
+        """
+        logger.info(f"🔁 {self.worker_id} started task polling loop")
+        
+        idle_count = 0
+        while self.running:
+            try:
+                # 从数据库获取任务
+                task = self.db.get_next_task(self.worker_id)
+                
+                if task:
+                    idle_count = 0  # 重置空闲计数
+                    
+                    # 处理任务
+                    task_id = task['task_id']
+                    logger.info(f"🔄 {self.worker_id} picked up task {task_id}")
+                    
+                    try:
+                        self._process_task(task)
+                    except Exception as e:
+                        logger.error(f"❌ {self.worker_id} failed to process task {task_id}: {e}")
+                        success = self.db.update_task_status(
+                            task_id, 'failed', 
+                            error_message=str(e), 
+                            worker_id=self.worker_id
+                        )
+                        if not success:
+                            logger.warning(f"⚠️  Task {task_id} was modified by another process during failure update")
+                    
+                else:
+                    # 没有任务时，增加空闲计数
+                    idle_count += 1
+                    
+                    # 只在第一次空闲时记录日志，避免刷屏
+                    if idle_count == 1:
+                        logger.debug(f"💤 {self.worker_id} is idle, waiting for tasks...")
+                    
+                    # 空闲时等待一段时间再拉取
+                    time.sleep(self.poll_interval)
+                    
+            except Exception as e:
+                logger.error(f"❌ {self.worker_id} loop error: {e}")
+                time.sleep(self.poll_interval)
+        
+        logger.info(f"⏹️  {self.worker_id} stopped task polling loop")
+    
+    def _process_task(self, task: dict):
+        """
+        处理单个任务
+        
+        Args:
+            task: 任务字典
+        """
+        task_id = task['task_id']
+        file_path = task['file_path']
+        file_name = task['file_name']
+        backend = task['backend']
+        options = json.loads(task['options'])
+        
+        logger.info(f"🔄 Processing task {task_id}: {file_name}")
+        
+        try:
+            # 准备输出目录
+            output_path = self.output_dir / task_id
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            # 判断文件类型并选择解析方式
+            file_type = self._get_file_type(file_path)
+            
+            if file_type == 'pdf_image':
+                # 使用 MinerU 解析 PDF 和图片
+                self._parse_with_mineru(
+                    file_path=Path(file_path),
+                    file_name=file_name,
+                    task_id=task_id,
+                    backend=backend,
+                    options=options,
+                    output_path=output_path
+                )
+                parse_method = 'MinerU'
+                
+            else:  # file_type == 'markitdown'
+                # 使用 markitdown 解析所有其他格式
+                self._parse_with_markitdown(
+                    file_path=Path(file_path),
+                    file_name=file_name,
+                    output_path=output_path
+                )
+                parse_method = 'MarkItDown'
+            
+            # 更新状态为成功
+            success = self.db.update_task_status(
+                task_id, 'completed', 
+                result_path=str(output_path),
+                worker_id=self.worker_id
+            )
+            
+            if success:
+                logger.info(f"✅ Task {task_id} completed by {self.worker_id}")
+                logger.info(f"   Parser: {parse_method}")
+                logger.info(f"   Output: {output_path}")
+            else:
+                logger.warning(
+                    f"⚠️  Task {task_id} was modified by another process. "
+                    f"Worker {self.worker_id} completed the work but status update was rejected."
+                )
+            
+        finally:
+            # 清理临时文件
+            try:
+                if Path(file_path).exists():
+                    Path(file_path).unlink()
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp file {file_path}: {e}")
     
     def decode_request(self, request):
         """
         解码请求
         
-        接收一个 'poll' 信号来触发从数据库拉取任务
+        现在主要用于健康检查和手动触发（兼容旧接口）
         """
         return request.get('action', 'poll')
     
@@ -136,20 +288,28 @@ class MinerUWorkerAPI(ls.LitAPI):
         """
         logger.info(f"📄 Using MinerU to parse: {file_name}")
         
-        # 读取文件
-        pdf_bytes = read_fn(file_path)
-        
-        # 执行解析
-        do_parse(
-            output_dir=str(output_path),
-            pdf_file_names=[Path(file_name).stem],
-            pdf_bytes_list=[pdf_bytes],
-            p_lang_list=[options.get('lang', 'ch')],
-            backend=backend,
-            parse_method=options.get('method', 'auto'),
-            formula_enable=options.get('formula_enable', True),
-            table_enable=options.get('table_enable', True),
-        )
+        try:
+            # 读取文件
+            pdf_bytes = read_fn(file_path)
+            
+            # 执行解析（MinerU 的 ModelSingleton 会自动复用模型）
+            do_parse(
+                output_dir=str(output_path),
+                pdf_file_names=[Path(file_name).stem],
+                pdf_bytes_list=[pdf_bytes],
+                p_lang_list=[options.get('lang', 'ch')],
+                backend=backend,
+                parse_method=options.get('method', 'auto'),
+                formula_enable=options.get('formula_enable', True),
+                table_enable=options.get('table_enable', True),
+            )
+        finally:
+            # 使用 MinerU 自带的内存清理函数
+            # 这个函数只清理推理产生的中间结果，不会卸载模型
+            try:
+                clean_memory()
+            except Exception as e:
+                logger.debug(f"Memory cleanup: {e}")
     
     def _parse_with_markitdown(self, file_path: Path, file_name: str, 
                                output_path: Path):
@@ -177,103 +337,65 @@ class MinerUWorkerAPI(ls.LitAPI):
     
     def predict(self, action):
         """
-        从数据库拉取任务并处理
+        HTTP 接口（主要用于健康检查和监控）
         
-        这里是实际的任务处理逻辑，LitServe 会自动管理 GPU 负载均衡
-        支持根据文件类型选择不同的解析器：
-        - PDF/图片 -> MinerU（GPU 加速）
-        - 其他所有格式 -> MarkItDown（快速处理）
+        现在任务由 worker 循环自动拉取处理，这个接口主要用于：
+        1. 健康检查
+        2. 获取 worker 状态
+        3. 兼容旧的手动触发模式（当 enable_worker_loop=False 时）
         """
-        if action != 'poll':
+        if action == 'health':
+            # 健康检查
+            stats = self.db.get_queue_stats()
             return {
-                'status': 'error', 
-                'message': 'Invalid action. Use {"action": "poll"} to trigger task processing.'
+                'status': 'healthy',
+                'worker_id': self.worker_id,
+                'worker_loop_enabled': self.enable_worker_loop,
+                'worker_running': self.running,
+                'queue_stats': stats
             }
         
-        # 从数据库获取任务
-        task = self.db.get_next_task(self.worker_id)
-        
-        if not task:
-            # 没有任务时返回空闲状态
-            return {
-                'status': 'idle', 
-                'message': 'No pending tasks in queue',
-                'worker_id': self.worker_id
-            }
-        
-        # 提取任务信息
-        task_id = task['task_id']
-        file_path = task['file_path']
-        file_name = task['file_name']
-        backend = task['backend']
-        options = json.loads(task['options'])
-        
-        logger.info(f"🔄 Worker {self.worker_id} processing task {task_id}: {file_name}")
-        
-        try:
-            # 准备输出目录
-            output_path = self.output_dir / task_id
-            output_path.mkdir(parents=True, exist_ok=True)
-            
-            # 判断文件类型并选择解析方式
-            file_type = self._get_file_type(file_path)
-            
-            if file_type == 'pdf_image':
-                # 使用 MinerU 解析 PDF 和图片
-                self._parse_with_mineru(
-                    file_path=Path(file_path),
-                    file_name=file_name,
-                    task_id=task_id,
-                    backend=backend,
-                    options=options,
-                    output_path=output_path
-                )
-                parse_method = 'MinerU'
+        elif action == 'poll':
+            if not self.enable_worker_loop:
+                # 兼容模式：手动触发任务拉取
+                task = self.db.get_next_task(self.worker_id)
                 
-            else:  # file_type == 'markitdown'
-                # 使用 markitdown 解析所有其他格式
-                self._parse_with_markitdown(
-                    file_path=Path(file_path),
-                    file_name=file_name,
-                    output_path=output_path
-                )
-                parse_method = 'MarkItDown'
-            
-            # 更新状态为成功
-            self.db.update_task_status(task_id, 'completed', str(output_path))
-            
-            logger.info(f"✅ Task {task_id} completed by {self.worker_id}")
-            logger.info(f"   Parser: {parse_method}")
-            logger.info(f"   Output: {output_path}")
-            
-            return {
-                'status': 'completed',
-                'task_id': task_id,
-                'file_name': file_name,
-                'parse_method': parse_method,
-                'file_type': file_type,
-                'output_path': str(output_path),
-                'worker_id': self.worker_id
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Task {task_id} failed: {e}")
-            self.db.update_task_status(task_id, 'failed', error_message=str(e))
-            
-            return {
-                'status': 'failed',
-                'task_id': task_id,
-                'error': str(e),
-                'worker_id': self.worker_id
-            }
+                if not task:
+                    return {
+                        'status': 'idle',
+                        'message': 'No pending tasks in queue',
+                        'worker_id': self.worker_id
+                    }
+                
+                try:
+                    self._process_task(task)
+                    return {
+                        'status': 'completed',
+                        'task_id': task['task_id'],
+                        'worker_id': self.worker_id
+                    }
+                except Exception as e:
+                    return {
+                        'status': 'failed',
+                        'task_id': task['task_id'],
+                        'error': str(e),
+                        'worker_id': self.worker_id
+                    }
+            else:
+                # Worker 循环模式：返回状态信息
+                return {
+                    'status': 'auto_mode',
+                    'message': 'Worker is running in auto-loop mode, tasks are processed automatically',
+                    'worker_id': self.worker_id,
+                    'worker_running': self.running
+                }
         
-        finally:
-            # 清理临时文件
-            try:
-                if Path(file_path).exists():
-                    Path(file_path).unlink()
-            except Exception as e:
-                logger.warning(f"Failed to clean up temp file {file_path}: {e}")
+        else:
+            return {
+                'status': 'error',
+                'message': f'Invalid action: {action}. Use "health" or "poll".',
+                'worker_id': self.worker_id
+            }
     
     def encode_response(self, response):
         """编码响应"""
@@ -285,7 +407,9 @@ def start_litserve_workers(
     accelerator='auto',
     devices='auto',
     workers_per_device=1,
-    port=9000
+    port=9000,
+    poll_interval=0.5,
+    enable_worker_loop=True
 ):
     """
     启动 LitServe Worker Pool
@@ -296,6 +420,8 @@ def start_litserve_workers(
         devices: 使用的设备 (auto/[0,1,2])
         workers_per_device: 每个 GPU 的 worker 数量
         port: 服务端口
+        poll_interval: Worker 拉取任务的间隔（秒）
+        enable_worker_loop: 是否启用 worker 自动循环拉取任务
     """
     logger.info("=" * 60)
     logger.info("🚀 Starting MinerU Tianshu LitServe Worker Pool")
@@ -305,10 +431,17 @@ def start_litserve_workers(
     logger.info(f"💾 Devices: {devices}")
     logger.info(f"👷 Workers per Device: {workers_per_device}")
     logger.info(f"🔌 Port: {port}")
+    logger.info(f"🔄 Worker Loop: {'Enabled' if enable_worker_loop else 'Disabled'}")
+    if enable_worker_loop:
+        logger.info(f"⏱️  Poll Interval: {poll_interval}s")
     logger.info("=" * 60)
     
     # 创建 LitServe 服务器
-    api = MinerUWorkerAPI(output_dir=output_dir)
+    api = MinerUWorkerAPI(
+        output_dir=output_dir,
+        poll_interval=poll_interval,
+        enable_worker_loop=enable_worker_loop
+    )
     server = ls.LitServer(
         api,
         accelerator=accelerator,
@@ -319,7 +452,10 @@ def start_litserve_workers(
     
     logger.info(f"✅ LitServe worker pool initialized")
     logger.info(f"📡 Listening on: http://0.0.0.0:{port}/predict")
-    logger.info(f"🔄 Workers will poll SQLite queue for tasks")
+    if enable_worker_loop:
+        logger.info(f"🔁 Workers will continuously poll and process tasks")
+    else:
+        logger.info(f"🔄 Workers will wait for scheduler triggers")
     logger.info("=" * 60)
     
     # 启动服务器
@@ -341,6 +477,10 @@ if __name__ == '__main__':
                        help='Number of workers per device')
     parser.add_argument('--port', type=int, default=9000,
                        help='Server port')
+    parser.add_argument('--poll-interval', type=float, default=0.5,
+                       help='Worker poll interval in seconds (default: 0.5)')
+    parser.add_argument('--disable-worker-loop', action='store_true',
+                       help='Disable worker auto-loop mode (use scheduler-driven mode)')
     
     args = parser.parse_args()
     
@@ -358,6 +498,9 @@ if __name__ == '__main__':
         accelerator=args.accelerator,
         devices=devices,
         workers_per_device=args.workers_per_device,
-        port=args.port
+        port=args.port,
+        poll_interval=args.poll_interval,
+        enable_worker_loop=not args.disable_worker_loop
     )
+
 

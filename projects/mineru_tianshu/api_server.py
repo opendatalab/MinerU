@@ -226,8 +226,14 @@ async def get_task_status(
     }
     logger.info(f"✅ Task status: {task['status']} - (result_path: {task['result_path']})")
     
-    # 如果任务已完成，自动返回解析内容
-    if task['status'] == 'completed' and task['result_path']:
+    # 如果任务已完成，尝试返回解析内容
+    if task['status'] == 'completed':
+        if not task['result_path']:
+            # 结果文件已被清理
+            response['data'] = None
+            response['message'] = 'Task completed but result files have been cleaned up (older than retention period)'
+            return response
+        
         result_dir = Path(task['result_path'])
         logger.info(f"📂 Checking result directory: {result_dir}")
         
