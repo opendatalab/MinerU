@@ -20,9 +20,11 @@
     * [DataFlow](plugin/DataFlow.md)
     * [BISHENG](plugin/BISHENG.md)
     * [RagFlow](plugin/RagFlow.md)
-- 国产加速卡适配
-    * [沐曦 METAX](./domestic_acceleration_cards/METAX.md)
-    * [太初元碁 Tecorigin](./domestic_acceleration_cards/Tecorigin.md)
+- 其他加速卡适配(由社区贡献)
+    * [昇腾 Ascend](acceleration_cards/Ascend.md) #3233
+    * [AMD](acceleration_cards/AMD.md)  #3662
+    * [沐曦 METAX](acceleration_cards/METAX.md) @147phoenix
+    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) @Tecorigin
 
 ## 开始使用
 
