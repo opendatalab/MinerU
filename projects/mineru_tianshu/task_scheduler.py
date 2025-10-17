@@ -151,7 +151,7 @@ class TaskScheduler:
                     
                     # 4. 定期清理旧任务文件和记录
                     cleanup_counter += 1
-                    # 每24小时清理一次（假设 monitor_interval = 300s）
+                    # 每24小时清理一次（基于当前监控间隔计算）
                     cleanup_interval_cycles = (24 * 3600) / self.monitor_interval
                     if cleanup_counter >= cleanup_interval_cycles:
                         cleanup_counter = 0

@@ -10,6 +10,8 @@ import json
 import sys
 import time
 import threading
+import signal
+import atexit
 from pathlib import Path
 import litserve as ls
 from loguru import logger
@@ -87,7 +89,7 @@ class MinerUWorkerAPI(ls.LitAPI):
             os.environ['CUDA_VISIBLE_DEVICES'] = device_id
             # 设置为 cuda:0，因为对进程来说只能看到一张卡（逻辑ID变为0）
             os.environ['MINERU_DEVICE_MODE'] = 'cuda:0'
-            device_mode = 'cuda:0'
+            device_mode = os.environ['MINERU_DEVICE_MODE']
             logger.info(f"🔒 CUDA_VISIBLE_DEVICES={device_id} (Physical GPU {device_id} → Logical GPU 0)")
         else:
             # 配置 MinerU 环境
@@ -125,6 +127,26 @@ class MinerUWorkerAPI(ls.LitAPI):
             )
             self.worker_thread.start()
             logger.info(f"🔄 Worker loop started (poll_interval={self.poll_interval}s)")
+    
+    def teardown(self):
+        """
+        优雅关闭 Worker
+        
+        设置 running 标志为 False，等待 worker 线程完成当前任务后退出。
+        这避免了守护线程可能导致的任务处理不完整或数据库操作不一致问题。
+        """
+        if self.enable_worker_loop and self.worker_thread and self.worker_thread.is_alive():
+            logger.info(f"🛑 Shutting down worker {self.worker_id}...")
+            self.running = False
+            
+            # 等待线程完成当前任务（最多等待 poll_interval * 2 秒）
+            timeout = self.poll_interval * 2
+            self.worker_thread.join(timeout=timeout)
+            
+            if self.worker_thread.is_alive():
+                logger.warning(f"⚠️  Worker thread did not stop within {timeout}s, forcing exit")
+            else:
+                logger.info(f"✅ Worker {self.worker_id} shut down gracefully")
     
     def _worker_loop(self):
         """
@@ -309,7 +331,7 @@ class MinerUWorkerAPI(ls.LitAPI):
             try:
                 clean_memory()
             except Exception as e:
-                logger.debug(f"Memory cleanup: {e}")
+                logger.debug(f"Memory cleanup failed for task {task_id}: {e}")
     
     def _parse_with_markitdown(self, file_path: Path, file_name: str, 
                                output_path: Path):
@@ -449,6 +471,24 @@ def start_litserve_workers(
         workers_per_device=workers_per_device,
         timeout=False,  # 不设置超时
     )
+    
+    # 注册优雅关闭处理器
+    def graceful_shutdown(signum=None, frame=None):
+        """处理关闭信号，优雅地停止 worker"""
+        logger.info("🛑 Received shutdown signal, gracefully stopping workers...")
+        # 注意：LitServe 会为每个设备创建多个 worker 实例
+        # 这里的 api 只是模板，实际的 worker 实例由 LitServe 管理
+        # teardown 会在每个 worker 进程中被调用
+        if hasattr(api, 'teardown'):
+            api.teardown()
+        sys.exit(0)
+    
+    # 注册信号处理器（Ctrl+C 等）
+    signal.signal(signal.SIGINT, graceful_shutdown)
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    
+    # 注册 atexit 处理器（正常退出时调用）
+    atexit.register(lambda: api.teardown() if hasattr(api, 'teardown') else None)
     
     logger.info(f"✅ LitServe worker pool initialized")
     logger.info(f"📡 Listening on: http://0.0.0.0:{port}/predict")
