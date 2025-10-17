@@ -22,6 +22,7 @@ def build_head(config, **kwargs):
     # rec head
     from .rec_ctc_head import CTCHead
     from .rec_multi_head import MultiHead
+    from .rec_ppformulanet_head import PPFormulaNet_Head
 
     # cls head
     from .cls_head import ClsHead
@@ -32,6 +33,7 @@ def build_head(config, **kwargs):
         "ClsHead",
         "MultiHead",
         "PFHeadLocal",
+        "PPFormulaNet_Head",
     ]
 
     module_name = config.pop("name")

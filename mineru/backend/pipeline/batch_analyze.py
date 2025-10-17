@@ -60,7 +60,12 @@ class BatchAnalyze:
             )
 
             # 公式识别
-            images_formula_list = self.model.mfr_model.batch_predict(
+            # images_formula_list = self.model.mfr_model.batch_predict(
+            #     images_mfd_res,
+            #     np_images,
+            #     batch_size=self.batch_ratio * MFR_BASE_BATCH_SIZE,
+            # )
+            images_formula_list = self.model.formula_model.batch_predict(
                 images_mfd_res,
                 np_images,
                 batch_size=self.batch_ratio * MFR_BASE_BATCH_SIZE,

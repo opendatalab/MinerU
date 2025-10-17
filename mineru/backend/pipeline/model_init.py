@@ -7,6 +7,7 @@ from .model_list import AtomicModel
 from ...model.layout.doclayoutyolo import DocLayoutYOLOModel
 from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
+from ...model.mfr.formulanet.predict_formula import FormulaRecognizer
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
@@ -70,6 +71,13 @@ def mfd_model_init(weight, device='cpu'):
 def mfr_model_init(weight_dir, device='cpu'):
     mfr_model = UnimernetModel(weight_dir, device)
     return mfr_model
+
+def formula_model_init(weight_dir, device='cpu'):
+    use_gpu = True
+    if device == "cpu":
+        use_gpu = False
+    formula_model = FormulaRecognizer(use_gpu=use_gpu)
+    return formula_model
 
 
 def doclayout_yolo_model_init(weight, device='cpu'):
@@ -151,6 +159,8 @@ def atom_model_init(model_name: str, **kwargs):
             kwargs.get('mfr_weight_dir'),
             kwargs.get('device')
         )
+    elif model_name == AtomicModel.Formula:
+        atom_model = formula_model_init(kwargs.get('device'))
     elif model_name == AtomicModel.OCR:
         atom_model = ocr_model_init(
             kwargs.get('det_db_box_thresh', 0.3),
@@ -201,6 +211,11 @@ class MineruPipelineModel:
                 mfd_weights=str(
                     os.path.join(auto_download_and_get_model_root_path(ModelPath.yolo_v8_mfd), ModelPath.yolo_v8_mfd)
                 ),
+                device=self.device,
+            )
+
+            self.formula_model = atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.Formula,
                 device=self.device,
             )
 
