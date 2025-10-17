@@ -20,6 +20,9 @@
     * [DataFlow](plugin/DataFlow.md)
     * [BISHENG](plugin/BISHENG.md)
     * [RagFlow](plugin/RagFlow.md)
+- 国产加速卡适配
+    * [沐曦 METAX](./domestic_acceleration_cards/METAX.md)
+    * [太初元碁 Tecorigin](./domestic_acceleration_cards/Tecorigin.md)
 
 ## 开始使用
 
