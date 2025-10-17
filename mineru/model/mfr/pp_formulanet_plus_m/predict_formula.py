@@ -1,11 +1,8 @@
 import os
-import cv2
 import torch
 import yaml
 from pathlib import Path
 from tqdm import tqdm
-from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from mineru.model.ocr.paddleocr2pytorch.tools.infer import pytorchocr_utility
 from mineru.model.ocr.paddleocr2pytorch.pytorchocr.base_ocr_v20 import BaseOCRV20
 from .processors import (
@@ -20,16 +17,17 @@ from .processors import (
 class FormulaRecognizer(BaseOCRV20):
     def __init__(
         self,
-        use_gpu=True,
+        weight_dir,
+        device="cpu",
     ):
-        self.use_gpu = torch.cuda.is_available() and use_gpu
         self.weights_path = os.path.join(
-            auto_download_and_get_model_root_path(ModelPath.formulanet),
-            ModelPath.formulanet,
+            weight_dir,
+            "PP-FormulaNet_plus-M.pth",
         )
-        self.yaml_path = Path(__file__).parent / "config" / "PP-FormulaNet_plus-M.yaml"
-        self.infer_yaml_path = (
-            Path(__file__).parent / "config" / "PP-FormulaNet_plus-M_inference.yml"
+        self.yaml_path = Path(__file__).parent / "config" / "arch_config.yaml"
+        self.infer_yaml_path = os.path.join(
+            weight_dir,
+            "PP-FormulaNet_plus-M_inference.yml",
         )
 
         network_config = pytorchocr_utility.AnalysisConfig(
@@ -40,9 +38,9 @@ class FormulaRecognizer(BaseOCRV20):
         super(FormulaRecognizer, self).__init__(network_config)
 
         self.load_state_dict(weights)
+        self.device = torch.device(device) if isinstance(device, str) else device
+        self.net.to(self.device)
         self.net.eval()
-        if self.use_gpu:
-            self.net.cuda()
 
         with open(self.infer_yaml_path, "r", encoding="utf-8") as yaml_file:
             data = yaml.load(yaml_file, Loader=yaml.FullLoader)
@@ -63,14 +61,13 @@ class FormulaRecognizer(BaseOCRV20):
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
         batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
         x = self.pre_tfs["ToBatch"](imgs=batch_imgs)
-        x = torch.from_numpy(x[0])
-        if self.use_gpu:
-            x = x.cuda()
+        x = torch.from_numpy(x[0]).to(self.device)
         rec_formula = []
         with torch.no_grad():
             with tqdm(total=len(x), desc="Formula Predict") as pbar:
                 for index in range(0, len(x), batch_size):
-                    batch_preds = [self.net(x[index : index + batch_size])]
+                    batch_data = x[index: index + batch_size]
+                    batch_preds = [self.net(batch_data)]
                     batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
                     rec_formula += self.post_op(batch_preds)
                     pbar.update(len(batch_preds))
