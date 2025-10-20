@@ -39,7 +39,7 @@ dependencies = [
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<0.7.0",
-    "mineru-vl-utils>=0.1.13,<1",
+    "mineru-vl-utils>=0.1.14,<1",
 ]
 
 [project.optional-dependencies]
@@ -56,7 +56,7 @@ vlm = [
     "accelerate>=1.5.1",
 ]
 vllm = [
-    "vllm>=0.10.1.1,<0.11",
+    "vllm>=0.10.1.1,<0.12",
 ]
 pipeline = [
     "matplotlib>=3.10,<4",

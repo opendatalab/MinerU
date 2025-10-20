@@ -70,6 +70,7 @@ class ModelPath:
     doclayout_yolo = "models/Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
     yolo_v8_mfd = "models/MFD/YOLO/yolo_v8_ft.pt"
     unimernet_small = "models/MFR/unimernet_hf_small_2503"
+    pp_formulanet_plus_m = "models/MFR/pp_formulanet_plus_m"
     pytorch_paddle = "models/OCR/paddleocr_torch"
     layout_reader = "models/ReadingOrder/layout_reader"
     slanet_plus = "models/TabRec/SlanetPlus/slanet-plus.onnx"

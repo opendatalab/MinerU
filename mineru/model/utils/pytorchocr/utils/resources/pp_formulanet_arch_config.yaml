@@ -1,0 +1,24 @@
+Architecture:
+  model_type: rec
+  algorithm: PP-FormulaNet_plus-M
+  in_channels: 3
+  Transform:
+  Backbone:
+    name: PPHGNetV2_B6_Formula
+    class_num: 1024
+
+  Head:
+    name: PPFormulaNet_Head
+    max_new_tokens: 2560
+    decoder_start_token_id: 0
+    decoder_ffn_dim: 2048
+    decoder_hidden_size: 512
+    decoder_layers: 6
+    temperature: 0.2
+    do_sample: False
+    top_p: 0.95 
+    encoder_hidden_size: 2048
+    is_export: False
+    length_aware: False 
+    use_parallel: False
+    parallel_step: 0

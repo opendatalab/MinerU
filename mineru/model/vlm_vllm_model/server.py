@@ -43,7 +43,7 @@ def main():
     if not has_port_arg:
         args.extend(["--port", "30000"])
     if not has_gpu_memory_utilization_arg:
-        args.extend(["--gpu-memory-utilization", "0.5"])
+        args.extend(["--gpu-memory-utilization", "0.7"])
     if not model_path:
         model_path = auto_download_and_get_model_root_path("/", "vlm")
     if (not has_logits_processors_arg) and custom_logits_processors:
