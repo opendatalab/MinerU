@@ -7,6 +7,7 @@ from .model_list import AtomicModel
 from ...model.layout.doclayoutyolo import DocLayoutYOLOModel
 from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
+from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
@@ -15,6 +16,9 @@ from ...model.table.rec.slanet_plus.main import RapidTableModel
 from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+
+MFR_MODEL = "unimernet_small"
+# MFR_MODEL = "pp_formulanet_plus_m"
 
 
 def img_orientation_cls_model_init():
@@ -68,7 +72,13 @@ def mfd_model_init(weight, device='cpu'):
 
 
 def mfr_model_init(weight_dir, device='cpu'):
-    mfr_model = UnimernetModel(weight_dir, device)
+    if MFR_MODEL == "unimernet_small":
+        mfr_model = UnimernetModel(weight_dir, device)
+    elif MFR_MODEL == "pp_formulanet_plus_m":
+        mfr_model = FormulaRecognizer(weight_dir, device)
+    else:
+        logger.error('MFR model name not allow')
+        exit(1)
     return mfr_model
 
 
@@ -205,11 +215,17 @@ class MineruPipelineModel:
             )
 
             # 初始化公式解析模型
-            mfr_weight_dir = os.path.join(auto_download_and_get_model_root_path(ModelPath.unimernet_small), ModelPath.unimernet_small)
+            if MFR_MODEL == "unimernet_small":
+                mfr_model_path = ModelPath.unimernet_small
+            elif MFR_MODEL == "pp_formulanet_plus_m":
+                mfr_model_path = ModelPath.pp_formulanet_plus_m
+            else:
+                logger.error('MFR model name not allow')
+                exit(1)
 
             self.mfr_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.MFR,
-                mfr_weight_dir=mfr_weight_dir,
+                mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
                 device=self.device,
             )
 
