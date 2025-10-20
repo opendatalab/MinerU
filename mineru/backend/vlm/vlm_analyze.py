@@ -96,7 +96,7 @@ class ModelSingleton:
                         except ImportError:
                             raise ImportError("Please install vllm to use the vllm-engine backend.")
                         if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = 0.5
+                            kwargs["gpu_memory_utilization"] = 0.7
                         if "model" not in kwargs:
                             kwargs["model"] = model_path
                         if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
@@ -111,7 +111,7 @@ class ModelSingleton:
                         except ImportError:
                             raise ImportError("Please install vllm to use the vllm-async-engine backend.")
                         if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = 0.5
+                            kwargs["gpu_memory_utilization"] = 0.7
                         if "model" not in kwargs:
                             kwargs["model"] = model_path
                         if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
