@@ -17,8 +17,8 @@ from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
-# MFR_MODEL = "unimernet_small"
-MFR_MODEL = "pp_formulanet_plus_m"
+MFR_MODEL = "unimernet_small"
+# MFR_MODEL = "pp_formulanet_plus_m"
 
 
 def img_orientation_cls_model_init():
