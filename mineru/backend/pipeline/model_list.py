@@ -2,7 +2,6 @@ class AtomicModel:
     Layout = "layout"
     MFD = "mfd"
     MFR = "mfr"
-    Formula = "formula"
     OCR = "ocr"
     WirelessTable = "wireless_table"
     WiredTable = "wired_table"
