@@ -45,7 +45,6 @@ class FormulaRecognizer(BaseOCRV20):
         super(FormulaRecognizer, self).__init__(network_config)
 
         self.load_state_dict(weights)
-        # device = "cpu"
         self.device = torch.device(device) if isinstance(device, str) else device
         self.net.to(self.device)
         self.net.eval()
