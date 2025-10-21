@@ -65,6 +65,7 @@ class FormulaRecognizer(BaseOCRV20):
         )
 
     def predict(self, img_list, batch_size: int = 64):
+        batch_size = int(0.5 * batch_size)
         batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=img_list)
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
         batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
@@ -78,6 +79,7 @@ class FormulaRecognizer(BaseOCRV20):
                     batch_data = inp[index: index + batch_size]
                     batch_preds = [self.net(batch_data)]
                     batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
+                    batch_preds = [bp.cpu().numpy() for bp in batch_preds]
                     rec_formula += self.post_op(batch_preds)
                     pbar.update(len(batch_preds))
         return rec_formula
