@@ -609,6 +609,7 @@ class UniMERNetDecode(object):
         text = fix_text(text)
         # logger.debug(f"Text after ftfy fix: {text}")
         text = self.fix_latex(text)
+        # logger.debug(f"Text after LaTeX fix: {text}")
         return text
 
     def fix_latex(self, text: str) -> str:
