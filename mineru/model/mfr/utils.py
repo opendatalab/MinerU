@@ -296,7 +296,7 @@ QQUAD_PATTERN = re.compile(r'\\qquad(?!\s)')
 
 
 def remove_up_commands(s: str):
-    """Remove unnecessary \up commands from LaTeX code."""
+    """Remove unnecessary up commands from LaTeX code."""
     UP_PATTERN = re.compile(r'\\up([a-zA-Z]+)')
     s = UP_PATTERN.sub(
         lambda m: m.group(0) if m.group(1) in ["arrow", "downarrow", "lus", "silon"] else f"\\{m.group(1)}", s
