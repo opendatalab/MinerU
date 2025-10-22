@@ -14,6 +14,8 @@ from torch import Tensor
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 
+from mineru.utils.config_reader import get_device
+
 
 class ModelOutput(OrderedDict):
 
@@ -441,13 +443,14 @@ class MBartLearnedPositionalEmbedding(nn.Embedding):
     def __init__(self, num_embeddings, embedding_dim):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
+        self.device = torch.device(get_device())
 
     def forward(self, input_ids, past_key_values_length=0):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
             past_key_values_length, past_key_values_length + seq_len, dtype=torch.int64
-        ).expand([bsz, -1])
+        ).expand([bsz, -1]).to(self.device)
         return nn.Embedding.forward(self, positions + self.offset)
 
 
@@ -656,6 +659,7 @@ class MBartDecoderLayer(nn.Module):
         self.fc1 = nn.Linear(self.embed_dim, config.decoder_ffn_dim)
         self.fc2 = nn.Linear(config.decoder_ffn_dim, self.embed_dim)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
+        self.device = torch.device(get_device())
 
     def forward(
             self,
@@ -672,9 +676,12 @@ class MBartDecoderLayer(nn.Module):
 
         residual = hidden_states
         hidden_states = self.self_attn_layer_norm(hidden_states)
-        self_attn_past_key_value = (
-            past_key_value[:2] if past_key_value is not None else None
-        )
+
+        self_attn_past_key_value = None
+        if past_key_value is not None:
+            self_attn_past_key_value = tuple(
+                t.to(self.device) if isinstance(t, torch.Tensor) else t for t in past_key_value[:2]
+            )
 
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,

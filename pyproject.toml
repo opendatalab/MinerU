@@ -115,7 +115,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
-"mineru.model.ocr.paddleocr2pytorch.pytorchocr.utils" = ["resources/**"]
+"mineru.model.utils.pytorchocr.utils" = ["resources/**"]
 
 [tool.setuptools]
 include-package-data = true

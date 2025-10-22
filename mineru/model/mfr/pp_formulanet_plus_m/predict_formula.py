@@ -45,7 +45,6 @@ class FormulaRecognizer(BaseOCRV20):
         super(FormulaRecognizer, self).__init__(network_config)
 
         self.load_state_dict(weights)
-        # device = "cpu"
         self.device = torch.device(device) if isinstance(device, str) else device
         self.net.to(self.device)
         self.net.eval()
@@ -65,18 +64,22 @@ class FormulaRecognizer(BaseOCRV20):
         )
 
     def predict(self, img_list, batch_size: int = 64):
+        # Reduce batch size by 50% to avoid potential memory issues during inference.
+        batch_size = int(0.5 * batch_size)
         batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=img_list)
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
         batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
-        x = self.pre_tfs["ToBatch"](imgs=batch_imgs)
-        x = torch.from_numpy(x[0]).to(self.device)
+        inp = self.pre_tfs["ToBatch"](imgs=batch_imgs)
+        inp = torch.from_numpy(inp[0])
+        inp = inp.to(self.device)
         rec_formula = []
         with torch.no_grad():
-            with tqdm(total=len(x), desc="Formula Predict") as pbar:
-                for index in range(0, len(x), batch_size):
-                    batch_data = x[index: index + batch_size]
+            with tqdm(total=len(inp), desc="MFR Predict") as pbar:
+                for index in range(0, len(inp), batch_size):
+                    batch_data = inp[index: index + batch_size]
                     batch_preds = [self.net(batch_data)]
                     batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
+                    batch_preds = [bp.cpu().numpy() for bp in batch_preds]
                     rec_formula += self.post_op(batch_preds)
                     pbar.update(len(batch_preds))
         return rec_formula

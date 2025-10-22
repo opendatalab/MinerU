@@ -6,8 +6,13 @@ import re
 
 from PIL import Image, ImageOps
 from typing import List, Optional, Tuple, Union, Dict, Any
+
+from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
+
+from mineru.model.mfr.utils import fix_latex_left_right, fix_latex_environments, remove_up_commands, \
+    remove_unsupported_commands
 
 
 class UniMERNetImgDecode(object):
@@ -602,7 +607,24 @@ class UniMERNetDecode(object):
 
         text = self.remove_chinese_text_wrapping(text)
         text = fix_text(text)
-        text = self.normalize(text)
+        # logger.debug(f"Text after ftfy fix: {text}")
+        text = self.fix_latex(text)
+        return text
+
+    def fix_latex(self, text: str) -> str:
+        """Fixes LaTeX formatting in a string.
+
+        Args:
+            text (str): String to fix.
+
+        Returns:
+            str: Fixed string.
+        """
+        text = fix_latex_left_right(text, fix_delimiter=False)
+        text = fix_latex_environments(text)
+        text = remove_up_commands(text)
+        text = remove_unsupported_commands(text)
+        # text = self.normalize(text)
         return text
 
     def __call__(
