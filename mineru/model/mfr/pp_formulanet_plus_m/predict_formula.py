@@ -73,7 +73,7 @@ class FormulaRecognizer(BaseOCRV20):
         inp = inp.to(self.device)
         rec_formula = []
         with torch.no_grad():
-            with tqdm(total=len(inp), desc="Formula Predict") as pbar:
+            with tqdm(total=len(inp), desc="MFR Predict") as pbar:
                 for index in range(0, len(inp), batch_size):
                     batch_data = inp[index: index + batch_size]
                     batch_preds = [self.net(batch_data)]
