@@ -245,7 +245,7 @@ def process_latex(input_string):
 
 # 常见的在KaTeX/MathJax中可用的数学环境
 ENV_TYPES = ['array', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix',
-             'Bmatrix', 'Vmatrix', 'cases', 'aligned', 'gathered', 'align', 'align*',]
+             'Bmatrix', 'Vmatrix', 'cases', 'aligned', 'gathered', 'align', 'align*']
 ENV_BEGIN_PATTERNS = {env: re.compile(r'\\begin\{' + env + r'\}') for env in ENV_TYPES}
 ENV_END_PATTERNS = {env: re.compile(r'\\end\{' + env + r'\}') for env in ENV_TYPES}
 ENV_FORMAT_PATTERNS = {env: re.compile(r'\\begin\{' + env + r'\}\{([^}]*)\}') for env in ENV_TYPES}
