@@ -63,13 +63,14 @@ def download_pipeline_models():
     model_paths = [
         ModelPath.doclayout_yolo,
         ModelPath.yolo_v8_mfd,
-        ModelPath.unimernet_small,
+        # ModelPath.unimernet_small,
         ModelPath.pytorch_paddle,
         ModelPath.layout_reader,
         ModelPath.slanet_plus,
         ModelPath.unet_structure,
         ModelPath.paddle_table_cls,
         ModelPath.paddle_orientation_classification,
+        ModelPath.pp_formulanet_plus_m,
     ]
     download_finish_path = ""
     for model_path in model_paths:
