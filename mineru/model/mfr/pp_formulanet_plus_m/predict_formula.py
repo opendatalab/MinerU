@@ -131,6 +131,7 @@ class FormulaRecognizer(BaseOCRV20):
 
         if len(sorted_images) > 0:
             # 进行预测
+            batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1))) if sorted_images else 1
             rec_formula = self.predict(sorted_images, batch_size)
         else:
             rec_formula = []
