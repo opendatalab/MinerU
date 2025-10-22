@@ -1107,7 +1107,7 @@ class PPFormulaNet_Head(UniMERNetHead):
             model_inputs = self.prepare_inputs_for_generation_export(
                 past_key_values=past_key_values, **model_kwargs
             )
-            decoder_attention_mask = torch.ones(input_ids.shape, device=self.device,)
+            decoder_attention_mask = torch.ones(input_ids.shape, device=self.device)
 
             outputs = self.generate_single_iter(
                 decoder_input_ids=decoder_input_ids,
