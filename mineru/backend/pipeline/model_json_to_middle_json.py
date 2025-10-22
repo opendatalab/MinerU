@@ -231,7 +231,14 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     para_split(middle_json["pdf_info"])
 
     """表格跨页合并"""
-    merge_table(middle_json["pdf_info"])
+    is_merge_table = os.getenv('MINERU_MERGE_TABLE', 'true')
+    if is_merge_table.lower() == 'true':
+        merge_table(middle_json["pdf_info"])
+    elif is_merge_table.lower() == 'false':
+        pass
+    else:
+        logger.warning(f'unknown MINERU_MERGE_TABLE config: {is_merge_table}, pass')
+        pass
 
     """llm优化"""
     llm_aided_config = get_llm_aided_config()
