@@ -11,7 +11,8 @@ from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.unimernet.unimernet_hf.modeling_unimernet import fix_latex_left_right
+from mineru.model.mfr.utils import fix_latex_left_right, fix_latex_environments, remove_up_commands, \
+    remove_unsupported_commands
 
 
 class UniMERNetImgDecode(object):
@@ -593,7 +594,6 @@ class UniMERNetDecode(object):
         replaced_formula = pattern.sub(replacer, formula)
         return replaced_formula.replace('"', "")
 
-    UP_PATTERN = re.compile(r'\\up([a-zA-Z]+)')
     def post_process(self, text: str) -> str:
         """Post-processes a string by fixing text and normalizing it.
 
@@ -607,11 +607,24 @@ class UniMERNetDecode(object):
 
         text = self.remove_chinese_text_wrapping(text)
         text = fix_text(text)
-        text = fix_latex_left_right(text)
-        text = self.UP_PATTERN.sub(
-            lambda m: m.group(0) if m.group(1) in ["arrow", "downarrow", "lus", "silon"] else f"\\{m.group(1)}", text
-        )
-        text = self.normalize(text)
+        # logger.debug(f"Text after ftfy fix: {text}")
+        text = self.fix_latex(text)
+        return text
+
+    def fix_latex(self, text: str) -> str:
+        """Fixes LaTeX formatting in a string.
+
+        Args:
+            text (str): String to fix.
+
+        Returns:
+            str: Fixed string.
+        """
+        text = fix_latex_left_right(text, fix_delimiter=False)
+        text = fix_latex_environments(text)
+        text = remove_up_commands(text)
+        text = remove_unsupported_commands(text)
+        # text = self.normalize(text)
         return text
 
     def __call__(
