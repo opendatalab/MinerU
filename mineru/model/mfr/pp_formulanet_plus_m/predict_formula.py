@@ -129,8 +129,11 @@ class FormulaRecognizer(BaseOCRV20):
             new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
         }
 
-        # 进行预测
-        rec_formula = self.predict(sorted_images, batch_size)
+        if len(sorted_images) > 0:
+            # 进行预测
+            rec_formula = self.predict(sorted_images, batch_size)
+        else:
+            rec_formula = []
 
         # Restore original order
         unsorted_results = [""] * len(rec_formula)
