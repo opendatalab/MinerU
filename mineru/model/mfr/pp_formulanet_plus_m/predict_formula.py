@@ -64,6 +64,7 @@ class FormulaRecognizer(BaseOCRV20):
         )
 
     def predict(self, img_list, batch_size: int = 64):
+        # Reduce batch size by 50% to avoid potential memory issues during inference.
         batch_size = int(0.5 * batch_size)
         batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=img_list)
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
