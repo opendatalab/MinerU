@@ -36,13 +36,13 @@ lang:
     rec: ch_PP-OCRv5_rec_server_infer.pth
     dict: ppocrv5_dict.txt
   ta:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: ta_PP-OCRv3_rec_infer.pth
-    dict: ta_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: ta_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_ta_dict.txt
   te:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: te_PP-OCRv3_rec_infer.pth
-    dict: te_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: te_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_te_dict.txt
   ka:
     det: Multilingual_PP-OCRv3_det_infer.pth
     rec: ka_PP-OCRv3_rec_infer.pth
@@ -52,17 +52,17 @@ lang:
     rec: latin_PP-OCRv5_rec_infer.pth
     dict: ppocrv5_latin_dict.txt
   arabic:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: arabic_PP-OCRv3_rec_infer.pth
-    dict: arabic_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: arabic_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_arabic_dict.txt
   cyrillic:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: cyrillic_PP-OCRv3_rec_infer.pth
-    dict: cyrillic_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: cyrillic_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_cyrillic_dict.txt
   devanagari:
-    det: Multilingual_PP-OCRv3_det_infer.pth
-    rec: devanagari_PP-OCRv3_rec_infer.pth
-    dict: devanagari_dict.txt
+    det: ch_PP-OCRv5_det_infer.pth
+    rec: devanagari_PP-OCRv5_rec_infer.pth
+    dict: ppocrv5_devanagari_dict.txt
   east_slavic:
     det: ch_PP-OCRv5_det_infer.pth
     rec: eslav_PP-OCRv5_rec_infer.pth
