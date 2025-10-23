@@ -2,6 +2,8 @@ import os
 import torch
 import yaml
 from pathlib import Path
+
+from loguru import logger
 from tqdm import tqdm
 from mineru.model.utils.tools.infer import pytorchocr_utility
 from mineru.model.utils.pytorchocr.base_ocr_v20 import BaseOCRV20
