@@ -63,7 +63,7 @@ def download_pipeline_models():
     model_paths = [
         ModelPath.doclayout_yolo,
         ModelPath.yolo_v8_mfd,
-        # ModelPath.unimernet_small,
+        ModelPath.unimernet_small,
         ModelPath.pytorch_paddle,
         ModelPath.layout_reader,
         ModelPath.slanet_plus,

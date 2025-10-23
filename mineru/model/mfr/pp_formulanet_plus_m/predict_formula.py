@@ -2,6 +2,8 @@ import os
 import torch
 import yaml
 from pathlib import Path
+
+from loguru import logger
 from tqdm import tqdm
 from mineru.model.utils.tools.infer import pytorchocr_utility
 from mineru.model.utils.pytorchocr.base_ocr_v20 import BaseOCRV20
@@ -77,6 +79,8 @@ class FormulaRecognizer(BaseOCRV20):
             with tqdm(total=len(inp), desc="MFR Predict") as pbar:
                 for index in range(0, len(inp), batch_size):
                     batch_data = inp[index: index + batch_size]
+                    # with torch.amp.autocast(device_type=self.device.type):
+                    #     batch_preds = [self.net(batch_data)]
                     batch_preds = [self.net(batch_data)]
                     batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
                     batch_preds = [bp.cpu().numpy() for bp in batch_preds]
@@ -131,6 +135,7 @@ class FormulaRecognizer(BaseOCRV20):
 
         if len(sorted_images) > 0:
             # 进行预测
+            batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1))) if sorted_images else 1
             rec_formula = self.predict(sorted_images, batch_size)
         else:
             rec_formula = []

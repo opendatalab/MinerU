@@ -19,20 +19,107 @@ import argparse
 
 
 latin_lang = [
-        'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',  # noqa: E126
-        'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
-        'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
-        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+        "af",
+        "az",
+        "bs",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "es",
+        "et",
+        "fr",
+        "ga",
+        "hr",
+        "hu",
+        "id",
+        "is",
+        "it",
+        "ku",
+        "la",
+        "lt",
+        "lv",
+        "mi",
+        "ms",
+        "mt",
+        "nl",
+        "no",
+        "oc",
+        "pi",
+        "pl",
+        "pt",
+        "ro",
+        "rs_latin",
+        "sk",
+        "sl",
+        "sq",
+        "sv",
+        "sw",
+        "tl",
+        "tr",
+        "uz",
+        "vi",
+        "french",
+        "german",
+        "fi",
+        "eu",
+        "gl",
+        "lb",
+        "rm",
+        "ca",
+        "qu",
 ]
-arabic_lang = ['ar', 'fa', 'ug', 'ur']
+arabic_lang = ["ar", "fa", "ug", "ur", "ps", "ku", "sd", "bal"]
 cyrillic_lang = [
-        'rs_cyrillic', 'bg', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
-        'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
+        "ru",
+        "rs_cyrillic",
+        "be",
+        "bg",
+        "uk",
+        "mn",
+        "abq",
+        "ady",
+        "kbd",
+        "ava",
+        "dar",
+        "inh",
+        "che",
+        "lbe",
+        "lez",
+        "tab",
+        "kk",
+        "ky",
+        "tg",
+        "mk",
+        "tt",
+        "cv",
+        "ba",
+        "mhr",
+        "mo",
+        "udm",
+        "kv",
+        "os",
+        "bua",
+        "xal",
+        "tyv",
+        "sah",
+        "kaa",
 ]
 east_slavic_lang = ["ru", "be", "uk"]
 devanagari_lang = [
-        'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
-        'sa', 'bgc'
+        "hi",
+        "mr",
+        "ne",
+        "bh",
+        "mai",
+        "ang",
+        "bho",
+        "mah",
+        "sck",
+        "new",
+        "gom",
+        "sa",
+        "bgc",
 ]
 
 
@@ -65,14 +152,14 @@ class PytorchPaddleOCR(TextSystem):
 
         if self.lang in latin_lang:
             self.lang = 'latin'
+        elif self.lang in east_slavic_lang:
+            self.lang = 'east_slavic'
         elif self.lang in arabic_lang:
             self.lang = 'arabic'
         elif self.lang in cyrillic_lang:
             self.lang = 'cyrillic'
         elif self.lang in devanagari_lang:
             self.lang = 'devanagari'
-        elif self.lang in east_slavic_lang:
-            self.lang = 'east_slavic'
         else:
             pass
 
