@@ -76,7 +76,10 @@ class ModelSingleton:
                     if batch_size == 0:
                         batch_size = set_defult_batch_size()
                 else:
-                    os.environ["OMP_NUM_THREADS"] = "1"
+
+                    if os.getenv('OMP_NUM_THREADS') is None:
+                        os.environ["OMP_NUM_THREADS"] = "1"
+
                     if backend == "vllm-engine":
                         try:
                             import vllm
