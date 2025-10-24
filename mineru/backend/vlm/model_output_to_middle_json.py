@@ -5,13 +5,13 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdf_image_tools import get_crop_img
-from mineru.utils.table_merge import merge_table
 from mineru.version import __version__
 
 
@@ -110,14 +110,7 @@ def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_
     """表格跨页合并"""
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
-        is_merge_table = os.getenv('MINERU_MERGE_TABLE', 'true')
-        if is_merge_table.lower() == 'true':
-            merge_table(middle_json["pdf_info"])
-        elif is_merge_table.lower() == 'false':
-            pass
-        else:
-            logger.warning(f'unknown MINERU_MERGE_TABLE config: {is_merge_table}, pass')
-            pass
+        cross_page_table_merge(middle_json["pdf_info"])
 
     """llm优化标题分级"""
     if heading_level_import_success:

@@ -81,7 +81,16 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_FORMULA_ENABLE`：
     * 用于启用公式解析
     * 默认为`true`，可通过环境变量设置为`false`来禁用公式解析。
+
+- `MINERU_FORMULA_CH_SUPPORT`：
+    * 用于启用中文公式解析优化（实验性功能）
+    * 默认为`false`，可通过环境变量设置为`true`来启用中文公式解析优化。
+    * 仅对`pipeline`后端生效。
   
 - `MINERU_TABLE_ENABLE`：
     * 用于启用表格解析
     * 默认为`true`，可通过环境变量设置为`false`来禁用表格解析。
+
+- `MINERU_TABLE_MERGE_ENABLE`：
+    * 用于启用表格合并功能
+    * 默认为`true`，可通过环境变量设置为`false`来禁用表格合并功能。
