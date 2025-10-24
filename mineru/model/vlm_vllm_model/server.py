@@ -1,9 +1,7 @@
 import os
 import sys
 
-from mineru.backend.vlm.custom_logits_processors import enable_custom_logits_processors
-
-from mineru.backend.vlm.utils import set_defult_gpu_memory_utilization
+from mineru.backend.vlm.utils import set_defult_gpu_memory_utilization, enable_custom_logits_processors
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 from vllm.entrypoints.cli.main import main as vllm_main
