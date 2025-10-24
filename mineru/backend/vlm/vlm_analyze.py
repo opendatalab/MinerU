@@ -43,6 +43,10 @@ class ModelSingleton:
             batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
             max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
             http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
+            # 从kwargs中移除这些参数，避免传递给不相关的初始化函数
+            for param in ["batch_size", "max_concurrency", "http_timeout"]:
+                if param in kwargs:
+                    del kwargs[param]
             if backend in ['transformers', 'vllm-engine', "vllm-async-engine"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
