@@ -51,7 +51,7 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   >[!TIP]
   > 
   >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
-  >- 访问 `http://127.0.0.1:7860/?view=api` 使用 Gradio API。
+
 - 使用`http-client/server`方式调用：
   ```bash
   # 启动vllm server(需要安装vllm环境)

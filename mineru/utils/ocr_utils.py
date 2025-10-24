@@ -406,6 +406,12 @@ def calculate_is_angle(poly):
         # logger.info((p3[1] - p1[1])/height)
         return True
 
+def is_bbox_aligned_rect(points):
+    x_coords = points[:, 0]
+    y_coords = points[:, 1]
+    unique_x = np.unique(x_coords)
+    unique_y = np.unique(y_coords)
+    return len(unique_x) == 2 and len(unique_y) == 2
 
 def get_rotate_crop_image(img, points):
     '''
@@ -419,6 +425,16 @@ def get_rotate_crop_image(img, points):
     points[:, 1] = points[:, 1] - top
     '''
     assert len(points) == 4, "shape of points must be 4*2"
+
+    if is_bbox_aligned_rect(points):
+        xmin = int(np.min(points[:, 0]))
+        xmax = int(np.max(points[:, 0]))
+        ymin = int(np.min(points[:, 1]))
+        ymax = int(np.max(points[:, 1]))
+        new_img = img[ymin:ymax, xmin:xmax].copy()
+        if new_img.shape[0] > 0 and new_img.shape[1] > 0:
+            return new_img
+
     img_crop_width = int(
         max(
             np.linalg.norm(points[0] - points[1]),

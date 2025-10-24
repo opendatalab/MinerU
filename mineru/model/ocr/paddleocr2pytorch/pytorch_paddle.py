@@ -12,27 +12,114 @@ from loguru import logger
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from ....utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
-from .tools.infer.predict_system import TextSystem
-from .tools.infer import pytorchocr_utility as utility
+from mineru.utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
+from mineru.model.utils.tools.infer.predict_system import TextSystem
+from mineru.model.utils.tools.infer import pytorchocr_utility as utility
 import argparse
 
 
 latin_lang = [
-        'af', 'az', 'bs', 'cs', 'cy', 'da', 'de', 'es', 'et', 'fr', 'ga', 'hr',  # noqa: E126
-        'hu', 'id', 'is', 'it', 'ku', 'la', 'lt', 'lv', 'mi', 'ms', 'mt', 'nl',
-        'no', 'oc', 'pi', 'pl', 'pt', 'ro', 'rs_latin', 'sk', 'sl', 'sq', 'sv',
-        'sw', 'tl', 'tr', 'uz', 'vi', 'french', 'german'
+        "af",
+        "az",
+        "bs",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "es",
+        "et",
+        "fr",
+        "ga",
+        "hr",
+        "hu",
+        "id",
+        "is",
+        "it",
+        "ku",
+        "la",
+        "lt",
+        "lv",
+        "mi",
+        "ms",
+        "mt",
+        "nl",
+        "no",
+        "oc",
+        "pi",
+        "pl",
+        "pt",
+        "ro",
+        "rs_latin",
+        "sk",
+        "sl",
+        "sq",
+        "sv",
+        "sw",
+        "tl",
+        "tr",
+        "uz",
+        "vi",
+        "french",
+        "german",
+        "fi",
+        "eu",
+        "gl",
+        "lb",
+        "rm",
+        "ca",
+        "qu",
 ]
-arabic_lang = ['ar', 'fa', 'ug', 'ur']
+arabic_lang = ["ar", "fa", "ug", "ur", "ps", "ku", "sd", "bal"]
 cyrillic_lang = [
-        'rs_cyrillic', 'bg', 'mn', 'abq', 'ady', 'kbd', 'ava',  # noqa: E126
-        'dar', 'inh', 'che', 'lbe', 'lez', 'tab'
+        "ru",
+        "rs_cyrillic",
+        "be",
+        "bg",
+        "uk",
+        "mn",
+        "abq",
+        "ady",
+        "kbd",
+        "ava",
+        "dar",
+        "inh",
+        "che",
+        "lbe",
+        "lez",
+        "tab",
+        "kk",
+        "ky",
+        "tg",
+        "mk",
+        "tt",
+        "cv",
+        "ba",
+        "mhr",
+        "mo",
+        "udm",
+        "kv",
+        "os",
+        "bua",
+        "xal",
+        "tyv",
+        "sah",
+        "kaa",
 ]
 east_slavic_lang = ["ru", "be", "uk"]
 devanagari_lang = [
-        'hi', 'mr', 'ne', 'bh', 'mai', 'ang', 'bho', 'mah', 'sck', 'new', 'gom',  # noqa: E126
-        'sa', 'bgc'
+        "hi",
+        "mr",
+        "ne",
+        "bh",
+        "mai",
+        "ang",
+        "bho",
+        "mah",
+        "sck",
+        "new",
+        "gom",
+        "sa",
+        "bgc",
 ]
 
 
@@ -47,7 +134,7 @@ def get_model_params(lang, config):
         raise Exception (f'Language {lang} not supported')
 
 
-root_dir = Path(__file__).resolve().parent
+root_dir = os.path.join(Path(__file__).resolve().parent.parent.parent, 'utils')
 
 
 class PytorchPaddleOCR(TextSystem):
@@ -65,14 +152,14 @@ class PytorchPaddleOCR(TextSystem):
 
         if self.lang in latin_lang:
             self.lang = 'latin'
+        elif self.lang in east_slavic_lang:
+            self.lang = 'east_slavic'
         elif self.lang in arabic_lang:
             self.lang = 'arabic'
         elif self.lang in cyrillic_lang:
             self.lang = 'cyrillic'
         elif self.lang in devanagari_lang:
             self.lang = 'devanagari'
-        elif self.lang in east_slavic_lang:
-            self.lang = 'east_slavic'
         else:
             pass
 
@@ -89,7 +176,7 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
         kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
-        kwargs['rec_batch_num'] = 8
+        kwargs['rec_batch_num'] = 6
 
         kwargs['device'] = device
 

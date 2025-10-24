@@ -1,0 +1,32 @@
+# MinerU Tianshu Requirements
+# 天枢项目依赖
+
+# Core MinerU
+mineru[core]>=2.5.0
+
+# Image Augmentation (Version Pinned for Compatibility)
+albumentations>=1.4.4,<2.0.0
+albucore>=0.0.13,<0.0.20
+
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# LitServe for GPU Load Balancing
+litserve>=0.2.0
+
+# Async HTTP Client
+aiohttp>=3.11.0
+
+# Logging
+loguru>=0.7.0
+
+# Office Document Parsing
+markitdown[all]>=0.1.3
+
+# MinIO Object Storage
+minio>=7.2.0
+
+# Optional: For better performance
+# ujson>=5.10.0
+

@@ -1,3 +1,4 @@
+import os
 import sys
 
 from mineru.backend.vlm.custom_logits_processors import enable_custom_logits_processors
@@ -42,7 +43,7 @@ def main():
     if not has_port_arg:
         args.extend(["--port", "30000"])
     if not has_gpu_memory_utilization_arg:
-        args.extend(["--gpu-memory-utilization", "0.5"])
+        args.extend(["--gpu-memory-utilization", "0.7"])
     if not model_path:
         model_path = auto_download_and_get_model_root_path("/", "vlm")
     if (not has_logits_processors_arg) and custom_logits_processors:
@@ -50,6 +51,8 @@ def main():
 
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", model_path] + args
+
+    os.environ["OMP_NUM_THREADS"] = "1"
 
     # 启动vllm服务器
     print(f"start vllm server: {sys.argv}")

@@ -1,11 +1,10 @@
 import base64
-import requests
 import os
 from loguru import logger
 import asyncio
 import aiohttp
 
-async def mineru_parse_async(session, file_path, server_url='http://127.0.0.1:8000/predict', **options):
+async def mineru_parse_async(session, file_path, url='http://127.0.0.1:8000/predict', **options):
     """
     Asynchronous version of the parse function.
     """
@@ -20,7 +19,7 @@ async def mineru_parse_async(session, file_path, server_url='http://127.0.0.1:80
         }
 
         # Use the aiohttp session to send the request
-        async with session.post(server_url, json=payload) as response:
+        async with session.post(url, json=payload) as response:
             if response.status == 200:
                 result = await response.json()
                 logger.info(f"✅ Processed: {file_path} -> {result.get('output_dir', 'N/A')}")
@@ -61,9 +60,10 @@ async def main():
         # === Custom Options ===
         custom_options = {
             'backend': 'pipeline', 'lang': 'ch', 'method': 'auto',
-            'formula_enable': True, 'table_enable': True
+            'formula_enable': True, 'table_enable': True,
+            # Example for remote vlm server (vllm/sglang/lmdeploy...)
+            # 'backend': 'vlm-http-client', 'server_url': 'http://127.0.0.1:30000',
         }
-        # 'backend': 'vlm-vllm-engine' requires 8+ GB VRAM per worker
 
         custom_tasks = [mineru_parse_async(session, file_path, **custom_options) for file_path in existing_files[2:]]
 

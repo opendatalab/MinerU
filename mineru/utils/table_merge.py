@@ -3,6 +3,7 @@
 from loguru import logger
 from bs4 import BeautifulSoup
 
+from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
@@ -144,8 +145,9 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
                 colspan2 = int(cell2.get("colspan", 1))
                 rowspan2 = int(cell2.get("rowspan", 1))
 
-                text1 = full_to_half(cell1.get_text().strip())
-                text2 = full_to_half(cell2.get_text().strip())
+                # 去除所有空白字符（包括空格、换行、制表符等）
+                text1 = ''.join(full_to_half(cell1.get_text()).split())
+                text2 = ''.join(full_to_half(cell2.get_text()).split())
 
                 if colspan1 != colspan2 or rowspan1 != rowspan2 or text1 != text2:
                     structure_match = False
@@ -169,8 +171,12 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
 def can_merge_tables(current_table_block, previous_table_block):
     """判断两个表格是否可以合并"""
     # 检查表格是否有caption和footnote
-    if any(block["type"] == BlockType.TABLE_CAPTION for block in current_table_block["blocks"]):
-        return False, None, None, None, None
+    # 如果有TABLE_CAPTION类型的块,检查是否至少有一个以"(续)"结尾
+    caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
+    if caption_blocks:
+        # 如果所有caption都不以"(续)"结尾,则不合并
+        if not any(full_to_half(merge_para_with_text(block).strip()).endswith("(续)") for block in caption_blocks):
+            return False, None, None, None, None
 
     if any(block["type"] == BlockType.TABLE_FOOTNOTE for block in previous_table_block["blocks"]):
         return False, None, None, None, None
@@ -253,6 +259,59 @@ def check_rows_match(soup1, soup2):
     return last_row_cols == first_row_cols or last_row_visual_cols == first_row_visual_cols
 
 
+def check_row_columns_match(row1, row2):
+    # 逐个cell检测colspan属性是否一致
+    cells1 = row1.find_all(["td", "th"])
+    cells2 = row2.find_all(["td", "th"])
+    if len(cells1) != len(cells2):
+        return False
+    for cell1, cell2 in zip(cells1, cells2):
+        colspan1 = int(cell1.get("colspan", 1))
+        colspan2 = int(cell2.get("colspan", 1))
+        if colspan1 != colspan2:
+            return False
+    return True
+
+
+def adjust_table_rows_colspan(rows, start_idx, end_idx,
+                              reference_structure, reference_visual_cols,
+                              target_cols, current_cols, reference_row):
+    """调整表格行的colspan属性以匹配目标列数
+
+    Args:
+        rows: 表格行列表
+        start_idx: 起始行索引
+        end_idx: 结束行索引（不包含）
+        reference_structure: 参考行的colspan结构列表
+        reference_visual_cols: 参考行的视觉列数
+        target_cols: 目标总列数
+        current_cols: 当前总列数
+        reference_row: 参考行对象
+    """
+    for i in range(start_idx, end_idx):
+        row = rows[i]
+        cells = row.find_all(["td", "th"])
+        if not cells:
+            continue
+
+        current_row_cols = calculate_row_columns(row)
+        if current_row_cols >= target_cols:
+            continue
+
+        # 检查是否与参考行结构匹配
+        if calculate_visual_columns(row) == reference_visual_cols and check_row_columns_match(row, reference_row):
+            # 尝试应用参考结构
+            if len(cells) <= len(reference_structure):
+                for j, cell in enumerate(cells):
+                    if j < len(reference_structure) and reference_structure[j] > 1:
+                        cell["colspan"] = str(reference_structure[j])
+        else:
+            # 扩展最后一个单元格以填补列数差异
+            last_cell = cells[-1]
+            current_last_span = int(last_cell.get("colspan", 1))
+            last_cell["colspan"] = str(current_last_span + (target_cols - current_cols))
+
+
 def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_footnotes):
     """执行表格合并操作"""
     # 检测表头有几行，并确认表头内容是否一致
@@ -263,17 +322,47 @@ def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_foo
     # 找到第一个表格的tbody，如果没有则查找table元素
     tbody1 = soup1.find("tbody") or soup1.find("table")
 
-    # 找到第二个表格的tbody，如果没有则查找table元素
-    tbody2 = soup2.find("tbody") or soup2.find("table")
+    # 获取表1和表2的所有行
+    rows1 = soup1.find_all("tr")
+    rows2 = soup2.find_all("tr")
+
+
+    if rows1 and rows2 and header_count < len(rows2):
+        # 获取表1最后一行和表2第一个非表头行
+        last_row1 = rows1[-1]
+        first_data_row2 = rows2[header_count]
+
+        # 计算表格总列数
+        table_cols1 = calculate_table_total_columns(soup1)
+        table_cols2 = calculate_table_total_columns(soup2)
+        if table_cols1 >= table_cols2:
+            reference_structure = [int(cell.get("colspan", 1)) for cell in last_row1.find_all(["td", "th"])]
+            reference_visual_cols = calculate_visual_columns(last_row1)
+            # 以表1的最后一行为参考，调整表2的行
+            adjust_table_rows_colspan(
+                rows2, header_count, len(rows2),
+                reference_structure, reference_visual_cols,
+                table_cols1, table_cols2, first_data_row2
+            )
+
+        else:  # table_cols2 > table_cols1
+            reference_structure = [int(cell.get("colspan", 1)) for cell in first_data_row2.find_all(["td", "th"])]
+            reference_visual_cols = calculate_visual_columns(first_data_row2)
+            # 以表2的第一个数据行为参考，调整表1的行
+            adjust_table_rows_colspan(
+                rows1, 0, len(rows1),
+                reference_structure, reference_visual_cols,
+                table_cols2, table_cols1, last_row1
+            )
 
     # 将第二个表格的行添加到第一个表格中
-    if tbody1 and tbody2:
-        rows2 = soup2.find_all("tr")
-        # 将第二个表格的行添加到第一个表格中（跳过表头行）
-        for row in rows2[header_count:]:
-            # 从原来的位置移除行，并添加到第一个表格中
-            row.extract()
-            tbody1.append(row)
+    if tbody1:
+        tbody2 = soup2.find("tbody") or soup2.find("table")
+        if tbody2:
+            # 将第二个表格的行添加到第一个表格中（跳过表头行）
+            for row in rows2[header_count:]:
+                row.extract()
+                tbody1.append(row)
 
     # 添加待合并表格的footnote到前一个表格中
     for table_footnote in wait_merge_table_footnotes:
