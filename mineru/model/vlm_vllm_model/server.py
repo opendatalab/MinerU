@@ -1,7 +1,7 @@
 import os
 import sys
 
-from mineru.backend.vlm.utils import set_defult_gpu_memory_utilization, enable_custom_logits_processors
+from mineru.backend.vlm.utils import set_default_gpu_memory_utilization, enable_custom_logits_processors
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 from vllm.entrypoints.cli.main import main as vllm_main
@@ -43,7 +43,7 @@ def main():
     if not has_port_arg:
         args.extend(["--port", "30000"])
     if not has_gpu_memory_utilization_arg:
-        gpu_memory_utilization = str(set_defult_gpu_memory_utilization())
+        gpu_memory_utilization = str(set_default_gpu_memory_utilization())
         args.extend(["--gpu-memory-utilization", gpu_memory_utilization])
     if not model_path:
         model_path = auto_download_and_get_model_root_path("/", "vlm")

@@ -44,7 +44,7 @@ def enable_custom_logits_processors() -> bool:
         return True
 
 
-def set_defult_gpu_memory_utilization() -> float:
+def set_default_gpu_memory_utilization() -> float:
     from vllm import __version__ as vllm_version
     if version.parse(vllm_version) >= version.parse("0.11.0"):
         return 0.7
@@ -52,7 +52,7 @@ def set_defult_gpu_memory_utilization() -> float:
         return 0.5
 
 
-def set_defult_batch_size() -> int:
+def set_default_batch_size() -> int:
     try:
         device = get_device()
         vram = get_vram(device)
