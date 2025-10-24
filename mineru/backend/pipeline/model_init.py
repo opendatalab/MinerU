@@ -17,10 +17,14 @@ from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
-MFR_MODEL = os.getenv('MINERU_MFR_MODEL', None)
-if MFR_MODEL is None:
+MFR_MODEL = os.getenv('MINERU_FORMULA_CH_SUPPORT', 'False')
+if MFR_MODEL.lower() in ['true', '1', 'yes']:
+    MFR_MODEL = "pp_formulanet_plus_m"
+elif MFR_MODEL.lower() in ['false', '0', 'no']:
     MFR_MODEL = "unimernet_small"
-    # MFR_MODEL = "pp_formulanet_plus_m"
+else:
+    logger.warning(f"Invalid MINERU_FORMULA_CH_SUPPORT value: {MFR_MODEL}, set to default 'False'")
+    MFR_MODEL = "unimernet_small"
 
 
 def img_orientation_cls_model_init():

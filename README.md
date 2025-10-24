@@ -44,6 +44,18 @@
 </div>
 
 # Changelog
+- 2025/10/24 2.6.0 Release
+  - `pipeline` backend optimizations
+    - Added experimental support for Chinese formulas, which can be enabled by setting the environment variable `export MINERU_FORMULA_CH_SUPPORT=1`. This feature may cause a slight decrease in MFR speed and failures in recognizing some long formulas. It is recommended to enable it only when parsing Chinese formulas is needed. To disable this feature, set the environment variable to `0`.
+    - `OCR` speed significantly improved by 200%~300%, thanks to the optimization solution provided by @cjsdurj
+    - `OCR` models updated to `ppocr-v5` version for Cyrillic, Arabic, Devanagari, Telugu (te), and Tamil (ta) languages, with accuracy improved by over 40% compared to previous models
+  - `vlm` backend optimizations
+    - `table_caption` and `table_footnote` matching logic optimized to improve the accuracy of table caption and footnote matching and reading order rationality in scenarios with multiple consecutive tables on a page
+    - Optimized CPU resource usage during high concurrency when using `vllm` backend, reducing server pressure
+    - Adapted to `vllm` version 0.11.0
+  - General optimizations
+    - Cross-page table merging effect optimized, added support for cross-page continuation table merging, improving table merging effectiveness in multi-column merge scenarios
+    - Added environment variable configuration option `MINERU_TABLE_MERGE_ENABLE` for table merging feature. Table merging is enabled by default and can be disabled by setting this variable to `0`
 
 - 2025/09/26 2.5.4 released
   - 🎉🎉 The MinerU2.5 [Technical Report](https://arxiv.org/abs/2509.22186) is now available! We welcome you to read it for a comprehensive overview of its model architecture, training strategy, data engineering and evaluation results.
