@@ -526,7 +526,7 @@ latin_PP-OCRv5_rec_infer:
   Head:
     name: MultiHead
     out_channels_list:
-      CTCLabelDecode: 504
+      CTCLabelDecode: 838
     head_list:
       - CTCHead:
           Neck:
