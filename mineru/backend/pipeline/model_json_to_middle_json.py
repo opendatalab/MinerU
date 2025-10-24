@@ -5,6 +5,7 @@ import time
 from loguru import logger
 from tqdm import tqdm
 
+from mineru.backend.utils import cross_page_table_merge
 from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
@@ -20,7 +21,6 @@ from mineru.utils.ocr_utils import OcrConfidence
 from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
 from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
     remove_overlaps_min_spans, txt_spans_extract
-from mineru.utils.table_merge import merge_table
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
 
@@ -231,14 +231,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     para_split(middle_json["pdf_info"])
 
     """表格跨页合并"""
-    is_merge_table = os.getenv('MINERU_MERGE_TABLE', 'true')
-    if is_merge_table.lower() == 'true':
-        merge_table(middle_json["pdf_info"])
-    elif is_merge_table.lower() == 'false':
-        pass
-    else:
-        logger.warning(f'unknown MINERU_MERGE_TABLE config: {is_merge_table}, pass')
-        pass
+    cross_page_table_merge(middle_json["pdf_info"])
 
     """llm优化"""
     llm_aided_config = get_llm_aided_config()
