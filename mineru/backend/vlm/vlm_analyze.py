@@ -4,7 +4,7 @@ import time
 
 from loguru import logger
 
-from .utils import enable_custom_logits_processors, set_defult_gpu_memory_utilization, set_defult_batch_size
+from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
@@ -74,9 +74,11 @@ class ModelSingleton:
                         use_fast=True,
                     )
                     if batch_size == 0:
-                        batch_size = set_defult_batch_size()
+                        batch_size = set_default_batch_size()
                 else:
-                    os.environ["OMP_NUM_THREADS"] = "1"
+                    if os.getenv('OMP_NUM_THREADS') is None:
+                        os.environ["OMP_NUM_THREADS"] = "1"
+
                     if backend == "vllm-engine":
                         try:
                             import vllm
@@ -84,7 +86,7 @@ class ModelSingleton:
                         except ImportError:
                             raise ImportError("Please install vllm to use the vllm-engine backend.")
                         if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_defult_gpu_memory_utilization()
+                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                         if "model" not in kwargs:
                             kwargs["model"] = model_path
                         if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
@@ -99,7 +101,7 @@ class ModelSingleton:
                         except ImportError:
                             raise ImportError("Please install vllm to use the vllm-async-engine backend.")
                         if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_defult_gpu_memory_utilization()
+                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                         if "model" not in kwargs:
                             kwargs["model"] = model_path
                         if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
