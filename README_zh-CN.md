@@ -47,7 +47,7 @@
 - 2025/10/24 2.6.0 发布
   - `pipline`后端优化
     - 增加对中文公式的实验性支持，可通过配置环境变量`export MINERU_FORMULA_CH_SUPPORT=1`开启。该功能可能会导致MFR速率略微下降、部分长公式识别失败等问题，建议仅在需要解析中文公式的场景下开启。如需关闭该功能，可将环境变量设置为`0`。
-    - `OCR`速度大幅提升200%~300%，感谢 @cjsdurj 提供的优化方案
+    - `OCR`速度大幅提升200%~300%，感谢 [@cjsdurj](https://github.com/cjsdurj) 提供的优化方案
     - `OCR`模型更新西里尔文(cyrillic)、阿拉伯文(arabic)、天城文(devanagari)、泰卢固语(te)、泰米尔语(ta)语系至`ppocr-v5`版本，精度相比上代模型提升40%以上
   - `vlm`后端优化
     - `table_caption`、`table_footnote`匹配逻辑优化，提升页内多张连续表场景下的表格标题和脚注的匹配准确率和阅读顺序合理性
