@@ -137,7 +137,7 @@ class TextRecognizer(BaseOCRV20):
         h, w = img.shape[:2]
         ratio = w / float(h)
         ratio_imgH = max(math.ceil(imgH * ratio), self.limited_min_width)
-        resized_w = min(imgW,int(ratio_imgH))
+        resized_w = min(imgW, int(ratio_imgH))
         resized_image = cv2.resize(img, (resized_w, imgH)) /127.5 - 1
         padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
         padding_im[:, :, 0:resized_w] = resized_image.transpose((2, 0, 1))
