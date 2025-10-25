@@ -20,7 +20,7 @@ Options:
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
-  -d, --device TEXT               Inference device (e.g., cpu/cuda/cuda:0/npu/mps, pipeline backend only)
+  -d, --device TEXT               Inference device (e.g., cpu/cuda/cuda:0/npu/mps, pipeline and vlm-transformers backend only)
   --vram INTEGER                  Maximum GPU VRAM usage per process (GB) (pipeline backend only)
   --source [huggingface|modelscope|local]
                                   Model source, default: huggingface
@@ -68,7 +68,7 @@ Here are the environment variables and their descriptions:
 - `MINERU_DEVICE_MODE`:
     * Used to specify inference device
     * supports device types like `cpu/cuda/cuda:0/npu/mps`
-    * only effective for `pipeline` backend.
+    * only effective for `pipeline` and `vlm-transformers` backends.
   
 - `MINERU_VIRTUAL_VRAM_SIZE`: 
     * Used to specify maximum GPU VRAM usage per process (GB)
