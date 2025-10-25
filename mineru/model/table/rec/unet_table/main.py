@@ -184,7 +184,7 @@ class WiredTableRecognition:
                 continue
             # 从img中截取对应的区域
             x1, y1, x2, y2 = int(box[0][0])+1, int(box[0][1])+1, int(box[2][0])-1, int(box[2][1])-1
-            if x1 >= x2 or y1 >= y2:
+            if x1 >= x2 or y1 >= y2 or x1 < 0 or y1 < 0:
                 # logger.warning(f"Invalid box coordinates: {x1, y1, x2, y2}")
                 continue
             # 判断长宽比

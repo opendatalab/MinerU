@@ -51,7 +51,7 @@ def llm_aided_title(page_info_list, title_aided_config):
 3. 保持字典内key-value的对应关系不变
 
 4. 优化层次结构：
-    - 为每个标题元素添加适当的层次结构
+    - 根据标题内容的语义为每个标题元素添加适当的层次结构
     - 行高较大的标题一般是更高级别的标题
     - 标题从前至后的层级必须是连续的，不能跳过层级
     - 标题层级最多为4级，不要添加过多的层级
@@ -61,7 +61,6 @@ def llm_aided_title(page_info_list, title_aided_config):
     - 在完成初步分级后，仔细检查分级结果的合理性
     - 根据上下文关系和逻辑顺序，对不合理的分级进行微调
     - 确保最终的分级结果符合文档的实际结构和逻辑
-    - 字典中可能包含被误当成标题的正文，你可以通过将其层级标记为 0 来排除它们
 
 IMPORTANT: 
 请直接返回优化过的由标题层级组成的字典，格式为{{标题id:标题层级}}，如下：
@@ -78,6 +77,8 @@ Input title list:
 
 Corrected title list:
 """
+    #5.
+    #- 字典中可能包含被误当成标题的正文，你可以通过将其层级标记为 0 来排除它们
 
     retry_count = 0
     max_retries = 3
@@ -89,6 +90,7 @@ Corrected title list:
                 model=title_aided_config["model"],
                 messages=[
                     {'role': 'user', 'content': title_optimize_prompt}],
+                extra_body={"enable_thinking": False},
                 temperature=0.7,
                 stream=True,
             )

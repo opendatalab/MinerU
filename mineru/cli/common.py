@@ -18,7 +18,7 @@ from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 
 pdf_suffixes = ["pdf"]
-image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg"]
+image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
 
 def read_fn(path):
@@ -44,34 +44,37 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
+    try:
+        # 从字节数据加载PDF
+        pdf = pdfium.PdfDocument(pdf_bytes)
 
-    # 从字节数据加载PDF
-    pdf = pdfium.PdfDocument(pdf_bytes)
+        # 确定结束页
+        end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
+        if end_page_id > len(pdf) - 1:
+            logger.warning("end_page_id is out of range, use pdf_docs length")
+            end_page_id = len(pdf) - 1
 
-    # 确定结束页
-    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
-    if end_page_id > len(pdf) - 1:
-        logger.warning("end_page_id is out of range, use pdf_docs length")
-        end_page_id = len(pdf) - 1
+        # 创建一个新的PDF文档
+        output_pdf = pdfium.PdfDocument.new()
 
-    # 创建一个新的PDF文档
-    output_pdf = pdfium.PdfDocument.new()
+        # 选择要导入的页面索引
+        page_indices = list(range(start_page_id, end_page_id + 1))
 
-    # 选择要导入的页面索引
-    page_indices = list(range(start_page_id, end_page_id + 1))
+        # 从原PDF导入页面到新PDF
+        output_pdf.import_pages(pdf, page_indices)
 
-    # 从原PDF导入页面到新PDF
-    output_pdf.import_pages(pdf, page_indices)
+        # 将新PDF保存到内存缓冲区
+        output_buffer = io.BytesIO()
+        output_pdf.save(output_buffer)
 
-    # 将新PDF保存到内存缓冲区
-    output_buffer = io.BytesIO()
-    output_pdf.save(output_buffer)
+        # 获取字节数据
+        output_bytes = output_buffer.getvalue()
 
-    # 获取字节数据
-    output_bytes = output_buffer.getvalue()
-
-    pdf.close()  # 关闭原PDF文档以释放资源
-    output_pdf.close()  # 关闭新PDF文档以释放资源
+        pdf.close()  # 关闭原PDF文档以释放资源
+        output_pdf.close()  # 关闭新PDF文档以释放资源
+    except Exception as e:
+        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
+        output_bytes = pdf_bytes
 
     return output_bytes
 

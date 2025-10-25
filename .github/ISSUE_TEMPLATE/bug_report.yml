@@ -122,7 +122,21 @@ body:
       #multiple: false
       options:
         -
-        - "2.0.x"
+        - "<2.2.0"
+        - "2.2.x"
+        - ">=2.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend_name
+    attributes:
+      label: Backend name | 解析后端
+      #multiple: false
+      options:
+        -
+        - "vlm"
+        - "pipeline"
     validations:
       required: true
 

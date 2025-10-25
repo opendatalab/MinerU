@@ -177,10 +177,7 @@ async def parse_pdf(
                             zf.write(path, arcname=os.path.join(safe_pdf_name, f"{safe_pdf_name}_middle.json"))
 
                     if return_model_output:
-                        if backend.startswith("pipeline"):
-                            path = os.path.join(parse_dir, f"{pdf_name}_model.json")
-                        else:
-                            path = os.path.join(parse_dir, f"{pdf_name}_model_output.txt")
+                        path = os.path.join(parse_dir, f"{pdf_name}_model.json")
                         if os.path.exists(path): 
                             zf.write(path, arcname=os.path.join(safe_pdf_name, os.path.basename(path)))
 
@@ -220,10 +217,7 @@ async def parse_pdf(
                     if return_middle_json:
                         data["middle_json"] = get_infer_result("_middle.json", pdf_name, parse_dir)
                     if return_model_output:
-                        if backend.startswith("pipeline"):
-                            data["model_output"] = get_infer_result("_model.json", pdf_name, parse_dir)
-                        else:
-                            data["model_output"] = get_infer_result("_model_output.txt", pdf_name, parse_dir)
+                        data["model_output"] = get_infer_result("_model.json", pdf_name, parse_dir)
                     if return_content_list:
                         data["content_list"] = get_infer_result("_content_list.json", pdf_name, parse_dir)
                     if return_images:

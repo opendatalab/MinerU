@@ -87,6 +87,16 @@ Here are the environment variables and their descriptions:
     * Used to enable formula parsing
     * defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
   
-- `MINERU_TABLE_ENABLE`: 
+- `MINERU_FORMULA_CH_SUPPORT`:
+    * Used to enable Chinese formula parsing optimization (experimental feature)
+    * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
+    * Only effective for `pipeline` backend.
+  
+- `MINERU_TABLE_ENABLE`:
     * Used to enable table parsing
-    * defaults to `true`, can be set to `false` through environment variables to disable table parsing.
+    * Default is `true`, can be set to `false` via environment variable to disable table parsing.
+
+- `MINERU_TABLE_MERGE_ENABLE`:
+    * Used to enable table merging functionality
+    * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
+

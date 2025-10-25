@@ -52,7 +52,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >[!TIP]
   >
   >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
-  >- Access `http://127.0.0.1:7860/?view=api` to use the Gradio API.
+
 - Using `http-client/server` method:
   ```bash
   # Start vllm server (requires vllm environment)
