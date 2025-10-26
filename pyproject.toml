@@ -20,6 +20,8 @@ dependencies = [
     "boto3>=1.28.43",
     "click>=8.1.7",
     "loguru>=0.7.2",
+    "packaging>=24.0",
+    "psutil>=5.9.0",
     "numpy>=1.21.6",
     "pdfminer.six==20250506",
     "tqdm>=4.67.1",
@@ -55,6 +57,7 @@ vlm = [
     "transformers>=4.51.1,<5.0.0",
     "accelerate>=1.5.1",
 ]
+mlx = ["mlx-vlm>=0.3.3"]
 vllm = [
     "vllm>=0.10.1.1,<0.12",
 ]
