@@ -10,7 +10,7 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     支持文件或目录的可靠下载。
     - 如果输入文件: 返回本地文件绝对路径
     - 如果输入目录: 返回本地缓存下与 relative_path 同结构的相对路径字符串
-    :param repo_mode: 指定仓库模式，'pipeline' 或 'vlm'
+    :param repo_mode: 指定仓库模式，'pipeline' ,'mlx'或 'vlm'
     :param relative_path: 文件或目录相对路径
     :return: 本地文件绝对路径或相对路径
     """
@@ -42,18 +42,23 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     }
 
     if repo_mode not in repo_mapping:
-        raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm'")
+        raise ValueError(f"Unsupported repo_mode: {repo_mode}, must be 'pipeline' or 'vlm' or 'mlx'")
 
-    # 如果没有指定model_source或值不是'modelscope'，则使用默认值
-    repo = repo_mapping[repo_mode].get(model_source, repo_mapping[repo_mode]['default'])
+   # 选择实际使用的仓库与提供方（避免 model_source 与可用源不匹配时函数选择错误）
+    if model_source in repo_mapping[repo_mode]:
+        repo = repo_mapping[repo_mode][model_source]
+        provider = model_source
+    else:
+        repo = repo_mapping[repo_mode]['default']
+        # 若未命中可选源，则回落到 huggingface 提供方
+        provider = 'huggingface'
 
-
-    if model_source == "huggingface":
+    if provider == "huggingface":
         snapshot_download = hf_snapshot_download
-    elif model_source == "modelscope":
+    elif provider == "modelscope":
         snapshot_download = ms_snapshot_download
     else:
-        raise ValueError(f"未知的仓库类型: {model_source}")
+        raise ValueError(f"未知的仓库类型: {provider}")
 
     cache_dir = None
 
@@ -68,13 +73,17 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
             relative_path = relative_path.strip('/')
             cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
     elif repo_mode == 'mlx':
-        relative_path = relative_path.strip('/')
-        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+        # MLX 模式下，如果传入根路径，则下载整个仓库
+        if relative_path == "/" or relative_path.strip('/') == "":
+            cache_dir = snapshot_download(repo)
+        else:
+            relative_path = relative_path.strip('/')
+            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+        
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")
     return cache_dir
-
 
 if __name__ == '__main__':
     path1 = "models/README.md"

@@ -49,8 +49,12 @@ class ModelSingleton:
             for param in ["batch_size", "max_concurrency", "http_timeout"]:
                 if param in kwargs:
                     del kwargs[param]
-            if backend in ['transformers', 'mlx', 'vllm-engine', "vllm-async-engine"] and not model_path:
-                model_path = auto_download_and_get_model_root_path("/","vlm")
+            # 不同后端下载各自对应的模型根目录
+            if not model_path:
+                if backend == 'mlx':
+                    model_path = auto_download_and_get_model_root_path("/", "mlx")
+                elif backend in ['transformers', 'vllm-engine', "vllm-async-engine"]:
+                    model_path = auto_download_and_get_model_root_path("/", "vlm")
                 if backend == "transformers":
                     try:
                         from transformers import (
@@ -77,72 +81,69 @@ class ModelSingleton:
                     )
                     if batch_size == 0:
                         batch_size = set_default_batch_size()
-                else:
+                elif backend == 'mlx':
+                    # 对非 transformers 分支，设置合理的 OpenMP 线程数以避免过度线程化
                     if os.getenv('OMP_NUM_THREADS') is None:
                         os.environ["OMP_NUM_THREADS"] = "1"
 
-                    elif backend == 'mlx':
-                        # 1. 首先，执行针对MLX环境的兼容性检查
-                        if not check_mlx_vlm_environment():
-                            raise RuntimeError(
-                                "MLX environment check failed. "
-                                "Please ensure you are on an Apple Silicon Mac with required memory and dependencies."
-                            )
-                        logger.success("✅ MLX 环境检查通过。")
+                    # 1) MLX 环境检查
+                    if not check_mlx_vlm_environment():
+                        raise RuntimeError(
+                            "MLX environment check failed. "
+                            "Please ensure you are on an Apple Silicon Mac with required memory and dependencies."
+                        )
+                    logger.success("✅ MLX 环境检查通过。")
 
-                        # 2. 加载MLX模型和处理器
-                        try:
-                            from mlx_vlm import load
-                            # mlx_vlm的load函数会返回模型和处理器
-                            model, processor = load(model_path)
-                            logger.info(f"成功从路径 '{model_path}' 加载 MLX 模型。")
-                        except ImportError:
-                            raise ImportError("请运行 'pip install mlx-vlm' 来安装 MLX 后端依赖。")
-                        
-                        # 3. 基于系统统一内存动态设置批处理大小
-                        try:
-                            # Apple Silicon 使用统一内存，因此我们检查总系统内存
-                            total_memory_gb = psutil.virtual_memory().total / (1024 ** 3)
-                            if total_memory_gb >= 32:
-                                batch_size = 8
-                            elif total_memory_gb >= 16:
-                                batch_size = 4
-                            else:
-                                batch_size = 1
-                            logger.info(f'系统内存: {total_memory_gb:.2f} GB, MLX 的 batch_size 设置为 {batch_size}。')
-                        except Exception as e:
-                            logger.warning(f'无法确定系统内存: {e}, 使用默认 batch_size: 1')
+                    # 2) 加载 MLX 模型与处理器
+                    try:
+                        from mlx_vlm import load
+                        model, processor = load(model_path)
+                        logger.info(f"成功从路径 '{model_path}' 加载 MLX 模型。")
+                    except ImportError:
+                        raise ImportError("请运行 'pip install mlx-vlm' 来安装 MLX 后端依赖。")
+
+                    # 3) 基于统一内存估算合适的 batch_size
+                    try:
+                        total_memory_gb = psutil.virtual_memory().total / (1024 ** 3)
+                        if total_memory_gb >= 32:
+                            batch_size = 8
+                        elif total_memory_gb >= 16:
+                            batch_size = 4
+                        else:
                             batch_size = 1
-
-                    if backend == "vllm-engine":
-                        try:
-                            import vllm
-                            from mineru_vl_utils import MinerULogitsProcessor
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-engine backend.")
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_llm = vllm.LLM(**kwargs)
-                    elif backend == "vllm-async-engine":
-                        try:
-                            from vllm.engine.arg_utils import AsyncEngineArgs
-                            from vllm.v1.engine.async_llm import AsyncLLM
-                            from mineru_vl_utils import MinerULogitsProcessor
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-async-engine backend.")
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+                        logger.info(f'系统内存: {total_memory_gb:.2f} GB, MLX 的 batch_size 设置为 {batch_size}。')
+                    except Exception as e:
+                        logger.warning(f'无法确定系统内存: {e}, 使用默认 batch_size: 1')
+                        batch_size = 1
+                elif backend == "vllm-engine":
+                    try:
+                        import vllm
+                        from mineru_vl_utils import MinerULogitsProcessor
+                    except ImportError:
+                        raise ImportError("Please install vllm to use the vllm-engine backend.")
+                    if "gpu_memory_utilization" not in kwargs:
+                        kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                    if "model" not in kwargs:
+                        kwargs["model"] = model_path
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
+                    # 使用kwargs为 vllm初始化参数
+                    vllm_llm = vllm.LLM(**kwargs)
+                elif backend == "vllm-async-engine":
+                    try:
+                        from vllm.engine.arg_utils import AsyncEngineArgs
+                        from vllm.v1.engine.async_llm import AsyncLLM
+                        from mineru_vl_utils import MinerULogitsProcessor
+                    except ImportError:
+                        raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+                    if "gpu_memory_utilization" not in kwargs:
+                        kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                    if "model" not in kwargs:
+                        kwargs["model"] = model_path
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
+                    # 使用kwargs为 vllm初始化参数
+                    vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
             self._models[key] = MinerUClient(
                 backend=backend,
                 model=model,
