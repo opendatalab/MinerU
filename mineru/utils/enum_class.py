@@ -77,6 +77,7 @@ class ModelPath:
     unet_structure = "models/TabRec/UnetStructure/unet.onnx"
     paddle_table_cls = "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx"
     paddle_orientation_classification = "models/OriCls/paddle_orientation_classification/PP-LCNet_x1_0_doc_ori.onnx"
+    mlx_root_hf = "mlx-community/MinerU2.5-2509-1.2B-bf16"
 
 
 class SplitFlag:

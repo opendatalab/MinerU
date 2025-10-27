@@ -399,12 +399,12 @@ async def aio_do_parse(
 
 if __name__ == "__main__":
     # pdf_path = "../../demo/pdfs/demo3.pdf"
-    pdf_path = "C:/Users/zhaoxiaomeng/Downloads/4546d0e2-ba60-40a5-a17e-b68555cec741.pdf"
+    pdf_path = "/Users/magicyang/文档/成都蓉矽半导体有限公司/科目余额表/2022年审计报告.pdf"
 
     try:
        do_parse("./output", [Path(pdf_path).stem], [read_fn(Path(pdf_path))],["ch"],
                 end_page_id=10,
-                backend='vlm-huggingface'
+                backend='vlm-mlx'
                 # backend = 'pipeline'
                 )
     except Exception as e:

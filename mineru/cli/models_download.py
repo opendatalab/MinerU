@@ -86,6 +86,12 @@ def download_vlm_models():
     logger.info(f"VLM models downloaded successfully to: {download_finish_path}")
     configure_model(download_finish_path, "vlm")
 
+def download_mlx_models():
+    """下载MLX模型"""
+    download_finish_path = auto_download_and_get_model_root_path("/", repo_mode='mlx')
+    logger.info(f"MLX models downloaded successfully to: {download_finish_path}")
+    configure_model(download_finish_path, "mlx")
+
 
 @click.command()
 @click.option(
@@ -102,7 +108,7 @@ def download_vlm_models():
     '-m',
     '--model_type',
     'model_type',
-    type=click.Choice(['pipeline', 'vlm', 'all']),
+    type=click.Choice(['pipeline', 'vlm', 'mlx', 'all']),
     help="""
         The type of the model to download.
         """,
@@ -128,7 +134,7 @@ def download_models(model_source, model_type):
     if model_type is None:
         model_type = click.prompt(
             "Please select the model type to download: ",
-            type=click.Choice(['pipeline', 'vlm', 'all']),
+            type=click.Choice(['pipeline', 'vlm', 'mlx','all']),
             default='all'
         )
 
@@ -139,8 +145,11 @@ def download_models(model_source, model_type):
             download_pipeline_models()
         elif model_type == 'vlm':
             download_vlm_models()
+        elif model_type == 'mlx':
+            download_mlx_models()
         elif model_type == 'all':
             download_pipeline_models()
+            download_mlx_models()
             download_vlm_models()
         else:
             click.echo(f"Unsupported model type: {model_type}", err=True)

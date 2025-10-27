@@ -50,10 +50,11 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     '-b',
     '--backend',
     'backend',
-    type=click.Choice(['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-http-client']),
+    type=click.Choice(['pipeline', 'vlm-transformers', 'vlm-mlx', 'vlm-vllm-engine', 'vlm-http-client']),
     help="""the backend for parsing pdf:
     pipeline: More general.
     vlm-transformers: More general.
+    vlm-mlx: Faster For Macos(mlx).
     vlm-vllm-engine: Faster(engine).
     vlm-http-client: Faster(client).
     without method specified, pipeline will be used by default.""",

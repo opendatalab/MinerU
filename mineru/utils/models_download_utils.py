@@ -34,6 +34,10 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
             'huggingface': ModelPath.vlm_root_hf,
             'modelscope': ModelPath.vlm_root_modelscope,
             'default': ModelPath.vlm_root_hf
+        },
+        'mlx': {
+            'huggingface': ModelPath.mlx_root_hf,
+            'default': ModelPath.mlx_root_hf
         }
     }
 
@@ -63,6 +67,9 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
         else:
             relative_path = relative_path.strip('/')
             cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+    elif repo_mode == 'mlx':
+        relative_path = relative_path.strip('/')
+        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")
