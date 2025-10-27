@@ -148,7 +148,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     fix_discarded_blocks = fix_discarded_block(discarded_block_with_spans)
 
     """如果当前页面没有有效的bbox则跳过"""
-    if len(all_bboxes) == 0:
+    if len(all_bboxes) == 0 and len(fix_discarded_blocks) == 0:
         return None
 
     """对image/table/interline_equation截图"""
