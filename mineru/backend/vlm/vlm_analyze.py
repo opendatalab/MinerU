@@ -47,7 +47,7 @@ class ModelSingleton:
             for param in ["batch_size", "max_concurrency", "http_timeout"]:
                 if param in kwargs:
                     del kwargs[param]
-            if backend in ['transformers', 'vllm-engine', "vllm-async-engine"] and not model_path:
+            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
                     try:
@@ -75,6 +75,12 @@ class ModelSingleton:
                     )
                     if batch_size == 0:
                         batch_size = set_default_batch_size()
+                elif backend == "mlx-engine":
+                    try:
+                        from mlx_vlm import load as mlx_load
+                    except ImportError:
+                        raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
+                    model, processor = mlx_load(model_path)
                 else:
                     if os.getenv('OMP_NUM_THREADS') is None:
                         os.environ["OMP_NUM_THREADS"] = "1"

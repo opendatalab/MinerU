@@ -58,6 +58,9 @@ vlm = [
 vllm = [
     "vllm>=0.10.1.1,<0.12",
 ]
+mlx = [
+    "mlx-vlm>=0.3.3,<0.4",
+]
 pipeline = [
     "matplotlib>=3.10,<4",
     "ultralytics>=8.3.48,<9",
@@ -87,6 +90,7 @@ core = [
     "mineru[pipeline]",
     "mineru[api]",
     "mineru[gradio]",
+    "mineru[mlx] ; sys_platform == 'darwin'",
 ]
 all = [
     "mineru[core]",
