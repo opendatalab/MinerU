@@ -11,7 +11,7 @@ from rapid_table import ModelType, RapidTable, RapidTableInput
 from rapid_table.utils import RapidTableOutput
 from tqdm import tqdm
 
-from mineru.model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
+from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
