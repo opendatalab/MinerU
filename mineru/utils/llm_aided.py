@@ -84,7 +84,7 @@ Corrected title list:
     max_retries = 3
     dict_completion = None
 
-    # 构建 API 调用参数
+    # Build API call parameters
     api_params = {
         "model": title_aided_config["model"],
         "messages": [{'role': 'user', 'content': title_optimize_prompt}],
