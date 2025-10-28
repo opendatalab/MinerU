@@ -8,7 +8,7 @@ from ...model.layout.doclayoutyolo import DocLayoutYOLOModel
 from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
-from ...model.ocr.paddleocr2pytorch.pytorch_paddle import PytorchPaddleOCR
+from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
 # from ...model.table.rec.RapidTable import RapidTableModel
