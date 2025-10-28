@@ -92,7 +92,7 @@ Corrected title list:
         "stream": True,
     }
 
-    # 只有配置中明确指定时才添加 extra_body
+    # Only add extra_body when explicitly specified in config
     if "enable_thinking" in title_aided_config:
         api_params["extra_body"] = {"enable_thinking": title_aided_config["enable_thinking"]}
 
