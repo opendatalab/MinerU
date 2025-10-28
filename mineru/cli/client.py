@@ -126,7 +126,8 @@ if is_mac_os_version_supported():
     '--device',
     'device_mode',
     type=str,
-    help='Device mode for model inference, e.g., "cpu", "cuda", "cuda:0", "npu", "npu:0", "mps". Adapted only for the case where the backend is set to "pipeline". ',
+    help="""Device mode for model inference, e.g., "cpu", "cuda", "cuda:0", "npu", "npu:0", "mps".
+         Adapted only for the case where the backend is set to "pipeline" and "vlm-transformers". """,
     default=None,
 )
 @click.option(

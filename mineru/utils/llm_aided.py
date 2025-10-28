@@ -84,16 +84,21 @@ Corrected title list:
     max_retries = 3
     dict_completion = None
 
+    # Build API call parameters
+    api_params = {
+        "model": title_aided_config["model"],
+        "messages": [{'role': 'user', 'content': title_optimize_prompt}],
+        "temperature": 0.7,
+        "stream": True,
+    }
+
+    # Only add extra_body when explicitly specified in config
+    if "enable_thinking" in title_aided_config:
+        api_params["extra_body"] = {"enable_thinking": title_aided_config["enable_thinking"]}
+
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
-                model=title_aided_config["model"],
-                messages=[
-                    {'role': 'user', 'content': title_optimize_prompt}],
-                extra_body={"enable_thinking": False},
-                temperature=0.7,
-                stream=True,
-            )
+            completion = client.chat.completions.create(**api_params)
             content_pieces = []
             for chunk in completion:
                 if chunk.choices and chunk.choices[0].delta.content is not None:
