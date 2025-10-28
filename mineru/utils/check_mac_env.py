@@ -4,7 +4,7 @@ import platform
 from packaging import version
 
 
-# 检测当前环境是否为Mac电脑
+# Detect if the current environment is a Mac computer
 def is_mac_environment() -> bool:
     return platform.system() == "Darwin"
 
