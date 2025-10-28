@@ -18,6 +18,7 @@
             "api_key": "your_api_key",
             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
             "model": "qwen3-next-80b-a3b-instruct",
+            "enable_thinking": false,
             "enable": false
         }
     },
