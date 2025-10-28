@@ -13,6 +13,7 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
+from mineru.utils.check_mac_env import is_mac_os_version_supported
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.hash_utils import str_sha256
 
@@ -273,7 +274,7 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-mlx-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -381,6 +382,8 @@ def main(ctx,
                         preferred_option = "vlm-vllm-async-engine"
                     else:
                         drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
+                        if is_mac_os_version_supported():
+                            drop_list.append("vlm-mlx-engine")
                         preferred_option = "pipeline"
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
                 with gr.Row(visible=False) as client_options:
