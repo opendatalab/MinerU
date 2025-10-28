@@ -14,7 +14,7 @@ def is_apple_silicon_cpu() -> bool:
     return platform.machine() in ["arm64", "aarch64"]
 
 
-#如果是Mac电脑且为Apple Silicon架构，检测macos版本是否在13.5以上
+# If Mac computer with Apple Silicon architecture, check if macOS version is 13.5 or above
 def is_mac_os_version_supported(min_version: str = "13.5") -> bool:
     if not is_mac_environment() or not is_apple_silicon_cpu():
         return False
