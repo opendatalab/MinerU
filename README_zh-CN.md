@@ -606,12 +606,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 > 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
 
-<table border="1" cellpadding="5" cellspacing="0">
+<table>
     <thead>
         <tr>
             <th rowspan="2">解析后端</th>
-            <th rowspan="2">pipeline (精度<sup>*</sup> 82+)</th>
-            <th colspan="4">vlm (精度<sup>*</sup> 90+)</th>
+            <th rowspan="2">pipeline <br> (精度<sup>1</sup> 82+)</th>
+            <th colspan="4">vlm (精度<sup>1</sup> 90+)</th>
         </tr>
         <tr>
             <th>transformers</th>
@@ -631,9 +631,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         </tr>
         <tr>
             <th>操作系统</th>
-            <td colspan="2" style="text-align:center;">Linux / Windows / macOS</td>
-            <td>macOS (13.5+)</td>
-            <td>Linux / Windows (via WSL2)</td>
+            <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
+            <td style="text-align:center;">macOS<sup>3</sup></td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
             <td>不限</td>
         </tr>
         <tr>
@@ -664,7 +664,11 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         </tr>
     </tbody>
 </table>
-*：精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数
+ 
+1. 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
+2. Linux仅支持2019年及以后发行版  
+3. 需macOS 13.5及以上版本  
+4. 通过WSL2实现Windows vLLM支持
 
 ### 安装 MinerU
 
