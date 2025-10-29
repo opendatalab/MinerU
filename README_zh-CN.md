@@ -605,42 +605,66 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 >
 > 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
-<table>
-    <tr>
-        <td>解析后端</td>
-        <td>pipeline</td>
-        <td>vlm-transformers</td>
-        <td>vlm-vllm</td>
-    </tr>
-    <tr>
-        <td>操作系统</td>
-        <td>Linux / Windows / macOS</td>
-        <td>Linux / Windows</td>
-        <td>Linux / Windows (via WSL2)</td>
-    </tr>
-    <tr>
-        <td>CPU推理支持</td>
-        <td>✅</td>
-        <td colspan="2">❌</td>
-    </tr>
-    <tr>
-        <td>GPU要求</td>
-        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
-        <td colspan="2">Turing及以后架构，8G显存以上</td>
-    </tr>
-    <tr>
-        <td>内存要求</td>
-        <td colspan="3">最低16G以上，推荐32G以上</td>
-    </tr>
-    <tr>
-        <td>磁盘空间要求</td>
-        <td colspan="3">20G以上，推荐使用SSD</td>
-    </tr>
-    <tr>
-        <td>python版本</td>
-        <td colspan="3">3.10-3.13</td>
-    </tr>
+
+<table border="1" cellpadding="5" cellspacing="0">
+    <thead>
+        <tr>
+            <th rowspan="2">解析后端</th>
+            <th rowspan="2">pipeline (精度<sup>*</sup> 82+)</th>
+            <th colspan="4">vlm (精度<sup>*</sup> 90+)</th>
+        </tr>
+        <tr>
+            <th>transformers</th>
+            <th>mlx-engine</th>
+            <th>vllm-engine/vllm-async-engine</th>
+            <th>http-client</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th>后端特性</th>
+            <td>速度快, 无幻觉</td>
+            <td>兼容性好, 速度较慢</td>
+            <td>比transformers更快</td>
+            <td>速度快, 兼容vllm生态</td>
+            <td>无配置要求, 适用openai兼容服务器</td>
+        </tr>
+        <tr>
+            <th>操作系统</th>
+            <td colspan="2" style="text-align:center;">Linux / Windows / macOS</td>
+            <td>macOS (13.5+)</td>
+            <td>Linux / Windows (via WSL2)</td>
+            <td>不限</td>
+        </tr>
+        <tr>
+            <th>cpu推理支持</th>
+            <td colspan="3" style="text-align:center;">✅</td>
+            <td >❌</td>
+            <td >不需要</td>
+        </tr>
+        <tr>
+            <th>GPU要求</th><td colspan="2" style="text-align:center;">Volta及以后架构, 6G显存以上或Apple Silicon</td>
+            <td>Apple Silicon</td>
+            <td>Volta及以后架构, 8G显存以上</td>
+            <td>不需要</td>
+        </tr>
+        <tr>
+            <th>内存要求</th>
+            <td colspan="4" style="text-align:center;">最低16GB以上, 推荐32GB以上</td>
+            <td>8GB</td>
+        </tr>
+        <tr>
+            <th>磁盘空间要求</th>
+            <td colspan="4" style="text-align:center;">20GB以上, 推荐使用SSD</td>
+            <td>2GB</td>
+        </tr>
+        <tr>
+            <th>python版本</th>
+            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+        </tr>
+    </tbody>
 </table>
+*：精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数
 
 ### 安装 MinerU
 
