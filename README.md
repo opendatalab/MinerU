@@ -637,7 +637,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
             <th>Backend Features</th>
             <td>Fast, no hallucinations</td>
-            <td>Good compatibility, slower</td>
+            <td>Good compatibility, <br>but slower</td>
             <td>Faster than transformers</td>
             <td>Fast, compatible with the vLLM ecosystem</td>
             <td>No configuration required, suitable for OpenAI-compatible servers</td>
@@ -651,8 +651,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         </tr>
         <tr>
             <th>CPU inference support</th>
-            <td colspan="3" style="text-align:center;">✅</td>
-            <td>❌</td>
+            <td colspan="2" style="text-align:center;">✅</td>
+            <td colspan="2" style="text-align:center;">❌</td>
             <td>Not required</td>
         </tr>
         <tr>
@@ -678,10 +678,10 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tbody>
 </table>
  
-1. Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5)  
-2. Linux supports only distributions released in 2019 or later  
-3. Requires macOS 13.5 or later  
-4. Windows vLLM support via WSL2
+<sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5)  
+<sup>2</sup> Linux supports only distributions released in 2019 or later  
+<sup>3</sup> Requires macOS 13.5 or later  
+<sup>4</sup> Windows vLLM support via WSL2
 
 
 ### Install MinerU

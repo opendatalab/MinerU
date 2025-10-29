@@ -625,7 +625,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <th>后端特性</th>
             <td>速度快, 无幻觉</td>
             <td>兼容性好, 速度较慢</td>
-            <td>比transformers更快</td>
+            <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
             <td>无配置要求, 适用openai兼容服务器</td>
         </tr>
@@ -637,9 +637,9 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>不限</td>
         </tr>
         <tr>
-            <th>cpu推理支持</th>
-            <td colspan="3" style="text-align:center;">✅</td>
-            <td >❌</td>
+            <th>纯CPU推理支持</th>
+            <td colspan="2" style="text-align:center;">✅</td>
+            <td colspan="2" style="text-align:center;">❌</td>
             <td >不需要</td>
         </tr>
         <tr>
@@ -663,12 +663,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td colspan="5" style="text-align:center;">3.10-3.13</td>
         </tr>
     </tbody>
-</table>
- 
-1. 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
-2. Linux仅支持2019年及以后发行版  
-3. 需macOS 13.5及以上版本  
-4. 通过WSL2实现Windows vLLM支持
+</table> 
+
+<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
+<sup>2</sup> Linux仅支持2019年及以后发行版  
+<sup>3</sup> 需macOS 13.5及以上版本  
+<sup>4</sup> 通过WSL2实现Windows vLLM支持
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
