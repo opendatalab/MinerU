@@ -629,7 +629,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
             <th>transformers</th>
             <th>mlx-engine</th>
-            <th>vllm-engine/vllm-async-engine</th>
+            <th>vllm-engine / <br>vllm-async-engine</th>
             <th>http-client</th>
         </tr>
     </thead>

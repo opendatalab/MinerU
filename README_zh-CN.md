@@ -616,7 +616,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <tr>
             <th>transformers</th>
             <th>mlx-engine</th>
-            <th>vllm-engine/vllm-async-engine</th>
+            <th>vllm-engine / <br>vllm-async-engine</th>
             <th>http-client</th>
         </tr>
     </thead>
