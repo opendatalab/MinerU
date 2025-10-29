@@ -627,7 +627,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>兼容性好, 速度较慢</td>
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
-            <td>无配置要求, 适用于OpenAI兼容服务器</td>
+            <td>无配置要求, 适用于OpenAI兼容服务器<sup>5</sup></td>
         </tr>
         <tr>
             <th>操作系统</th>
@@ -668,7 +668,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 <sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
 <sup>2</sup> Linux仅支持2019年及以后发行版  
 <sup>3</sup> 需macOS 13.5及以上版本  
-<sup>4</sup> 通过WSL2实现Windows vLLM支持
+<sup>4</sup> 通过WSL2实现Windows vLLM支持  
+<sup>5</sup> 兼容OpenAI API的服务器，如`vLLM`/`SGLang`/`LMDeploy`等
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
