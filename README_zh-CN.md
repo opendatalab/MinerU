@@ -665,10 +665,10 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tbody>
 </table> 
 
-<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
+<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
 <sup>2</sup> Linux仅支持2019年及以后发行版  
-<sup>3</sup> 需macOS 13.5及以上版本  
-<sup>4</sup> 通过WSL2实现Windows vLLM支持  
+<sup>3</sup> MLX需macOS 13.5及以上版本支持  
+<sup>4</sup> Windows vLLM通过WSL2实现支持  
 <sup>5</sup> 兼容OpenAI API的服务器，如`vLLM`/`SGLang`/`LMDeploy`等
 
 > [!TIP]
