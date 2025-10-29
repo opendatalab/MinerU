@@ -627,7 +627,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>兼容性好, 速度较慢</td>
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
-            <td>无配置要求, 适用openai兼容服务器</td>
+            <td>无配置要求, 适用于OpenAI兼容服务器</td>
         </tr>
         <tr>
             <th>操作系统</th>
@@ -637,7 +637,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>不限</td>
         </tr>
         <tr>
-            <th>纯CPU推理支持</th>
+            <th>CPU推理支持</th>
             <td colspan="2" style="text-align:center;">✅</td>
             <td colspan="2" style="text-align:center;">❌</td>
             <td >不需要</td>
