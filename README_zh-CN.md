@@ -627,7 +627,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>兼容性好, 速度较慢</td>
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
-            <td>无配置要求, 适用于OpenAI兼容服务器<sup>5</sup></td>
+            <td>适用于OpenAI兼容服务器<sup>5</sup></td>
         </tr>
         <tr>
             <th>操作系统</th>

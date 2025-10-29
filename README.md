@@ -640,7 +640,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
             <td>Good compatibility, <br>but slower</td>
             <td>Faster than transformers</td>
             <td>Fast, compatible with the vLLM ecosystem</td>
-            <td>No configuration required, suitable for OpenAI-compatible servers<sup>5</sup></td>
+            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
         </tr>
         <tr>
             <th>Operating System</th>
