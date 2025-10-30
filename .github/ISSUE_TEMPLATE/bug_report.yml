@@ -122,9 +122,9 @@ body:
       #multiple: false
       options:
         -
-        - "<2.2.0"
-        - "2.2.x"
-        - ">=2.5"
+        - "`<2.2.0`"
+        - "`2.2.x`"
+        - "`>=2.5`"
     validations:
       required: true
 
