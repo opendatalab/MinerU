@@ -8,6 +8,7 @@ from .utils import enable_custom_logits_processors, set_default_gpu_memory_utili
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
+from ...utils.check_mac_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device
 
 from ...utils.enum_class import ImageType
@@ -76,6 +77,9 @@ class ModelSingleton:
                     if batch_size == 0:
                         batch_size = set_default_batch_size()
                 elif backend == "mlx-engine":
+                    mlx_supported = is_mac_os_version_supported()
+                    if not mlx_supported:
+                        raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
                     try:
                         from mlx_vlm import load as mlx_load
                     except ImportError:
