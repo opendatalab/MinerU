@@ -44,6 +44,9 @@
 </div>
 
 # 更新记录
+- 2025/10/31 2.6.3 发布
+  - 增加新后端`vlm-mlx-engine`支持，在Apple Silicon设备上支持使用`MLX`加速`MinerU2.5`模型推理，相比`vlm-transformers`后端，`vlm-mlx-engine`后端速度提升100%~200%。
+
 - 2025/10/24 2.6.2 发布
   - `pipline`后端优化
     - 增加对中文公式的实验性支持，可通过配置环境变量`export MINERU_FORMULA_CH_SUPPORT=1`开启。该功能可能会导致MFR速率略微下降、部分长公式识别失败等问题，建议仅在需要解析中文公式的场景下开启。如需关闭该功能，可将环境变量设置为`0`。
