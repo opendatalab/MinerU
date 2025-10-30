@@ -6,7 +6,7 @@ MinerU supports installing extension modules on demand based on different needs 
 ### Core Functionality Installation
 The `core` module is the core dependency of MinerU, containing all functional modules except `vllm`. Installing this module ensures the basic functionality of MinerU works properly.
 ```bash
-uv pip install mineru[core]
+uv pip install "mineru[core]"
 ```
 
 ---
@@ -15,7 +15,7 @@ uv pip install mineru[core]
 The `vllm` module provides acceleration support for VLM model inference, suitable for graphics cards with Turing architecture and later (8GB+ VRAM). Installing this module can significantly improve model inference speed.
 In the configuration, `all` includes both `core` and `vllm` modules, so `mineru[all]` and `mineru[core,vllm]` are equivalent.
 ```bash
-uv pip install mineru[all]
+uv pip install "mineru[all]"
 ```
 > [!TIP]
 > If exceptions occur during installation of the complete package including vllm, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to try to resolve the issue, or directly use the [Docker](./docker_deployment.md) deployment method.
