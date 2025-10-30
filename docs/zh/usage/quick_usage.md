@@ -82,8 +82,9 @@ MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。�
   
 - `llm-aided-config`：
     * 用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型
-    * 默认使用`阿里云百炼`的`qwen2.5-32b-instruct`模型
-    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
+    * 默认使用`阿里云百炼`的`qwen3-next-80b-a3b-instruct`模型
+    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能
+    * 如果您的api供应商不支持`enable_thinking`参数，请手动将该参数删除
   
 - `models-dir`：
     * 用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，
