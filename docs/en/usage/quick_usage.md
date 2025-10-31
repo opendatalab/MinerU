@@ -86,6 +86,25 @@ Here are some available configuration options:
     * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen3-next-80b-a3b-instruct` model. 
     * You need to configure your own API key and set `enable` to `true` to enable this feature.
     * If your API provider does not support the `enable_thinking` parameter, please manually remove it.
+        * For example, in your configuration file, the `llm-aided-config` section may look like:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable_thinking": false,
+             "enable": false
+          }
+          ```
+        * To remove the `enable_thinking` parameter, simply delete the line containing `"enable_thinking": false`, resulting in:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable": false
+          }
+          ```
   
 - `models-dir`: 
     * Used to specify local model storage directory
