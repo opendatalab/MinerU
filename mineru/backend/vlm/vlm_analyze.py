@@ -1,13 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import time
+import pypdfium2 as pdfium
 
 from loguru import logger
 
 from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size
-from .model_output_to_middle_json import result_to_middle_json
+from .model_output_to_middle_json import result_to_middle_json,result_to_middle_json_split,merge_middle_json_results
 from ...data.data_reader_writer import DataWriter
-from mineru.utils.pdf_image_tools import load_images_from_pdf
+from mineru.utils.pdf_image_tools import load_images_from_pdf,load_images_from_pdf_split
 from ...utils.config_reader import get_device
 
 from ...utils.enum_class import ImageType
@@ -150,6 +151,63 @@ def doc_analyze(
     middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
     return middle_json, results
 
+
+def doc_analyze_split(
+    pdf_bytes,
+    image_writer: DataWriter | None,
+    predictor: MinerUClient | None = None,
+    backend="transformers",
+    model_path: str | None = None,
+    server_url: str | None = None,
+    chunk_size=10,
+    **kwargs,
+):
+    print("================= mydebug: call doc_analyze_split ====================")
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_page_num = len(pdf_doc)
+    
+    middle_json_list = []  # 收集所有分块的middle_json
+    all_results = []
+    # 分片处理PDF
+    for chunk_start in range(0, pdf_page_num, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, pdf_page_num)
+        
+        logger.info(f"Processing pages {chunk_start} to {chunk_end-1}")
+        
+        # 加载当前分片的图像
+        images_list = load_images_from_pdf_split(
+            pdf_bytes, 
+            pdf_doc, 
+            start_page_id=chunk_start, 
+            end_page_id=chunk_end-1,  # end_page_id是包含的
+            image_type=ImageType.PIL
+        )
+        images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+        
+        # 处理当前分片
+        results = predictor.batch_two_step_extract(images=images_pil_list)
+        all_results.extend(results)
+        # 转换为middle_json（分块版本）
+        middle_json_chunk = result_to_middle_json_split(
+            results, 
+            images_list, 
+            pdf_doc, 
+            image_writer,
+            page_offset=chunk_start  # 传递页面偏移量
+        )
+        middle_json_list.append(middle_json_chunk)
+        
+        logger.info(f"Finished processing pages {chunk_start} to {chunk_end-1}")
+    
+    # 合并所有分块的结果并进行跨页操作
+    final_middle_json = merge_middle_json_results(middle_json_list)
+    
+    # 关闭pdf文档（在合并完成后关闭）
+    pdf_doc.close()
+    
 
 async def aio_doc_analyze(
     pdf_bytes,

@@ -13,7 +13,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.version import __version__
-
+from mineru.utils.table_merge import merge_table
 
 heading_level_import_success = False
 llm_aided_config = get_llm_aided_config()
@@ -121,3 +121,54 @@ def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_
     # 关闭pdf文档
     pdf_doc.close()
     return middle_json
+
+
+def result_to_middle_json_split(model_output_blocks_list, images_list, pdf_doc, image_writer, page_offset=0):
+    """
+    分块版本的result_to_middle_json，只处理当前分块，不进行跨页操作
+    """
+    middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
+    for index, page_blocks in enumerate(model_output_blocks_list):
+        # 计算实际页面索引，考虑分块偏移
+        actual_page_index = page_offset + index
+        page = pdf_doc[actual_page_index]
+        image_dict = images_list[index]
+        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, actual_page_index)
+        middle_json["pdf_info"].append(page_info)
+
+    # 注意：这里移除了表格跨页合并和标题分级，也不关闭pdf_doc
+    return middle_json
+
+def merge_middle_json_results(middle_json_list):
+    """
+    合并多个分块的middle_json结果，并进行跨页操作
+    """
+    if not middle_json_list:
+        return {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
+    
+    # 合并所有分块的pdf_info
+    merged_json = {
+        "pdf_info": [],
+        "_backend": "vlm",
+        "_version_name": __version__
+    }
+    
+    for json_chunk in middle_json_list:
+        if "pdf_info" in json_chunk:
+            merged_json["pdf_info"].extend(json_chunk["pdf_info"])
+    
+    # 按照页面索引排序（确保顺序正确）
+    merged_json["pdf_info"].sort(key=lambda x: x.get("page_index", 0))
+    
+    """表格跨页合并"""
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    if table_enable:
+        merge_table(merged_json["pdf_info"])
+
+    """llm优化标题分级"""
+    if heading_level_import_success:
+        llm_aided_title_start_time = time.time()
+        llm_aided_title(merged_json["pdf_info"], title_aided_config)
+        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+    
+    return merged_json

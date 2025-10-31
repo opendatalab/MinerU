@@ -51,18 +51,25 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     else:
         raise ValueError(f"未知的仓库类型: {model_source}")
 
+    # 获取缓存目录
+    cache_dir_path = None
+    if model_source == "huggingface":
+        cache_dir_path = os.getenv('HUGGINGFACE_HUB_CACHE', None)
+    elif model_source == "modelscope":
+        cache_dir_path = os.getenv('MODELSCOPE_CACHE', None)
+
     cache_dir = None
 
     if repo_mode == 'pipeline':
         relative_path = relative_path.strip('/')
-        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"], cache_dir=cache_dir_path)
     elif repo_mode == 'vlm':
         # VLM 模式下，根据 relative_path 的不同处理方式
         if relative_path == "/":
-            cache_dir = snapshot_download(repo)
+            cache_dir = snapshot_download(repo, cache_dir=cache_dir_path)
         else:
             relative_path = relative_path.strip('/')
-            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"], cache_dir=cache_dir_path)
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")

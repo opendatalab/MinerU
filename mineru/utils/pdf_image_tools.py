@@ -59,6 +59,29 @@ def load_images_from_pdf(
     return images_list, pdf_doc
 
 
+def load_images_from_pdf_split(
+    pdf_bytes: bytes,
+    pdf_doc: pdfium.PdfDocument,
+    dpi=200,
+    start_page_id=0,
+    end_page_id=None,
+    image_type=ImageType.PIL,  # PIL or BASE64
+):
+    images_list = []
+    pdf_page_num = len(pdf_doc)
+    end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else pdf_page_num - 1
+    if end_page_id > pdf_page_num - 1:
+        logger.warning("end_page_id is out of range, use images length")
+        end_page_id = pdf_page_num - 1
+
+    for index in range(0, pdf_page_num):
+        if start_page_id <= index <= end_page_id:
+            page = pdf_doc[index]
+            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+            images_list.append(image_dict)
+
+    return images_list
+
 def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, image_writer: FileBasedDataWriter, scale=2):
     """从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径 save_path：需要同时支持s3和本地,
     图片存放在save_path下，文件名是:
