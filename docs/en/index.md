@@ -57,7 +57,7 @@ Compared to well-known commercial products domestically and internationally, Min
 - Automatically identify and convert formulas in documents to LaTeX format
 - Automatically identify and convert tables in documents to HTML format
 - Automatically detect scanned PDFs and garbled PDFs, and enable OCR functionality
-- OCR supports detection and recognition of 84 languages
+- OCR supports detection and recognition of 109 languages
 - Support multiple output formats, such as multimodal and NLP Markdown, reading-order-sorted JSON, and information-rich intermediate formats
 - Support multiple visualization results, including layout visualization, span visualization, etc., for efficient confirmation of output effects and quality inspection
 - Support pure CPU environment operation, and support GPU(CUDA)/NPU(CANN)/MPS acceleration
