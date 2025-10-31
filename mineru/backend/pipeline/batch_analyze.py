@@ -297,19 +297,13 @@ class BatchAnalyze:
                 # 对每个分辨率组进行批处理
                 for group_key, group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det {lang}"):
 
-                    # 计算目标尺寸（组内最大尺寸，向上取整到32的倍数）
-                    max_h = max(crop_info[0].shape[0] for crop_info in group_crops)
-                    max_w = max(crop_info[0].shape[1] for crop_info in group_crops)
-                    target_h = ((max_h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-                    target_w = ((max_w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-
                     # 对所有图像进行padding到统一尺寸
                     batch_images = []
                     for crop_info in group_crops:
                         img = crop_info[0]
                         h, w = img.shape[:2]
                         # 创建目标尺寸的白色背景
-                        padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
+                        padded_img = np.ones((group_key[0], group_key[1], 3), dtype=np.uint8) * 255
                         # 将原图像粘贴到左上角
                         padded_img[:h, :w] = img
                         batch_images.append(padded_img)
