@@ -44,6 +44,10 @@
 </div>
 
 # 更新记录
+- 2025/10/31 2.6.3 发布
+  - 增加新后端`vlm-mlx-engine`支持，在Apple Silicon设备上支持使用`MLX`加速`MinerU2.5`模型推理，相比`vlm-transformers`后端，`vlm-mlx-engine`后端速度提升100%~200%。
+  - bug修复:  #3849  #3859
+
 - 2025/10/24 2.6.2 发布
   - `pipline`后端优化
     - 增加对中文公式的实验性支持，可通过配置环境变量`export MINERU_FORMULA_CH_SUPPORT=1`开启。该功能可能会导致MFR速率略微下降、部分长公式识别失败等问题，建议仅在需要解析中文公式的场景下开启。如需关闭该功能，可将环境变量设置为`0`。
@@ -570,7 +574,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 自动识别并转换文档中的公式为LaTeX格式
 - 自动识别并转换文档中的表格为HTML格式
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
-- OCR支持84种语言的检测与识别
+- OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
@@ -605,42 +609,75 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 >
 > 在非主线环境中，由于硬件、软件配置的多样性，以及第三方依赖项的兼容性问题，我们无法100%保证项目的完全可用性。因此，对于希望在非推荐环境中使用本项目的用户，我们建议先仔细阅读文档以及FAQ，大多数问题已经在FAQ中有对应的解决方案，除此之外我们鼓励社区反馈问题，以便我们能够逐步扩大支持范围。
 
+
 <table>
-    <tr>
-        <td>解析后端</td>
-        <td>pipeline</td>
-        <td>vlm-transformers</td>
-        <td>vlm-vllm</td>
-    </tr>
-    <tr>
-        <td>操作系统</td>
-        <td>Linux / Windows / macOS</td>
-        <td>Linux / Windows</td>
-        <td>Linux / Windows (via WSL2)</td>
-    </tr>
-    <tr>
-        <td>CPU推理支持</td>
-        <td>✅</td>
-        <td colspan="2">❌</td>
-    </tr>
-    <tr>
-        <td>GPU要求</td>
-        <td>Turing及以后架构，6G显存以上或Apple Silicon</td>
-        <td colspan="2">Turing及以后架构，8G显存以上</td>
-    </tr>
-    <tr>
-        <td>内存要求</td>
-        <td colspan="3">最低16G以上，推荐32G以上</td>
-    </tr>
-    <tr>
-        <td>磁盘空间要求</td>
-        <td colspan="3">20G以上，推荐使用SSD</td>
-    </tr>
-    <tr>
-        <td>python版本</td>
-        <td colspan="3">3.10-3.13</td>
-    </tr>
-</table>
+    <thead>
+        <tr>
+            <th rowspan="2">解析后端</th>
+            <th rowspan="2">pipeline <br> (精度<sup>1</sup> 82+)</th>
+            <th colspan="4">vlm (精度<sup>1</sup> 90+)</th>
+        </tr>
+        <tr>
+            <th>transformers</th>
+            <th>mlx-engine</th>
+            <th>vllm-engine / <br>vllm-async-engine</th>
+            <th>http-client</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th>后端特性</th>
+            <td>速度快, 无幻觉</td>
+            <td>兼容性好, 速度较慢</td>
+            <td>比transformers快</td>
+            <td>速度快, 兼容vllm生态</td>
+            <td>适用于OpenAI兼容服务器<sup>5</sup></td>
+        </tr>
+        <tr>
+            <th>操作系统</th>
+            <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
+            <td style="text-align:center;">macOS<sup>3</sup></td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
+            <td>不限</td>
+        </tr>
+        <tr>
+            <th>CPU推理支持</th>
+            <td colspan="2" style="text-align:center;">✅</td>
+            <td colspan="2" style="text-align:center;">❌</td>
+            <td >不需要</td>
+        </tr>
+        <tr>
+            <th>GPU要求</th><td colspan="2" style="text-align:center;">Volta及以后架构, 6G显存以上或Apple Silicon</td>
+            <td>Apple Silicon</td>
+            <td>Volta及以后架构, 8G显存以上</td>
+            <td>不需要</td>
+        </tr>
+        <tr>
+            <th>内存要求</th>
+            <td colspan="4" style="text-align:center;">最低16GB以上, 推荐32GB以上</td>
+            <td>8GB</td>
+        </tr>
+        <tr>
+            <th>磁盘空间要求</th>
+            <td colspan="4" style="text-align:center;">20GB以上, 推荐使用SSD</td>
+            <td>2GB</td>
+        </tr>
+        <tr>
+            <th>python版本</th>
+            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+        </tr>
+    </tbody>
+</table> 
+
+<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
+<sup>2</sup> Linux仅支持2019年及以后发行版
+<sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用
+<sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
+<sup>5</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
+
+> [!TIP]
+> 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
+> 如果您有意将自己的环境适配经验分享给社区，欢迎通过[show-and-tell](https://github.com/opendatalab/MinerU/discussions/categories/show-and-tell)提交或提交PR至[其他加速卡适配](https://github.com/opendatalab/MinerU/tree/master/docs/zh/usage/acceleration_cards)文档。
 
 ### 安装 MinerU
 

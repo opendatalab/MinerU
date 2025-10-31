@@ -44,6 +44,10 @@
 </div>
 
 # Changelog
+- 2025/10/31 2.6.3 Release
+  - Added support for a new backend `vlm-mlx-engine`, enabling MLX-accelerated inference for the MinerU2.5 model on Apple Silicon devices. Compared to the `vlm-transformers` backend, `vlm-mlx-engine` delivers a 100%–200% speed improvement.
+  - Bug fixes: #3849, #3859
+
 - 2025/10/24 2.6.2 Release
   - `pipeline` backend optimizations
     - Added experimental support for Chinese formulas, which can be enabled by setting the environment variable `export MINERU_FORMULA_CH_SUPPORT=1`. This feature may cause a slight decrease in MFR speed and failures in recognizing some long formulas. It is recommended to enable it only when parsing Chinese formulas is needed. To disable this feature, set the environment variable to `0`.
@@ -583,7 +587,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Automatically recognize and convert formulas in the document to LaTeX format.
 - Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
-- OCR supports detection and recognition of 84 languages.
+- OCR supports detection and recognition of 109 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
 - Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
@@ -620,41 +624,70 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 > In non-mainline environments, due to the diversity of hardware and software configurations, as well as third-party dependency compatibility issues, we cannot guarantee 100% project availability. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first. Most issues already have corresponding solutions in the FAQ. We also encourage community feedback to help us gradually expand support.
 
 <table>
-    <tr>
-        <td>Parsing Backend</td>
-        <td>pipeline</td>
-        <td>vlm-transformers</td>
-        <td>vlm-vllm</td>
-    </tr>
-    <tr>
-        <td>Operating System</td>
-        <td>Linux / Windows / macOS</td>
-        <td>Linux / Windows</td>
-        <td>Linux / Windows (via WSL2)</td>
-    </tr>
-    <tr>
-        <td>CPU Inference Support</td>
-        <td>✅</td>
-        <td colspan="2">❌</td>
-    </tr>
-    <tr>
-        <td>GPU Requirements</td>
-        <td>Turing architecture and later, 6GB+ VRAM or Apple Silicon</td>
-        <td colspan="2">Turing architecture and later, 8GB+ VRAM</td>
-    </tr>
-    <tr>
-        <td>Memory Requirements</td>
-        <td colspan="3">Minimum 16GB+, recommended 32GB+</td>
-    </tr>
-    <tr>
-        <td>Disk Space Requirements</td>
-        <td colspan="3">20GB+, SSD recommended</td>
-    </tr>
-    <tr>
-        <td>Python Version</td>
-        <td colspan="3">3.10-3.13</td>
-    </tr>
+    <thead>
+        <tr>
+            <th rowspan="2">Parsing Backend</th>
+            <th rowspan="2">pipeline <br> (Accuracy<sup>1</sup> 82+)</th>
+            <th colspan="4">vlm (Accuracy<sup>1</sup> 90+)</th>
+        </tr>
+        <tr>
+            <th>transformers</th>
+            <th>mlx-engine</th>
+            <th>vllm-engine / <br>vllm-async-engine</th>
+            <th>http-client</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th>Backend Features</th>
+            <td>Fast, no hallucinations</td>
+            <td>Good compatibility, <br>but slower</td>
+            <td>Faster than transformers</td>
+            <td>Fast, compatible with the vLLM ecosystem</td>
+            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
+        </tr>
+        <tr>
+            <th>Operating System</th>
+            <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
+            <td style="text-align:center;">macOS<sup>3</sup></td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
+            <td>Any</td>
+        </tr>
+        <tr>
+            <th>CPU inference support</th>
+            <td colspan="2" style="text-align:center;">✅</td>
+            <td colspan="2" style="text-align:center;">❌</td>
+            <td>Not required</td>
+        </tr>
+        <tr>
+            <th>GPU Requirements</th><td colspan="2" style="text-align:center;">Volta or later architectures, 6 GB VRAM or more, or Apple Silicon</td>
+            <td>Apple Silicon</td>
+            <td>Volta or later architectures, 8 GB VRAM or more</td>
+            <td>Not required</td>
+        </tr>
+        <tr>
+            <th>Memory Requirements</th>
+            <td colspan="4" style="text-align:center;">Minimum 16 GB, 32 GB recommended</td>
+            <td>8 GB</td>
+        </tr>
+        <tr>
+            <th>Disk Space Requirements</th>
+            <td colspan="4" style="text-align:center;">20 GB or more, SSD recommended</td>
+            <td>2 GB</td>
+        </tr>
+        <tr>
+            <th>Python Version</th>
+            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+        </tr>
+    </tbody>
 </table>
+ 
+<sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5), tested on the latest `MinerU` version.   
+<sup>2</sup> Linux supports only distributions released in 2019 or later.  
+<sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.
+<sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
+<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
+
 
 ### Install MinerU
 

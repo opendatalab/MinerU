@@ -82,8 +82,28 @@ MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。�
   
 - `llm-aided-config`：
     * 用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型
-    * 默认使用`阿里云百炼`的`qwen2.5-32b-instruct`模型
-    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能。
+    * 默认使用`阿里云百炼`的`qwen3-next-80b-a3b-instruct`模型
+    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能
+    * 如果您的api供应商不支持`enable_thinking`参数，请手动将该参数删除
+        * 例如，在您的配置文件中，`llm-aided-config` 部分可能如下所示：
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable_thinking": false,
+             "enable": false
+          }
+          ```
+        * 要移除`enable_thinking`参数，只需删除包含`"enable_thinking": false`的那一行，结果如下:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable": false
+          }
+          ```
   
 - `models-dir`：
     * 用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，
