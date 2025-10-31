@@ -19,6 +19,8 @@ def is_mac_os_version_supported(min_version: str = "13.5") -> bool:
     if not is_mac_environment() or not is_apple_silicon_cpu():
         return False
     mac_version = platform.mac_ver()[0]
+    if not mac_version:
+        return False
     # print("Mac OS Version:", mac_version)
     return version.parse(mac_version) >= version.parse(min_version)
 
