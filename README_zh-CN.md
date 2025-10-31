@@ -573,7 +573,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 自动识别并转换文档中的公式为LaTeX格式
 - 自动识别并转换文档中的表格为HTML格式
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
-- OCR支持84种语言的检测与识别
+- OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
@@ -669,10 +669,10 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 </table> 
 
 <sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
-<sup>2</sup> Linux仅支持2019年及以后发行版  
-<sup>3</sup> MLX需macOS 13.5及以上版本支持  
-<sup>4</sup> Windows vLLM通过WSL2实现支持  
-<sup>5</sup> 兼容OpenAI API的服务器，如`vLLM`/`SGLang`/`LMDeploy`等
+<sup>2</sup> Linux仅支持2019年及以后发行版
+<sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用
+<sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
+<sup>5</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  

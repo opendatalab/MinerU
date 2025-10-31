@@ -87,9 +87,9 @@
 
 <sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
 <sup>2</sup> Linux仅支持2019年及以后发行版  
-<sup>3</sup> MLX需macOS 13.5及以上版本支持  
-<sup>4</sup> Windows vLLM通过WSL2实现支持  
-<sup>5</sup> 兼容OpenAI API的服务器，如`vLLM`/`SGLang`/`LMDeploy`等
+<sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用  
+<sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
+<sup>5</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务  
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  

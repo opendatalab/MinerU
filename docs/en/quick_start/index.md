@@ -87,9 +87,9 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
  
 <sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5), tested on the latest `MinerU` version.   
 <sup>2</sup> Linux supports only distributions released in 2019 or later.  
-<sup>3</sup> MLX requires macOS 13.5 or later.  
-<sup>4</sup> Windows vLLM support via WSL2.  
-<sup>5</sup> Servers compatible with the OpenAI API, such as `vLLM`/`SGLang`/`LMDeploy`, etc.
+<sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
+<sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
+<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.  
 
 ### Install MinerU
 

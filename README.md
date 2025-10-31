@@ -583,7 +583,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Automatically recognize and convert formulas in the document to LaTeX format.
 - Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
-- OCR supports detection and recognition of 84 languages.
+- OCR supports detection and recognition of 109 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
 - Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
@@ -680,9 +680,9 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
  
 <sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5), tested on the latest `MinerU` version.   
 <sup>2</sup> Linux supports only distributions released in 2019 or later.  
-<sup>3</sup> MLX requires macOS 13.5 or later.  
-<sup>4</sup> Windows vLLM support via WSL2.  
-<sup>5</sup> Servers compatible with the OpenAI API, such as `vLLM`/`SGLang`/`LMDeploy`, etc.
+<sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.
+<sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
+<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
 
 
 ### Install MinerU
