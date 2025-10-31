@@ -20,6 +20,7 @@ from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyz
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def read_fn(path):
     if not isinstance(path, Path):
