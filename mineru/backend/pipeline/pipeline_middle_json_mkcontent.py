@@ -287,6 +287,8 @@ def union_make(pdf_info_dict: list,
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
+            if not para_blocks:
+                continue
             for para_block in para_blocks:
                 para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                 if para_content:
