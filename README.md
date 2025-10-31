@@ -44,6 +44,10 @@
 </div>
 
 # Changelog
+- 2025/10/31 2.6.3 Release
+  - Added support for a new backend `vlm-mlx-engine`, enabling MLX-accelerated inference for the MinerU2.5 model on Apple Silicon devices. Compared to the `vlm-transformers` backend, `vlm-mlx-engine` delivers a 100%–200% speed improvement.
+  - Bug fixes: #3849, #3859
+
 - 2025/10/24 2.6.2 Release
   - `pipeline` backend optimizations
     - Added experimental support for Chinese formulas, which can be enabled by setting the environment variable `export MINERU_FORMULA_CH_SUPPORT=1`. This feature may cause a slight decrease in MFR speed and failures in recognizing some long formulas. It is recommended to enable it only when parsing Chinese formulas is needed. To disable this feature, set the environment variable to `0`.

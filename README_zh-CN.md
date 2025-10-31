@@ -46,6 +46,7 @@
 # 更新记录
 - 2025/10/31 2.6.3 发布
   - 增加新后端`vlm-mlx-engine`支持，在Apple Silicon设备上支持使用`MLX`加速`MinerU2.5`模型推理，相比`vlm-transformers`后端，`vlm-mlx-engine`后端速度提升100%~200%。
+  - bug修复:  #3849  #3859
 
 - 2025/10/24 2.6.2 发布
   - `pipline`后端优化
