@@ -31,7 +31,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
             <th rowspan="2">Parsing Backend</th>
             <th rowspan="2">pipeline <br> (Accuracy<sup>1</sup> 82+)</th>
-            <th colspan="4">vlm (Accuracy<sup>1</sup> 90+)</th>
+            <th colspan="4" style="text-align:center;">vlm (Accuracy<sup>1</sup> 90+)</th>
         </tr>
         <tr>
             <th>transformers</th>
