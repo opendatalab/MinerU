@@ -44,12 +44,13 @@ if is_mac_os_version_supported():
     '--method',
     'method',
     type=click.Choice(['auto', 'txt', 'ocr']),
-    help="""the method for parsing pdf:\n
-    auto: Automatically determine the method based on the file type.\n
-    txt: Use text extraction method.\n
-    ocr: Use OCR method for image-based PDFs.\n
-    Without method specified, 'auto' will be used by default.\n
-    Adapted only for the case where the backend is set to "pipeline".""",
+    help="""\b
+    the method for parsing pdf:
+      auto: Automatically determine the method based on the file type.
+      txt: Use text extraction method.
+      ocr: Use OCR method for image-based PDFs.
+    Without method specified, 'auto' will be used by default.
+    Adapted only for the case where the backend is set to 'pipeline'.""",
     default='auto',
 )
 @click.option(
@@ -57,13 +58,14 @@ if is_mac_os_version_supported():
     '--backend',
     'backend',
     type=click.Choice(backends),
-    help="""the backend for parsing pdf:\n
-    pipeline: More general.\n
-    vlm-transformers: More general.\n
-    vlm-mlx-engine: Faster than transformers (macOS 13.5+).\n
-    vlm-vllm-engine: Faster(engine).\n
-    vlm-http-client: Faster(client).\n
-    without method specified, pipeline will be used by default.""",
+    help="""\b
+    the backend for parsing pdf:
+      pipeline: More general.
+      vlm-transformers: More general, but slower.
+      vlm-mlx-engine: Faster than transformers.
+      vlm-vllm-engine: Faster(engine).
+      vlm-http-client: Faster(client).
+    Without method specified, pipeline will be used by default.""",
     default='pipeline',
 )
 @click.option(
