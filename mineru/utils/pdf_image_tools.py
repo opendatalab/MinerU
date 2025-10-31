@@ -11,6 +11,8 @@ from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_ima
 from .enum_class import ImageType
 from .hash_utils import str_sha256
 
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeoutError
+
 
 def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -> dict:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
@@ -34,8 +36,48 @@ def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -
 
     return image_dict
 
+#@todo 通过多进程渲染pdf提速
+def _load_images_from_pdf_worker(pdf_bytes, dpi, start_page_id, end_page_id, image_type):
+    """用于进程池的包装函数"""
+    return load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
+
 
 def load_images_from_pdf(
+        pdf_bytes: bytes,
+        dpi=200,
+        start_page_id=0,
+        end_page_id=None,
+        image_type=ImageType.PIL,
+        timeout=300,
+):
+    """带超时控制的 PDF 转图片函数
+
+    Args:
+        timeout (int): 超时时间(秒),默认 300 秒
+
+    Raises:
+        TimeoutError: 当转换超时时抛出
+    """
+    with ProcessPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            _load_images_from_pdf_worker,
+            pdf_bytes,
+            dpi,
+            start_page_id,
+            end_page_id,
+            image_type
+        )
+        try:
+            images_list = future.result(timeout=timeout)
+            pdf_doc = pdfium.PdfDocument(pdf_bytes)
+            return images_list, pdf_doc
+        except FuturesTimeoutError:
+            logger.error(f"PDF conversion timeout after {timeout}s")
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise TimeoutError(f"PDF to images conversion timeout after {timeout}s")
+
+
+def load_images_from_pdf_core(
     pdf_bytes: bytes,
     dpi=200,
     start_page_id=0,
@@ -56,7 +98,7 @@ def load_images_from_pdf(
             image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
             images_list.append(image_dict)
 
-    return images_list, pdf_doc
+    return images_list
 
 
 def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, image_writer: FileBasedDataWriter, scale=2):
