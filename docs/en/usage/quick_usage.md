@@ -85,7 +85,7 @@ Here are some available configuration options:
     * Used to configure parameters for LLM-assisted title hierarchy
     * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen3-next-80b-a3b-instruct` model. 
     * You need to configure your own API key and set `enable` to `true` to enable this feature.
-    * If your API provider does not support the enable_thinking parameter, please manually remove it.
+    * If your API provider does not support the `enable_thinking` parameter, please manually remove it.
   
 - `models-dir`: 
     * Used to specify local model storage directory
