@@ -27,41 +27,69 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 > In non-mainstream environments, due to the diversity of hardware and software configurations, as well as compatibility issues with third-party dependencies, we cannot guarantee 100% usability of the project. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first, as most issues have corresponding solutions in the FAQ. Additionally, we encourage community feedback on issues so that we can gradually expand our support range.
 
 <table border="1">
-    <tr>
-        <td>Parsing Backend</td>
-        <td>pipeline</td>
-        <td>vlm-transformers</td>
-        <td>vlm-vllm</td>
-    </tr>
-    <tr>
-        <td>Operating System</td>
-        <td>Linux / Windows / macOS</td>
-        <td>Linux / Windows</td>
-        <td>Linux / Windows (via WSL2)</td>
-    </tr>
-    <tr>
-        <td>CPU Inference Support</td>
-        <td>✅</td>
-        <td colspan="2">❌</td>
-    </tr>
-    <tr>
-        <td>GPU Requirements</td>
-        <td>Turing architecture and later, 6GB+ VRAM or Apple Silicon</td>
-        <td colspan="2">Turing architecture and later, 8GB+ VRAM</td>
-    </tr>
-    <tr>
-        <td>Memory Requirements</td>
-        <td colspan="3">Minimum 16GB+, recommended 32GB+</td>
-    </tr>
-    <tr>
-        <td>Disk Space Requirements</td>
-        <td colspan="3">20GB+, SSD recommended</td>
-    </tr>
-    <tr>
-        <td>Python Version</td>
-        <td colspan="3">3.10-3.13</td>
-    </tr>
+    <thead>
+        <tr>
+            <th rowspan="2">Parsing Backend</th>
+            <th rowspan="2">pipeline <br> (Accuracy<sup>1</sup> 82+)</th>
+            <th colspan="4">vlm (Accuracy<sup>1</sup> 90+)</th>
+        </tr>
+        <tr>
+            <th>transformers</th>
+            <th>mlx-engine</th>
+            <th>vllm-engine / <br>vllm-async-engine</th>
+            <th>http-client</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <th>Backend Features</th>
+            <td>Fast, no hallucinations</td>
+            <td>Good compatibility, <br>but slower</td>
+            <td>Faster than transformers</td>
+            <td>Fast, compatible with the vLLM ecosystem</td>
+            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
+        </tr>
+        <tr>
+            <th>Operating System</th>
+            <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
+            <td style="text-align:center;">macOS<sup>3</sup></td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
+            <td>Any</td>
+        </tr>
+        <tr>
+            <th>CPU inference support</th>
+            <td colspan="2" style="text-align:center;">✅</td>
+            <td colspan="2" style="text-align:center;">❌</td>
+            <td>Not required</td>
+        </tr>
+        <tr>
+            <th>GPU Requirements</th><td colspan="2" style="text-align:center;">Volta or later architectures, 6 GB VRAM or more, or Apple Silicon</td>
+            <td>Apple Silicon</td>
+            <td>Volta or later architectures, 8 GB VRAM or more</td>
+            <td>Not required</td>
+        </tr>
+        <tr>
+            <th>Memory Requirements</th>
+            <td colspan="4" style="text-align:center;">Minimum 16 GB, 32 GB recommended</td>
+            <td>8 GB</td>
+        </tr>
+        <tr>
+            <th>Disk Space Requirements</th>
+            <td colspan="4" style="text-align:center;">20 GB or more, SSD recommended</td>
+            <td>2 GB</td>
+        </tr>
+        <tr>
+            <th>Python Version</th>
+            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+        </tr>
+    </tbody>
 </table>
+ 
+<sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5), tested on the latest `MinerU` version.   
+<sup>2</sup> Linux supports only distributions released in 2019 or later.  
+<sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
+<sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
+<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.  
 
 ### Install MinerU
 

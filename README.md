@@ -44,6 +44,10 @@
 </div>
 
 # Changelog
+- 2025/10/31 2.6.3 Release
+  - Added support for a new backend `vlm-mlx-engine`, enabling MLX-accelerated inference for the MinerU2.5 model on Apple Silicon devices. Compared to the `vlm-transformers` backend, `vlm-mlx-engine` delivers a 100%–200% speed improvement.
+  - Bug fixes: #3849, #3859
+
 - 2025/10/24 2.6.2 Release
   - `pipeline` backend optimizations
     - Added experimental support for Chinese formulas, which can be enabled by setting the environment variable `export MINERU_FORMULA_CH_SUPPORT=1`. This feature may cause a slight decrease in MFR speed and failures in recognizing some long formulas. It is recommended to enable it only when parsing Chinese formulas is needed. To disable this feature, set the environment variable to `0`.
@@ -583,7 +587,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Automatically recognize and convert formulas in the document to LaTeX format.
 - Automatically recognize and convert tables in the document to HTML format.
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
-- OCR supports detection and recognition of 84 languages.
+- OCR supports detection and recognition of 109 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
 - Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
@@ -640,7 +644,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
             <td>Good compatibility, <br>but slower</td>
             <td>Faster than transformers</td>
             <td>Fast, compatible with the vLLM ecosystem</td>
-            <td>No configuration required, suitable for OpenAI-compatible servers<sup>5</sup></td>
+            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
         </tr>
         <tr>
             <th>Operating System</th>
@@ -678,11 +682,11 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tbody>
 </table>
  
-<sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5)  
-<sup>2</sup> Linux supports only distributions released in 2019 or later  
-<sup>3</sup> Requires macOS 13.5 or later  
-<sup>4</sup> Windows vLLM support via WSL2  
-<sup>5</sup> Servers compatible with the OpenAI API, such as `vLLM`/`SGLang`/`LMDeploy`, etc.
+<sup>1</sup> Accuracy metric is the End-to-End Evaluation Overall score of OmniDocBench (v1.5), tested on the latest `MinerU` version.   
+<sup>2</sup> Linux supports only distributions released in 2019 or later.  
+<sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.
+<sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
+<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
 
 
 ### Install MinerU

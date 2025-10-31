@@ -134,7 +134,7 @@ def get_model_params(lang, config):
         raise Exception (f'Language {lang} not supported')
 
 
-root_dir = os.path.join(Path(__file__).resolve().parent.parent.parent, 'utils')
+root_dir = os.path.join(Path(__file__).resolve().parent.parent, 'utils')
 
 
 class PytorchPaddleOCR(TextSystem):

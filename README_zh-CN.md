@@ -44,6 +44,10 @@
 </div>
 
 # 更新记录
+- 2025/10/31 2.6.3 发布
+  - 增加新后端`vlm-mlx-engine`支持，在Apple Silicon设备上支持使用`MLX`加速`MinerU2.5`模型推理，相比`vlm-transformers`后端，`vlm-mlx-engine`后端速度提升100%~200%。
+  - bug修复:  #3849  #3859
+
 - 2025/10/24 2.6.2 发布
   - `pipline`后端优化
     - 增加对中文公式的实验性支持，可通过配置环境变量`export MINERU_FORMULA_CH_SUPPORT=1`开启。该功能可能会导致MFR速率略微下降、部分长公式识别失败等问题，建议仅在需要解析中文公式的场景下开启。如需关闭该功能，可将环境变量设置为`0`。
@@ -570,7 +574,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 自动识别并转换文档中的公式为LaTeX格式
 - 自动识别并转换文档中的表格为HTML格式
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
-- OCR支持84种语言的检测与识别
+- OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
@@ -627,7 +631,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>兼容性好, 速度较慢</td>
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
-            <td>无配置要求, 适用于OpenAI兼容服务器<sup>5</sup></td>
+            <td>适用于OpenAI兼容服务器<sup>5</sup></td>
         </tr>
         <tr>
             <th>操作系统</th>
@@ -665,11 +669,11 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tbody>
 </table> 
 
-<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数  
-<sup>2</sup> Linux仅支持2019年及以后发行版  
-<sup>3</sup> 需macOS 13.5及以上版本  
-<sup>4</sup> 通过WSL2实现Windows vLLM支持  
-<sup>5</sup> 兼容OpenAI API的服务器，如`vLLM`/`SGLang`/`LMDeploy`等
+<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
+<sup>2</sup> Linux仅支持2019年及以后发行版
+<sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用
+<sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
+<sup>5</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
