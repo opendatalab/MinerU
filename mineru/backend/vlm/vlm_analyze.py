@@ -8,7 +8,7 @@ from .utils import enable_custom_logits_processors, set_default_gpu_memory_utili
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
-from ...utils.check_mac_env import is_mac_os_version_supported
+from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device
 
 from ...utils.enum_class import ImageType
@@ -177,7 +177,7 @@ async def aio_doc_analyze(
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
     # load_images_time = round(time.time() - load_images_start, 2)
-    # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
+    # logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
 
     # infer_start = time.time()
     results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
