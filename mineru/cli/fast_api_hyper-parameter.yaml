@@ -1,0 +1,117 @@
+# MinerU FastAPI Service Hyper-parameters Configuration
+# 矿大文档解析服务超参数配置文件
+#
+# 注意：系统强制使用vllm-engine本地推理模式，通过独立的引擎子进程执行推理，
+# 不支持远程服务器模式，也不再支持降级到主进程执行的模式。
+
+# =============================================================================
+# 系统配置 (System Configuration)
+# =============================================================================
+system:
+  # 服务器配置
+  server:
+    host: "127.0.0.1"            # 服务器主机地址（0.0.0.0允许外部访问）
+    port: 3403                 # 服务器端口
+    reload: false              # 是否启用自动重载（开发模式）
+
+  # 任务队列配置
+  queue:
+    max_queue_size: 1000        # 最大队列大小（总排队容量）
+    max_running_pdf: 5          # 任务并发（一次可同时处理的 PDF 任务数）
+
+  # 超时和清理配置
+  timeout:
+    task_timeout_minutes: 40   # 任务默认超时时间（分钟）
+    cleanup_check_interval: 30 # 超时检查间隔（秒）
+    cleanup_scan_interval: 3600 # 清理扫描间隔（秒）
+
+  # GPU 配置（用于设置运行时的 GPU 可见性）
+  gpu:
+    cuda_device_order: "PCI_BUS_ID"    # 固定按 PCI 顺序，避免编号混乱
+    cuda_visible_devices: "1"        # 暴露 1 卡
+
+# =============================================================================
+# 默认任务参数 (Default Task Parameters)
+# =============================================================================
+task_defaults:
+  # 输出配置
+  output_dir: "./output"
+
+  # 注意：parse_method 参数已移除，因为强制使用VLM后端会自动处理OCR
+
+  # 功能开关
+  formula_enable: true
+  table_enable: true
+
+  # 返回内容配置
+  return_md: true
+  return_middle_json: true
+  return_model_output: true
+  return_content_list: true
+
+  # 页面范围配置
+  start_page_id: 0
+  end_page_id: 99999
+
+  # 超时配置
+  timeout_minutes: 40           # 任务超时时间（分钟）
+
+# =============================================================================
+# 清理策略配置 (Cleanup Policy Configuration)
+# =============================================================================
+cleanup_policy:
+  # 文件保留时间配置（秒）
+  retention_time:
+    downloaded_tasks: 0         # 已下载任务立即清理
+    completed_undownloaded: 10800 # 完成但未下载任务保留3小时
+    failed_timeout_tasks: 3600  # 失败/超时任务保留1小时
+
+# =============================================================================
+# 持久化与历史清理 (Persistence & History Cleanup)
+# =============================================================================
+persistence:
+  log_file: "fast_api_log.json"   # 任务持久化日志文件名
+  history_cleanup_days: 7         # 清理历史记录的默认天数
+
+# =============================================================================
+# 安全配置 (Security Configuration)
+# =============================================================================
+security:
+  # 文件类型限制
+  allowed_file_types:
+    - ".pdf"
+    - ".png"
+    - ".jpg"
+    - ".jpeg"
+    - ".webp"
+    - ".gif"
+
+# =============================================================================
+# 高级配置 (Advanced Configuration)
+# =============================================================================
+advanced:
+  # 模型配置（纯 VLM vllm-async-engine 后端）
+  model:
+    # 传递给 vllm.LLM 的参数，用于控制显存占用 / KV Cache 等
+    # 注意：以下字段名需与 vllm.engine.arg_utils.EngineArgs 一致
+    server_args:
+      max_model_len: 16384         # 上下文窗口，这个是模型自己的极限我们就这么设置也不要紧，
+      # fast_api_main.py 中会自动自动的根据模型的参数的配方来矫正
+
+      # max_model_len 就是输入 + 输出的总 token 数限制。
+      # 扩大总 token 上限，抬高单请求可用预算（包含视觉 token）
+      max_num_batched_tokens: 65536  # 一次“预填充阶段”（prefill）批内可同时处理的“总输入 token 上限”，是“所有并发请求的输入 token 之和”的上限。
+      # max_num_batched_tokens 全局 token 上限（影响内存峰值） 交由引擎自动评估，避免与设备实际可用显存不符
+      gpu_memory_utilization: 0.6      # 静态显存比例（KV Cache/权重池），过低会导致内存池不足
+      max_num_seqs: 300      # 引擎内同时运行的推理会话上限,代表最大的并行的会话数
+      # 数据并行大小（如果只有1张GPU，设置为1）
+      tensor_parallel_size: 1
+
+    # 采样/生成参数（与 ServerArgs 分开）：注意 max_new_tokens 需小于 max_model_len
+    inference:
+      max_new_tokens: 13000        # 含义：单请求"最多生成的输出 token 数"上限。 作用域：单请求级（不跨请求累计）。
+      max_concurrency_pdf: 4       # 同时运行的 PDF 槽位数（用于公平分配会话额度）
+      concurrent_processing_pages: 70   # 全局页级并发预算（按页轮询调度目标），独立于引擎会话上限
+      preprocess_concurrency: 8    # 预处理并发数（加快PDF切分速度）
+      prepared_queue_limit: 16     # 预处理队列上限
+
