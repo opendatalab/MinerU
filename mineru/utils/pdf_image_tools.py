@@ -83,9 +83,11 @@ def load_images_from_pdf(
             # 最后一个线程处理剩余所有页面
             range_end = end_page_id
         else:
-            range_end = min(start_page_id + (i + 1) * pages_per_thread - 1, end_page_id)
+            range_end = start_page_id + (i + 1) * pages_per_thread - 1
 
         page_ranges.append((range_start, range_end))
+
+    # logger.debug(f"PDF to images using {actual_threads} processes, page ranges: {page_ranges}")
 
     with ProcessPoolExecutor(max_workers=actual_threads) as executor:
         # 提交所有任务
@@ -134,11 +136,11 @@ def load_images_from_pdf_core(
     pdf_page_num = len(pdf_doc)
     end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    for index in range(0, pdf_page_num):
-        if start_page_id <= index <= end_page_id:
-            page = pdf_doc[index]
-            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-            images_list.append(image_dict)
+    for index in range(start_page_id, end_page_id+1):
+        # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
+        page = pdf_doc[index]
+        image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+        images_list.append(image_dict)
 
     pdf_doc.close()
 
