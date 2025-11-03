@@ -149,7 +149,7 @@ def load_images_from_pdf_core(
     pdf_page_num = len(pdf_doc)
     end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    for index in range(start_page_id, end_page_id+1):
+    for index in range(start_page_id, end_page_id + 1):
         # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
         page = pdf_doc[index]
         image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
