@@ -76,8 +76,6 @@ def load_images_from_pdf(
     else:
         # 根据进程数调整超时时间
         threads = min(os.cpu_count() or 1, threads)
-        timeout = timeout // threads
-
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
 
         # 计算总页数
