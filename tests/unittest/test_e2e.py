@@ -7,8 +7,9 @@ from loguru import logger
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from mineru.cli.common import (
+    convert_pdf_bytes_to_bytes_by_pypdfium2,
     prepare_env,
-    read_fn, convert_pdf_bytes_to_bytes_by_pypdfium2,
+    read_fn,
 )
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
