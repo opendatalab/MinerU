@@ -11,7 +11,7 @@ from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
-from mineru.utils.pdf_page_tools import get_end_page_id, convert_pdf_bytes_to_bytes_by_pypdfium2
+from mineru.utils.pdf_page_id import get_end_page_id
 
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeoutError
 
@@ -143,15 +143,13 @@ def load_images_from_pdf_core(
     image_type=ImageType.PIL,  # PIL or BASE64
 ):
     images_list = []
-    pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
     pdf_doc = pdfium.PdfDocument(pdf_bytes)
-    # pdf_page_num = len(pdf_doc)
-    # end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+    pdf_page_num = len(pdf_doc)
+    end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    # for index in range(start_page_id, end_page_id+1):
-    #     # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
-    #     page = pdf_doc[index]
-    for page in pdf_doc:
+    for index in range(start_page_id, end_page_id+1):
+        # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
+        page = pdf_doc[index]
         image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
         images_list.append(image_dict)
 

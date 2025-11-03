@@ -1,10 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import io
 import json
 import os
 import copy
 from pathlib import Path
 
 from loguru import logger
+import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
@@ -14,7 +16,7 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.utils.pdf_page_tools import convert_pdf_bytes_to_bytes_by_pypdfium2
+from mineru.utils.pdf_page_id import get_end_page_id
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
@@ -41,6 +43,33 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
     os.makedirs(local_image_dir, exist_ok=True)
     os.makedirs(local_md_dir, exist_ok=True)
     return local_image_dir, local_md_dir
+
+
+def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    output_pdf = pdfium.PdfDocument.new()
+    try:
+        end_page_id = get_end_page_id(end_page_id, len(pdf))
+
+        # 选择要导入的页面索引
+        page_indices = list(range(start_page_id, end_page_id + 1))
+
+        # 从原PDF导入页面到新PDF
+        output_pdf.import_pages(pdf, page_indices)
+
+        # 将新PDF保存到内存缓冲区
+        output_buffer = io.BytesIO()
+        output_pdf.save(output_buffer)
+
+        # 获取字节数据
+        output_bytes = output_buffer.getvalue()
+    except Exception as e:
+        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
+        output_bytes = pdf_bytes
+
+    pdf.close()
+    output_pdf.close()
+    return output_bytes
 
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):

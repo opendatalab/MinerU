@@ -8,9 +8,8 @@ from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from mineru.cli.common import (
     prepare_env,
-    read_fn,
+    read_fn, convert_pdf_bytes_to_bytes_by_pypdfium2,
 )
-from mineru.utils.pdf_page_tools import convert_pdf_bytes_to_bytes_by_pypdfium2
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
