@@ -3,6 +3,7 @@ import io
 import json
 import os
 import copy
+from multiprocessing import Pool
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -77,12 +78,21 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
     return output_bytes
 
 
+def _convert_pdf_in_process(args):
+    """在独立进程中执行PDF转换"""
+    pdf_bytes, start_page_id, end_page_id = args
+    return convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+
+
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
-    result = []
-    for pdf_bytes in pdf_bytes_list:
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
-        result.append(new_pdf_bytes)
+    # 准备参数列表
+    args_list = [(pdf_bytes, start_page_id, end_page_id) for pdf_bytes in pdf_bytes_list]
+
+    # 使用进程池执行转换
+    with Pool(processes=min(len(pdf_bytes_list), min(os.cpu_count() or 1, 4))) as pool:
+        result = pool.map(_convert_pdf_in_process, args_list)
+
     return result
 
 
