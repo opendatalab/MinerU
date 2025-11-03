@@ -6,7 +6,8 @@ from pathlib import Path
 
 from loguru import logger
 
-from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn
+from mineru.cli.common import prepare_env, read_fn
+from mineru.utils.pdf_page_tools import convert_pdf_bytes_to_bytes_by_pypdfium2
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.enum_class import MakeMode
