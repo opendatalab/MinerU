@@ -99,10 +99,10 @@ def doc_analyze(
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
-        # load_images_start = time.time()
+        load_images_start = time.time()
         images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
-        # load_images_time = round(time.time() - load_images_start, 2)
-        # logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_list) / load_images_time, 3)} images/s")
+        load_images_time = round(time.time() - load_images_start, 2)
+        logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_list) / load_images_time, 3)} images/s")
         all_image_lists.append(images_list)
         all_pdf_docs.append(pdf_doc)
         for page_idx in range(len(images_list)):
