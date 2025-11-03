@@ -47,14 +47,10 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    output_pdf = pdfium.PdfDocument.new()
     try:
-        # 从字节数据加载PDF
-        pdf = pdfium.PdfDocument(pdf_bytes)
-
         end_page_id = get_end_page_id(end_page_id, len(pdf))
-
-        # 创建一个新的PDF文档
-        output_pdf = pdfium.PdfDocument.new()
 
         # 选择要导入的页面索引
         page_indices = list(range(start_page_id, end_page_id + 1))
@@ -68,13 +64,12 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
 
         # 获取字节数据
         output_bytes = output_buffer.getvalue()
-
-        pdf.close()  # 关闭原PDF文档以释放资源
-        output_pdf.close()  # 关闭新PDF文档以释放资源
     except Exception as e:
         logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
         output_bytes = pdf_bytes
 
+    pdf.close()
+    output_pdf.close()
     return output_bytes
 
 
