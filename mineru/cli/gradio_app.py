@@ -13,7 +13,7 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
-from mineru.utils.check_mac_env import is_mac_os_version_supported
+from mineru.utils.check_sys_env import is_mac_os_version_supported
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.hash_utils import str_sha256
 
