@@ -43,7 +43,7 @@ def download_and_modify_json(url, local_filename, modifications):
 
 def configure_model(model_dir, model_type):
     """配置模型"""
-    json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@dev/mineru.template.json'
+    json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json'
     config_file_name = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
     home_dir = os.path.expanduser('~')
     config_file = os.path.join(home_dir, config_file_name)
