@@ -16,6 +16,7 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.utils.pdf_page_id import get_end_page_id
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
@@ -49,11 +50,7 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
         # 从字节数据加载PDF
         pdf = pdfium.PdfDocument(pdf_bytes)
 
-        # 确定结束页
-        end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
-        if end_page_id > len(pdf) - 1:
-            logger.warning("end_page_id is out of range, use pdf_docs length")
-            end_page_id = len(pdf) - 1
+        end_page_id = get_end_page_id(end_page_id, len(pdf))
 
         # 创建一个新的PDF文档
         output_pdf = pdfium.PdfDocument.new()
