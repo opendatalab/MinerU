@@ -11,6 +11,7 @@ import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
@@ -83,20 +84,19 @@ def _convert_pdf_in_process(args):
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
     start_time = time.time()
-    # 准备参数列表
-    args_list = [(pdf_bytes, start_page_id, end_page_id) for pdf_bytes in pdf_bytes_list]
-
-    # 使用进程池执行转换
-    with Pool(processes=min(len(pdf_bytes_list), min(os.cpu_count() or 1, 4))) as pool:
-        result = pool.map(_convert_pdf_in_process, args_list)
-
-    logger.debug(f"Prepare PDF bytes cost: {round(time.time() - start_time, 2)}s")
-
-    start_time = time.time()
     result = []
-    for pdf_bytes in pdf_bytes_list:
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
-        result.append(new_pdf_bytes)
+    if is_windows_environment():
+        for pdf_bytes in pdf_bytes_list:
+            new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            result.append(new_pdf_bytes)
+    else:
+        # 准备参数列表
+        args_list = [(pdf_bytes, start_page_id, end_page_id) for pdf_bytes in pdf_bytes_list]
+
+        # 使用进程池执行转换
+        with Pool(processes=min(len(pdf_bytes_list), min(os.cpu_count() or 1, 4))) as pool:
+            result = pool.map(_convert_pdf_in_process, args_list)
+
     logger.debug(f"Prepare PDF bytes cost: {round(time.time() - start_time, 2)}s")
 
     return result

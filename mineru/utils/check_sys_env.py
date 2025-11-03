@@ -4,6 +4,10 @@ import platform
 from packaging import version
 
 
+def is_windows_environment() -> bool:
+    return platform.system() == "Windows"
+
+
 # Detect if the current environment is a Mac computer
 def is_mac_environment() -> bool:
     return platform.system() == "Darwin"
