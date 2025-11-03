@@ -3,6 +3,7 @@ import io
 import json
 import os
 import copy
+import time
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -81,12 +82,22 @@ def _convert_pdf_in_process(args):
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
+    start_time = time.time()
     # 准备参数列表
     args_list = [(pdf_bytes, start_page_id, end_page_id) for pdf_bytes in pdf_bytes_list]
 
     # 使用进程池执行转换
     with Pool(processes=min(len(pdf_bytes_list), min(os.cpu_count() or 1, 4))) as pool:
         result = pool.map(_convert_pdf_in_process, args_list)
+
+    logger.debug(f"Prepare PDF bytes cost: {round(time.time() - start_time, 2)}s")
+
+    start_time = time.time()
+    result = []
+    for pdf_bytes in pdf_bytes_list:
+        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        result.append(new_pdf_bytes)
+    logger.debug(f"Prepare PDF bytes cost: {round(time.time() - start_time, 2)}s")
 
     return result
 
