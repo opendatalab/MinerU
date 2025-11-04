@@ -88,7 +88,7 @@ def load_images_from_pdf(
         total_pages = end_page_id - start_page_id + 1
 
         # 实际使用的进程数不超过总页数
-        actual_threads = min(min(os.cpu_count() or 1, threads), total_pages)
+        actual_threads = min(os.cpu_count() or 1, threads, total_pages)
 
         # 根据实际进程数分组页面范围
         pages_per_thread = max(1, total_pages // actual_threads)
