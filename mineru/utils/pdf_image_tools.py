@@ -97,7 +97,7 @@ def load_images_from_pdf(
         for i in range(actual_threads):
             range_start = start_page_id + i * pages_per_thread
             if i == actual_threads - 1:
-                # 最后一个线程处理剩余所有页面
+                # 最后一个进程处理剩余所有页面
                 range_end = end_page_id
             else:
                 range_end = start_page_id + (i + 1) * pages_per_thread - 1
