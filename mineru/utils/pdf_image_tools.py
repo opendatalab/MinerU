@@ -57,6 +57,11 @@ def load_images_from_pdf(
     """带超时控制的 PDF 转图片函数,支持多进程加速
 
     Args:
+        pdf_bytes (bytes): PDF 文件的 bytes
+        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        start_page_id (int, optional): 起始页码. Defaults to 0.
+        end_page_id (int | None, optional): 结束页码. Defaults to None.
+        image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
         timeout (int): 超时时间(秒),默认 300 秒
         threads (int): 进程数,默认 4
 
@@ -74,15 +79,13 @@ def load_images_from_pdf(
             image_type
         ), pdf_doc
     else:
-        # 根据进程数调整超时时间
-        threads = min(os.cpu_count() or 1, threads)
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
 
         # 计算总页数
         total_pages = end_page_id - start_page_id + 1
 
         # 实际使用的进程数不超过总页数
-        actual_threads = min(threads, total_pages)
+        actual_threads = min(min(os.cpu_count() or 1, threads), total_pages)
 
         # 根据实际进程数分组页面范围
         pages_per_thread = max(1, total_pages // actual_threads)
@@ -129,7 +132,6 @@ def load_images_from_pdf(
 
                 return images_list, pdf_doc
             except FuturesTimeoutError:
-                logger.error(f"PDF conversion timeout after {timeout}s")
                 pdf_doc.close()
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise TimeoutError(f"PDF to images conversion timeout after {timeout}s")
