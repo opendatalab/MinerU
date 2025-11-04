@@ -63,7 +63,7 @@ def load_images_from_pdf(
         start_page_id (int, optional): 起始页码. Defaults to 0.
         end_page_id (int | None, optional): 结束页码. Defaults to None.
         image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
-        timeout (int): 超时时间(秒),默认 300 秒
+        timeout (int | None, optional): 超时时间(秒)。如果为 None，则从环境变量 MINERU_PDF_LOAD_IMAGES_TIMEOUT 读取，若未设置则默认为 300 秒。
         threads (int): 进程数,默认 4
 
     Raises:
