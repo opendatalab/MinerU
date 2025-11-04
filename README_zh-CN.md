@@ -44,6 +44,10 @@
 </div>
 
 # 更新记录
+- 2025/11/04 2.6.4 发布
+  - 为pdf渲染图片增加超时配置，默认为300秒，可通过环境变量`MINERU_PDF_RENDER_TIMEOUT`进行配置，防止部分异常pdf文件导致渲染过程长时间阻塞。
+  - 为onnx模型增加cpu线程数配置选项，默认为系统cpu核心数，可通过环境变量`MINERU_INTRA_OP_NUM_THREADS`和`MINERU_INTER_OP_NUM_THREADS`进行配置，以减少高并发场景下的对cpu资源的抢占冲突。
+
 - 2025/10/31 2.6.3 发布
   - 增加新后端`vlm-mlx-engine`支持，在Apple Silicon设备上支持使用`MLX`加速`MinerU2.5`模型推理，相比`vlm-transformers`后端，`vlm-mlx-engine`后端速度提升100%~200%。
   - bug修复:  #3849  #3859

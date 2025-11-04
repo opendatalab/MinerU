@@ -100,7 +100,7 @@ Here are the environment variables and their descriptions:
     * Used to enable table merging functionality
     * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
 
-- `MINERU_PDF_LOAD_IMAGES_TIMEOUT`:
+- `MINERU_PDF_RENDER_TIMEOUT`:
     * Used to set the timeout period (in seconds) for rendering PDF to images
     * Default is `300` seconds, can be set to other values via environment variable to adjust the image rendering timeout.
 
