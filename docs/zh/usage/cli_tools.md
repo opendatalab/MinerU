@@ -94,3 +94,15 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_TABLE_MERGE_ENABLE`：
     * 用于启用表格合并功能
     * 默认为`true`，可通过环境变量设置为`false`来禁用表格合并功能。
+
+- `MINERU_PDF_RENDER_TIMEOUT`：
+    * 用于设置将PDF渲染为图片的超时时间（秒）
+    * 默认为`300`秒，可通过环境变量设置为其他值以调整渲染图片的超时时间。
+
+- `MINERU_INTRA_OP_NUM_THREADS`：
+    * 用于设置onnx模型的intra_op线程数，影响单个算子的计算速度
+    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
+
+- `MINERU_INTER_OP_NUM_THREADS`：
+    * 用于设置onnx模型的inter_op线程数，影响多个算子的并行执行
+    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。

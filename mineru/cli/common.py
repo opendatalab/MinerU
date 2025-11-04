@@ -5,8 +5,8 @@ import os
 import copy
 from pathlib import Path
 
-import pypdfium2 as pdfium
 from loguru import logger
+import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
@@ -16,10 +16,12 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.utils.pdf_page_id import get_end_page_id
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def read_fn(path):
     if not isinstance(path, Path):
@@ -44,18 +46,10 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    output_pdf = pdfium.PdfDocument.new()
     try:
-        # 从字节数据加载PDF
-        pdf = pdfium.PdfDocument(pdf_bytes)
-
-        # 确定结束页
-        end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
-        if end_page_id > len(pdf) - 1:
-            logger.warning("end_page_id is out of range, use pdf_docs length")
-            end_page_id = len(pdf) - 1
-
-        # 创建一个新的PDF文档
-        output_pdf = pdfium.PdfDocument.new()
+        end_page_id = get_end_page_id(end_page_id, len(pdf))
 
         # 选择要导入的页面索引
         page_indices = list(range(start_page_id, end_page_id + 1))
@@ -69,13 +63,12 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
 
         # 获取字节数据
         output_bytes = output_buffer.getvalue()
-
-        pdf.close()  # 关闭原PDF文档以释放资源
-        output_pdf.close()  # 关闭新PDF文档以释放资源
     except Exception as e:
         logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
         output_bytes = pdf_bytes
 
+    pdf.close()
+    output_pdf.close()
     return output_bytes
 
 
