@@ -7,7 +7,7 @@ def get_op_num_threads(env_name: str) -> int:
 
 
 def get_load_images_timeout() -> int:
-    env_value = os.getenv('MINERU_PDF_LOAD_IMAGES_TIMEOUT', None)
+    env_value = os.getenv('MINERU_PDF_RENDER_TIMEOUT', None)
     return get_value_from_string(env_value, 300)
 
 
