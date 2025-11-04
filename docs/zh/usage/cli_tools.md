@@ -95,7 +95,7 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
     * 用于启用表格合并功能
     * 默认为`true`，可通过环境变量设置为`false`来禁用表格合并功能。
 
-- `MINERU_PDF_LOAD_IMAGES_TIMEOUT`：
+- `MINERU_PDF_RENDER_TIMEOUT`：
     * 用于设置将PDF渲染为图片的超时时间（秒）
     * 默认为`300`秒，可通过环境变量设置为其他值以调整渲染图片的超时时间。
 
