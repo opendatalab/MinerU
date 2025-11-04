@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from mineru.model.utils.onnx_config import get_op_num_threads
+from mineru.utils.os_env_config import get_op_num_threads
 from .table_structure_utils import (
     OrtInferSession,
     TableLabelDecode,

@@ -100,3 +100,14 @@ Here are the environment variables and their descriptions:
     * Used to enable table merging functionality
     * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
 
+- `MINERU_PDF_LOAD_IMAGES_TIMEOUT`:
+    * Used to set the timeout period (in seconds) for rendering PDF to images
+    * Default is `300` seconds, can be set to other values via environment variable to adjust the image rendering timeout.
+
+- `MINERU_INTRA_OP_NUM_THREADS`:
+    * Used to set the intra_op thread count for ONNX models, affects the computation speed of individual operators
+    * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.
+
+- `MINERU_INTER_OP_NUM_THREADS`:
+    * Used to set the inter_op thread count for ONNX models, affects the parallel execution of multiple operators
+    * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.

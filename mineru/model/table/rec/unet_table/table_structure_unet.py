@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from skimage import measure
 
-from mineru.model.utils.onnx_config import get_op_num_threads
+from mineru.utils.os_env_config import get_op_num_threads
 from .utils import OrtInferSession, resize_img
 from .utils_table_line_rec import (
     get_table_line,

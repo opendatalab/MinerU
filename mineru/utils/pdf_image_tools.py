@@ -9,6 +9,7 @@ from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
+from mineru.utils.os_env_config import get_load_images_timeout
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
@@ -51,7 +52,7 @@ def load_images_from_pdf(
         start_page_id=0,
         end_page_id=None,
         image_type=ImageType.PIL,
-        timeout=300,
+        timeout=None,
         threads=4,
 ):
     """带超时控制的 PDF 转图片函数,支持多进程加速
@@ -79,6 +80,8 @@ def load_images_from_pdf(
             image_type
         ), pdf_doc
     else:
+        if timeout is None:
+            timeout = get_load_images_timeout()
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
 
         # 计算总页数
