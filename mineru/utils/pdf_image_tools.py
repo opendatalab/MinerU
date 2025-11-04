@@ -9,6 +9,7 @@ from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
+from mineru.utils.os_env_config import get_load_images_timeout
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
@@ -51,13 +52,18 @@ def load_images_from_pdf(
         start_page_id=0,
         end_page_id=None,
         image_type=ImageType.PIL,
-        timeout=300,
+        timeout=None,
         threads=4,
 ):
     """带超时控制的 PDF 转图片函数,支持多进程加速
 
     Args:
-        timeout (int): 超时时间(秒),默认 300 秒
+        pdf_bytes (bytes): PDF 文件的 bytes
+        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        start_page_id (int, optional): 起始页码. Defaults to 0.
+        end_page_id (int | None, optional): 结束页码. Defaults to None.
+        image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
+        timeout (int | None, optional): 超时时间(秒)。如果为 None，则从环境变量 MINERU_PDF_LOAD_IMAGES_TIMEOUT 读取，若未设置则默认为 300 秒。
         threads (int): 进程数,默认 4
 
     Raises:
@@ -74,15 +80,15 @@ def load_images_from_pdf(
             image_type
         ), pdf_doc
     else:
-        # 根据进程数调整超时时间
-        threads = min(os.cpu_count() or 1, threads)
+        if timeout is None:
+            timeout = get_load_images_timeout()
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
 
         # 计算总页数
         total_pages = end_page_id - start_page_id + 1
 
         # 实际使用的进程数不超过总页数
-        actual_threads = min(threads, total_pages)
+        actual_threads = min(min(os.cpu_count() or 1, threads), total_pages)
 
         # 根据实际进程数分组页面范围
         pages_per_thread = max(1, total_pages // actual_threads)
@@ -129,7 +135,6 @@ def load_images_from_pdf(
 
                 return images_list, pdf_doc
             except FuturesTimeoutError:
-                logger.error(f"PDF conversion timeout after {timeout}s")
                 pdf_doc.close()
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise TimeoutError(f"PDF to images conversion timeout after {timeout}s")
