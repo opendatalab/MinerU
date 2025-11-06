@@ -40,6 +40,7 @@ class ModelSingleton:
             model = None
             processor = None
             vllm_llm = None
+            lmdeploy_engine = None
             vllm_async_llm = None
             batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
             max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
@@ -48,7 +49,7 @@ class ModelSingleton:
             for param in ["batch_size", "max_concurrency", "http_timeout"]:
                 if param in kwargs:
                     del kwargs[param]
-            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine"] and not model_path:
+            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine", "lmdeploy-engine", "lmdeploy-async-engine"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
                     try:
@@ -85,6 +86,28 @@ class ModelSingleton:
                     except ImportError:
                         raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
                     model, processor = mlx_load(model_path)
+                elif backend == "lmdeploy-engine":
+                        try:
+                            from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+                            from lmdeploy import PytorchEngineConfig, GenerationConfig
+                        except ImportError:
+                            raise ImportError("Please install vllm to use the vllm-engine backend.")
+                        lmdeploy_engine = VLAsyncEngine(model_path, backend='pytorch',
+                                     backend_config=PytorchEngineConfig(tp=1, block_size=128,
+                                     cache_max_entry_count=0.8, max_batch_size=256,
+                                     device_type="ascend", session_len=16382))
+
+
+                elif backend == "lmdeploy-async-engine":
+                        try:
+                            from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+                            from lmdeploy import PytorchEngineConfig, GenerationConfig
+                        except ImportError:
+                            raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+                        lmdeploy_engine = VLAsyncEngine(model_path, backend='pytorch',
+                                     backend_config=PytorchEngineConfig(tp=1, block_size=128,
+                                     cache_max_entry_count=0.8, max_batch_size=256,
+                                     device_type="ascend", session_len=16384))
                 else:
                     if os.getenv('OMP_NUM_THREADS') is None:
                         os.environ["OMP_NUM_THREADS"] = "1"
@@ -122,6 +145,7 @@ class ModelSingleton:
                 backend=backend,
                 model=model,
                 processor=processor,
+                lmdeploy_engine=lmdeploy_engine,
                 vllm_llm=vllm_llm,
                 vllm_async_llm=vllm_async_llm,
                 server_url=server_url,

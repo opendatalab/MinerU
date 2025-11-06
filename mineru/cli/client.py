@@ -13,7 +13,7 @@ from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
-backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-http-client']
+backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-lmdeploy-engine', 'vlm-http-client']
 if is_mac_os_version_supported():
     backends.append("vlm-mlx-engine")
 
@@ -64,6 +64,7 @@ if is_mac_os_version_supported():
       vlm-transformers: More general, but slower.
       vlm-mlx-engine: Faster than transformers.
       vlm-vllm-engine: Faster(engine).
+      vlm-lmdeploy-engine: Faster(engine).
       vlm-http-client: Faster(client).
     Without method specified, pipeline will be used by default.""",
     default='pipeline',
