@@ -6,9 +6,10 @@ import asyncio
 import uvicorn
 import click
 import zipfile
+import shutil
 from pathlib import Path
 import glob
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from starlette.background import BackgroundTask
@@ -18,17 +19,35 @@ from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.version import __version__
 
-app = FastAPI()
+# 并发控制器
+_request_semaphore: Optional[asyncio.Semaphore] = None
+
+
+# 并发控制依赖函数
+async def limit_concurrency():
+    if _request_semaphore is not None:
+        if _request_semaphore.locked():
+            raise HTTPException(
+                status_code=503,
+                detail="Server is at maximum capacity. Please try again later."
+            )
+        async with _request_semaphore:
+            yield
+    else:
+        yield
+
+
+app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 def sanitize_filename(filename: str) -> str:
     """
     格式化压缩文件的文件名
-    移除路径遍历字符, 保留 Unicode 字母、数字、._- 
+    移除路径遍历字符, 保留 Unicode 字母、数字、._-
     禁止隐藏文件
     """
     sanitized = re.sub(r'[/\\\.]{2,}|[/\\]', '', filename)
@@ -60,7 +79,7 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
     return None
 
 
-@app.post(path="/file_parse",)
+@app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
         files: List[UploadFile] = File(...),
         output_dir: str = Form("./output"),
@@ -90,25 +109,26 @@ async def parse_pdf(
 
         # 处理上传的PDF文件
         pdf_file_names = []
-        pdf_bytes_list = []
+        temp_paths = []
 
         for file in files:
-            content = await file.read()
             file_path = Path(file.filename)
 
-            # 创建临时文件
+            # 创建临时文件，使用shutil.copyfileobj复制文件内容，避免一次性读取大文件导致内存占用过高
             temp_path = Path(unique_dir) / file_path.name
             with open(temp_path, "wb") as f:
-                f.write(content)
+                shutil.copyfileobj(file.file, f)
+                f.flush()
 
-            # 如果是图像文件或PDF，使用read_fn处理
-            file_suffix = guess_suffix_by_path(temp_path)
+            # 从头开始读取文件头，一般不超过8字节，magika 识别 PDF-1.4 需 16 字节，32 字节不识别
+            # PDF-1.6 需 32 字节，64 字节能兼容这两种格式
+            file.file.seek(0)
+            content = await file.read(64)
+            file_suffix = guess_suffix_by_bytes(content)
             if file_suffix in pdf_suffixes + image_suffixes:
                 try:
-                    pdf_bytes = read_fn(temp_path)
-                    pdf_bytes_list.append(pdf_bytes)
+                    temp_paths.append(temp_path)
                     pdf_file_names.append(file_path.stem)
-                    os.remove(temp_path)  # 删除临时文件
                 except Exception as e:
                     return JSONResponse(
                         status_code=400,
@@ -131,7 +151,7 @@ async def parse_pdf(
         await aio_do_parse(
             output_dir=unique_dir,
             pdf_file_names=pdf_file_names,
-            pdf_bytes_list=pdf_bytes_list,
+            temp_paths=temp_paths,
             p_lang_list=actual_lang_list,
             backend=backend,
             parse_method=parse_method,
@@ -153,7 +173,7 @@ async def parse_pdf(
         # 根据 response_format_zip 决定返回类型
         if response_format_zip:
             zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="mineru_results_")
-            os.close(zip_fd) 
+            os.close(zip_fd)
             with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 for pdf_name in pdf_file_names:
                     safe_pdf_name = sanitize_filename(pdf_name)
@@ -178,7 +198,7 @@ async def parse_pdf(
 
                     if return_model_output:
                         path = os.path.join(parse_dir, f"{pdf_name}_model.json")
-                        if os.path.exists(path): 
+                        if os.path.exists(path):
                             zf.write(path, arcname=os.path.join(safe_pdf_name, os.path.basename(path)))
 
                     if return_content_list:
@@ -245,6 +265,12 @@ async def parse_pdf(
             status_code=500,
             content={"error": f"Failed to process file: {str(e)}"}
         )
+    finally:
+        for file in files:
+            await file.close()
+        # 清理临时文件
+        for temp_path in temp_paths:
+            os.remove(temp_path)
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
@@ -255,6 +281,14 @@ async def parse_pdf(
 def main(ctx, host, port, reload, **kwargs):
 
     kwargs.update(arg_parse(ctx))
+
+    # 初始化并发控制器
+    global _request_semaphore
+    max_concurrent_requests = int(kwargs.get("max_concurrent_requests", 0))
+    if max_concurrent_requests > 0:
+        _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+
 
     # 将配置参数存储到应用状态中
     app.state.config = kwargs

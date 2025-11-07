@@ -22,8 +22,9 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
-        pdf_data = read_fn(doc_path)
+        file_path = Path(doc_path)
+        file_name = f'{safe_stem(file_path.stem)}_{time.strftime("%y%m%d_%H%M%S")}'
+        temp_paths = [file_path]
         if is_ocr:
             parse_method = 'ocr'
         else:
@@ -36,7 +37,7 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
         await aio_do_parse(
             output_dir=output_dir,
             pdf_file_names=[file_name],
-            pdf_bytes_list=[pdf_data],
+            temp_paths=temp_paths,
             p_lang_list=[language],
             parse_method=parse_method,
             end_page_id=end_page_id,

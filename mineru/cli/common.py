@@ -16,7 +16,6 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.utils.pdf_page_id import get_end_page_id
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
@@ -49,7 +48,18 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
     pdf = pdfium.PdfDocument(pdf_bytes)
     output_pdf = pdfium.PdfDocument.new()
     try:
-        end_page_id = get_end_page_id(end_page_id, len(pdf))
+        pdf = pdfium.PdfDocument(str(pdf_path))
+
+        # 确定结束页以及是否达到文件末尾
+        file_end = False
+        if pdf_pages_batch > 0:
+            end_page_id = start_page_id + pdf_pages_batch - 1
+        else:
+            end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else len(pdf) - 1
+        if end_page_id > len(pdf) - 1:
+            logger.warning("end_page_id is out of range, use pdf_docs length")
+            end_page_id = len(pdf) - 1
+            file_end = True
 
         # 选择要导入的页面索引
         page_indices = list(range(start_page_id, end_page_id + 1))
@@ -65,8 +75,8 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
         output_bytes = output_buffer.getvalue()
     except Exception as e:
         logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
-        output_bytes = pdf_bytes
-
+        output_bytes = ""
+        file_end = True
     pdf.close()
     output_pdf.close()
     return output_bytes
@@ -76,7 +86,7 @@ def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
     result = []
     for pdf_bytes in pdf_bytes_list:
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        new_pdf_bytes, _ = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
         result.append(new_pdf_bytes)
     return result
 
@@ -209,7 +219,7 @@ def _process_pipeline(
 async def _async_process_vlm(
         output_dir,
         pdf_file_names,
-        pdf_bytes_list,
+        temp_paths,
         backend,
         f_draw_layout_bbox,
         f_draw_span_bbox,
@@ -220,6 +230,8 @@ async def _async_process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        start_page_id=0,
+        end_page_id=None,
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
@@ -228,17 +240,40 @@ async def _async_process_vlm(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
+    # 按需读取PDF文件，避免一次性加载所有文件到内存
+    # 页数大的PDF支持分批处理
+    pdf_pages_batch = int(kwargs.get("pdf_pages_batch", "0"))
+    for idx, temp_path in enumerate(temp_paths):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-        )
+        tmp_start_page_id = start_page_id
+        batch_idx = 0
+        middle_json = None
+        while True:
+            # 从文件中按页读取，避免一次性读取占用过多内存
+            pdf_bytes, file_end = convert_pdf_bytes_to_bytes_by_pypdfium2(
+                temp_path, tmp_start_page_id, end_page_id, pdf_pages_batch
+            )
+
+            tmp_middle_json, infer_result = await aio_vlm_doc_analyze(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url,
+                batch_idx=batch_idx, **kwargs,
+            )
+
+            if middle_json is None:
+                middle_json = tmp_middle_json
+            else:
+                middle_json["pdf_info"].extend(tmp_middle_json["pdf_info"])
+
+            if file_end:
+                break;
+            else:
+                tmp_start_page_id += pdf_pages_batch
+            batch_idx += 1
 
         pdf_info = middle_json["pdf_info"]
-
         _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
@@ -250,7 +285,7 @@ async def _async_process_vlm(
 def _process_vlm(
         output_dir,
         pdf_file_names,
-        pdf_bytes_list,
+        temp_paths,
         backend,
         f_draw_layout_bbox,
         f_draw_span_bbox,
@@ -269,17 +304,40 @@ def _process_vlm(
     if not backend.endswith("client"):
         server_url = None
 
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
+    # 按需读取PDF文件，避免一次性加载所有文件到内存
+    # 页数大的PDF支持分批处理
+    pdf_pages_batch = int(kwargs.get("pdf_pages_batch", "0"))
+    for idx, temp_path in enumerate(temp_paths):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-        )
+        tmp_start_page_id = start_page_id
+        batch_idx = 0
+        middle_json = None
+        while True:
+            # 从文件中按页读取，避免一次性读取占用过多内存
+            pdf_bytes, file_end = convert_pdf_bytes_to_bytes_by_pypdfium2(
+                temp_path, tmp_start_page_id, end_page_id, pdf_pages_batch
+            )
+
+            tmp_middle_json, infer_result = vlm_doc_analyze(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url,
+                batch_idx=batch_idx, **kwargs,
+            )
+
+            if middle_json is None:
+                middle_json = tmp_middle_json
+            else:
+                middle_json["pdf_info"].extend(tmp_middle_json["pdf_info"])
+
+            if file_end:
+                break;
+            else:
+                tmp_start_page_id += pdf_pages_batch
+            batch_idx += 1
 
         pdf_info = middle_json["pdf_info"]
-
         _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
@@ -287,11 +345,10 @@ def _process_vlm(
             f_make_md_mode, middle_json, infer_result, is_pipeline=False
         )
 
-
 def do_parse(
         output_dir,
         pdf_file_names: list[str],
-        pdf_bytes_list: list[bytes],
+        temp_paths: list[bytes],
         p_lang_list: list[str],
         backend="pipeline",
         parse_method="auto",
@@ -310,10 +367,10 @@ def do_parse(
         end_page_id=None,
         **kwargs,
 ):
-    # 预处理PDF字节数据
-    pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
-
     if backend == "pipeline":
+        pdf_bytes_list = [read_fn(temp_path) for temp_path in temp_paths]
+        # 预处理PDF字节数据
+        pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
         _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
@@ -331,7 +388,7 @@ def do_parse(
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         _process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
+            output_dir, pdf_file_names, temp_paths, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
             server_url, **kwargs,
@@ -341,7 +398,7 @@ def do_parse(
 async def aio_do_parse(
         output_dir,
         pdf_file_names: list[str],
-        pdf_bytes_list: list[bytes],
+        temp_paths: list[Path],
         p_lang_list: list[str],
         backend="pipeline",
         parse_method="auto",
@@ -360,10 +417,10 @@ async def aio_do_parse(
         end_page_id=None,
         **kwargs,
 ):
-    # 预处理PDF字节数据
-    pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
-
     if backend == "pipeline":
+        pdf_bytes_list = [read_fn(temp_path) for temp_path in temp_paths]
+        # 预处理PDF字节数据
+        pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
         # pipeline模式暂不支持异步，使用同步处理方式
         _process_pipeline(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
@@ -382,10 +439,10 @@ async def aio_do_parse(
         os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
         await _async_process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
+            output_dir, pdf_file_names, temp_paths, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            server_url, start_page_id, end_page_id, **kwargs,
         )
 
 
