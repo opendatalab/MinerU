@@ -128,24 +128,20 @@ class ModelSingleton:
                         if "cache_max_entry_count" not in kwargs:
                             kwargs["cache_max_entry_count"] = 0.5
 
-                        device = kwargs.get("device", "").lower()
+                        # 默认使用 turbomind
+                        lm_backend = "turbomind"
+                        device = kwargs.get("device", "cuda").lower()
                         # 特定设备强制使用 pytorch backend
                         if device in ["ascend", "maca", "camb"]:
                             lm_backend = "pytorch"
                             backend_config = PytorchEngineConfig(**kwargs)
                         else:
-                            # 其他情况根据 lm_backend 参数决定,默认使用 turbomind
-                            lm_backend = kwargs.get("lm_backend", "turbomind")
-                            if lm_backend == "pytorch":
-                                backend_config = PytorchEngineConfig(**kwargs)
-                            else:
-                                lm_backend = "turbomind"  # 确保非 pytorch 时使用 turbomind
-                                backend_config = TurbomindEngineConfig(**kwargs)
+                            backend_config = TurbomindEngineConfig(**kwargs)
 
                         log_level = 'ERROR'
                         from lmdeploy.utils import get_logger
-                        logger = get_logger('lmdeploy')
-                        logger.setLevel(log_level)
+                        lm_logger = get_logger('lmdeploy')
+                        lm_logger.setLevel(log_level)
                         if os.getenv('TM_LOG_LEVEL') is None:
                             os.environ['TM_LOG_LEVEL'] = log_level
 
