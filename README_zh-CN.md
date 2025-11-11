@@ -619,12 +619,13 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         <tr>
             <th rowspan="2">解析后端</th>
             <th rowspan="2">pipeline <br> (精度<sup>1</sup> 82+)</th>
-            <th colspan="4">vlm (精度<sup>1</sup> 90+)</th>
+            <th colspan="5">vlm (精度<sup>1</sup> 90+)</th>
         </tr>
         <tr>
             <th>transformers</th>
             <th>mlx-engine</th>
             <th>vllm-engine / <br>vllm-async-engine</th>
+            <th>lmdeploy-engine</th>
             <th>http-client</th>
         </tr>
     </thead>
@@ -635,6 +636,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>兼容性好, 速度较慢</td>
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
+            <td>速度快, 兼容lmdeploy生态</td>
             <td>适用于OpenAI兼容服务器<sup>5</sup></td>
         </tr>
         <tr>
@@ -642,33 +644,34 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
             <td style="text-align:center;">macOS<sup>3</sup></td>
             <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows </td>
             <td>不限</td>
         </tr>
         <tr>
             <th>CPU推理支持</th>
             <td colspan="2" style="text-align:center;">✅</td>
-            <td colspan="2" style="text-align:center;">❌</td>
+            <td colspan="3" style="text-align:center;">❌</td>
             <td >不需要</td>
         </tr>
         <tr>
             <th>GPU要求</th><td colspan="2" style="text-align:center;">Volta及以后架构, 6G显存以上或Apple Silicon</td>
             <td>Apple Silicon</td>
-            <td>Volta及以后架构, 8G显存以上</td>
+            <td colspan="2" style="text-align:center;">Volta及以后架构, 8G显存以上</td>
             <td>不需要</td>
         </tr>
         <tr>
             <th>内存要求</th>
-            <td colspan="4" style="text-align:center;">最低16GB以上, 推荐32GB以上</td>
+            <td colspan="5" style="text-align:center;">最低16GB以上, 推荐32GB以上</td>
             <td>8GB</td>
         </tr>
         <tr>
             <th>磁盘空间要求</th>
-            <td colspan="4" style="text-align:center;">20GB以上, 推荐使用SSD</td>
+            <td colspan="5" style="text-align:center;">20GB以上, 推荐使用SSD</td>
             <td>2GB</td>
         </tr>
         <tr>
             <th>python版本</th>
-            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13</td>
         </tr>
     </tbody>
 </table> 

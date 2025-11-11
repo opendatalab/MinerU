@@ -3,6 +3,7 @@ import os
 from loguru import logger
 from packaging import version
 
+from mineru.utils.check_sys_env import is_windows_environment, is_linux_environment
 from mineru.utils.config_reader import get_device
 from mineru.utils.model_utils import get_vram
 
@@ -42,6 +43,32 @@ def enable_custom_logits_processors() -> bool:
     else:
         logger.info(f"compute_capability: {compute_capability} >= 8.0 and vllm version: {vllm_version} >= 0.10.1, enable custom_logits_processors")
         return True
+
+
+def set_lmdeploy_backend(device_type:str) -> str:
+    lmdeploy_backend = ""
+    if device_type.lower() in ["ascend", "maca", "camb"]:
+        lmdeploy_backend = "pytorch"
+    elif device_type.lower() in ["cuda"]:
+        import torch
+        if not torch.cuda.is_available():
+            raise ValueError("CUDA is not available.")
+        if is_windows_environment():
+            lmdeploy_backend = "turbomind"
+        elif is_linux_environment():
+            major, minor = torch.cuda.get_device_capability()
+            compute_capability = f"{major}.{minor}"
+            if version.parse(compute_capability) >= version.parse("8.0"):
+                lmdeploy_backend = "pytorch"
+            else:
+                lmdeploy_backend = "turbomind"
+        else:
+            raise ValueError("Unsupported operating system.")
+    else:
+        raise ValueError(f"Unsupported device type: {device_type}")
+    return lmdeploy_backend
+
+
 
 
 def set_default_gpu_memory_utilization() -> float:
