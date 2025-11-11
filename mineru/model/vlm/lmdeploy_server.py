@@ -64,6 +64,8 @@ def main():
     if os.getenv('OMP_NUM_THREADS') is None:
         os.environ["OMP_NUM_THREADS"] = "1"
 
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     # 启动 lmdeploy 服务器
     print(f"start lmdeploy server: {sys.argv}")
 
