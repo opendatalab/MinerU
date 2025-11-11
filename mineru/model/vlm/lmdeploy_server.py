@@ -11,6 +11,7 @@ def main():
     has_gpu_memory_utilization_arg = False
     has_log_level_arg = False
     has_device_arg = False
+    device_type = "cuda"
 
     # 检查现有参数
     for i, arg in enumerate(args):
@@ -21,9 +22,11 @@ def main():
         if arg == "--log-level" or arg.startswith("--log-level="):
             has_log_level_arg = True
         if arg == "--device":
+            has_device_arg = True
             if i + 1 < len(args):
                 device_type = args[i + 1]
         elif arg.startswith("--device="):
+            has_device_arg = True
             device_type = arg.split("=", 1)[1]
 
     # 添加默认参数
@@ -45,7 +48,7 @@ def main():
     if os.getenv('OMP_NUM_THREADS') is None:
         os.environ["OMP_NUM_THREADS"] = "1"
 
-    # 启动vllm服务器
+    # 启动 lmdeploy 服务器
     print(f"start lmdeploy server: {sys.argv}")
 
     # 使用os.system调用启动lmdeploy服务器
