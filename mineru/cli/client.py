@@ -62,10 +62,10 @@ if is_mac_os_version_supported():
     the backend for parsing pdf:
       pipeline: More general.
       vlm-transformers: More general, but slower.
-      vlm-mlx-engine: Faster than transformers.
+      vlm-mlx-engine: Faster than transformers(macOS 13.5+).
       vlm-vllm-engine: Faster(vllm-engine).
       vlm-lmdeploy-engine: Faster(lmdeploy-engine).
-      vlm-http-client: Faster(client).
+      vlm-http-client: Faster(client suitable for openai-compatible servers).
     Without method specified, pipeline will be used by default.""",
     default='pipeline',
 )
