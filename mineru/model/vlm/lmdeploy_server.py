@@ -52,6 +52,9 @@ def main():
         lm_backend = set_lmdeploy_backend(device_type)
     logger.info(f"Set lmdeploy_backend to: {lm_backend}")
 
+    if lm_backend == "pytorch":
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     # args中如果有--backend参数，则不设置
     if not has_backend_arg:
         args.extend(["--backend", lm_backend])
@@ -63,8 +66,6 @@ def main():
 
     if os.getenv('OMP_NUM_THREADS') is None:
         os.environ["OMP_NUM_THREADS"] = "1"
-
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
     # 启动 lmdeploy 服务器
     print(f"start lmdeploy server: {sys.argv}")
