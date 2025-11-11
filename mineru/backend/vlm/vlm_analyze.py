@@ -138,6 +138,7 @@ class ModelSingleton:
                             device_type = device_type.split(":")[0]
 
                         lm_backend = set_lmdeploy_backend(device_type)
+                        logger.info(f"Set lmdeploy_backend to: {lm_backend}")
 
                         if lm_backend == "pytorch":
                             kwargs["device_type"] = device_type

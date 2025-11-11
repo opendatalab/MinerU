@@ -66,7 +66,6 @@ def set_lmdeploy_backend(device_type:str) -> str:
             raise ValueError("Unsupported operating system.")
     else:
         raise ValueError(f"Unsupported device type: {device_type}")
-    logger.info(f"Set lmdeploy_backend to: {lmdeploy_backend}")
     return lmdeploy_backend
 
 
