@@ -58,6 +58,10 @@ vlm = [
 vllm = [
     "vllm>=0.10.1.1,<0.12",
 ]
+lmdeploy = [
+    "lmdeploy>=0.10.2,<0.11",
+    "qwen_vl_utils>=0.0.14,<0.1",
+]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
 ]
@@ -105,7 +109,8 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
-mineru-vllm-server = "mineru.cli.vlm_vllm_server:main"
+mineru-vllm-server = "mineru.cli.vlm_server:vllm_server"
+mineru-lmdeploy-server = "mineru.cli.vlm_server:lmdeploy_server"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
 mineru-gradio = "mineru.cli.gradio_app:main"

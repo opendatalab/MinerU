@@ -40,6 +40,7 @@ class ModelSingleton:
             model = None
             processor = None
             vllm_llm = None
+            lmdeploy_engine = None
             vllm_async_llm = None
             batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
             max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
@@ -48,7 +49,7 @@ class ModelSingleton:
             for param in ["batch_size", "max_concurrency", "http_timeout"]:
                 if param in kwargs:
                     del kwargs[param]
-            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine"] and not model_path:
+            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine", "lmdeploy-engine"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
                     try:
@@ -118,10 +119,46 @@ class ModelSingleton:
                             kwargs["logits_processors"] = [MinerULogitsProcessor]
                         # 使用kwargs为 vllm初始化参数
                         vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+                    elif backend == "lmdeploy-engine":
+                        try:
+                            from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
+                            from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+                        except ImportError:
+                            raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
+                        if "cache_max_entry_count" not in kwargs:
+                            kwargs["cache_max_entry_count"] = 0.5
+
+                        device = kwargs.get("device", "").lower()
+                        # 特定设备强制使用 pytorch backend
+                        if device in ["ascend", "maca", "camb"]:
+                            lm_backend = "pytorch"
+                            backend_config = PytorchEngineConfig(**kwargs)
+                        else:
+                            # 其他情况根据 lm_backend 参数决定,默认使用 turbomind
+                            lm_backend = kwargs.get("lm_backend", "turbomind")
+                            if lm_backend == "pytorch":
+                                backend_config = PytorchEngineConfig(**kwargs)
+                            else:
+                                lm_backend = "turbomind"  # 确保非 pytorch 时使用 turbomind
+                                backend_config = TurbomindEngineConfig(**kwargs)
+
+                        log_level = 'ERROR'
+                        from lmdeploy.utils import get_logger
+                        logger = get_logger('lmdeploy')
+                        logger.setLevel(log_level)
+                        if os.getenv('TM_LOG_LEVEL') is None:
+                            os.environ['TM_LOG_LEVEL'] = log_level
+
+                        lmdeploy_engine = VLAsyncEngine(
+                            model_path,
+                            backend=lm_backend,
+                            backend_config=backend_config,
+                        )
             self._models[key] = MinerUClient(
                 backend=backend,
                 model=model,
                 processor=processor,
+                lmdeploy_engine=lmdeploy_engine,
                 vllm_llm=vllm_llm,
                 vllm_async_llm=vllm_async_llm,
                 server_url=server_url,

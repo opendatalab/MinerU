@@ -274,7 +274,7 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-mlx-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-lmdeploy-engine", "vlm-mlx-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -299,6 +299,13 @@ def update_interface(backend_choice):
     'vllm_engine_enable',
     type=bool,
     help="Enable vLLM engine backend for faster processing.",
+    default=False,
+)
+@click.option(
+    '--enable-lmdeploy-engine',
+    'lmdeploy_engine_enable',
+    type=bool,
+    help="Enable LMDeploy engine backend for faster processing.",
     default=False,
 )
 @click.option(
@@ -338,7 +345,7 @@ def update_interface(backend_choice):
     default='all',
 )
 def main(ctx,
-        example_enable, vllm_engine_enable, api_enable, max_convert_pages,
+        example_enable, vllm_engine_enable, lmdeploy_engine_enable, api_enable, max_convert_pages,
         server_name, server_port, latex_delimiters_type, **kwargs
 ):
 
@@ -367,6 +374,20 @@ def main(ctx,
             print("vLLM engine init successfully.")
         except Exception as e:
             logger.exception(e)
+    elif lmdeploy_engine_enable:
+        try:
+            print("Start init LMDeploy engine...")
+            from mineru.backend.vlm.vlm_analyze import ModelSingleton
+            model_singleton = ModelSingleton()
+            predictor = model_singleton.get_model(
+                "lmdeploy-engine",
+                None,
+                None,
+                **kwargs
+            )
+            print("LMDeploy engine init successfully.")
+        except Exception as e:
+            logger.exception(e)
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
@@ -380,6 +401,9 @@ def main(ctx,
                     if vllm_engine_enable:
                         drop_list = ["pipeline", "vlm-vllm-async-engine"]
                         preferred_option = "vlm-vllm-async-engine"
+                    elif lmdeploy_engine_enable:
+                        drop_list = ["pipeline", "vlm-lmdeploy-engine"]
+                        preferred_option = "vlm-lmdeploy-engine"
                     else:
                         drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         if is_mac_os_version_supported():
