@@ -274,7 +274,7 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-lmdeploy-async-engine", "vlm-mlx-engine"]:
+    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-lmdeploy-engine", "vlm-mlx-engine"]:
         return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -380,7 +380,7 @@ def main(ctx,
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "lmdeploy-async-engine",
+                "lmdeploy-engine",
                 None,
                 None,
                 **kwargs
@@ -402,8 +402,8 @@ def main(ctx,
                         drop_list = ["pipeline", "vlm-vllm-async-engine"]
                         preferred_option = "vlm-vllm-async-engine"
                     elif lmdeploy_engine_enable:
-                        drop_list = ["pipeline", "vlm-lmdeploy-async-engine"]
-                        preferred_option = "vlm-lmdeploy-async-engine"
+                        drop_list = ["pipeline", "vlm-lmdeploy-engine"]
+                        preferred_option = "vlm-lmdeploy-engine"
                     else:
                         drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         if is_mac_os_version_supported():
