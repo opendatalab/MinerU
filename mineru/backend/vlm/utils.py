@@ -68,8 +68,6 @@ def set_lmdeploy_backend(device_type:str) -> str:
     return lmdeploy_backend
 
 
-
-
 def set_default_gpu_memory_utilization() -> float:
     from vllm import __version__ as vllm_version
     if version.parse(vllm_version) >= version.parse("0.11.0"):
