@@ -63,8 +63,8 @@ if is_mac_os_version_supported():
       pipeline: More general.
       vlm-transformers: More general, but slower.
       vlm-mlx-engine: Faster than transformers.
-      vlm-vllm-engine: Faster(engine).
-      vlm-lmdeploy-engine: Faster(engine).
+      vlm-vllm-engine: Faster(vllm-engine).
+      vlm-lmdeploy-engine: Faster(lmdeploy-engine).
       vlm-http-client: Faster(client).
     Without method specified, pipeline will be used by default.""",
     default='pipeline',
