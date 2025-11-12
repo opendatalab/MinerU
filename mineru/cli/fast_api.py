@@ -120,8 +120,7 @@ async def parse_pdf(
                 shutil.copyfileobj(file.file, f)
                 f.flush()
 
-            # 从头开始读取文件头，一般不超过8字节，magika 识别 PDF-1.4 需 16 字节，32 字节不识别
-            # PDF-1.6 需 32 字节，64 字节能兼容这两种格式
+            # 从头开始读取文件头，图片、PDF类文件，一般文件类型信息在文件头64字节内
             file.file.seek(0)
             content = await file.read(64)
             file_suffix = guess_suffix_by_bytes(content)
