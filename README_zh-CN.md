@@ -637,14 +637,14 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
             <td>比transformers快</td>
             <td>速度快, 兼容vllm生态</td>
             <td>速度快, 兼容lmdeploy生态</td>
-            <td>适用于OpenAI兼容服务器<sup>5</sup></td>
+            <td>适用于OpenAI兼容服务器<sup>6</sup></td>
         </tr>
         <tr>
             <th>操作系统</th>
             <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
             <td style="text-align:center;">macOS<sup>3</sup></td>
             <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
-            <td style="text-align:center;">Linux<sup>2</sup> / Windows </td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>5</sup> </td>
             <td>不限</td>
         </tr>
         <tr>
@@ -680,7 +680,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 <sup>2</sup> Linux仅支持2019年及以后发行版  
 <sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用  
 <sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
-<sup>5</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
+<sup>5</sup> Windows LMDeploy只能使用`turbomind`后端，速度比`pytorch`后端稍慢，如对速度有要求建议通过WSL2运行  
+<sup>6</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
