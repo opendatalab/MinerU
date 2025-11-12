@@ -14,7 +14,7 @@ def main():
     has_gpu_memory_utilization_arg = False
     has_log_level_arg = False
     has_backend_arg = False
-    device_type = "cuda"
+    device_type = ""
     lm_backend = ""
 
     # 检查现有参数
@@ -46,10 +46,14 @@ def main():
     if not has_log_level_arg:
         args.extend(["--log-level", "ERROR"])
 
-    if ":" in device_type:
-        device_type = device_type.split(":")[0]
     if lm_backend == "":
+        if device_type == "":
+            device_type = "cuda"
+        elif device_type not in ["cuda", "ascend", "maca", "camb"]:
+            raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
         lm_backend = set_lmdeploy_backend(device_type)
+    elif lm_backend not in ["pytorch", "turbomind"]:
+        raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
     logger.info(f"Set lmdeploy_backend to: {lm_backend}")
 
     if lm_backend == "pytorch":

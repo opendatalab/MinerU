@@ -129,15 +129,19 @@ class ModelSingleton:
                         if "cache_max_entry_count" not in kwargs:
                             kwargs["cache_max_entry_count"] = 0.5
 
-                        if "device" in kwargs:
-                            device_type = kwargs.pop("device")
+                        if "lmdeploy_device" in kwargs:
+                            device_type = kwargs.pop("lmdeploy_device")
+                            if device_type not in ["cuda", "ascend", "maca", "camb"]:
+                                raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
                         else:
-                            device_type = os.getenv('MINERU_DEVICE_MODE', "cuda").lower()
-                        # device_type 如果有则去除":"
-                        if ":" in device_type:
-                            device_type = device_type.split(":")[0]
+                            device_type = "cuda"
 
-                        lm_backend = set_lmdeploy_backend(device_type)
+                        if "lmdeploy_backend" in kwargs:
+                            lm_backend = kwargs.pop("lmdeploy_backend")
+                            if lm_backend not in ["pytorch", "turbomind"]:
+                                raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+                        else:
+                            lm_backend = set_lmdeploy_backend(device_type)
                         logger.info(f"Set lmdeploy_backend to: {lm_backend}")
 
                         if lm_backend == "pytorch":
