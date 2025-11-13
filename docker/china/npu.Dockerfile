@@ -8,6 +8,7 @@ RUN apt-get update && \
         fonts-noto-cjk \
         fontconfig \
         libgl1 && \
+        libglib2.0-0 && \
     fc-cache -fv && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
