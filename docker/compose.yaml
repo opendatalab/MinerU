@@ -1,6 +1,6 @@
 services:
   mineru-vllm-server:
-    image: mineru-vllm:latest
+    image: mineru:latest
     container_name: mineru-vllm-server
     restart: always
     profiles: ["vllm-server"]
@@ -28,8 +28,37 @@ services:
               device_ids: ["0"]
               capabilities: [gpu]
 
+  mineru-lmdeploy-server:
+    image: mineru:latest
+    container_name: mineru-lmdeploy-server
+    restart: always
+    profiles: [ "lmdeploy-server" ]
+    ports:
+      - 30000:30000
+    environment:
+      MINERU_MODEL_SOURCE: local
+    entrypoint: mineru-lmdeploy-server
+    command:
+      --host 0.0.0.0
+      --port 30000
+    # --dp 2  # If using multiple GPUs, increase throughput using lmdeploy's multi-GPU parallel mode
+    # --cache-max-entry-count 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:30000/health || exit 1" ]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: [ "0" ]
+              capabilities: [ gpu ]
+
   mineru-api:
-    image: mineru-vllm:latest
+    image: mineru:latest
     container_name: mineru-api
     restart: always
     profiles: ["api"]
@@ -57,7 +86,7 @@ services:
               capabilities: [ gpu ]
 
   mineru-gradio:
-    image: mineru-vllm:latest
+    image: mineru:latest
     container_name: mineru-gradio
     restart: always
     profiles: ["gradio"]

@@ -650,14 +650,14 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
             <td>Faster than transformers</td>
             <td>Fast, compatible with the vLLM ecosystem</td>
             <td>Fast, compatible with the LMDeploy ecosystem</td>
-            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
+            <td>Suitable for OpenAI-compatible servers<sup>6</sup></td>
         </tr>
         <tr>
             <th>Operating System</th>
             <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
             <td style="text-align:center;">macOS<sup>3</sup></td>
             <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
-            <td style="text-align:center;">Linux<sup>2</sup> / Windows </td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>5</sup> </td>
             <td>Any</td>
         </tr>
         <tr>
@@ -693,7 +693,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <sup>2</sup> Linux supports only distributions released in 2019 or later.  
 <sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
 <sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
-<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
+<sup>5</sup> Windows LMDeploy can only use the `turbomind` backend, which is slightly slower than the `pytorch` backend. If performance is critical, it is recommended to run it via WSL2.  
+<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
 
 
 ### Install MinerU

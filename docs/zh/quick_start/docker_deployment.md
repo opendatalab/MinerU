@@ -6,7 +6,7 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
-docker build -t mineru-vllm:latest -f Dockerfile .
+docker build -t mineru:latest -f Dockerfile .
 ```
 
 > [!TIP]
@@ -31,7 +31,7 @@ docker run --gpus all \
   --shm-size 32g \
   -p 30000:30000 -p 7860:7860 -p 8000:8000 \
   --ipc=host \
-  -it mineru-vllm:latest \
+  -it mineru:latest \
   /bin/bash
 ```
 

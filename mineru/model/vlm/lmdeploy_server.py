@@ -13,11 +13,12 @@ def main():
     has_port_arg = False
     has_gpu_memory_utilization_arg = False
     has_log_level_arg = False
-    has_backend_arg = False
-    device_type = "cuda"
+    device_type = ""
     lm_backend = ""
 
     # 检查现有参数
+    indices_to_remove = []
+
     for i, arg in enumerate(args):
         if arg == "--server-port" or arg.startswith("--server-port="):
             has_port_arg = True
@@ -25,18 +26,24 @@ def main():
             has_gpu_memory_utilization_arg = True
         if arg == "--log-level" or arg.startswith("--log-level="):
             has_log_level_arg = True
-        if arg == "--backend":
-            has_backend_arg = True
+        if arg == "--backend" or arg == "--lmdeploy-backend":
             if i + 1 < len(args):
                 lm_backend = args[i + 1]
-        if arg.startswith("--backend="):
-            has_backend_arg = True
+                indices_to_remove.extend([i, i + 1])
+        elif arg.startswith("--backend=") or arg.startswith("--lmdeploy-backend="):
             lm_backend = arg.split("=", 1)[1]
-        if arg == "--device":
+            indices_to_remove.append(i)
+        if arg == "--device" or arg == "--lmdeploy-device":
             if i + 1 < len(args):
                 device_type = args[i + 1]
-        if arg.startswith("--device="):
+                indices_to_remove.extend([i, i + 1])
+        elif arg.startswith("--device=") or arg.startswith("--lmdeploy-device="):
             device_type = arg.split("=", 1)[1]
+            indices_to_remove.append(i)
+
+    # 从后往前删除,避免索引错位
+    for i in sorted(set(indices_to_remove), reverse=True):
+        args.pop(i)
 
     # 添加默认参数
     if not has_port_arg:
@@ -46,20 +53,26 @@ def main():
     if not has_log_level_arg:
         args.extend(["--log-level", "ERROR"])
 
-    if ":" in device_type:
-        device_type = device_type.split(":")[0]
+    if device_type == "":
+        device_type = "cuda"
+    elif device_type not in ["cuda", "ascend", "maca", "camb"]:
+        raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
     if lm_backend == "":
         lm_backend = set_lmdeploy_backend(device_type)
-    logger.info(f"Set lmdeploy_backend to: {lm_backend}")
+    elif lm_backend not in ["pytorch", "turbomind"]:
+        raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+    logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
 
     if lm_backend == "pytorch":
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-    # args中如果有--backend参数，则不设置
-    if not has_backend_arg:
-        args.extend(["--backend", lm_backend])
+
+    args.extend(["--device", device_type])
+    args.extend(["--backend", lm_backend])
 
     model_path = auto_download_and_get_model_root_path("/", "vlm")
+
+    # logger.debug(args)
 
     # 重构参数，将模型路径作为位置参数
     sys.argv = [sys.argv[0]] + ["serve", "api_server", model_path] + args

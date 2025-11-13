@@ -50,116 +50,120 @@ class ModelSingleton:
             for param in ["batch_size", "max_concurrency", "http_timeout"]:
                 if param in kwargs:
                     del kwargs[param]
-            if backend in ['transformers', 'vllm-engine', "vllm-async-engine", "mlx-engine", "lmdeploy-engine"] and not model_path:
+            if backend not in ["http-client"] and not model_path:
                 model_path = auto_download_and_get_model_root_path("/","vlm")
-                if backend == "transformers":
-                    try:
-                        from transformers import (
-                            AutoProcessor,
-                            Qwen2VLForConditionalGeneration,
-                        )
-                        from transformers import __version__ as transformers_version
-                    except ImportError:
-                        raise ImportError("Please install transformers to use the transformers backend.")
+            if backend == "transformers":
+                try:
+                    from transformers import (
+                        AutoProcessor,
+                        Qwen2VLForConditionalGeneration,
+                    )
+                    from transformers import __version__ as transformers_version
+                except ImportError:
+                    raise ImportError("Please install transformers to use the transformers backend.")
 
-                    if version.parse(transformers_version) >= version.parse("4.56.0"):
-                        dtype_key = "dtype"
-                    else:
-                        dtype_key = "torch_dtype"
-                    device = get_device()
-                    model = Qwen2VLForConditionalGeneration.from_pretrained(
-                        model_path,
-                        device_map={"": device},
-                        **{dtype_key: "auto"},  # type: ignore
-                    )
-                    processor = AutoProcessor.from_pretrained(
-                        model_path,
-                        use_fast=True,
-                    )
-                    if batch_size == 0:
-                        batch_size = set_default_batch_size()
-                elif backend == "mlx-engine":
-                    mlx_supported = is_mac_os_version_supported()
-                    if not mlx_supported:
-                        raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
-                    try:
-                        from mlx_vlm import load as mlx_load
-                    except ImportError:
-                        raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
-                    model, processor = mlx_load(model_path)
+                if version.parse(transformers_version) >= version.parse("4.56.0"):
+                    dtype_key = "dtype"
                 else:
-                    if os.getenv('OMP_NUM_THREADS') is None:
-                        os.environ["OMP_NUM_THREADS"] = "1"
+                    dtype_key = "torch_dtype"
+                device = get_device()
+                model = Qwen2VLForConditionalGeneration.from_pretrained(
+                    model_path,
+                    device_map={"": device},
+                    **{dtype_key: "auto"},  # type: ignore
+                )
+                processor = AutoProcessor.from_pretrained(
+                    model_path,
+                    use_fast=True,
+                )
+                if batch_size == 0:
+                    batch_size = set_default_batch_size()
+            elif backend == "mlx-engine":
+                mlx_supported = is_mac_os_version_supported()
+                if not mlx_supported:
+                    raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
+                try:
+                    from mlx_vlm import load as mlx_load
+                except ImportError:
+                    raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
+                model, processor = mlx_load(model_path)
+            else:
+                if os.getenv('OMP_NUM_THREADS') is None:
+                    os.environ["OMP_NUM_THREADS"] = "1"
 
-                    if backend == "vllm-engine":
-                        try:
-                            import vllm
-                            from mineru_vl_utils import MinerULogitsProcessor
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-engine backend.")
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_llm = vllm.LLM(**kwargs)
-                    elif backend == "vllm-async-engine":
-                        try:
-                            from vllm.engine.arg_utils import AsyncEngineArgs
-                            from vllm.v1.engine.async_llm import AsyncLLM
-                            from mineru_vl_utils import MinerULogitsProcessor
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-async-engine backend.")
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
-                    elif backend == "lmdeploy-engine":
-                        try:
-                            from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
-                            from lmdeploy.serve.vl_async_engine import VLAsyncEngine
-                        except ImportError:
-                            raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
-                        if "cache_max_entry_count" not in kwargs:
-                            kwargs["cache_max_entry_count"] = 0.5
+                if backend == "vllm-engine":
+                    try:
+                        import vllm
+                        from mineru_vl_utils import MinerULogitsProcessor
+                    except ImportError:
+                        raise ImportError("Please install vllm to use the vllm-engine backend.")
+                    if "gpu_memory_utilization" not in kwargs:
+                        kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                    if "model" not in kwargs:
+                        kwargs["model"] = model_path
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
+                    # 使用kwargs为 vllm初始化参数
+                    vllm_llm = vllm.LLM(**kwargs)
+                elif backend == "vllm-async-engine":
+                    try:
+                        from vllm.engine.arg_utils import AsyncEngineArgs
+                        from vllm.v1.engine.async_llm import AsyncLLM
+                        from mineru_vl_utils import MinerULogitsProcessor
+                    except ImportError:
+                        raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+                    if "gpu_memory_utilization" not in kwargs:
+                        kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                    if "model" not in kwargs:
+                        kwargs["model"] = model_path
+                    if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        kwargs["logits_processors"] = [MinerULogitsProcessor]
+                    # 使用kwargs为 vllm初始化参数
+                    vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+                elif backend == "lmdeploy-engine":
+                    try:
+                        from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
+                        from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+                    except ImportError:
+                        raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
+                    if "cache_max_entry_count" not in kwargs:
+                        kwargs["cache_max_entry_count"] = 0.5
 
-                        if "device" in kwargs:
-                            device_type = kwargs.pop("device")
-                        else:
-                            device_type = os.getenv('MINERU_DEVICE_MODE', "cuda").lower()
-                        # device_type 如果有则去除":"
-                        if ":" in device_type:
-                            device_type = device_type.split(":")[0]
+                    if "lmdeploy_device" in kwargs:
+                        device_type = kwargs.pop("lmdeploy_device")
+                        if device_type not in ["cuda", "ascend", "maca", "camb"]:
+                            raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
+                    else:
+                        device_type = "cuda"
 
-                        lm_backend = set_lmdeploy_backend(device_type)
-                        logger.info(f"Set lmdeploy_backend to: {lm_backend}")
-
-                        if lm_backend == "pytorch":
-                            kwargs["device_type"] = device_type
-                            backend_config = PytorchEngineConfig(**kwargs)
-                        elif lm_backend == "turbomind":
-                            backend_config = TurbomindEngineConfig(**kwargs)
-                        else:
+                    if "lmdeploy_backend" in kwargs:
+                        lm_backend = kwargs.pop("lmdeploy_backend")
+                        if lm_backend not in ["pytorch", "turbomind"]:
                             raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+                    else:
+                        lm_backend = set_lmdeploy_backend(device_type)
+                    logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
 
-                        log_level = 'ERROR'
-                        from lmdeploy.utils import get_logger
-                        lm_logger = get_logger('lmdeploy')
-                        lm_logger.setLevel(log_level)
-                        if os.getenv('TM_LOG_LEVEL') is None:
-                            os.environ['TM_LOG_LEVEL'] = log_level
+                    if lm_backend == "pytorch":
+                        kwargs["device_type"] = device_type
+                        backend_config = PytorchEngineConfig(**kwargs)
+                    elif lm_backend == "turbomind":
+                        backend_config = TurbomindEngineConfig(**kwargs)
+                    else:
+                        raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
 
-                        lmdeploy_engine = VLAsyncEngine(
-                            model_path,
-                            backend=lm_backend,
-                            backend_config=backend_config,
-                        )
+                    log_level = 'ERROR'
+                    from lmdeploy.utils import get_logger
+                    lm_logger = get_logger('lmdeploy')
+                    lm_logger.setLevel(log_level)
+                    if os.getenv('TM_LOG_LEVEL') is None:
+                        os.environ['TM_LOG_LEVEL'] = log_level
+
+                    lmdeploy_engine = VLAsyncEngine(
+                        model_path,
+                        backend=lm_backend,
+                        backend_config=backend_config,
+                    )
             self._models[key] = MinerUClient(
                 backend=backend,
                 model=model,
