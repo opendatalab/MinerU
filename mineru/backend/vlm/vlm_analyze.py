@@ -194,6 +194,7 @@ def doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    batch_idx=0,
     **kwargs,
 ):
     if predictor is None:
@@ -210,7 +211,7 @@ def doc_analyze(
     # infer_time = round(time.time() - infer_start, 2)
     # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
 
-    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
+    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer, batch_idx, int(kwargs.get("pdf_pages_batch", "0")))
     return middle_json, results
 
 
@@ -221,6 +222,7 @@ async def aio_doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    batch_idx=0,
     **kwargs,
 ):
     if predictor is None:
@@ -236,5 +238,5 @@ async def aio_doc_analyze(
     results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
     # infer_time = round(time.time() - infer_start, 2)
     # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
-    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
+    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer, batch_idx, int(kwargs.get("pdf_pages_batch", "0")))
     return middle_json, results
