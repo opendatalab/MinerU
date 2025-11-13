@@ -142,7 +142,7 @@ class ModelSingleton:
                                 raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
                         else:
                             lm_backend = set_lmdeploy_backend(device_type)
-                        logger.info(f"Set lmdeploy_backend to: {lm_backend}")
+                        logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
 
                         if lm_backend == "pytorch":
                             kwargs["device_type"] = device_type
