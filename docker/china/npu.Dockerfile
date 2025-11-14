@@ -1,4 +1,4 @@
-# Base image containing the LMDeploy inference environment, requiring ARM CPU + Ascend NPU.
+# Base image containing the LMDeploy inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
 FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ascend:mineru-a2
 
 # Install libgl for opencv support & Noto fonts for Chinese characters

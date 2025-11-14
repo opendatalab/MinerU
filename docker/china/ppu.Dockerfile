@@ -1,4 +1,4 @@
-# Base image containing the LMDeploy inference environment, requiring amd64 CPU + t-head PPU.
+# Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + t-head PPU.
 FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ppu:mineru-ppu
 
 # Install libgl for opencv support & Noto fonts for Chinese characters

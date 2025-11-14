@@ -1,4 +1,4 @@
-# Base image containing the LMDeploy inference environment, requiring amd64 CPU + metax GPU.
+# Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + metax GPU.
 FROM
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
