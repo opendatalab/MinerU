@@ -704,8 +704,8 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!TIP]
-> `mineru[core]`包含除`vLLM`加速外的所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
-> 如果您有使用`vLLM`加速VLM模型推理，或是在边缘设备安装轻量版client端等需求，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
+> `mineru[core]`包含除`vLLM`/`LMDeploy`加速外的所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
+> 如果您需要使用`vLLM`/`LMDeploy`加速VLM模型推理，或是有在边缘设备安装轻量版client端等需求，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
 
 ---
  

@@ -31,12 +31,13 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
             <th rowspan="2">Parsing Backend</th>
             <th rowspan="2">pipeline <br> (Accuracy<sup>1</sup> 82+)</th>
-            <th colspan="4" style="text-align:center;">vlm (Accuracy<sup>1</sup> 90+)</th>
+            <th colspan="5">vlm (Accuracy<sup>1</sup> 90+)</th>
         </tr>
         <tr>
             <th>transformers</th>
             <th>mlx-engine</th>
             <th>vllm-engine / <br>vllm-async-engine</th>
+            <th>lmdeploy-engine</th>
             <th>http-client</th>
         </tr>
     </thead>
@@ -47,40 +48,42 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
             <td>Good compatibility, <br>but slower</td>
             <td>Faster than transformers</td>
             <td>Fast, compatible with the vLLM ecosystem</td>
-            <td>Suitable for OpenAI-compatible servers<sup>5</sup></td>
+            <td>Fast, compatible with the LMDeploy ecosystem</td>
+            <td>Suitable for OpenAI-compatible servers<sup>6</sup></td>
         </tr>
         <tr>
             <th>Operating System</th>
             <td colspan="2" style="text-align:center;">Linux<sup>2</sup> / Windows / macOS</td>
             <td style="text-align:center;">macOS<sup>3</sup></td>
             <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>4</sup> </td>
+            <td style="text-align:center;">Linux<sup>2</sup> / Windows<sup>5</sup> </td>
             <td>Any</td>
         </tr>
         <tr>
             <th>CPU inference support</th>
             <td colspan="2" style="text-align:center;">✅</td>
-            <td colspan="2" style="text-align:center;">❌</td>
+            <td colspan="3" style="text-align:center;">❌</td>
             <td>Not required</td>
         </tr>
         <tr>
             <th>GPU Requirements</th><td colspan="2" style="text-align:center;">Volta or later architectures, 6 GB VRAM or more, or Apple Silicon</td>
             <td>Apple Silicon</td>
-            <td>Volta or later architectures, 8 GB VRAM or more</td>
+            <td colspan="2" style="text-align:center;">Volta or later architectures, 8 GB VRAM or more</td>
             <td>Not required</td>
         </tr>
         <tr>
             <th>Memory Requirements</th>
-            <td colspan="4" style="text-align:center;">Minimum 16 GB, 32 GB recommended</td>
+            <td colspan="5" style="text-align:center;">Minimum 16 GB, 32 GB recommended</td>
             <td>8 GB</td>
         </tr>
         <tr>
             <th>Disk Space Requirements</th>
-            <td colspan="4" style="text-align:center;">20 GB or more, SSD recommended</td>
+            <td colspan="5" style="text-align:center;">20 GB or more, SSD recommended</td>
             <td>2 GB</td>
         </tr>
         <tr>
             <th>Python Version</th>
-            <td colspan="5" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13</td>
         </tr>
     </tbody>
 </table>
@@ -89,7 +92,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <sup>2</sup> Linux supports only distributions released in 2019 or later.  
 <sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
 <sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
-<sup>5</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.  
+<sup>5</sup> Windows LMDeploy can only use the `turbomind` backend, which is slightly slower than the `pytorch` backend. If performance is critical, it is recommended to run it via WSL2.  
+<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
 
 ### Install MinerU
 
@@ -108,8 +112,8 @@ uv pip install -e .[core]
 ```
 
 > [!TIP]
-> `mineru[core]` includes all core features except `vllm` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If you need to use `vllm` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](./extension_modules.md).
+> `mineru[core]` includes all core features except `vLLM`/`LMDeploy` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
+> If you need to use `vLLM`/`LMDeploy` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](./extension_modules.md).
 
 ---
  

@@ -714,8 +714,8 @@ uv pip install -e .[core]
 ```
 
 > [!TIP]
-> `mineru[core]` includes all core features except `vLLM` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If you need to use `vLLM` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
+> `mineru[core]` includes all core features except `vLLM`/`LMDeploy` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
+> If you need to use `vLLM`/`LMDeploy` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
 ---
  
