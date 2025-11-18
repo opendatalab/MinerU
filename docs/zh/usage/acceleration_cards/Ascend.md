@@ -34,7 +34,6 @@ docker build --network=host -t mineru:vllm-latest -f npu.Dockerfile .
 
 ```bash
 docker run -u root --name mineru_docker --privileged=true \
-    -p 30000:30000 -p 7860:7860 -p 8000:8000 \
     --ipc=host \
     --network=host \
     --device=/dev/davinci0 \
@@ -52,7 +51,7 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/dcmi:/usr/local/dcmi \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
-    -itd mineru:lmdeploy-latest \
+    -it mineru:lmdeploy-latest \
     /bin/bash
 ```
 
