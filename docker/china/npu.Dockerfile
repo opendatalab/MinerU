@@ -1,12 +1,9 @@
 # 基础镜像配置
 # Base image containing the LMDeploy inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
-FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ascend:mineru-a2 AS lmdeploy
+FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ascend:mineru-a2
 # Base image containing the vLLM inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
-FROM quay.io/ascend/vllm-ascend:v0.11.0rc1 AS vllm
+# FROM quay.io/ascend/vllm-ascend:v0.11.0rc1
 
-# 默认使用 lmdeploy
-ARG INFERENCE_ENGINE=lmdeploy
-FROM ${INFERENCE_ENGINE} AS final
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
