@@ -17,7 +17,7 @@ Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请�
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
-docker build --build-arg INFERENCE_ENGINE=lmdeploy -t mineru:lmdeploy-latest -f npu.Dockerfile .
+docker build -t mineru:lmdeploy-latest -f npu.Dockerfile .
 ```
 
 ### 2.2 使用 vllm
@@ -27,7 +27,7 @@ docker build --build-arg INFERENCE_ENGINE=lmdeploy -t mineru:lmdeploy-latest -f 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
 # 下载 Dockerfile后，使用编辑器打开并注释掉第3行的基础镜像，打开第5行的基础镜像后再执行后续操作
-docker build --build-arg INFERENCE_ENGINE=vllm -t mineru:vllm-latest -f npu.Dockerfile .
+docker build -t mineru:vllm-latest -f npu.Dockerfile .
 ``` 
 
 ## 3. 启动 Docker 容器
