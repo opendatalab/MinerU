@@ -26,7 +26,7 @@ docker build --network=host -t mineru:lmdeploy-latest -f npu.Dockerfile .
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
-# 下载 Dockerfile后，使用编辑器打开并注释掉第3行的基础镜像，打开第5行的基础镜像后再执行后续操作
+# 下载 Dockerfile后，使用编辑器打开并注释掉第3行的基础镜像，解除注释第5行的基础镜像后再执行后续操作
 docker build --network=host -t mineru:vllm-latest -f npu.Dockerfile .
 ``` 
 
