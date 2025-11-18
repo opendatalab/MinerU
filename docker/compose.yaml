@@ -1,19 +1,27 @@
 services:
-  mineru-vllm-server:
+  mineru-openai-server:
     image: mineru:latest
-    container_name: mineru-vllm-server
+    container_name: mineru-openai-server
     restart: always
-    profiles: ["vllm-server"]
+    profiles: ["openai-server"]
     ports:
       - 30000:30000
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-vllm-server
+    entrypoint: mineru-openai-server
     command:
+      # !!!The lmdeploy and vLLM engines cannot be enabled simultaneously.!!!
+      --engine vllm  # Choose between 'vllm' or 'lmdeploy' engine
+      # parameters for vllm-engine
       --host 0.0.0.0
       --port 30000
       # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
       # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+      # parameters for lmdeploy-engine
+      # --server-name 0.0.0.0
+      # --server-port  30000
+      # --dp 2  # If using multiple GPUs, increase throughput using lmdeploy's multi-GPU parallel mode
+      # --cache-max-entry-count 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
@@ -27,35 +35,6 @@ services:
             - driver: nvidia
               device_ids: ["0"]
               capabilities: [gpu]
-
-  mineru-lmdeploy-server:
-    image: mineru:latest
-    container_name: mineru-lmdeploy-server
-    restart: always
-    profiles: [ "lmdeploy-server" ]
-    ports:
-      - 30000:30000
-    environment:
-      MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-lmdeploy-server
-    command:
-      --host 0.0.0.0
-      --port 30000
-    # --dp 2  # If using multiple GPUs, increase throughput using lmdeploy's multi-GPU parallel mode
-    # --cache-max-entry-count 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:30000/health || exit 1" ]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: [ "0" ]
-              capabilities: [ gpu ]
 
   mineru-api:
     image: mineru:latest
