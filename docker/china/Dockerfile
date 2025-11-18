@@ -2,14 +2,8 @@
 # Compute Capability version query (https://developer.nvidia.com/cuda-gpus)
 FROM docker.m.daocloud.io/vllm/vllm-openai:v0.10.1.1
 
-# Use the official vllm image
-# FROM vllm/vllm-openai:v0.10.1.1
-
 # Use DaoCloud mirrored vllm image for China region for gpu with Turing architecture and below (Compute Capability<8.0)
 # FROM docker.m.daocloud.io/vllm/vllm-openai:v0.10.2
-
-# Use the official vllm image
-# FROM vllm/vllm-openai:v0.10.2
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
