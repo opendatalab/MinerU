@@ -40,7 +40,7 @@ dependencies = [
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.16,<1",
-    "qwen_vl_utils>=0.0.14,<0.1",
+    "qwen_vl_utils>=0.0.14,<1",
 ]
 
 [project.optional-dependencies]
@@ -98,7 +98,8 @@ core = [
 ]
 all = [
     "mineru[core]",
-    "mineru[vllm]",
+    "mineru[vllm] ; sys_platform == 'linux'",
+    "mineru[lmdeploy] ; sys_platform == 'windows'",
 ]
 
 [project.urls]
