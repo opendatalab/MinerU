@@ -417,7 +417,6 @@ async def parse_pdf_by_path(
         
         # 构建响应（在上传/清理之前）
         storage_type = "s3" if is_s3_output else "local"
-        path_suffix = "_uri" if is_s3_output else "_path"
         
         # 计算最终路径
         if is_s3_output:
@@ -433,7 +432,7 @@ async def parse_pdf_by_path(
             "parse_dir": final_parse_dir
         }
         
-        # 添加文件路径和大小
+        # 添加文件路径和大小（统一使用 _path 字段，可能是 S3 URI 或本地路径）
         file_configs = [
             (return_md, ".md", "markdown"),
             (return_middle_json, "_middle.json", "middle_json"),
@@ -446,15 +445,15 @@ async def parse_pdf_by_path(
                 local_file = os.path.join(local_parse_dir, f"{file_name}{suffix}")
                 if os.path.exists(local_file):
                     file_location = f"{final_parse_dir.rstrip('/')}/{file_name}{suffix}"
-                    result_dict[f"{key_prefix}{path_suffix}"] = file_location
+                    result_dict[f"{key_prefix}_path"] = file_location
                     result_dict[f"{key_prefix}_size"] = os.path.getsize(local_file)
         
-        # 添加图片信息
+        # 添加图片信息（统一使用 _path 字段）
         if return_images:
             local_images_dir = os.path.join(local_parse_dir, "images")
             if os.path.exists(local_images_dir):
                 images_location = f"{final_parse_dir.rstrip('/')}/images/"
-                result_dict[f"images{path_suffix}"] = images_location
+                result_dict["images_path"] = images_location
                 result_dict["images_count"] = len(glob.glob(os.path.join(glob.escape(local_images_dir), "*.jpg")))
         
         # 读取内容（在上传/清理之前）
