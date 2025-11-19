@@ -20,7 +20,7 @@ uv pip install "mineru[core]"
 uv pip install "mineru[core,vllm]"
 ```
 > [!TIP]
-> 如在安装包含`vllm`的完整包过程中发生异常，请参考 [vllm 官方文档](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) 尝试解决，或直接使用 [Docker](./docker_deployment.md) 方式部署镜像。
+> 如在安装包含`vllm`的扩展包过程中发生异常，请参考 [vllm 官方文档](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) 尝试解决，或直接使用 [Docker](./docker_deployment.md) 方式部署镜像。
 
 ---
 
@@ -33,7 +33,7 @@ uv pip install "mineru[core,vllm]"
 uv pip install "mineru[core,lmdeploy]"
 ```
 > [!TIP]
-> 如在安装包含`lmdeploy`的完整包过程中发生异常，请参考 [lmdeploy 官方文档](https://lmdeploy.readthedocs.io/en/latest/get_started/installation.html) 尝试解决。
+> 如在安装包含`lmdeploy`的扩展包过程中发生异常，请参考 [lmdeploy 官方文档](https://lmdeploy.readthedocs.io/en/latest/get_started/installation.html) 尝试解决。
 
 ---
 

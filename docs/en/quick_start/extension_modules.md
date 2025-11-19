@@ -21,7 +21,7 @@ The `vllm` module provides acceleration support for VLM model inference, suitabl
 uv pip install "mineru[core,vllm]"
 ```
 > [!TIP]
-> If exceptions occur during installation of the complete package including vllm, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to try to resolve the issue, or directly use the [Docker](./docker_deployment.md) deployment method.
+> If exceptions occur during installation of the extra package including vllm, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to try to resolve the issue, or directly use the [Docker](./docker_deployment.md) deployment method.
 
 ---
 
@@ -35,7 +35,7 @@ The `lmdeploy` module provides acceleration support for VLM model inference, sui
 uv pip install "mineru[core,lmdeploy]"
 ```
 > [!TIP]
-> If exceptions occur during installation of the complete package including lmdeploy, please refer to the [lmdeploy official documentation](https://lmdeploy.readthedocs.io/en/latest/get_started/installation.html) to try to resolve the issue.
+> If exceptions occur during installation of the extra package including lmdeploy, please refer to the [lmdeploy official documentation](https://lmdeploy.readthedocs.io/en/latest/get_started/installation.html) to try to resolve the issue.
 
 ---
 
