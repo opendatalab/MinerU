@@ -1,8 +1,8 @@
 # Advanced Command Line Parameters
 
-## vllm Acceleration Parameter Optimization
+## Pass-through of inference engine parameters
 
-### Performance Optimization Parameters
+### vllm Acceleration Parameter Optimization
 > [!TIP]
 > If you can already use vllm normally for accelerated VLM model inference but still want to further improve inference speed, you can try the following parameters:
 > 
@@ -10,8 +10,9 @@
 
 ### Parameter Passing Instructions
 > [!TIP]
-> - All officially supported vllm parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-vllm-server`, `mineru-gradio`, `mineru-api`
+> - All officially supported vllm/lmdeploy parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`
 > - If you want to learn more about `vllm` parameter usage, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/cli/serve.html)
+> - If you want to learn more about `lmdeploy` parameter usage, please refer to the [lmdeploy official documentation](https://lmdeploy.readthedocs.io/en/latest/llm/api_server.html)
 
 ## GPU Device Selection and Configuration
 
@@ -21,7 +22,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - This specification method is effective for all command line calls, including `mineru`, `mineru-vllm-server`, `mineru-gradio`, and `mineru-api`, and applies to both `pipeline` and `vlm` backends.
+> - This specification method is effective for all command line calls, including `mineru`, `mineru-openai-server`, `mineru-gradio`, and `mineru-api`, and applies to both `pipeline` and `vlm` backends.
 
 ### Common Device Configuration Examples
 > [!TIP]
@@ -38,9 +39,9 @@
 > [!TIP]
 > Here are some possible usage scenarios:
 > 
-> - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start `vllm-server`, you can use the following command:
+> - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start `openai-server`, you can use the following command:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1 mineru-vllm-server --port 30000 --data-parallel-size 2
+>   CUDA_VISIBLE_DEVICES=0,1 mineru-openai-server --engine vllm --port 30000 --data-parallel-size 2
 >   ```
 >       
 > - If you have multiple graphics cards and need to start two `fastapi` services on cards 0 and 1, listening on different ports respectively, you can use the following commands:
