@@ -39,7 +39,8 @@ dependencies = [
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
-    "mineru-vl-utils>=0.1.15,<1",
+    "mineru-vl-utils>=0.1.16,<1",
+    "qwen_vl_utils>=0.0.14,<0.1",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +61,6 @@ vllm = [
 ]
 lmdeploy = [
     "lmdeploy>=0.10.2,<0.11",
-    "qwen_vl_utils>=0.0.14,<0.1",
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
