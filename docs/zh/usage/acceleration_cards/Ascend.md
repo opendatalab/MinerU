@@ -51,6 +51,7 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/dcmi:/usr/local/dcmi \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:lmdeploy-latest \
     /bin/bash
 ```
@@ -60,3 +61,96 @@ docker run -u root --name mineru_docker --privileged=true \
 
 执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
+
+## 4. 注意事项
+
+不同环境下，MinerU对Ascend加速卡的支持情况如下表所示：
+
+<table border="1">
+  <thead>
+    <tr>
+      <th rowspan="2" colspan="2">使用场景</th>
+      <th colspan="2">环境</th>
+    </tr>
+    <tr>
+      <th>vllm</th>
+      <th>lmdeploy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4">命令行工具(mineru)</td>
+      <td>pipeline</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-transformers</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-vllm-engine</td>
+      <td>❌</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-http-client</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td rowspan="4">fastapi服务(mineru-api)</td>
+      <td>pipeline</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-transformers</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-vllm-async-engine</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-http-client</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td rowspan="4">gradio界面(mineru-gradio)</td>
+      <td>pipeline</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-transformers</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-vllm-async-engine</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td>vllm-http-client</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td colspan="2">openai-server服务（mineru-openai-server）</td>
+      <td>✅</td>
+      <td>✅</td>
+    </tr>
+    <tr>
+      <td colspan="2">数据并行 (--data-parallel-size/--dp)</td>
+      <td>✅</td>
+      <td>❌</td>
+    </tr>
+  </tbody>
+</table>
+
