@@ -11,22 +11,19 @@ docker: 20.10.12
 
 Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
-### 2.1 使用 lmdeploy
-
-#### 使用 Dockerfile 构建镜像
+### 2.1 使用 Dockerfile 构建镜像 （lmdeploy）
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
 docker build --network=host -t mineru:lmdeploy-latest -f npu.Dockerfile .
 ```
 
-### 2.2 使用 vllm
-
-#### 使用 Dockerfile 构建镜像
+### 2.2 使用 Dockerfile 构建镜像 （vllm）
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
-# 下载 Dockerfile后，使用编辑器打开并注释掉第3行的基础镜像，解除注释第5行的基础镜像后再执行后续操作
+# 将基础镜像从lmdeploy切换为vllm
+sed -i '3s/^/# /' npu.Dockerfile && sed -i '5s/^# //' npu.Dockerfile
 docker build --network=host -t mineru:vllm-latest -f npu.Dockerfile .
 ``` 
 
