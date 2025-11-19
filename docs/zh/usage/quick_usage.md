@@ -28,7 +28,7 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b vlm-transformers
 ```
 > [!TIP]
-> vlm后端另外支持`vllm`加速，与`transformers`后端相比，`vllm`的加速比可达20～30倍，可以在[扩展模块安装指南](../quick_start/extension_modules.md)中查看支持`vllm`加速的完整包安装方法。
+> vlm后端另外支持`vllm`/`lmdeploy`加速，与`transformers`后端相比，推理速度可大幅提升。可以在[扩展模块安装指南](../quick_start/extension_modules.md)中查看支持`vllm`/`lmdeploy`加速的扩展包安装方法。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
@@ -47,6 +47,8 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   mineru-gradio --server-name 0.0.0.0 --server-port 7860
   # 或使用 vlm-vllm-engine/pipeline 后端（需安装vllm环境）
   mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true
+  # 或使用 vlm-lmdeploy-engine/pipeline 后端（需安装lmdeploy环境）
+  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-lmdeploy-engine true
   ```
   >[!TIP]
   > 
@@ -54,8 +56,12 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 
 - 使用`http-client/server`方式调用：
   ```bash
-  # 启动vllm server(需要安装vllm环境)
-  mineru-vllm-server --port 30000
+  # 启动openai兼容服务器(需要安装vllm或lmdeploy环境)
+  mineru-openai-server
+  # 或指定vllm为推理引擎(需要安装vllm环境)
+  mineru-openai-server --engine vllm --port 30000
+  # 或指定lmdeploy为推理引擎(需要安装lmdeploy环境)
+  mineru-openai-server --engine lmdeploy --server-port 30000
   ``` 
   >[!TIP]
   >在另一个终端中通过http client连接vllm server（只需cpu与网络，不需要vllm环境）
@@ -64,8 +70,8 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   > ```
 
 > [!NOTE]
-> 所有vllm官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-vllm-server`、`mineru-gradio`、`mineru-api`，
-> 我们整理了一些`vllm`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
+> 所有`vllm/lmdeploy`官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`，
+> 我们整理了一些`vllm/lmdeploy`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
 
 ## 基于配置文件扩展 MinerU 功能
 
