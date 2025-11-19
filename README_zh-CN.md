@@ -671,7 +671,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         </tr>
         <tr>
             <th>python版本</th>
-            <td colspan="6" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13<sup>7</sup></td>
         </tr>
     </tbody>
 </table> 
@@ -681,7 +681,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 <sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用  
 <sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
 <sup>5</sup> Windows LMDeploy只能使用`turbomind`后端，速度比`pytorch`后端稍慢，如对速度有要求建议通过WSL2运行  
-<sup>6</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
+<sup>6</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务  
+<sup>7</sup> Windows + LMDeploy 由于关键依赖`ray`未能在windows平台支持Python 3.13，故仅支持至3.10~3.12版本
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  

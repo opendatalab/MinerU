@@ -83,7 +83,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         </tr>
         <tr>
             <th>Python Version</th>
-            <td colspan="6" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13<sup>7</sup></td>
         </tr>
     </tbody>
 </table>
@@ -93,7 +93,9 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
 <sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
 <sup>5</sup> Windows LMDeploy can only use the `turbomind` backend, which is slightly slower than the `pytorch` backend. If performance is critical, it is recommended to run it via WSL2.  
-<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
+<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.  
+<sup>7</sup> Windows + LMDeploy only supports Python versions 3.10–3.12, as the critical dependency `ray` does not yet support Python 3.13 on Windows.
+
 
 ### Install MinerU
 
