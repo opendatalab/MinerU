@@ -90,7 +90,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🔴</td>
-      <td>🟢</td>
+      <td>🟡</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -111,7 +111,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟢</td>
+      <td>🟡</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -132,7 +132,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟢</td>
+      <td>🟡</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
