@@ -48,6 +48,7 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/dcmi:/usr/local/dcmi \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -e MINERU_MODEL_SOURCE=local \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:lmdeploy-latest \
     /bin/bash
