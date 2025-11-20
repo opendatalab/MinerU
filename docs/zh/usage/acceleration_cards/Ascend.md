@@ -68,7 +68,7 @@ docker run -u root --name mineru_docker --privileged=true \
   <thead>
     <tr>
       <th rowspan="2" colspan="2">使用场景</th>
-      <th colspan="2">环境</th>
+      <th colspan="2">推理引擎</th>
     </tr>
     <tr>
       <th>vllm</th>
@@ -88,7 +88,7 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vlm-&lt;env_name&gt;-engine</td>
+      <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>❌</td>
       <td>✅</td>
     </tr>
@@ -109,7 +109,7 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vlm-&lt;env_name&gt;-engine</td>
+      <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
@@ -130,7 +130,7 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vlm-&lt;env_name&gt;-engine</td>
+      <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
