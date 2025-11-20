@@ -79,78 +79,84 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td rowspan="4">命令行工具(mineru)</td>
       <td>pipeline</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-transformers</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>❌</td>
-      <td>✅</td>
+      <td>🔴</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td rowspan="4">fastapi服务(mineru-api)</td>
       <td>pipeline</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-transformers</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td rowspan="4">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-transformers</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td colspan="2">openai-server服务（mineru-openai-server）</td>
-      <td>✅</td>
-      <td>✅</td>
+      <td>🟢</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td colspan="2">数据并行 (--data-parallel-size/--dp)</td>
-      <td>✅</td>
-      <td>❌</td>
+      <td>🟢</td>
+      <td>🔴</td>
     </tr>
   </tbody>
 </table>
+
+注：  
+🟢: 支持  
+🟡: 支持但稍有不稳定，在少数某些场景下可能出现异常  
+🟧: 支持但极度不稳定，在大多数场景下可能出现异常  
+🔴: 不支持  
 
 >[!NOTE]
 >由于npu卡的特殊性，单次服务启动后，可能会在运行过程中切换推理后端（backend）类型（pipeline/vlm）时出现异常，请尽量根据实际需求选择合适的推理后端进行使用。  
