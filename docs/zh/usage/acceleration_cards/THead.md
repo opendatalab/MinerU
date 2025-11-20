@@ -15,16 +15,16 @@ ppu加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根�
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
-docker build --network=host -t mineru:ppu-lmdeploy-latest -f npu.Dockerfile .
+docker build --network=host -t mineru:ppu-lmdeploy-latest -f ppu.Dockerfile .
 ```
 
 ### 2.2 使用 Dockerfile 构建镜像 （vllm）
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
 # 将基础镜像从lmdeploy切换为vllm
-sed -i '2s/^/# /' npu.Dockerfile && sed -i '4s/^# //' npu.Dockerfile
-docker build --network=host -t mineru:ppu-vllm-latest -f npu.Dockerfile .
+sed -i '2s/^/# /' ppu.Dockerfile && sed -i '4s/^# //' ppu.Dockerfile
+docker build --network=host -t mineru:ppu-vllm-latest -f ppu.Dockerfile .
 ``` 
 
 ## 3. 启动 Docker 容器
