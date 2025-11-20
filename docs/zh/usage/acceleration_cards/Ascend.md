@@ -153,6 +153,6 @@ docker run -u root --name mineru_docker --privileged=true \
 </table>
 
 >[!NOTE]
->由于npu卡的特殊性，单次服务启动后，不支持在运行过程中切换推理后端（backend）类型（pipeline/vlm），请根据实际需求选择合适的推理后端进行使用。  
->如需切换推理后端类型，请重新启动服务。
+>由于npu卡的特殊性，单次服务启动后，可能会在运行过程中切换推理后端（backend）类型（pipeline/vlm）时出现异常，请尽量根据实际需求选择合适的推理后端进行使用。  
+>如在服务中切换推理后端类型遇到报错或异常，请重新启动服务即可。
 
