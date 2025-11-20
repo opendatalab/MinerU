@@ -11,21 +11,21 @@ docker: 20.10.12
 
 Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
-### 2.1 使用 Dockerfile 构建镜像 （lmdeploy）
+### 2.1 使用 Dockerfile 构建镜像 （vllm）
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
-docker build --network=host -t mineru:lmdeploy-latest -f npu.Dockerfile .
-```
-
-### 2.2 使用 Dockerfile 构建镜像 （vllm）
-
-```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
-# 将基础镜像从lmdeploy切换为vllm
-sed -i '3s/^/# /' npu.Dockerfile && sed -i '5s/^# //' npu.Dockerfile
 docker build --network=host -t mineru:vllm-latest -f npu.Dockerfile .
 ``` 
+
+### 2.2 使用 Dockerfile 构建镜像 （lmdeploy）
+
+```bash
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
+# 将基础镜像从 vllm 切换为 lmdeploy
+sed -i '3s/^/# /' npu.Dockerfile && sed -i '5s/^# //' npu.Dockerfile
+docker build --network=host -t mineru:lmdeploy-latest -f npu.Dockerfile .
+```
 
 ## 3. 启动 Docker 容器
 
@@ -50,12 +50,12 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
     -e MINERU_MODEL_SOURCE=local \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
-    -it mineru:lmdeploy-latest \
+    -it mineru:vllm-latest \
     /bin/bash
 ```
 
 >[!TIP]
-> 请根据实际情况选择使用`lmdeploy`或`vllm`版本的镜像，替换上述命令中的`mineru:lmdeploy-latest`为`mineru:vllm-latest`即可。
+> 请根据实际情况选择使用`lmdeploy`或`vllm`版本的镜像，替换上述命令中的`mineru:vllm-latest`为`mineru:lmdeploy-latest`即可。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
