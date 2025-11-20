@@ -83,17 +83,17 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-transformers</td>
+      <td>vlm-transformers</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-vllm-engine</td>
+      <td>vlm-&lt;env_name&gt;-engine</td>
       <td>❌</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-http-client</td>
+      <td>vlm-http-client</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
@@ -104,17 +104,17 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-transformers</td>
+      <td>vlm-transformers</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-vllm-async-engine</td>
+      <td>vlm-&lt;env_name&gt;-engine</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-http-client</td>
+      <td>vlm-http-client</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
@@ -125,17 +125,17 @@ docker run -u root --name mineru_docker --privileged=true \
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-transformers</td>
+      <td>vlm-transformers</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-vllm-async-engine</td>
+      <td>vlm-&lt;env_name&gt;-engine</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
     <tr>
-      <td>vllm-http-client</td>
+      <td>vlm-http-client</td>
       <td>✅</td>
       <td>✅</td>
     </tr>
