@@ -1,0 +1,3699 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+            xmlns:cx="http://schemas.microsoft.com/office/drawing/2014/chartex"
+            xmlns:cx1="http://schemas.microsoft.com/office/drawing/2015/9/8/chartex"
+            xmlns:cx2="http://schemas.microsoft.com/office/drawing/2015/10/21/chartex"
+            xmlns:cx3="http://schemas.microsoft.com/office/drawing/2016/5/9/chartex"
+            xmlns:cx4="http://schemas.microsoft.com/office/drawing/2016/5/10/chartex"
+            xmlns:cx5="http://schemas.microsoft.com/office/drawing/2016/5/11/chartex"
+            xmlns:cx6="http://schemas.microsoft.com/office/drawing/2016/5/12/chartex"
+            xmlns:cx7="http://schemas.microsoft.com/office/drawing/2016/5/13/chartex"
+            xmlns:cx8="http://schemas.microsoft.com/office/drawing/2016/5/14/chartex"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            xmlns:aink="http://schemas.microsoft.com/office/drawing/2016/ink"
+            xmlns:am3d="http://schemas.microsoft.com/office/drawing/2017/model3d"
+            xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:oel="http://schemas.microsoft.com/office/2019/extlst"
+            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml"
+            xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+            xmlns:w10="urn:schemas-microsoft-com:office:word"
+            xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
+            xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"
+            xmlns:w16cex="http://schemas.microsoft.com/office/word/2018/wordml/cex"
+            xmlns:w16cid="http://schemas.microsoft.com/office/word/2016/wordml/cid"
+            xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml"
+            xmlns:w16du="http://schemas.microsoft.com/office/word/2023/wordml/word16du"
+            xmlns:w16sdtdh="http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash"
+            xmlns:w16sdtfl="http://schemas.microsoft.com/office/word/2024/wordml/sdtformatlock"
+            xmlns:w16se="http://schemas.microsoft.com/office/word/2015/wordml/symex"
+            xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
+            xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
+            xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
+            xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+            mc:Ignorable="w14 w15 w16se w16cid w16 w16cex w16sdtdh w16sdtfl w16du wp14">
+    <w:body>
+        <w:p w14:paraId="7BA64023" w14:textId="20B1E15F" w:rsidR="00B15D97" w:rsidRDefault="00BF6214"
+             w:rsidP="00BF6214">
+            <w:pPr>
+                <w:pStyle w:val="a4"/>
+                <w:ind w:firstLine="643"/>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="0" w:name="_Toc411426751"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                </w:rPr>
+                <w:t>采购合同</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="33F768E4" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>合同编号：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">               </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">            </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">        </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">      </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="357FB524" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>签订地点：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">       </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">          </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="7F54F666" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>签订时间：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                           </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">        </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="797D9C77" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>采购人（甲方）：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                           </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">     </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">        </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="62E87358" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>供应商（乙方）：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                                    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="0A9DE963" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="1" w:name="_九、其他"/>
+            <w:bookmarkStart w:id="2" w:name="_Toc217446115"/>
+            <w:bookmarkEnd w:id="1"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>根据《中华人民共和国政府采购法》、《中华人民共和国合同法》及</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:cs="宋体" w:hint="eastAsia"/>
+                    <w:color w:val="000000"/>
+                    <w:szCs w:val="21"/>
+                </w:rPr>
+                <w:t>XX</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>政府采购中心</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">         </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>采购项目（项目编号：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:cs="宋体" w:hint="eastAsia"/>
+                    <w:color w:val="000000"/>
+                    <w:szCs w:val="21"/>
+                </w:rPr>
+                <w:t>XX</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    ）的《招标文件》、乙方的《投标文件》及《中标通知书》，甲、乙双方同意签订本合同。详细技术说明及其他有关合同项目的特定信息由合同附件予以说明，合同附件及本项目的招标文件、投标文件、《中标通知书》等均为本合同不可分割的部分。双方同意共同遵守如下条款：
+                </w:t>
+            </w:r>
+            <w:bookmarkStart w:id="3" w:name="_Toc308164852"/>
+            <w:bookmarkStart w:id="4" w:name="_Toc217446107"/>
+        </w:p>
+        <w:p w14:paraId="670F3C73" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:pStyle w:val="1"/>
+                <w:ind w:firstLineChars="0" w:firstLine="0"/>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                </w:rPr>
+                <w:t>一、合同货物</w:t>
+            </w:r>
+        </w:p>
+        <w:tbl>
+            <w:tblPr>
+                <w:tblW w:w="9600" w:type="dxa"/>
+                <w:tblInd w:w="-129" w:type="dxa"/>
+                <w:tblBorders>
+                    <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                    <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                    <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                    <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                </w:tblBorders>
+                <w:tblLayout w:type="fixed"/>
+                <w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0"
+                           w:noVBand="1"/>
+            </w:tblPr>
+            <w:tblGrid>
+                <w:gridCol w:w="1137"/>
+                <w:gridCol w:w="1260"/>
+                <w:gridCol w:w="720"/>
+                <w:gridCol w:w="720"/>
+                <w:gridCol w:w="900"/>
+                <w:gridCol w:w="900"/>
+                <w:gridCol w:w="896"/>
+                <w:gridCol w:w="904"/>
+                <w:gridCol w:w="678"/>
+                <w:gridCol w:w="690"/>
+                <w:gridCol w:w="795"/>
+            </w:tblGrid>
+            <w:tr w:rsidR="00B15D97" w14:paraId="477E3C3A" w14:textId="77777777">
+                <w:trPr>
+                    <w:trHeight w:val="385"/>
+                </w:trPr>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1137" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:bookmarkEnd w:id="3"/>
+                    <w:bookmarkEnd w:id="4"/>
+                    <w:p w14:paraId="4E8EFE8A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>货物</w:t>
+                        </w:r>
+                    </w:p>
+                    <w:p w14:paraId="5EC7CA26" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>品名</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1260" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="31A301BA" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLine="420"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>规格</w:t>
+                        </w:r>
+                    </w:p>
+                    <w:p w14:paraId="558601F4" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLine="420"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>型号</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="1105CF20" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>单位</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="26E7BE2B" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>数量</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="23772C4C" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>单价</w:t>
+                        </w:r>
+                    </w:p>
+                    <w:p w14:paraId="2DEB2DB0" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>（万元）</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="324476C1" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>总价（万元）</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="2478" w:type="dxa"/>
+                        <w:gridSpan w:val="3"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="078C9E56" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLine="420"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>资金来源（万元）</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="690" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="38A30303" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>随机</w:t>
+                        </w:r>
+                    </w:p>
+                    <w:p w14:paraId="60B765A7" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>配件</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="795" w:type="dxa"/>
+                        <w:vMerge w:val="restart"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="76C39028" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:pStyle w:val="a5"/>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>交货期</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+            </w:tr>
+            <w:tr w:rsidR="00B15D97" w14:paraId="7C4C6955" w14:textId="77777777">
+                <w:trPr>
+                    <w:trHeight w:val="402"/>
+                </w:trPr>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1137" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="50D953E9" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1260" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3C74FF7D" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="6F7A4330" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="40706E0A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="343A5B29" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3DC81274" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="896" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3F78CED2" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>预算内</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="904" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="18A33099" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>预算外</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="678" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="478C1D0C" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:rPr>
+                                <w:rFonts w:hint="eastAsia"/>
+                            </w:rPr>
+                            <w:t>其他</w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="690" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="6543296D" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="795" w:type="dxa"/>
+                        <w:vMerge/>
+                        <w:tcBorders>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="5C993328" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+            </w:tr>
+            <w:tr w:rsidR="00B15D97" w14:paraId="372B1361" w14:textId="77777777">
+                <w:trPr>
+                    <w:trHeight w:val="647"/>
+                </w:trPr>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1137" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="1A71DFFC" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1260" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="1DAA9500" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3422DB4C" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3843B239" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="181916B7" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="15893470" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="896" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="4BAD6AE1" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="904" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="56EA0A6F" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="678" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="6B9F3636" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="690" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="55EFB96A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="795" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="68A904D3" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+            </w:tr>
+            <w:tr w:rsidR="00B15D97" w14:paraId="761C28AA" w14:textId="77777777">
+                <w:trPr>
+                    <w:trHeight w:val="647"/>
+                </w:trPr>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1137" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="0A934C54" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="1260" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="4FE3EF0F" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="7656E34B" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="720" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="7E5AB412" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="78BB123E" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="900" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="3BB7D088" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="896" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="15C7BC90" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="904" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="2A999AE8" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="678" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="61D891C4" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="690" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="4C5D0417" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                    </w:p>
+                </w:tc>
+                <w:tc>
+                    <w:tcPr>
+                        <w:tcW w:w="795" w:type="dxa"/>
+                        <w:tcBorders>
+                            <w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                            <w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>
+                        </w:tcBorders>
+                        <w:vAlign w:val="center"/>
+                    </w:tcPr>
+                    <w:p w14:paraId="2772B1CF" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+                        <w:pPr>
+                            <w:ind w:firstLine="480"/>
+                        </w:pPr>
+                        <w:r>
+                            <w:t> </w:t>
+                        </w:r>
+                    </w:p>
+                </w:tc>
+            </w:tr>
+        </w:tbl>
+        <w:p w14:paraId="3150F320" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="5" w:name="_Toc308164853"/>
+            <w:bookmarkStart w:id="6" w:name="_Toc217446108"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>二、合同总价</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="5"/>
+            <w:bookmarkEnd w:id="6"/>
+        </w:p>
+        <w:p w14:paraId="098BE5B9" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLineChars="175" w:firstLine="420"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>合同总价为人民币大写：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元，即</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>RMB</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>￥</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">        </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    元；该合同总价已包括货物设计、材料、制造、包装、运输、安装、调试、检测、验收合格交付使用之前及保修期内保修服务与备用物件等等所有其他有关各项的含税费用。本合同执行期间合同总价不变，甲方无须另向乙方支付本合同规定之外的其他任何费用。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="56F8AE8A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="7" w:name="_Toc308164854"/>
+            <w:bookmarkStart w:id="8" w:name="_Toc217446109"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>三、质量要求</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="7"/>
+            <w:bookmarkEnd w:id="8"/>
+        </w:p>
+        <w:p w14:paraId="1D4CD726" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、乙方须提供全新的货物（含零部件、配件等），表面无划伤、无碰撞痕迹，且权属清楚，不得侵害他人的知识产权。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="27E69FAD" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2、货物必须符合或优于国家（行业）</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">          </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>标准，以及本项目招标文件的质量要求和技术指标与出厂标准。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="558885A4" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:lastRenderedPageBreak/>
+                <w:t>3、乙方须在本合同签订之日起</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    日内送交货物成品样品给甲方确认，在甲方出具样品确认书并封存成品样品外观尺寸后，乙方才能按样生产，并以此样品作为验收样品；每台货物上均应有产品质量检验合格标志。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="717BBD97" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>4</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    、货物制造质量出现问题，乙方应负责三包（包修、包换、包退），费用由乙方负担，甲方有权到乙方生产场地检查货物质量和生产进度。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="332541F7" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>5</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、货到现场后由于甲方保管不当造成的质量问题，乙方亦应负责修理，但费用由甲方负担。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="3760812A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:pStyle w:val="1"/>
+                <w:ind w:firstLine="883"/>
+            </w:pPr>
+            <w:bookmarkStart w:id="9" w:name="_Toc308164855"/>
+            <w:bookmarkStart w:id="10" w:name="_Toc217446110"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                </w:rPr>
+                <w:t>四、交货及验收</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="9"/>
+            <w:bookmarkEnd w:id="10"/>
+        </w:p>
+        <w:p w14:paraId="0C47F955" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、乙方交货期限为合同签订生效后的</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内，在合同签订生效之日起</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>天内交货到甲方指定地点，随即在</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内全部完成安装调试验收合格交付使用，并且最迟应在</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>年</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>月</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日前全部完成安装调试验收合格交付使用</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>(</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>如由于采购人的原因造成合同延迟签订或验收的，时间顺延</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>)</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>。交货验收时须提供产品质检部门从同类产品中抽样检查合格的检测报告。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4034F9E3" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、验收由甲方组织，乙方配合进行：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4B63424B" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">(1) </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>货物在乙方通知安装调试完毕后</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内初步验收。初步验收合格后，进入</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>试用期；试用期间发生重大质量问题，修复后试用相应顺延；试用期结束后</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内完成最终验收；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="39F3265E" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">(2) </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    验收标准：按国家有关规定以及甲方招标文件的质量要求和技术指标、乙方的投标文件及承诺与本合同约定标准进行验收；甲乙双方如对质量要求和技术指标的约定标准有相互抵触或异议的事项，由甲方在招标与投标文件中按质量要求和技术指标比较优胜的原则确定该项的约定标准进行验收；
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4013A5F0" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">(3) </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    验收时如发现所交付的货物有短装、次品、损坏或其它不符合标准及本合同规定之情形者，甲方应做出详尽的现场记录，或由甲乙双方签署备忘录，此现场记录或备忘录可用作补充、缺失和更换损坏部件的有效证据，由此产生的时间延误与有关费用由乙方承担，验收期限相应顺延；
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4CD1AE18" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">(4) </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>如质量验收合格，双方签署质量验收报告。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="2310BA9E" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>3</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、货物安装完成后</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">     </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内，甲方无故不进行验收工作并已使用货物的，视同已安装调试完成并验收合格。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="53D40874" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>4、乙方不能完整交付货物必须负责补齐，否则视为未按合同约定交货。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="085527CE" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>5</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、如货物经乙方</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    次维修仍不能达到合同约定的质量标准，甲方有权退货，并视作乙方不能交付货物而须支付违约赔偿金给甲方，甲方还可依法追究乙方的违约责任。
+                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t> </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="45E4BF43" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="11" w:name="_Toc217446111"/>
+            <w:bookmarkStart w:id="12" w:name="_Toc308164856"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:lastRenderedPageBreak/>
+                <w:t>五、付款方式</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="11"/>
+            <w:bookmarkEnd w:id="12"/>
+        </w:p>
+        <w:p w14:paraId="738A345E" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、甲方在本合同签订生效之日起计算款额￥</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                          </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元，人民币大写：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                            </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元整）后的</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内支付合同金额百分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">     </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的价款（根据磋商文件要求）；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="180801D9" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、全部货物安装调试完毕并验收合格之日起，甲方接到乙方通知与票据凭证资料以后的</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内，向乙方核拨合同总价的百分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>款项：￥</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元，人民币大写</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元整；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="063B9383" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>3</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、合同履约保证金：在货物验收合格满</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    后，甲方财务部门接到乙方通知和支付凭证资料文件，以及由甲方确认本合同货物质量与服务等约定事项已经履行完毕的正式书面文件后的
+                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">     </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日内，递交结算凭证资料给银行并由其向乙方支付价款￥</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元， 人民币大写：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">              </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>元整（根据招标文件要求）；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="3696CC7A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>4、乙方须向甲方出具合法有效完整的完税发票及凭证资料进行支付结算。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="522F2D86" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="13" w:name="_Toc308164857"/>
+            <w:bookmarkStart w:id="14" w:name="_Toc217446112"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>六、售后服务</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="13"/>
+            <w:bookmarkEnd w:id="14"/>
+        </w:p>
+        <w:p w14:paraId="76F25946" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、质保期为验收合格后</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>年，质保期内出现质量问题，乙方在接到通知后</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>小时内响应到场，</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>小时内完成维修或更换，并承担修理调换的费用；如货物经乙方</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    次维修仍不能达到本合同约定的质量标准，视作乙方未能按时交货，甲方有权退货并追究乙方的违约责任。货到现场后由于甲方保管不当造成的问题，乙方亦应负责修复，但费用由甲方负担。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4A57CC56" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、乙方须指派专人负责与甲方联系售后服务事宜。</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t> </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="2546ED77" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="15" w:name="_Toc217446113"/>
+            <w:bookmarkStart w:id="16" w:name="_Toc308164858"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>七、违约责任</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="15"/>
+            <w:bookmarkEnd w:id="16"/>
+        </w:p>
+        <w:p w14:paraId="2D10A920" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、甲方违约责任</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="7335019F" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>甲方无正当理由拒收货物的，甲方应偿付合同总价百分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的违约金；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="538C1829" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>甲方逾期支付货款的，除应及时付足货款外，</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>应向乙方偿付欠款总额万分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> /天</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的违约金；逾期付款超过</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>天的，乙方有权终止合同；</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4087D036" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>3</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>甲方偿付的违约金不足以弥补乙方损失的，还应按乙方损失尚未弥补的部分，支付赔偿金给乙方。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="354B7000" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、乙方违约责任</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="2A14754F" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）乙方交付的货物质量不符合合同规定的，乙方应向甲方支付合同总价的百分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    的违约金，并须在合同规定的交货时间内更换合格的货物给甲方，否则，视作乙方不能交付货物而违约，按本条本款下述第“（2）”项规定由乙方偿付违约赔偿金给甲方。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="6DE53236" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）乙方不能交付货物或逾期交付货物而违约的，除应及时交足货物外，</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>应向甲方偿付逾期交货部分货款总额的万分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> /天</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的违约金；逾期交货超过</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>天，甲方有权终</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:lastRenderedPageBreak/>
+                <w:t>止合同，乙方则应按合同总价的百分之</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的款额向甲方偿付赔偿金，并须全额退还甲方已经付给乙方的货款及其利息。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="0CC42BA5" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>3</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    ）乙方货物经甲方送交具有法定资格条件的质量技术监督机构检测后，如检测结果认定货物质量不符合本合同规定标准的，则视为乙方没有按时交货而违约，乙方须在
+                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>天内无条件更换合格的货物，如逾期不能更换合格的货物，甲方有权终止本合同，乙方应另付合同总价的百分之
+                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>的赔偿金给甲方。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="5CCB0D51" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    （4）乙方保证本合同货物的权利无瑕疵，包括货物所有权及知识产权等权利无瑕疵。如任何第三方经法院（或仲裁机构）裁决有权对上述货物主张权利或国家机关依法对货物进行没收查处的，乙方除应向甲方返还已收款项外，还应另按合同总价的百分之
+                </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>向甲方支付违约金并赔偿因此给甲方造成的一切损失。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="74CAB4FD" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:spacing w:line="400" w:lineRule="exact"/>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>5</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>）乙方偿付的违约金不足以弥补甲方损失的，还应按甲方损失尚未弥补的部分，支付赔偿金给甲方。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="1F8E4293" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="17" w:name="_Toc308164859"/>
+            <w:bookmarkStart w:id="18" w:name="_Toc217446114"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>八、争议解决办法</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="17"/>
+            <w:bookmarkEnd w:id="18"/>
+        </w:p>
+        <w:p w14:paraId="2F9CD433" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>
+                    、因货物的质量问题发生争议，由质量技术监督部门或其指定的质量鉴定机构进行质量鉴定。货物符合标准的，鉴定费由甲方承担；货物不符合质量标准的，鉴定费由乙方承担。
+                </w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="2E85775A" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、合同履行期间</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>,</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>若双方发生争议，可协商或由有关部门调解解决，协商或调解不成的，由当事人依法维护其合法权益。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="514094D5" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="560"/>
+                <w:outlineLvl w:val="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+            </w:pPr>
+            <w:bookmarkStart w:id="19" w:name="_Toc308164860"/>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="黑体" w:eastAsia="黑体" w:hAnsi="黑体" w:cs="黑体" w:hint="eastAsia"/>
+                    <w:sz w:val="28"/>
+                    <w:szCs w:val="28"/>
+                </w:rPr>
+                <w:t>九、其他</w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="2"/>
+            <w:bookmarkEnd w:id="19"/>
+        </w:p>
+        <w:p w14:paraId="359A80C1" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、如有未尽事宜，由双方依法订立补充合同。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="034A29A2" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>2</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>、本合同双方应加盖骑缝章。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4F2BE432" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>3、本合同一式四份，自双方签章并经省政府采购中心审核编号后生效。甲方、乙方、政府采购管理部门、</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                    <w:u w:val="single"/>
+                </w:rPr>
+                <w:t xml:space="preserve">      </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:cs="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>省政府采购中心各一份。</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="61DE42C8" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00B15D97">
+            <w:pPr>
+                <w:ind w:firstLineChars="0" w:firstLine="0"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+        </w:p>
+        <w:p w14:paraId="26B4E3BA" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>甲方： （盖章）</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   乙方：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>（盖章）</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="04910DB9" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>法定代表人（授权代表）：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">            </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>法定代表人（授权代表）：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4BC819B2" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>地</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>址：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                         </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>地</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>址：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="568E90F0" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>开户银行：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                         </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>开户银行：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="365B27C5" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>账号：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                             </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>账号：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="62118F93" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>电</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>话：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                         </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>电</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>话：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="56BDE087" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:lastRenderedPageBreak/>
+                <w:t>传</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>真：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">                         </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>传</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:ascii="宋体" w:hAnsi="宋体" w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>真：</w:t>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="4D5B8AFC" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>签约日期：年</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>月</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">   </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>日</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:tab/>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>签约日期：</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">  </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>年</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve">    </w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t>月</w:t>
+            </w:r>
+            <w:r>
+                <w:rPr>
+                    <w:rFonts w:hint="eastAsia"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:bookmarkEnd w:id="0"/>
+        </w:p>
+        <w:p w14:paraId="4BEFCD9F" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:ind w:firstLine="480"/>
+                <w:rPr>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:rPr>
+                    <w:noProof/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+                <w:drawing>
+                    <wp:inline distT="0" distB="0" distL="114300" distR="114300" wp14:anchorId="077D7FD6"
+                               wp14:editId="749DD70E">
+                        <wp:extent cx="5661025" cy="3652520"/>
+                        <wp:effectExtent l="0" t="0" r="15875" b="5080"/>
+                        <wp:docPr id="1" name="图片 1"
+                                  descr="185310636-6ce02f7c-790d-479f-b163-ea97a5a04808-20240708082238739"/>
+                        <wp:cNvGraphicFramePr>
+                            <a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                                                 noChangeAspect="1"/>
+                        </wp:cNvGraphicFramePr>
+                        <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                            <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                                <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                                    <pic:nvPicPr>
+                                        <pic:cNvPr id="1" name="图片 1"
+                                                   descr="185310636-6ce02f7c-790d-479f-b163-ea97a5a04808-20240708082238739"/>
+                                        <pic:cNvPicPr>
+                                            <a:picLocks noChangeAspect="1"/>
+                                        </pic:cNvPicPr>
+                                    </pic:nvPicPr>
+                                    <pic:blipFill>
+                                        <a:blip r:embed="rId8"/>
+                                        <a:stretch>
+                                            <a:fillRect/>
+                                        </a:stretch>
+                                    </pic:blipFill>
+                                    <pic:spPr>
+                                        <a:xfrm>
+                                            <a:off x="0" y="0"/>
+                                            <a:ext cx="5661025" cy="3652520"/>
+                                        </a:xfrm>
+                                        <a:prstGeom prst="rect">
+                                            <a:avLst/>
+                                        </a:prstGeom>
+                                    </pic:spPr>
+                                </pic:pic>
+                            </a:graphicData>
+                        </a:graphic>
+                    </wp:inline>
+                </w:drawing>
+            </w:r>
+        </w:p>
+        <w:p w14:paraId="49B03211" w14:textId="77777777" w:rsidR="00B15D97" w:rsidRDefault="00000000">
+            <w:pPr>
+                <w:pStyle w:val="a3"/>
+                <w:ind w:firstLine="400"/>
+                <w:jc w:val="center"/>
+                <w:rPr>
+                    <w:sz w:val="24"/>
+                    <w:szCs w:val="24"/>
+                </w:rPr>
+            </w:pPr>
+            <w:r>
+                <w:t>发票</w:t>
+            </w:r>
+            <w:r>
+                <w:t xml:space="preserve"> </w:t>
+            </w:r>
+            <w:r>
+                <w:fldChar w:fldCharType="begin"/>
+            </w:r>
+            <w:r>
+                <w:instrText xml:space="preserve"> SEQ </w:instrText>
+            </w:r>
+            <w:r>
+                <w:instrText>发票</w:instrText>
+            </w:r>
+            <w:r>
+                <w:instrText xml:space="preserve"> \* ARABIC </w:instrText>
+            </w:r>
+            <w:r>
+                <w:fldChar w:fldCharType="separate"/>
+            </w:r>
+            <w:r>
+                <w:t>1</w:t>
+            </w:r>
+            <w:r>
+                <w:fldChar w:fldCharType="end"/>
+            </w:r>
+        </w:p>
+        <w:sectPr w:rsidR="00B15D97">
+            <w:headerReference w:type="default" r:id="rId9"/>
+            <w:footerReference w:type="default" r:id="rId10"/>
+            <w:footerReference w:type="first" r:id="rId11"/>
+            <w:pgSz w:w="11907" w:h="16840"/>
+            <w:pgMar w:top="1418" w:right="1361" w:bottom="623" w:left="1361" w:header="851" w:footer="992"
+                     w:gutter="0"/>
+            <w:cols w:space="720"/>
+            <w:titlePg/>
+            <w:docGrid w:type="linesAndChars" w:linePitch="312"/>
+        </w:sectPr>
+    </w:body>
+</w:document>
