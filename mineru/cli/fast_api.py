@@ -8,7 +8,7 @@ import click
 import zipfile
 from pathlib import Path
 import glob
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from starlette.background import BackgroundTask
@@ -21,7 +21,25 @@ from mineru.utils.cli_parser import arg_parse
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
 
-app = FastAPI()
+# 并发控制器
+_request_semaphore: Optional[asyncio.Semaphore] = None
+
+
+# 并发控制依赖函数
+async def limit_concurrency():
+    if _request_semaphore is not None:
+        if _request_semaphore.locked():
+            raise HTTPException(
+                status_code=503,
+                detail="Server is at maximum capacity. Please try again later."
+            )
+        async with _request_semaphore:
+            yield
+    else:
+        yield
+
+
+app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
@@ -60,7 +78,7 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
     return None
 
 
-@app.post(path="/file_parse",)
+@app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
         files: List[UploadFile] = File(...),
         output_dir: str = Form("./output"),
@@ -255,6 +273,14 @@ async def parse_pdf(
 def main(ctx, host, port, reload, **kwargs):
 
     kwargs.update(arg_parse(ctx))
+
+    # 初始化并发控制器
+    global _request_semaphore
+    max_concurrent_requests = int(kwargs.get("max_concurrent_requests", 0))
+    if max_concurrent_requests > 0:
+        _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+
 
     # 将配置参数存储到应用状态中
     app.state.config = kwargs
