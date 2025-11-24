@@ -9,7 +9,7 @@ docker: 20.10.12
 
 ## 2. 环境准备
 
-Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
+Ascend加速卡支持使用`vllm`或`lmdeploy`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
 ### 2.1 使用 Dockerfile 构建镜像 （vllm）
 
@@ -55,7 +55,7 @@ docker run -u root --name mineru_docker --privileged=true \
 ```
 
 >[!TIP]
-> 请根据实际情况选择使用`lmdeploy`或`vllm`版本的镜像，替换上述命令中的`mineru:npu-vllm-latest`为`mineru:npu-lmdeploy-latest`即可。
+> 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用lmdeploy，替换上述命令中的`mineru:npu-vllm-latest`为`mineru:npu-lmdeploy-latest`即可。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。

@@ -1,4 +1,4 @@
-# 基础镜像配置
+# 基础镜像配置 vLLM 或 LMDeploy 推理环境选择其中一个，要求 ARM(AArch64) CPU + Ascend NPU。
 # Base image containing the vLLM inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
 FROM quay.io/ascend/vllm-ascend:v0.11.0rc1
 # Base image containing the LMDeploy inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
@@ -18,7 +18,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
+RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
+    python3 -m pip install -U 'mineru[core]>=2.6.5' -i https://mirrors.aliyun.com/pypi/simple && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file

@@ -9,23 +9,24 @@ docker: 26.1.4
 
 ## 2. 环境准备
 
-ppu加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
+ppu加速卡支持使用`vllm`或`lmdeploy`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
-### 2.1 使用 Dockerfile 构建镜像 （lmdeploy）
+### 2.1 使用 Dockerfile 构建镜像 （vllm）
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
+docker build --network=host -t mineru:ppu-vllm-latest -f ppu.Dockerfile .
+``` 
+
+### 2.2 使用 Dockerfile 构建镜像 （lmdeploy）
+
+```bash
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
+# 将基础镜像从 vllm 切换为 lmdeploy
+sed -i '3s/^/# /' ppu.Dockerfile && sed -i '5s/^# //' ppu.Dockerfile
 docker build --network=host -t mineru:ppu-lmdeploy-latest -f ppu.Dockerfile .
 ```
 
-### 2.2 使用 Dockerfile 构建镜像 （vllm）
-
-```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
-# 将基础镜像从lmdeploy切换为vllm
-sed -i '2s/^/# /' ppu.Dockerfile && sed -i '4s/^# //' ppu.Dockerfile
-docker build --network=host -t mineru:ppu-vllm-latest -f ppu.Dockerfile .
-``` 
 
 ## 3. 启动 Docker 容器
 
@@ -43,12 +44,12 @@ docker run --privileged=true \
   -v /datapool:/datapool \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e MINERU_MODEL_SOURCE=local \
-  -it mineru:ppu-lmdeploy-latest \
+  -it mineru:ppu-vllm-latest \
   /bin/bash
 ```
 
 >[!TIP]
-> 请根据实际情况选择使用`lmdeploy`或`vllm`版本的镜像，替换上述命令中的`mineru:ppu-lmdeploy-latest`为`mineru:ppu-vllm-latest`即可。
+> 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用lmdeploy，替换上述命令中的`mineru:ppu-vllm-latest`为`mineru:ppu-lmdeploy-latest`即可。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
