@@ -1,4 +1,4 @@
-# 基础镜像配置 vLLM 或 LMDeploy 推理环境选择其中一个，要求 ARM(AArch64) CPU + Ascend NPU。
+# 基础镜像配置 vLLM 或 LMDeploy ，请根据实际需要选择其中一个，要求 ARM(AArch64) CPU + Ascend NPU。
 # Base image containing the vLLM inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
 FROM quay.io/ascend/vllm-ascend:v0.11.0rc1
 # Base image containing the LMDeploy inference environment, requiring ARM(AArch64) CPU + Ascend NPU.

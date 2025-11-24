@@ -1,4 +1,4 @@
-# 基础镜像配置 vLLM 或 LMDeploy 推理环境选择其中一个，要求 amd64(x86-64) CPU + t-head PPU。
+# 基础镜像配置 vLLM 或 LMDeploy 推理环境，请根据实际需要选择其中一个，要求 amd64(x86-64) CPU + t-head PPU。
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + t-head PPU.
 FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/ppu:ppu-pytorch2.6.0-ubuntu24.04-cuda12.6-vllm0.8.5-py312
 # Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + t-head PPU.
