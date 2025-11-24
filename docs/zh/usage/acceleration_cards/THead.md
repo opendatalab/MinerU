@@ -82,7 +82,7 @@ docker run --privileged=true \
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
       <td>🟡</td>
     </tr>
     <tr>
@@ -103,7 +103,7 @@ docker run --privileged=true \
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
       <td>🟡</td>
     </tr>
     <tr>
@@ -124,7 +124,7 @@ docker run --privileged=true \
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
       <td>🟡</td>
     </tr>
     <tr>
