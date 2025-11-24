@@ -17,7 +17,14 @@ RUN apt-get update && \
 
 # Install mineru latest
 RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install 'mineru[core]>=2.6.5' numpy==1.26.4 opencv-python==4.11.0.86 huggingface_hub==0.36.0 -i https://mirrors.aliyun.com/pypi/simple && \
+    python3 -m pip install 'mineru[core]>=2.6.5' \
+                            numpy==1.26.4 \
+                            opencv-python==4.11.0.86 \
+                            huggingface_hub==0.36.0 \
+                            dill==0.3.6 \
+                            setuptools==74.1.1 \
+                            tokenizers==0.21.1 \
+                            -i https://mirrors.aliyun.com/pypi/simple && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file
