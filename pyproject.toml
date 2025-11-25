@@ -60,7 +60,7 @@ vllm = [
     "vllm>=0.10.1.1,<0.12",
 ]
 lmdeploy = [
-    "lmdeploy>=0.10.2,<0.11",
+    "lmdeploy>=0.10.2,<0.12",
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
