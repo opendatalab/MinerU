@@ -2,7 +2,7 @@
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + metax GPU.
 FROM cr.metax-tech.com/public-ai-release/maca/vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64
 # Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + metax GPU.
-# FROM
+# FROM crpi-4crprmm5baj1v8iv.cn-hang
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
@@ -16,7 +16,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # mod torchvision to be compatible with torch 2.6
-RUN mv /opt/conda/lib/python3.10/site-packages/torchvision-0.15.1+metax3.1.0.4.dist-info /opt/conda/lib/python3.10/site-packages/torchvision-0.21.0+metax3.1.0.4.dist-info
+RUN sed -i '3s/^Version: 0.15.1+metax3\.1\.0\.4$/Version: 0.21.0+metax3.1.0.4/' /opt/conda/lib/python3.10/site-packages/torchvision-0.15.1+metax3.1.0.4.dist-info/METADATA && \
+    mv /opt/conda/lib/python3.10/site-packages/torchvision-0.15.1+metax3.1.0.4.dist-info /opt/conda/lib/python3.10/site-packages/torchvision-0.21.0+metax3.1.0.4.dist-info
 
 # Install mineru latest
 RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
