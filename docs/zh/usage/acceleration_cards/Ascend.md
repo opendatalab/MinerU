@@ -163,3 +163,5 @@ docker run -u root --name mineru_docker --privileged=true \
 >由于npu卡的特殊性，单次服务启动后，可能会在运行过程中切换推理后端（backend）类型（pipeline/vlm）时出现异常，请尽量根据实际需求选择合适的推理后端进行使用。  
 >如在服务中切换推理后端类型遇到报错或异常，请重新启动服务即可。
 
+>[!TIP]
+>NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)
