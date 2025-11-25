@@ -2,7 +2,7 @@
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + metax GPU.
 FROM cr.metax-tech.com/public-ai-release/maca/vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64
 # Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + metax GPU.
-# FROM crpi-4crprmm5baj1v8iv.cn-hang
+# FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/maca:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-lmdeploy0.10.2-amd64
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
