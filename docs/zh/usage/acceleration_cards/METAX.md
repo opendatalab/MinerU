@@ -93,7 +93,7 @@ docker run --ipc host \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -114,7 +114,7 @@ docker run --ipc host \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -135,7 +135,7 @@ docker run --ipc host \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -156,10 +156,9 @@ docker run --ipc host \
 </table>
   
 注：  
-🟢: 支持，运行较稳定，精度与Nvidia GPU相对一致  
-🟡: 支持但稍有不稳定，在少数某些场景下可能出现异常，或精度略有差异  
-🟧: 支持但极度不稳定，在大多数场景下可能出现异常，或精度存在较大差异  
-🔴: 不支持，无法运行  
+🟢: 支持，运行较稳定，精度与Nvidia GPU基本一致  
+🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
+🔴: 不支持，无法运行，或精度存在较大差异  
 
 >[!TIP]
 >MACA加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明。

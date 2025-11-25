@@ -91,7 +91,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🔴</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -112,7 +112,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -133,7 +133,7 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
       <td>🟢</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -154,10 +154,9 @@ docker run -u root --name mineru_docker --privileged=true \
 </table>
 
 注：  
-🟢: 支持，运行较稳定，精度与Nvidia GPU相对一致  
-🟡: 支持但稍有不稳定，在少数某些场景下可能出现异常，或精度略有差异  
-🟧: 支持但极度不稳定，在大多数场景下可能出现异常，或精度存在较大差异  
-🔴: 不支持，无法运行 
+🟢: 支持，运行较稳定，精度与Nvidia GPU基本一致  
+🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
+🔴: 不支持，无法运行，或精度存在较大差异  
 
 >[!NOTE]
 >由于npu卡的特殊性，单次服务启动后，可能会在运行过程中切换推理后端（backend）类型（pipeline/vlm）时出现异常，请尽量根据实际需求选择合适的推理后端进行使用。  
