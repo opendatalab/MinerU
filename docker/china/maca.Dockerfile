@@ -20,15 +20,15 @@ RUN sed -i '3s/^Version: 0.15.1+metax3\.1\.0\.4$/Version: 0.21.0+metax3.1.0.4/' 
     mv /opt/conda/lib/python3.10/site-packages/torchvision-0.15.1+metax3.1.0.4.dist-info /opt/conda/lib/python3.10/site-packages/torchvision-0.21.0+metax3.1.0.4.dist-info
 
 # Install mineru latest
-RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install 'mineru[core]>=2.6.5' \
-                            numpy==1.26.4 \
-                            opencv-python==4.11.0.86 \
-                            -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip cache purge
+RUN /opt/conda/bin/python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
+    /opt/conda/bin/python3 -m pip install 'mineru[core]>=2.6.5' \
+                                           numpy==1.26.4 \
+                                           opencv-python==4.11.0.86 \
+                                           -i https://mirrors.aliyun.com/pypi/simple && \
+    /opt/conda/bin/python3 -m pip cache purge
 
 # Download models and update the configuration file
-RUN /bin/bash -c "mineru-models-download -s modelscope -m all"
+RUN /bin/bash -c "/opt/conda/bin/mineru-models-download -s modelscope -m all"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]
