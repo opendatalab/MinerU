@@ -49,6 +49,7 @@ docker run --ipc host \
    --name mineru_docker \
    -v /datapool:/datapool \
    -e MINERU_MODEL_SOURCE=local \
+   -e MINERU_LMDEPLOY_DEVICE=maca \
    -it mineru:maca-vllm-latest \
    /bin/bash
 ```
