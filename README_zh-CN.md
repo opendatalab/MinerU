@@ -49,7 +49,7 @@
   - 增加新后端`vlm-lmdeploy-engine`支持，使用方式与`vlm-vllm-(async)engine`类似，但使用`lmdeploy`作为推理引擎，与`vllm`相比额外支持Windows平台原生推理加速。
   - 新增国产算力平台`昇腾/npu`、`平头哥/ppu`、`沐曦/maca`的适配支持，用户可在对应平台上使用`pipeline`与`vlm`模型，并使用`vllm`/`lmdeploy`引擎加速vlm模型推理，具体使用方式请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。
     - 国产平台适配不易，我们已尽量确保适配的完整性和稳定性，但仍可能存在一些稳定性/兼容问题与精度对齐问题，请大家根据适配文档页面内红绿灯情况自行选择合适的环境与场景进行使用。
-    - 如在使用过程中遇到任何文档未提及的问题，为了其他用户查找解决方案，欢迎在discussions的[指定帖子](https://github.com/opendatalab/MinerU/discussions/4053)中进行反馈。
+    - 如在使用国产化平台适配方案的过程中遇到任何文档未提及的问题，为便于其他用户查找解决方案，请在discussions的[指定帖子](https://github.com/opendatalab/MinerU/discussions/4053)中进行反馈。
 
 - 2025/11/04 2.6.4 发布
   - 为pdf渲染图片增加超时配置，默认为300秒，可通过环境变量`MINERU_PDF_RENDER_TIMEOUT`进行配置，防止部分异常pdf文件导致渲染过程长时间阻塞。
