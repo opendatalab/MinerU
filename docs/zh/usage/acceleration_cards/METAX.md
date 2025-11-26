@@ -66,7 +66,7 @@ docker run --ipc host \
 
 ## 4. 注意事项
 
-不同环境下，MinerU对ppu加速卡的支持情况如下表所示：
+不同环境下，MinerU对maca加速卡的支持情况如下表所示：
 
 <table border="1">
   <thead>
