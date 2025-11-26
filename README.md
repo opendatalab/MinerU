@@ -44,6 +44,9 @@
 </div>
 
 # Changelog
+- 2025/11/26 2.6.5 Release
+  - Added support for a new backend vlm-lmdeploy-engine. Its usage is similar to vlm-vllm-(async)engine, but it uses lmdeploy as the inference engine and additionally supports native inference acceleration on Windows platforms compared to vllm.
+
 - 2025/11/04 2.6.4 Release
   - Added timeout configuration for PDF image rendering, default is 300 seconds, can be configured via environment variable `MINERU_PDF_RENDER_TIMEOUT` to prevent long blocking of the rendering process caused by some abnormal PDF files.
   - Added CPU thread count configuration options for ONNX models, default is the system CPU core count, can be configured via environment variables `MINERU_INTRA_OP_NUM_THREADS` and `MINERU_INTER_OP_NUM_THREADS` to reduce CPU resource contention conflicts in high concurrency scenarios.
@@ -684,7 +687,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         </tr>
         <tr>
             <th>Python Version</th>
-            <td colspan="6" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13<sup>7</sup></td>
         </tr>
     </tbody>
 </table>
@@ -694,7 +697,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <sup>3</sup> MLX requires macOS 13.5 or later, recommended for use with version 14.0 or higher.  
 <sup>4</sup> Windows vLLM support via WSL2(Windows Subsystem for Linux).  
 <sup>5</sup> Windows LMDeploy can only use the `turbomind` backend, which is slightly slower than the `pytorch` backend. If performance is critical, it is recommended to run it via WSL2.  
-<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.
+<sup>6</sup> Servers compatible with the OpenAI API, such as local or remote model services deployed via inference frameworks like `vLLM`, `SGLang`, or `LMDeploy`.  
+<sup>7</sup> Windows + LMDeploy only supports Python versions 3.10–3.12, as the critical dependency `ray` does not yet support Python 3.13 on Windows.
 
 
 ### Install MinerU
@@ -714,8 +718,8 @@ uv pip install -e .[core]
 ```
 
 > [!TIP]
-> `mineru[core]` includes all core features except `vLLM` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If you need to use `vLLM` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
+> `mineru[core]` includes all core features except `vLLM`/`LMDeploy` acceleration, compatible with Windows / Linux / macOS systems, suitable for most users.
+> If you need to use `vLLM`/`LMDeploy` acceleration for VLM model inference or install a lightweight client on edge devices, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
 ---
  

@@ -97,7 +97,6 @@ class ModelSingleton:
                 if backend == "vllm-engine":
                     try:
                         import vllm
-                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
@@ -105,6 +104,7 @@ class ModelSingleton:
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
                     if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        from mineru_vl_utils import MinerULogitsProcessor
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_llm = vllm.LLM(**kwargs)
@@ -112,7 +112,6 @@ class ModelSingleton:
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
-                        from mineru_vl_utils import MinerULogitsProcessor
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
                     if "gpu_memory_utilization" not in kwargs:
@@ -120,6 +119,7 @@ class ModelSingleton:
                     if "model" not in kwargs:
                         kwargs["model"] = model_path
                     if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                        from mineru_vl_utils import MinerULogitsProcessor
                         kwargs["logits_processors"] = [MinerULogitsProcessor]
                     # 使用kwargs为 vllm初始化参数
                     vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
@@ -132,19 +132,22 @@ class ModelSingleton:
                     if "cache_max_entry_count" not in kwargs:
                         kwargs["cache_max_entry_count"] = 0.5
 
-                    if "lmdeploy_device" in kwargs:
-                        device_type = kwargs.pop("lmdeploy_device")
-                        if device_type not in ["cuda", "ascend", "maca", "camb"]:
-                            raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
-                    else:
-                        device_type = "cuda"
-
-                    if "lmdeploy_backend" in kwargs:
-                        lm_backend = kwargs.pop("lmdeploy_backend")
-                        if lm_backend not in ["pytorch", "turbomind"]:
-                            raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
-                    else:
-                        lm_backend = set_lmdeploy_backend(device_type)
+                    device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
+                    if device_type == "":
+                        if "lmdeploy_device" in kwargs:
+                            device_type = kwargs.pop("lmdeploy_device")
+                            if device_type not in ["cuda", "ascend", "maca", "camb"]:
+                                raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
+                        else:
+                            device_type = "cuda"
+                    lm_backend = os.getenv("MINERU_LMDEPLOY_BACKEND", "")
+                    if lm_backend == "":
+                        if "lmdeploy_backend" in kwargs:
+                            lm_backend = kwargs.pop("lmdeploy_backend")
+                            if lm_backend not in ["pytorch", "turbomind"]:
+                                raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+                        else:
+                            lm_backend = set_lmdeploy_backend(device_type)
                     logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
 
                     if lm_backend == "pytorch":

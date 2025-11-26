@@ -44,6 +44,13 @@
 </div>
 
 # 更新记录
+
+- 2025/11/26 2.6.5 发布
+  - 增加新后端`vlm-lmdeploy-engine`支持，使用方式与`vlm-vllm-(async)engine`类似，但使用`lmdeploy`作为推理引擎，与`vllm`相比额外支持Windows平台原生推理加速。
+  - 新增国产算力平台`昇腾/npu`、`平头哥/ppu`、`沐曦/maca`的适配支持，用户可在对应平台上使用`pipeline`与`vlm`模型，并使用`vllm`/`lmdeploy`引擎加速vlm模型推理，具体使用方式请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。
+    - 国产平台适配不易，我们已尽量确保适配的完整性和稳定性，但仍可能存在一些稳定性/兼容问题与精度对齐问题，请大家根据适配文档页面内红绿灯情况自行选择合适的环境与场景进行使用。
+    - 如在使用国产化平台适配方案的过程中遇到任何文档未提及的问题，为便于其他用户查找解决方案，请在discussions的[指定帖子](https://github.com/opendatalab/MinerU/discussions/4053)中进行反馈。
+
 - 2025/11/04 2.6.4 发布
   - 为pdf渲染图片增加超时配置，默认为300秒，可通过环境变量`MINERU_PDF_RENDER_TIMEOUT`进行配置，防止部分异常pdf文件导致渲染过程长时间阻塞。
   - 为onnx模型增加cpu线程数配置选项，默认为系统cpu核心数，可通过环境变量`MINERU_INTRA_OP_NUM_THREADS`和`MINERU_INTER_OP_NUM_THREADS`进行配置，以减少高并发场景下的对cpu资源的抢占冲突。
@@ -671,7 +678,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
         </tr>
         <tr>
             <th>python版本</th>
-            <td colspan="6" style="text-align:center;">3.10-3.13</td>
+            <td colspan="6" style="text-align:center;">3.10-3.13<sup>7</sup></td>
         </tr>
     </tbody>
 </table> 
@@ -681,7 +688,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 <sup>3</sup> MLX需macOS 13.5及以上版本支持，推荐14.0以上版本使用  
 <sup>4</sup> Windows vLLM通过WSL2(适用于 Linux 的 Windows 子系统)实现支持  
 <sup>5</sup> Windows LMDeploy只能使用`turbomind`后端，速度比`pytorch`后端稍慢，如对速度有要求建议通过WSL2运行  
-<sup>6</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务
+<sup>6</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务  
+<sup>7</sup> Windows + LMDeploy 由于关键依赖`ray`未能在windows平台支持Python 3.13，故仅支持至3.10~3.12版本
 
 > [!TIP]
 > 除以上主流环境与平台外，我们也收录了一些社区用户反馈的其他平台支持情况，详情请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。  
@@ -704,8 +712,8 @@ uv pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 ```
 
 > [!TIP]
-> `mineru[core]`包含除`vLLM`加速外的所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
-> 如果您有使用`vLLM`加速VLM模型推理，或是在边缘设备安装轻量版client端等需求，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
+> `mineru[core]`包含除`vLLM`/`LMDeploy`加速外的所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
+> 如果您需要使用`vLLM`/`LMDeploy`加速VLM模型推理，或是有在边缘设备安装轻量版client端等需求，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
 
 ---
  

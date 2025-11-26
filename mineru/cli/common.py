@@ -18,6 +18,11 @@ from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
+if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
+    import torch
+    torch.backends.cudnn.enabled = False
+
+
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 

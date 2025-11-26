@@ -1,5 +1,8 @@
-# Base image containing the LMDeploy inference environment, requiring amd64 CPU + t-head PPU.
-FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ppu:mineru-ppu
+# 基础镜像配置 vLLM 或 LMDeploy 推理环境，请根据实际需要选择其中一个，要求 amd64(x86-64) CPU + t-head PPU。
+# Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + t-head PPU.
+FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/ppu:ppu-pytorch2.6.0-ubuntu24.04-cuda12.6-vllm0.8.5-py312
+# Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + t-head PPU.
+# FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ppu:mineru-ppu
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
@@ -13,7 +16,15 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
+RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
+    python3 -m pip install 'mineru[core]>=2.6.5' \
+                            numpy==1.26.4 \
+                            opencv-python==4.11.0.86 \
+                            huggingface_hub==0.36.0 \
+                            dill==0.3.6 \
+                            setuptools==74.1.1 \
+                            tokenizers==0.21.1 \
+                            -i https://mirrors.aliyun.com/pypi/simple && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file

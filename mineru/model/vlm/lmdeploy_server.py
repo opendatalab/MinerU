@@ -53,10 +53,12 @@ def main():
     if not has_log_level_arg:
         args.extend(["--log-level", "ERROR"])
 
+    device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", device_type)
     if device_type == "":
         device_type = "cuda"
     elif device_type not in ["cuda", "ascend", "maca", "camb"]:
         raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
+    lm_backend = os.getenv("MINERU_LMDEPLOY_BACKEND", lm_backend)
     if lm_backend == "":
         lm_backend = set_lmdeploy_backend(device_type)
     elif lm_backend not in ["pytorch", "turbomind"]:

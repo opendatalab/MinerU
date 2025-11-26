@@ -12,13 +12,15 @@ def enable_custom_logits_processors() -> bool:
     import torch
     from vllm import __version__ as vllm_version
 
-    if not torch.cuda.is_available():
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        # 正确计算Compute Capability
+        compute_capability = f"{major}.{minor}"
+    elif hasattr(torch, 'npu') and torch.npu.is_available():
+        compute_capability = "8.0"
+    else:
         logger.info("CUDA not available, disabling custom_logits_processors")
         return False
-
-    major, minor = torch.cuda.get_device_capability()
-    # 正确计算Compute Capability
-    compute_capability = f"{major}.{minor}"
 
     # 安全地处理环境变量
     vllm_use_v1_str = os.getenv('VLLM_USE_V1', "1")
