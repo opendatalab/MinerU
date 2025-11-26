@@ -24,7 +24,6 @@ from mineru.version import __version__
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
 
-
 # 并发控制依赖函数
 async def limit_concurrency():
     if _request_semaphore is not None:
@@ -38,15 +37,33 @@ async def limit_concurrency():
     else:
         yield
 
+def create_app():
+    # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are disabled for security reasons.
+    # To enable the FastAPI docs and schema endpoints, set the environment variable ENABLE_FASTAPI_DOCS=1.
+    enable_docs = os.getenv("ENABLE_FASTAPI_DOCS", "0") == "1"
+    app = FastAPI(
+        openapi_url="/openapi.json" if enable_docs else None,
+        docs_url="/docs" if enable_docs else None,
+        redoc_url="/redoc" if enable_docs else None,
+    )
 
-app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # 初始化并发控制器
+    global _request_semaphore
+    max_concurrent_requests = int(kwargs.get("max_concurrent_requests", 0))
+    if max_concurrent_requests > 0:
+        _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    return app
+
+app = create_app()
 
 
 def sanitize_filename(filename: str) -> str:
     """
     格式化压缩文件的文件名
-    移除路径遍历字符, 保留 Unicode 字母、数字、._- 
+    移除路径遍历字符, 保留 Unicode 字母、数字、._-
     禁止隐藏文件
     """
     sanitized = re.sub(r'[/\\\.]{2,}|[/\\]', '', filename)
@@ -171,7 +188,7 @@ async def parse_pdf(
         # 根据 response_format_zip 决定返回类型
         if response_format_zip:
             zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="mineru_results_")
-            os.close(zip_fd) 
+            os.close(zip_fd)
             with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 for pdf_name in pdf_file_names:
                     safe_pdf_name = sanitize_filename(pdf_name)
@@ -196,7 +213,7 @@ async def parse_pdf(
 
                     if return_model_output:
                         path = os.path.join(parse_dir, f"{pdf_name}_model.json")
-                        if os.path.exists(path): 
+                        if os.path.exists(path):
                             zf.write(path, arcname=os.path.join(safe_pdf_name, os.path.basename(path)))
 
                     if return_content_list:
@@ -273,14 +290,6 @@ async def parse_pdf(
 def main(ctx, host, port, reload, **kwargs):
 
     kwargs.update(arg_parse(ctx))
-
-    # 初始化并发控制器
-    global _request_semaphore
-    max_concurrent_requests = int(kwargs.get("max_concurrent_requests", 0))
-    if max_concurrent_requests > 0:
-        _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
-        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
-
 
     # 将配置参数存储到应用状态中
     app.state.config = kwargs
