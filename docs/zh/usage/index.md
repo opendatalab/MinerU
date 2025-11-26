@@ -20,11 +20,13 @@
     * [DataFlow](plugin/DataFlow.md)
     * [BISHENG](plugin/BISHENG.md)
     * [RagFlow](plugin/RagFlow.md)
-- 其他加速卡适配(由社区贡献)
-    * [昇腾 Ascend](acceleration_cards/Ascend.md) [#3233](https://github.com/opendatalab/MinerU/discussions/3233)
-    * [沐曦 METAX](acceleration_cards/METAX.md) [#3477](https://github.com/opendatalab/MinerU/pull/3477)
-    * [AMD](acceleration_cards/AMD.md)  [#3662](https://github.com/opendatalab/MinerU/discussions/3662)
-    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) [#3767](https://github.com/opendatalab/MinerU/pull/3767)
+- 其他加速卡适配（🚀官方支持/❤️社区贡献）
+    * [昇腾 Ascend](acceleration_cards/Ascend.md) 🚀
+    * [平头哥 T-Head](acceleration_cards/THead.md) 🚀
+    * [沐曦 METAX](acceleration_cards/METAX.md) 🚀
+    * [AMD](acceleration_cards/AMD.md)  [#3662](https://github.com/opendatalab/MinerU/discussions/3662) ❤️
+    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) [#3767](https://github.com/opendatalab/MinerU/pull/3767) ❤️
+    * [寒武纪 Cambricon](acceleration_cards/Cambricon.md) [#4004](https://github.com/opendatalab/MinerU/discussions/4004) ❤️
 
 ## 开始使用
 

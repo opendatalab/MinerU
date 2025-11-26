@@ -11,7 +11,7 @@ Options:
   -p, --path PATH                 Input file path or directory (required)
   -o, --output PATH               Output directory (required)
   -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline backend only)
-  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
+  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-lmdeploy-engine|vlm-http-client]
                                   Parsing backend (default: pipeline)
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   Specify document language (improves OCR accuracy, pipeline backend only)

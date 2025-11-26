@@ -18,6 +18,11 @@ from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
+if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
+    import torch
+    torch.backends.cudnn.enabled = False
+
+
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
@@ -51,11 +56,16 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
     try:
         end_page_id = get_end_page_id(end_page_id, len(pdf))
 
-        # 选择要导入的页面索引
-        page_indices = list(range(start_page_id, end_page_id + 1))
-
-        # 从原PDF导入页面到新PDF
-        output_pdf.import_pages(pdf, page_indices)
+        # 逐页导入,失败则跳过
+        output_index = 0
+        for page_index in range(start_page_id, end_page_id + 1):
+            try:
+                output_pdf.import_pages(pdf, pages=[page_index])
+                output_index += 1
+            except Exception as page_error:
+                output_pdf.del_page(output_index)
+                logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
+                continue
 
         # 将新PDF保存到内存缓冲区
         output_buffer = io.BytesIO()
@@ -66,7 +76,6 @@ def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page
     except Exception as e:
         logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
         output_bytes = pdf_bytes
-
     pdf.close()
     output_pdf.close()
     return output_bytes

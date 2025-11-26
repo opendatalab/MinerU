@@ -6,7 +6,7 @@ MinerU provides a convenient Docker deployment method, which helps quickly set u
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
-docker build -t mineru-vllm:latest -f Dockerfile .
+docker build -t mineru:latest -f Dockerfile .
 ```
 
 > [!TIP]
@@ -20,7 +20,7 @@ MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `v
 > [!NOTE]
 > Requirements for using `vllm` to accelerate VLM model inference:
 > 
-> - Device must have Turing architecture or later graphics cards with 8GB+ available VRAM.
+> - Device must have Volta architecture or later graphics cards with 8GB+ available VRAM.
 > - The host machine's graphics driver should support CUDA 12.8 or higher; You can check the driver version using the `nvidia-smi` command.
 > - Docker container must have access to the host machine's graphics devices.
 
@@ -31,7 +31,7 @@ docker run --gpus all \
   --shm-size 32g \
   -p 30000:30000 -p 7860:7860 -p 8000:8000 \
   --ipc=host \
-  -it mineru-vllm:latest \
+  -it mineru:latest \
   /bin/bash
 ```
 
@@ -51,17 +51,17 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >
 >- The `compose.yaml` file contains configurations for multiple services of MinerU, you can choose to start specific services as needed.
 >- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
->- Due to the pre-allocation of GPU memory by the `vllm` inference acceleration framework, you may not be able to run multiple `vllm` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-vllm-server` service or using the `vlm-vllm-engine` backend.
+>- Due to the pre-allocation of GPU memory by the `vllm` inference acceleration framework, you may not be able to run multiple `vllm` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-openai-server` service or using the `vlm-vllm-engine` backend.
 
 ---
 
-### Start vllm-server service
-connect to `vllm-server` via `vlm-http-client` backend
+### Start OpenAI-compatible server service
+connect to `openai-server` via `vlm-http-client` backend
   ```bash
-  docker compose -f compose.yaml --profile vllm-server up -d
+  docker compose -f compose.yaml --profile openai-server up -d
   ```
   >[!TIP]
-  >In another terminal, connect to vllm server via http client (only requires CPU and network, no vllm environment needed)
+  >In another terminal, connect to openai server via http client (only requires CPU and network, no vllm environment needed)
   > ```bash
   > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://<server_ip>:30000
   > ```
@@ -84,4 +84,3 @@ connect to `vllm-server` via `vlm-http-client` backend
   >[!TIP]
   >
   >- Access `http://<server_ip>:7860` in your browser to use the Gradio WebUI.
-  >- Access `http://<server_ip>:7860/?view=api` to use the Gradio API.

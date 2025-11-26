@@ -13,7 +13,7 @@ from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
-backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-http-client']
+backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-lmdeploy-engine', 'vlm-http-client']
 if is_mac_os_version_supported():
     backends.append("vlm-mlx-engine")
 
@@ -62,9 +62,10 @@ if is_mac_os_version_supported():
     the backend for parsing pdf:
       pipeline: More general.
       vlm-transformers: More general, but slower.
-      vlm-mlx-engine: Faster than transformers.
-      vlm-vllm-engine: Faster(engine).
-      vlm-http-client: Faster(client).
+      vlm-mlx-engine: Faster than transformers(macOS 13.5+).
+      vlm-vllm-engine: Faster(vllm-engine).
+      vlm-lmdeploy-engine: Faster(lmdeploy-engine).
+      vlm-http-client: Faster(client suitable for openai-compatible servers).
     Without method specified, pipeline will be used by default.""",
     default='pipeline',
 )

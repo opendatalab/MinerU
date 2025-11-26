@@ -13,6 +13,10 @@ def is_mac_environment() -> bool:
     return platform.system() == "Darwin"
 
 
+def is_linux_environment() -> bool:
+    return platform.system() == "Linux"
+
+
 # Detect if CPU is Apple Silicon architecture
 def is_apple_silicon_cpu() -> bool:
     return platform.machine() in ["arm64", "aarch64"]
