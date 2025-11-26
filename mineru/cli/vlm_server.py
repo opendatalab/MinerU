@@ -32,10 +32,11 @@ def openai_server(ctx, inference_engine):
             inference_engine = 'vllm'
             logger.info("Using vLLM as the inference engine for VLM server.")
         except ImportError:
-            logger.info("vLLM not found, falling back to LMDeploy as the inference engine for VLM server.")
+            logger.info("vLLM not found, attempting to use LMDeploy as the inference engine for VLM server.")
             try:
                 import lmdeploy
                 inference_engine = 'lmdeploy'
+            # Success message moved after successful import
                 logger.info("Using LMDeploy as the inference engine for VLM server.")
             except ImportError:
                 logger.error("Neither vLLM nor LMDeploy is installed. Please install at least one of them.")
