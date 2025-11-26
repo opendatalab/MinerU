@@ -47,7 +47,7 @@ def enable_custom_logits_processors() -> bool:
         return True
 
 
-def set_lmdeploy_backend(device_type:str) -> str:
+def set_lmdeploy_backend(device_type: str) -> str:
     if device_type.lower() in ["ascend", "maca", "camb"]:
         lmdeploy_backend = "pytorch"
     elif device_type.lower() in ["cuda"]:
