@@ -19,6 +19,17 @@ docker: 20.10.12
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
 docker build --network=host -t mineru:npu-vllm-latest -f npu.Dockerfile .
 ``` 
+>[!TIP]  
+>ascend-vllm支持设备如下：
+> - Atlas A2 training series (Atlas 800T A2, Atlas 900 A2 PoD, Atlas 200T A2 Box16, Atlas 300T A2)
+> - Atlas 800I A2 inference series (Atlas 800I A2)
+> - Atlas A3 training series (Atlas 800T A3, Atlas 900 A3 SuperPoD, Atlas 9000 A3 SuperPoD)
+> - Atlas 800I A3 inference series (Atlas 800I A3)
+> - [Experimental] Atlas 300I inference series (Atlas 300I Duo)   
+>
+>Dockerfile文件第三行为ascend-vllm基础镜像信息，默认tag为A2适配的版本，例如`v0.11.0rc2`
+> - 如需使用A3适配的版本，请将第三行的tag修改为`v0.11.0rc2-a3`，然后重新构建镜像。
+> - 如需使用Atlas 300I Duo适配的版本，请将第三行的tag修改为`v0.11.0rc2-310p`，然后重新构建镜像。
 
 ### 2.2 使用 Dockerfile 构建镜像 （lmdeploy）
 
