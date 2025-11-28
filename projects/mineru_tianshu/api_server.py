@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 from loguru import logger
 import uvicorn
-from typing import Optional, Dict, Any
+from typing import Optional
 from datetime import datetime
 import os
 import re
@@ -57,7 +57,7 @@ MINIO_CONFIG = {
 def get_minio_client():
     """获取MinIO客户端实例"""
     return Minio(
-        MINIO_CONFIG['endpoint'],
+        endpoint=MINIO_CONFIG['endpoint'],
         access_key=MINIO_CONFIG['access_key'],
         secret_key=MINIO_CONFIG['secret_key'],
         secure=MINIO_CONFIG['secure']
@@ -103,7 +103,7 @@ def process_markdown_images(md_content: str, image_dir: Path, upload_images: boo
                 try:
                     # 上传到 MinIO
                     object_name = f"images/{new_filename}"
-                    minio_client.fput_object(bucket_name, object_name, str(full_image_path))
+                    minio_client.fput_object(bucket_name=bucket_name, object_name=bucket_name, file_path=str(full_image_path))
                     
                     # 生成 MinIO 访问 URL
                     scheme = 'https' if MINIO_CONFIG['secure'] else 'http'
@@ -209,7 +209,7 @@ def get_images_info(image_dir: Path, upload_to_minio: bool = False):
                 object_name = f"images/{new_filename}"
 
                 # 上传到 MinIO
-                minio_client.fput_object(bucket_name, object_name, str(img_file))
+                minio_client.fput_object(bucket_name=bucket_name, object_name=object_name, file_path=str(img_file))
 
                 # 生成访问 URL
                 scheme = 'https' if MINIO_CONFIG['secure'] else 'http'
@@ -366,7 +366,7 @@ async def get_task_data(
         if 'md' in fields:
             md_files = list(result_dir.rglob('*.md'))
             # 排除带特殊后缀的 md 文件
-            md_files = [f for f in md_files if not any(suffix in f.stem for suffix in ['_layout', '_span', '_origin'])]
+            md_files = [f for f in md_files if not any(f.stem.endswith(suffix) for suffix in ['_layout', '_span', '_origin'])] 
 
             if md_files:
                 md_file = md_files[0]
@@ -507,7 +507,7 @@ async def get_task_data(
     except Exception as e:
         logger.error(f"❌ Failed to get complete data for task {task_id}: {e}")
         logger.exception(e)
-        response['error'] = str(e)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")  
 
     return response
 
