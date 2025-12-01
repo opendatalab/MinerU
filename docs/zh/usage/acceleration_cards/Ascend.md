@@ -27,7 +27,6 @@ docker: 20.10.12
 >
 > - 如需使用A3适配的版本,请将第三行的tag修改为 `v0.11.0rc2-a3`,然后再执行build操作。
 > - 如需使用Atlas 300I Duo适配的版本,请将第三行的tag修改为 `v0.10.0rc1-310p`,然后再执行build操作。
->     * 由于310p加速卡不支持bf16精度，因此在使用该加速卡时，需在命令后追加`--enforce-eager --dtype float16`参数。
 
 
 ```bash
@@ -85,6 +84,9 @@ docker run -u root --name mineru_docker --privileged=true \
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
+
+>[!NOTE]
+> 由于310p加速卡不支持bf16精度，因此在使用该加速卡时，执行任意与`vllm`相关命令需追加`--enforce-eager --dtype float16`参数。
 
 ## 4. 注意事项
 
