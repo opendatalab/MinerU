@@ -159,7 +159,6 @@ def batch_image_analyze(
 
     model_manager = ModelSingleton()
 
-    batch_ratio = 1
     device = get_device()
 
     if str(device).startswith('npu'):
