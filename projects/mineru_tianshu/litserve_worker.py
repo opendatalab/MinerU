@@ -101,7 +101,7 @@ class MinerUWorkerAPI(ls.LitAPI):
         if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
             if device_mode.startswith("cuda") or device_mode.startswith("npu"):
                 try:
-                    vram = round(get_vram(device_mode))
+                    vram = get_vram(device_mode)
                     os.environ['MINERU_VIRTUAL_VRAM_SIZE'] = str(vram)
                 except:
                     os.environ['MINERU_VIRTUAL_VRAM_SIZE'] = '8'  # 默认值

@@ -45,6 +45,15 @@
 
 # 更新记录
 
+- 2025/12/02 2.6.6 发布
+  - `Ascend`适配优化
+    - 优化命令行工具初始化流程，使Ascend适配方案中`vlm-vllm-engine`后端在命令行工具中可用。
+    - 为Atlas 300I Duo(310p)设备更新适配文档。
+  - `mineru-api`工具优化
+    - 为`mineru-api`接口参数增加描述性文本，优化接口文档可读性。
+    - 可通过环境变量`MINERU_API_ENABLE_FASTAPI_DOCS`控制是否启用自动生成的接口文档页面，默认为启用。
+    - 为`vlm-vllm-async-engine`、`vlm-lmdeploy-engine`、`vlm-http-client`后端增加并发数配置选项，用户可通过环境变量`MINERU_API_MAX_CONCURRENT_REQUESTS`控制api接口的最大并发请求数，默认为不限制数量。
+
 - 2025/11/26 2.6.5 发布
   - 增加新后端`vlm-lmdeploy-engine`支持，使用方式与`vlm-vllm-(async)engine`类似，但使用`lmdeploy`作为推理引擎，与`vllm`相比额外支持Windows平台原生推理加速。
   - 新增国产算力平台`昇腾/npu`、`平头哥/ppu`、`沐曦/maca`的适配支持，用户可在对应平台上使用`pipeline`与`vlm`模型，并使用`vllm`/`lmdeploy`引擎加速vlm模型推理，具体使用方式请参考[其他加速卡适配](https://opendatalab.github.io/MinerU/zh/usage/)。
@@ -791,6 +800,8 @@ mineru -p <input_path> -o <output_path>
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 - [pypdf](https://github.com/py-pdf/pypdf)
 - [magika](https://github.com/google/magika)
+- [vLLM](https://github.com/vllm-project/vllm)
+- [LMDeploy](https://github.com/InternLM/lmdeploy)
 
 # Citation
 

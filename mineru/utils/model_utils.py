@@ -428,8 +428,6 @@ def clean_memory(device='cuda'):
 
 def clean_vram(device, vram_threshold=8):
     total_memory = get_vram(device)
-    if total_memory is not None:
-        total_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(total_memory)))
     if total_memory and total_memory <= vram_threshold:
         gc_start = time.time()
         clean_memory(device)
@@ -437,13 +435,28 @@ def clean_vram(device, vram_threshold=8):
         # logger.info(f"gc time: {gc_time}")
 
 
-def get_vram(device):
+def get_vram(device) -> int:
+    env_vram = os.getenv("MINERU_VIRTUAL_VRAM_SIZE")
+
+    # 如果环境变量已配置,尝试解析并返回
+    if env_vram is not None:
+        try:
+            total_memory = int(env_vram)
+            if total_memory > 0:
+                return total_memory
+            else:
+                logger.warning(
+                    f"MINERU_VIRTUAL_VRAM_SIZE value '{env_vram}' is not positive, falling back to auto-detection")
+        except ValueError:
+            logger.warning(
+                f"MINERU_VIRTUAL_VRAM_SIZE value '{env_vram}' is not a valid integer, falling back to auto-detection")
+
+    # 环境变量未配置或配置错误,根据device自动获取
+    total_memory = 1
     if torch.cuda.is_available() and str(device).startswith("cuda"):
-        total_memory = torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)  # 将字节转换为 GB
-        return total_memory
+        total_memory = round(torch.cuda.get_device_properties(device).total_memory / (1024 ** 3))  # 将字节转换为 GB
     elif str(device).startswith("npu"):
         if torch_npu.npu.is_available():
-            total_memory = torch_npu.npu.get_device_properties(device).total_memory / (1024 ** 3)  # 转为 GB
-            return total_memory
-    else:
-        return None
+            total_memory = round(torch_npu.npu.get_device_properties(device).total_memory / (1024 ** 3))  # 转为 GB
+
+    return total_memory

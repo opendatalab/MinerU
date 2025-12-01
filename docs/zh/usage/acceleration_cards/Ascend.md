@@ -14,13 +14,35 @@ docker: 20.10.12
 >Ascend加速卡支持使用`vllm`或`lmdeploy`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
 ### 2.1 使用 Dockerfile 构建镜像 （vllm）
+> [!TIP]  
+> ascend-vllm支持设备如下:
+>
+> - Atlas A2 training series (Atlas 800T A2, Atlas 900 A2 PoD, Atlas 200T A2 Box16, Atlas 300T A2)
+> - Atlas 800I A2 inference series (Atlas 800I A2)
+> - Atlas A3 training series (Atlas 800T A3, Atlas 900 A3 SuperPoD, Atlas 9000 A3 SuperPoD)
+> - Atlas 800I A3 inference series (Atlas 800I A3)
+> - [Experimental] Atlas 300I inference series (Atlas 300I Duo)
+>
+> Dockerfile文件第三行为ascend-vllm基础镜像信息,默认tag为A2适配的版本,例如 `v0.11.0rc2`
+>
+> - 如需使用A3适配的版本,请将第三行的tag修改为 `v0.11.0rc2-a3`,然后再执行build操作。
+> - 如需使用Atlas 300I Duo适配的版本,请将第三行的tag修改为 `v0.10.0rc1-310p`,然后再执行build操作。
+
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
 docker build --network=host -t mineru:npu-vllm-latest -f npu.Dockerfile .
-``` 
+```
 
 ### 2.2 使用 Dockerfile 构建镜像 （lmdeploy）
+
+> [!TIP]  
+> ascend-lmdeploy支持设备如下:
+> 
+> - Atlas A2 training series (Atlas 800T A2, Atlas 900 A2 PoD, Atlas 200T A2 Box16, Atlas 300T A2)
+> - Atlas 800I A2 inference series (Atlas 800I A2)
+> 
+> 如果您的设备为Atlas A3系列或Atlas 300I Duo系列，请使用vllm版本的镜像。
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
@@ -51,6 +73,7 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
     -e MINERU_MODEL_SOURCE=local \
+    -e MINERU_VIRTUAL_VRAM_SIZE=16 \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:npu-vllm-latest \
     /bin/bash
@@ -61,6 +84,9 @@ docker run -u root --name mineru_docker --privileged=true \
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
+
+>[!NOTE]
+> 由于310p加速卡不支持bf16精度，因此在使用该加速卡时，执行任意与`vllm`相关命令需追加`--enforce-eager --dtype float16`参数。
 
 ## 4. 注意事项
 
@@ -91,7 +117,7 @@ docker run -u root --name mineru_docker --privileged=true \
     </tr>
     <tr>
       <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
@@ -160,8 +186,9 @@ docker run -u root --name mineru_docker --privileged=true \
 🔴: 不支持，无法运行，或精度存在较大差异  
 
 >[!NOTE]
->由于npu卡的特殊性，单次服务启动后，可能会在运行过程中切换推理后端（backend）类型（pipeline/vlm）时出现异常，请尽量根据实际需求选择合适的推理后端进行使用。  
->如在服务中切换推理后端类型遇到报错或异常，请重新启动服务即可。
+>在使用vllm镜像启动mineru-api服务时，如先使用了pipeline后端解析，再切换到vlm-vllm-async-engine后端，会出现vllm引擎初始化失败的问题。  
+>如需在一个mineru-api服务中同时使用pipeline和vlm-vllm-async-engine两种后端，请先使用vlm-vllm-async-engine后端解析一次，之后即可自由切换。  
+>如在服务中切换推理后端类型时遇到报错或异常，请重新启动服务即可。
 
 >[!TIP]
 >NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)

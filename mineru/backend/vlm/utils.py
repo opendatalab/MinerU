@@ -81,20 +81,16 @@ def set_default_gpu_memory_utilization() -> float:
 def set_default_batch_size() -> int:
     try:
         device = get_device()
-        vram = get_vram(device)
-        if vram is not None:
-            gpu_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(vram)))
-            if gpu_memory >= 16:
-                batch_size = 8
-            elif gpu_memory >= 8:
-                batch_size = 4
-            else:
-                batch_size = 1
-            logger.info(f'gpu_memory: {gpu_memory} GB, batch_size: {batch_size}')
+        gpu_memory = get_vram(device)
+
+        if gpu_memory >= 16:
+            batch_size = 8
+        elif gpu_memory >= 8:
+            batch_size = 4
         else:
-            # Default batch_ratio when VRAM can't be determined
             batch_size = 1
-            logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_size}')
+        logger.info(f'gpu_memory: {gpu_memory} GB, batch_size: {batch_size}')
+
     except Exception as e:
         logger.warning(f'Error determining VRAM: {e}, using default batch_ratio: 1')
         batch_size = 1

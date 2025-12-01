@@ -15,15 +15,16 @@ docker: 28.1.1
 
 ### 2.1 使用metax官方镜像作为基础镜像构建vllm环境镜像
 
-- 1. 从metax官方仓库拉取基础镜像
-    - 1.1 镜像获取地址：https://developer.metax-tech.com/softnova/docker  
+1. 从metax官方仓库拉取基础镜像
+    - 1.1 镜像获取地址：[https://developer.metax-tech.com/softnova/docker](https://developer.metax-tech.com/softnova/docker)  
     - 1.2 在镜像网站选择`AI`分类，软件包类型选择`vllm`，操作系统选择`ubuntu` 
     - 1.3 找到`vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64`镜像，复制拉取命令并在本地终端执行
-- 2. 使用 Dockerfile 构建镜像 （vllm）
+2. 使用 Dockerfile 构建镜像 （vllm）
     ```bash
     wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/maca.Dockerfile
     docker build --network=host -t mineru:maca-vllm-latest -f maca.Dockerfile .
     ```
+
   
 ### 2.2 使用 Dockerfile 构建镜像 （lmdeploy）
 

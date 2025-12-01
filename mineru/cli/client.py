@@ -113,7 +113,7 @@ if is_mac_os_version_supported():
     '--formula',
     'formula_enable',
     type=bool,
-    help='Enable formula parsing. Default is True. Adapted only for the case where the backend is set to "pipeline".',
+    help='Enable formula parsing. Default is True. ',
     default=True,
 )
 @click.option(
@@ -121,7 +121,7 @@ if is_mac_os_version_supported():
     '--table',
     'table_enable',
     type=bool,
-    help='Enable table parsing. Default is True. Adapted only for the case where the backend is set to "pipeline".',
+    help='Enable table parsing. Default is True. ',
     default=True,
 )
 @click.option(
@@ -172,9 +172,8 @@ def main(
         def get_virtual_vram_size() -> int:
             if virtual_vram is not None:
                 return virtual_vram
-            if get_device_mode().startswith("cuda") or get_device_mode().startswith("npu"):
-                return round(get_vram(get_device_mode()))
-            return 1
+            else:
+                return get_vram(get_device_mode())
         if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) is None:
             os.environ['MINERU_VIRTUAL_VRAM_SIZE']= str(get_virtual_vram_size())
 
