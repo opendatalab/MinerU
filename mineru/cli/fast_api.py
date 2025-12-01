@@ -39,7 +39,7 @@ async def limit_concurrency():
 
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are enabled.
-    # To disable the FastAPI docs and schema endpoints, set the environment variable ENABLE_FASTAPI_DOCS=0.
+    # To disable the FastAPI docs and schema endpoints, set the environment variable MINERU_API_ENABLE_FASTAPI_DOCS=0.
     enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in ("1", "true", "yes")
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
@@ -47,7 +47,7 @@ def create_app():
         redoc_url="/redoc" if enable_docs else None,
     )
 
-    # 初始化并发控制器：从环境变量读取，避免使用未定义的 kwargs
+    # 初始化并发控制器：从环境变量MINERU_API_MAX_CONCURRENT_REQUESTS读取
     global _request_semaphore
     try:
         max_concurrent_requests = int(os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "0"))
