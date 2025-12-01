@@ -101,22 +101,46 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
 
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
-        files: List[UploadFile] = File(...),
-        output_dir: str = Form("./output"),
-        lang_list: List[str] = Form(["ch"]),
-        backend: str = Form("pipeline"),
-        parse_method: str = Form("auto"),
-        formula_enable: bool = Form(True),
-        table_enable: bool = Form(True),
-        server_url: Optional[str] = Form(None),
-        return_md: bool = Form(True),
-        return_middle_json: bool = Form(False),
-        return_model_output: bool = Form(False),
-        return_content_list: bool = Form(False),
-        return_images: bool = Form(False),
-        response_format_zip: bool = Form(False),
-        start_page_id: int = Form(0),
-        end_page_id: int = Form(99999),
+        files: List[UploadFile] = File(..., description="Upload PDF, PNG, JPG, or JPEG files for parsing"),
+        output_dir: str = Form("./output", description="Output local directory"),
+        lang_list: List[str] = Form(
+            ["ch"],
+            description="""(Adapted only for pipeline backend)Input the languages in the pdf to improve OCR accuracy.
+Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th, el, latin, arabic, east_slavic, cyrillic, devanagari.
+"""
+        ),
+        backend: str = Form(
+            "pipeline",
+            description="""The backend for parsing:
+- pipeline: More general
+- vlm-transformers: More general, but slower
+- vlm-mlx-engine: Faster than transformers (macOS 13.5+)
+- vlm-vllm-async-engine: Faster (vllm-engine, need vllm installed)
+- vlm-lmdeploy-engine: Faster (lmdeploy-engine, need lmdeploy installed)
+- vlm-http-client: Faster (client suitable for openai-compatible servers)"""
+        ),
+        parse_method: str = Form(
+            "auto",
+            description="""(Adapted only for pipeline backend)The method for parsing PDF:
+- auto: Automatically determine the method based on the file type
+- txt: Use text extraction method
+- ocr: Use OCR method for image-based PDFs
+"""
+        ),
+        formula_enable: bool = Form(True, description="Enable formula parsing."),
+        table_enable: bool = Form(True, description="Enable table parsing."),
+        server_url: Optional[str] = Form(
+            None,
+            description="(Adapted only for vlm-http-client backend)Server URL when backend is vlm-http-client, e.g., http://127.0.0.1:30000"
+        ),
+        return_md: bool = Form(True, description="Return markdown content in response"),
+        return_middle_json: bool = Form(False, description="Return middle JSON in response"),
+        return_model_output: bool = Form(False, description="Return model output JSON in response"),
+        return_content_list: bool = Form(False, description="Return content list JSON in response"),
+        return_images: bool = Form(False, description="Return extracted images in response"),
+        response_format_zip: bool = Form(False, description="Return results as a ZIP file instead of JSON"),
+        start_page_id: int = Form(0, description="The starting page for PDF parsing, beginning from 0"),
+        end_page_id: int = Form(99999, description="The ending page for PDF parsing, beginning from 0"),
 ):
 
     # 获取命令行配置参数

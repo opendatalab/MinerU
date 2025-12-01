@@ -113,7 +113,7 @@ if is_mac_os_version_supported():
     '--formula',
     'formula_enable',
     type=bool,
-    help='Enable formula parsing. Default is True. Adapted only for the case where the backend is set to "pipeline".',
+    help='Enable formula parsing. Default is True. ',
     default=True,
 )
 @click.option(
@@ -121,7 +121,7 @@ if is_mac_os_version_supported():
     '--table',
     'table_enable',
     type=bool,
-    help='Enable table parsing. Default is True. Adapted only for the case where the backend is set to "pipeline".',
+    help='Enable table parsing. Default is True. ',
     default=True,
 )
 @click.option(
