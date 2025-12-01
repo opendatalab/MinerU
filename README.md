@@ -44,6 +44,13 @@
 </div>
 
 # Changelog
+
+- 2025/12/02 2.6.6 Release
+  - `mineru-api` tool optimizations
+    - Added descriptive text to `mineru-api` interface parameters to improve API documentation readability.
+    - You can use the environment variable `MINERU_API_ENABLE_FASTAPI_DOCS` to control whether the auto-generated interface documentation page is enabled (enabled by default).
+    - Added concurrency configuration options for the `vlm-vllm-async-engine`, `vlm-lmdeploy-engine`, and `vlm-http-client` backends. Users can use the environment variable `MINERU_API_MAX_CONCURRENT_REQUESTS` to set the maximum number of concurrent API requests (unlimited by default).
+
 - 2025/11/26 2.6.5 Release
   - Added support for a new backend vlm-lmdeploy-engine. Its usage is similar to vlm-vllm-(async)engine, but it uses lmdeploy as the inference engine and additionally supports native inference acceleration on Windows platforms compared to vllm.
 
@@ -797,6 +804,8 @@ Currently, some models in this project are trained based on YOLO. However, since
 - [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 - [pypdf](https://github.com/py-pdf/pypdf)
 - [magika](https://github.com/google/magika)
+- [vLLM](https://github.com/vllm-project/vllm)
+- [LMDeploy](https://github.com/InternLM/lmdeploy)
 
 # Citation
 
