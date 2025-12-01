@@ -300,10 +300,10 @@ def main(ctx, host, port, reload, **kwargs):
 
     # 将 CLI 的并发参数同步到环境变量，确保 uvicorn 重载子进程可见
     try:
-        mcr = int(kwargs.get("max_concurrent_requests", 0) or 0)
+        mcr = int(kwargs.get("mineru_api_max_concurrent_requests", 0) or 0)
     except ValueError:
         mcr = 0
-    os.environ["MAX_CONCURRENT_REQUESTS"] = str(mcr)
+    os.environ["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(mcr)
 
     """启动MinerU FastAPI服务器的命令行入口"""
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
