@@ -40,16 +40,20 @@ async def limit_concurrency():
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are enabled.
     # To disable the FastAPI docs and schema endpoints, set the environment variable ENABLE_FASTAPI_DOCS=0.
-    enable_docs = str(os.getenv("ENABLE_FASTAPI_DOCS", "1")).lower() in ("1", "true", "yes")
+    enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in ("1", "true", "yes")
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
     )
 
-    # 初始化并发控制器
+    # 初始化并发控制器：从环境变量读取，避免使用未定义的 kwargs
     global _request_semaphore
-    max_concurrent_requests = int(kwargs.get("max_concurrent_requests", 0))
+    try:
+        max_concurrent_requests = int(os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "0"))
+    except ValueError:
+        max_concurrent_requests = 0
+
     if max_concurrent_requests > 0:
         _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
         logger.info(f"Request concurrency limited to {max_concurrent_requests}")
@@ -293,6 +297,13 @@ def main(ctx, host, port, reload, **kwargs):
 
     # 将配置参数存储到应用状态中
     app.state.config = kwargs
+
+    # 将 CLI 的并发参数同步到环境变量，确保 uvicorn 重载子进程可见
+    try:
+        mcr = int(kwargs.get("max_concurrent_requests", 0) or 0)
+    except ValueError:
+        mcr = 0
+    os.environ["MAX_CONCURRENT_REQUESTS"] = str(mcr)
 
     """启动MinerU FastAPI服务器的命令行入口"""
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
