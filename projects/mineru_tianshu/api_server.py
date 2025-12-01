@@ -103,7 +103,7 @@ def process_markdown_images(md_content: str, image_dir: Path, upload_images: boo
                 try:
                     # 上传到 MinIO
                     object_name = f"images/{new_filename}"
-                    minio_client.fput_object(bucket_name=bucket_name, object_name=bucket_name, file_path=str(full_image_path))
+                    minio_client.fput_object(bucket_name=bucket_name, object_name=object_name, file_path=str(full_image_path))
                     
                     # 生成 MinIO 访问 URL
                     scheme = 'https' if MINIO_CONFIG['secure'] else 'http'
