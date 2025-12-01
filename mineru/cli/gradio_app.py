@@ -438,11 +438,11 @@ def main(ctx,
                 output_file = gr.File(label='convert result', interactive=False)
                 with gr.Tabs():
                     with gr.Tab('Markdown rendering'):
-                        md = gr.Markdown(label='Markdown rendering', height=1100, show_copy_button=True,
+                        md = gr.Markdown(label='Markdown rendering', height=1100,
                                          latex_delimiters=latex_delimiters,
                                          line_breaks=True)
                     with gr.Tab('Markdown text'):
-                        md_text = gr.TextArea(lines=45, show_copy_button=True)
+                        md_text = gr.TextArea(lines=45,)
 
         # 添加事件处理
         backend.change(
