@@ -26,7 +26,7 @@ docker: 20.10.12
 > Dockerfile文件第三行为ascend-vllm基础镜像信息,默认tag为A2适配的版本,例如 `v0.11.0rc2`
 >
 > - 如需使用A3适配的版本,请将第三行的tag修改为 `v0.11.0rc2-a3`,然后再执行build操作。
-> - 如需使用Atlas 300I Duo适配的版本,请将第三行的tag修改为 `v0.11.0rc2-310p`,然后再执行build操作。
+> - 如需使用Atlas 300I Duo适配的版本,请将第三行的tag修改为 `v0.10.0rc1-310p`,然后再执行build操作。
 
 
 ```bash
