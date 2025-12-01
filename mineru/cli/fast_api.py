@@ -40,7 +40,7 @@ async def limit_concurrency():
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are disabled for security reasons.
     # To enable the FastAPI docs and schema endpoints, set the environment variable ENABLE_FASTAPI_DOCS=1.
-    enable_docs = os.getenv("ENABLE_FASTAPI_DOCS", "0") == "1"
+    enable_docs = str(os.getenv("ENABLE_FASTAPI_DOCS", "1")).lower() in ("1", "true", "yes")
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
