@@ -30,7 +30,7 @@ async def limit_concurrency():
         if _request_semaphore.locked():
             raise HTTPException(
                 status_code=503,
-                detail="Server is at maximum capacity. Please try again later."
+                detail=f"Server is at maximum capacity: {os.getenv('MINERU_API_MAX_CONCURRENT_REQUESTS', 'unset')}. Please try again later."
             )
         async with _request_semaphore:
             yield
@@ -101,7 +101,7 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
 
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
-        files: List[UploadFile] = File(..., description="Upload PDF, PNG, JPG, or JPEG files for parsing"),
+        files: List[UploadFile] = File(..., description="Upload pdf or image files for parsing"),
         output_dir: str = Form("./output", description="Output local directory"),
         lang_list: List[str] = Form(
             ["ch"],
@@ -114,7 +114,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
             description="""The backend for parsing:
 - pipeline: More general
 - vlm-transformers: More general, but slower
-- vlm-mlx-engine: Faster than transformers (macOS 13.5+)
+- vlm-mlx-engine: Faster than transformers (need apple silicon and macOS 13.5+)
 - vlm-vllm-async-engine: Faster (vllm-engine, need vllm installed)
 - vlm-lmdeploy-engine: Faster (lmdeploy-engine, need lmdeploy installed)
 - vlm-http-client: Faster (client suitable for openai-compatible servers)"""
@@ -131,7 +131,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
         table_enable: bool = Form(True, description="Enable table parsing."),
         server_url: Optional[str] = Form(
             None,
-            description="(Adapted only for vlm-http-client backend)Server URL when backend is vlm-http-client, e.g., http://127.0.0.1:30000"
+            description="(Adapted only for vlm-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000"
         ),
         return_md: bool = Form(True, description="Return markdown content in response"),
         return_middle_json: bool = Form(False, description="Return middle JSON in response"),
@@ -331,9 +331,7 @@ def main(ctx, host, port, reload, **kwargs):
 
     """启动MinerU FastAPI服务器的命令行入口"""
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
-    print("The API documentation can be accessed at the following address:")
-    print(f"- Swagger UI: http://{host}:{port}/docs")
-    print(f"- ReDoc: http://{host}:{port}/redoc")
+    print(f"API documentation: http://{host}:{port}/docs")
 
     uvicorn.run(
         "mineru.cli.fast_api:app",
