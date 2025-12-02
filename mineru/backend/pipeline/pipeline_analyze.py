@@ -159,7 +159,6 @@ def batch_image_analyze(
 
     model_manager = ModelSingleton()
 
-    batch_ratio = 1
     device = get_device()
 
     if str(device).startswith('npu'):
@@ -174,18 +173,20 @@ def batch_image_analyze(
             ) from e
 
     gpu_memory = get_vram(device)
-    if gpu_memory is not None:
-        if gpu_memory >= 16:
-            batch_ratio = 16
-        elif gpu_memory >= 12:
-            batch_ratio = 8
-        elif gpu_memory >= 8:
-            batch_ratio = 4
-        elif gpu_memory >= 6:
-            batch_ratio = 2
-        else:
-            batch_ratio = 1
-        logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
+    if gpu_memory >= 16:
+        batch_ratio = 16
+    elif gpu_memory >= 12:
+        batch_ratio = 8
+    elif gpu_memory >= 8:
+        batch_ratio = 4
+    elif gpu_memory >= 6:
+        batch_ratio = 2
+    else:
+        batch_ratio = 1
+    logger.info(
+            f'GPU Memory: {gpu_memory} GB, Batch Ratio: {batch_ratio}. '
+            f'You can set MINERU_VIRTUAL_VRAM_SIZE environment variable to adjust GPU memory allocation.'
+    )
 
     # 检测torch的版本号
     import torch
