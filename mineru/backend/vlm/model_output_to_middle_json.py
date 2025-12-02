@@ -99,12 +99,12 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     return page_info
 
 
-def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
+def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer, batch_idx=0, pdf_pages_batch=0):
     middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
     for index, page_blocks in enumerate(model_output_blocks_list):
         page = pdf_doc[index]
         image_dict = images_list[index]
-        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index)
+        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index + batch_idx * pdf_pages_batch)
         middle_json["pdf_info"].append(page_info)
 
     """表格跨页合并"""
