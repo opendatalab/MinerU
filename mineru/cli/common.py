@@ -3,6 +3,7 @@ import io
 import json
 import os
 import copy
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from loguru import logger
@@ -27,6 +28,9 @@ pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# 在模块级别创建全局进程池
+_global_executor = ProcessPoolExecutor(max_workers=1)
 
 def read_fn(path):
     if not isinstance(path, Path):
@@ -374,7 +378,12 @@ async def aio_do_parse(
 
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
-        _process_pipeline(
+        loop = asyncio.get_event_loop()
+
+        # 使用进程池执行CPU密集型任务, max_workers=1 确保单个任务独占资源
+        await loop.run_in_executor(
+            _global_executor,
+            _process_pipeline,
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,

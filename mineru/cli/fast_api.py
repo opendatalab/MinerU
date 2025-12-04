@@ -24,6 +24,16 @@ from mineru.version import __version__
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
 
+
+@app.get("/health")
+async def health_check():
+    """
+    健康检查接口, 用于 Kubernetes 探活
+    该接口非常轻量, 不依赖任何业务逻辑, 即使正在处理文档也能快速响应
+    """
+    return {"status": "ok", "version": __version__}
+
+
 # 并发控制依赖函数
 async def limit_concurrency():
     if _request_semaphore is not None:
