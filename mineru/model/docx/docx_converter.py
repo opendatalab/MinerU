@@ -16,6 +16,7 @@ from pydantic import AnyUrl
 
 from mineru.model.utils.docx.math.omml import oMath2Latex
 from mineru.utils.docx_fomatting import Formatting, Script
+from mineru.utils.enum_class import BlockType
 
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -69,6 +70,7 @@ class DocxConverter:
         self.file_path = file_path
         self.output_path = Path(output_path, Path(self.file_path).stem)
         self.blocks = []
+        self.cur_num_id: int = -1
         # 初始化处理历史记录
         self.history: dict[str, Any] = {
             "names": [None],  # 样式名称历史
@@ -76,9 +78,7 @@ class DocxConverter:
             "numids": [None],  # 列表编号ID历史
             "indents": [None],  # 缩进级别历史
         }
-        self.list_counters: dict[tuple[int, int], int] = (
-            {}
-        )  # 列表计数器 (numId, ilvl) -> count
+        self.list_counters: dict[int, int] = {}  # 列表计数器 numId -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         Path.mkdir(self.output_path, parents=True, exist_ok=True)
 
@@ -191,150 +191,151 @@ class DocxConverter:
                 elements=paragraph_elements,
                 is_numbered=is_numbered,
             )
+
             elem_ref.extend(li)  # 必须是引用!!!
-            self._update_history(p_style_id, p_level, numid, ilevel)
+            # self._update_history(p_style_id, p_level, numid, ilevel)
             return elem_ref
-        elif (
-            numid is None
-            and self._prev_numid() is not None
-            and p_style_id not in ["Title", "Heading"]
-        ):  # 关闭列表
-            if self.level_at_new_list:
-                for key in range(len(self.parents)):
-                    if key >= self.level_at_new_list:
-                        self.parents[key] = None
-                self.level = self.level_at_new_list - 1
-                self.level_at_new_list = None
-            else:
-                for key in range(len(self.parents)):
-                    self.parents[key] = None
-                self.level = 0
-
-        if p_style_id in ["Title"]:
-            for key in range(len(self.parents)):
-                self.parents[key] = None
-            # te = doc.add_text(
-            #     parent=None,
-            #     label=DocItemLabel.TITLE,
-            #     text=text,
-            #     content_layer=self.content_layer,
-            # )
-            self.parents[0] = te
-            elem_ref.append(te.get_ref())
-        elif "Heading" in p_style_id:
-            style_element = getattr(paragraph.style, "element", None)
-            if style_element is not None:
-                is_numbered_style = (
-                    "<w:numPr>" in style_element.xml or "<w:numPr>" in element.xml
-                )
-            else:
-                is_numbered_style = False
-            h1 = self._add_heading(doc, p_level, text, is_numbered_style)
-            elem_ref.extend(h1)
-
-        elif len(equations) > 0:
-            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
-                text
-            ) > 0:
-                # 独立公式
-                level = self._get_level()
-                t1 = doc.add_text(
-                    label=DocItemLabel.FORMULA,
-                    parent=self.parents[level - 1],
-                    text=text.replace("<eq>", "").replace("</eq>", ""),
-                    content_layer=self.content_layer,
-                )
-                elem_ref.append(t1.get_ref())
-            else:
-                # 行内公式
-                level = self._get_level()
-                inline_equation = doc.add_inline_group(
-                    parent=self.parents[level - 1], content_layer=self.content_layer
-                )
-                elem_ref.append(inline_equation.get_ref())
-                text_tmp = text
-                for eq in equations:
-                    if len(text_tmp) == 0:
-                        break
-
-                    split_text_tmp = text_tmp.split(eq.strip(), maxsplit=1)
-
-                    pre_eq_text = split_text_tmp[0]
-                    text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
-
-                    if len(pre_eq_text) > 0:
-                        e1 = doc.add_text(
-                            label=DocItemLabel.TEXT,
-                            parent=inline_equation,
-                            text=pre_eq_text,
-                            content_layer=self.content_layer,
-                        )
-                        elem_ref.append(e1.get_ref())
-                    e2 = doc.add_text(
-                        label=DocItemLabel.FORMULA,
-                        parent=inline_equation,
-                        text=eq.replace("<eq>", "").replace("</eq>", ""),
-                        content_layer=self.content_layer,
-                    )
-                    elem_ref.append(e2.get_ref())
-
-                if len(text_tmp) > 0:
-                    e3 = doc.add_text(
-                        label=DocItemLabel.TEXT,
-                        parent=inline_equation,
-                        text=text_tmp.strip(),
-                        content_layer=self.content_layer,
-                    )
-                    elem_ref.append(e3.get_ref())
-
-        elif p_style_id in [
-            "Paragraph",
-            "Normal",
-            "Subtitle",
-            "Author",
-            "DefaultText",
-            "ListParagraph",
-            "ListBullet",
-            "Quote",
-        ]:
-            level = self._get_level()
-            parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents.get(level - 1),
-                paragraph_elements=paragraph_elements,
-            )
-            for text, format, hyperlink in paragraph_elements:
-                t2 = doc.add_text(
-                    label=DocItemLabel.TEXT,
-                    parent=parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                    content_layer=self.content_layer,
-                )
-                elem_ref.append(t2.get_ref())
-
-        else:
-            # 文本样式名称不仅有默认值，还可能有用户自定义值
-            # 因此我们将所有其他标签视为纯文本
-            level = self._get_level()
-            parent = self._create_or_reuse_parent(
-                doc=doc,
-                prev_parent=self.parents.get(level - 1),
-                paragraph_elements=paragraph_elements,
-            )
-            for text, format, hyperlink in paragraph_elements:
-                t3 = doc.add_text(
-                    label=DocItemLabel.TEXT,
-                    parent=parent,
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                    content_layer=self.content_layer,
-                )
-                elem_ref.append(t3.get_ref())
-
-        self._update_history(p_style_id, p_level, numid, ilevel)
+        # elif (
+        #     numid is None
+        #     and self._prev_numid() is not None
+        #     and p_style_id not in ["Title", "Heading"]
+        # ):  # 关闭列表
+        #     if self.level_at_new_list:
+        #         for key in range(len(self.parents)):
+        #             if key >= self.level_at_new_list:
+        #                 self.parents[key] = None
+        #         self.level = self.level_at_new_list - 1
+        #         self.level_at_new_list = None
+        #     else:
+        #         for key in range(len(self.parents)):
+        #             self.parents[key] = None
+        #         self.level = 0
+        #
+        # if p_style_id in ["Title"]:
+        #     for key in range(len(self.parents)):
+        #         self.parents[key] = None
+        #     # te = doc.add_text(
+        #     #     parent=None,
+        #     #     label=DocItemLabel.TITLE,
+        #     #     text=text,
+        #     #     content_layer=self.content_layer,
+        #     # )
+        #     self.parents[0] = te
+        #     elem_ref.append(te.get_ref())
+        # elif "Heading" in p_style_id:
+        #     style_element = getattr(paragraph.style, "element", None)
+        #     if style_element is not None:
+        #         is_numbered_style = (
+        #             "<w:numPr>" in style_element.xml or "<w:numPr>" in element.xml
+        #         )
+        #     else:
+        #         is_numbered_style = False
+        #     h1 = self._add_heading(doc, p_level, text, is_numbered_style)
+        #     elem_ref.extend(h1)
+        #
+        # elif len(equations) > 0:
+        #     if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
+        #         text
+        #     ) > 0:
+        #         # 独立公式
+        #         level = self._get_level()
+        #         t1 = doc.add_text(
+        #             label=DocItemLabel.FORMULA,
+        #             parent=self.parents[level - 1],
+        #             text=text.replace("<eq>", "").replace("</eq>", ""),
+        #             content_layer=self.content_layer,
+        #         )
+        #         elem_ref.append(t1.get_ref())
+        #     else:
+        #         # 行内公式
+        #         level = self._get_level()
+        #         inline_equation = doc.add_inline_group(
+        #             parent=self.parents[level - 1], content_layer=self.content_layer
+        #         )
+        #         elem_ref.append(inline_equation.get_ref())
+        #         text_tmp = text
+        #         for eq in equations:
+        #             if len(text_tmp) == 0:
+        #                 break
+        #
+        #             split_text_tmp = text_tmp.split(eq.strip(), maxsplit=1)
+        #
+        #             pre_eq_text = split_text_tmp[0]
+        #             text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
+        #
+        #             if len(pre_eq_text) > 0:
+        #                 e1 = doc.add_text(
+        #                     label=DocItemLabel.TEXT,
+        #                     parent=inline_equation,
+        #                     text=pre_eq_text,
+        #                     content_layer=self.content_layer,
+        #                 )
+        #                 elem_ref.append(e1.get_ref())
+        #             e2 = doc.add_text(
+        #                 label=DocItemLabel.FORMULA,
+        #                 parent=inline_equation,
+        #                 text=eq.replace("<eq>", "").replace("</eq>", ""),
+        #                 content_layer=self.content_layer,
+        #             )
+        #             elem_ref.append(e2.get_ref())
+        #
+        #         if len(text_tmp) > 0:
+        #             e3 = doc.add_text(
+        #                 label=DocItemLabel.TEXT,
+        #                 parent=inline_equation,
+        #                 text=text_tmp.strip(),
+        #                 content_layer=self.content_layer,
+        #             )
+        #             elem_ref.append(e3.get_ref())
+        #
+        # elif p_style_id in [
+        #     "Paragraph",
+        #     "Normal",
+        #     "Subtitle",
+        #     "Author",
+        #     "DefaultText",
+        #     "ListParagraph",
+        #     "ListBullet",
+        #     "Quote",
+        # ]:
+        #     level = self._get_level()
+        #     parent = self._create_or_reuse_parent(
+        #         doc=doc,
+        #         prev_parent=self.parents.get(level - 1),
+        #         paragraph_elements=paragraph_elements,
+        #     )
+        #     for text, format, hyperlink in paragraph_elements:
+        #         t2 = doc.add_text(
+        #             label=DocItemLabel.TEXT,
+        #             parent=parent,
+        #             text=text,
+        #             formatting=format,
+        #             hyperlink=hyperlink,
+        #             content_layer=self.content_layer,
+        #         )
+        #         elem_ref.append(t2.get_ref())
+        #
+        # else:
+        #     # 文本样式名称不仅有默认值，还可能有用户自定义值
+        #     # 因此我们将所有其他标签视为纯文本
+        #     level = self._get_level()
+        #     parent = self._create_or_reuse_parent(
+        #         doc=doc,
+        #         prev_parent=self.parents.get(level - 1),
+        #         paragraph_elements=paragraph_elements,
+        #     )
+        #     for text, format, hyperlink in paragraph_elements:
+        #         t3 = doc.add_text(
+        #             label=DocItemLabel.TEXT,
+        #             parent=parent,
+        #             text=text,
+        #             formatting=format,
+        #             hyperlink=hyperlink,
+        #             content_layer=self.content_layer,
+        #         )
+        #         elem_ref.append(t3.get_ref())
+        #
+        # self._update_history(p_style_id, p_level, numid, ilevel)
         return elem_ref
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
@@ -691,24 +692,20 @@ class DocxConverter:
 
             # 为新编号序列重置计数器
             self._reset_list_counters_for_new_sequence(numid)
-
-            list_gr = doc.add_list_group(
-                name="list",
-                parent=self.parents[level - 1],
-                content_layer=self.content_layer,
-            )
-            self.parents[level] = list_gr
-            elem_ref.append(list_gr.get_ref())
-
+            list_block = {"type": BlockType.LIST, "bbox": [0, 0, 0, 0], "lines": []}
+            self.blocks.append(list_block)
+            elem_ref.append(id(list_block))
             # 如果这是枚举元素，则设置标记和枚举参数。
             if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
+                counter = self._get_list_counter(numid)
                 enum_marker = str(counter) + "."
             else:
                 enum_marker = ""
-            self._add_formatted_list_item(
-                doc, elements, enum_marker, is_numbered, level
-            )
+            for text, format, hyperlink in elements:
+                print(text, format, hyperlink)
+            # list_block["lines"].append(
+            #     {"bbox": [0, 0, 0, 0], "spans": [{"bbox": [0, 0, 0, 0], "score": 1.0,"content": enum_marker+elements}]}
+            # )
         elif (
             self._prev_numid() == numid
             and self.level_at_new_list is not None
@@ -816,64 +813,9 @@ class DocxConverter:
             numid: 列表编号ID
         """
         # 重置此 numid 的所有计数器
-        keys_to_reset = [key for key in self.list_counters.keys() if key[0] == numid]
+        keys_to_reset = [key for key in self.list_counters.keys() if key == numid]
         for key in keys_to_reset:
             self.list_counters[key] = 0
-
-    def _add_formatted_list_item(
-        self,
-        elements: list,
-        marker: str,
-        enumerated: bool,
-        level: int,
-    ) -> list:
-        """
-        添加格式化的列表项。
-
-        Args:
-            doc: DoclingDocument 对象
-            elements: 元素列表
-            marker: 标记
-            enumerated: 是否编号
-            level: 层级
-
-        Returns:
-            list[RefItem]: 元素引用列表
-        """
-        elem_ref: list = []
-        if not elements:
-            return elem_ref
-
-        if len(elements) == 1:
-            text, format, hyperlink = elements[0]
-            if text:
-                doc.add_list_item(
-                    marker=marker,
-                    enumerated=enumerated,
-                    parent=self.parents[level],
-                    text=text,
-                    formatting=format,
-                    hyperlink=hyperlink,
-                )
-        else:
-            new_item = doc.add_list_item(
-                marker=marker,
-                enumerated=enumerated,
-                parent=self.parents[level],
-                text="",
-            )
-            new_parent = doc.add_inline_group(parent=new_item)
-            for text, format, hyperlink in elements:
-                if text:
-                    doc.add_text(
-                        label=DocItemLabel.TEXT,
-                        parent=new_parent,
-                        text=text,
-                        formatting=format,
-                        hyperlink=hyperlink,
-                        content_layer=self.content_layer,
-                    )
-        return elem_ref
 
     def _get_heading_and_level(self, style_label: str) -> tuple[str, Optional[int]]:
         """
@@ -901,6 +843,23 @@ class DocxConverter:
 
         return style_label, None
 
+    def _split_text_and_number(self, input_string: str) -> list[str]:
+        """
+        分割字符串中的文本和数字部分。
+
+        Args:
+            input_string: 输入字符串
+
+        Returns:
+            list[str]: 分割后的部分列表
+        """
+        match = re.match(r"(\D+)(\d+)$|^(\d+)(\D+)", input_string)
+        if match:
+            parts = list(filter(None, match.groups()))
+            return parts
+        else:
+            return [input_string]
+
     def _str_to_int(
         self, s: Optional[str], default: Optional[int] = 0
     ) -> Optional[int]:
@@ -920,3 +879,18 @@ class DocxConverter:
             return int(s)
         except ValueError:
             return default
+
+    def _get_list_counter(self, numid: int) -> int:
+        """
+        获取并递增特定 numId 的计数器。
+
+        Args:
+            numid: 列表编号ID
+
+        Returns:
+            int: 当前计数器值
+        """
+        if numid not in self.list_counters:
+            self.list_counters[numid] = 0
+        self.list_counters[numid] += 1
+        return self.list_counters[numid]
