@@ -1,10 +1,12 @@
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
 import logging
 import filetype
+from PIL import Image, UnidentifiedImageError
 from loguru import logger
 from docx import Document
 from docx.oxml.xmlchemy import BaseOxmlElement
@@ -16,7 +18,8 @@ from pydantic import AnyUrl
 
 from mineru.model.utils.docx.math.omml import oMath2Latex
 from mineru.utils.docx_fomatting import Formatting, Script
-from mineru.utils.enum_class import BlockType
+from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.hash_utils import bytes_md5
 
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -83,8 +86,8 @@ class DocxConverter:
         Path.mkdir(self.output_path, parents=True, exist_ok=True)
 
     def accepts(
-        self,
-        file_stream: BinaryIO,
+            self,
+            file_stream: BinaryIO,
     ) -> bool:
         mimetype = filetype.guess_mime(file_stream).lower()
         if mimetype is None:
@@ -101,9 +104,9 @@ class DocxConverter:
         return False
 
     def convert(
-        self,
-        file_stream: BinaryIO,
-        style_map: str = None,
+            self,
+            file_stream: BinaryIO,
+            style_map: str = None,
     ):
         self.docx_obj = Document(file_stream)
         self._walk_linear(self.docx_obj.element.body)
@@ -125,8 +128,8 @@ class DocxConverter:
     #         )
     #     return {"src": self.output_path.joinpath(image.alt_text + ".jpg").as_posix()}
     def _walk_linear(
-        self,
-        body: BaseOxmlElement,
+            self,
+            body: BaseOxmlElement,
     ):
         # 存储已处理的元素引用
         added_elements = []
@@ -134,17 +137,40 @@ class DocxConverter:
         for element in body:
             # 获取元素的标签名（去除命名空间前缀）
             tag_name = etree.QName(element).localname
-            # print(element.text)
-            #
+            # 检查是否存在内联图像（blip元素）
+            drawing_blip = self.blip_xpath_expr(element)
+
+            # 查找所有绘图元素（用于处理DrawingML）
+            drawingml_els = element.findall(
+                ".//w:drawing", namespaces=DocxConverter._BLIP_NAMESPACES
+            )
+
+            # 检查图片元素
+            if drawing_blip:
+                # 处理图片元素
+                pics = self._handle_pictures(drawing_blip)
+                added_elements.extend(pics)
+
+                # 检查图像后的文本内容
+                if tag_name == "p" and element.find(".//w:t", namespaces=DocxConverter._BLIP_NAMESPACES) is not None:
+                    # 处理文本元素
+                    te1 = self._handle_text_elements(element)
+                    added_elements.extend(te1)
+
             # 检查文本段落元素
-            if tag_name == "p":
+            elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
                 te = self._handle_text_elements(element)
                 added_elements.extend(te)
 
+
+            # 忽略其他未知元素并记录日志
+            else:
+                _log.debug(f"Ignoring element in DOCX with tag: {tag_name}")
+
     def _handle_text_elements(
-        self,
-        element: BaseOxmlElement,
+            self,
+            element: BaseOxmlElement,
     ):
         """
         处理文本元素。
@@ -178,9 +204,9 @@ class DocxConverter:
 
         # 处理列表
         if (
-            numid is not None
-            and ilevel is not None
-            and p_style_id not in ["Title", "Heading"]
+                numid is not None
+                and ilevel is not None
+                and p_style_id not in ["Title", "Heading"]
         ):
             # 通过检查 numFmt 来确认这是否实际上是编号列表
             is_numbered = self._is_numbered_list(numid, ilevel)
@@ -195,147 +221,276 @@ class DocxConverter:
             elem_ref.extend(li)  # 必须是引用!!!
             # self._update_history(p_style_id, p_level, numid, ilevel)
             return elem_ref
-        # elif (
-        #     numid is None
-        #     and self._prev_numid() is not None
-        #     and p_style_id not in ["Title", "Heading"]
-        # ):  # 关闭列表
-        #     if self.level_at_new_list:
-        #         for key in range(len(self.parents)):
-        #             if key >= self.level_at_new_list:
-        #                 self.parents[key] = None
-        #         self.level = self.level_at_new_list - 1
-        #         self.level_at_new_list = None
-        #     else:
-        #         for key in range(len(self.parents)):
-        #             self.parents[key] = None
-        #         self.level = 0
-        #
-        # if p_style_id in ["Title"]:
-        #     for key in range(len(self.parents)):
-        #         self.parents[key] = None
-        #     # te = doc.add_text(
-        #     #     parent=None,
-        #     #     label=DocItemLabel.TITLE,
-        #     #     text=text,
-        #     #     content_layer=self.content_layer,
-        #     # )
-        #     self.parents[0] = te
-        #     elem_ref.append(te.get_ref())
-        # elif "Heading" in p_style_id:
-        #     style_element = getattr(paragraph.style, "element", None)
-        #     if style_element is not None:
-        #         is_numbered_style = (
-        #             "<w:numPr>" in style_element.xml or "<w:numPr>" in element.xml
-        #         )
-        #     else:
-        #         is_numbered_style = False
-        #     h1 = self._add_heading(doc, p_level, text, is_numbered_style)
-        #     elem_ref.extend(h1)
-        #
-        # elif len(equations) > 0:
-        #     if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
-        #         text
-        #     ) > 0:
-        #         # 独立公式
-        #         level = self._get_level()
-        #         t1 = doc.add_text(
-        #             label=DocItemLabel.FORMULA,
-        #             parent=self.parents[level - 1],
-        #             text=text.replace("<eq>", "").replace("</eq>", ""),
-        #             content_layer=self.content_layer,
-        #         )
-        #         elem_ref.append(t1.get_ref())
-        #     else:
-        #         # 行内公式
-        #         level = self._get_level()
-        #         inline_equation = doc.add_inline_group(
-        #             parent=self.parents[level - 1], content_layer=self.content_layer
-        #         )
-        #         elem_ref.append(inline_equation.get_ref())
-        #         text_tmp = text
-        #         for eq in equations:
-        #             if len(text_tmp) == 0:
-        #                 break
-        #
-        #             split_text_tmp = text_tmp.split(eq.strip(), maxsplit=1)
-        #
-        #             pre_eq_text = split_text_tmp[0]
-        #             text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
-        #
-        #             if len(pre_eq_text) > 0:
-        #                 e1 = doc.add_text(
-        #                     label=DocItemLabel.TEXT,
-        #                     parent=inline_equation,
-        #                     text=pre_eq_text,
-        #                     content_layer=self.content_layer,
-        #                 )
-        #                 elem_ref.append(e1.get_ref())
-        #             e2 = doc.add_text(
-        #                 label=DocItemLabel.FORMULA,
-        #                 parent=inline_equation,
-        #                 text=eq.replace("<eq>", "").replace("</eq>", ""),
-        #                 content_layer=self.content_layer,
-        #             )
-        #             elem_ref.append(e2.get_ref())
-        #
-        #         if len(text_tmp) > 0:
-        #             e3 = doc.add_text(
-        #                 label=DocItemLabel.TEXT,
-        #                 parent=inline_equation,
-        #                 text=text_tmp.strip(),
-        #                 content_layer=self.content_layer,
-        #             )
-        #             elem_ref.append(e3.get_ref())
-        #
-        # elif p_style_id in [
-        #     "Paragraph",
-        #     "Normal",
-        #     "Subtitle",
-        #     "Author",
-        #     "DefaultText",
-        #     "ListParagraph",
-        #     "ListBullet",
-        #     "Quote",
-        # ]:
-        #     level = self._get_level()
-        #     parent = self._create_or_reuse_parent(
-        #         doc=doc,
-        #         prev_parent=self.parents.get(level - 1),
-        #         paragraph_elements=paragraph_elements,
-        #     )
-        #     for text, format, hyperlink in paragraph_elements:
-        #         t2 = doc.add_text(
-        #             label=DocItemLabel.TEXT,
-        #             parent=parent,
-        #             text=text,
-        #             formatting=format,
-        #             hyperlink=hyperlink,
-        #             content_layer=self.content_layer,
-        #         )
-        #         elem_ref.append(t2.get_ref())
-        #
-        # else:
-        #     # 文本样式名称不仅有默认值，还可能有用户自定义值
-        #     # 因此我们将所有其他标签视为纯文本
-        #     level = self._get_level()
-        #     parent = self._create_or_reuse_parent(
-        #         doc=doc,
-        #         prev_parent=self.parents.get(level - 1),
-        #         paragraph_elements=paragraph_elements,
-        #     )
-        #     for text, format, hyperlink in paragraph_elements:
-        #         t3 = doc.add_text(
-        #             label=DocItemLabel.TEXT,
-        #             parent=parent,
-        #             text=text,
-        #             formatting=format,
-        #             hyperlink=hyperlink,
-        #             content_layer=self.content_layer,
-        #         )
-        #         elem_ref.append(t3.get_ref())
-        #
-        # self._update_history(p_style_id, p_level, numid, ilevel)
+
+        if p_style_id in ["Title"]:
+            title_block = {
+                "type": BlockType.TITLE,
+                "bbox": [0, 0, 0, 0],
+                "lines": [
+                    {
+                        "bbox": [0, 0, 0, 0],
+                        "spans": [
+                            {
+                                "bbox": [0, 0, 0, 0],
+                                "score": 1.0,
+                                "content": text,
+                                "type": "text"
+                            }
+                        ]
+                    }
+                ]
+            }
+            self.blocks.append(title_block)
+            elem_ref.append(id(title_block))
+
+        elif "Heading" in p_style_id:
+            style_element = getattr(paragraph.style, "element", None)
+            if style_element is not None:
+                is_numbered_style = (
+                        "<w:numPr>" in style_element.xml or "<w:numPr>" in element.xml
+                )
+            else:
+                is_numbered_style = False
+            h_block = {
+                "type": "text",
+                "bbox": [0, 0, 0, 0],
+                "lines": [
+                    {
+                        "bbox": [0, 0, 0, 0],
+                        "spans": [
+                            {
+                                "bbox": [0, 0, 0, 0],
+                                "score": 1.0,
+                                "content": text,
+                                "type": "text"
+                            }
+                        ]
+                    }
+                ]
+            }
+            self.blocks.append(h_block)
+            elem_ref.append(id(h_block))
+
+        elif len(equations) > 0:
+            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
+                    text
+            ) > 0:
+                # 独立公式
+                eq_block = {
+                    "type": BlockType.INTERLINE_EQUATION,
+                    "bbox": [0, 0, 0, 0],
+                    "lines": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "spans": [
+                                {
+                                    "bbox": [0, 0, 0, 0],
+                                    "score": 1.0,
+                                    "content": text.replace("<eq>", "").replace("</eq>", ""),
+                                    "type": ContentType.INTERLINE_EQUATION
+                                }
+                            ]
+                        }
+                    ]
+                }
+                self.blocks.append(eq_block)
+                elem_ref.append(id(eq_block))
+            else:
+                # 行内公式
+                inline_eq_block = {
+                    "type": BlockType.TEXT,
+                    "bbox": [0, 0, 0, 0],
+                    "lines": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "spans": [],
+                        }
+                    ]
+                }
+                self.blocks.append(inline_eq_block)
+                elem_ref.append(id(inline_eq_block))
+                text_tmp = text
+                for eq in equations:
+                    if len(text_tmp) == 0:
+                        break
+
+                    split_text_tmp = text_tmp.split(eq.strip(), maxsplit=1)
+
+                    pre_eq_text = split_text_tmp[0]
+                    text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
+
+                    if len(pre_eq_text) > 0:
+                        inline_eq_item_1 = {
+                            "bbox": [0, 0, 0, 0],
+                            "score": 1.0,
+                            "content": pre_eq_text,
+                            "type": ContentType.TEXT
+                        }
+                        inline_eq_block["lines"][0]["spans"].append(inline_eq_item_1)
+                        elem_ref.append(id(inline_eq_item_1))
+                    # e2 = doc.add_text(
+                    #     label=DocItemLabel.FORMULA,
+                    #     parent=inline_equation,
+                    #     text=eq.replace("<eq>", "").replace("</eq>", ""),
+                    #     content_layer=self.content_layer,
+                    # )
+                    inline_eq_item_2 = {
+                        "bbox": [0, 0, 0, 0],
+                        "score": 1.0,
+                        "content": eq.replace("<eq>", "").replace("</eq>", ""),
+                        "type": ContentType.INLINE_EQUATION
+                    }
+                    inline_eq_block["lines"][0]["spans"].append(inline_eq_item_2)
+                    elem_ref.append(id(inline_eq_item_2))
+
+                if len(text_tmp) > 0:
+                    inline_eq_item_3 = {
+                        "bbox": [0, 0, 0, 0],
+                        "score": 1.0,
+                        "content": text_tmp.strip(),
+                        "type": ContentType.TEXT
+                    }
+                    inline_eq_block["lines"][0]["spans"].append(inline_eq_item_3)
+                    elem_ref.append(id(inline_eq_item_3))
+        elif p_style_id in [
+            "Paragraph",
+            "Normal",
+            "Subtitle",
+            "Author",
+            "DefaultText",
+            "ListParagraph",
+            "ListBullet",
+            "Quote",
+        ]:
+            for text, format, hyperlink in paragraph_elements:
+                # t2 = doc.add_text(
+                #     label=DocItemLabel.TEXT,
+                #     parent=parent,
+                #     text=text,
+                #     formatting=format,
+                #     hyperlink=hyperlink,
+                #     content_layer=self.content_layer,
+                # )
+                text_block = {
+                    "type": BlockType.TEXT,
+                    "bbox": [0, 0, 0, 0],
+                    "lines": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "spans": [
+                                {
+                                    "bbox": [0, 0, 0, 0],
+                                    "score": 1.0,
+                                    "content": text,
+                                    "type": ContentType.TEXT
+                                }
+                            ]
+                        }
+                    ]
+                }
+                self.blocks.append(text_block)
+                elem_ref.append(id(text_block))
+        else:
+            # 文本样式名称不仅有默认值，还可能有用户自定义值
+            # 因此我们将所有其他标签视为纯文本
+            for text, format, hyperlink in paragraph_elements:
+                text_block = {
+                    "type": BlockType.TEXT,
+                    "bbox": [0, 0, 0, 0],
+                    "lines": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "spans": [
+                                {
+                                    "bbox": [0, 0, 0, 0],
+                                    "score": 1.0,
+                                    "content": text,
+                                    "type": ContentType.TEXT
+                                }
+                            ]
+                        }
+                    ]
+                }
+                self.blocks.append(text_block)
+                elem_ref.append(id(text_block))
+
+        return elem_ref
+
+    def _handle_pictures(
+            self, drawing_blip: Any
+    ):
+        """
+        处理图片。
+
+        Args:
+            drawing_blip: 绘图 blip 对象
+
+        Returns:
+
+        """
+
+        def get_docx_image(drawing_blip: Any) -> Optional[bytes]:
+            """
+            获取 DOCX 图像数据。
+
+            Args:
+                drawing_blip: 绘图 blip 对象
+
+            Returns:
+                Optional[bytes]: 图像数据
+            """
+            image_data: Optional[bytes] = None
+            rId = drawing_blip[0].get(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+            )
+            if rId in self.docx_obj.part.rels:
+                # 使用关系 ID 访问图像部分
+                image_part = self.docx_obj.part.rels[rId].target_part
+                image_data = image_part.blob  # 获取二进制图像数据
+            return image_data
+
+        elem_ref = []
+        # 使用 PIL 打开 BytesIO 对象创建图像
+        image_data: Optional[bytes] = get_docx_image(drawing_blip)
+        if image_data is None:
+            _log.warning("Warning: image cannot be found")
+        else:
+            image_bytes = BytesIO(image_data)
+            pil_image = Image.open(image_bytes)
+            # p2 = doc.add_picture(
+            #     parent=self.parents[level - 1],
+            #     image=ImageRef.from_pil(image=pil_image, dpi=72),
+            #     caption=None,
+            #     content_layer=self.content_layer,
+            # )
+            md5 = bytes_md5(image_data)
+            path = f"{self.output_path}/{md5}.jpg"
+            pil_image.save(path)
+            image_block = {
+                "type": BlockType.IMAGE,
+                "bbox": [0, 0, 0, 0],
+                "blocks": [
+                    {
+                        "type": BlockType.IMAGE_BODY,
+                        "bbox": [0, 0, 0, 0],
+                        "lines": [
+                            {
+                                "bbox": [0, 0, 0, 0],
+                                "span": [
+                                    {
+                                        "bbox": [0, 0, 0, 0],
+                                        "score": 1.0,
+                                        "type": ContentType.IMAGE,
+                                        "image_path": path,
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+            self.blocks.append(image_block)
+            elem_ref.append(id(image_block))
         return elem_ref
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
@@ -378,7 +533,7 @@ class DocxConverter:
                 continue
 
             if (len(text.strip()) and format != previous_format) or (
-                hyperlink is not None
+                    hyperlink is not None
             ):
                 # 如果非空文本的样式发生变化，则添加前一个组
                 if len(group_text.strip()) > 0:
@@ -466,8 +621,8 @@ class DocxConverter:
             return text, []
 
         if (
-            re.sub(r"\s+", "", "".join(only_texts)).strip()
-            != re.sub(r"\s+", "", text).strip()
+                re.sub(r"\s+", "", "".join(only_texts)).strip()
+                != re.sub(r"\s+", "", text).strip()
         ):
             # 如果我们无法重构初始原始文本
             # 不要尝试解析公式并返回原始文本
@@ -533,7 +688,7 @@ class DocxConverter:
         return name, None
 
     def _get_numId_and_ilvl(
-        self, paragraph: Paragraph
+            self, paragraph: Paragraph
     ) -> tuple[Optional[int], Optional[int]]:
         """
         获取段落的列表编号ID和层级。
@@ -574,7 +729,7 @@ class DocxConverter:
         try:
             # 访问文档的编号部分
             if not hasattr(self.docx_obj, "part") or not hasattr(
-                self.docx_obj.part, "package"
+                    self.docx_obj.part, "package"
             ):
                 return False
 
@@ -659,12 +814,12 @@ class DocxConverter:
             return False
 
     def _add_list_item(
-        self,
-        *,
-        numid: int,
-        ilevel: int,
-        elements: list,
-        is_numbered: bool = False,
+            self,
+            *,
+            numid: int,
+            ilevel: int,
+            elements: list,
+            is_numbered: bool = False,
     ) -> list:
         """
         添加列表项。
@@ -684,126 +839,72 @@ class DocxConverter:
         if not elements:
             return elem_ref
         enum_marker = ""
-
-        level = self._get_level()
-        prev_indent = self._prev_indent()
-        if self._prev_numid() is None:  # 打开新列表
-            self.level_at_new_list = level
-
+        # 如果列表编号ID与前一个列表编号ID不同，则创建新列表
+        if self.cur_num_id == -1 or self.cur_num_id != numid:  # 打开新列表
+            self.cur_num_id = numid
             # 为新编号序列重置计数器
             self._reset_list_counters_for_new_sequence(numid)
             list_block = {"type": BlockType.LIST, "bbox": [0, 0, 0, 0], "lines": []}
             self.blocks.append(list_block)
             elem_ref.append(id(list_block))
-            # 如果这是枚举元素，则设置标记和枚举参数。
-            if is_numbered:
-                counter = self._get_list_counter(numid)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
+
             for text, format, hyperlink in elements:
-                print(text, format, hyperlink)
-            # list_block["lines"].append(
-            #     {"bbox": [0, 0, 0, 0], "spans": [{"bbox": [0, 0, 0, 0], "score": 1.0,"content": enum_marker+elements}]}
-            # )
-        elif (
-            self._prev_numid() == numid
-            and self.level_at_new_list is not None
-            and prev_indent is not None
-            and prev_indent < ilevel
-        ):  # 打开缩进列表
-            for i in range(
-                self.level_at_new_list + prev_indent + 1,
-                self.level_at_new_list + ilevel + 1,
-            ):
-                list_gr1 = doc.add_list_group(
-                    name="list",
-                    parent=self.parents[i - 1],
-                    content_layer=self.content_layer,
-                )
-                self.parents[i] = list_gr1
-                elem_ref.append(list_gr1.get_ref())
+                # 如果这是枚举元素，则设置标记和枚举参数。
+                if is_numbered:
+                    counter = self._get_list_counter(numid)
+                    enum_marker = str(counter) + ". "
+                else:
+                    enum_marker = ""
+                list_item = {
+                    "bbox": [0, 0, 0, 0],
+                    "spans": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "score": 1.0,
+                            "content": enum_marker + text,
+                            "type": ContentType.TEXT
+                        }
+                    ],
+                    "is_list_start_line": True,
+                    "is_list_end_line": True
+                }
+                elem_ref.append(id(list_item))
+                list_block["lines"].append(list_item)
 
-            # TODO: 如果这是枚举元素，则设置标记和枚举参数。
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
-            self._add_formatted_list_item(
-                doc,
-                elements,
-                enum_marker,
-                is_numbered,
-                self.level_at_new_list + ilevel,
-            )
-        elif (
-            self._prev_numid() == numid
-            and self.level_at_new_list is not None
-            and prev_indent is not None
-            and ilevel < prev_indent
-        ):  # 关闭列表
-            for k in self.parents:
-                if k > self.level_at_new_list + ilevel:
-                    self.parents[k] = None
+        elif self.cur_num_id == numid:
+            # 如果这是同一编号列表的元素，则添加元素并更新计数器。
+            n = len(self.blocks)
+            list_block = None
+            for i in range(n - 1, -1, -1):
+                if self.blocks[i]["type"] == BlockType.LIST:
+                    list_block = self.blocks[i]
+                    break
+            if list_block is None:
+                raise Exception("List block not found")
+            for text, format, hyperlink in elements:
+                # 如果这是枚举元素，则设置标记和枚举参数。
+                if is_numbered:
+                    counter = self._get_list_counter(numid)
+                    enum_marker = str(counter) + ". "
+                else:
+                    enum_marker = ""
+                list_item = {
+                    "bbox": [0, 0, 0, 0],
+                    "spans": [
+                        {
+                            "bbox": [0, 0, 0, 0],
+                            "score": 1.0,
+                            "content": enum_marker + text,
+                            "type": ContentType.TEXT
+                        }
+                    ],
+                    "is_list_start_line": True,
+                    "is_list_end_line": True
+                }
+                elem_ref.append(id(list_item))
+                list_block["lines"].append(list_item)
 
-            # TODO: 如果这是枚举元素，则设置标记和枚举参数。
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
-            self._add_formatted_list_item(
-                doc,
-                elements,
-                enum_marker,
-                is_numbered,
-                self.level_at_new_list + ilevel,
-            )
-
-        elif self._prev_numid() == numid or prev_indent == ilevel:
-            # 如果这是枚举元素，则设置标记和枚举参数。
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
-            self._add_formatted_list_item(
-                doc, elements, enum_marker, is_numbered, level - 1
-            )
         return elem_ref
-
-    def _get_level(self) -> int:
-        """
-        获取当前可用的层级索引。
-
-        返回父级节点字典中第一个值为 None 的键，表示当前可用的层级。
-
-        Returns:
-            int: 当前可用的层级索引
-        """
-        for k, v in self.parents.items():
-            if k >= 0 and v is None:
-                return k
-        return 0
-
-    def _prev_indent(self) -> Optional[int]:
-        """
-        获取上一个处理元素的缩进级别。
-
-        Returns:
-            Optional[int]: 上一个缩进级别
-        """
-        return self.history["indents"][-1]
-
-    def _prev_numid(self) -> Optional[int]:
-        """
-        获取上一个处理元素的列表编号ID。
-
-        Returns:
-            Optional[int]: 上一个列表编号ID
-        """
-        return self.history["numids"][-1]
 
     def _reset_list_counters_for_new_sequence(self, numid: int):
         """
@@ -861,7 +962,7 @@ class DocxConverter:
             return [input_string]
 
     def _str_to_int(
-        self, s: Optional[str], default: Optional[int] = 0
+            self, s: Optional[str], default: Optional[int] = 0
     ) -> Optional[int]:
         """
         将字符串转换为整数。
