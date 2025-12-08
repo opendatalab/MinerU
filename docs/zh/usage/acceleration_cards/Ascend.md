@@ -72,8 +72,8 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/dcmi:/usr/local/dcmi \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
+    -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
     -e MINERU_MODEL_SOURCE=local \
-    -e MINERU_VIRTUAL_VRAM_SIZE=16 \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:npu-vllm-latest \
     /bin/bash
@@ -183,12 +183,7 @@ docker run -u root --name mineru_docker --privileged=true \
 注：  
 🟢: 支持，运行较稳定，精度与Nvidia GPU基本一致  
 🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
-🔴: 不支持，无法运行，或精度存在较大差异  
-
->[!NOTE]
-> - 在使用vllm镜像启动mineru-api服务时，如先使用了pipeline后端解析，再切换到vlm-vllm-async-engine后端，会出现vllm引擎初始化失败的问题。  
-> - 如需在一个mineru-api服务中同时使用pipeline和vlm-vllm-async-engine两种后端，请先使用vlm-vllm-async-engine后端解析一次，之后即可自由切换。  
-> - 如在服务中切换推理后端类型时遇到报错或异常，请重新启动服务即可。
+🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
 >NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)
