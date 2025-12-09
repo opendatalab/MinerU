@@ -19,7 +19,7 @@ def guess_suffix_by_bytes(file_bytes, file_path=None) -> str:
     # 但是所有 pdf 文件的文件头，都是以 b'%PDF-' 开头，虽然有可能识别错误，但是概率很低
     if file_bytes.startswith(b'%PDF-'):
         return "pdf"
-    suffix = magika.identify_bytes(file_bytes).prediction.output.label
+    suffix = magika.identify_bytes(file_bytes).prediction.dl.label
     if file_path and suffix in ["ai"] and Path(file_path).suffix.lower() in [".pdf"]:
         suffix = "pdf"
     return suffix
