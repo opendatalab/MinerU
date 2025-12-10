@@ -19,7 +19,6 @@ from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.version import __version__
 
@@ -158,14 +157,9 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
         pdf_file_paths = []
 
         for file in files:
-            # 读取文件头，图片、PDF类文件，一般文件类型信息在文件头64字节内
-            content = await file.read(64)
-            # 文件指针还原到文件头
-            file.file.seek(0)
-            file_suffix = guess_suffix_by_bytes(content)
-
             try:
                 file_path = Path(file.filename)
+                file_suffix = file_path.suffix.strip(".").lower()
                 if file_suffix in pdf_suffixes:
                     # 创建临时文件，使用shutil.copyfileobj复制文件内容，避免一次性读取大文件导致内存占用过高
                     temp_path = Path(unique_dir) / file_path.name
