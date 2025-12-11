@@ -45,7 +45,7 @@ class MagicModel:
                 continue
 
             span_type = "unknown"
-            line_type = None
+            code_block_sub_type = None
             guess_lang = None
 
             if block_type in [
@@ -74,13 +74,16 @@ class MagicModel:
                 span_type = ContentType.TABLE
             elif block_type in ["code", "algorithm"]:
                 block_content = code_content_clean(block_content)
-                line_type = block_type
+                code_block_sub_type = block_type
                 block_type = BlockType.CODE_BODY
                 span_type = ContentType.TEXT
                 guess_lang = guess_language_by_text(block_content)
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION
+
+            #  code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为algorithm
+            switch_code_to_algorithm = False
 
             if span_type in ["image", "table"]:
                 span = {
@@ -101,6 +104,8 @@ class MagicModel:
                     block_content = clean_content(block_content)
 
                 if block_content and block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
+
+                    switch_code_to_algorithm = True
 
                     # 生成包含文本和公式的span列表
                     spans = []
@@ -160,7 +165,9 @@ class MagicModel:
 
             # 构造line对象
             if block_type in [BlockType.CODE_BODY]:
-                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": line_type, "guess_lang": guess_lang}}
+                if switch_code_to_algorithm and code_block_sub_type == "code":
+                    code_block_sub_type = "algorithm"
+                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": code_block_sub_type, "guess_lang": guess_lang}}
             else:
                 line = {"bbox": block_bbox, "spans": spans}
 
