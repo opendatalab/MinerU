@@ -144,6 +144,13 @@ def _process_output(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
+        if not is_pipeline:
+            content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
+            md_writer.write_string(
+                f"{pdf_file_name}_content_list_v2.json",
+                json.dumps(content_list_v2, ensure_ascii=False, indent=4),
+            )
+
 
     if f_dump_middle_json:
         md_writer.write_string(

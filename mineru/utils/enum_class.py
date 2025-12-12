@@ -38,6 +38,31 @@ class ContentType:
     CODE = 'code'
 
 
+class ContentTypeV2:
+    CODE = 'code'
+    ALGORITHM = "algorithm"
+    EQUATION_INTERLINE = 'equation_interline'
+    IMAGE = 'image'
+    TABLE = 'table'
+    TABLE_SIMPLE = 'simple_table'
+    TABLE_COMPLEX = 'complex_table'
+    LIST = 'list'
+    LIST_TEXT = 'text_list'
+    LIST_REF = 'reference_list'
+    TITLE = 'title'
+    PARAGRAPH = 'paragraph'
+    SPAN_TEXT = 'text'
+    SPAN_EQUATION_INLINE = 'equation_inline'
+    SPAN_PHONETIC = 'phonetic'
+    SPAN_MD = 'md'
+    SPAN_CODE_INLINE = 'code_inline'
+    PAGE_HEADER = "page_header"
+    PAGE_FOOTER = "page_footer"
+    PAGE_NUMBER = "page_number"
+    PAGE_ASIDE_TEXT = "page_aside_text"
+    PAGE_FOOTNOTE = "page_footnote"
+
+
 class CategoryId:
     Title = 0
     Text = 1
@@ -60,6 +85,7 @@ class MakeMode:
     MM_MD = 'mm_markdown'
     NLP_MD = 'nlp_markdown'
     CONTENT_LIST = 'content_list'
+    CONTENT_LIST_V2 = 'content_list_v2'
 
 
 class ModelPath:

@@ -1,7 +1,8 @@
 import os
 
+from loguru import logger
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
-from mineru.utils.enum_class import MakeMode, BlockType, ContentType
+from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -234,6 +235,277 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
 
     return para_content
 
+
+def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
+    para_type = para_block['type']
+    para_content = {}
+    if para_type in [
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.ASIDE_TEXT,
+        BlockType.PAGE_NUMBER,
+        BlockType.PAGE_FOOTNOTE,
+    ]:
+        if para_type == BlockType.HEADER:
+            content_type = ContentTypeV2.PAGE_HEADER
+        elif para_type == BlockType.FOOTER:
+            content_type = ContentTypeV2.PAGE_FOOTER
+        elif para_type == BlockType.ASIDE_TEXT:
+            content_type = ContentTypeV2.PAGE_ASIDE_TEXT
+        elif para_type == BlockType.PAGE_NUMBER:
+            content_type = ContentTypeV2.PAGE_NUMBER
+        elif para_type == BlockType.PAGE_FOOTNOTE:
+            content_type = ContentTypeV2.PAGE_FOOTNOTE
+        else:
+            raise ValueError(f"Unknown para_type: {para_type}")
+        para_content = {
+            'type': content_type,
+            'content': {
+                f"{content_type}_content": merge_para_with_text_v2(para_block),
+            }
+        }
+    elif para_type == BlockType.TITLE:
+        title_level = get_title_level(para_block)
+        if title_level != 0:
+            para_content = {
+                'type': ContentTypeV2.TITLE,
+                'content': {
+                    "title_content": merge_para_with_text_v2(para_block),
+                    "level": title_level
+                }
+            }
+        else:
+            para_content = {
+                'type': ContentTypeV2.PARAGRAPH,
+                'content': {
+                    "paragraph_content": merge_para_with_text_v2(para_block),
+                }
+            }
+    elif para_type in [
+        BlockType.TEXT,
+        BlockType.PHONETIC
+    ]:
+        para_content = {
+            'type': ContentTypeV2.PARAGRAPH,
+            'content': {
+                'paragraph_content': merge_para_with_text_v2(para_block),
+            }
+        }
+    elif para_type == BlockType.INTERLINE_EQUATION:
+        image_path, math_content = get_body_data(para_block)
+        para_content = {
+            'type': ContentTypeV2.EQUATION_INTERLINE,
+            'content': {
+                'math_content': math_content,
+                'math_type': 'latex',
+                'image_source': {'path': f"{img_buket_path}/{image_path}"},
+            }
+        }
+    elif para_type == BlockType.IMAGE:
+        image_caption = []
+        image_footnote = []
+        image_path, _ = get_body_data(para_block)
+        image_source = {
+            'path': f"{img_buket_path}/{image_path}",
+        }
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.IMAGE_CAPTION:
+                image_caption.extend(merge_para_with_text_v2(block))
+            if block['type'] == BlockType.IMAGE_FOOTNOTE:
+                image_footnote.extend(merge_para_with_text_v2(block))
+        para_content = {
+            'type': ContentTypeV2.IMAGE,
+            'content': {
+                'image_source': image_source,
+                'image_caption': image_caption,
+                'image_footnote': image_footnote,
+            }
+        }
+    elif para_type == BlockType.TABLE:
+        table_caption = []
+        table_footnote = []
+        image_path, html = get_body_data(para_block)
+        image_source = {
+            'path': f"{img_buket_path}/{image_path}",
+        }
+        if html.count("<table") > 1:
+            table_nest_level = 2
+        else:
+            table_nest_level = 1
+        if (
+                "colspan" in html or
+                "rowspan" in html or
+                table_nest_level > 1
+        ):
+            table_type = ContentTypeV2.TABLE_COMPLEX
+        else:
+            table_type = ContentTypeV2.TABLE_SIMPLE
+
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.TABLE_CAPTION:
+                table_caption.extend(merge_para_with_text_v2(block))
+            if block['type'] == BlockType.TABLE_FOOTNOTE:
+                table_footnote.extend(merge_para_with_text_v2(block))
+        para_content = {
+            'type': ContentTypeV2.TABLE,
+            'content': {
+                'image_source': image_source,
+                'table_caption': table_caption,
+                'table_footnote': table_footnote,
+                'html': html,
+                'table_type': table_type,
+                'table_nest_level': table_nest_level,
+            }
+        }
+    elif para_type == BlockType.CODE:
+        code_caption = []
+        code_content = []
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CODE_CAPTION:
+                code_caption.extend(merge_para_with_text_v2(block))
+            if block['type'] == BlockType.CODE_BODY:
+                code_content = merge_para_with_text_v2(block)
+        sub_type = para_block["sub_type"]
+        if sub_type == BlockType.CODE:
+            para_content = {
+                'type': ContentTypeV2.CODE,
+                'content': {
+                    'code_caption': code_caption,
+                    'code_content': code_content,
+                    'code_language': para_block.get('guess_lang', 'txt'),
+                }
+            }
+        elif sub_type == BlockType.ALGORITHM:
+            para_content = {
+                'type': ContentTypeV2.ALGORITHM,
+                'content': {
+                    'algorithm_caption': code_caption,
+                    'algorithm_content': code_content,
+                }
+            }
+        else:
+            raise ValueError(f"Unknown code sub_type: {sub_type}")
+    elif para_type == BlockType.REF_TEXT:
+        para_content = {
+            'type': ContentTypeV2.LIST,
+            'content': {
+                'list_type': ContentTypeV2.LIST_REF,
+                'list_items': [
+                    {
+                        'item_type': 'text',
+                        'item_content': merge_para_with_text_v2(para_block),
+                    }
+                ],
+            }
+        }
+    elif para_type == BlockType.LIST:
+        if 'sub_type' in para_block:
+            if para_block['sub_type'] == BlockType.REF_TEXT:
+                list_type = ContentTypeV2.LIST_REF
+            elif para_block['sub_type'] == BlockType.TEXT:
+                list_type = ContentTypeV2.LIST_TEXT
+            else:
+                raise ValueError(f"Unknown list sub_type: {para_block['sub_type']}")
+        else:
+            list_type = ContentTypeV2.LIST_TEXT
+        list_items = []
+        for block in para_block['blocks']:
+            item_content = merge_para_with_text_v2(block)
+            if item_content:
+                list_items.append({
+                    'item_type': 'text',
+                    'item_content': item_content,
+                })
+        para_content = {
+            'type': ContentTypeV2.LIST,
+            'content': {
+                'list_type': list_type,
+                'list_items': list_items,
+            }
+        }
+
+    page_width, page_height = page_size
+    para_bbox = para_block.get('bbox')
+    if para_bbox:
+        x0, y0, x1, y1 = para_bbox
+        para_content['bbox'] = [
+            int(x0 * 1000 / page_width),
+            int(y0 * 1000 / page_height),
+            int(x1 * 1000 / page_width),
+            int(y1 * 1000 / page_height),
+        ]
+
+    return para_content
+
+
+
+
+
+def get_body_data(para_block):
+    """
+    Extract image_path and html from para_block
+    Returns:
+        - For IMAGE/INTERLINE_EQUATION: (image_path, '')
+        - For TABLE: (image_path, html)
+        - Default: ('', '')
+    """
+
+    def get_data_from_spans(lines):
+        for line in lines:
+            for span in line.get('spans', []):
+                span_type = span.get('type')
+                if span_type == ContentType.TABLE:
+                    return span.get('image_path', ''), span.get('html', '')
+                elif span_type == ContentType.IMAGE:
+                    return span.get('image_path', ''), ''
+                elif span_type == ContentType.INTERLINE_EQUATION:
+                    return span.get('image_path', ''), span.get('content', '')
+                elif span_type == ContentType.TEXT:
+                    return '', span.get('content', '')
+        return '', ''
+
+    # 处理嵌套的 blocks 结构
+    if 'blocks' in para_block:
+        for block in para_block['blocks']:
+            block_type = block.get('type')
+            if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CODE_BODY]:
+                result = get_data_from_spans(block.get('lines', []))
+                if result != ('', ''):
+                    return result
+        return '', ''
+
+    # 处理直接包含 lines 的结构
+    return get_data_from_spans(para_block.get('lines', []))
+
+
+def merge_para_with_text_v2(para_block):
+    para_content = []
+    para_type = para_block['type']
+    for line in para_block['lines']:
+        for span in line['spans']:
+            span_type = span['type']
+            if span['content']:
+                if para_type == BlockType.PHONETIC and span_type == ContentTypeV2.SPAN_TEXT:
+                    span_type = ContentTypeV2.SPAN_PHONETIC
+                if span_type == ContentType.INLINE_EQUATION:
+                    span_type = ContentTypeV2.SPAN_EQUATION_INLINE
+                if span_type in [
+                    ContentTypeV2.SPAN_TEXT,
+                    ContentTypeV2.SPAN_PHONETIC,
+                    ContentTypeV2.SPAN_EQUATION_INLINE,
+                    ContentTypeV2.SPAN_MD,
+                    ContentTypeV2.SPAN_CODE_INLINE,
+                ]:
+                    span_content = {
+                        'type': span_type,
+                        'content': span['content'],
+                    }
+                    para_content.append(span_content)
+                else:
+                    logger.warning(f"Unknown span type in merge_para_with_text_v2: {span_type}")
+    return para_content
+
+
 def union_make(pdf_info_dict: list,
                make_mode: str,
                img_buket_path: str = '',
@@ -260,10 +532,20 @@ def union_make(pdf_info_dict: list,
             for para_block in para_blocks:
                 para_content = make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                 output_content.append(para_content)
+        elif make_mode == MakeMode.CONTENT_LIST_V2:
+            # https://github.com/drunkpig/llm-webkit-mirror/blob/dev6/docs/specification/output_format/content_list_spec.md
+            page_contents = []
+            para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
+            if not para_blocks:
+                continue
+            for para_block in para_blocks:
+                para_content = make_blocks_to_content_list_v2(para_block, img_buket_path, page_size)
+                page_contents.append(para_content)
+            output_content.append(page_contents)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
-    elif make_mode == MakeMode.CONTENT_LIST:
+    elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     return None
 
