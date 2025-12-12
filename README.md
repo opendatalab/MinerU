@@ -45,6 +45,9 @@
 
 # Changelog
 
+- 2025/12/12 2.6.7 Release
+  - Bug fix: #4168
+
 - 2025/12/02 2.6.6 Release
   - `mineru-api` tool optimizations
     - Added descriptive text to `mineru-api` interface parameters to improve API documentation readability.
