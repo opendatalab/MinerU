@@ -7,7 +7,7 @@ from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
-continuation_markers = ["(续)", "(续表)", "(continued)", "(cont.)"]
+CONTINUATION_MARKERS = ["(续)", "(续表)", "(continued)", "(cont.)"]
 
 
 def full_to_half(text: str) -> str:
@@ -180,8 +180,8 @@ def can_merge_tables(current_table_block, previous_table_block):
         # 如果所有caption都不以"(续)"、"(续表)"、"(continued)"或"(cont.)"结尾,则不合并
 
         if not any(
-                any(full_to_half(merge_para_with_text(block).strip()).lower().endswith(marker)
-                    for marker in continuation_markers)
+                any(full_to_half(merge_para_with_text(block).strip()).lower().endswith(marker.lower())
+                    for marker in CONTINUATION_MARKERS)
                 for block in caption_blocks
         ):
             return False, None, None, None, None
