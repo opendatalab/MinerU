@@ -241,6 +241,7 @@ def assert_content(content_path, parse_method="txt"):
     content_list = []
     with open(content_path, "r", encoding="utf-8") as file:
         content_list = json.load(file)
+        logger.info(content_list)
     type_set = set()
     for content_dict in content_list:
         match content_dict["type"]:
