@@ -261,7 +261,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
         para_content = {
             'type': content_type,
             'content': {
-                f"{content_type}_content":merge_para_with_text_v2(para_block),
+                f"{content_type}_content": merge_para_with_text_v2(para_block),
             }
         }
     elif para_type == BlockType.TITLE:
@@ -306,7 +306,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
         image_footnote = []
         image_path, _ = get_body_data(para_block)
         image_source = {
-            'path':f"{img_buket_path}/{image_path}",
+            'path': f"{img_buket_path}/{image_path}",
         }
         for block in para_block['blocks']:
             if block['type'] == BlockType.IMAGE_CAPTION:
