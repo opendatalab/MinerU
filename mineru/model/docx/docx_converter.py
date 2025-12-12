@@ -145,8 +145,16 @@ class DocxConverter:
                 ".//w:drawing", namespaces=DocxConverter._BLIP_NAMESPACES
             )
 
+            if tag_name == "tbl":
+                try:
+                    # 处理表格元素
+                    t = self._handle_tables(element)
+                    added_elements.extend(t)
+                except Exception:
+                    # 如果表格解析失败，记录调试信息
+                    _log.debug("could not parse a table, broken docx table")
             # 检查图片元素
-            if drawing_blip:
+            elif drawing_blip:
                 # 处理图片元素
                 pics = self._handle_pictures(drawing_blip)
                 added_elements.extend(pics)
