@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from loguru import logger
 from magika import Magika
 
 
@@ -29,6 +30,6 @@ def guess_suffix_by_path(file_path) -> str:
             with open(file_path, 'rb') as f:
                 if f.read(4) == PDF_SIG_BYTES:
                     suffix = "pdf"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to read file {file_path} for PDF signature check: {e}")
     return suffix
