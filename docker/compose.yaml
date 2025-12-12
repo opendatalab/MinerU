@@ -10,29 +10,11 @@ services:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-openai-server
     command:
-      # ==================== Engine Selection ====================
-      # WARNING: Only ONE engine can be enabled at a time!
-      # Choose 'vllm' OR 'lmdeploy' (uncomment one line below)
       --engine vllm
-      # --engine lmdeploy
-      
-      # ==================== vLLM Engine Parameters ====================
-      # Uncomment if using --engine vllm
       --host 0.0.0.0
       --port 30000
-      # Multi-GPU configuration (increase throughput)
-      # --data-parallel-size 2
-      # Single GPU memory optimization (reduce if VRAM insufficient)
-      # --gpu-memory-utilization 0.5  # Try 0.4 or lower if issues persist
-
-      # ==================== LMDeploy Engine Parameters ====================
-      # Uncomment if using --engine lmdeploy
-      # --server-name 0.0.0.0
-      # --server-port 30000
-      # Multi-GPU configuration (increase throughput)
-      # --dp 2
-      # Single GPU memory optimization (reduce if VRAM insufficient)
-      # --cache-max-entry-count 0.5  # Try 0.4 or lower if issues persist
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
@@ -58,21 +40,11 @@ services:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-api
     command:
-      # ==================== Server Configuration ====================
       --host 0.0.0.0
       --port 8000
-
-      # ==================== vLLM Engine Parameters ====================
-      # Multi-GPU configuration
-      # --data-parallel-size 2
-      # Single GPU memory optimization
-      # --gpu-memory-utilization 0.5  # Try 0.4 or lower if VRAM insufficient
-
-      # ==================== LMDeploy Engine Parameters ====================
-      # Multi-GPU configuration
-      # --dp 2
-      # Single GPU memory optimization
-      # --cache-max-entry-count 0.5  # Try 0.4 or lower if VRAM insufficient
+      # parameters for vllm-engine
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
@@ -96,30 +68,14 @@ services:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-gradio
     command:
-      # ==================== Gradio Server Configuration ====================
       --server-name 0.0.0.0
       --server-port 7860
-      
-      # ==================== Gradio Feature Settings ====================
-      # --enable-api false  # Disable API endpoint
-      # --max-convert-pages 20  # Limit conversion page count
-      
-      # ==================== Engine Selection ====================
-      # WARNING: Only ONE engine can be enabled at a time!
-      
-      # Option 1: vLLM Engine (recommended for most users)
-      --enable-vllm-engine true
-      # Multi-GPU configuration
-      # --data-parallel-size 2
-      # Single GPU memory optimization
-      # --gpu-memory-utilization 0.5  # Try 0.4 or lower if VRAM insufficient
-
-      # Option 2: LMDeploy Engine
-      # --enable-lmdeploy-engine true
-      # Multi-GPU configuration
-      # --dp 2
-      # Single GPU memory optimization
-      # --cache-max-entry-count 0.5  # Try 0.4 or lower if VRAM insufficient
+      --enable-vllm-engine true  # Enable the vllm engine for Gradio
+      # --enable-api false  # If you want to disable the API, set this to false
+      # --max-convert-pages 20  # If you want to limit the number of pages for conversion, set this to a specific number
+      # parameters for vllm-engine
+      # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
+      # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864
