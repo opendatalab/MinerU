@@ -99,6 +99,16 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
     return None
 
 
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Kubernetes liveness probes.
+    This endpoint is lightweight and doesn't rely on any business logic,
+    ensuring quick responses even when documents are being processed.
+    """
+    return {"status": "ok", "version": __version__}
+
+
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
         files: List[UploadFile] = File(..., description="Upload pdf or image files for parsing"),

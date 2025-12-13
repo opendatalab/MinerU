@@ -9,7 +9,7 @@ from PIL import Image
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
-from mineru.utils.os_env_config import get_load_images_timeout
+from mineru.utils.os_env_config import get_load_images_timeout, get_load_images_process_num
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
@@ -53,7 +53,7 @@ def load_images_from_pdf(
         end_page_id=None,
         image_type=ImageType.PIL,
         timeout=None,
-        threads=4,
+        threads=None,
 ):
     """带超时控制的 PDF 转图片函数,支持多进程加速
 
@@ -64,7 +64,7 @@ def load_images_from_pdf(
         end_page_id (int | None, optional): 结束页码. Defaults to None.
         image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
         timeout (int | None, optional): 超时时间(秒)。如果为 None，则从环境变量 MINERU_PDF_LOAD_IMAGES_TIMEOUT 读取，若未设置则默认为 300 秒。
-        threads (int): 进程数,默认 4
+        threads (int | None, optional): 进程数。如果为 None，则从环境变量 MINERU_PDF_LOAD_PROCESS_NUM 读取，若未设置则默认为 1。
 
     Raises:
         TimeoutError: 当转换超时时抛出
@@ -82,6 +82,9 @@ def load_images_from_pdf(
     else:
         if timeout is None:
             timeout = get_load_images_timeout()
+        if threads is None:
+            threads = get_load_images_process_num()
+
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
 
         # 计算总页数
@@ -105,7 +108,21 @@ def load_images_from_pdf(
             page_ranges.append((range_start, range_end))
 
         # logger.debug(f"PDF to images using {actual_threads} processes, page ranges: {page_ranges}")
+        # if thread count is 1, run in current process to avoid extra memory usage from forking
+        if actual_threads == 1:
+            try:
+                images_list = []
+                for range_start, range_end in page_ranges:
+                    images = _load_images_from_pdf_worker(
+                        pdf_bytes, dpi, range_start, range_end, image_type
+                    )
+                    images_list.extend(images)
+                return images_list, pdf_doc
+            except Exception as e:
+                pdf_doc.close()
+                raise e
 
+        # if thread count > 1, use process pool to execute load image from pdf
         with ProcessPoolExecutor(max_workers=actual_threads) as executor:
             # 提交所有任务
             futures = []
