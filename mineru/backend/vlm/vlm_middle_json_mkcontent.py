@@ -484,7 +484,7 @@ def merge_para_with_text_v2(para_block):
     for line in para_block['lines']:
         for span in line['spans']:
             span_type = span['type']
-            if span['content']:
+            if span.get("content", '').strip():
                 if para_type == BlockType.PHONETIC and span_type == ContentTypeV2.SPAN_TEXT:
                     span_type = ContentTypeV2.SPAN_PHONETIC
                 if span_type == ContentType.INLINE_EQUATION:
@@ -534,13 +534,12 @@ def union_make(pdf_info_dict: list,
                 output_content.append(para_content)
         elif make_mode == MakeMode.CONTENT_LIST_V2:
             # https://github.com/drunkpig/llm-webkit-mirror/blob/dev6/docs/specification/output_format/content_list_spec.md
-            page_contents = []
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
-            if not para_blocks:
-                continue
-            for para_block in para_blocks:
-                para_content = make_blocks_to_content_list_v2(para_block, img_buket_path, page_size)
-                page_contents.append(para_content)
+            page_contents = []
+            if para_blocks:
+                for para_block in para_blocks:
+                    para_content = make_blocks_to_content_list_v2(para_block, img_buket_path, page_size)
+                    page_contents.append(para_content)
             output_content.append(page_contents)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
