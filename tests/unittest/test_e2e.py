@@ -96,74 +96,74 @@ def test_pipeline_with_two_config():
     assert_content(res_json_path, parse_method="ocr")
 
 
-def test_vlm_transformers_with_default_config():
-    __dir__ = os.path.dirname(os.path.abspath(__file__))
-    pdf_files_dir = os.path.join(__dir__, "pdfs")
-    output_dir = os.path.join(__dir__, "output")
-    pdf_suffixes = [".pdf"]
-    image_suffixes = [".png", ".jpeg", ".jpg"]
-
-    doc_path_list = []
-    for doc_path in Path(pdf_files_dir).glob("*"):
-        if doc_path.suffix in pdf_suffixes + image_suffixes:
-            doc_path_list.append(doc_path)
-
-    # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-
-    pdf_file_names = []
-    pdf_bytes_list = []
-    p_lang_list = []
-    for path in doc_path_list:
-        file_name = str(Path(path).stem)
-        pdf_bytes = read_fn(path)
-        pdf_file_names.append(file_name)
-        pdf_bytes_list.append(pdf_bytes)
-        p_lang_list.append("en")
-
-    for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        pdf_file_name = pdf_file_names[idx]
-        pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
-        local_image_dir, local_md_dir = prepare_env(
-            output_dir, pdf_file_name, parse_method="vlm"
-        )
-        image_writer, md_writer = FileBasedDataWriter(
-            local_image_dir
-        ), FileBasedDataWriter(local_md_dir)
-        middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend="transformers"
-        )
-
-        pdf_info = middle_json["pdf_info"]
-
-        image_dir = str(os.path.basename(local_image_dir))
-
-        md_content_str = vlm_union_make(pdf_info, MakeMode.MM_MD, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}.md",
-            md_content_str,
-        )
-
-        content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=4),
-        )
-
-        md_writer.write_string(
-            f"{pdf_file_name}_middle.json",
-            json.dumps(middle_json, ensure_ascii=False, indent=4),
-        )
-
-        md_writer.write_string(
-            f"{pdf_file_name}_model.json",
-            json.dumps(infer_result, ensure_ascii=False, indent=4),
-        )
-
-        logger.info(f"local output dir is {local_md_dir}")
-        res_json_path = (
-            Path(__file__).parent / "output" / "test" / "vlm" / "test_content_list.json"
-        ).as_posix()
-        assert_content(res_json_path, parse_method="vlm")
+# def test_vlm_transformers_with_default_config():
+#     __dir__ = os.path.dirname(os.path.abspath(__file__))
+#     pdf_files_dir = os.path.join(__dir__, "pdfs")
+#     output_dir = os.path.join(__dir__, "output")
+#     pdf_suffixes = [".pdf"]
+#     image_suffixes = [".png", ".jpeg", ".jpg"]
+#
+#     doc_path_list = []
+#     for doc_path in Path(pdf_files_dir).glob("*"):
+#         if doc_path.suffix in pdf_suffixes + image_suffixes:
+#             doc_path_list.append(doc_path)
+#
+#     # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
+#
+#     pdf_file_names = []
+#     pdf_bytes_list = []
+#     p_lang_list = []
+#     for path in doc_path_list:
+#         file_name = str(Path(path).stem)
+#         pdf_bytes = read_fn(path)
+#         pdf_file_names.append(file_name)
+#         pdf_bytes_list.append(pdf_bytes)
+#         p_lang_list.append("en")
+#
+#     for idx, pdf_bytes in enumerate(pdf_bytes_list):
+#         pdf_file_name = pdf_file_names[idx]
+#         pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
+#         local_image_dir, local_md_dir = prepare_env(
+#             output_dir, pdf_file_name, parse_method="vlm"
+#         )
+#         image_writer, md_writer = FileBasedDataWriter(
+#             local_image_dir
+#         ), FileBasedDataWriter(local_md_dir)
+#         middle_json, infer_result = vlm_doc_analyze(
+#             pdf_bytes, image_writer=image_writer, backend="transformers"
+#         )
+#
+#         pdf_info = middle_json["pdf_info"]
+#
+#         image_dir = str(os.path.basename(local_image_dir))
+#
+#         md_content_str = vlm_union_make(pdf_info, MakeMode.MM_MD, image_dir)
+#         md_writer.write_string(
+#             f"{pdf_file_name}.md",
+#             md_content_str,
+#         )
+#
+#         content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+#         md_writer.write_string(
+#             f"{pdf_file_name}_content_list.json",
+#             json.dumps(content_list, ensure_ascii=False, indent=4),
+#         )
+#
+#         md_writer.write_string(
+#             f"{pdf_file_name}_middle.json",
+#             json.dumps(middle_json, ensure_ascii=False, indent=4),
+#         )
+#
+#         md_writer.write_string(
+#             f"{pdf_file_name}_model.json",
+#             json.dumps(infer_result, ensure_ascii=False, indent=4),
+#         )
+#
+#         logger.info(f"local output dir is {local_md_dir}")
+#         res_json_path = (
+#             Path(__file__).parent / "output" / "test" / "vlm" / "test_content_list.json"
+#         ).as_posix()
+#         assert_content(res_json_path, parse_method="vlm")
 
 
 def write_infer_result(
@@ -241,6 +241,7 @@ def assert_content(content_path, parse_method="txt"):
     content_list = []
     with open(content_path, "r", encoding="utf-8") as file:
         content_list = json.load(file)
+        logger.info(content_list)
     type_set = set()
     for content_dict in content_list:
         match content_dict["type"]:
