@@ -14,6 +14,7 @@ from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
 # from ...model.table.rec.RapidTable import RapidTableModel
 from ...model.table.rec.slanet_plus.main import RapidTableModel
 from ...model.table.rec.unet_table.main import UnetTableModel
+from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
@@ -268,3 +269,45 @@ class MineruPipelineModel:
             )
 
         logger.info('DocAnalysis init done!')
+
+
+class MineruFormulaModel:
+    def __init__(self):
+        self.device = get_device()
+
+        if str(self.device).startswith('npu'):
+            try:
+                import torch_npu
+                if torch_npu.npu.is_available():
+                    torch_npu.npu.set_compile_mode(jit_compile=False)
+            except Exception as e:
+                raise RuntimeError(
+                    "NPU is selected as device, but torch_npu is not available. "
+                    "Please ensure that the torch_npu package is installed correctly."
+                ) from e
+
+        atom_model_manager = AtomModelSingleton()
+
+        # 初始化公式检测模型
+        self.mfd_model = atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.MFD,
+            mfd_weights=str(
+                os.path.join(auto_download_and_get_model_root_path(ModelPath.yolo_v8_mfd), ModelPath.yolo_v8_mfd)
+            ),
+            device=self.device,
+        )
+
+        # 初始化公式解析模型
+        if MFR_MODEL == "unimernet_small":
+            mfr_model_path = ModelPath.unimernet_small
+        elif MFR_MODEL == "pp_formulanet_plus_m":
+            mfr_model_path = ModelPath.pp_formulanet_plus_m
+        else:
+            logger.error('MFR model name not allow')
+            exit(1)
+
+        self.mfr_model = atom_model_manager.get_atom_model(
+            atom_model_name=AtomicModel.MFR,
+            mfr_weight_dir=str(os.path.join(auto_download_and_get_model_root_path(mfr_model_path), mfr_model_path)),
+            device=self.device,
+        )

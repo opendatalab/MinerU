@@ -32,6 +32,9 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
         if backend.startswith("vlm"):
             parse_method = "vlm"
 
+        if backend.startswith("hybrid"):
+            parse_method = "hybrid"
+
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
         await aio_do_parse(
             output_dir=output_dir,
@@ -274,7 +277,14 @@ def to_pdf(file_path):
 
 # 更新界面函数
 def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-lmdeploy-engine", "vlm-mlx-engine"]:
+    if backend_choice in [
+        "vlm-transformers",
+        "vlm-vllm-async-engine",
+        "vlm-lmdeploy-engine",
+        "vlm-mlx-engine",
+        "hybrid-vllm-async-engine",
+        "hybrid-lmdeploy-engine",
+    ]:
         return gr.update(visible=False), gr.update(visible=False)
     elif backend_choice in ["vlm-http-client"]:
         return gr.update(visible=True), gr.update(visible=False)
@@ -399,11 +409,11 @@ def main(ctx,
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
                     if vllm_engine_enable:
-                        drop_list = ["pipeline", "vlm-vllm-async-engine"]
-                        preferred_option = "vlm-vllm-async-engine"
+                        drop_list = ["pipeline", "vlm-vllm-async-engine", "hybrid-vllm-async-engine"]
+                        preferred_option = "hybrid-vllm-async-engine"
                     elif lmdeploy_engine_enable:
-                        drop_list = ["pipeline", "vlm-lmdeploy-engine"]
-                        preferred_option = "vlm-lmdeploy-engine"
+                        drop_list = ["pipeline", "vlm-lmdeploy-engine", "hybrid-lmdeploy-engine"]
+                        preferred_option = "hybrid-lmdeploy-engine"
                     else:
                         drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
                         if is_mac_os_version_supported():

@@ -3,6 +3,7 @@ import os
 import time
 
 import cv2
+import numpy as np
 from PIL import Image
 from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
 from lmdeploy.serve.vl_async_engine import VLAsyncEngine
@@ -11,9 +12,10 @@ from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from packaging import version
 
-from mineru.backend.hybrid.model_output_to_middle_json import result_to_middle_json
+from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_middle_json
 from mineru.backend.hybrid.utils import set_default_batch_size, set_default_gpu_memory_utilization, \
     enable_custom_logits_processors, set_lmdeploy_backend
+from mineru.backend.pipeline.model_init import MineruFormulaModel
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.check_sys_env import is_mac_os_version_supported
 from mineru.utils.config_reader import get_device
@@ -233,118 +235,118 @@ def ocr_det_batch_setting():
         enable_ocr_det_batch = True
     return enable_ocr_det_batch
 
-def ocr_det(enable_ocr_det_batch, lang):
-    # OCR det
-    if enable_ocr_det_batch:
-        # 批处理模式 - 按语言和分辨率分组
-        # 收集所有需要OCR检测的裁剪图像
-        all_cropped_images_info = []
-
-        for res in ocr_res_list_dict['ocr_res_list']:
-            new_image, useful_list = crop_img(
-                res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
-            )
-            adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
-            )
-
-            # BGR转换
-            bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-
-            all_cropped_images_info.append((
-                bgr_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang
-            ))
-
-        # 获取OCR模型
-        ocr_model = atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModel.OCR,
-            det_db_box_thresh=0.3,
-            lang=lang
-        )
-
-        # 按分辨率分组并同时完成padding
-        # RESOLUTION_GROUP_STRIDE = 32
-        RESOLUTION_GROUP_STRIDE = 64
-
-        resolution_groups = defaultdict(list)
-        for crop_info in lang_crop_list:
-            cropped_img = crop_info[0]
-            h, w = cropped_img.shape[:2]
-            # 直接计算目标尺寸并用作分组键
-            target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-            target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
-            group_key = (target_h, target_w)
-            resolution_groups[group_key].append(crop_info)
-
-        # 对每个分辨率组进行批处理
-        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det {lang}"):
-            # 对所有图像进行padding到统一尺寸
-            batch_images = []
-            for crop_info in group_crops:
-                img = crop_info[0]
-                h, w = img.shape[:2]
-                # 创建目标尺寸的白色背景
-                padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
-                padded_img[:h, :w] = img
-                batch_images.append(padded_img)
-
-            # 批处理检测
-            det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            batch_results = ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
-
-            # 处理批处理结果
-            for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
-                bgr_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang = crop_info
-
-                if dt_boxes is not None and len(dt_boxes) > 0:
-                    # 处理检测框
-                    dt_boxes_sorted = sorted_boxes(dt_boxes)
-                    dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
-
-                    # 根据公式位置更新检测框
-                    dt_boxes_final = (update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
-                                      if dt_boxes_merged and adjusted_mfdetrec_res
-                                      else dt_boxes_merged)
-
-                    if dt_boxes_final:
-                        ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
-                        ocr_result_list = get_ocr_result_list(
-                            ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], bgr_image, _lang
-                        )
-                        ocr_res_list_dict['layout_res'].extend(ocr_result_list)
-
-    else:
-        # 原始单张处理模式
-        for ocr_res_list_dict in tqdm(ocr_res_list_all_page, desc="OCR-det Predict"):
-            # Process each area that requires OCR processing
-            _lang = ocr_res_list_dict['lang']
-            # Get OCR results for this language's images
-            ocr_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.OCR,
-                ocr_show_log=False,
-                det_db_box_thresh=0.3,
-                lang=_lang
-            )
-            for res in ocr_res_list_dict['ocr_res_list']:
-                new_image, useful_list = crop_img(
-                    res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
-                )
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                    ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
-                )
-                # OCR-det
-                bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-                ocr_res = ocr_model.ocr(
-                    bgr_image, mfd_res=adjusted_mfdetrec_res, rec=False
-                )[0]
-
-                # Integration results
-                if ocr_res:
-                    ocr_result_list = get_ocr_result_list(
-                        ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], bgr_image, _lang
-                    )
-
-                    ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+# def ocr_det(enable_ocr_det_batch, lang):
+#     # OCR det
+#     if enable_ocr_det_batch:
+#         # 批处理模式 - 按语言和分辨率分组
+#         # 收集所有需要OCR检测的裁剪图像
+#         all_cropped_images_info = []
+#
+#         for res in ocr_res_list_dict['ocr_res_list']:
+#             new_image, useful_list = crop_img(
+#                 res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
+#             )
+#             adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+#                 ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+#             )
+#
+#             # BGR转换
+#             bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+#
+#             all_cropped_images_info.append((
+#                 bgr_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang
+#             ))
+#
+#         # 获取OCR模型
+#         ocr_model = atom_model_manager.get_atom_model(
+#             atom_model_name=AtomicModel.OCR,
+#             det_db_box_thresh=0.3,
+#             lang=lang
+#         )
+#
+#         # 按分辨率分组并同时完成padding
+#         # RESOLUTION_GROUP_STRIDE = 32
+#         RESOLUTION_GROUP_STRIDE = 64
+#
+#         resolution_groups = defaultdict(list)
+#         for crop_info in lang_crop_list:
+#             cropped_img = crop_info[0]
+#             h, w = cropped_img.shape[:2]
+#             # 直接计算目标尺寸并用作分组键
+#             target_h = ((h + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+#             target_w = ((w + RESOLUTION_GROUP_STRIDE - 1) // RESOLUTION_GROUP_STRIDE) * RESOLUTION_GROUP_STRIDE
+#             group_key = (target_h, target_w)
+#             resolution_groups[group_key].append(crop_info)
+#
+#         # 对每个分辨率组进行批处理
+#         for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det {lang}"):
+#             # 对所有图像进行padding到统一尺寸
+#             batch_images = []
+#             for crop_info in group_crops:
+#                 img = crop_info[0]
+#                 h, w = img.shape[:2]
+#                 # 创建目标尺寸的白色背景
+#                 padded_img = np.ones((target_h, target_w, 3), dtype=np.uint8) * 255
+#                 padded_img[:h, :w] = img
+#                 batch_images.append(padded_img)
+#
+#             # 批处理检测
+#             det_batch_size = min(len(batch_images), self.batch_ratio * OCR_DET_BASE_BATCH_SIZE)
+#             batch_results = ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
+#
+#             # 处理批处理结果
+#             for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
+#                 bgr_image, useful_list, ocr_res_list_dict, res, adjusted_mfdetrec_res, _lang = crop_info
+#
+#                 if dt_boxes is not None and len(dt_boxes) > 0:
+#                     # 处理检测框
+#                     dt_boxes_sorted = sorted_boxes(dt_boxes)
+#                     dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
+#
+#                     # 根据公式位置更新检测框
+#                     dt_boxes_final = (update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+#                                       if dt_boxes_merged and adjusted_mfdetrec_res
+#                                       else dt_boxes_merged)
+#
+#                     if dt_boxes_final:
+#                         ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
+#                         ocr_result_list = get_ocr_result_list(
+#                             ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], bgr_image, _lang
+#                         )
+#                         ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+#
+#     else:
+#         # 原始单张处理模式
+#         for ocr_res_list_dict in tqdm(ocr_res_list_all_page, desc="OCR-det Predict"):
+#             # Process each area that requires OCR processing
+#             _lang = ocr_res_list_dict['lang']
+#             # Get OCR results for this language's images
+#             ocr_model = atom_model_manager.get_atom_model(
+#                 atom_model_name=AtomicModel.OCR,
+#                 ocr_show_log=False,
+#                 det_db_box_thresh=0.3,
+#                 lang=_lang
+#             )
+#             for res in ocr_res_list_dict['ocr_res_list']:
+#                 new_image, useful_list = crop_img(
+#                     res, ocr_res_list_dict['np_img'], crop_paste_x=50, crop_paste_y=50
+#                 )
+#                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
+#                     ocr_res_list_dict['single_page_mfdetrec_res'], useful_list
+#                 )
+#                 # OCR-det
+#                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+#                 ocr_res = ocr_model.ocr(
+#                     bgr_image, mfd_res=adjusted_mfdetrec_res, rec=False
+#                 )[0]
+#
+#                 # Integration results
+#                 if ocr_res:
+#                     ocr_result_list = get_ocr_result_list(
+#                         ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], bgr_image, _lang
+#                     )
+#
+#                     ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
 async def doc_analyze_core(
     pdf_bytes,
@@ -371,8 +373,10 @@ async def doc_analyze_core(
     # infer_start = time.time()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
 
-    # infer_start = time.time()
+    _vlm_ocr_enable = False
+
     if _ocr_enable and language in ["ch", "chinese_cht", "ch_lite", "ch_server", "en"] and inline_formula_enable:
+        _vlm_ocr_enable = True
         if is_async:
             results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
         else:
@@ -386,8 +390,32 @@ async def doc_analyze_core(
         # 根据_ocr_enable决定ocr只开det还是det+rec
         # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
 
-    # infer_time = round(time.time() - infer_start, 2)
-    # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    if not _vlm_ocr_enable:
+        np_images = [np.asarray(pil_image) for pil_image in images_pil_list]
+        # 如果开启行内公式识别，则进行公式检测和识别
+        if inline_formula_enable:
+            formula_model = MineruFormulaModel()
+            # 公式检测
+            images_mfd_res = formula_model.mfd_model.batch_predict(
+                np_images, 1
+            )
+
+            # 公式识别
+            images_formula_list = formula_model.mfr_model.batch_predict(
+                images_mfd_res,
+                np_images,
+                batch_size=4 * 16,
+            )
+            mfr_count = 0
+            for image_index in range(len(np_images)):
+                mfr_count += len(images_formula_list[image_index])
+            logger.debug(f"formula count: {mfr_count}")
+
+        # vlm没有执行ocr，需要ocr_det
+        enable_ocr_det_batch = ocr_det_batch_setting()
+        # ocr_det(enable_ocr_det_batch, language)
+
+
     middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
     return middle_json, results
 
@@ -404,7 +432,8 @@ def doc_analyze(
     server_url: str | None = None,
     **kwargs,
 ):
-    return doc_analyze_core(
+    import asyncio
+    return asyncio.run(doc_analyze_core(
         pdf_bytes,
         image_writer,
         predictor,
@@ -416,7 +445,7 @@ def doc_analyze(
         server_url,
         is_async=False,
         **kwargs,
-    )
+    ))
 
 
 async def aio_doc_analyze(
@@ -432,7 +461,7 @@ async def aio_doc_analyze(
     **kwargs,
 ):
 
-    return doc_analyze_core(
+    return await doc_analyze_core(
         pdf_bytes,
         image_writer,
         predictor,
