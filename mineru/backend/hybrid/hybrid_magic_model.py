@@ -7,6 +7,7 @@ from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
+from mineru.utils.span_pre_proc import txt_spans_extract
 
 
 class MagicModel:
@@ -14,6 +15,9 @@ class MagicModel:
         page_blocks: list,
         page_inline_formula,
         page_ocr_res,
+        page,
+        scale,
+        page_pil_img,
         width,
         height,
         _ocr_enable,
@@ -29,10 +33,32 @@ class MagicModel:
         blocks = []
         self.all_spans = []
 
-        for inline_formula in page_inline_formula:
-            inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
-        for ocr_res in page_ocr_res:
-            ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
+        page_text_inline_formula_spans = []
+        if not _vlm_ocr_enable:
+            for inline_formula in page_inline_formula:
+                inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
+                inline_formula_latex = inline_formula.pop("latex", "")
+                if inline_formula_latex:
+                    page_text_inline_formula_spans.append({
+                        "bbox": inline_formula["bbox"],
+                        "type": ContentType.INLINE_EQUATION,
+                        "content": inline_formula_latex,
+                        "score": inline_formula["score"],
+                    })
+            for ocr_res in page_ocr_res:
+                ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
+                if ocr_res['category_id'] == 15:
+                    page_text_inline_formula_spans.append({
+                        "bbox": ocr_res["bbox"],
+                        "type": ContentType.TEXT,
+                        "content": ocr_res["text"],
+                        "score": ocr_res["score"],
+                    })
+            if _ocr_enable:
+                pass
+            else:
+                virtual_block = [0, 0, width, height, None, None, None, "text"]
+                page_text_inline_formula_spans = txt_spans_extract(page, page_text_inline_formula_spans, page_pil_img, scale, [virtual_block],[])
 
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
