@@ -240,7 +240,8 @@ async def doc_analyze_core(
     # 遍历results,对文本块截图交由OCR识别
     # 根据_ocr_enable决定ocr只开det还是det+rec
     # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
-
+    inline_formula_list = [[] for _ in range(len(images_pil_list))]
+    ocr_res_list = [[] for _ in range(len(images_pil_list))]
     if not _vlm_ocr_enable:
         # 将PIL图片转换为numpy数组
         np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
@@ -255,19 +256,17 @@ async def doc_analyze_core(
             # 公式检测
             images_mfd_res = hybrid_pipeline_model.mfd_model.batch_predict(np_images, 1)
             # 公式识别
-            images_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
+            inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
                 images_mfd_res,
                 np_images,
                 batch_size=MFR_BASE_BATCH_SIZE,
                 interline_enable=False,
             )
-        else:
-            images_formula_list = [[] for _ in range(len(np_images))]
 
         mfd_res = []
-        for page_images_formula_list in images_formula_list:
+        for page_inline_formula_list in inline_formula_list:
             page_mfd_res = []
-            for formula in page_images_formula_list:
+            for formula in page_inline_formula_list:
                 page_mfd_res.append({
                     "bbox": [int(formula['poly'][0]), int(formula['poly'][1]),
                              int(formula['poly'][4]), int(formula['poly'][5])],
@@ -280,7 +279,7 @@ async def doc_analyze_core(
             np_images,
             results,
             mfd_res,
-            _ocr_enable
+            _ocr_enable,
         )
 
         # 如果需要ocr则做ocr_rec
@@ -315,7 +314,16 @@ async def doc_analyze_core(
                                         '（204'] and ocr_score < 0.8 and layout_res_width < layout_res_height:
                             need_ocr_res['category_id'] = 16
 
-    middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
+    middle_json = result_to_middle_json(
+        results,
+        inline_formula_list,
+        ocr_res_list,
+        images_list,
+        pdf_doc,
+        image_writer,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
     return middle_json, results
 
 
