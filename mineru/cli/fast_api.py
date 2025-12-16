@@ -6,6 +6,7 @@ import asyncio
 import uvicorn
 import click
 import zipfile
+import shutil
 from pathlib import Path
 import glob
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
@@ -18,7 +19,7 @@ from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.version import __version__
 
 # 并发控制器
@@ -153,34 +154,38 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
 
         # 处理上传的PDF文件
         pdf_file_names = []
-        pdf_bytes_list = []
+        pdf_file_paths = []
 
         for file in files:
-            content = await file.read()
-            file_path = Path(file.filename)
+            try:
+                file_path = Path(file.filename)
+                file_suffix = file_path.suffix.strip(".").lower()
+                if file_suffix in pdf_suffixes:
+                    # 创建临时文件，使用shutil.copyfileobj复制文件内容，避免一次性读取大文件导致内存占用过高
+                    temp_path = Path(unique_dir) / file_path.name
+                    with open(temp_path, "wb") as f:
+                        shutil.copyfileobj(file.file, f)
+                        f.flush()
 
-            # 创建临时文件
-            temp_path = Path(unique_dir) / file_path.name
-            with open(temp_path, "wb") as f:
-                f.write(content)
-
-            # 如果是图像文件或PDF，使用read_fn处理
-            file_suffix = guess_suffix_by_path(temp_path)
-            if file_suffix in pdf_suffixes + image_suffixes:
-                try:
-                    pdf_bytes = read_fn(temp_path)
-                    pdf_bytes_list.append(pdf_bytes)
+                    pdf_file_paths.append(temp_path)
                     pdf_file_names.append(file_path.stem)
-                    os.remove(temp_path)  # 删除临时文件
-                except Exception as e:
+                elif file_suffix in image_suffixes:
+                    file_bytes = await file.read()
+                    # 转换成 pdf 并保存
+                    temp_path = Path(unique_dir) / f"{file_path.stem}.pdf"
+                    with open(temp_path, "wb") as f:
+                        f.write(images_bytes_to_pdf_bytes(file_bytes))
+                    pdf_file_paths.append(temp_path)
+                    pdf_file_names.append(file_path.stem)
+                else:
                     return JSONResponse(
                         status_code=400,
-                        content={"error": f"Failed to load file: {str(e)}"}
+                        content={"error": f"Unsupported file type: {file_suffix}"}
                     )
-            else:
+            except Exception as e:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"Unsupported file type: {file_suffix}"}
+                    content={"error": f"Failed to load file: {str(e)}"}
                 )
 
 
@@ -194,7 +199,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
         await aio_do_parse(
             output_dir=unique_dir,
             pdf_file_names=pdf_file_names,
-            pdf_bytes_list=pdf_bytes_list,
+            pdf_file_paths=pdf_file_paths,
             p_lang_list=actual_lang_list,
             backend=backend,
             parse_method=parse_method,
@@ -308,6 +313,10 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
             status_code=500,
             content={"error": f"Failed to process file: {str(e)}"}
         )
+    finally:
+        # 清理临时文件
+        for temp_path in pdf_file_paths:
+            os.remove(temp_path)
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
