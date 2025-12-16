@@ -21,6 +21,10 @@ from minio import Minio
 
 from task_db import TaskDB
 
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+
+
 # 初始化 FastAPI 应用
 app = FastAPI(
     title="MinerU Tianshu API",
@@ -515,13 +519,15 @@ async def get_task_data(
 @app.get("/api/v1/tasks/{task_id}")
 async def get_task_status(
     task_id: str,
-    upload_images: bool = Query(False, description="是否上传图片到MinIO并替换链接（仅当任务完成时有效）")
+    upload_images: bool = Query(False, description="是否上传图片到MinIO并替换链接（仅当任务完成时有效）"),
+    add_page_numbers: bool = Query(False, description="是否需要加上页码标识（从middle.json生成带页码的Markdown）")
 ):
     """
     查询任务状态和详情
     
     当任务完成时，会自动返回解析后的 Markdown 内容（data 字段）
     可选择是否上传图片到 MinIO 并替换为 URL
+    可选择是否从 middle.json 生成带页码标识的 Markdown
     """
     task = db.get_task(task_id)
     
@@ -557,44 +563,133 @@ async def get_task_status(
         
         if result_dir.exists():
             logger.info(f"✅ Result directory exists")
-            # 递归查找 Markdown 文件（MinerU 输出结构：task_id/filename/auto/*.md）
-            md_files = list(result_dir.rglob('*.md'))
-            logger.info(f"📄 Found {len(md_files)} markdown files: {[f.relative_to(result_dir) for f in md_files]}")
             
-            if md_files:
-                try:
-                    # 读取 Markdown 内容
-                    md_file = md_files[0]
-                    logger.info(f"📖 Reading markdown file: {md_file}")
-                    with open(md_file, 'r', encoding='utf-8') as f:
-                        md_content = f.read()
-                    
-                    logger.info(f"✅ Markdown content loaded, length: {len(md_content)} characters")
-                    
-                    # 查找图片目录（在 markdown 文件的同级目录下）
-                    image_dir = md_file.parent / 'images'
-                    
-                    # 处理图片（如果需要）
-                    if upload_images and image_dir.exists():
-                        logger.info(f"🖼️  Processing images for task {task_id}, upload_images={upload_images}")
-                        md_content = process_markdown_images(md_content, image_dir, upload_images)
-                    
-                    # 添加 data 字段
-                    response['data'] = {
-                        'markdown_file': md_file.name,
-                        'content': md_content,
-                        'images_uploaded': upload_images,
-                        'has_images': image_dir.exists() if not upload_images else None
-                    }
-                    logger.info(f"✅ Response data field added successfully")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Failed to read markdown content: {e}")
-                    logger.exception(e)
-                    # 读取失败不影响状态查询，只是不返回 data
-                    response['data'] = None
+            # 根据 add_page_numbers 参数选择不同的处理逻辑
+            if add_page_numbers:
+                # 新逻辑：从 middle.json 生成带页码标识的 Markdown
+                logger.info(f"📑 Using page-numbered mode (from middle.json)")
+                
+                # 递归查找 middle.json 文件（格式：origin.pdf.dVDzOLMD8_middle.json）
+                middle_json_files = list(result_dir.rglob('*_middle.json'))
+                logger.info(f"📄 Found {len(middle_json_files)} middle.json files: {[f.relative_to(result_dir) for f in middle_json_files]}")
+                
+                if middle_json_files:
+                    try:
+                        # 读取 middle.json 文件
+                        middle_json_file = middle_json_files[0]
+                        logger.info(f"📖 Reading middle.json file: {middle_json_file}")
+                        
+                        with open(middle_json_file, 'r', encoding='utf-8') as f:
+                            middle_data = json.load(f)
+                        
+                        logger.info(f"✅ Middle.json loaded, backend: {middle_data.get('_backend')}")
+                        
+                        # 判断后端类型并选择对应的 union_make 函数
+                        is_pipeline = middle_data.get('_backend') == 'pipeline'
+                        if is_pipeline:
+                            if pipeline_union_make is None:
+                                raise ImportError("pipeline_union_make not available")
+                            union_make = pipeline_union_make
+                        else:
+                            if vlm_union_make is None:
+                                raise ImportError("vlm_union_make not available")
+                            union_make = vlm_union_make
+                        
+                        # 查找图片目录（在 middle.json 文件的同级目录下）
+                        image_dir = middle_json_file.parent / 'images'
+                        img_bucket_path = str(image_dir) if image_dir.exists() else ''
+                        
+                        # 生成包含分页信息的整体 Markdown
+                        all_pages_md = []
+                        pdf_info = middle_data.get('pdf_info', [])
+                        
+                        logger.info(f"📑 Processing {len(pdf_info)} pages")
+                        
+                        for page_info in pdf_info:
+                            page_idx = page_info.get('page_idx', 0)
+                            # 显示时从1开始，而不是从0开始
+                            display_page_idx = page_idx + 1
+                            
+                            # union_make 的第一个参数应该是 pdf_info 列表，而不是整个字典
+                            # 传入单页的 pdf_info 列表
+                            page_pdf_info = [page_info]
+                            
+                            # 生成该页的 Markdown
+                            # union_make(pdf_info_dict: list, make_mode: str, img_buket_path: str = '')
+                            page_md = union_make(page_pdf_info, 'mm_markdown', img_bucket_path)
+                            
+                            # 添加页面分隔标记和内容（显示时从1开始）
+                            all_pages_md.append(f"\n\n--- Page {display_page_idx} ---\n\n")
+                            all_pages_md.append(page_md)
+                        
+                        # 合并为整体结果
+                        final_md = ''.join(all_pages_md)
+                        logger.info(f"✅ Generated Markdown with {len(pdf_info)} pages, length: {len(final_md)} characters")
+                        
+                        # 处理图片（如果需要）
+                        if upload_images and image_dir.exists():
+                            logger.info(f"🖼️  Processing images for task {task_id}, upload_images={upload_images}")
+                            final_md = process_markdown_images(final_md, image_dir, upload_images)
+                        
+                        # 添加 data 字段
+                        response['data'] = {
+                            'middle_json_file': middle_json_file.name,
+                            'content': final_md,
+                            'pages': len(pdf_info),
+                            'images_uploaded': upload_images,
+                            'has_images': image_dir.exists() if not upload_images else None
+                        }
+                        logger.info(f"✅ Response data field added successfully")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to generate markdown from middle.json: {e}")
+                        logger.exception(e)
+                        # 读取失败不影响状态查询，只是不返回 data
+                        response['data'] = None
+                else:
+                    logger.warning(f"⚠️  No middle.json files found in {result_dir}")
             else:
-                logger.warning(f"⚠️  No markdown files found in {result_dir}")
+                # 原有逻辑：直接读取已生成的 Markdown 文件
+                logger.info(f"📄 Using original mode (from markdown file)")
+                
+                # 递归查找 Markdown 文件（MinerU 输出结构：task_id/filename/auto/*.md）
+                md_files = list(result_dir.rglob('*.md'))
+                logger.info(f"📄 Found {len(md_files)} markdown files: {[f.relative_to(result_dir) for f in md_files]}")
+                
+                if md_files:
+                    try:
+                        # 读取 Markdown 内容
+                        md_file = md_files[0]
+                        logger.info(f"📖 Reading markdown file: {md_file}")
+                        with open(md_file, 'r', encoding='utf-8') as f:
+                            md_content = f.read()
+                        
+                        logger.info(f"✅ Markdown content loaded, length: {len(md_content)} characters")
+                        
+                        # 查找图片目录（在 markdown 文件的同级目录下）
+                        image_dir = md_file.parent / 'images'
+                        
+                        # 处理图片（如果需要）
+                        if upload_images and image_dir.exists():
+                            logger.info(f"🖼️  Processing images for task {task_id}, upload_images={upload_images}")
+                            md_content = process_markdown_images(md_content, image_dir, upload_images)
+                        
+                        # 添加 data 字段
+                        response['data'] = {
+                            'markdown_file': md_file.name,
+                            'content': md_content,
+                            'images_uploaded': upload_images,
+                            'has_images': image_dir.exists() if not upload_images else None
+                        }
+                        logger.info(f"✅ Response data field added successfully")
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to read markdown content: {e}")
+                        logger.exception(e)
+                        # 读取失败不影响状态查询，只是不返回 data
+                        response['data'] = None
+                else:
+                    logger.warning(f"⚠️  No markdown files found in {result_dir}")
         else:
             logger.error(f"❌ Result directory does not exist: {result_dir}")
     elif task['status'] == 'completed':
