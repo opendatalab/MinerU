@@ -1,12 +1,9 @@
 #  Copyright (c) Opendatalab. All rights reserved.
 import os
-import time
 from collections import defaultdict
 
 import cv2
 import numpy as np
-from PIL import Image
-from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
@@ -15,7 +12,6 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_m
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import ModelSingleton
 from mineru.data.data_reader_writer import DataWriter
-from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ImageType
 from mineru.utils.model_utils import crop_img
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
@@ -201,6 +197,15 @@ def mask_image_regions(np_images, results):
             np_image[y0:y1, x0:x1, :] = 255
     return np_images
 
+def normalize_poly_to_bbox(item, page_width, page_height):
+    """将poly坐标归一化为bbox"""
+    poly = item['poly']
+    x0 = min(max(poly[0] / page_width, 0), 1)
+    y0 = min(max(poly[1] / page_height, 0), 1)
+    x1 = min(max(poly[4] / page_width, 0), 1)
+    y1 = min(max(poly[5] / page_height, 0), 1)
+    item['bbox'] = [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)]
+    item.pop('poly', None)
 
 async def doc_analyze_core(
     pdf_bytes,
@@ -313,6 +318,18 @@ async def doc_analyze_core(
                         if ocr_text in ['（204号', '（20', '（2', '（2号', '（20号', '号',
                                         '（204'] and ocr_score < 0.8 and layout_res_width < layout_res_height:
                             need_ocr_res['category_id'] = 16
+
+    for page_inline_formula_list, page_ocr_res_list, page_pil_image in zip(
+            inline_formula_list, ocr_res_list, images_pil_list
+    ):
+        if page_inline_formula_list or page_ocr_res_list:
+            page_width, page_height = page_pil_image.size
+            # 处理公式列表
+            for formula in page_inline_formula_list:
+                normalize_poly_to_bbox(formula, page_width, page_height)
+            # 处理OCR结果列表
+            for ocr_res in page_ocr_res_list:
+                normalize_poly_to_bbox(ocr_res, page_width, page_height)
 
     middle_json = result_to_middle_json(
         results,
