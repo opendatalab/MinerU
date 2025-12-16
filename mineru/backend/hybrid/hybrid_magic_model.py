@@ -10,27 +10,34 @@ from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_di
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width, height):
+    def __init__(self,
+        page_blocks: list,
+        page_inline_formula,
+        page_ocr_res,
+        width,
+        height,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    ):
         self.page_blocks = page_blocks
+        self.page_inline_formula = page_inline_formula
+        self.page_ocr_res = page_ocr_res
+
+        self.width = width
+        self.height = height
 
         blocks = []
         self.all_spans = []
+
+        for inline_formula in page_inline_formula:
+            inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
+        for ocr_res in page_ocr_res:
+            ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
+
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
-            block_bbox = block_info["bbox"]
             try:
-                x1, y1, x2, y2 = block_bbox
-                x_1, y_1, x_2, y_2 = (
-                    int(x1 * width),
-                    int(y1 * height),
-                    int(x2 * width),
-                    int(y2 * height),
-                )
-                if x_2 < x_1:
-                    x_1, x_2 = x_2, x_1
-                if y_2 < y_1:
-                    y_1, y_2 = y_2, y_1
-                block_bbox = (x_1, y_1, x_2, y_2)
+                block_bbox = self.cal_real_bbox(block_info["bbox"])
                 block_type = block_info["type"]
                 block_content = block_info["content"]
                 block_angle = block_info["angle"]
@@ -236,6 +243,20 @@ class MagicModel:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
+    def cal_real_bbox(self, bbox):
+        x1, y1, x2, y2 = bbox
+        x_1, y_1, x_2, y_2 = (
+            int(x1 * self.width),
+            int(y1 * self.height),
+            int(x2 * self.width),
+            int(y2 * self.height),
+        )
+        if x_2 < x_1:
+            x_1, x_2 = x_2, x_1
+        if y_2 < y_1:
+            y_1, y_2 = y_2, y_1
+        bbox = (x_1, y_1, x_2, y_2)
+        return bbox
 
     def get_list_blocks(self):
         return self.list_blocks

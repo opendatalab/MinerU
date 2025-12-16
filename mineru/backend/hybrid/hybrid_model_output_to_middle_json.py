@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils import cross_page_table_merge
-from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
@@ -49,7 +49,15 @@ def blocks_to_page_info(
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     width, height = map(int, page.get_size())
 
-    magic_model = MagicModel(page_blocks, width, height)
+    magic_model = MagicModel(
+        page_blocks,
+        page_inline_formula,
+        page_ocr_res,
+        width,
+        height,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     title_blocks = magic_model.get_title_blocks()
