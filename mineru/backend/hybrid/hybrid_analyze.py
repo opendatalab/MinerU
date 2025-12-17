@@ -12,7 +12,7 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_m
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import ModelSingleton
 from mineru.data.data_reader_writer import DataWriter
-from mineru.utils.enum_class import ImageType
+from mineru.utils.enum_class import ImageType, NotExtractType
 from mineru.utils.model_utils import crop_img
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
@@ -25,20 +25,7 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 
-not_extract_list = [
-    BlockType.TEXT,
-    BlockType.TITLE,
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
-    BlockType.REF_TEXT,
-    BlockType.TABLE_CAPTION,
-    BlockType.IMAGE_CAPTION,
-    BlockType.TABLE_FOOTNOTE,
-    BlockType.IMAGE_FOOTNOTE,
-    BlockType.CODE_CAPTION,
-]
+not_extract_list = [item.value for item in NotExtractType]
 
 def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
     # 确定OCR设置
@@ -340,6 +327,7 @@ async def doc_analyze_core(
         image_writer,
         _ocr_enable,
         _vlm_ocr_enable,
+        hybrid_pipeline_model,
     )
     return middle_json, results
 

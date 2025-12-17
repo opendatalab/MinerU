@@ -13,6 +13,7 @@ from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
+from mineru.utils.ocr_utils import OcrConfidence
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.version import __version__
 
@@ -140,6 +141,7 @@ def result_to_middle_json(
         image_writer,
         _ocr_enable,
         _vlm_ocr_enable,
+        hybrid_pipeline_model,
 ):
     middle_json = {"pdf_info": [], "_backend":"hybrid", "_version_name": __version__}
 
@@ -152,6 +154,41 @@ def result_to_middle_json(
             _ocr_enable, _vlm_ocr_enable
         )
         middle_json["pdf_info"].append(page_info)
+
+    if not (_vlm_ocr_enable or _ocr_enable):
+        """后置ocr处理"""
+        need_ocr_list = []
+        img_crop_list = []
+        text_block_list = []
+        for page_info in middle_json["pdf_info"]:
+            for block in page_info['para_blocks']:
+                if block['type'] in ['table', 'image', 'list', 'code']:
+                    for sub_block in block['blocks']:
+                        if not sub_block['type'].endswith('body'):
+                            text_block_list.append(sub_block)
+                elif block['type'] in ['text', 'title', 'ref_text']:
+                    text_block_list.append(block)
+            for block in page_info['discarded_blocks']:
+                text_block_list.append(block)
+        for block in text_block_list:
+            for line in block['lines']:
+                for span in line['spans']:
+                    if 'np_img' in span:
+                        need_ocr_list.append(span)
+                        img_crop_list.append(span['np_img'])
+                        span.pop('np_img')
+        if len(img_crop_list) > 0:
+            ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+            assert len(ocr_res_list) == len(
+                need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
+            for index, span in enumerate(need_ocr_list):
+                ocr_text, ocr_score = ocr_res_list[index]
+                if ocr_score > OcrConfidence.min_confidence:
+                    span['content'] = ocr_text
+                    span['score'] = float(f"{ocr_score:.3f}")
+                else:
+                    span['content'] = ''
+                    span['score'] = 0.0
 
     """表格跨页合并"""
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
