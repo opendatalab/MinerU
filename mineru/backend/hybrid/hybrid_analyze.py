@@ -234,6 +234,7 @@ async def doc_analyze_core(
     # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
     inline_formula_list = [[] for _ in range(len(images_pil_list))]
     ocr_res_list = [[] for _ in range(len(images_pil_list))]
+    hybrid_pipeline_model = None
     if not _vlm_ocr_enable:
         # 将PIL图片转换为numpy数组
         np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
