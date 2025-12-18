@@ -24,18 +24,20 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
     try:
         file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
-        if is_ocr:
-            parse_method = 'ocr'
-        else:
-            parse_method = 'auto'
-
+        # 根据 backend 确定 parse_method
         if backend.startswith("vlm"):
             parse_method = "vlm"
+        else:
+            parse_method = 'ocr' if is_ocr else 'auto'
 
+        # 根据 backend 类型准备环境目录
         if backend.startswith("hybrid"):
-            parse_method = "hybrid"
+            env_name = f"hybrid_{parse_method}"
+        else:
+            env_name = parse_method
 
-        local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
+        local_image_dir, local_md_dir = prepare_env(output_dir, file_name, env_name)
+
         await aio_do_parse(
             output_dir=output_dir,
             pdf_file_names=[file_name],

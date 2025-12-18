@@ -143,7 +143,13 @@ def result_to_middle_json(
         _vlm_ocr_enable,
         hybrid_pipeline_model,
 ):
-    middle_json = {"pdf_info": [], "_backend":"hybrid", "_version_name": __version__}
+    middle_json = {
+        "pdf_info": [],
+        "_backend": "hybrid",
+        "_ocr_enable": _ocr_enable,
+        "_vlm_ocr_enable": _vlm_ocr_enable,
+        "_version_name": __version__
+    }
 
     for index, (page_blocks, page_inline_formula, page_ocr_res) in enumerate(zip(model_output_blocks_list, inline_formula_list, ocr_res_list)):
         page = pdf_doc[index]
