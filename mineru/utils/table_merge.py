@@ -4,30 +4,11 @@ from loguru import logger
 from bs4 import BeautifulSoup
 
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
+from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
 CONTINUATION_MARKERS = ["(续)", "(续表)", "(continued)", "(cont.)"]
-
-
-def full_to_half(text: str) -> str:
-    """Convert full-width characters to half-width characters using code point manipulation.
-
-    Args:
-        text: String containing full-width characters
-
-    Returns:
-        String with full-width characters converted to half-width
-    """
-    result = []
-    for char in text:
-        code = ord(char)
-        # Full-width letters, numbers and punctuation (FF01-FF5E)
-        if 0xFF01 <= code <= 0xFF5E:
-            result.append(chr(code - 0xFEE0))  # Shift to ASCII range
-        else:
-            result.append(char)
-    return ''.join(result)
 
 
 def calculate_table_total_columns(soup):
