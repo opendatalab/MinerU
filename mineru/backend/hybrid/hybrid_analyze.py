@@ -194,47 +194,25 @@ def normalize_poly_to_bbox(item, page_width, page_height):
     item['bbox'] = [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)]
     item.pop('poly', None)
 
-async def doc_analyze_core(
-    pdf_bytes,
-    image_writer: DataWriter | None,
-    predictor: MinerUClient | None = None,
-    backend="transformers",
-    parse_method: str = 'auto',
-    language: str = 'ch',
-    inline_formula_enable: bool = True,
-    model_path: str | None = None,
-    server_url: str | None = None,
-    is_async: bool = False,
-    **kwargs,
+
+def _process_ocr_and_formulas(
+    images_pil_list,
+    results,
+    language,
+    inline_formula_enable,
+    _ocr_enable,
+    _vlm_ocr_enable,
 ):
-    if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    """处理OCR和公式识别"""
 
-    # load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
-    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    # load_images_time = round(time.time() - load_images_start, 2)
-    # logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
-
-    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = False
-    if _ocr_enable and language in ["ch", "chinese_cht", "ch_lite", "ch_server", "en"] and inline_formula_enable:
-        _vlm_ocr_enable = True
-        if is_async:
-            results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
-        else:
-            results = predictor.batch_two_step_extract(images=images_pil_list)
-    else:
-        if is_async:
-            results = await predictor.aio_batch_two_step_extract(images=images_pil_list, not_extract_list=not_extract_list)
-        else:
-            results = predictor.batch_two_step_extract(images=images_pil_list, not_extract_list=not_extract_list)
     # 遍历results,对文本块截图交由OCR识别
     # 根据_ocr_enable决定ocr只开det还是det+rec
     # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
+
     inline_formula_list = [[] for _ in range(len(images_pil_list))]
     ocr_res_list = [[] for _ in range(len(images_pil_list))]
     hybrid_pipeline_model = None
+
     if not _vlm_ocr_enable:
         # 将PIL图片转换为numpy数组
         np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
@@ -303,10 +281,22 @@ async def doc_analyze_core(
                                            need_ocr_res['poly'][4], need_ocr_res['poly'][5]]
                         layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                         layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
-                        if ocr_text in ['（204号', '（20', '（2', '（2号', '（20号', '号',
-                                        '（204'] and ocr_score < 0.8 and layout_res_width < layout_res_height:
+                        if (
+                                ocr_text in ['（204号', '（20', '（2', '（2号', '（20号', '号','（204']
+                                and ocr_score < 0.8
+                                and layout_res_width < layout_res_height
+                        ):
                             need_ocr_res['category_id'] = 16
 
+    return inline_formula_list, ocr_res_list, hybrid_pipeline_model
+
+
+def _normalize_bbox(
+    inline_formula_list,
+    ocr_res_list,
+    images_pil_list,
+):
+    """归一化坐标并生成最终结果"""
     for page_inline_formula_list, page_ocr_res_list, page_pil_image in zip(
             inline_formula_list, ocr_res_list, images_pil_list
     ):
@@ -318,6 +308,48 @@ async def doc_analyze_core(
             # 处理OCR结果列表
             for ocr_res in page_ocr_res_list:
                 normalize_poly_to_bbox(ocr_res, page_width, page_height)
+
+
+def doc_analyze(
+    pdf_bytes,
+    image_writer: DataWriter | None,
+    predictor: MinerUClient | None = None,
+    backend="transformers",
+    parse_method: str = 'auto',
+    language: str = 'ch',
+    inline_formula_enable: bool = True,
+    model_path: str | None = None,
+    server_url: str | None = None,
+    **kwargs,
+):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+
+    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
+    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = False
+    if _ocr_enable and language in ["ch", "chinese_cht", "ch_lite", "ch_server", "en"] and inline_formula_enable:
+        _vlm_ocr_enable = True
+        results = predictor.batch_two_step_extract(images=images_pil_list)
+    else:
+        results = predictor.batch_two_step_extract(images=images_pil_list, not_extract_list=not_extract_list)
+
+    inline_formula_list, ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+        images_pil_list,
+        results,
+        language,
+        inline_formula_enable,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
+
+    _normalize_bbox(
+        inline_formula_list,
+        ocr_res_list,
+        images_pil_list,
+    )
 
     middle_json = result_to_middle_json(
         results,
@@ -333,34 +365,6 @@ async def doc_analyze_core(
     return middle_json, results
 
 
-def doc_analyze(
-    pdf_bytes,
-    image_writer: DataWriter | None,
-    predictor: MinerUClient | None = None,
-    backend="transformers",
-    parse_method: str = 'auto',
-    language: str = 'ch',
-    inline_formula_enable: bool = True,
-    model_path: str | None = None,
-    server_url: str | None = None,
-    **kwargs,
-):
-    import asyncio
-    return asyncio.run(doc_analyze_core(
-        pdf_bytes,
-        image_writer,
-        predictor,
-        backend,
-        parse_method,
-        language,
-        inline_formula_enable,
-        model_path,
-        server_url,
-        is_async=False,
-        **kwargs,
-    ))
-
-
 async def aio_doc_analyze(
     pdf_bytes,
     image_writer: DataWriter | None,
@@ -373,18 +377,45 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     **kwargs,
 ):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
-    return await doc_analyze_core(
-        pdf_bytes,
-        image_writer,
-        predictor,
-        backend,
-        parse_method,
+    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
+    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = False
+    if _ocr_enable and language in ["ch", "chinese_cht", "ch_lite", "ch_server", "en"] and inline_formula_enable:
+        _vlm_ocr_enable = True
+        results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+    else:
+        results = await predictor.aio_batch_two_step_extract(images=images_pil_list, not_extract_list=not_extract_list)
+
+    inline_formula_list, ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+        images_pil_list,
+        results,
         language,
         inline_formula_enable,
-        model_path,
-        server_url,
-        is_async=True,
-        **kwargs,
+        _ocr_enable,
+        _vlm_ocr_enable,
     )
+
+    _normalize_bbox(
+        inline_formula_list,
+        ocr_res_list,
+        images_pil_list,
+    )
+
+    middle_json = result_to_middle_json(
+        results,
+        inline_formula_list,
+        ocr_res_list,
+        images_list,
+        pdf_doc,
+        image_writer,
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_pipeline_model,
+    )
+    return middle_json, results
 

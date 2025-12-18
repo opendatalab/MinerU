@@ -10,6 +10,7 @@ import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
+from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
@@ -429,6 +430,9 @@ def do_parse(
             if backend == "vllm-async-engine":
                 raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
 
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
+
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
@@ -444,6 +448,9 @@ def do_parse(
             if backend == "vllm-async-engine":
                 raise Exception(
                     "hybrid-vllm-async-engine backend is not supported in sync mode, please use hybrid-vllm-engine backend")
+
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
@@ -495,6 +502,9 @@ async def aio_do_parse(
             if backend == "vllm-engine":
                 raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
 
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=True)
+
             os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
@@ -509,6 +519,9 @@ async def aio_do_parse(
 
             if backend == "vllm-engine":
                 raise Exception("hybrid-vllm-engine backend is not supported in async mode, please use hybrid-vllm-async-engine backend")
+
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
