@@ -87,7 +87,6 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
             #     elif span_type == ContentType.INTERLINE_EQUATION:
             #         para_text += content
             content = content.strip()
-
             if content:
                 langs = ['zh', 'ja', 'ko']
                 # logger.info(f'block_lang: {block_lang}, content: {content}')
@@ -99,13 +98,14 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                 else:
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if j == len(line['spans']) - 1 and span_type == ContentType.TEXT and __is_hyphen_at_line_end(
-                                content):
+                        if (
+                                j == len(line['spans']) - 1
+                                and span_type == ContentType.TEXT
+                                and __is_hyphen_at_line_end(content)
+                        ):
                             para_text += content[:-1]
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
-                    elif span_type == ContentType.INTERLINE_EQUATION:
-                        para_text += content
     return para_text
 
 
@@ -543,22 +543,61 @@ def get_body_data(para_block):
 
 
 def merge_para_with_text_v2(para_block):
+    block_text = ''
+    for line in para_block['lines']:
+        for span in line['spans']:
+            if span['type'] in [ContentType.TEXT]:
+                span['content'] = full_to_half(span['content'])
+                block_text += span['content']
+    block_lang = detect_lang(block_text)
+
     para_content = []
     para_type = para_block['type']
     for line in para_block['lines']:
-        for span in line['spans']:
+        for j, span in enumerate(line['spans']):
             span_type = span['type']
             if span.get("content", '').strip():
-                if para_type == BlockType.PHONETIC and span_type == ContentTypeV2.SPAN_TEXT:
-                    span_type = ContentTypeV2.SPAN_PHONETIC
+                if span_type == ContentType.TEXT:
+                    if para_type == BlockType.PHONETIC:
+                        span_type = ContentTypeV2.SPAN_PHONETIC
+                    else:
+                        span_type = ContentTypeV2.SPAN_TEXT
                 if span_type == ContentType.INLINE_EQUATION:
                     span_type = ContentTypeV2.SPAN_EQUATION_INLINE
                 if span_type in [
                     ContentTypeV2.SPAN_TEXT,
+                ]:
+                    langs = ['zh', 'ja', 'ko']
+                    # logger.info(f'block_lang: {block_lang}, content: {content}')
+                    if block_lang in langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                        if j == len(line['spans']) - 1:
+                            span_content = span['content']
+                        else:
+                            span_content = f"{span['content']} "
+                    else:
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if (
+                                j == len(line['spans']) - 1
+                                and __is_hyphen_at_line_end(span['content'])
+                        ):
+                            span_content = span['content'][:-1]
+                        else:
+                            # 西方文本语境下content间需要空格分隔
+                            span_content = f"{span['content']} "
+
+                    if para_content and para_content[-1]['type'] == span_type:
+                        # 合并相同类型的span
+                        para_content[-1]['content'] += span_content
+                    else:
+                        span_content = {
+                            'type': span_type,
+                            'content': span_content,
+                        }
+                        para_content.append(span_content)
+
+                elif span_type in [
                     ContentTypeV2.SPAN_PHONETIC,
                     ContentTypeV2.SPAN_EQUATION_INLINE,
-                    ContentTypeV2.SPAN_MD,
-                    ContentTypeV2.SPAN_CODE_INLINE,
                 ]:
                     span_content = {
                         'type': span_type,
