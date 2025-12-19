@@ -1,5 +1,4 @@
 import os
-import re
 
 from loguru import logger
 
