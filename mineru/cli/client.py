@@ -62,7 +62,7 @@ if is_mac_os_version_supported():
       txt: Use text extraction method.
       ocr: Use OCR method for image-based PDFs.
     Without method specified, 'auto' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline'.""",
+    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.""",
     default='auto',
 )
 @click.option(
@@ -73,10 +73,10 @@ if is_mac_os_version_supported():
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
-      vlm-auto-engine: High Accuracy(auto select between transformers/vllm/lmdeploy/mlx).
-      vlm-http-client: High Accuracy(client suitable for openai-compatible servers).
-      hybrid-auto-engine: Next-generation high accuracy solution(auto select between transformers/vllm/lmdeploy/mlx).
-      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers)
+      vlm-auto-engine: High accuracy via local computing power.
+      vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
+      hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
+      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without method specified, pipeline will be used by default.""",
     default='pipeline',
 )
@@ -89,7 +89,7 @@ if is_mac_os_version_supported():
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to "pipeline".
+    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
     """,
     default='ch',
 )
@@ -99,7 +99,7 @@ if is_mac_os_version_supported():
     'server_url',
     type=str,
     help="""
-    When the backend is `vlm-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    When the backend is `<vlm/hybrid>-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
     """,
     default=None,
 )
