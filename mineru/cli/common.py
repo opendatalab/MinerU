@@ -10,12 +10,15 @@ import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
+from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
+from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -304,6 +307,106 @@ def _process_vlm(
         )
 
 
+def _process_hybrid(
+        output_dir,
+        pdf_file_names,
+        pdf_bytes_list,
+        h_lang_list,
+        parse_method,
+        inline_formula_enable,
+        backend,
+        f_draw_layout_bbox,
+        f_draw_span_bbox,
+        f_dump_md,
+        f_dump_middle_json,
+        f_dump_model_output,
+        f_dump_orig_pdf,
+        f_dump_content_list,
+        f_make_md_mode,
+        server_url=None,
+        **kwargs,
+):
+    """同步处理hybrid后端逻辑"""
+    f_draw_span_bbox = False
+    if not backend.endswith("client"):
+        server_url = None
+
+    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+        pdf_file_name = pdf_file_names[idx]
+        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
+        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+
+        middle_json, infer_result = hybrid_doc_analyze(
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            parse_method=parse_method,
+            language=lang,
+            inline_formula_enable=inline_formula_enable,
+            server_url=server_url,
+            **kwargs,
+        )
+
+        pdf_info = middle_json["pdf_info"]
+
+        _process_output(
+            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+        )
+
+
+async def _async_process_hybrid(
+        output_dir,
+        pdf_file_names,
+        pdf_bytes_list,
+        h_lang_list,
+        parse_method,
+        inline_formula_enable,
+        backend,
+        f_draw_layout_bbox,
+        f_draw_span_bbox,
+        f_dump_md,
+        f_dump_middle_json,
+        f_dump_model_output,
+        f_dump_orig_pdf,
+        f_dump_content_list,
+        f_make_md_mode,
+        server_url=None,
+        **kwargs,
+):
+    """异步处理hybrid后端逻辑"""
+    f_draw_span_bbox = False
+    if not backend.endswith("client"):
+        server_url = None
+
+    for idx, (pdf_bytes, lang) in enumerate(zip(pdf_bytes_list, h_lang_list)):
+        pdf_file_name = pdf_file_names[idx]
+        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
+        image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+
+        middle_json, infer_result = await aio_hybrid_doc_analyze(
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            parse_method=parse_method,
+            language=lang,
+            inline_formula_enable=inline_formula_enable,
+            server_url=server_url,
+            **kwargs,
+        )
+
+        pdf_info = middle_json["pdf_info"]
+
+        _process_output(
+            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+        )
+
+
 def do_parse(
         output_dir,
         pdf_file_names: list[str],
@@ -340,18 +443,40 @@ def do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        if backend == "vllm-async-engine":
-            raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
+            if backend == "vllm-async-engine":
+                raise Exception("vlm-vllm-async-engine backend is not supported in sync mode, please use vlm-vllm-engine backend")
 
-        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
-        _process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
-        )
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+            os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+
+            _process_vlm(
+                output_dir, pdf_file_names, pdf_bytes_list, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, **kwargs,
+            )
+        if backend.startswith("hybrid-"):
+            backend = backend[7:]
+
+            if backend == "vllm-async-engine":
+                raise Exception(
+                    "hybrid-vllm-async-engine backend is not supported in sync mode, please use hybrid-vllm-engine backend")
+
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
+
+            os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
+
+            _process_hybrid(
+                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, **kwargs,
+            )
 
 
 async def aio_do_parse(
@@ -391,19 +516,39 @@ async def aio_do_parse(
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        if backend == "vllm-engine":
-            raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
+            if backend == "vllm-engine":
+                raise Exception("vlm-vllm-engine backend is not supported in async mode, please use vlm-vllm-async-engine backend")
 
-        os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
-        os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
-        await _async_process_vlm(
-            output_dir, pdf_file_names, pdf_bytes_list, backend,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
-        )
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
+            os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
 
+            await _async_process_vlm(
+                output_dir, pdf_file_names, pdf_bytes_list, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, **kwargs,
+            )
+        if backend.startswith("hybrid-"):
+            backend = backend[7:]
+
+            if backend == "vllm-engine":
+                raise Exception("hybrid-vllm-engine backend is not supported in async mode, please use hybrid-vllm-async-engine backend")
+
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=True)
+
+            os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
+
+            await _async_process_hybrid(
+                output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
+                f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+                server_url, **kwargs,
+            )
 
 
 if __name__ == "__main__":
