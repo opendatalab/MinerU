@@ -1,23 +1,11 @@
 import re
 from loguru import logger
 
+from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.utils.enum_class import BlockType, ContentType, MakeMode
 from mineru.utils.language import detect_lang
-
-
-def __is_hyphen_at_line_end(line):
-    """Check if a line ends with one or more letters followed by a hyphen.
-
-    Args:
-    line (str): The line of text to check.
-
-    Returns:
-    bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
-    """
-    # Use regex to check if the line ends with one or more letters followed by a hyphen
-    return bool(re.search(r'[A-Za-z]+-\s*$', line))
 
 
 def make_blocks_to_markdown(paras_of_layout,
@@ -102,25 +90,6 @@ def make_blocks_to_markdown(paras_of_layout,
     return page_markdown
 
 
-def full_to_half(text: str) -> str:
-    """Convert full-width characters to half-width characters using code point manipulation.
-
-    Args:
-        text: String containing full-width characters
-
-    Returns:
-        String with full-width characters converted to half-width
-    """
-    result = []
-    for char in text:
-        code = ord(char)
-        # Full-width letters and numbers (FF21-FF3A for A-Z, FF41-FF5A for a-z, FF10-FF19 for 0-9)
-        if (0xFF21 <= code <= 0xFF3A) or (0xFF41 <= code <= 0xFF5A) or (0xFF10 <= code <= 0xFF19):
-            result.append(chr(code - 0xFEE0))  # Shift to ASCII range
-        else:
-            result.append(char)
-    return ''.join(result)
-
 latex_delimiters_config = get_latex_delimiter_config()
 
 default_delimiters = {
@@ -140,7 +109,7 @@ def merge_para_with_text(para_block):
     for line in para_block['lines']:
         for span in line['spans']:
             if span['type'] in [ContentType.TEXT]:
-                span['content'] = full_to_half(span['content'])
+                span['content'] = full_to_half_exclude_marks(span['content'])
                 block_text += span['content']
     block_lang = detect_lang(block_text)
 
@@ -166,6 +135,11 @@ def merge_para_with_text(para_block):
             content = content.strip()
 
             if content:
+
+                if span_type == ContentType.INTERLINE_EQUATION:
+                    para_text += content
+                    continue
+
                 langs = ['zh', 'ja', 'ko']
                 # logger.info(f'block_lang: {block_lang}, content: {content}')
                 if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
@@ -176,12 +150,10 @@ def merge_para_with_text(para_block):
                 else:
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if j == len(line['spans'])-1 and span_type == ContentType.TEXT and __is_hyphen_at_line_end(content):
+                        if j == len(line['spans'])-1 and span_type == ContentType.TEXT and is_hyphen_at_line_end(content):
                             para_text += content[:-1]
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
-                    elif span_type == ContentType.INTERLINE_EQUATION:
-                        para_text += content
             else:
                 continue
 
