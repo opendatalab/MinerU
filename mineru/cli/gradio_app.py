@@ -13,8 +13,8 @@ from gradio_pdf import PDF
 from loguru import logger
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
-from mineru.utils.check_sys_env import is_mac_os_version_supported
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -277,23 +277,42 @@ def to_pdf(file_path):
     return tmp_file_path
 
 
+# 根据后端类型获取公式识别标签
+def get_formula_label(backend_choice):
+    if backend_choice.startswith("vlm"):
+        return "Enable display formula recognition"
+    elif backend_choice == "pipeline":
+        return "Enable formula recognition"
+    elif backend_choice.startswith("hybrid"):
+        return "Enable inline formula recognition"
+    else:
+        return "Enable formula recognition"
+
+
 # 更新界面函数
 def update_interface(backend_choice):
+    formula_label_update = gr.update(label=get_formula_label(backend_choice))
     if backend_choice in [
         "vlm-transformers",
         "vlm-vllm-async-engine",
         "vlm-lmdeploy-engine",
         "vlm-mlx-engine",
+    ]:
+        return gr.update(visible=False), gr.update(visible=False), formula_label_update
+    elif backend_choice in ["vlm-http-client"]:
+        return gr.update(visible=True), gr.update(visible=False), formula_label_update
+    elif backend_choice in ["hybrid-http-client"]:
+        return gr.update(visible=True), gr.update(visible=True), formula_label_update
+    elif backend_choice in [
+        "pipeline",
         "hybrid-vllm-async-engine",
         "hybrid-lmdeploy-engine",
+        "hybrid-mlx-engine",
+        "hybrid-transformers",
     ]:
-        return gr.update(visible=False), gr.update(visible=False)
-    elif backend_choice in ["vlm-http-client"]:
-        return gr.update(visible=True), gr.update(visible=False)
-    elif backend_choice in ["pipeline"]:
-        return gr.update(visible=False), gr.update(visible=True)
+        return gr.update(visible=False), gr.update(visible=True), formula_label_update
     else:
-        pass
+        return gr.update(), gr.update(), formula_label_update
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
@@ -307,17 +326,10 @@ def update_interface(backend_choice):
     default=True,
 )
 @click.option(
-    '--enable-vllm-engine',
-    'vllm_engine_enable',
+    '--enable-http-client',
+    'http_client_enable',
     type=bool,
-    help="Enable vLLM engine backend for faster processing.",
-    default=False,
-)
-@click.option(
-    '--enable-lmdeploy-engine',
-    'lmdeploy_engine_enable',
-    type=bool,
-    help="Enable LMDeploy engine backend for faster processing.",
+    help="Enable http-client backend to link openai-compatible servers.",
     default=False,
 )
 @click.option(
@@ -357,7 +369,9 @@ def update_interface(backend_choice):
     default='all',
 )
 def main(ctx,
-        example_enable, vllm_engine_enable, lmdeploy_engine_enable, api_enable, max_convert_pages,
+        example_enable,
+        http_client_enable,
+        api_enable, max_convert_pages,
         server_name, server_port, latex_delimiters_type, **kwargs
 ):
 
@@ -372,34 +386,26 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    if vllm_engine_enable:
+    vlm_engine = get_vlm_engine("auto", is_async=True)
+    if vlm_engine in ["transformers", "mlx-engine"]:
+        if vlm_engine == "transformers":
+            http_client_enable = True
+        pass
+    else:
         try:
-            print("Start init vLLM engine...")
+            logger.info(f"Start init {vlm_engine}...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "vllm-async-engine",
+                vlm_engine,
                 None,
                 None,
                 **kwargs
             )
-            print("vLLM engine init successfully.")
+            logger.info(f"{vlm_engine} init successfully.")
         except Exception as e:
             logger.exception(e)
-    elif lmdeploy_engine_enable:
-        try:
-            print("Start init LMDeploy engine...")
-            from mineru.backend.vlm.vlm_analyze import ModelSingleton
-            model_singleton = ModelSingleton()
-            predictor = model_singleton.get_model(
-                "lmdeploy-engine",
-                None,
-                None,
-                **kwargs
-            )
-            print("LMDeploy engine init successfully.")
-        except Exception as e:
-            logger.exception(e)
+
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
@@ -410,24 +416,27 @@ def main(ctx,
                 with gr.Row():
                     max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
                 with gr.Row():
-                    if vllm_engine_enable:
+                    if vlm_engine == "vllm-async-engine":
                         drop_list = ["pipeline", "vlm-vllm-async-engine", "hybrid-vllm-async-engine"]
                         preferred_option = "hybrid-vllm-async-engine"
-                    elif lmdeploy_engine_enable:
+                    elif vlm_engine == "lmdeploy-engine":
                         drop_list = ["pipeline", "vlm-lmdeploy-engine", "hybrid-lmdeploy-engine"]
                         preferred_option = "hybrid-lmdeploy-engine"
+                    elif vlm_engine == "mlx-engine":
+                        drop_list = ["pipeline", "vlm-mlx-engine", "hybrid-mlx-engine"]
+                        preferred_option = "hybrid-mlx-engine"
                     else:
-                        drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
-                        if is_mac_os_version_supported():
-                            drop_list.append("vlm-mlx-engine")
+                        drop_list = ["pipeline", "vlm-transformers", "hybrid-transformers"]
                         preferred_option = "pipeline"
+                    if http_client_enable:
+                        drop_list.extend(["vlm-http-client", "hybrid-http-client"])
                     backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
                 with gr.Row(visible=False) as client_options:
                     url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
                 with gr.Row(equal_height=True):
                     with gr.Column():
                         gr.Markdown("**Recognition Options:**")
-                        formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
+                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True)
                         table_enable = gr.Checkbox(label='Enable table recognition', value=True)
                     with gr.Column(visible=False) as ocr_options:
                         language = gr.Dropdown(all_lang, label='Language', value='ch')
@@ -460,14 +469,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options],
+            outputs=[client_options, ocr_options, formula_enable],
             api_name=False
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options],
+            outputs=[client_options, ocr_options, formula_enable],
             api_name=False
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])

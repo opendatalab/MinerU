@@ -135,6 +135,11 @@ def merge_para_with_text(para_block):
             content = content.strip()
 
             if content:
+
+                if span_type == ContentType.INTERLINE_EQUATION:
+                    para_text += content
+                    continue
+
                 langs = ['zh', 'ja', 'ko']
                 # logger.info(f'block_lang: {block_lang}, content: {content}')
                 if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
@@ -149,8 +154,6 @@ def merge_para_with_text(para_block):
                             para_text += content[:-1]
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
-                    elif span_type == ContentType.INTERLINE_EQUATION:
-                        para_text += content
             else:
                 continue
 
