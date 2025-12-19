@@ -592,7 +592,6 @@ def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
     for list_block in list_blocks:
         # 统计list_block["blocks"]中所有block的type，用众数作为list_block的sub_type
         type_count = {}
-        line_content = []
         for sub_block in list_block["blocks"]:
             sub_block_type = sub_block["type"]
             if sub_block_type not in type_count:
