@@ -439,8 +439,8 @@ def main(ctx,
                         formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True)
                         table_enable = gr.Checkbox(label='Enable table recognition', value=True)
                     with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label='Language', value='ch')
-                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
+                        language = gr.Dropdown(all_lang, label='OCR Language', value='ch')
+                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False, info='Enable only if the result is poor. Requires the correct OCR language.')
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
