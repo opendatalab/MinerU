@@ -27,31 +27,37 @@ class YOLOv8MFDModel:
     def _run_predict(
         self,
         inputs: Union[np.ndarray, Image.Image, List],
-        is_batch: bool = False
+        is_batch: bool = False,
+        conf: float = None,
     ) -> List:
         preds = self.model.predict(
             inputs,
             imgsz=self.imgsz,
-            conf=self.conf,
+            conf=conf if conf is not None else self.conf,
             iou=self.iou,
             verbose=False,
             device=self.device
         )
         return [pred.cpu() for pred in preds] if is_batch else preds[0].cpu()
 
-    def predict(self, image: Union[np.ndarray, Image.Image]):
-        return self._run_predict(image)
+    def predict(
+            self,
+            image: Union[np.ndarray, Image.Image],
+            conf: float = None,
+    ):
+        return self._run_predict(image, is_batch=False, conf=conf)
 
     def batch_predict(
         self,
         images: List[Union[np.ndarray, Image.Image]],
-        batch_size: int = 4
+        batch_size: int = 4,
+        conf: float = None,
     ) -> List:
         results = []
         with tqdm(total=len(images), desc="MFD Predict") as pbar:
             for idx in range(0, len(images), batch_size):
                 batch = images[idx: idx + batch_size]
-                batch_preds = self._run_predict(batch, is_batch=True)
+                batch_preds = self._run_predict(batch, is_batch=True, conf=conf)
                 results.extend(batch_preds)
                 pbar.update(len(batch))
         return results

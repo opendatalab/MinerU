@@ -42,7 +42,8 @@ def ocr_det(
     np_images,
     results,
     mfd_res,
-    _ocr_enable
+    _ocr_enable,
+    batch_radio: int = 1,
 ):
     ocr_res_list = []
     if not hybrid_pipeline_model.enable_ocr_det_batch:
@@ -137,7 +138,7 @@ def ocr_det(
                 batch_images.append(padded_img)
 
             # 批处理检测
-            det_batch_size = min(len(batch_images), OCR_DET_BASE_BATCH_SIZE)
+            det_batch_size = min(len(batch_images), batch_radio*OCR_DET_BASE_BATCH_SIZE)
             batch_results = hybrid_pipeline_model.ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
 
             # 处理批处理结果
@@ -202,6 +203,7 @@ def _process_ocr_and_formulas(
     inline_formula_enable,
     _ocr_enable,
     _vlm_ocr_enable,
+    batch_radio: int = 2,
 ):
     """处理OCR和公式识别"""
 
@@ -225,19 +227,20 @@ def _process_ocr_and_formulas(
             # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
             np_images = mask_image_regions(np_images, results)
             # 公式检测
-            images_mfd_res = hybrid_pipeline_model.mfd_model.batch_predict(np_images, 1)
+            images_mfd_res = hybrid_pipeline_model.mfd_model.batch_predict(np_images, batch_size=1, conf=0.5)
             # 公式识别
             inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
                 images_mfd_res,
                 np_images,
-                batch_size=MFR_BASE_BATCH_SIZE,
-                interline_enable=False,
+                batch_size=batch_radio*MFR_BASE_BATCH_SIZE,
+                interline_enable=True,
             )
 
         mfd_res = []
         for page_inline_formula_list in inline_formula_list:
             page_mfd_res = []
             for formula in page_inline_formula_list:
+                formula['category_id'] = 13
                 page_mfd_res.append({
                     "bbox": [int(formula['poly'][0]), int(formula['poly'][1]),
                              int(formula['poly'][4]), int(formula['poly'][5])],
@@ -251,6 +254,7 @@ def _process_ocr_and_formulas(
             results,
             mfd_res,
             _ocr_enable,
+            batch_radio=batch_radio,
         )
 
         # 如果需要ocr则做ocr_rec

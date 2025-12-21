@@ -2,6 +2,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from mineru.utils.boxbase import calculate_iou
+
 
 class MathDataset(Dataset):
     def __init__(self, image_paths, transform=None):
@@ -31,11 +33,64 @@ class UnimernetModel(object):
             self.model = self.model.to(dtype=torch.float16)
         self.model.eval()
 
+    @staticmethod
+    def _filter_boxes_by_iou(xyxy, conf, cla, iou_threshold=0.8):
+        """过滤IOU超过阈值的重叠框，保留置信度较高的框。
+
+        Args:
+            xyxy: 框坐标张量，shape为(N, 4)
+            conf: 置信度张量，shape为(N,)
+            cla: 类别张量，shape为(N,)
+            iou_threshold: IOU阈值，默认0.9
+
+        Returns:
+            过滤后的xyxy, conf, cla张量
+        """
+        if len(xyxy) == 0:
+            return xyxy, conf, cla
+
+        # 转换为CPU进行处理
+        xyxy_cpu = xyxy.cpu()
+        conf_cpu = conf.cpu()
+
+        n = len(xyxy_cpu)
+        keep = [True] * n
+
+        for i in range(n):
+            if not keep[i]:
+                continue
+            bbox1 = xyxy_cpu[i].tolist()
+            for j in range(i + 1, n):
+                if not keep[j]:
+                    continue
+                bbox2 = xyxy_cpu[j].tolist()
+                iou = calculate_iou(bbox1, bbox2)
+                if iou > iou_threshold:
+                    # 保留置信度较高的框
+                    if conf_cpu[i] >= conf_cpu[j]:
+                        keep[j] = False
+                    else:
+                        keep[i] = False
+                        break  # i被删除，跳出内循环
+
+        keep_indices = [i for i in range(n) if keep[i]]
+        if len(keep_indices) == n:
+            return xyxy, conf, cla
+
+        keep_indices = torch.tensor(keep_indices, dtype=torch.long)
+        return xyxy[keep_indices], conf[keep_indices], cla[keep_indices]
+
     def predict(self, mfd_res, image):
         formula_list = []
         mf_image_list = []
+
+        # 对检测框进行IOU去重，保留置信度较高的框
+        xyxy_filtered, conf_filtered, cla_filtered = self._filter_boxes_by_iou(
+            mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
+        )
+
         for xyxy, conf, cla in zip(
-            mfd_res.boxes.xyxy.cpu(), mfd_res.boxes.conf.cpu(), mfd_res.boxes.cls.cpu()
+            xyxy_filtered.cpu(), conf_filtered.cpu(), cla_filtered.cpu()
         ):
             xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
             new_item = {
@@ -79,8 +134,13 @@ class UnimernetModel(object):
             image = images[image_index]
             formula_list = []
 
+            # 对检测框进行IOU去重，保留置信度较高的框
+            xyxy_filtered, conf_filtered, cla_filtered = self._filter_boxes_by_iou(
+                mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
+            )
+
             for idx, (xyxy, conf, cla) in enumerate(zip(
-                    mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
+                    xyxy_filtered, conf_filtered, cla_filtered
             )):
                 if not interline_enable and cla.item() == 1:
                     continue  # Skip interline regions if not enabled
