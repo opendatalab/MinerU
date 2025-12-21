@@ -78,7 +78,7 @@ if is_mac_os_version_supported():
       hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
       hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without method specified, pipeline will be used by default.""",
-    default='pipeline',
+    default='hybrid-auto-engine',
 )
 @click.option(
     '-l',

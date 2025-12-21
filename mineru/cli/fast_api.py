@@ -110,7 +110,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
 """
         ),
         backend: str = Form(
-            "pipeline",
+            "hybrid-auto-engine",
             description="""The backend for parsing:
 - pipeline: More general.
 - vlm-auto-engine: High accuracy via local computing power.
