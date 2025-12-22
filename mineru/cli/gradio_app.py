@@ -459,7 +459,7 @@ def main(ctx,
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
                 with gr.Tabs():
                     with gr.Tab(i18n("md_rendering")):
-                        md = gr.Markdown(label=i18n("md_rendering"), height=1100, show_copy_button=True,
+                        md = gr.Markdown(label=i18n("md_rendering"), height=1200, show_copy_button=True,
                                          latex_delimiters=latex_delimiters,
                                          line_breaks=True)
                     with gr.Tab(i18n("md_text")):
