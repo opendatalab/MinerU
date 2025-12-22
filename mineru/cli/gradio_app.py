@@ -105,6 +105,9 @@ def replace_image_with_base64(markdown_text, image_dir_path):
 
 
 async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
+    # 如果language包含()，则提取括号前的内容作为实际语言
+    if '(' in language and ')' in language:
+        language = language.split('(')[0].strip()
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
     local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
@@ -242,10 +245,28 @@ devanagari_lang = [
         "sa",
         "bgc",
 ]
-other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka', "el", "th"]
-add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']
+other_lang = [
+    'ch (Chinese, English, Chinese Traditional)',
+    'ch_lite (Chinese, English, Chinese Traditional, Japanese)',
+    'ch_server (Chinese, English, Chinese Traditional, Japanese)',
+    'en (English)',
+    'korean (Korean, English)',
+    'japan (Chinese, English, Chinese Traditional, Japanese)',
+    'chinese_cht (Chinese, English, Chinese Traditional, Japanese)',
+    'ta (Tamil, English)',
+    'te (Telugu, English)',
+    'ka (Kannada)',
+    "el (Greek, English)",
+    "th (Thai, English)"
+]
+add_lang = [
+    'latin (French, German, Afrikaans, Italian, Spanish, Bosnian, Portuguese, Czech, Welsh, Danish, Estonian, Irish, Croatian, Uzbek, Hungarian, Serbian (Latin), Indonesian, Occitan, Icelandic, Lithuanian, Maori, Malay, Dutch, Norwegian, Polish, Slovak, Slovenian, Albanian, Swedish, Swahili, Tagalog, Turkish, Latin, Azerbaijani, Kurdish, Latvian, Maltese, Pali, Romanian, Vietnamese, Finnish, Basque, Galician, Luxembourgish, Romansh, Catalan, Quechua)',
+    'arabic (Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English)',
+    'east_slavic (Russian, Belarusian, Ukrainian, English)',
+    'cyrillic (Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English)',
+    'devanagari (Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English)'
+]
 
-# all_lang = ['', 'auto']
 all_lang = []
 # all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
 all_lang.extend([*other_lang, *add_lang])
@@ -288,21 +309,42 @@ def get_formula_label(backend_choice):
     else:
         return "Enable formula recognition"
 
+def get_formula_info(backend_choice):
+    if backend_choice.startswith("vlm"):
+        return "If disabled, display formulas will be shown as images."
+    elif backend_choice == "pipeline":
+        return "If disabled, display formulas will be shown as images, and inline formulas will not be detected or parsed."
+    elif backend_choice.startswith("hybrid"):
+        return "If disabled, inline formulas will not be detected or parsed."
+    else:
+        return ""
+
+def get_backend_info(backend_choice):
+    if backend_choice.startswith("vlm"):
+        return "High-precision parsing via VLM, supports Chinese and English documents only."
+    elif backend_choice == "pipeline":
+        return "Traditional pipeline parsing, supports multiple languages, hallucination-free."
+    elif backend_choice.startswith("hybrid"):
+        return "High-precision hybrid parsing, supports multiple languages."
+    else:
+        return "Select the backend engine for document parsing."
+
 
 # 更新界面函数
 def update_interface(backend_choice):
-    formula_label_update = gr.update(label=get_formula_label(backend_choice))
+    formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
+    backend_info_update = gr.update(info=get_backend_info(backend_choice))
     if backend_choice in [
         "vlm-transformers",
         "vlm-vllm-async-engine",
         "vlm-lmdeploy-engine",
         "vlm-mlx-engine",
     ]:
-        return gr.update(visible=False), gr.update(visible=False), formula_label_update
+        return gr.update(visible=False), gr.update(visible=False), formula_label_update, backend_info_update
     elif backend_choice in ["vlm-http-client"]:
-        return gr.update(visible=True), gr.update(visible=False), formula_label_update
+        return gr.update(visible=True), gr.update(visible=False), formula_label_update, backend_info_update
     elif backend_choice in ["hybrid-http-client"]:
-        return gr.update(visible=True), gr.update(visible=True), formula_label_update
+        return gr.update(visible=True), gr.update(visible=True), formula_label_update, backend_info_update
     elif backend_choice in [
         "pipeline",
         "hybrid-vllm-async-engine",
@@ -310,9 +352,9 @@ def update_interface(backend_choice):
         "hybrid-mlx-engine",
         "hybrid-transformers",
     ]:
-        return gr.update(visible=False), gr.update(visible=True), formula_label_update
+        return gr.update(visible=False), gr.update(visible=True), formula_label_update, backend_info_update
     else:
-        return gr.update(), gr.update(), formula_label_update
+        return gr.update(), gr.update(), formula_label_update, backend_info_update
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
@@ -414,7 +456,7 @@ def main(ctx,
                 with gr.Row():
                     input_file = gr.File(label='Please upload a PDF or image', file_types=suffixes)
                 with gr.Row():
-                    max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
+                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label='Max convert pages')
                 with gr.Row():
                     if vlm_engine == "vllm-async-engine":
                         drop_list = ["pipeline", "vlm-vllm-async-engine", "hybrid-vllm-async-engine"]
@@ -430,17 +472,17 @@ def main(ctx,
                         preferred_option = "pipeline"
                     if http_client_enable:
                         drop_list.extend(["vlm-http-client", "hybrid-http-client"])
-                    backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
+                    backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option, info=get_backend_info(preferred_option))
                 with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
+                    url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000', info="OpenAI-compatible server URL for http-client backend.")
                 with gr.Row(equal_height=True):
                     with gr.Column():
                         gr.Markdown("**Recognition Options:**")
-                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True)
-                        table_enable = gr.Checkbox(label='Enable table recognition', value=True)
+                        table_enable = gr.Checkbox(label='Enable table recognition', value=True, info='If disabled, tables will be shown as images.')
+                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
                     with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label='OCR Language', value='ch')
-                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False, info='Enable only if the result is poor. Requires the correct OCR language.')
+                        language = gr.Dropdown(all_lang, label='OCR Language', value='ch (Chinese, English, Chinese Traditional)', info='Select the OCR language for image-based PDFs and images.')
+                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False, info='Enable only if the result is extremely poor and requires correct OCR language.')
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
@@ -469,14 +511,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable],
+            outputs=[client_options, ocr_options, formula_enable, backend],
             api_name=False
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable],
+            outputs=[client_options, ocr_options, formula_enable, backend],
             api_name=False
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
