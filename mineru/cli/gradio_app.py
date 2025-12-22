@@ -138,7 +138,7 @@ latex_delimiters_type_b = [
 latex_delimiters_type_all = latex_delimiters_type_a + latex_delimiters_type_b
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
-with open(header_path, 'r') as header_file:
+with open(header_path, mode='r', encoding='utf-8') as header_file:
     header = header_file.read()
 
 other_lang = [
