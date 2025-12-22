@@ -448,12 +448,12 @@ def main(ctx,
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
-                        with gr.Accordion(i18n("examples")):
-                            gr.Examples(
-                                examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
-                                          _.endswith(tuple(suffixes))],
-                                inputs=input_file
-                            )
+                        gr.Examples(
+                            label=i18n("examples"),
+                            examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
+                                      _.endswith(tuple(suffixes))],
+                            inputs=input_file
+                        )
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
