@@ -482,7 +482,7 @@ def main(ctx,
                         formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
                     with gr.Column(visible=False) as ocr_options:
                         language = gr.Dropdown(all_lang, label='OCR Language', value='ch (Chinese, English, Chinese Traditional)', info='Select the OCR language for image-based PDFs and images.')
-                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False, info='Enable only if the result is extremely poor and requires correct OCR language.')
+                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False, info='Enable only if the result is extremely poor. Requires correct OCR language.')
                 with gr.Row():
                     change_bu = gr.Button('Convert')
                     clear_bu = gr.ClearButton(value='Clear')
