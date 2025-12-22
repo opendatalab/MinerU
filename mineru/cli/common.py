@@ -458,7 +458,7 @@ def do_parse(
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
                 server_url, **kwargs,
             )
-        if backend.startswith("hybrid-"):
+        elif backend.startswith("hybrid-"):
             backend = backend[7:]
 
             if backend == "vllm-async-engine":
@@ -531,7 +531,7 @@ async def aio_do_parse(
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
                 server_url, **kwargs,
             )
-        if backend.startswith("hybrid-"):
+        elif backend.startswith("hybrid-"):
             backend = backend[7:]
 
             if backend == "vllm-engine":
