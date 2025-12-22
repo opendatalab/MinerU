@@ -1,3 +1,5 @@
+from enum import Enum
+
 class BlockType:
     IMAGE = 'image'
     TABLE = 'table'
@@ -113,3 +115,18 @@ class SplitFlag:
 class ImageType:
     PIL = 'pil_img'
     BASE64 = 'base64_img'
+
+
+class NotExtractType(Enum):
+    TEXT = BlockType.TEXT
+    TITLE = BlockType.TITLE
+    HEADER = BlockType.HEADER
+    FOOTER = BlockType.FOOTER
+    PAGE_NUMBER = BlockType.PAGE_NUMBER
+    PAGE_FOOTNOTE = BlockType.PAGE_FOOTNOTE
+    REF_TEXT = BlockType.REF_TEXT
+    TABLE_CAPTION = BlockType.TABLE_CAPTION
+    IMAGE_CAPTION = BlockType.IMAGE_CAPTION
+    TABLE_FOOTNOTE = BlockType.TABLE_FOOTNOTE
+    IMAGE_FOOTNOTE = BlockType.IMAGE_FOOTNOTE
+    CODE_CAPTION = BlockType.CODE_CAPTION

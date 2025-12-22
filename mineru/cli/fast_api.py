@@ -105,23 +105,22 @@ async def parse_pdf(
         output_dir: str = Form("./output", description="Output local directory"),
         lang_list: List[str] = Form(
             ["ch"],
-            description="""(Adapted only for pipeline backend)Input the languages in the pdf to improve OCR accuracy.
+            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.
 Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th, el, latin, arabic, east_slavic, cyrillic, devanagari.
 """
         ),
         backend: str = Form(
-            "pipeline",
+            "hybrid-auto-engine",
             description="""The backend for parsing:
-- pipeline: More general
-- vlm-transformers: More general, but slower
-- vlm-mlx-engine: Faster than transformers (need apple silicon and macOS 13.5+)
-- vlm-vllm-async-engine: Faster (vllm-engine, need vllm installed)
-- vlm-lmdeploy-engine: Faster (lmdeploy-engine, need lmdeploy installed)
-- vlm-http-client: Faster (client suitable for openai-compatible servers)"""
+- pipeline: More general.
+- vlm-auto-engine: High accuracy via local computing power.
+- vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
+- hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
+- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers)."""
         ),
         parse_method: str = Form(
             "auto",
-            description="""(Adapted only for pipeline backend)The method for parsing PDF:
+            description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
 - auto: Automatically determine the method based on the file type
 - txt: Use text extraction method
 - ocr: Use OCR method for image-based PDFs
@@ -131,7 +130,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
         table_enable: bool = Form(True, description="Enable table parsing."),
         server_url: Optional[str] = Form(
             None,
-            description="(Adapted only for vlm-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000"
+            description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000"
         ),
         return_md: bool = Form(True, description="Return markdown content in response"),
         return_middle_json: bool = Form(False, description="Return middle JSON in response"),

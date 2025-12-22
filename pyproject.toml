@@ -39,7 +39,7 @@ dependencies = [
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
-    "mineru-vl-utils>=0.1.17,<1",
+    "mineru-vl-utils>=0.1.18,<1",
     "qwen-vl-utils>=0.0.14,<1",
 ]
 
