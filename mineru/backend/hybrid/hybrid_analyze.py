@@ -290,7 +290,8 @@ def _process_ocr_and_formulas(
                         if (
                                 ocr_text in [
                                     '（204号', '（20', '（2', '（2号', '（20号', '号','（204',
-                                    '(cid:)',
+                                    '(cid:)', '(ci:)', '(cd:1)', 'cd:)', 'c)', '(cd:)', 'c', 'id:)',
+                                    ':)', '√:)', '√i:)', '−i:)', '−:' , 'i:)',
                                 ]
                                 and ocr_score < 0.8
                                 and layout_res_width < layout_res_height
