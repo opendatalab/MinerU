@@ -350,8 +350,9 @@ def get_batch_ratio(device):
     根据总显存大小粗略估计 batch ratio，需要排除掉vllm等推理框架占用的显存开销
     """
     gpu_memory = get_vram(device)
-
-    if gpu_memory >= 16:
+    if gpu_memory >= 32:
+        batch_ratio = 16
+    elif gpu_memory >= 16:
         batch_ratio = 8
     elif gpu_memory >= 12:
         batch_ratio = 4
