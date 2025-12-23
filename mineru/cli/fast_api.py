@@ -105,18 +105,34 @@ async def parse_pdf(
         output_dir: str = Form("./output", description="Output local directory"),
         lang_list: List[str] = Form(
             ["ch"],
-            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.
-Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th, el, latin, arabic, east_slavic, cyrillic, devanagari.
+            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
+- ch: Chinese, English, Chinese Traditional.
+- ch_lite: Chinese, English, Chinese Traditional, Japanese.
+- ch_server: Chinese, English, Chinese Traditional, Japanese.
+- en: English.
+- korean: Korean, English.
+- japan: Chinese, English, Chinese Traditional, Japanese.
+- chinese_cht: Chinese, English, Chinese Traditional, Japanese.
+- ta: Tamil, English.
+- te: Telugu, English.
+- ka: Kannada.
+- th: Thai, English.
+- el: Greek, English.
+- latin: French, German, Afrikaans, Italian, Spanish, Bosnian, Portuguese, Czech, Welsh, Danish, Estonian, Irish, Croatian, Uzbek, Hungarian, Serbian (Latin), Indonesian, Occitan, Icelandic, Lithuanian, Maori, Malay, Dutch, Norwegian, Polish, Slovak, Slovenian, Albanian, Swedish, Swahili, Tagalog, Turkish, Latin, Azerbaijani, Kurdish, Latvian, Maltese, Pali, Romanian, Vietnamese, Finnish, Basque, Galician, Luxembourgish, Romansh, Catalan, Quechua.
+- arabic: Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English.
+- east_slavic: Russian, Belarusian, Ukrainian, English.
+- cyrillic: Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English.
+- devanagari: Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English.
 """
         ),
         backend: str = Form(
             "hybrid-auto-engine",
             description="""The backend for parsing:
-- pipeline: More general.
-- vlm-auto-engine: High accuracy via local computing power.
-- vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
-- hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
-- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers)."""
+- pipeline: More general, supports multiple languages, hallucination-free.
+- vlm-auto-engine: High accuracy via local computing power, supports Chinese and English documents only.
+- vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
+- hybrid-auto-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
+- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages."""
         ),
         parse_method: str = Form(
             "auto",
