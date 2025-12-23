@@ -326,13 +326,13 @@ def get_batch_ratio(device):
     # 1. 优先尝试从环境变量获取
     """
     c/s架构分离部署时，建议通过设置环境变量 MINERU_HYBRID_BATCH_RATIO 来指定 batch ratio
-    建议的设置值如下：
+    建议的设置值如如下，以下配置值已考虑一定的冗余，单卡多终端部署时为了保证稳定性，可以额外保留一个client端的显存作为整体冗余
     单个client端显存大小 | MINERU_HYBRID_BATCH_RATIO
     ------------------|------------------------
-    <=4.5GB           | 8
-    <=4GB             | 4
-    <=3.5GB           | 2
-    <=2.5GB           | 1
+    <= 6   GB         | 8
+    <= 4.5 GB         | 4
+    <= 3   GB         | 2
+    <= 2.5 GB         | 1
     例如：
     export MINERU_HYBRID_BATCH_RATIO=4
     """
