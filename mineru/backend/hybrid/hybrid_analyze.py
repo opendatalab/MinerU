@@ -388,7 +388,8 @@ def doc_analyze(
 
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = False
-    if _ocr_enable and language in ["ch", "en"] and inline_formula_enable:
+    _force_pipeline_enable = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
+    if _ocr_enable and language in ["ch", "en"] and inline_formula_enable and not _force_pipeline_enable:
         _vlm_ocr_enable = True
         results = predictor.batch_two_step_extract(images=images_pil_list)
     else:
