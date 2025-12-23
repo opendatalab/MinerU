@@ -324,6 +324,18 @@ def get_batch_ratio(device):
     根据显存大小或环境变量获取 batch ratio
     """
     # 1. 优先尝试从环境变量获取
+    """
+    c/s架构分离部署时，建议通过设置环境变量 MINERU_HYBRID_BATCH_RATIO 来指定 batch ratio
+    建议的设置值如下：
+    单个client端显存大小 | MINERU_HYBRID_BATCH_RATIO
+    ------------------|------------------------
+    <=4.5GB           | 8
+    <=4GB             | 4
+    <=3.5GB           | 2
+    <=2.5GB           | 1
+    例如：
+    export MINERU_HYBRID_BATCH_RATIO=4
+    """
     env_val = os.getenv("MINERU_HYBRID_BATCH_RATIO")
     if env_val:
         try:
@@ -334,11 +346,14 @@ def get_batch_ratio(device):
             logger.warning(f"Invalid MINERU_HYBRID_BATCH_RATIO value: {env_val}, switching to auto mode. Error: {e}")
 
     # 2. 根据显存自动推断
+    """
+    根据总显存大小粗略估计 batch ratio，需要排除掉vllm等推理框架占用的显存开销
+    """
     gpu_memory = get_vram(device)
 
-    if gpu_memory >= 24:
+    if gpu_memory >= 16:
         batch_ratio = 8
-    elif gpu_memory >= 16:
+    elif gpu_memory >= 12:
         batch_ratio = 4
     elif gpu_memory >= 8:
         batch_ratio = 2
