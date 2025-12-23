@@ -286,7 +286,10 @@ def _process_ocr_and_formulas(
                         layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                         layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
                         if (
-                                ocr_text in ['（204号', '（20', '（2', '（2号', '（20号', '号','（204']
+                                ocr_text in [
+                                    '（204号', '（20', '（2', '（2号', '（20号', '号','（204',
+                                    '(cid:)',
+                                ]
                                 and ocr_score < 0.8
                                 and layout_res_width < layout_res_height
                         ):
