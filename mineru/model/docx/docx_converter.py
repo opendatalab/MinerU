@@ -73,14 +73,8 @@ class DocxConverter:
         self.file_path = file_path
         self.output_path = Path(output_path, Path(self.file_path).stem)
         self.blocks = []
-        self.cur_num_id: int = -1
-        # 初始化处理历史记录
-        self.history: dict[str, Any] = {
-            "names": [None],  # 样式名称历史
-            "levels": [None],  # 层级历史
-            "numids": [None],  # 列表编号ID历史
-            "indents": [None],  # 缩进级别历史
-        }
+        self.pre_num_id: int = -1  # 上一个处理元素的 numId
+        self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
         self.list_counters: dict[int, int] = {}  # 列表计数器 numId -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         Path.mkdir(self.output_path, parents=True, exist_ok=True)
@@ -146,13 +140,14 @@ class DocxConverter:
             )
 
             if tag_name == "tbl":
-                try:
-                    # 处理表格元素
-                    t = self._handle_tables(element)
-                    added_elements.extend(t)
-                except Exception:
-                    # 如果表格解析失败，记录调试信息
-                    _log.debug("could not parse a table, broken docx table")
+                pass
+                # try:
+                #     # 处理表格元素
+                #     t = self._handle_tables(element)
+                #     added_elements.extend(t)
+                # except Exception:
+                #     # 如果表格解析失败，记录调试信息
+                #     _log.debug("could not parse a table, broken docx table")
             # 检查图片元素
             elif drawing_blip:
                 # 处理图片元素
@@ -170,7 +165,6 @@ class DocxConverter:
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
                 te = self._handle_text_elements(element)
                 added_elements.extend(te)
-
 
             # 忽略其他未知元素并记录日志
             else:
@@ -834,8 +828,8 @@ class DocxConverter:
 
         Args:
             doc: DoclingDocument 对象
-            numid: 列表编号ID
-            ilevel: 列表层级
+            numid: 列表ID
+            ilevel: 缩进等级
             elements: 元素列表
             is_numbered: 是否编号
 
@@ -843,74 +837,85 @@ class DocxConverter:
             list[RefItem]: 元素引用列表
         """
         elem_ref: list = []
-        # 此方法始终使用 is_numbered 调用。应正确处理编号列表。
         if not elements:
             return elem_ref
         enum_marker = ""
-        # 如果列表编号ID与前一个列表编号ID不同，则创建新列表
-        if self.cur_num_id == -1 or self.cur_num_id != numid:  # 打开新列表
-            self.cur_num_id = numid
-            # 为新编号序列重置计数器
+
+        # 情况 1: 不存在上一个列表ID
+        if self.pre_num_id == -1:
+            # 为新编号序列重置计数器，确保编号从1开始
             self._reset_list_counters_for_new_sequence(numid)
-            list_block = {"type": BlockType.LIST, "bbox": [0, 0, 0, 0], "lines": []}
+            list_block = {
+                "type": BlockType.LIST,
+                ""
+            }
             self.blocks.append(list_block)
+            # 记录当前引用
             elem_ref.append(id(list_block))
 
-            for text, format, hyperlink in elements:
-                # 如果这是枚举元素，则设置标记和枚举参数。
-                if is_numbered:
-                    counter = self._get_list_counter(numid)
-                    enum_marker = str(counter) + ". "
-                else:
-                    enum_marker = ""
-                list_item = {
-                    "bbox": [0, 0, 0, 0],
-                    "spans": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "score": 1.0,
-                            "content": enum_marker + text,
-                            "type": ContentType.TEXT
-                        }
-                    ],
-                    "is_list_start_line": True,
-                    "is_list_end_line": True
-                }
-                elem_ref.append(id(list_item))
-                list_block["lines"].append(list_item)
-
-        elif self.cur_num_id == numid:
-            # 如果这是同一编号列表的元素，则添加元素并更新计数器。
-            n = len(self.blocks)
-            list_block = None
-            for i in range(n - 1, -1, -1):
-                if self.blocks[i]["type"] == BlockType.LIST:
-                    list_block = self.blocks[i]
-                    break
-            if list_block is None:
-                raise Exception("List block not found")
-            for text, format, hyperlink in elements:
-                # 如果这是枚举元素，则设置标记和枚举参数。
-                if is_numbered:
-                    counter = self._get_list_counter(numid)
-                    enum_marker = str(counter) + ". "
-                else:
-                    enum_marker = ""
-                list_item = {
-                    "bbox": [0, 0, 0, 0],
-                    "spans": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "score": 1.0,
-                            "content": enum_marker + text,
-                            "type": ContentType.TEXT
-                        }
-                    ],
-                    "is_list_start_line": True,
-                    "is_list_end_line": True
-                }
-                elem_ref.append(id(list_item))
-                list_block["lines"].append(list_item)
+        # if self.cur_num_id == -1 or self.cur_num_id != numid:
+        #     self.cur_num_id = numid
+        #     # 为新编号序列重置计数器
+        #     self._reset_list_counters_for_new_sequence(numid)
+        #     list_block = {"type": BlockType.LIST, "bbox": [0, 0, 0, 0], "lines": []}
+        #     self.blocks.append(list_block)
+        #     elem_ref.append(id(list_block))
+        #
+        #     for text, format, hyperlink in elements:
+        #         # 如果这是枚举元素，则设置标记和枚举参数。
+        #         if is_numbered:
+        #             counter = self._get_list_counter(numid)
+        #             enum_marker = str(counter) + ". "
+        #         else:
+        #             enum_marker = ""
+        #         list_item = {
+        #             "bbox": [0, 0, 0, 0],
+        #             "spans": [
+        #                 {
+        #                     "bbox": [0, 0, 0, 0],
+        #                     "score": 1.0,
+        #                     "content": enum_marker + text,
+        #                     "type": ContentType.TEXT
+        #                 }
+        #             ],
+        #             "is_list_start_line": True,
+        #             "is_list_end_line": True
+        #         }
+        #         elem_ref.append(id(list_item))
+        #         list_block["lines"].append(list_item)
+        #
+        # elif self.cur_num_id == numid:
+        #     # 如果这是同一编号列表的元素，则添加元素并更新计数器。
+        #     n = len(self.blocks)
+        #     list_block = None
+        #     for i in range(n - 1, -1, -1):
+        #         if self.blocks[i]["type"] == BlockType.LIST:
+        #             list_block = self.blocks[i]
+        #             break
+        #     if list_block is None:
+        #         raise Exception("List block not found")
+        #     for text, format, hyperlink in elements:
+        #         # 如果这是枚举元素，则设置标记和枚举参数。
+        #         if is_numbered:
+        #             counter = self._get_list_counter(numid)
+        #             enum_marker = str(counter) + ". "
+        #         else:
+        #             enum_marker = ""
+        #         list_item = {
+        #             "bbox": [0, 0, 0, 0],
+        #             "spans": [
+        #                 {
+        #                     "bbox": [0, 0, 0, 0],
+        #                     "score": 1.0,
+        #                     "content": enum_marker + text,
+        #                     "type": ContentType.TEXT
+        #                 }
+        #             ],
+        #             "is_list_start_line": True,
+        #             "is_list_end_line": True
+        #         }
+        #         elem_ref.append(id(list_item))
+        #         list_block["lines"].append(list_item)
 
         return elem_ref
 
