@@ -334,7 +334,7 @@ def doc_analyze(
 
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = False
-    if _ocr_enable and language in ["ch"] and inline_formula_enable:
+    if _ocr_enable and language in ["ch", "en"] and inline_formula_enable:
         _vlm_ocr_enable = True
         results = predictor.batch_two_step_extract(images=images_pil_list)
     else:
@@ -389,7 +389,7 @@ async def aio_doc_analyze(
 
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = False
-    if _ocr_enable and language in ["ch"] and inline_formula_enable:
+    if _ocr_enable and language in ["ch", "en"] and inline_formula_enable:
         _vlm_ocr_enable = True
         results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
     else:

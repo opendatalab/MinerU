@@ -280,7 +280,7 @@ def main(ctx,
             "md_rendering": "Markdown rendering",
             "md_text": "Markdown text",
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
-            "backend_info_pipeline": "Traditional pipeline parsing, supports multiple languages, hallucination-free.",
+            "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
@@ -311,7 +311,7 @@ def main(ctx,
             "md_rendering": "Markdown 渲染",
             "md_text": "Markdown 文本",
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
-            "backend_info_pipeline": "多模型传统管道解析，支持多语言，无幻觉。",
+            "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
             "backend_info_default": "选择文档解析的后端引擎。",
         },
@@ -388,9 +388,7 @@ def main(ctx,
 
     vlm_engine = get_vlm_engine("auto", is_async=True)
     if vlm_engine in ["transformers", "mlx-engine"]:
-        if vlm_engine == "transformers":
-            http_client_enable = True
-        pass
+        http_client_enable = True
     else:
         try:
             logger.info(f"Start init {vlm_engine}...")
