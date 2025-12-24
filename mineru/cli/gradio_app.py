@@ -352,24 +352,13 @@ def main(ctx,
     def update_interface(backend_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        if backend_choice in [
-            "vlm-transformers",
-            "vlm-vllm-async-engine",
-            "vlm-lmdeploy-engine",
-            "vlm-mlx-engine",
-        ]:
+        if backend_choice in ["vlm-auto-engine"]:
             return gr.update(visible=False), gr.update(visible=False), formula_label_update, backend_info_update
         elif backend_choice in ["vlm-http-client"]:
             return gr.update(visible=True), gr.update(visible=False), formula_label_update, backend_info_update
         elif backend_choice in ["hybrid-http-client"]:
             return gr.update(visible=True), gr.update(visible=True), formula_label_update, backend_info_update
-        elif backend_choice in [
-            "pipeline",
-            "hybrid-vllm-async-engine",
-            "hybrid-lmdeploy-engine",
-            "hybrid-mlx-engine",
-            "hybrid-transformers",
-        ]:
+        elif backend_choice in ["pipeline","hybrid-auto-engine"]:
             return gr.update(visible=False), gr.update(visible=True), formula_label_update, backend_info_update
         else:
             return gr.update(), gr.update(), formula_label_update, backend_info_update
@@ -414,18 +403,8 @@ def main(ctx,
                 with gr.Row():
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
                 with gr.Row():
-                    if vlm_engine == "vllm-async-engine":
-                        drop_list = ["pipeline", "vlm-vllm-async-engine", "hybrid-vllm-async-engine"]
-                        preferred_option = "hybrid-vllm-async-engine"
-                    elif vlm_engine == "lmdeploy-engine":
-                        drop_list = ["pipeline", "vlm-lmdeploy-engine", "hybrid-lmdeploy-engine"]
-                        preferred_option = "hybrid-lmdeploy-engine"
-                    elif vlm_engine == "mlx-engine":
-                        drop_list = ["pipeline", "vlm-mlx-engine", "hybrid-mlx-engine"]
-                        preferred_option = "hybrid-mlx-engine"
-                    else:
-                        drop_list = ["pipeline", "vlm-transformers", "hybrid-transformers"]
-                        preferred_option = "pipeline"
+                    drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
+                    preferred_option = "hybrid-auto-engine"
                     if http_client_enable:
                         drop_list.extend(["vlm-http-client", "hybrid-http-client"])
                     backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
