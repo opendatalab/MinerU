@@ -457,42 +457,65 @@ def main(ctx,
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
                 with gr.Tabs():
                     with gr.Tab(i18n("md_rendering")):
-                        md = gr.Markdown(label=i18n("md_rendering"), height=1200, show_copy_button=True,
-                                         latex_delimiters=latex_delimiters,
-                                         line_breaks=True)
+                        md = gr.Markdown(
+                            label=i18n("md_rendering"),
+                            height=1200,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            latex_delimiters=latex_delimiters,
+                            line_breaks=True
+                        )
                     with gr.Tab(i18n("md_text")):
-                        md_text = gr.TextArea(lines=45, show_copy_button=True)
+                        md_text = gr.TextArea(
+                            lines=45,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            label=i18n("md_text")
+                        )
 
         # 添加事件处理
         backend.change(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            api_name=False
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            api_name=False
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
-        if api_enable:
-            api_name = None
-        else:
-            api_name = False
-
-        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show, api_name=api_name)
+        input_file.change(
+            fn=to_pdf,
+            inputs=input_file,
+            outputs=pdf_show,
+            api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+        )
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
             outputs=[md, md_text, output_file, pdf_show],
-            api_name=api_name
+            api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
         )
 
-    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable, i18n=i18n)
+    footer_links = ["gradio", "settings"]
+    if api_enable:
+        footer_links.append("api")
+    demo.launch(
+        server_name=server_name,
+        server_port=server_port,
+        # footer_links=footer_links,  # gradio 6 以上版本使用
+        show_api=api_enable,  # gradio 6 以下版本使用
+        i18n=i18n
+    )
 
 
 if __name__ == '__main__':
