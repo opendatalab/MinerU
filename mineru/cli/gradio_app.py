@@ -352,24 +352,13 @@ def main(ctx,
     def update_interface(backend_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        if backend_choice in [
-            "vlm-transformers",
-            "vlm-vllm-async-engine",
-            "vlm-lmdeploy-engine",
-            "vlm-mlx-engine",
-        ]:
+        if backend_choice in ["vlm-auto-engine"]:
             return gr.update(visible=False), gr.update(visible=False), formula_label_update, backend_info_update
         elif backend_choice in ["vlm-http-client"]:
             return gr.update(visible=True), gr.update(visible=False), formula_label_update, backend_info_update
         elif backend_choice in ["hybrid-http-client"]:
             return gr.update(visible=True), gr.update(visible=True), formula_label_update, backend_info_update
-        elif backend_choice in [
-            "pipeline",
-            "hybrid-vllm-async-engine",
-            "hybrid-lmdeploy-engine",
-            "hybrid-mlx-engine",
-            "hybrid-transformers",
-        ]:
+        elif backend_choice in ["pipeline","hybrid-auto-engine"]:
             return gr.update(visible=False), gr.update(visible=True), formula_label_update, backend_info_update
         else:
             return gr.update(), gr.update(), formula_label_update, backend_info_update
@@ -414,18 +403,8 @@ def main(ctx,
                 with gr.Row():
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
                 with gr.Row():
-                    if vlm_engine == "vllm-async-engine":
-                        drop_list = ["pipeline", "vlm-vllm-async-engine", "hybrid-vllm-async-engine"]
-                        preferred_option = "hybrid-vllm-async-engine"
-                    elif vlm_engine == "lmdeploy-engine":
-                        drop_list = ["pipeline", "vlm-lmdeploy-engine", "hybrid-lmdeploy-engine"]
-                        preferred_option = "hybrid-lmdeploy-engine"
-                    elif vlm_engine == "mlx-engine":
-                        drop_list = ["pipeline", "vlm-mlx-engine", "hybrid-mlx-engine"]
-                        preferred_option = "hybrid-mlx-engine"
-                    else:
-                        drop_list = ["pipeline", "vlm-transformers", "hybrid-transformers"]
-                        preferred_option = "pipeline"
+                    drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
+                    preferred_option = "hybrid-auto-engine"
                     if http_client_enable:
                         drop_list.extend(["vlm-http-client", "hybrid-http-client"])
                     backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
@@ -457,42 +436,65 @@ def main(ctx,
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
                 with gr.Tabs():
                     with gr.Tab(i18n("md_rendering")):
-                        md = gr.Markdown(label=i18n("md_rendering"), height=1200, show_copy_button=True,
-                                         latex_delimiters=latex_delimiters,
-                                         line_breaks=True)
+                        md = gr.Markdown(
+                            label=i18n("md_rendering"),
+                            height=1200,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            latex_delimiters=latex_delimiters,
+                            line_breaks=True
+                        )
                     with gr.Tab(i18n("md_text")):
-                        md_text = gr.TextArea(lines=45, show_copy_button=True)
+                        md_text = gr.TextArea(
+                            lines=45,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            label=i18n("md_text")
+                        )
 
         # 添加事件处理
         backend.change(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            api_name=False
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            api_name=False
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
-        if api_enable:
-            api_name = None
-        else:
-            api_name = False
-
-        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show, api_name=api_name)
+        input_file.change(
+            fn=to_pdf,
+            inputs=input_file,
+            outputs=pdf_show,
+            api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+        )
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
             outputs=[md, md_text, output_file, pdf_show],
-            api_name=api_name
+            api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
         )
 
-    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable, i18n=i18n)
+    footer_links = ["gradio", "settings"]
+    if api_enable:
+        footer_links.append("api")
+    demo.launch(
+        server_name=server_name,
+        server_port=server_port,
+        # footer_links=footer_links,  # gradio 6 以上版本使用
+        show_api=api_enable,  # gradio 6 以下版本使用
+        i18n=i18n
+    )
 
 
 if __name__ == '__main__':

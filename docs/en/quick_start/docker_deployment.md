@@ -11,7 +11,7 @@ docker build -t mineru:latest -f Dockerfile .
 
 > [!TIP]
 > The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `vllm/vllm-openai:v0.10.1.1` as the base image by default. This version of vLLM v1 engine has limited support for GPU models. 
-> If you cannot use vLLM accelerated inference on Turing and earlier architecture GPUs, you can resolve this issue by changing the base image to `vllm/vllm-openai:v0.10.2`.
+> This version supports a limited range of GPU models and may only function on Ampere, Ada Lovelace, and Hopper architectures. If you cannot use vLLM for accelerated inference on Volta, Turing, or Blackwell GPUs, you can resolve this issue by changing the base image to `vllm/vllm-openai:v0.11.0`.
 
 ## Docker Description
 

@@ -13,22 +13,6 @@ from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
-backends = [
-    'pipeline',
-    'vlm-transformers',
-    'vlm-vllm-engine',
-    'vlm-lmdeploy-engine',
-    'vlm-http-client',
-    'hybrid-transformers',
-    'hybrid-vllm-engine',
-    'hybrid-lmdeploy-engine',
-    'hybrid-http-client',
-    'vlm-auto-engine',
-    'hybrid-auto-engine',
-]
-if is_mac_os_version_supported():
-    backends.append("vlm-mlx-engine")
-
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
 @click.version_option(__version__,
@@ -69,7 +53,7 @@ if is_mac_os_version_supported():
     '-b',
     '--backend',
     'backend',
-    type=click.Choice(backends),
+    type=click.Choice(['pipeline', 'vlm-http-client', 'hybrid-http-client', 'vlm-auto-engine', 'hybrid-auto-engine',]),
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
