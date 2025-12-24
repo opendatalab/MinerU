@@ -10,12 +10,6 @@ from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
-try:
-    import torch
-    import torch_npu
-except ImportError:
-    pass
-
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_middle_json
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import ModelSingleton
@@ -368,15 +362,6 @@ def get_batch_ratio(device):
         batch_ratio = 2
     else:
         batch_ratio = 1
-
-    if torch.cuda.is_available():
-        major, minor = torch.cuda.get_device_capability()
-        # 正确计算Compute Capability
-        compute_capability = f"{major}.{minor}"
-    elif hasattr(torch, 'npu') and torch.npu.is_available():
-        compute_capability = "8.0"
-    if version.parse(compute_capability) < version.parse("8.0"):
-        batch_ratio = max(1, batch_ratio // 2)
 
     logger.info(f"hybrid batch ratio (auto, vram={gpu_memory}GB): {batch_ratio}")
     return batch_ratio
