@@ -235,10 +235,13 @@ async def parse_pdf(
             with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 for pdf_name in pdf_file_names:
                     safe_pdf_name = sanitize_filename(pdf_name)
+
                     if backend.startswith("pipeline"):
                         parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
-                    else:
+                    elif backend.startswith("vlm"):
                         parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
+                    elif backend.startswith("hybrid"):
+                        parse_dir = os.path.join(unique_dir, pdf_name, f"hybrid_{parse_method}")
 
                     if not os.path.exists(parse_dir):
                         continue
@@ -286,8 +289,10 @@ async def parse_pdf(
 
                 if backend.startswith("pipeline"):
                     parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
-                else:
+                elif backend.startswith("vlm"):
                     parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
+                elif backend.startswith("hybrid"):
+                    parse_dir = os.path.join(unique_dir, pdf_name, f"hybrid_{parse_method}")
 
                 if os.path.exists(parse_dir):
                     if return_md:
