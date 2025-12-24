@@ -11,7 +11,7 @@ docker build -t mineru:latest -f Dockerfile .
 
 > [!TIP]
 > [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile)默认使用`vllm/vllm-openai:v0.10.1.1`作为基础镜像，
-> 该版本的vLLM v1 engine对显卡型号支持有限，如您无法在Turing及更早架构的显卡上使用vLLM加速推理，可通过更改基础镜像为`vllm/vllm-openai:v0.10.2`来解决该问题。
+> 该版本的显卡型号支持有限，可能仅在 Ampere、Ada Lovelace、Hopper架构上工作，如您无法在Volta、Turing、Blackwell显卡上使用vLLM加速推理，可通过更改基础镜像为`vllm/vllm-openai:v0.11.0`来解决该问题。
 
 ## Docker说明
 
