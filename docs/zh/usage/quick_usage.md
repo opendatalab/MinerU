@@ -10,7 +10,6 @@ export MINERU_MODEL_SOURCE=modelscope
 ## 通过命令行快速使用
 MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行PDF解析：
 ```bash
-# 默认使用pipeline后端解析
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
@@ -22,13 +21,6 @@ mineru -p <input_path> -o <output_path>
 > [!NOTE]
 > 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
 > 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
-
-```bash
-# 或指定vlm后端解析
-mineru -p <input_path> -o <output_path> -b vlm-transformers
-```
-> [!TIP]
-> vlm后端另外支持`vllm`/`lmdeploy`加速，与`transformers`后端相比，推理速度可大幅提升。可以在[扩展模块安装指南](../quick_start/extension_modules.md)中查看支持`vllm`/`lmdeploy`加速的扩展包安装方法。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
@@ -43,12 +35,7 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
 - 启动gradio webui 可视化前端：
   ```bash
-  # 使用 pipeline/vlm-transformers/vlm-http-client 后端
   mineru-gradio --server-name 0.0.0.0 --server-port 7860
-  # 或使用 vlm-vllm-engine/pipeline 后端（需安装vllm环境）
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true
-  # 或使用 vlm-lmdeploy-engine/pipeline 后端（需安装lmdeploy环境）
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-lmdeploy-engine true
   ```
   >[!TIP]
   > 
@@ -57,16 +44,12 @@ mineru -p <input_path> -o <output_path> -b vlm-transformers
 - 使用`http-client/server`方式调用：
   ```bash
   # 启动openai兼容服务器(需要安装vllm或lmdeploy环境)
-  mineru-openai-server
-  # 或指定vllm为推理引擎(需要安装vllm环境)
-  mineru-openai-server --engine vllm --port 30000
-  # 或指定lmdeploy为推理引擎(需要安装lmdeploy环境)
-  mineru-openai-server --engine lmdeploy --server-port 30000
+  mineru-openai-server --port 30000
   ``` 
   >[!TIP]
-  >在另一个终端中通过http client连接vllm server（只需cpu与网络，不需要vllm环境）
+  >在另一个终端中通过http client连接openai server
   > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:30000
+  > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
   > ```
 
 > [!NOTE]

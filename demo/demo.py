@@ -9,12 +9,14 @@ from loguru import logger
 from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
 from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 
 
@@ -23,7 +25,7 @@ def do_parse(
     pdf_file_names: list[str],  # List of PDF file names to be parsed
     pdf_bytes_list: list[bytes],  # List of PDF bytes to be parsed
     p_lang_list: list[str],  # List of languages for each PDF, default is 'ch' (Chinese)
-    backend="pipeline",  # The backend for parsing PDF, default is 'pipeline'
+    backend="hybrid-auto-engine",  # The backend for parsing PDF, default is 'hybrid-auto-engine'
     parse_method="auto",  # The method for parsing PDF, default is 'auto'
     formula_enable=True,  # Enable formula parsing
     table_enable=True,  # Enable table parsing
@@ -69,27 +71,60 @@ def do_parse(
                 f_make_md_mode, middle_json, model_json, is_pipeline=True
             )
     else:
+        f_draw_span_bbox = False
+
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
-        f_draw_span_bbox = False
-        parse_method = "vlm"
-        for idx, pdf_bytes in enumerate(pdf_bytes_list):
-            pdf_file_name = pdf_file_names[idx]
-            pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
-            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-            middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
-            pdf_info = middle_json["pdf_info"]
+            parse_method = "vlm"
+            for idx, pdf_bytes in enumerate(pdf_bytes_list):
+                pdf_file_name = pdf_file_names[idx]
+                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+                local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+                image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+                middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
 
-            _process_output(
-                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-                f_make_md_mode, middle_json, infer_result, is_pipeline=False
-            )
+                pdf_info = middle_json["pdf_info"]
 
+                _process_output(
+                    pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                    md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                    f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                    f_make_md_mode, middle_json, infer_result, is_pipeline=False
+                )
+        elif backend.startswith("hybrid-"):
+            backend = backend[7:]
+
+            if backend == "auto-engine":
+                backend = get_vlm_engine(inference_engine='auto', is_async=False)
+
+            parse_method = f"hybrid_{parse_method}"
+            for idx, pdf_bytes in enumerate(pdf_bytes_list):
+                pdf_file_name = pdf_file_names[idx]
+                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+                local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+                image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+                middle_json, infer_result = hybrid_doc_analyze(
+                    pdf_bytes,
+                    image_writer=image_writer,
+                    backend=backend,
+                    parse_method=parse_method,
+                    language=p_lang_list[idx],
+                    inline_formula_enable=formula_enable,
+                    server_url=server_url,
+                )
+
+                pdf_info = middle_json["pdf_info"]
+
+                _process_output(
+                    pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                    md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                    f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                    f_make_md_mode, middle_json, infer_result, is_pipeline=False
+                )
 
 def _process_output(
         pdf_info,
@@ -160,7 +195,7 @@ def parse_doc(
         path_list: list[Path],
         output_dir,
         lang="ch",
-        backend="pipeline",
+        backend="hybrid-auto-engine",
         method="auto",
         server_url=None,
         start_page_id=0,
@@ -170,21 +205,23 @@ def parse_doc(
         Parameter description:
         path_list: List of document paths to be parsed, can be PDF or image files.
         output_dir: Output directory for storing parsing results.
-        lang: Language option, default is 'ch', optional values include['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka']。
+        lang: Language option, default is 'ch', optional values include['ch', 'ch_server', 'ch_lite', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka', 'th', 'el',
+                       'latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']。
             Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
-            Adapted only for the case where the backend is set to "pipeline"
+            Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'
         backend: the backend for parsing pdf:
             pipeline: More general.
-            vlm-transformers: More general.
-            vlm-vllm-engine: Faster(engine).
-            vlm-http-client: Faster(client).
-            without method specified, pipeline will be used by default.
+            vlm-auto-engine: High accuracy via local computing power.
+            vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
+            hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
+            hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
+            Without method specified, hybrid-auto-engine will be used by default.
         method: the method for parsing pdf:
             auto: Automatically determine the method based on the file type.
             txt: Use text extraction method.
             ocr: Use OCR method for image-based PDFs.
             Without method specified, 'auto' will be used by default.
-            Adapted only for the case where the backend is set to "pipeline".
+            Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
         server_url: When the backend is `http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
         start_page_id: Start page ID for parsing, default is 0
         end_page_id: End page ID for parsing, default is None (parse all pages until the end of the document)
@@ -230,12 +267,11 @@ if __name__ == '__main__':
     """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
     # os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
 
-    """Use pipeline mode if your environment does not support VLM"""
-    parse_doc(doc_path_list, output_dir, backend="pipeline")
+    """Use hybrid mode and local computing power to parse documents"""
+    parse_doc(doc_path_list, output_dir, backend="hybrid-auto-engine")
 
-    """To enable VLM mode, change the backend to 'vlm-xxx'"""
-    # parse_doc(doc_path_list, output_dir, backend="vlm-transformers")  # more general.
-    # parse_doc(doc_path_list, output_dir, backend="vlm-mlx-engine")  # faster than transformers in macOS 13.5+.
-    # parse_doc(doc_path_list, output_dir, backend="vlm-vllm-engine")  # faster(vllm-engine).
-    # parse_doc(doc_path_list, output_dir, backend="vlm-lmdeploy-engine")  # faster(lmdeploy-engine).
-    # parse_doc(doc_path_list, output_dir, backend="vlm-http-client", server_url="http://127.0.0.1:30000")  # faster(client).
+    """Other backends for parsing documents, you can uncomment and try"""
+    # parse_doc(doc_path_list, output_dir, backend="pipeline")  # more general.
+    # parse_doc(doc_path_list, output_dir, backend="vlm-auto-engine")  # high accuracy via local computing power.
+    # parse_doc(doc_path_list, output_dir, backend="vlm-http-client", server_url="http://127.0.0.1:30000")  # high accuracy via remote computing power(client suitable for openai-compatible servers).
+    # parse_doc(doc_path_list, output_dir, backend="hybrid-http-client", server_url="http://127.0.0.1:30000")  # high accuracy but requires a little local computing power(client suitable for openai-compatible servers).
