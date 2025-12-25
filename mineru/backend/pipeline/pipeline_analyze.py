@@ -185,7 +185,6 @@ def batch_image_analyze(
         batch_ratio = 1
     logger.info(
             f'GPU Memory: {gpu_memory} GB, Batch Ratio: {batch_ratio}. '
-            f'You can set MINERU_VIRTUAL_VRAM_SIZE environment variable to adjust GPU memory allocation.'
     )
 
     # 检测torch的版本号
