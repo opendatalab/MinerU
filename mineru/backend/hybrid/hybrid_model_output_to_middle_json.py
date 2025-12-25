@@ -71,9 +71,9 @@ def blocks_to_page_info(
     phonetic_blocks = magic_model.get_phonetic_blocks()
     list_blocks = magic_model.get_list_blocks()
 
-    # 如果有标题优化需求，则对title_blocks截图det
+    # 如果有标题优化需求，计算标题的平均行高
     if heading_level_import_success:
-        if _vlm_ocr_enable:
+        if _vlm_ocr_enable:  # vlm_ocr导致没有line信息，需要重新det获取平均行高
             atom_model_manager = AtomModelSingleton()
             ocr_model = atom_model_manager.get_atom_model(
                 atom_model_name='ocr',
@@ -94,7 +94,7 @@ def blocks_to_page_info(
                     # 计算所有res的平均高度
                     avg_height = np.mean([box[2][1] - box[0][1] for box in ocr_det_res])
                     title_block['line_avg_height'] = round(avg_height/scale)
-        else:
+        else:  # 有line信息，直接计算平均行高
             for title_block in title_blocks:
                 lines = title_block.get('lines', [])
                 if lines:
