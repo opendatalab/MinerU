@@ -31,7 +31,6 @@
 - 启动Docker容器
     ```bash
     sudo docker run -it \
-        -e LLM_MAX_PREFILL_SEQ_LEN="102400" \
         --privileged=true \
         --shm-size=256g \
         --name vllm_service \
