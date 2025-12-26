@@ -352,16 +352,16 @@ def main(ctx,
     def update_interface(backend_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
-        if backend_choice in ["vlm-auto-engine"]:
-            return gr.update(visible=False), gr.update(visible=False), formula_label_update, backend_info_update
-        elif backend_choice in ["vlm-http-client"]:
-            return gr.update(visible=True), gr.update(visible=False), formula_label_update, backend_info_update
-        elif backend_choice in ["hybrid-http-client"]:
-            return gr.update(visible=True), gr.update(visible=True), formula_label_update, backend_info_update
-        elif backend_choice in ["pipeline","hybrid-auto-engine"]:
-            return gr.update(visible=False), gr.update(visible=True), formula_label_update, backend_info_update
+        if "http-client" in backend_choice:
+            client_options_update = gr.update(visible=True)
         else:
-            return gr.update(), gr.update(), formula_label_update, backend_info_update
+            client_options_update = gr.update(visible=False)
+        if "vlm" in backend_choice:
+            ocr_options_update = gr.update(visible=False)
+        else:
+            ocr_options_update = gr.update(visible=True)
+
+        return client_options_update, ocr_options_update, formula_label_update, backend_info_update
 
 
     kwargs.update(arg_parse(ctx))

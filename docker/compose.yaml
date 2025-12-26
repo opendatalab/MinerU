@@ -10,7 +10,6 @@ services:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-openai-server
     command:
-      --engine vllm
       --host 0.0.0.0
       --port 30000
       # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
@@ -70,7 +69,6 @@ services:
     command:
       --server-name 0.0.0.0
       --server-port 7860
-      --enable-vllm-engine true  # Enable the vllm engine for Gradio
       # --enable-api false  # If you want to disable the API, set this to false
       # --max-convert-pages 20  # If you want to limit the number of pages for conversion, set this to a specific number
       # parameters for vllm-engine
