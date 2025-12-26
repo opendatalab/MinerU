@@ -1,4 +1,3 @@
-import re
 from loguru import logger
 
 from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
@@ -148,10 +147,25 @@ def merge_para_with_text(para_block):
                     else:
                         para_text += f'{content} '
                 else:
+                    # 西方文本语境下 每行的最后一个span判断是否要去除连字符
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if j == len(line['spans'])-1 and span_type == ContentType.TEXT and is_hyphen_at_line_end(content):
-                            para_text += content[:-1]
+                        if (
+                                j == len(line['spans']) - 1
+                                and span_type == ContentType.TEXT
+                                and is_hyphen_at_line_end(content)
+                        ):
+                            # 如果下一行的第一个span是大写字母开头，不删除连字符
+                            if (
+                                    i + 1 < len(para_block['lines'])
+                                    and para_block['lines'][i + 1]['spans']
+                                    and para_block['lines'][i + 1]['spans'][0]['type'] == ContentType.TEXT
+                                    and para_block['lines'][i + 1]['spans'][0]['content']
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].isupper()
+                            ):
+                                para_text += content
+                            else:
+                                para_text += content[:-1]
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
             else:

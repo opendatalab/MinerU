@@ -32,7 +32,7 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
     block_lang = detect_lang(block_text)
 
     para_text = ''
-    for line in para_block['lines']:
+    for i, line in enumerate(para_block['lines']):
         for j, span in enumerate(line['spans']):
             span_type = span['type']
             content = ''
@@ -69,6 +69,7 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                     else:
                         para_text += f'{content} '
                 else:
+                    # 西方文本语境下 每行的最后一个span判断是否要去除连字符
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
                         if (
@@ -76,7 +77,17 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                                 and span_type == ContentType.TEXT
                                 and is_hyphen_at_line_end(content)
                         ):
-                            para_text += content[:-1]
+                            # 如果下一行的第一个span是大写字母开头，不删除连字符
+                            if (
+                                    i+1 < len(para_block['lines'])
+                                    and para_block['lines'][i + 1]['spans']
+                                    and para_block['lines'][i + 1]['spans'][0]['type'] == ContentType.TEXT
+                                    and para_block['lines'][i + 1]['spans'][0]['content']
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].isupper()
+                            ):
+                                para_text += content
+                            else:
+                                para_text += content[:-1]
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
     return para_text
