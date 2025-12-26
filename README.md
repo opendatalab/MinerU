@@ -163,13 +163,13 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr>
     <tr>
       <th>RAM</th>
-      <td colspan="3" style="text-align:center;">Min 16GB+, Recommended 32GB+</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
+      <td colspan="3" style="text-align:center;">Min 16GB, Recommended 32GB or more</td>
+      <td colspan="2" style="text-align:center;">Min 8GB</td>
     </tr>
     <tr>
       <th>Disk Space</th>
-      <td colspan="3" style="text-align:center;">20GB+, SSD Recommended</td>
-      <td colspan="2" style="text-align:center;">2GB</td>
+      <td colspan="3" style="text-align:center;">Min 20GB, SSD Recommended</td>
+      <td colspan="2" style="text-align:center;">Min 2GB</td>
     </tr>
     <tr>
       <th>Python Version</th>
@@ -215,9 +215,14 @@ You can get the [Docker Deployment Instructions](https://opendatalab.github.io/M
 
 ### Using MinerU
 
-The simplest command line invocation is:
+
+If your device meets the GPU acceleration requirements in the table above, you can use a simple command line for document parsing:
 ```bash
 mineru -p <input_path> -o <output_path>
+```
+If your device does not meet the GPU acceleration requirements, you can specify the backend as `pipeline` to run in a pure CPU environment:
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).

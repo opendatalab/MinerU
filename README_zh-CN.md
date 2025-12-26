@@ -163,12 +163,12 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
       <th>内存要求</th>
       <td colspan="3" style="text-align:center;">最低16GB以上,推荐32GB以上</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">最低8GB</td>
     </tr>
     <tr>
       <th>磁盘空间要求</th>
       <td colspan="3" style="text-align:center;">20GB以上,推荐使用SSD</td>
-      <td colspan="2" style="text-align:center;">2GB</td>
+      <td colspan="2" style="text-align:center;">至少2GB</td>
     </tr>
     <tr>
       <th>python版本</th>
@@ -217,9 +217,13 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 
 ### 使用 MinerU
 
-最简单的命令行调用方式:
+如果您的设备满足上表中GPU加速的条件，可以使用简单的命令行进行文档解析:
 ```bash
 mineru -p <input_path> -o <output_path>
+```
+如果您的设备不满足GPU加速条件，可以指定后端为`pipeline`，以在纯CPU环境下运行:
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
