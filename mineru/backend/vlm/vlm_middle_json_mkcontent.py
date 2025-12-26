@@ -77,17 +77,17 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                                 and span_type == ContentType.TEXT
                                 and is_hyphen_at_line_end(content)
                         ):
-                            # 如果下一行的第一个span是大写字母开头，不删除连字符
+                            # 如果下一行的第一个span是小写字母开头，删除连字符
                             if (
                                     i+1 < len(para_block['lines'])
                                     and para_block['lines'][i + 1]['spans']
                                     and para_block['lines'][i + 1]['spans'][0]['type'] == ContentType.TEXT
                                     and para_block['lines'][i + 1]['spans'][0]['content']
-                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].isupper()
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].islower()
                             ):
-                                para_text += content
-                            else:
                                 para_text += content[:-1]
+                            else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
+                                para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
     return para_text
