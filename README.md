@@ -55,7 +55,7 @@
   - Switched default parsing backend from `pipeline` to `hybrid-auto-engine`, improving out-of-the-box result consistency for new users and avoiding cognitive differences in parsing results.
   - Added i18n support to gradio application, supporting switching between Chinese and English languages.
   
-> 📝 View the complete [Changelog](https://opendatalab.github.io/MinerU/changelog/) for more historical version information
+> 📝 View the complete [Changelog](https://opendatalab.github.io/MinerU/reference/changelog/) for more historical version information
 
 # MinerU
 
