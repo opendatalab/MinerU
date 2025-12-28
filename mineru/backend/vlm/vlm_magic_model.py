@@ -376,7 +376,7 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
     processed_indices = set()
 
     # 特殊处理表格类型，确保标题在表格前，注脚在表格后
-    if fix_type == "table":
+    if fix_type in ["table", "image"]:
         # 收集所有不合适的caption和footnote
         misplaced_captions = []  # 存储(caption, 原始block索引)
         misplaced_footnotes = []  # 存储(footnote, 原始block索引)
@@ -429,13 +429,22 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
                 caption_list.sort(key=lambda x: x["index"], reverse=True)
                 filtered_captions = [caption_list[0]]
                 for i in range(1, len(caption_list)):
-                    # 检查是否与前一个caption连续(降序所以是-1)
-                    if caption_list[i]["index"] == caption_list[i - 1]["index"] - 1:
+                    prev_index = caption_list[i - 1]["index"]
+                    curr_index = caption_list[i]["index"]
+
+                    # 检查是否连续
+                    if curr_index == prev_index - 1:
                         filtered_captions.append(caption_list[i])
                     else:
-                        # 出现gap,后续所有caption都作为普通block
-                        not_include_blocks.extend(caption_list[i:])
-                        break
+                        # 检查gap中是否只有body_index
+                        gap_indices = set(range(curr_index + 1, prev_index))
+                        if gap_indices == {body_index}:
+                            # gap中只有body_index,不算真正的gap
+                            filtered_captions.append(caption_list[i])
+                        else:
+                            # 出现真正的gap,后续所有caption都作为普通block
+                            not_include_blocks.extend(caption_list[i:])
+                            break
                 # 恢复升序
                 filtered_captions.reverse()
                 block[f"{fix_type}_caption_list"] = filtered_captions
