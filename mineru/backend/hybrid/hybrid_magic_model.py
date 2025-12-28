@@ -452,7 +452,7 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
     processed_indices = set()
 
     # 特殊处理表格类型，确保标题在表格前，注脚在表格后
-    if fix_type == "table":
+    if fix_type in ["table", "image"]:
         # 收集所有不合适的caption和footnote
         misplaced_footnotes = []  # 存储(footnote, 原始block索引)
 
