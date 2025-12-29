@@ -335,7 +335,7 @@ def _process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result, _vlm_ocr_enable= hybrid_doc_analyze(
+        middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
