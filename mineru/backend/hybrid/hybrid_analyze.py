@@ -443,7 +443,7 @@ def doc_analyze(
     )
 
     clean_memory(device)
-    return middle_json, results
+    return middle_json, results, _vlm_ocr_enable
 
 
 async def aio_doc_analyze(
@@ -509,5 +509,5 @@ async def aio_doc_analyze(
     )
 
     clean_memory(device)
-    return middle_json, results
+    return middle_json, results, _vlm_ocr_enable
 

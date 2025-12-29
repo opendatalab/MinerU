@@ -327,7 +327,6 @@ def _process_hybrid(
         **kwargs,
 ):
     """同步处理hybrid后端逻辑"""
-    f_draw_span_bbox = False
     if not backend.endswith("client"):
         server_url = None
 
@@ -336,7 +335,7 @@ def _process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = hybrid_doc_analyze(
+        middle_json, infer_result, _vlm_ocr_enable= hybrid_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
@@ -348,6 +347,9 @@ def _process_hybrid(
         )
 
         pdf_info = middle_json["pdf_info"]
+
+        # f_draw_span_bbox = not _vlm_ocr_enable
+        f_draw_span_bbox = False
 
         _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
@@ -377,7 +379,7 @@ async def _async_process_hybrid(
         **kwargs,
 ):
     """异步处理hybrid后端逻辑"""
-    f_draw_span_bbox = False
+
     if not backend.endswith("client"):
         server_url = None
 
@@ -386,7 +388,7 @@ async def _async_process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = await aio_hybrid_doc_analyze(
+        middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
             pdf_bytes,
             image_writer=image_writer,
             backend=backend,
@@ -398,6 +400,9 @@ async def _async_process_hybrid(
         )
 
         pdf_info = middle_json["pdf_info"]
+
+        # f_draw_span_bbox = not _vlm_ocr_enable
+        f_draw_span_bbox = False
 
         _process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
