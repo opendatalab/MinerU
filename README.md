@@ -131,7 +131,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th>Backend Features</th>
       <td >Good Compatibility</td>
-      <td colspan="2">High Config Requirements</td>
+      <td colspan="2">High Hardware Requirements</td>
       <td colspan="2">For OpenAI Compatible Servers<sup>2</sup></td>
     </tr> 
     <tr>
