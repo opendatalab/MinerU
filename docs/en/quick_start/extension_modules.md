@@ -39,8 +39,18 @@ uv pip install "mineru[core,lmdeploy]"
 
 ---
 
-### Installing Lightweight Client to Connect to OpenAI-compatible servers
+### Installing Lightweight Client to Connect to OpenAI-compatible servers (for vlm-http-client mode)
 If you need to install a lightweight client on edge devices to connect to an OpenAI-compatible server for using VLM mode, you can install the basic mineru package, which is very lightweight and suitable for devices with only CPU and network connectivity.
 ```bash
 uv pip install mineru
+mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:30000
+```
+
+---
+
+### Installing Lightweight Client to Connect to OpenAI-compatible servers (for hybrid-http-client mode)
+If you need to install a lightweight client on edge devices to connect to an OpenAI-compatible server for using hybrid mode, you can install the mineru pipeline extension package, which is relatively lightweight and can be used on devices with only CPU and network connectivity, while running faster on devices that support GPU acceleration.
+```bash
+uv pip install mineru[pipeline]
+mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
 ```

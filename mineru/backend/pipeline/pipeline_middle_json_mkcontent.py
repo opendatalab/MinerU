@@ -1,4 +1,3 @@
-import re
 from loguru import logger
 
 from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
@@ -140,18 +139,38 @@ def merge_para_with_text(para_block):
                     para_text += content
                     continue
 
-                langs = ['zh', 'ja', 'ko']
+                # 定义CJK语言集合(中日韩)
+                cjk_langs = {'zh', 'ja', 'ko'}
                 # logger.info(f'block_lang: {block_lang}, content: {content}')
-                if block_lang in langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
-                    if j == len(line['spans']) - 1 and span_type not in [ContentType.INLINE_EQUATION]:
+
+                # 判断是否为行末span
+                is_last_span = j == len(line['spans']) - 1
+
+                if block_lang in cjk_langs: # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                    if is_last_span and span_type not in [ContentType.INLINE_EQUATION]:
                         para_text += content
                     else:
                         para_text += f'{content} '
                 else:
+                    # 西方文本语境下 每行的最后一个span判断是否要去除连字符
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if j == len(line['spans'])-1 and span_type == ContentType.TEXT and is_hyphen_at_line_end(content):
-                            para_text += content[:-1]
+                        if (
+                                is_last_span
+                                and span_type == ContentType.TEXT
+                                and is_hyphen_at_line_end(content)
+                        ):
+                            # 如果下一行的第一个span是小写字母开头，删除连字符
+                            if (
+                                    i + 1 < len(para_block['lines'])
+                                    and para_block['lines'][i + 1].get('spans')
+                                    and para_block['lines'][i + 1]['spans'][0].get('type') == ContentType.TEXT
+                                    and para_block['lines'][i + 1]['spans'][0].get('content', '')
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].islower()
+                            ):
+                                para_text += content[:-1]
+                            else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
+                                para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
             else:

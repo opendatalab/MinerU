@@ -1,3 +1,4 @@
+import sys
 import uuid
 import os
 import re
@@ -14,6 +15,11 @@ from fastapi.responses import JSONResponse, FileResponse
 from starlette.background import BackgroundTask
 from typing import List, Optional
 from loguru import logger
+
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
+
 from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes

@@ -202,16 +202,16 @@ def doc_analyze(
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
-    # load_images_start = time.time()
+    load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    # load_images_time = round(time.time() - load_images_start, 2)
-    # logger.info(f"load images cost: {load_images_time}, speed: {round(len(images_base64_list)/load_images_time, 3)} images/s")
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
 
-    # infer_start = time.time()
+    infer_start = time.time()
     results = predictor.batch_two_step_extract(images=images_pil_list)
-    # infer_time = round(time.time() - infer_start, 2)
-    # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
 
     middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
     return middle_json, results
@@ -229,15 +229,15 @@ async def aio_doc_analyze(
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
-    # load_images_start = time.time()
+    load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    # load_images_time = round(time.time() - load_images_start, 2)
-    # logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
 
-    # infer_start = time.time()
+    infer_start = time.time()
     results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
-    # infer_time = round(time.time() - infer_start, 2)
-    # logger.info(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
     middle_json = result_to_middle_json(results, images_list, pdf_doc, image_writer)
     return middle_json, results

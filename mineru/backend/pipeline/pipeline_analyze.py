@@ -86,6 +86,7 @@ def doc_analyze(
     all_image_lists = []
     all_pdf_docs = []
     ocr_enabled_list = []
+    load_images_start = time.time()
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
         _ocr_enable = False
@@ -99,10 +100,7 @@ def doc_analyze(
         _lang = lang_list[pdf_idx]
 
         # 收集每个数据集中的页面
-        # load_images_start = time.time()
         images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
-        # load_images_time = round(time.time() - load_images_start, 2)
-        # logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_list) / load_images_time, 3)} images/s")
         all_image_lists.append(images_list)
         all_pdf_docs.append(pdf_doc)
         for page_idx in range(len(images_list)):
@@ -111,6 +109,8 @@ def doc_analyze(
                 pdf_idx, page_idx,
                 img_dict['img_pil'], _ocr_enable, _lang,
             ))
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(all_pages_info) / load_images_time, 3)} images/s")
 
     # 准备批处理
     images_with_extra_info = [(info[2], info[3], info[4]) for info in all_pages_info]
@@ -123,6 +123,7 @@ def doc_analyze(
     # 执行批处理
     results = []
     processed_images_count = 0
+    infer_start = time.time()
     for index, batch_image in enumerate(batch_images):
         processed_images_count += len(batch_image)
         logger.info(
@@ -131,6 +132,8 @@ def doc_analyze(
         )
         batch_results = batch_image_analyze(batch_image, formula_enable, table_enable)
         results.extend(batch_results)
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / infer_time, 3)} page/s")
 
     # 构建返回结果
     infer_results = []
@@ -185,7 +188,6 @@ def batch_image_analyze(
         batch_ratio = 1
     logger.info(
             f'GPU Memory: {gpu_memory} GB, Batch Ratio: {batch_ratio}. '
-            f'You can set MINERU_VIRTUAL_VRAM_SIZE environment variable to adjust GPU memory allocation.'
     )
 
     # 检测torch的版本号
