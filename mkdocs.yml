@@ -86,13 +86,16 @@ nav:
       - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
     - Reference:
+      - Reference: reference/index.md
       - Output File Format: reference/output_files.md
+      - Changelog: reference/changelog.md
     - FAQ:
       - FAQ: faq/index.md
     - Demo:
       - Demo: demo/index.md
   - Reference:
     - Output File Format: reference/output_files.md
+    - Changelog: reference/changelog.md
   - FAQ:
     - FAQ: faq/index.md
   - Demo:
@@ -127,6 +130,7 @@ plugins:
             FAQ: 常见问题解答
             Reference: 参考资料
             Output File Format: 输出文件格式
+            Changelog: 更新日志
             Demo: 在线演示
   - mkdocs-video
 

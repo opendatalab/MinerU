@@ -4,33 +4,66 @@ from typing import Literal
 from loguru import logger
 
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
-from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.enum_class import ContentType, BlockType, NotExtractType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_index
+from mineru.utils.span_block_fix import fix_text_block
+from mineru.utils.span_pre_proc import txt_spans_extract
 
+not_extract_list = [item.value for item in NotExtractType]
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width, height):
+    def __init__(self,
+        page_blocks: list,
+        page_inline_formula,
+        page_ocr_res,
+        page,
+        scale,
+        page_pil_img,
+        width,
+        height,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    ):
         self.page_blocks = page_blocks
+        self.page_inline_formula = page_inline_formula
+        self.page_ocr_res = page_ocr_res
+
+        self.width = width
+        self.height = height
 
         blocks = []
         self.all_spans = []
+
+        page_text_inline_formula_spans = []
+        if not _vlm_ocr_enable:
+            for inline_formula in page_inline_formula:
+                inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
+                inline_formula_latex = inline_formula.pop("latex", "")
+                if inline_formula_latex:
+                    page_text_inline_formula_spans.append({
+                        "bbox": inline_formula["bbox"],
+                        "type": ContentType.INLINE_EQUATION,
+                        "content": inline_formula_latex,
+                        "score": inline_formula["score"],
+                    })
+            for ocr_res in page_ocr_res:
+                ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
+                if ocr_res['category_id'] == 15:
+                    page_text_inline_formula_spans.append({
+                        "bbox": ocr_res["bbox"],
+                        "type": ContentType.TEXT,
+                        "content": ocr_res["text"],
+                        "score": ocr_res["score"],
+                    })
+            if not _ocr_enable:
+                virtual_block = [0, 0, width, height, None, None, None, "text"]
+                page_text_inline_formula_spans = txt_spans_extract(page, page_text_inline_formula_spans, page_pil_img, scale, [virtual_block],[])
+
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
-            block_bbox = block_info["bbox"]
             try:
-                x1, y1, x2, y2 = block_bbox
-                x_1, y_1, x_2, y_2 = (
-                    int(x1 * width),
-                    int(y1 * height),
-                    int(x2 * width),
-                    int(y2 * height),
-                )
-                if x_2 < x_1:
-                    x_1, x_2 = x_2, x_1
-                if y_2 < y_1:
-                    y_1, y_2 = y_2, y_1
-                block_bbox = (x_1, y_1, x_2, y_2)
+                block_bbox = self.cal_real_bbox(block_info["bbox"])
                 block_type = block_info["type"]
                 block_content = block_info["content"]
                 block_angle = block_info["angle"]
@@ -85,6 +118,7 @@ class MagicModel:
             #  code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为algorithm
             switch_code_to_algorithm = False
 
+            span = None
             if span_type in ["image", "table"]:
                 span = {
                     "bbox": block_bbox,
@@ -98,8 +132,9 @@ class MagicModel:
                     "type": span_type,
                     "content": isolated_formula_clean(block_content),
                 }
-            else:
-
+            elif _vlm_ocr_enable or block_type not in not_extract_list:
+                #  vlm_ocr_enable模式下，所有文本块都直接使用block的内容
+                #  非vlm_ocr_enable模式下，非提取块需要使用span填充方式
                 if block_content:
                     block_content = clean_content(block_content)
 
@@ -153,33 +188,59 @@ class MagicModel:
                         "content": block_content,
                     }
 
-            # 处理span类型并添加到all_spans
-            if isinstance(span, dict) and "bbox" in span:
-                self.all_spans.append(span)
-                spans = [span]
-            elif isinstance(span, list):
-                self.all_spans.extend(span)
-                spans = span
-            else:
-                raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
+            if (
+                    span_type in ["image", "table", ContentType.INTERLINE_EQUATION]
+                    or (_vlm_ocr_enable or block_type not in not_extract_list)
+            ):
+                if span is None:
+                    continue
+                # 处理span类型并添加到all_spans
+                if isinstance(span, dict) and "bbox" in span:
+                    self.all_spans.append(span)
+                    spans = [span]
+                elif isinstance(span, list):
+                    self.all_spans.extend(span)
+                    spans = span
+                else:
+                    raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
 
-            # 构造line对象
-            if block_type in [BlockType.CODE_BODY]:
-                if switch_code_to_algorithm and code_block_sub_type == "code":
-                    code_block_sub_type = "algorithm"
-                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": code_block_sub_type, "guess_lang": guess_lang}}
-            else:
-                line = {"bbox": block_bbox, "spans": spans}
+                # 构造line对象
+                if block_type in [BlockType.CODE_BODY]:
+                    if switch_code_to_algorithm and code_block_sub_type == "code":
+                        code_block_sub_type = "algorithm"
+                    line = {"bbox": block_bbox, "spans": spans,
+                            "extra": {"type": code_block_sub_type, "guess_lang": guess_lang}}
+                else:
+                    line = {"bbox": block_bbox, "spans": spans}
 
-            blocks.append(
-                {
+                block = {
                     "bbox": block_bbox,
                     "type": block_type,
                     "angle": block_angle,
                     "lines": [line],
                     "index": index,
                 }
-            )
+
+            else:  #  使用span填充方式
+                block_spans = []
+                for span in page_text_inline_formula_spans:
+                    if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox) > 0.5:
+                        block_spans.append(span)
+                # 从spans删除已经放入block_spans中的span
+                if len(block_spans) > 0:
+                    for span in block_spans:
+                        page_text_inline_formula_spans.remove(span)
+
+                block = {
+                    "bbox": block_bbox,
+                    "type": block_type,
+                    "angle": block_angle,
+                    "spans": block_spans,
+                    "index": index,
+                }
+                block = fix_text_block(block)
+
+            blocks.append(block)
 
         self.image_blocks = []
         self.table_blocks = []
@@ -236,6 +297,20 @@ class MagicModel:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
+    def cal_real_bbox(self, bbox):
+        x1, y1, x2, y2 = bbox
+        x_1, y_1, x_2, y_2 = (
+            int(x1 * self.width),
+            int(y1 * self.height),
+            int(x2 * self.width),
+            int(y2 * self.height),
+        )
+        if x_2 < x_1:
+            x_1, x_2 = x_2, x_1
+        if y_2 < y_1:
+            y_1, y_2 = y_2, y_1
+        bbox = (x_1, y_1, x_2, y_2)
+        return bbox
 
     def get_list_blocks(self):
         return self.list_blocks
@@ -353,7 +428,8 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     )
 
 
-def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
+def get_type_blocks_by_index(blocks, block_type: Literal["image", "table", "code"]):
+    """使用基于index的匹配策略来组织blocks"""
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
     with_footnotes = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_footnote")
     ret = []
@@ -370,7 +446,7 @@ def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
 
 
 def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
-    need_fix_blocks = get_type_blocks(blocks, fix_type)
+    need_fix_blocks = get_type_blocks_by_index(blocks, fix_type)
     fixed_blocks = []
     not_include_blocks = []
     processed_indices = set()
@@ -378,7 +454,6 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
     # 特殊处理表格类型，确保标题在表格前，注脚在表格后
     if fix_type in ["table", "image"]:
         # 收集所有不合适的caption和footnote
-        misplaced_captions = []  # 存储(caption, 原始block索引)
         misplaced_footnotes = []  # 存储(footnote, 原始block索引)
 
         # 第一步：移除不符合位置要求的footnote

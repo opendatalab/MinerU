@@ -1,10 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+import sys
+
 import click
 from pathlib import Path
 from loguru import logger
 
-from mineru.utils.check_sys_env import is_mac_os_version_supported
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
+
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -12,10 +17,6 @@ from mineru.utils.model_utils import get_vram
 from ..version import __version__
 from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
-
-backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-lmdeploy-engine', 'vlm-http-client']
-if is_mac_os_version_supported():
-    backends.append("vlm-mlx-engine")
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
@@ -50,24 +51,23 @@ if is_mac_os_version_supported():
       txt: Use text extraction method.
       ocr: Use OCR method for image-based PDFs.
     Without method specified, 'auto' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline'.""",
+    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.""",
     default='auto',
 )
 @click.option(
     '-b',
     '--backend',
     'backend',
-    type=click.Choice(backends),
+    type=click.Choice(['pipeline', 'vlm-http-client', 'hybrid-http-client', 'vlm-auto-engine', 'hybrid-auto-engine',]),
     help="""\b
     the backend for parsing pdf:
       pipeline: More general.
-      vlm-transformers: More general, but slower.
-      vlm-mlx-engine: Faster than transformers(macOS 13.5+).
-      vlm-vllm-engine: Faster(vllm-engine).
-      vlm-lmdeploy-engine: Faster(lmdeploy-engine).
-      vlm-http-client: Faster(client suitable for openai-compatible servers).
-    Without method specified, pipeline will be used by default.""",
-    default='pipeline',
+      vlm-auto-engine: High accuracy via local computing power.
+      vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
+      hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
+      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
+    Without method specified, hybrid-auto-engine will be used by default.""",
+    default='hybrid-auto-engine',
 )
 @click.option(
     '-l',
@@ -78,7 +78,7 @@ if is_mac_os_version_supported():
     help="""
     Input the languages in the pdf (if known) to improve OCR accuracy.
     Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to "pipeline".
+    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
     """,
     default='ch',
 )
@@ -88,7 +88,7 @@ if is_mac_os_version_supported():
     'server_url',
     type=str,
     help="""
-    When the backend is `vlm-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    When the backend is `<vlm/hybrid>-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
     """,
     default=None,
 )
@@ -130,7 +130,7 @@ if is_mac_os_version_supported():
     'device_mode',
     type=str,
     help="""Device mode for model inference, e.g., "cpu", "cuda", "cuda:0", "npu", "npu:0", "mps".
-         Adapted only for the case where the backend is set to "pipeline" and "vlm-transformers". """,
+         Adapted only for the case where the backend is set to "pipeline". """,
     default=None,
 )
 @click.option(

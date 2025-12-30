@@ -1,33 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from copy import deepcopy
 
 from loguru import logger
 from bs4 import BeautifulSoup
 
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
+from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
 CONTINUATION_MARKERS = ["(续)", "(续表)", "(continued)", "(cont.)"]
-
-
-def full_to_half(text: str) -> str:
-    """Convert full-width characters to half-width characters using code point manipulation.
-
-    Args:
-        text: String containing full-width characters
-
-    Returns:
-        String with full-width characters converted to half-width
-    """
-    result = []
-    for char in text:
-        code = ord(char)
-        # Full-width letters, numbers and punctuation (FF01-FF5E)
-        if 0xFF01 <= code <= 0xFF5E:
-            result.append(chr(code - 0xFEE0))  # Shift to ASCII range
-        else:
-            result.append(char)
-    return ''.join(result)
 
 
 def calculate_table_total_columns(soup):
@@ -296,6 +278,8 @@ def adjust_table_rows_colspan(rows, start_idx, end_idx,
         current_cols: 当前总列数
         reference_row: 参考行对象
     """
+    reference_row_copy = deepcopy(reference_row)
+
     for i in range(start_idx, end_idx):
         row = rows[i]
         cells = row.find_all(["td", "th"])
@@ -307,7 +291,7 @@ def adjust_table_rows_colspan(rows, start_idx, end_idx,
             continue
 
         # 检查是否与参考行结构匹配
-        if calculate_visual_columns(row) == reference_visual_cols and check_row_columns_match(row, reference_row):
+        if calculate_visual_columns(row) == reference_visual_cols and check_row_columns_match(row, reference_row_copy):
             # 尝试应用参考结构
             if len(cells) <= len(reference_structure):
                 for j, cell in enumerate(cells):

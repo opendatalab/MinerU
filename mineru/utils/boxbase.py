@@ -74,6 +74,29 @@ def bbox_distance(bbox1, bbox2):
     return 0.0
 
 
+def bbox_center_distance(bbox1, bbox2):
+    """计算两个矩形框中心点之间的欧氏距离。
+
+    Args:
+        bbox1 (tuple): 第一个矩形框的坐标，格式为 (x1, y1, x2, y2)
+        bbox2 (tuple): 第二个矩形框的坐标，格式为 (x1, y1, x2, y2)
+
+    Returns:
+        float: 两个矩形框中心点之间的距离
+    """
+    x1, y1, x1b, y1b = bbox1
+    x2, y2, x2b, y2b = bbox2
+
+    # 计算中心点
+    center1_x = (x1 + x1b) / 2
+    center1_y = (y1 + y1b) / 2
+    center2_x = (x2 + x2b) / 2
+    center2_y = (y2 + y2b) / 2
+
+    # 计算欧氏距离
+    return math.sqrt((center1_x - center2_x) ** 2 + (center1_y - center2_y) ** 2)
+
+
 def get_minbox_if_overlap_by_ratio(bbox1, bbox2, ratio):
     """通过calculate_overlap_area_2_minbox_area_ratio计算两个bbox重叠的面积占最小面积的box的比例
     如果比例大于ratio，则返回小的那个bbox, 否则返回None."""

@@ -1,8 +1,11 @@
 import os
 
 from loguru import logger
+
+from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
+from mineru.utils.language import detect_lang
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -18,9 +21,18 @@ display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
+
 def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
-    para_text = ''
+    block_text = ''
     for line in para_block['lines']:
+        for span in line['spans']:
+            if span['type'] in [ContentType.TEXT]:
+                span['content'] = full_to_half_exclude_marks(span['content'])
+                block_text += span['content']
+    block_lang = detect_lang(block_text)
+
+    para_text = ''
+    for i, line in enumerate(para_block['lines']):
         for j, span in enumerate(line['spans']):
             span_type = span['type']
             content = ''
@@ -34,16 +46,50 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                 else:
                     if span.get('image_path', ''):
                         content = f"![]({img_buket_path}/{span['image_path']})"
-            # content = content.strip()
+
+            content = content.strip()
             if content:
-                if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
-                    if j == len(line['spans']) - 1:
+
+                if span_type == ContentType.INTERLINE_EQUATION:
+                    para_text += content
+                    continue
+
+                # 定义CJK语言集合(中日韩)
+                cjk_langs = {'zh', 'ja', 'ko'}
+                # logger.info(f'block_lang: {block_lang}, content: {content}')
+
+                # 判断是否为行末span
+                is_last_span = j == len(line['spans']) - 1
+
+                if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                    if is_last_span and span_type != ContentType.INLINE_EQUATION:
                         para_text += content
                     else:
                         para_text += f'{content} '
-                elif span_type == ContentType.INTERLINE_EQUATION:
-                    para_text += content
+                else:
+                    # 西方文本语境下 每行的最后一个span判断是否要去除连字符
+                    if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if (
+                                is_last_span
+                                and span_type == ContentType.TEXT
+                                and is_hyphen_at_line_end(content)
+                        ):
+                            # 如果下一行的第一个span是小写字母开头，删除连字符
+                            if (
+                                    i+1 < len(para_block['lines'])
+                                    and para_block['lines'][i + 1].get('spans')
+                                    and para_block['lines'][i + 1]['spans'][0].get('type') == ContentType.TEXT
+                                    and para_block['lines'][i + 1]['spans'][0].get('content', '')
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].islower()
+                            ):
+                                para_text += content[:-1]
+                            else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
+                                para_text += content
+                        else:  # 西方文本语境下 content间需要空格分隔
+                            para_text += f'{content} '
     return para_text
+
 
 def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, img_buket_path=''):
     page_markdown = []
@@ -479,22 +525,76 @@ def get_body_data(para_block):
 
 
 def merge_para_with_text_v2(para_block):
-    para_content = []
-    para_type = para_block['type']
+    block_text = ''
     for line in para_block['lines']:
         for span in line['spans']:
+            if span['type'] in [ContentType.TEXT]:
+                span['content'] = full_to_half_exclude_marks(span['content'])
+                block_text += span['content']
+    block_lang = detect_lang(block_text)
+
+    para_content = []
+    para_type = para_block['type']
+    for i, line in enumerate(para_block['lines']):
+        for j, span in enumerate(line['spans']):
             span_type = span['type']
             if span.get("content", '').strip():
-                if para_type == BlockType.PHONETIC and span_type == ContentTypeV2.SPAN_TEXT:
-                    span_type = ContentTypeV2.SPAN_PHONETIC
+                if span_type == ContentType.TEXT:
+                    if para_type == BlockType.PHONETIC:
+                        span_type = ContentTypeV2.SPAN_PHONETIC
+                    else:
+                        span_type = ContentTypeV2.SPAN_TEXT
                 if span_type == ContentType.INLINE_EQUATION:
                     span_type = ContentTypeV2.SPAN_EQUATION_INLINE
                 if span_type in [
                     ContentTypeV2.SPAN_TEXT,
+                ]:
+                    # 定义CJK语言集合(中日韩)
+                    cjk_langs = {'zh', 'ja', 'ko'}
+                    # logger.info(f'block_lang: {block_lang}, content: {content}')
+
+                    # 判断是否为行末span
+                    is_last_span = j == len(line['spans']) - 1
+
+                    if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
+                        if is_last_span:
+                            span_content = span['content']
+                        else:
+                            span_content = f"{span['content']} "
+                    else:
+                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
+                        if (
+                                is_last_span
+                                and is_hyphen_at_line_end(span['content'])
+                        ):
+                            # 如果下一行的第一个span是小写字母开头，删除连字符
+                            if (
+                                    i + 1 < len(para_block['lines'])
+                                    and para_block['lines'][i + 1].get('spans')
+                                    and para_block['lines'][i + 1]['spans'][0].get('type') == ContentType.TEXT
+                                    and para_block['lines'][i + 1]['spans'][0].get('content', '')
+                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].islower()
+                            ):
+                                span_content = span['content'][:-1]
+                            else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
+                                span_content = span['content']
+                        else:
+                            # 西方文本语境下content间需要空格分隔
+                            span_content = f"{span['content']} "
+
+                    if para_content and para_content[-1]['type'] == span_type:
+                        # 合并相同类型的span
+                        para_content[-1]['content'] += span_content
+                    else:
+                        span_content = {
+                            'type': span_type,
+                            'content': span_content,
+                        }
+                        para_content.append(span_content)
+
+                elif span_type in [
                     ContentTypeV2.SPAN_PHONETIC,
                     ContentTypeV2.SPAN_EQUATION_INLINE,
-                    ContentTypeV2.SPAN_MD,
-                    ContentTypeV2.SPAN_CODE_INLINE,
                 ]:
                     span_content = {
                         'type': span_type,
