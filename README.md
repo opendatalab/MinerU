@@ -45,7 +45,7 @@
 
 # Changelog
 
-- 2025/12/31 2.7.0 Release
+- 2025/12/30 2.7.0 Release
   - Simplified installation process. No need to separately install `vlm` acceleration engine dependencies. Using `uv pip install mineru[all]` during installation will install all optional backend dependencies.
   - Added new `hybrid` backend, which combines the advantages of `pipeline` and `vlm` backends. Built on vlm, it integrates some capabilities of pipeline, adding extra extensibility on top of high accuracy:
     - Directly extracts text from text PDFs, natively supports multi-language recognition in text PDF scenarios, and greatly reduces parsing hallucinations;

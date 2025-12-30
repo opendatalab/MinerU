@@ -45,7 +45,7 @@
 
 # 更新记录
 
-- 2025/12/31 2.7.0 发布
+- 2025/12/30 2.7.0 发布
   - 简化安装流程，现在不再需要单独安装`vlm`加速引擎依赖包，安装时使用`uv pip install mineru[all]`即可安装所有可选后端的依赖包。
   - 增加全新后端`hybrid`，该后端结合了`pipeline`和`vlm`后端的优势，在vlm的基础上，融入了pipeline的部分能力，在高精度的基础上增加了额外的扩展性：
     - 从文本pdf中直接抽取文本，在文本pdf场景原生支持多语言识别，并极大减少解析幻觉；
@@ -130,7 +130,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     <tr>
       <th>后端特性</th>
       <td >兼容性好</td>
-      <td colspan="2">配置要求较高</td>
+      <td colspan="2">硬件配置要求较高</td>
       <td colspan="2">适用于OpenAI兼容服务器<sup>2</sup></td>
     </tr> 
     <tr>

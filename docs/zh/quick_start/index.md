@@ -45,7 +45,7 @@
     <tr>
       <th>后端特性</th>
       <td >兼容性好</td>
-      <td colspan="2">配置要求较高</td>
+      <td colspan="2">硬件配置要求较高</td>
       <td colspan="2">适用于OpenAI兼容服务器<sup>2</sup></td>
     </tr> 
     <tr>
