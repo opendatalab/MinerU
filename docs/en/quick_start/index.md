@@ -129,9 +129,13 @@ You can get the [Docker Deployment Instructions](./docker_deployment.md) in the 
 
 ### Using MinerU
 
-The simplest command line invocation is:
+If your device meets the GPU acceleration requirements in the table above, you can use a simple command line for document parsing:
 ```bash
 mineru -p <input_path> -o <output_path>
+```
+If your device does not meet the GPU acceleration requirements, you can specify the backend as `pipeline` to run in a pure CPU environment:
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
