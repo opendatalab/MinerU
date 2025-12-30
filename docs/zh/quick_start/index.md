@@ -29,8 +29,8 @@
 <table border="1">
   <thead>
     <tr>
-      <th rowspan="2" style="text-align:center;">解析后端</th>
-      <th rowspan="2" style="text-align:center;">pipeline</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">解析后端</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
       <th colspan="2" style="text-align:center;">*-auto-engine</th>
       <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
@@ -66,7 +66,7 @@
         <tr>
       <th>GPU加速支持</th>
       <td colspan="4" style="text-align:center;">Volta及以后架构GPU或Apple Silicon</td>
-      <td rowspan="2" style="text-align:center;">不需要</td>
+      <td rowspan="2" style="text-align:center; vertical-align:middle;">不需要</td>
     </tr>
     <tr>
       <th>显存最低要求</th>
