@@ -105,65 +105,50 @@ docker run -u root --name mineru_docker --privileged=true \
   </thead>
   <tbody>
     <tr>
-      <td rowspan="4">命令行工具(mineru)</td>
+      <td rowspan="3">命令行工具(mineru)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-&lt;engine_name&gt;-engine</td>
+      <td>&lt;vlm/hybrid&gt;-http-client</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-http-client</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td rowspan="4">fastapi服务(mineru-api)</td>
+      <td rowspan="3">fastapi服务(mineru-api)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-&lt;engine_name&gt;-engine</td>
+      <td>&lt;vlm/hybrid&gt;-http-client</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-http-client</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td rowspan="4">gradio界面(mineru-gradio)</td>
+      <td rowspan="3">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>vlm-&lt;engine_name&gt;-engine</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td>vlm-http-client</td>
+      <td>&lt;vlm/hybrid&gt;-http-client</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
