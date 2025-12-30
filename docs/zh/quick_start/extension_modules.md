@@ -49,6 +49,6 @@ mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:3
 ### 安装轻量版client连接兼容openai服务器使用 (适用hybrid-http-client模式)
 如果您需要在边缘设备上安装轻量版的 client 端以连接兼容 openai 接口的服务端来使用hybrid模式，可以安装mineru的pipeline扩展包，相对较轻量，可以在只有cpu和网络连接的设备上使用，同时在支持gpu加速的设备上可以更快运行。
 ```bash
-uv pip install mineru[pipeline]
+uv pip install "mineru[pipeline]"
 mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
 ```
