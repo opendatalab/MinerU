@@ -1,8 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+import sys
+
 import click
 from pathlib import Path
 from loguru import logger
+
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
 
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device

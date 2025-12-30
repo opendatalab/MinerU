@@ -1,5 +1,6 @@
 #  Copyright (c) Opendatalab. All rights reserved.
 import os
+import time
 from collections import defaultdict
 
 import cv2
@@ -397,8 +398,11 @@ def doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # 加载图像
+    load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
 
     # 获取设备信息
     device = get_device()
@@ -407,6 +411,7 @@ def doc_analyze(
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
+    infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
         results = predictor.batch_two_step_extract(images=images_pil_list)
@@ -428,6 +433,8 @@ def doc_analyze(
             batch_radio=batch_ratio,
         )
         _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
 
     # 生成中间JSON
     middle_json = result_to_middle_json(
@@ -463,8 +470,11 @@ async def aio_doc_analyze(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
 
     # 加载图像
+    load_images_start = time.time()
     images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
 
     # 获取设备信息
     device = get_device()
@@ -473,6 +483,7 @@ async def aio_doc_analyze(
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
+    infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
         results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
@@ -494,6 +505,8 @@ async def aio_doc_analyze(
             batch_radio=batch_ratio,
         )
         _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
 
     # 生成中间JSON
     middle_json = result_to_middle_json(
