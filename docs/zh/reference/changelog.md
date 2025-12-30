@@ -109,9 +109,6 @@
 
 ## 2.2 - 2.4 系列版本
 
-<details>
-<summary>查看 2.2.x - 2.4.x 版本历史</summary>
-
 ### 2.2.2 (2025/09/10)
 
 - 修复新的表格识别模型在部分表格解析失败时影响整体解析任务的问题
@@ -134,14 +131,9 @@
 - 在输出的`content_list.json`中增加了`bbox`字段(映射至0-1000范围内)，方便用户直接获取每个内容块的位置信息
 - 移除`pipeline_old_linux`安装可选项，不再支持老版本的Linux系统如`Centos 7`等，以便对`uv`的`sync`/`run`等命令进行更好的支持
 
-</details>
-
 ---
 
 ## 2.1 系列版本
-
-<details>
-<summary>查看 2.1.x 版本历史</summary>
 
 ### 2.1.10 (2025/08/01)
 
@@ -210,14 +202,9 @@
 - `pipeline`后端更新 PP-OCRv5 多语种文本识别模型，支持法语、西班牙语、葡萄牙语、俄语、韩语等 37 种语言的文字识别，平均精度涨幅超30%。[详情](https://paddlepaddle.github.io/PaddleOCR/latest/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html)
 - `pipeline`后端增加对竖排文本的有限支持
 
-</details>
-
 ---
 
 ## 2.0 系列版本
-
-<details>
-<summary>查看 2.0.x 版本历史</summary>
 
 ### 2.0.6 (2025/06/20)
 
@@ -266,14 +253,9 @@ MinerU 2.0 集成了我们最新研发的小参数量、高性能多模态文档
 - Python 包名从 `magic-pdf` 更改为 `mineru`，命令行工具也由 `magic-pdf` 改为 `mineru`，请同步更新脚本与调用命令。
 - 出于对系统模块化设计与生态一致性的考虑，MinerU 2.0 已不再内置 LibreOffice 文档转换模块。如需处理 Office 文档，建议通过独立部署的 LibreOffice 服务先行转换为 PDF 格式，再进行后续解析操作。
 
-</details>
-
 ---
 
 ## 1.x 系列历史版本
-
-<details>
-<summary>查看 1.x 版本历史</summary>
 
 ### 1.3.12 (2025/05/24)
 
@@ -424,14 +406,9 @@ MinerU 2.0 集成了我们最新研发的小参数量、高性能多模态文档
 
 - 通过引入全新的语言识别模型， 在文档解析中将 `lang` 配置为 `auto`，即可自动选择合适的OCR语言模型，提升扫描类文档解析的准确性。
 
-</details>
-
 ---
 
 ## 0.x 系列历史版本
-
-<details>
-<summary>查看 0.x 版本历史</summary>
 
 ### 0.10.0 (2024/11/22)
 
@@ -487,6 +464,3 @@ MinerU 2.0 集成了我们最新研发的小参数量、高性能多模态文档
 ### 首次开源 (2024/07/05)
 
 MinerU项目首次开源发布
-
-</details>
-

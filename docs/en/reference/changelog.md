@@ -103,9 +103,6 @@ Additionally, with the release of vlm 2.5, we have made some adjustments to the 
 
 ## 2.2 - 2.4 Series Versions
 
-<details>
-<summary>View 2.2.x - 2.4.x version history</summary>
-
 ### 2.2.2 (2025/09/10)
 
 - Fixed the issue where the new table recognition model would affect the overall parsing task when some table parsing failed
@@ -128,14 +125,9 @@ Additionally, with the release of vlm 2.5, we have made some adjustments to the 
 - Added `bbox` field (mapped to 0-1000 range) in the output `content_list.json`, making it convenient for users to directly obtain position information for each content block
 - Removed the `pipeline_old_linux` installation option, no longer supporting legacy Linux systems such as `CentOS 7`, to provide better support for `uv`'s `sync`/`run` commands
 
-</details>
-
 ---
 
 ## 2.1 Series Versions
-
-<details>
-<summary>View 2.1.x version history</summary>
 
 ### 2.1.10 (2025/08/01)
 
@@ -204,14 +196,9 @@ This is the first major update of MinerU 2, which includes a large number of new
 - Updated the `pipeline` backend with the PP-OCRv5 multilingual text recognition model, supporting text recognition in 37 languages such as French, Spanish, Portuguese, Russian, and Korean, with an average accuracy improvement of over 30%. [Details](https://paddlepaddle.github.io/PaddleOCR/latest/en/version3.x/algorithm/PP-OCRv5/PP-OCRv5_multi_languages.html)
 - Introduced limited support for vertical text layout in the `pipeline` backend.
 
-</details>
-
 ---
 
 ## 2.0 Series Versions
-
-<details>
-<summary>View 2.0.x version history</summary>
 
 ### 2.0.6 (2025/06/20)
 
@@ -260,14 +247,9 @@ To improve overall architectural rationality and long-term maintainability, this
 - Python package name changed from `magic-pdf` to `mineru`, and the command-line tool changed from `magic-pdf` to `mineru`. Please update your scripts and command calls accordingly.
 - For modular system design and ecosystem consistency considerations, MinerU 2.0 no longer includes the LibreOffice document conversion module. If you need to process Office documents, we recommend converting them to PDF format through an independently deployed LibreOffice service before proceeding with subsequent parsing operations.
 
-</details>
-
 ---
 
 ## 1.x Series Historical Versions
-
-<details>
-<summary>View 1.x version history</summary>
 
 ### 1.3.12 (2025/05/24)
 
@@ -418,14 +400,9 @@ This is our first official release, where we have introduced a completely new AP
 
 - By introducing a new language recognition model, setting the `lang` configuration to `auto` during document parsing will automatically select the appropriate OCR language model, improving the accuracy of scanned document parsing.
 
-</details>
-
 ---
 
 ## 0.x Series Historical Versions
-
-<details>
-<summary>View 0.x version history</summary>
 
 ### 0.10.0 (2024/11/22)
 
@@ -481,6 +458,4 @@ Optimized dependency conflict issues and installation documentation
 ### Initial Open-Source Release (2024/07/05)
 
 MinerU project's first open-source release
-
-</details>
 
