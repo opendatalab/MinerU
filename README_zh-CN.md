@@ -217,6 +217,12 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 
 ### 使用 MinerU
 
+>[!TIP]
+>默认使用托管在`huggingface`的模型进行解析，首次使用时会自动下载所需模型文件，后续使用将直接加载本地缓存的模型。如果您无法访问`huggingface`，可以通过以下命令切换至国内镜像源:
+>```bash
+>export MINERU_MODEL_SOURCE=modelscope
+>```
+
 如果您的设备满足上表中GPU加速的条件，可以使用简单的命令行进行文档解析:
 ```bash
 mineru -p <input_path> -o <output_path>
