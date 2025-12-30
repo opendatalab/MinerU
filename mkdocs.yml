@@ -86,7 +86,9 @@ nav:
       - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
     - Reference:
+      - Reference: reference/index.md
       - Output File Format: reference/output_files.md
+      - Changelog: reference/changelog.md
     - FAQ:
       - FAQ: faq/index.md
     - Demo:
