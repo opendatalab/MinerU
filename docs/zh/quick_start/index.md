@@ -29,10 +29,10 @@
 <table border="1">
   <thead>
     <tr>
-      <th rowspan="2">解析后端</th>
-      <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
-      <th colspan="2">*-http-client</th>
+      <th rowspan="2" style="text-align:center;">解析后端</th>
+      <th rowspan="2" style="text-align:center;">pipeline</th>
+      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>
       <th>hybrid</th>
@@ -44,9 +44,9 @@
   <tbody>
     <tr>
       <th>后端特性</th>
-      <td >兼容性好</td>
-      <td colspan="2">硬件配置要求较高</td>
-      <td colspan="2">适用于OpenAI兼容服务器<sup>2</sup></td>
+      <td style="text-align:center;">兼容性好</td>
+      <td colspan="2" style="text-align:center;">硬件配置要求较高</td>
+      <td colspan="2" style="text-align:center;">适用于OpenAI兼容服务器<sup>2</sup></td>
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
@@ -66,7 +66,7 @@
         <tr>
       <th>GPU加速支持</th>
       <td colspan="4" style="text-align:center;">Volta及以后架构GPU或Apple Silicon</td>
-      <td rowspan="2">不需要</td>
+      <td rowspan="2" style="text-align:center;">不需要</td>
     </tr>
     <tr>
       <th>显存最低要求</th>

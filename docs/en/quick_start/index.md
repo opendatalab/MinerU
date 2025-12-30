@@ -29,10 +29,10 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <table border="1">
   <thead>
     <tr>
-      <th rowspan="2">Parsing Backend</th>
-      <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
-      <th colspan="2">*-http-client</th>
+      <th rowspan="2" style="text-align:center;">Parsing Backend</th>
+      <th rowspan="2" style="text-align:center;">pipeline</th>
+      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>
       <th>hybrid</th>
@@ -66,7 +66,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
       <th>GPU Acceleration</th>
       <td colspan="4" style="text-align:center;">Volta and later architecture GPUs or Apple Silicon</td>
-      <td rowspan="2">Not Required</td>
+      <td rowspan="2" style="text-align:center;">Not Required</td>
     </tr>
     <tr>
       <th>Min VRAM</th>
