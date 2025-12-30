@@ -11,6 +11,16 @@ def get_load_images_timeout() -> int:
     return get_value_from_string(env_value, 300)
 
 
+def get_load_images_process_num() -> int:
+    env_value = os.getenv('MINERU_PDF_LOAD_PROCESS_NUM', None)
+    return get_value_from_string(env_value, 1)
+
+
+def get_concurrent_request_num() -> int:
+    env_value = os.getenv('MINERU_CONCURRENT_REQUEST_NUM', None)
+    return get_value_from_string(env_value, 1)
+
+
 def get_value_from_string(env_value: str, default_value: int) -> int:
     if env_value is not None:
         try:
@@ -28,3 +38,5 @@ if __name__ == '__main__':
     print(get_value_from_string('-1', -1))
     print(get_value_from_string('abc', -1))
     print(get_load_images_timeout())
+    print(get_load_images_process_num())
+    print(get_concurrent_request_num())

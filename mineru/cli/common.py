@@ -3,6 +3,8 @@ import io
 import json
 import os
 import copy
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from loguru import logger
@@ -13,6 +15,7 @@ from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_s
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
+from mineru.utils.os_env_config import get_concurrent_request_num
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
@@ -30,6 +33,9 @@ pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+_concurrent_request_semaphore = asyncio.Semaphore(get_concurrent_request_num())
+
 
 def read_fn(path):
     if not isinstance(path, Path):
@@ -511,12 +517,18 @@ async def aio_do_parse(
 
     if backend == "pipeline":
         # pipeline模式暂不支持异步，使用同步处理方式
-        _process_pipeline(
-            output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
-            parse_method, formula_enable, table_enable,
-            f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
-        )
+        async with _concurrent_request_semaphore:
+            loop = asyncio.get_event_loop()
+            # executing CPU-intensive tasks using a process pool
+            with ProcessPoolExecutor(max_workers=1) as executor:
+                await loop.run_in_executor(
+                    executor,
+                    _process_pipeline,
+                    output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
+                    parse_method, formula_enable, table_enable,
+                    f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
+                    f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+                )
     else:
         if backend.startswith("vlm-"):
             backend = backend[4:]
