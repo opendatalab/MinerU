@@ -10,9 +10,9 @@ from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_di
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width, height):
+    def __init__(self, page_blocks: list, width, height, block_filter = []):
         self.page_blocks = page_blocks
-
+        self.block_filter = block_filter
         blocks = []
         self.all_spans = []
         # 解析每个块
@@ -43,6 +43,19 @@ class MagicModel:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
                 logger.warning(f"Invalid block format: {block_info}, error: {e}")
                 continue
+
+            # 部分ref_text会归到list block中, list block不全是ref_text, 所以需要单独处理
+            if block_type == "ref_text" and "ref_text" in self.block_filter:
+                continue
+
+            # block归类不一定正确，需要单独处理
+            if "table" in self.block_filter:
+                if block_type in ["table_caption", "table_footnote"]:
+                    continue
+            
+            if "image" in self.block_filter:
+                if block_type in ["image_caption", "image_footnote"]:
+                    continue
 
             span_type = "unknown"
             code_block_sub_type = None
@@ -241,21 +254,31 @@ class MagicModel:
         return self.list_blocks
 
     def get_image_blocks(self):
+        if "image" in self.filter_class:
+            return []
         return self.image_blocks
 
     def get_table_blocks(self):
+        if "table" in self.filter_class:
+            return []
         return self.table_blocks
 
     def get_code_blocks(self):
+        if "code" in self.filter_class:
+            return []
         return self.code_blocks
 
     def get_ref_text_blocks(self):
+        if "ref_text" in self.filter_class:
+            return []
         return self.ref_text_blocks
 
     def get_phonetic_blocks(self):
         return self.phonetic_blocks
 
     def get_title_blocks(self):
+        if "title" in self.filter_class:
+            return []
         return self.title_blocks
 
     def get_text_blocks(self):

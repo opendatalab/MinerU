@@ -141,6 +141,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
         response_format_zip: bool = Form(False, description="Return results as a ZIP file instead of JSON"),
         start_page_id: int = Form(0, description="The starting page for PDF parsing, beginning from 0"),
         end_page_id: int = Form(99999, description="The ending page for PDF parsing, beginning from 0"),
+        block_filter: List[str] = Form([], description="Filter out blocks by type, e.g., ['image', 'table', 'ref_text']"),
 ):
 
     # 获取命令行配置参数
@@ -210,6 +211,7 @@ Options: ch, ch_server, ch_lite, en, korean, japan, chinese_cht, ta, te, ka, th,
             f_dump_content_list=return_content_list,
             start_page_id=start_page_id,
             end_page_id=end_page_id,
+            block_filter = block_filter,
             **config
         )
 

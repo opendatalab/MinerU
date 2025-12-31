@@ -29,7 +29,7 @@ if llm_aided_config:
                             "please execute `pip install mineru[core]` to install the required packages.")
 
 
-def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index) -> dict:
+def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index, block_filter=[]) -> dict:
     """将blocks转换为页面信息"""
 
     scale = image_dict["scale"]
@@ -38,7 +38,7 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     width, height = map(int, page.get_size())
 
-    magic_model = MagicModel(page_blocks, width, height)
+    magic_model = MagicModel(page_blocks, width, height, block_filter)
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
     title_blocks = magic_model.get_title_blocks()
@@ -99,12 +99,12 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     return page_info
 
 
-def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
+def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer, block_filter=[]):
     middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
     for index, page_blocks in enumerate(model_output_blocks_list):
         page = pdf_doc[index]
         image_dict = images_list[index]
-        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index)
+        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index, block_filter)
         middle_json["pdf_info"].append(page_info)
 
     """表格跨页合并"""

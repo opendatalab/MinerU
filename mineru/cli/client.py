@@ -14,6 +14,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
 
 
 backends = ['pipeline', 'vlm-transformers', 'vlm-vllm-engine', 'vlm-lmdeploy-engine', 'vlm-http-client']
+supported_filter_block = ["image", "table", "ref_text"]
 if is_mac_os_version_supported():
     backends.append("vlm-mlx-engine")
 
@@ -150,13 +151,30 @@ if is_mac_os_version_supported():
     default='huggingface',
 )
 
+@click.option(
+    '--block_filter',
+    'block_filter',
+    type=str,
+    help="""
+    block need to filter, supprt image, table, ref_text. Split by ','. Default is ""'.
+    """,
+    default="",
+)
+
 
 def main(
         ctx,
         input_path, output_dir, method, backend, lang, server_url,
         start_page_id, end_page_id, formula_enable, table_enable,
-        device_mode, virtual_vram, model_source, **kwargs
+        device_mode, virtual_vram, model_source, block_filter, **kwargs
 ):
+    _block_filter = []
+    for item in block_filter.split(","):
+        item = item.strip()
+        if item in supported_filter_block:
+            _block_filter.append(item)
+        else:
+            logger.warning(f"Unsupported block filter: {item}")
 
     kwargs.update(arg_parse(ctx))
 
@@ -205,6 +223,7 @@ def main(
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
+                block_filter = _block_filter,
                 **kwargs,
             )
         except Exception as e:

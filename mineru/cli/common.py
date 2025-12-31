@@ -236,6 +236,7 @@ async def _async_process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        block_filter=[],
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
@@ -250,7 +251,7 @@ async def _async_process_vlm(
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, block_filter=block_filter, **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -277,6 +278,7 @@ def _process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        block_filter=[],
         **kwargs,
 ):
     """同步处理VLM后端逻辑"""
@@ -291,7 +293,7 @@ def _process_vlm(
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
         middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, block_filter=block_filter, **kwargs,
         )
 
         pdf_info = middle_json["pdf_info"]
@@ -324,6 +326,7 @@ def do_parse(
         f_make_md_mode=MakeMode.MM_MD,
         start_page_id=0,
         end_page_id=None,
+        block_filter=[],
         **kwargs,
 ):
     # 预处理PDF字节数据
@@ -350,7 +353,7 @@ def do_parse(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            server_url, block_filter, **kwargs,
         )
 
 
@@ -374,6 +377,7 @@ async def aio_do_parse(
         f_make_md_mode=MakeMode.MM_MD,
         start_page_id=0,
         end_page_id=None,
+        block_filter=[],
         **kwargs,
 ):
     # 预处理PDF字节数据
@@ -401,7 +405,7 @@ async def aio_do_parse(
             output_dir, pdf_file_names, pdf_bytes_list, backend,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-            server_url, **kwargs,
+            server_url, block_filter, **kwargs,
         )
 
 
