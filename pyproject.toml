@@ -17,7 +17,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "boto3>=1.28.43",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -44,6 +43,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+s3 = [
+    "boto3>=1.28.43",
+]
 test = [
     "mineru[core]",
     "pytest",
@@ -94,6 +96,7 @@ core = [
     "mineru[pipeline]",
     "mineru[api]",
     "mineru[gradio]",
+    "mineru[s3]",
     "mineru[mlx] ; sys_platform == 'darwin'",
 ]
 all = [

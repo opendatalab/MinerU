@@ -1,5 +1,11 @@
-import boto3
-from botocore.config import Config
+try:
+    import boto3
+    from botocore.config import Config
+except ImportError as e:
+    raise ImportError(
+        "S3 support requires optional dependency 'boto3'. "
+        'Please install via `pip install \"mineru[s3]\"`.'
+    ) from e
 
 from ..io.base import IOReader, IOWriter
 
