@@ -14,6 +14,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.hyperlink import Hyperlink
 from docx.text.run import Run
 from lxml import etree
+from markdown_it.common.html_re import attribute
 from markdown_it.rules_block import list_block
 from pydantic import AnyUrl
 
@@ -76,6 +77,7 @@ class DocxConverter:
         self.blocks = []
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
+        self.list_block_stack: list = []  # 列表块堆栈
         self.list_counters: dict[tuple[int, int], int] = (
             {}
         )  # 列表计数器 (numId, ilvl) -> count
@@ -232,6 +234,16 @@ class DocxConverter:
             elem_ref.extend(li)  # 必须是引用!!!
             # self._update_history(p_style_id, p_level, numid, ilevel)
             return elem_ref
+        elif ( # 列表结束处理
+                numid is None
+                and self.pre_num_id != -1
+                and p_style_id not in ["Title", "Heading"]
+        ):# 关闭列表
+            # 重置列表状态
+            self.pre_num_id = -1
+            self.pre_ilevel = -1
+            self.list_block_stack = []
+            self.list_counters = {}
 
         if p_style_id in ["Title"]:
             title_block = {
@@ -848,20 +860,27 @@ class DocxConverter:
         elem_ref: list = []
         if not elements:
             return elem_ref
-        enum_marker = ""
 
         # 情况 1: 不存在上一个列表ID
         if self.pre_num_id == -1:
             # 为新编号序列重置计数器，确保编号从1开始
             self._reset_list_counters_for_new_sequence(numid)
+            if is_numbered:
+                list_attribute = "ordered"
+            else:
+                list_attribute = "unordered"
             list_block = {
-                "bbox": [0, 0, 0, 0],
                 "type": BlockType.LIST,
-                "angle": 0,
-                "blocks": [],
+                "bbox": [0, 0, 0, 0],
+                "attribute": list_attribute,
+                "list_nest_level": 1,
+                "list_items": [],
+                "list_type": "text_list",
                 "ilevel": ilevel,
             }
             self.blocks.append(list_block)
+            # 入栈, 记录当前的列表块
+            self.list_block_stack.append(list_block)
             # 记录当前引用
             elem_ref.append(id(list_block))
             elem_text = ""
@@ -875,13 +894,13 @@ class DocxConverter:
                 enum_marker = ""
 
             list_item = {
+                "item_type": "text",
                 "bbox": [0, 0, 0, 0],
-                "type": BlockType.TEXT,
-                "angle": 0,
-                "lines": [
+                "item_content": [
                     {
                         "bbox": [0, 0, 0, 0],
-                        "spans": [
+                        "type": BlockType.TEXT,
+                        "text_content_list": [
                             {
                                 "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
@@ -892,24 +911,69 @@ class DocxConverter:
                 ],
             }
             elem_ref.append(id(list_item))
-            list_block["blocks"].append(list_item)
+            list_block["list_items"].append(list_item)
             self.pre_num_id = numid
             self.pre_ilevel = ilevel
         # 情况 2: 增加缩进，打开子列表, 嵌套列表的 num_id 和父列表的 num_id 相同, ilevel (缩进级别) 不同
         elif (
-            # self.pre_num_id == numid  # 同一个列表
-            self.pre_ilevel != -1  # 上一个缩进级别已知
+            self.pre_num_id == numid  # 同一个列表
+            and self.pre_ilevel != -1  # 上一个缩进级别已知
             and self.pre_ilevel < ilevel  # 当前层级比之前更缩进
         ):
-            # 为新增的缩进级别创建列表组
+            # 为新增的缩进级别创建列表块
+            if is_numbered:
+                list_attribute = "ordered"
+            else:
+                list_attribute = "unordered"
             list_block = {
-                "bbox": [0, 0, 0, 0],
                 "type": BlockType.LIST,
-                "angle": 0,
-                "blocks": [],
+                "bbox": [0, 0, 0, 0],
+                "attribute": list_attribute,
+                "list_nest_level": 1,
+                "list_items": [],
+                "list_type": "text_list",
                 "ilevel": ilevel,
             }
-            list_block = self._find_ilevel_list_block(self.blocks[-1], self.pre_ilevel)
+            # 获取栈顶的列表块
+            parent_list_block = self.list_block_stack[-1]
+            # 将新列表块添加为父列表块的最新列表项的子块
+            newest_list_item = parent_list_block["list_items"][-1]
+            newest_list_item["item_type"] = "list"  # 修改类型为列表
+            newest_list_item["item_content"].append(list_block)
+            # 入栈, 记录当前的列表块
+            self.list_block_stack.append(list_block)
+            elem_ref.append(id(list_block))
+
+            # 创建列表项
+            elem_text = ""
+            for text, format, hyperlink in elements:
+                elem_text += text
+
+            if is_numbered:
+                counter = self._get_list_counter(numid, ilevel)
+                enum_marker = str(counter) + "."
+            else:
+                enum_marker = ""
+            list_item = {
+                "item_type": "text",
+                "bbox": [0, 0, 0, 0],
+                "item_content": [
+                    {
+                        "bbox": [0, 0, 0, 0],
+                        "type": BlockType.TEXT,
+                        "text_content_list": [
+                            {
+                                "bbox": [0, 0, 0, 0],
+                                "type": ContentType.TEXT,
+                                "content": enum_marker + elem_text,
+                            }
+                        ],
+                    }
+                ],
+            }
+            list_block["list_items"].append(list_item)
+            # 更新目前缩进
+            self.pre_ilevel = ilevel
 
         # 情况3: 减少缩进，关闭子列表
         elif (
@@ -917,12 +981,17 @@ class DocxConverter:
             and self.pre_ilevel != -1  # 上一个缩进级别已知
             and ilevel < self.pre_ilevel  # 当前层级比之前更少缩进
         ):
-            list_block = self._find_ilevel_list_block(self.blocks[-1], ilevel)
+            # 出栈，直到找到匹配的 ilevel
+            while self.list_block_stack:
+                top_list_block = self.list_block_stack[-1]
+                if top_list_block["ilevel"] == ilevel:
+                    break
+                self.list_block_stack.pop()
+            list_block = self.list_block_stack[-1]
 
             elem_text = ""
             for text, format, hyperlink in elements:
                 elem_text += text
-
             if is_numbered:
                 counter = self._get_list_counter(numid, ilevel)
                 enum_marker = str(counter) + "."
@@ -930,13 +999,13 @@ class DocxConverter:
                 enum_marker = ""
 
             list_item = {
+                "item_type": "text",
                 "bbox": [0, 0, 0, 0],
-                "type": BlockType.TEXT,
-                "angle": 0,
-                "lines": [
+                "item_content": [
                     {
                         "bbox": [0, 0, 0, 0],
-                        "spans": [
+                        "type": BlockType.TEXT,
+                        "text_content_list": [
                             {
                                 "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
@@ -947,11 +1016,13 @@ class DocxConverter:
                 ],
             }
             elem_ref.append(id(list_item))
+            list_block["list_items"].append(list_item)
             self.pre_ilevel = ilevel
 
         # 情况 4: 同级列表项（相同缩进）
         elif self.pre_num_id == numid or self.pre_ilevel == ilevel:
-            list_block = self._find_ilevel_list_block(self.blocks[-1], ilevel)
+            # 获取栈顶的列表块
+            list_block = self.list_block_stack[-1]
             elem_text = ""
             for text, format, hyperlink in elements:
                 elem_text += text
@@ -963,13 +1034,13 @@ class DocxConverter:
                 enum_marker = ""
 
             list_item = {
+                "item_type": "text",
                 "bbox": [0, 0, 0, 0],
-                "type": BlockType.TEXT,
-                "angle": 0,
-                "lines": [
+                "item_content": [
                     {
                         "bbox": [0, 0, 0, 0],
-                        "spans": [
+                        "type": BlockType.TEXT,
+                        "text_content_list": [
                             {
                                 "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
@@ -979,6 +1050,7 @@ class DocxConverter:
                     }
                 ],
             }
+            list_block["list_items"].append(list_item)
             elem_ref.append(id(list_item))
 
         return elem_ref
@@ -988,17 +1060,7 @@ class DocxConverter:
         查找某一 ilevel 的 list_block, 由于需要的总是最新的, 并且可能存在相隔开的两个同一 ilevel 的
         子列表,所以在 list_block 中需要倒序查询最近的子 list_block
         """
-        n = len(outer_block["blocks"])
-        for i in range(n - 1, -1, -1):
-            if (
-                outer_block["blocks"][i]["type"] == BlockType.LIST
-                and outer_block["blocks"][i]["ilevel"] == ilevel
-            ):
-                # 符合条件
-                return outer_block["blocks"][i]
-            elif outer_block["blocks"][i]["type"] == BlockType.LIST:
-                return self._find_ilevel_list_block(outer_block["blocks"][i], ilevel)
-        return None
+        pass
 
     def _reset_list_counters_for_new_sequence(self, numid: int):
         """
@@ -1007,8 +1069,7 @@ class DocxConverter:
         Args:
             numid: 列表编号ID
         """
-        # 重置此 numid 的所有计数器
-        keys_to_reset = [key for key in self.list_counters.keys() if key == numid]
+        keys_to_reset = [key for key in self.list_counters.keys() if key[0] == numid]
         for key in keys_to_reset:
             self.list_counters[key] = 0
 
