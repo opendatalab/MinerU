@@ -3,6 +3,7 @@
 import base64
 import os
 import re
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -11,6 +12,10 @@ import click
 import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
+
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
 
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse

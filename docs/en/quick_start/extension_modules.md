@@ -51,6 +51,6 @@ mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:3
 ### Installing Lightweight Client to Connect to OpenAI-compatible servers (for hybrid-http-client mode)
 If you need to install a lightweight client on edge devices to connect to an OpenAI-compatible server for using hybrid mode, you can install the mineru pipeline extension package, which is relatively lightweight and can be used on devices with only CPU and network connectivity, while running faster on devices that support GPU acceleration.
 ```bash
-uv pip install mineru[pipeline]
+uv pip install "mineru[pipeline]"
 mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
 ```

@@ -29,10 +29,10 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
 <table border="1">
   <thead>
     <tr>
-      <th rowspan="2">Parsing Backend</th>
-      <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
-      <th colspan="2">*-http-client</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">Parsing Backend</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
+      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>
       <th>hybrid</th>
@@ -45,7 +45,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     <tr>
       <th>Backend Features</th>
       <td >Good Compatibility</td>
-      <td colspan="2">High Config Requirements</td>
+      <td colspan="2">High Hardware Requirements</td>
       <td colspan="2">For OpenAI Compatible Servers<sup>2</sup></td>
     </tr> 
     <tr>
@@ -66,7 +66,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
         <tr>
       <th>GPU Acceleration</th>
       <td colspan="4" style="text-align:center;">Volta and later architecture GPUs or Apple Silicon</td>
-      <td rowspan="2">Not Required</td>
+      <td rowspan="2" style="text-align:center; vertical-align:middle;">Not Required</td>
     </tr>
     <tr>
       <th>Min VRAM</th>
@@ -129,9 +129,13 @@ You can get the [Docker Deployment Instructions](./docker_deployment.md) in the 
 
 ### Using MinerU
 
-The simplest command line invocation is:
+If your device meets the GPU acceleration requirements in the table above, you can use a simple command line for document parsing:
 ```bash
 mineru -p <input_path> -o <output_path>
+```
+If your device does not meet the GPU acceleration requirements, you can specify the backend as `pipeline` to run in a pure CPU environment:
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

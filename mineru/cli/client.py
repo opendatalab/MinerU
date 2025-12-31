@@ -1,10 +1,15 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+import sys
+
 import click
 from pathlib import Path
 from loguru import logger
 
-from mineru.utils.check_sys_env import is_mac_os_version_supported
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
+
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -125,7 +130,7 @@ from .common import do_parse, read_fn, pdf_suffixes, image_suffixes
     'device_mode',
     type=str,
     help="""Device mode for model inference, e.g., "cpu", "cuda", "cuda:0", "npu", "npu:0", "mps".
-         Adapted only for the case where the backend is set to "pipeline" and "vlm-transformers". """,
+         Adapted only for the case where the backend is set to "pipeline". """,
     default=None,
 )
 @click.option(

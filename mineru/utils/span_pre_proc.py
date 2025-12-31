@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import collections
+import math
 import re
 import statistics
 
@@ -128,8 +129,9 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded
     page_all_lines = []
     for block in page_dict['blocks']:
         for line in block['lines']:
-            if 0 < abs(line['rotation']) < 90:
-                # 旋转角度在0-90度之间的行，直接跳过
+            rotation_degrees = math.degrees(line['rotation'])
+            # 旋转角度不为0, 90, 180, 270的行，直接跳过（rotation_degrees的值可能不为整数）
+            if not any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270]):
                 continue
             page_all_lines.append(line)
             for span in line['spans']:
@@ -159,7 +161,7 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded
                 if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
                     continue
                 if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                    if span['height'] > median_span_height * 3 and span['height'] > span['width'] * 3:
+                    if span['height'] > median_span_height * 2.3 and span['height'] > span['width'] * 2.3:
                         vertical_spans.append(span)
                     elif block in all_bboxes:
                         useful_spans.append(span)

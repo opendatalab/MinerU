@@ -29,10 +29,10 @@
 <table border="1">
   <thead>
     <tr>
-      <th rowspan="2">解析后端</th>
-      <th rowspan="2">pipeline</th>
-      <th colspan="2">*-auto-engine</th>
-      <th colspan="2">*-http-client</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">解析后端</th>
+      <th rowspan="2" style="text-align:center; vertical-align:middle;">pipeline</th>
+      <th colspan="2" style="text-align:center;">*-auto-engine</th>
+      <th colspan="2" style="text-align:center;">*-http-client</th>
     </tr>
     <tr>
       <th>hybrid</th>
@@ -44,9 +44,9 @@
   <tbody>
     <tr>
       <th>后端特性</th>
-      <td >兼容性好</td>
-      <td colspan="2">配置要求较高</td>
-      <td colspan="2">适用于OpenAI兼容服务器<sup>2</sup></td>
+      <td style="text-align:center;">兼容性好</td>
+      <td colspan="2" style="text-align:center;">硬件配置要求较高</td>
+      <td colspan="2" style="text-align:center;">适用于OpenAI兼容服务器<sup>2</sup></td>
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
@@ -66,7 +66,7 @@
         <tr>
       <th>GPU加速支持</th>
       <td colspan="4" style="text-align:center;">Volta及以后架构GPU或Apple Silicon</td>
-      <td rowspan="2">不需要</td>
+      <td rowspan="2" style="text-align:center; vertical-align:middle;">不需要</td>
     </tr>
     <tr>
       <th>显存最低要求</th>
@@ -134,9 +134,19 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 
 ### 使用 MinerU
 
-最简单的命令行调用方式:
+>[!TIP]
+>默认使用托管在`huggingface`的模型进行解析，首次使用时会自动下载所需模型文件，后续使用将直接加载本地缓存的模型。如果您无法访问`huggingface`，可以通过以下命令切换至国内镜像源:
+>```bash
+>export MINERU_MODEL_SOURCE=modelscope
+>```
+
+如果您的设备满足上表中GPU加速的条件，可以使用简单的命令行进行文档解析:
 ```bash
 mineru -p <input_path> -o <output_path>
+```
+如果您的设备不满足GPU加速条件，可以指定后端为`pipeline`，以在纯CPU环境下运行:
+```bash
+mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](../usage/index.md)。

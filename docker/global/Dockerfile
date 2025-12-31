@@ -3,7 +3,7 @@
 # only support x86_64 architecture
 FROM vllm/vllm-openai:v0.10.1.1
 
-# Use the official vllm image for gpu with Volta、Turing、Blackwell architecture (Compute Capability < 8.0 or Compute Capability >= 10.0)
+# Use the official vllm image for gpu with Volta、Turing、Blackwell architecture (7.0 < Compute Capability < 8.0 or Compute Capability >= 10.0)
 # support x86_64 architecture and ARM(AArch64) architecture
 # FROM vllm/vllm-openai:v0.11.0
 
@@ -19,7 +19,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]' --break-system-packages && \
+RUN python3 -m pip install -U 'mineru[core]>=2.7.0' --break-system-packages && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file
