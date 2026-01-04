@@ -93,6 +93,16 @@ nav:
       - FAQ: faq/index.md
     - Demo:
       - Demo: demo/index.md
+  - Quick Start:
+    - Quick Start: quick_start/index.md
+    - Extension Modules: quick_start/extension_modules.md
+    - Docker Deployment: quick_start/docker_deployment.md
+  - Usage:
+    - Usage: usage/index.md
+    - Quick Usage: usage/quick_usage.md
+    - Model Source: usage/model_source.md
+    - CLI Tools: usage/cli_tools.md
+    - Advanced CLI Parameters: usage/advanced_cli_parameters.md
   - Reference:
     - Reference: reference/index.md
     - Output File Format: reference/output_files.md
@@ -120,13 +130,13 @@ plugins:
           build: true
           nav_translations:
             Home: 主页
-            Quick Start: 快速开始
+            Quick Start: 快速入门
             Extension Modules: 扩展模块安装
             Docker Deployment: Docker部署
-            Usage: 使用方法
-            Quick Usage: 快速使用
+            Usage: 使用指南
+            Quick Usage: 基础使用
             CLI Tools: 命令行工具
-            Model Source: 模型源
+            Model Source: 模型源配置
             Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答
             Reference: 参考资料
