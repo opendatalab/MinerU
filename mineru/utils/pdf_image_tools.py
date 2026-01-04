@@ -232,7 +232,10 @@ def images_bytes_to_pdf_bytes(image_bytes):
     # 载入并转换所有图像为 RGB 模式
     image = Image.open(BytesIO(image_bytes))
     # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
-    image = ImageOps.exif_transpose(image).convert("RGB")
+    ImageOps.exif_transpose(image, in_place=True)
+    # 只在必要时转换
+    if image.mode != "RGB":
+        image = image.convert("RGB")
 
     # 第一张图保存为 PDF，其余追加
     image.save(pdf_buffer, format="PDF", save_all=True)
