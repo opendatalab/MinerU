@@ -4,10 +4,10 @@
 
 ## 目录
 - 本地部署
-    * [快速使用](./quick_usage.md) - 快速上手和基本使用
+    * [基础使用](./quick_usage.md) - 快速上手和基本使用
     * [模型源配置](./model_source.md) - 模型源的详细配置说明  
     * [命令行工具](./cli_tools.md) - 命令行工具的详细参数说明
-    * [进阶优化参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
+    * [命令行进阶参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
 - 其他加速卡适配（🚀官方支持/❤️社区贡献）
     * [昇腾 Ascend](acceleration_cards/Ascend.md) 🚀
     * [平头哥 T-Head](acceleration_cards/THead.md) 🚀
