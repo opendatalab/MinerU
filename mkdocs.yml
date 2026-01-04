@@ -94,6 +94,7 @@ nav:
     - Demo:
       - Demo: demo/index.md
   - Reference:
+    - Reference: reference/index.md
     - Output File Format: reference/output_files.md
     - Changelog: reference/changelog.md
   - FAQ:
