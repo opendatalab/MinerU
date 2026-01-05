@@ -18,6 +18,9 @@ from markdown_it.common.html_re import attribute
 from markdown_it.rules_block import list_block
 from pydantic import AnyUrl
 
+from mineru.model.utils.docx.mammoth import body_xml
+from mineru.model.utils.docx.mammoth.conversion import convert_document_element_to_html
+from mineru.model.utils.docx.mammoth.office_xml import read_str
 from mineru.model.utils.docx.math.omml import oMath2Latex
 from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
@@ -145,14 +148,13 @@ class DocxConverter:
             )
 
             if tag_name == "tbl":
-                pass
-                # try:
-                #     # 处理表格元素
-                #     t = self._handle_tables(element)
-                #     added_elements.extend(t)
-                # except Exception:
-                #     # 如果表格解析失败，记录调试信息
-                #     _log.debug("could not parse a table, broken docx table")
+                try:
+                    # 处理表格元素
+                    t = self._handle_tables(element)
+                    added_elements.extend(t)
+                except Exception:
+                    # 如果表格解析失败，记录调试信息
+                    _log.debug("could not parse a table, broken docx table")
             # 检查图片元素
             elif drawing_blip:
                 # 处理图片元素
@@ -180,6 +182,30 @@ class DocxConverter:
             # 忽略其他未知元素并记录日志
             else:
                 _log.debug(f"Ignoring element in DOCX with tag: {tag_name}")
+
+    def _handle_tables(self, element: BaseOxmlElement):
+        """
+        处理表格。
+
+        Args:
+            element: 元素对象
+        Returns:
+            list[RefItem]: 元素引用列表
+        """
+        elem_ref = []
+        table = read_str(element.xml)
+        body_reader = body_xml.reader()
+        t = body_reader.read_all([table])
+        res = convert_document_element_to_html(t.value[0])
+        table_block = {
+            "image_source": "",
+            "html": res.value,
+            "table_caption": "",
+            "table_footnote": "",
+            "table_type": "",
+            "table_nest_level": "",
+        }
+        self.blocks.append(table_block)
 
     def _handle_text_elements(
         self,
@@ -234,11 +260,11 @@ class DocxConverter:
             elem_ref.extend(li)  # 必须是引用!!!
             # self._update_history(p_style_id, p_level, numid, ilevel)
             return elem_ref
-        elif ( # 列表结束处理
-                numid is None
-                and self.pre_num_id != -1
-                and p_style_id not in ["Title", "Heading"]
-        ):# 关闭列表
+        elif (  # 列表结束处理
+            numid is None
+            and self.pre_num_id != -1
+            and p_style_id not in ["Title", "Heading"]
+        ):  # 关闭列表
             # 重置列表状态
             self.pre_num_id = -1
             self.pre_ilevel = -1
@@ -934,6 +960,9 @@ class DocxConverter:
                 "list_type": "text_list",
                 "ilevel": ilevel,
             }
+            # 增加目前栈内的 nest level
+            for block in self.list_block_stack:
+                block["list_nest_level"] += 1
             # 获取栈顶的列表块
             parent_list_block = self.list_block_stack[-1]
             # 将新列表块添加为父列表块的最新列表项的子块
