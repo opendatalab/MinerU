@@ -26,7 +26,7 @@ class MinerUAPI(ls.LitAPI):
         device_mode = os.environ['MINERU_DEVICE_MODE']
         if os.getenv('MINERU_VIRTUAL_VRAM_SIZE', None) == None:
             if device_mode.startswith("cuda") or device_mode.startswith("npu"):
-                vram = round(get_vram(device_mode))
+                vram = get_vram(device_mode)
                 os.environ['MINERU_VIRTUAL_VRAM_SIZE'] = str(vram)
             else:
                 os.environ['MINERU_VIRTUAL_VRAM_SIZE'] = '1'

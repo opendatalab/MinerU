@@ -3,6 +3,7 @@
 import base64
 import os
 import re
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -12,9 +13,13 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
+
 from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
-from mineru.utils.check_mac_env import is_mac_os_version_supported
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.hash_utils import str_sha256
 
 
@@ -24,15 +29,20 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
     try:
         file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
-        if is_ocr:
-            parse_method = 'ocr'
-        else:
-            parse_method = 'auto'
-
+        # 根据 backend 确定 parse_method
         if backend.startswith("vlm"):
             parse_method = "vlm"
+        else:
+            parse_method = 'ocr' if is_ocr else 'auto'
 
-        local_image_dir, local_md_dir = prepare_env(output_dir, file_name, parse_method)
+        # 根据 backend 类型准备环境目录
+        if backend.startswith("hybrid"):
+            env_name = f"hybrid_{parse_method}"
+        else:
+            env_name = parse_method
+
+        local_image_dir, local_md_dir = prepare_env(output_dir, file_name, env_name)
+
         await aio_do_parse(
             output_dir=output_dir,
             pdf_file_names=[file_name],
@@ -100,6 +110,9 @@ def replace_image_with_base64(markdown_text, image_dir_path):
 
 
 async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
+    # 如果language包含()，则提取括号前的内容作为实际语言
+    if '(' in language and ')' in language:
+        language = language.split('(')[0].strip()
     file_path = to_pdf(file_path)
     # 获取识别的md文件以及压缩包文件路径
     local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
@@ -130,120 +143,31 @@ latex_delimiters_type_b = [
 latex_delimiters_type_all = latex_delimiters_type_a + latex_delimiters_type_b
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
-with open(header_path, 'r') as header_file:
+with open(header_path, mode='r', encoding='utf-8') as header_file:
     header = header_file.read()
 
-
-latin_lang = [
-        "af",
-        "az",
-        "bs",
-        "cs",
-        "cy",
-        "da",
-        "de",
-        "es",
-        "et",
-        "fr",
-        "ga",
-        "hr",
-        "hu",
-        "id",
-        "is",
-        "it",
-        "ku",
-        "la",
-        "lt",
-        "lv",
-        "mi",
-        "ms",
-        "mt",
-        "nl",
-        "no",
-        "oc",
-        "pi",
-        "pl",
-        "pt",
-        "ro",
-        "rs_latin",
-        "sk",
-        "sl",
-        "sq",
-        "sv",
-        "sw",
-        "tl",
-        "tr",
-        "uz",
-        "vi",
-        "french",
-        "german",
-        "fi",
-        "eu",
-        "gl",
-        "lb",
-        "rm",
-        "ca",
-        "qu",
+other_lang = [
+    'ch (Chinese, English, Chinese Traditional)',
+    'ch_lite (Chinese, English, Chinese Traditional, Japanese)',
+    'ch_server (Chinese, English, Chinese Traditional, Japanese)',
+    'en (English)',
+    'korean (Korean, English)',
+    'japan (Chinese, English, Chinese Traditional, Japanese)',
+    'chinese_cht (Chinese, English, Chinese Traditional, Japanese)',
+    'ta (Tamil, English)',
+    'te (Telugu, English)',
+    'ka (Kannada)',
+    'el (Greek, English)',
+    'th (Thai, English)'
 ]
-arabic_lang = ["ar", "fa", "ug", "ur", "ps", "ku", "sd", "bal"]
-cyrillic_lang = [
-        "ru",
-        "rs_cyrillic",
-        "be",
-        "bg",
-        "uk",
-        "mn",
-        "abq",
-        "ady",
-        "kbd",
-        "ava",
-        "dar",
-        "inh",
-        "che",
-        "lbe",
-        "lez",
-        "tab",
-        "kk",
-        "ky",
-        "tg",
-        "mk",
-        "tt",
-        "cv",
-        "ba",
-        "mhr",
-        "mo",
-        "udm",
-        "kv",
-        "os",
-        "bua",
-        "xal",
-        "tyv",
-        "sah",
-        "kaa",
+add_lang = [
+    'latin (French, German, Afrikaans, Italian, Spanish, Bosnian, Portuguese, Czech, Welsh, Danish, Estonian, Irish, Croatian, Uzbek, Hungarian, Serbian (Latin), Indonesian, Occitan, Icelandic, Lithuanian, Maori, Malay, Dutch, Norwegian, Polish, Slovak, Slovenian, Albanian, Swedish, Swahili, Tagalog, Turkish, Latin, Azerbaijani, Kurdish, Latvian, Maltese, Pali, Romanian, Vietnamese, Finnish, Basque, Galician, Luxembourgish, Romansh, Catalan, Quechua)',
+    'arabic (Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English)',
+    'east_slavic (Russian, Belarusian, Ukrainian, English)',
+    'cyrillic (Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English)',
+    'devanagari (Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English)'
 ]
-east_slavic_lang = ["ru", "be", "uk"]
-devanagari_lang = [
-        "hi",
-        "mr",
-        "ne",
-        "bh",
-        "mai",
-        "ang",
-        "bho",
-        "mah",
-        "sck",
-        "new",
-        "gom",
-        "sa",
-        "bgc",
-]
-other_lang = ['ch', 'ch_lite', 'ch_server', 'en', 'korean', 'japan', 'chinese_cht', 'ta', 'te', 'ka', "el", "th"]
-add_lang = ['latin', 'arabic', 'east_slavic', 'cyrillic', 'devanagari']
-
-# all_lang = ['', 'auto']
-all_lang = []
-# all_lang.extend([*other_lang, *latin_lang, *arabic_lang, *cyrillic_lang, *devanagari_lang])
-all_lang.extend([*other_lang, *add_lang])
+all_lang = [*other_lang, *add_lang]
 
 
 def safe_stem(file_path):
@@ -272,18 +196,6 @@ def to_pdf(file_path):
     return tmp_file_path
 
 
-# 更新界面函数
-def update_interface(backend_choice):
-    if backend_choice in ["vlm-transformers", "vlm-vllm-async-engine", "vlm-mlx-engine"]:
-        return gr.update(visible=False), gr.update(visible=False)
-    elif backend_choice in ["vlm-http-client"]:
-        return gr.update(visible=True), gr.update(visible=False)
-    elif backend_choice in ["pipeline"]:
-        return gr.update(visible=False), gr.update(visible=True)
-    else:
-        pass
-
-
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
 @click.option(
@@ -295,10 +207,10 @@ def update_interface(backend_choice):
     default=True,
 )
 @click.option(
-    '--enable-vllm-engine',
-    'vllm_engine_enable',
+    '--enable-http-client',
+    'http_client_enable',
     type=bool,
-    help="Enable vLLM engine backend for faster processing.",
+    help="Enable http-client backend to link openai-compatible servers.",
     default=False,
 )
 @click.option(
@@ -338,9 +250,124 @@ def update_interface(backend_choice):
     default='all',
 )
 def main(ctx,
-        example_enable, vllm_engine_enable, api_enable, max_convert_pages,
+        example_enable,
+        http_client_enable,
+        api_enable, max_convert_pages,
         server_name, server_port, latex_delimiters_type, **kwargs
 ):
+
+    # 创建 i18n 实例，支持中英文
+    i18n = gr.I18n(
+        en={
+            "upload_file": "Please upload a PDF or image",
+            "max_pages": "Max convert pages",
+            "backend": "Backend",
+            "server_url": "Server URL",
+            "server_url_info": "OpenAI-compatible server URL for http-client backend.",
+            "recognition_options": "**Recognition Options:**",
+            "table_enable": "Enable table recognition",
+            "table_info": "If disabled, tables will be shown as images.",
+            "formula_label_vlm": "Enable display formula recognition",
+            "formula_label_pipeline": "Enable formula recognition",
+            "formula_label_hybrid": "Enable inline formula recognition",
+            "formula_info_vlm": "If disabled, display formulas will be shown as images.",
+            "formula_info_pipeline": "If disabled, display formulas will be shown as images, and inline formulas will not be detected or parsed.",
+            "formula_info_hybrid": "If disabled, inline formulas will not be detected or parsed.",
+            "ocr_language": "OCR Language",
+            "ocr_language_info": "Select the OCR language for image-based PDFs and images.",
+            "force_ocr": "Force enable OCR",
+            "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
+            "convert": "Convert",
+            "clear": "Clear",
+            "pdf_preview": "PDF preview",
+            "examples": "Examples:",
+            "convert_result": "Convert result",
+            "md_rendering": "Markdown rendering",
+            "md_text": "Markdown text",
+            "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
+            "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
+            "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
+            "backend_info_default": "Select the backend engine for document parsing.",
+        },
+        zh={
+            "upload_file": "请上传 PDF 或图片",
+            "max_pages": "最大转换页数",
+            "backend": "解析后端",
+            "server_url": "服务器地址",
+            "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
+            "recognition_options": "**识别选项：**",
+            "table_enable": "启用表格识别",
+            "table_info": "禁用后，表格将显示为图片。",
+            "formula_label_vlm": "启用行间公式识别",
+            "formula_label_pipeline": "启用公式识别",
+            "formula_label_hybrid": "启用行内公式识别",
+            "formula_info_vlm": "禁用后，行间公式将显示为图片。",
+            "formula_info_pipeline": "禁用后，行间公式将显示为图片，行内公式将不会被检测或解析。",
+            "formula_info_hybrid": "禁用后，行内公式将不会被检测或解析。",
+            "ocr_language": "OCR 语言",
+            "ocr_language_info": "为扫描版 PDF 和图片选择 OCR 语言。",
+            "force_ocr": "强制启用 OCR",
+            "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
+            "convert": "转换",
+            "clear": "清除",
+            "pdf_preview": "PDF 预览",
+            "examples": "示例：",
+            "convert_result": "转换结果",
+            "md_rendering": "Markdown 渲染",
+            "md_text": "Markdown 文本",
+            "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
+            "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
+            "backend_info_hybrid": "高精度混合解析，支持多语言。",
+            "backend_info_default": "选择文档解析的后端引擎。",
+        },
+    )
+
+    # 根据后端类型获取公式识别标签（闭包函数以支持 i18n）
+    def get_formula_label(backend_choice):
+        if backend_choice.startswith("vlm"):
+            return i18n("formula_label_vlm")
+        elif backend_choice == "pipeline":
+            return i18n("formula_label_pipeline")
+        elif backend_choice.startswith("hybrid"):
+            return i18n("formula_label_hybrid")
+        else:
+            return i18n("formula_label_pipeline")
+
+    def get_formula_info(backend_choice):
+        if backend_choice.startswith("vlm"):
+            return i18n("formula_info_vlm")
+        elif backend_choice == "pipeline":
+            return i18n("formula_info_pipeline")
+        elif backend_choice.startswith("hybrid"):
+            return i18n("formula_info_hybrid")
+        else:
+            return ""
+
+    def get_backend_info(backend_choice):
+        if backend_choice.startswith("vlm"):
+            return i18n("backend_info_vlm")
+        elif backend_choice == "pipeline":
+            return i18n("backend_info_pipeline")
+        elif backend_choice.startswith("hybrid"):
+            return i18n("backend_info_hybrid")
+        else:
+            return i18n("backend_info_default")
+
+    # 更新界面函数
+    def update_interface(backend_choice):
+        formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
+        backend_info_update = gr.update(info=get_backend_info(backend_choice))
+        if "http-client" in backend_choice:
+            client_options_update = gr.update(visible=True)
+        else:
+            client_options_update = gr.update(visible=False)
+        if "vlm" in backend_choice:
+            ocr_options_update = gr.update(visible=False)
+        else:
+            ocr_options_update = gr.update(visible=True)
+
+        return client_options_update, ocr_options_update, formula_label_update, backend_info_update
+
 
     kwargs.update(arg_parse(ctx))
 
@@ -353,103 +380,126 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    if vllm_engine_enable:
+    vlm_engine = get_vlm_engine("auto", is_async=True)
+    if vlm_engine in ["transformers", "mlx-engine"]:
+        http_client_enable = True
+    else:
         try:
-            print("Start init vLLM engine...")
+            logger.info(f"Start init {vlm_engine}...")
             from mineru.backend.vlm.vlm_analyze import ModelSingleton
             model_singleton = ModelSingleton()
             predictor = model_singleton.get_model(
-                "vllm-async-engine",
+                vlm_engine,
                 None,
                 None,
                 **kwargs
             )
-            print("vLLM engine init successfully.")
+            logger.info(f"{vlm_engine} init successfully.")
         except Exception as e:
             logger.exception(e)
+
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
-                    input_file = gr.File(label='Please upload a PDF or image', file_types=suffixes)
+                    input_file = gr.File(label=i18n("upload_file"), file_types=suffixes)
                 with gr.Row():
-                    max_pages = gr.Slider(1, max_convert_pages, int(max_convert_pages/2), step=1, label='Max convert pages')
+                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
                 with gr.Row():
-                    if vllm_engine_enable:
-                        drop_list = ["pipeline", "vlm-vllm-async-engine"]
-                        preferred_option = "vlm-vllm-async-engine"
-                    else:
-                        drop_list = ["pipeline", "vlm-transformers", "vlm-http-client"]
-                        if is_mac_os_version_supported():
-                            drop_list.append("vlm-mlx-engine")
-                        preferred_option = "pipeline"
-                    backend = gr.Dropdown(drop_list, label="Backend", value=preferred_option)
+                    drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
+                    preferred_option = "hybrid-auto-engine"
+                    if http_client_enable:
+                        drop_list.extend(["vlm-http-client", "hybrid-http-client"])
+                    backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
                 with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(label='Server URL', value='http://localhost:30000', placeholder='http://localhost:30000')
+                    url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
                 with gr.Row(equal_height=True):
                     with gr.Column():
-                        gr.Markdown("**Recognition Options:**")
-                        formula_enable = gr.Checkbox(label='Enable formula recognition', value=True)
-                        table_enable = gr.Checkbox(label='Enable table recognition', value=True)
+                        gr.Markdown(i18n("recognition_options"))
+                        table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
+                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
                     with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label='Language', value='ch')
-                        is_ocr = gr.Checkbox(label='Force enable OCR', value=False)
+                        language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
+                        is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
                 with gr.Row():
-                    change_bu = gr.Button('Convert')
-                    clear_bu = gr.ClearButton(value='Clear')
-                pdf_show = PDF(label='PDF preview', interactive=False, visible=True, height=800)
+                    change_bu = gr.Button(i18n("convert"))
+                    clear_bu = gr.ClearButton(value=i18n("clear"))
+                pdf_show = PDF(label=i18n("pdf_preview"), interactive=False, visible=True, height=800)
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
-                        with gr.Accordion('Examples:'):
-                            gr.Examples(
-                                examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
-                                          _.endswith(tuple(suffixes))],
-                                inputs=input_file
-                            )
+                        gr.Examples(
+                            label=i18n("examples"),
+                            examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
+                                      _.endswith(tuple(suffixes))],
+                            inputs=input_file
+                        )
 
             with gr.Column(variant='panel', scale=5):
-                output_file = gr.File(label='convert result', interactive=False)
+                output_file = gr.File(label=i18n("convert_result"), interactive=False)
                 with gr.Tabs():
-                    with gr.Tab('Markdown rendering'):
-                        md = gr.Markdown(label='Markdown rendering', height=1100, show_copy_button=True,
-                                         latex_delimiters=latex_delimiters,
-                                         line_breaks=True)
-                    with gr.Tab('Markdown text'):
-                        md_text = gr.TextArea(lines=45, show_copy_button=True)
+                    with gr.Tab(i18n("md_rendering")):
+                        md = gr.Markdown(
+                            label=i18n("md_rendering"),
+                            height=1200,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            latex_delimiters=latex_delimiters,
+                            line_breaks=True
+                        )
+                    with gr.Tab(i18n("md_text")):
+                        md_text = gr.TextArea(
+                            lines=45,
+                            # buttons=["copy"],  # gradio 6 以上版本使用
+                            show_copy_button=True,  # gradio 6 以下版本使用
+                            label=i18n("md_text")
+                        )
 
         # 添加事件处理
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options],
-            api_name=False
+            outputs=[client_options, ocr_options, formula_enable, backend],
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options],
-            api_name=False
+            outputs=[client_options, ocr_options, formula_enable, backend],
+            # api_visibility="private"  # gradio 6 以上版本使用
+            api_name=False  # gradio 6 以下版本使用
         )
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
-        if api_enable:
-            api_name = None
-        else:
-            api_name = False
-
-        input_file.change(fn=to_pdf, inputs=input_file, outputs=pdf_show, api_name=api_name)
+        input_file.change(
+            fn=to_pdf,
+            inputs=input_file,
+            outputs=pdf_show,
+            api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+        )
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
             outputs=[md, md_text, output_file, pdf_show],
-            api_name=api_name
+            api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
+            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
         )
 
-    demo.launch(server_name=server_name, server_port=server_port, show_api=api_enable)
+    footer_links = ["gradio", "settings"]
+    if api_enable:
+        footer_links.append("api")
+    demo.launch(
+        server_name=server_name,
+        server_port=server_port,
+        # footer_links=footer_links,  # gradio 6 以上版本使用
+        show_api=api_enable,  # gradio 6 以下版本使用
+        i18n=i18n
+    )
 
 
 if __name__ == '__main__':

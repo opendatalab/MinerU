@@ -29,7 +29,7 @@ dependencies = [
     "pypdfium2>=4.30.0",
     "pypdf>=5.6.0",
     "reportlab",
-    "pdftext>=0.6.2",
+    "pdftext>=0.6.3",
     "modelscope>=1.26.0",
     "huggingface-hub>=0.32.4",
     "json-repair>=0.46.2",
@@ -37,10 +37,11 @@ dependencies = [
     "fast-langdetect>=0.2.3,<0.3.0",
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<3",
-    "beautifulsoup4>=4.13.5,<5",
-    "magika>=0.6.2,<0.7.0",
-    "mineru-vl-utils>=0.1.14,<1",
-    "mammoth~=1.11.0",
+    "beautifulsoup4>=4.13.5,<5", 
+    "magika>=0.6.2,<1.1.0",
+    "mineru-vl-utils>=0.1.19.1,<1",
+    "qwen-vl-utils>=0.0.14,<1",
+    "mammoth>=1.11.0,<2",
     "defusedxml",
     "filetype",
     "markdownify",
@@ -56,11 +57,14 @@ test = [
 ]
 vlm = [
     "torch>=2.6.0,<3",
-    "transformers>=4.51.1,<5.0.0",
+    "transformers>=4.51.1,!=4.57.2,<5.0.0",
     "accelerate>=1.5.1",
 ]
 vllm = [
     "vllm>=0.10.1.1,<0.12",
+]
+lmdeploy = [
+    "lmdeploy>=0.10.2,<0.12",
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
@@ -86,8 +90,8 @@ api = [
     "uvicorn",
 ]
 gradio = [
-    "gradio>=5.34,<6",
-    "gradio-pdf>=0.0.22",
+    "gradio==5.49.1",
+    "gradio-pdf==0.0.22",
 ]
 core = [
     "mineru[vlm]",
@@ -98,7 +102,8 @@ core = [
 ]
 all = [
     "mineru[core]",
-    "mineru[vllm]",
+    "mineru[vllm] ; sys_platform == 'linux'",
+    "mineru[lmdeploy] ; sys_platform == 'windows'",
 ]
 
 [project.urls]
@@ -109,7 +114,9 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 
 [project.scripts]
 mineru = "mineru.cli:client.main"
-mineru-vllm-server = "mineru.cli.vlm_vllm_server:main"
+mineru-vllm-server = "mineru.cli.vlm_server:vllm_server"
+mineru-lmdeploy-server = "mineru.cli.vlm_server:lmdeploy_server"
+mineru-openai-server = "mineru.cli.vlm_server:openai_server"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
 mineru-gradio = "mineru.cli.gradio_app:main"

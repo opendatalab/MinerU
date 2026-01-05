@@ -10,7 +10,6 @@ For more information about model source configuration and custom local model pat
 ## Quick Usage via Command Line
 MinerU has built-in command line tools that allow users to quickly use MinerU for PDF parsing through the command line:
 ```bash
-# Default parsing using pipeline backend
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
@@ -22,14 +21,6 @@ mineru -p <input_path> -o <output_path>
 > [!NOTE]
 > The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
 > Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
-
-
-```bash
-# Or specify vlm backend for parsing
-mineru -p <input_path> -o <output_path> -b vlm-transformers
-```
-> [!TIP]
-> The vlm backend additionally supports `vllm` acceleration. Compared to the `transformers` backend, `vllm` can achieve 20-30x speedup. You can check the installation method for the complete package supporting `vllm` acceleration in the [Extension Modules Installation Guide](../quick_start/extension_modules.md).
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
@@ -44,10 +35,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >Access `http://127.0.0.1:8000/docs` in your browser to view the API documentation.
 - Start Gradio WebUI visual frontend:
   ```bash
-  # Using pipeline/vlm-transformers/vlm-http-client backends
   mineru-gradio --server-name 0.0.0.0 --server-port 7860
-  # Or using vlm-vllm-engine/pipeline backends (requires vllm environment)
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true
   ```
   >[!TIP]
   >
@@ -55,18 +43,18 @@ If you need to adjust parsing options through custom parameters, you can also ch
 
 - Using `http-client/server` method:
   ```bash
-  # Start vllm server (requires vllm environment)
-  mineru-vllm-server --port 30000
+  # Start openai compatible server (requires vllm or lmdeploy environment)
+  mineru-openai-server --port 30000
   ``` 
   >[!TIP]
-  >In another terminal, connect to vllm server via http client (only requires CPU and network, no vllm environment needed)
+  >In another terminal, connect to openai server via http client
   > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:30000
+  > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
   > ```
 
 > [!NOTE]
-> All officially supported vllm parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-vllm-server`, `mineru-gradio`, `mineru-api`.
-> We have compiled some commonly used parameters and usage methods for `vllm`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
+> All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`.
+> We have compiled some commonly used parameters and usage methods for `vllm/lmdeploy`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
 ## Extending MinerU Functionality with Configuration Files
 
@@ -83,8 +71,28 @@ Here are some available configuration options:
   
 - `llm-aided-config`:
     * Used to configure parameters for LLM-assisted title hierarchy
-    * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen2.5-32b-instruct` model. 
+    * Compatible with all LLM models supporting `openai protocol`, defaults to using Alibaba Cloud Bailian's `qwen3-next-80b-a3b-instruct` model. 
     * You need to configure your own API key and set `enable` to `true` to enable this feature.
+    * If your API provider does not support the `enable_thinking` parameter, please manually remove it.
+        * For example, in your configuration file, the `llm-aided-config` section may look like:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable_thinking": false,
+             "enable": false
+          }
+          ```
+        * To remove the `enable_thinking` parameter, simply delete the line containing `"enable_thinking": false`, resulting in:
+          ```json
+          "llm-aided-config": {
+             "api_key": "your_api_key",
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+             "model": "qwen3-next-80b-a3b-instruct",
+             "enable": false
+          }
+          ```
   
 - `models-dir`: 
     * Used to specify local model storage directory

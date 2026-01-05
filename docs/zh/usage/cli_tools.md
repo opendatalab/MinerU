@@ -10,11 +10,11 @@ Options:
   -v, --version                   显示版本并退出
   -p, --path PATH                 输入文件路径或目录（必填）
   -o, --output PATH               输出目录（必填）
-  -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 后端）
-  -b, --backend [pipeline|vlm-transformers|vlm-vllm-engine|vlm-http-client]
-                                  解析后端（默认为 pipeline）
+  -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 与 hybrid* 后端）
+  -b, --backend [pipeline|hybrid-auto-engine|hybrid-http-client|vlm-auto-engine|vlm-http-client]
+                                  解析后端（默认为 hybrid-auto-engine）
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
-                                  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 后端）
+                                  指定文档语言（可提升 OCR 准确率，仅用于 pipeline 与 hybrid* 后端）
   -u, --url TEXT                  当使用 http-client 时，需指定服务地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
@@ -43,7 +43,7 @@ Usage: mineru-gradio [OPTIONS]
 Options:
   --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
                                   执行命令目录下的 `example` 文件夹中)
-  --enable-vllm-engine BOOLEAN  启用 vllm 引擎后端以提高处理速度
+  --enable-http-client BOOLEAN    在后端选项中启用 HTTP 客户端选项
   --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
   --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
   --server-name TEXT              设置 Gradio 应用程序的服务器主机名
@@ -94,3 +94,29 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_TABLE_MERGE_ENABLE`：
     * 用于启用表格合并功能
     * 默认为`true`，可通过环境变量设置为`false`来禁用表格合并功能。
+
+- `MINERU_PDF_RENDER_TIMEOUT`：
+    * 用于设置将PDF渲染为图片的超时时间（秒）
+    * 默认为`300`秒，可通过环境变量设置为其他值以调整渲染图片的超时时间。
+
+- `MINERU_INTRA_OP_NUM_THREADS`：
+    * 用于设置onnx模型的intra_op线程数，影响单个算子的计算速度
+    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
+
+- `MINERU_INTER_OP_NUM_THREADS`：
+    * 用于设置onnx模型的inter_op线程数，影响多个算子的并行执行
+    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
+
+- `MINERU_HYBRID_BATCH_RATIO`：
+    * 用于设置 hybrid-* 后端中 小模型处理的batch倍率
+    * 在hybrid-http-client中较为常用，可以通过控制小模型的batch倍率来调整单个客户端的显存占用量
+    * 单个client端显存大小 | MINERU_HYBRID_BATCH_RATIO
+      ------------------|------------------------
+      <= 6   GB         | 8
+      <= 4.5 GB         | 4
+      <= 3   GB         | 2
+      <= 2.5 GB         | 1
+
+- `MINERU_HYBRID_FORCE_PIPELINE_ENABLE`：
+    * 用于强制将 hybrid-* 后端中的 文本提取部分使用 小模型 进行处理
+    * 默认为`false`，可通过环境变量设置为`true`来启用该功能，从而在某些极端情况下减少幻觉的发生。

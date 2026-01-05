@@ -86,6 +86,7 @@ def doc_analyze(
     all_image_lists = []
     all_pdf_docs = []
     ocr_enabled_list = []
+    load_images_start = time.time()
     for pdf_idx, pdf_bytes in enumerate(pdf_bytes_list):
         # 确定OCR设置
         _ocr_enable = False
@@ -108,6 +109,8 @@ def doc_analyze(
                 pdf_idx, page_idx,
                 img_dict['img_pil'], _ocr_enable, _lang,
             ))
+    load_images_time = round(time.time() - load_images_start, 2)
+    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(all_pages_info) / load_images_time, 3)} images/s")
 
     # 准备批处理
     images_with_extra_info = [(info[2], info[3], info[4]) for info in all_pages_info]
@@ -120,6 +123,7 @@ def doc_analyze(
     # 执行批处理
     results = []
     processed_images_count = 0
+    infer_start = time.time()
     for index, batch_image in enumerate(batch_images):
         processed_images_count += len(batch_image)
         logger.info(
@@ -128,6 +132,8 @@ def doc_analyze(
         )
         batch_results = batch_image_analyze(batch_image, formula_enable, table_enable)
         results.extend(batch_results)
+    infer_time = round(time.time() - infer_start, 2)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / infer_time, 3)} page/s")
 
     # 构建返回结果
     infer_results = []
@@ -156,7 +162,6 @@ def batch_image_analyze(
 
     model_manager = ModelSingleton()
 
-    batch_ratio = 1
     device = get_device()
 
     if str(device).startswith('npu'):
@@ -170,25 +175,20 @@ def batch_image_analyze(
                 "Please ensure that the torch_npu package is installed correctly."
             ) from e
 
-    if str(device).startswith('npu') or str(device).startswith('cuda'):
-        vram = get_vram(device)
-        if vram is not None:
-            gpu_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(vram)))
-            if gpu_memory >= 16:
-                batch_ratio = 16
-            elif gpu_memory >= 12:
-                batch_ratio = 8
-            elif gpu_memory >= 8:
-                batch_ratio = 4
-            elif gpu_memory >= 6:
-                batch_ratio = 2
-            else:
-                batch_ratio = 1
-            logger.info(f'gpu_memory: {gpu_memory} GB, batch_ratio: {batch_ratio}')
-        else:
-            # Default batch_ratio when VRAM can't be determined
-            batch_ratio = 1
-            logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_ratio}')
+    gpu_memory = get_vram(device)
+    if gpu_memory >= 16:
+        batch_ratio = 16
+    elif gpu_memory >= 12:
+        batch_ratio = 8
+    elif gpu_memory >= 8:
+        batch_ratio = 4
+    elif gpu_memory >= 6:
+        batch_ratio = 2
+    else:
+        batch_ratio = 1
+    logger.info(
+            f'GPU Memory: {gpu_memory} GB, Batch Ratio: {batch_ratio}. '
+    )
 
     # 检测torch的版本号
     import torch

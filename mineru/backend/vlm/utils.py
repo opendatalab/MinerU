@@ -3,6 +3,7 @@ import os
 from loguru import logger
 from packaging import version
 
+from mineru.utils.check_sys_env import is_windows_environment, is_linux_environment
 from mineru.utils.config_reader import get_device
 from mineru.utils.model_utils import get_vram
 
@@ -11,13 +12,15 @@ def enable_custom_logits_processors() -> bool:
     import torch
     from vllm import __version__ as vllm_version
 
-    if not torch.cuda.is_available():
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        # 正确计算Compute Capability
+        compute_capability = f"{major}.{minor}"
+    elif hasattr(torch, 'npu') and torch.npu.is_available():
+        compute_capability = "8.0"
+    else:
         logger.info("CUDA not available, disabling custom_logits_processors")
         return False
-
-    major, minor = torch.cuda.get_device_capability()
-    # 正确计算Compute Capability
-    compute_capability = f"{major}.{minor}"
 
     # 安全地处理环境变量
     vllm_use_v1_str = os.getenv('VLLM_USE_V1', "1")
@@ -44,9 +47,34 @@ def enable_custom_logits_processors() -> bool:
         return True
 
 
+def set_lmdeploy_backend(device_type: str) -> str:
+    if device_type.lower() in ["ascend", "maca", "camb"]:
+        lmdeploy_backend = "pytorch"
+    elif device_type.lower() in ["cuda"]:
+        import torch
+        if not torch.cuda.is_available():
+            raise ValueError("CUDA is not available.")
+        if is_windows_environment():
+            lmdeploy_backend = "turbomind"
+        elif is_linux_environment():
+            major, minor = torch.cuda.get_device_capability()
+            compute_capability = f"{major}.{minor}"
+            if version.parse(compute_capability) >= version.parse("8.0"):
+                lmdeploy_backend = "pytorch"
+            else:
+                lmdeploy_backend = "turbomind"
+        else:
+            raise ValueError("Unsupported operating system.")
+    else:
+        raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
+    return lmdeploy_backend
+
+
 def set_default_gpu_memory_utilization() -> float:
     from vllm import __version__ as vllm_version
-    if version.parse(vllm_version) >= version.parse("0.11.0"):
+    device = get_device()
+    gpu_memory = get_vram(device)
+    if version.parse(vllm_version) >= version.parse("0.11.0") and gpu_memory <= 8:
         return 0.7
     else:
         return 0.5
@@ -55,20 +83,16 @@ def set_default_gpu_memory_utilization() -> float:
 def set_default_batch_size() -> int:
     try:
         device = get_device()
-        vram = get_vram(device)
-        if vram is not None:
-            gpu_memory = int(os.getenv('MINERU_VIRTUAL_VRAM_SIZE', round(vram)))
-            if gpu_memory >= 16:
-                batch_size = 8
-            elif gpu_memory >= 8:
-                batch_size = 4
-            else:
-                batch_size = 1
-            logger.info(f'gpu_memory: {gpu_memory} GB, batch_size: {batch_size}')
+        gpu_memory = get_vram(device)
+
+        if gpu_memory >= 16:
+            batch_size = 8
+        elif gpu_memory >= 8:
+            batch_size = 4
         else:
-            # Default batch_ratio when VRAM can't be determined
             batch_size = 1
-            logger.info(f'Could not determine GPU memory, using default batch_ratio: {batch_size}')
+        logger.info(f'gpu_memory: {gpu_memory} GB, batch_size: {batch_size}')
+
     except Exception as e:
         logger.warning(f'Error determining VRAM: {e}, using default batch_ratio: 1')
         batch_size = 1

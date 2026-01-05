@@ -6,12 +6,12 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
-docker build -t mineru-vllm:latest -f Dockerfile .
+docker build -t mineru:latest -f Dockerfile .
 ```
 
 > [!TIP]
 > [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/china/Dockerfile)默认使用`vllm/vllm-openai:v0.10.1.1`作为基础镜像，
-> 该版本的vLLM v1 engine对显卡型号支持有限，如您无法在Turing及更早架构的显卡上使用vLLM加速推理，可通过更改基础镜像为`vllm/vllm-openai:v0.10.2`来解决该问题。
+> 该版本的显卡型号支持有限，可能仅在 Ampere、Ada Lovelace、Hopper架构上工作，如您无法在Volta、Turing、Blackwell显卡上使用vLLM加速推理，可通过更改基础镜像为`vllm/vllm-openai:v0.11.0`来解决该问题。
 
 ## Docker说明
 
@@ -19,7 +19,7 @@ Mineru的docker使用了`vllm/vllm-openai`作为基础镜像，因此在docker�
 > [!NOTE]
 > 使用`vllm`加速VLM模型推理需要满足的条件是：
 > 
-> - 设备包含Turing及以后架构的显卡，且可用显存大于等于8G。
+> - 设备包含Volta及以后架构的显卡，且可用显存大于等于8G。
 > - 物理机的显卡驱动应支持CUDA 12.8或更高版本，可通过`nvidia-smi`命令检查驱动版本。
 > - docker中能够访问物理机的显卡设备。
 
@@ -31,7 +31,7 @@ docker run --gpus all \
   --shm-size 32g \
   -p 30000:30000 -p 7860:7860 -p 8000:8000 \
   --ipc=host \
-  -it mineru-vllm:latest \
+  -it mineru:latest \
   /bin/bash
 ```
 
@@ -50,17 +50,17 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
 >  
 >- `compose.yaml`文件中包含了MinerU的多个服务配置，您可以根据需要选择启动特定的服务。
 >- 不同的服务可能会有额外的参数配置，您可以在`compose.yaml`文件中查看并编辑。
->- 由于`vllm`推理加速框架预分配显存的特性，您可能无法在同一台机器上同时运行多个`vllm`服务，因此请确保在启动`vlm-vllm-server`服务或使用`vlm-vllm-engine`后端时，其他可能使用显存的服务已停止。
+>- 由于`vllm`推理加速框架预分配显存的特性，您可能无法在同一台机器上同时运行多个`vllm`服务，因此请确保在启动`vlm-openai-server`服务或使用`vlm-vllm-engine`后端时，其他可能使用显存的服务已停止。
 
 ---
 
-### 启动 vllm-server 服务
-并通过`vlm-http-client`后端连接`vllm-server`
+### 启动 openai兼容接口 服务
+并通过`vlm-http-client`后端连接`openai-server`
   ```bash
-  docker compose -f compose.yaml --profile vllm-server up -d
+  docker compose -f compose.yaml --profile openai-server up -d
   ```
   >[!TIP]
-  >在另一个终端中通过http client连接vllm server（只需cpu与网络，不需要vllm环境）
+  >在另一个终端中通过http client连接openai server（只需cpu与网络，不需要vllm环境）
   > ```bash
   > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://<server_ip>:30000
   > ```
@@ -83,4 +83,3 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
   >[!TIP]
   > 
   >- 在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI。
-  >- 访问 `http://<server_ip>:7860/?view=api` 使用 Gradio API。

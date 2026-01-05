@@ -6,7 +6,7 @@ from loguru import logger
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
-from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_distance_v3
+from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_index
 
 
 class MagicModel:
@@ -45,7 +45,7 @@ class MagicModel:
                 continue
 
             span_type = "unknown"
-            line_type = None
+            code_block_sub_type = None
             guess_lang = None
 
             if block_type in [
@@ -74,13 +74,16 @@ class MagicModel:
                 span_type = ContentType.TABLE
             elif block_type in ["code", "algorithm"]:
                 block_content = code_content_clean(block_content)
-                line_type = block_type
+                code_block_sub_type = block_type
                 block_type = BlockType.CODE_BODY
                 span_type = ContentType.TEXT
                 guess_lang = guess_language_by_text(block_content)
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION
+
+            #  code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为algorithm
+            switch_code_to_algorithm = False
 
             if span_type in ["image", "table"]:
                 span = {
@@ -101,6 +104,8 @@ class MagicModel:
                     block_content = clean_content(block_content)
 
                 if block_content and block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
+
+                    switch_code_to_algorithm = True
 
                     # 生成包含文本和公式的span列表
                     spans = []
@@ -160,7 +165,9 @@ class MagicModel:
 
             # 构造line对象
             if block_type in [BlockType.CODE_BODY]:
-                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": line_type, "guess_lang": guess_lang}}
+                if switch_code_to_algorithm and code_block_sub_type == "code":
+                    code_block_sub_type = "algorithm"
+                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": code_block_sub_type, "guess_lang": guess_lang}}
             else:
                 line = {"bbox": block_bbox, "spans": spans}
 
@@ -310,13 +317,14 @@ def clean_content(content):
     return content
 
 
-def __tie_up_category_by_distance_v3(blocks, subject_block_type, object_block_type):
+def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
+    """基于index的主客体关联包装函数"""
     # 定义获取主体和客体对象的函数
     def get_subjects():
         return reduct_overlap(
             list(
                 map(
-                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle":x["angle"]},
+                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle": x["angle"]},
                     filter(
                         lambda x: x["type"] == subject_block_type,
                         blocks,
@@ -329,7 +337,7 @@ def __tie_up_category_by_distance_v3(blocks, subject_block_type, object_block_ty
         return reduct_overlap(
             list(
                 map(
-                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle":x["angle"]},
+                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle": x["angle"]},
                     filter(
                         lambda x: x["type"] == object_block_type,
                         blocks,
@@ -339,15 +347,15 @@ def __tie_up_category_by_distance_v3(blocks, subject_block_type, object_block_ty
         )
 
     # 调用通用方法
-    return tie_up_category_by_distance_v3(
+    return tie_up_category_by_index(
         get_subjects,
         get_objects
     )
 
 
 def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
-    with_captions = __tie_up_category_by_distance_v3(blocks, f"{block_type}_body", f"{block_type}_caption")
-    with_footnotes = __tie_up_category_by_distance_v3(blocks, f"{block_type}_body", f"{block_type}_footnote")
+    with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
+    with_footnotes = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_footnote")
     ret = []
     for v in with_captions:
         record = {
@@ -361,49 +369,6 @@ def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
     return ret
 
 
-def fix_two_layer_blocks_back(blocks, fix_type: Literal["image", "table", "code"]):
-    need_fix_blocks = get_type_blocks(blocks, fix_type)
-    fixed_blocks = []
-    not_include_blocks = []
-    processed_indices = set()
-
-    # 处理需要组织成two_layer结构的blocks
-    for block in need_fix_blocks:
-        body = block[f"{fix_type}_body"]
-        caption_list = block[f"{fix_type}_caption_list"]
-        footnote_list = block[f"{fix_type}_footnote_list"]
-
-        body["type"] = f"{fix_type}_body"
-        for caption in caption_list:
-            caption["type"] = f"{fix_type}_caption"
-            processed_indices.add(caption["index"])
-        for footnote in footnote_list:
-            footnote["type"] = f"{fix_type}_footnote"
-            processed_indices.add(footnote["index"])
-
-        processed_indices.add(body["index"])
-
-        two_layer_block = {
-            "type": fix_type,
-            "bbox": body["bbox"],
-            "blocks": [
-                body,
-            ],
-            "index": body["index"],
-        }
-        two_layer_block["blocks"].extend([*caption_list, *footnote_list])
-
-        fixed_blocks.append(two_layer_block)
-
-    # 添加未处理的blocks
-    for block in blocks:
-        if block["index"] not in processed_indices:
-            # 直接添加未处理的block
-            not_include_blocks.append(block)
-
-    return fixed_blocks, not_include_blocks
-
-
 def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
     need_fix_blocks = get_type_blocks(blocks, fix_type)
     fixed_blocks = []
@@ -411,24 +376,15 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
     processed_indices = set()
 
     # 特殊处理表格类型，确保标题在表格前，注脚在表格后
-    if fix_type == "table":
+    if fix_type in ["table", "image"]:
         # 收集所有不合适的caption和footnote
         misplaced_captions = []  # 存储(caption, 原始block索引)
         misplaced_footnotes = []  # 存储(footnote, 原始block索引)
 
-        # 第一步：移除不符合位置要求的caption和footnote
+        # 第一步：移除不符合位置要求的footnote
         for block_idx, block in enumerate(need_fix_blocks):
             body = block[f"{fix_type}_body"]
             body_index = body["index"]
-
-            # 检查caption应在body前或同位置
-            valid_captions = []
-            for caption in block[f"{fix_type}_caption_list"]:
-                if caption["index"] <= body_index:
-                    valid_captions.append(caption)
-                else:
-                    misplaced_captions.append((caption, block_idx))
-            block[f"{fix_type}_caption_list"] = valid_captions
 
             # 检查footnote应在body后或同位置
             valid_footnotes = []
@@ -438,28 +394,6 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
                 else:
                     misplaced_footnotes.append((footnote, block_idx))
             block[f"{fix_type}_footnote_list"] = valid_footnotes
-
-        # 第二步：重新分配不合规的caption到合适的body
-        for caption, original_block_idx in misplaced_captions:
-            caption_index = caption["index"]
-            best_block_idx = None
-            min_distance = float('inf')
-
-            # 寻找索引大于等于caption_index的最近body
-            for idx, block in enumerate(need_fix_blocks):
-                body_index = block[f"{fix_type}_body"]["index"]
-                if body_index >= caption_index and idx != original_block_idx:
-                    distance = body_index - caption_index
-                    if distance < min_distance:
-                        min_distance = distance
-                        best_block_idx = idx
-
-            if best_block_idx is not None:
-                # 找到合适的body，添加到对应block的caption_list
-                need_fix_blocks[best_block_idx][f"{fix_type}_caption_list"].append(caption)
-            else:
-                # 没找到合适的body，作为普通block处理
-                not_include_blocks.append(caption)
 
         # 第三步：重新分配不合规的footnote到合适的body
         for footnote, original_block_idx in misplaced_footnotes:
@@ -495,13 +429,22 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
                 caption_list.sort(key=lambda x: x["index"], reverse=True)
                 filtered_captions = [caption_list[0]]
                 for i in range(1, len(caption_list)):
-                    # 检查是否与前一个caption连续(降序所以是-1)
-                    if caption_list[i]["index"] == caption_list[i - 1]["index"] - 1:
+                    prev_index = caption_list[i - 1]["index"]
+                    curr_index = caption_list[i]["index"]
+
+                    # 检查是否连续
+                    if curr_index == prev_index - 1:
                         filtered_captions.append(caption_list[i])
                     else:
-                        # 出现gap,后续所有caption都作为普通block
-                        not_include_blocks.extend(caption_list[i:])
-                        break
+                        # 检查gap中是否只有body_index
+                        gap_indices = set(range(curr_index + 1, prev_index))
+                        if gap_indices == {body_index}:
+                            # gap中只有body_index,不算真正的gap
+                            filtered_captions.append(caption_list[i])
+                        else:
+                            # 出现真正的gap,后续所有caption都作为普通block
+                            not_include_blocks.extend(caption_list[i:])
+                            break
                 # 恢复升序
                 filtered_captions.reverse()
                 block[f"{fix_type}_caption_list"] = filtered_captions
@@ -585,7 +528,6 @@ def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
     for list_block in list_blocks:
         # 统计list_block["blocks"]中所有block的type，用众数作为list_block的sub_type
         type_count = {}
-        line_content = []
         for sub_block in list_block["blocks"]:
             sub_block_type = sub_block["type"]
             if sub_block_type not in type_count:
