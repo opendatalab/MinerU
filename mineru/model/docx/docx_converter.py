@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
 import logging
-import filetype
 from PIL import Image, UnidentifiedImageError
 from loguru import logger
 from docx import Document
@@ -14,8 +13,6 @@ from docx.text.paragraph import Paragraph
 from docx.text.hyperlink import Hyperlink
 from docx.text.run import Run
 from lxml import etree
-from markdown_it.common.html_re import attribute
-from markdown_it.rules_block import list_block
 from pydantic import AnyUrl
 
 from mineru.model.utils.docx.mammoth import body_xml
@@ -87,23 +84,6 @@ class DocxConverter:
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         Path.mkdir(self.output_path, parents=True, exist_ok=True)
 
-    def accepts(
-        self,
-        file_stream: BinaryIO,
-    ) -> bool:
-        mimetype = filetype.guess_mime(file_stream).lower()
-        if mimetype is None:
-            logger.error(f"Failed to detect mimetype for {self.file_path}")
-        extension = os.path.splitext(self.file_path)[1].lower()
-
-        if extension in ACCEPTED_FILE_EXTENSIONS:
-            return True
-
-        for prefix in ACCEPTED_MIME_TYPE_PREFIXES:
-            if mimetype.startswith(prefix):
-                return True
-
-        return False
 
     def convert(
         self,

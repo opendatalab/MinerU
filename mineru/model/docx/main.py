@@ -9,8 +9,6 @@ def convert_path(file_path: str):
 
 def convert_binary(file_binary: BinaryIO, file_path: str):
     converter = DocxConverter(file_path=file_path, output_path="./output")
-    if not converter.accepts(file_binary):
-        raise Exception("Not a docx file")
     return converter.convert(file_binary)
 
 

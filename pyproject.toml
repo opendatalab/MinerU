@@ -41,10 +41,8 @@ dependencies = [
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.19.1,<1",
     "qwen-vl-utils>=0.0.14,<1",
-    "mammoth>=1.11.0,<2",
-    "defusedxml",
-    "filetype",
-    "markdownify",
+    "defusedxml>=0.7.1,<1",
+    "python-docx>=1.2.0,<2",
 ]
 
 [project.optional-dependencies]
