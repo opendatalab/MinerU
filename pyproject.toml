@@ -37,10 +37,14 @@ dependencies = [
     "fast-langdetect>=0.2.3,<0.3.0",
     "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<3",
-    "beautifulsoup4>=4.13.5,<5",
+    "beautifulsoup4>=4.13.5,<5", 
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.19.1,<1",
     "qwen-vl-utils>=0.0.14,<1",
+    "mammoth>=1.11.0,<2",
+    "defusedxml",
+    "filetype",
+    "markdownify",
 ]
 
 [project.optional-dependencies]
