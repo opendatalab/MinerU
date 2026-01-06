@@ -14,11 +14,11 @@ from docx.text.hyperlink import Hyperlink
 from docx.text.run import Run
 from lxml import etree
 from pydantic import AnyUrl
+from mammoth.conversion import convert_document_element_to_html
+from mammoth.docx import body_xml
 
-from mineru.model.utils.docx.mammoth import body_xml
-from mineru.model.utils.docx.mammoth.conversion import convert_document_element_to_html
-from mineru.model.utils.docx.mammoth.office_xml import read_str
-from mineru.model.utils.docx.math.omml import oMath2Latex
+from mineru.model.docx.tools.office_xml import read_str
+from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_reader import image_to_b64str
