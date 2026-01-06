@@ -40,6 +40,7 @@ dependencies = [
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.19.1,<1",
+    "qwen-vl-utils>=0.0.14,<1",
 ]
 
 [project.optional-dependencies]
@@ -60,7 +61,6 @@ vllm = [
 ]
 lmdeploy = [
     "lmdeploy>=0.10.2,<0.12",
-    "qwen-vl-utils>=0.0.14,<1",
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
