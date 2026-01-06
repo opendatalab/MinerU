@@ -1,40 +1,40 @@
-# -*- coding: utf-8 -*-
-
 """
 Office Math Markup Language (OMML)
-Adapted from https://github.com/xiilei/dwml/blob/master/dwml/omml.py
-On 25/03/2025
-"""
 
-from defusedxml import ElementTree as ET
+Adapted from https://github.com/xiilei/dwml/blob/master/dwml/omml.py
+On 23/01/2025
+"""
+import lxml.etree as ET
+from loguru import logger
+from pylatexenc.latexencode import UnicodeToLatexEncoder
 
 from .latex_dict import (
+    ALN,
+    ARR,
+    BACKSLASH,
+    BLANK,
+    BRK,
     CHARS,
     CHR,
     CHR_BO,
     CHR_DEFAULT,
-    POS,
-    POS_DEFAULT,
-    SUB,
-    SUP,
-    F,
-    F_DEFAULT,
-    T,
-    FUNC,
-    D,
     D_DEFAULT,
-    RAD,
-    RAD_DEFAULT,
-    ARR,
+    F_DEFAULT,
+    FUNC,
+    FUNC_PLACE,
     LIM_FUNC,
     LIM_TO,
     LIM_UPP,
+    POS,
+    POS_DEFAULT,
+    RAD,
+    RAD_DEFAULT,
+    SUB,
+    SUP,
+    D,
+    F,
     M,
-    BRK,
-    BLANK,
-    BACKSLASH,
-    ALN,
-    FUNC_PLACE,
+    T,
 )
 
 OMML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
@@ -72,7 +72,7 @@ def get_val(key, default=None, store=CHR):
         return default
 
 
-class Tag2Method(object):
+class Tag2Method:
     def call_method(self, elm, stag=None):
         getmethod = self.tag2meth.get
         if stag is None:
@@ -153,7 +153,7 @@ class Pr(Tag2Method):
     def do_common(self, elm):
         stag = elm.tag.replace(OMML_NS, "")
         if stag in self.__val_tags:
-            t = elm.get("{0}val".format(OMML_NS))
+            t = elm.get(f"{OMML_NS}val")
             self.__innerdict[stag] = t
         return None
 
@@ -175,12 +175,17 @@ class oMath2Latex(Tag2Method):
     _t_dict = T
 
     __direct_tags = ("box", "sSub", "sSup", "sSubSup", "num", "den", "deg", "e")
+    u = UnicodeToLatexEncoder(
+        replacement_latex_protection="braces-all",
+        unknown_char_policy="keep",
+        unknown_char_warning=False,
+    )
 
     def __init__(self, element):
         self._latex = self.process_children(element)
 
     def __str__(self):
-        return self.latex
+        return self.latex.replace("  ", " ")
 
     def __unicode__(self):
         return self.__str__(self)
@@ -223,19 +228,20 @@ class oMath2Latex(Tag2Method):
         c_dict = self.process_children_dict(elm)
         pr = c_dict["dPr"]
         null = D_DEFAULT.get("null")
+
         s_val = get_val(pr.begChr, default=D_DEFAULT.get("left"), store=T)
         e_val = get_val(pr.endChr, default=D_DEFAULT.get("right"), store=T)
-        return pr.text + D.format(
+        delim = pr.text + D.format(
             left=null if not s_val else escape_latex(s_val),
             text=c_dict["e"],
             right=null if not e_val else escape_latex(e_val),
         )
+        return delim
 
     def do_spre(self, elm):
         """
         the Pre-Sub-Superscript object -- Not support yet
         """
-        pass
 
     def do_sub(self, elm):
         text = self.process_children(elm)
@@ -250,7 +256,15 @@ class oMath2Latex(Tag2Method):
         the fraction object
         """
         c_dict = self.process_children_dict(elm)
-        pr = c_dict["fPr"]
+        pr = c_dict.get("fPr")
+        if pr is None:
+            # Handle missing fPr element gracefully
+            logger.debug("Missing fPr element in fraction, using default formatting")
+            latex_s = F_DEFAULT
+            return latex_s.format(
+                num=c_dict.get("num"),
+                den=c_dict.get("den"),
+            )
         latex_s = get_val(pr.type, default=F_DEFAULT, store=F)
         return pr.text + latex_s.format(num=c_dict.get("num"), den=c_dict.get("den"))
 
@@ -272,8 +286,10 @@ class oMath2Latex(Tag2Method):
                 if FUNC.get(t):
                     latex_chars.append(FUNC[t])
                 else:
-                    raise NotImplementedError("Not support func %s" % t)
-            else:
+                    logger.warning("Function not supported, will default to text: %s", t)
+                    if isinstance(t, str):
+                        latex_chars.append(t)
+            elif isinstance(t, str):
                 latex_chars.append(t)
         t = BLANK.join(latex_chars)
         return t if FUNC_PLACE in t else t + FUNC_PLACE  # do_func will replace this
@@ -316,7 +332,7 @@ class oMath2Latex(Tag2Method):
         t_dict = self.process_children_dict(elm, include=("e", "lim"))
         latex_s = LIM_FUNC.get(t_dict["e"])
         if not latex_s:
-            raise NotImplementedError("Not support lim %s" % t_dict["e"])
+            raise RuntimeError("Not support lim {}".format(t_dict["e"]))
         else:
             return latex_s.format(lim=t_dict.get("lim"))
 
@@ -361,10 +377,35 @@ class oMath2Latex(Tag2Method):
         bo = ""
         for stag, t, e in self.process_children_list(elm):
             if stag == "naryPr":
-                bo = get_val(t.chr, store=CHR_BO)
+                # if <m:naryPr> contains no <m:chr>, the n-ary represents an integral
+                bo = get_val(t.chr, default="\\int", store=CHR_BO)
             else:
                 res.append(t)
         return bo + BLANK.join(res)
+
+    def process_unicode(self, s):
+        # s = s if isinstance(s,unicode) else unicode(s,'utf-8')
+        # print(s, self._t_dict.get(s, s), unicode_to_latex(s))
+        # _str.append( self._t_dict.get(s, s) )
+
+        out_latex_str = self.u.unicode_to_latex(s)
+
+        if (
+            s.startswith("{") is False
+            and out_latex_str.startswith("{")
+            and s.endswith("}") is False
+            and out_latex_str.endswith("}")
+        ):
+            out_latex_str = f" {out_latex_str[1:-1]} "
+
+        if "ensuremath" in out_latex_str:
+            out_latex_str = out_latex_str.replace("\\ensuremath{", " ")
+            out_latex_str = out_latex_str.replace("}", " ")
+
+        if out_latex_str.strip().startswith("\\text"):
+            out_latex_str = f" \\text{{{out_latex_str}}} "
+
+        return out_latex_str
 
     def do_r(self, elm):
         """
@@ -373,10 +414,24 @@ class oMath2Latex(Tag2Method):
         @todo \text (latex pure text support)
         """
         _str = []
-        for s in elm.findtext("./{0}t".format(OMML_NS)):
-            # s = s if isinstance(s,unicode) else unicode(s,'utf-8')
-            _str.append(self._t_dict.get(s, s))
-        return escape_latex(BLANK.join(_str))
+        _base_str = []
+        found_text = elm.findtext(f"./{OMML_NS}t")
+        if found_text:
+            for s in found_text:
+                out_latex_str = self.process_unicode(s)
+                _str.append(out_latex_str)
+                _base_str.append(s)
+
+        proc_str = escape_latex(BLANK.join(_str))
+        base_proc_str = BLANK.join(_base_str)
+
+        if "{" not in base_proc_str and "\\{" in proc_str:
+            proc_str = proc_str.replace("\\{", "{")
+
+        if "}" not in base_proc_str and "\\}" in proc_str:
+            proc_str = proc_str.replace("\\}", "}")
+
+        return proc_str
 
     tag2meth = {
         "acc": do_acc,
