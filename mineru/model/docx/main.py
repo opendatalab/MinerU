@@ -14,4 +14,5 @@ def convert_binary(file_binary: BinaryIO):
     return converter.blocks
 
 if __name__ == "__main__":
-    print(convert_path("test.docx"))
+    # print(convert_path("test.docx"))
+    print(convert_path("equations.docx"))
