@@ -17,12 +17,13 @@ def office_docx_analyze(
     results = convert_binary(file_stream)
 
     infer_time = round(time.time() - infer_start, 2)
-    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / infer_time, 3)} page/s")
+    safe_time = max(infer_time, 0.01)
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s")
 
     # middle_json = result_to_middle_json(
     #     results,
     #     image_writer,
     # )
-    middle_json= []
+    middle_json= {"pdf_info": results}
 
     return middle_json, results

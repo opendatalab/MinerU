@@ -218,7 +218,7 @@ def _process_output(
         make_func = pipeline_union_make
     elif process_mode == "vlm":
         make_func = vlm_union_make
-    elif process_mode == "office":
+    elif process_mode in office_suffixes:
         make_func = office_union_make
     else:
         raise Exception(f"Unknown process_mode: {process_mode}")
