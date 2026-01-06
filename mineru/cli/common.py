@@ -9,6 +9,7 @@ from loguru import logger
 import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
+from mineru.model.docx.main import convert_binary
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
@@ -28,6 +29,7 @@ if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
+docx_suffixes = ["docx"]
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -39,7 +41,7 @@ def read_fn(path):
         file_suffix = guess_suffix_by_bytes(file_bytes, path)
         if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
-        elif file_suffix in pdf_suffixes:
+        elif file_suffix in pdf_suffixes + docx_suffixes:
             return file_bytes
         else:
             raise Exception(f"Unknown file suffix: {file_suffix}")
@@ -412,6 +414,21 @@ async def _async_process_hybrid(
         )
 
 
+def _process_office_doc(
+        output_dir,
+        pdf_bytes_list: list[bytes],
+):
+    need_remove_index = []
+    for i, file_bytes in enumerate(pdf_bytes_list):
+        file_suffix = guess_suffix_by_bytes(file_bytes)
+        if file_suffix in docx_suffixes:
+            need_remove_index.append(i)
+            # docx解析流程
+            result = convert_binary(io.BytesIO(file_bytes))
+            pass
+    return need_remove_index
+
+
 def do_parse(
         output_dir,
         pdf_file_names: list[str],
@@ -434,6 +451,18 @@ def do_parse(
         end_page_id=None,
         **kwargs,
 ):
+    need_remove_index = _process_office_doc(
+        output_dir,
+        pdf_bytes_list,
+    )
+    for index in sorted(need_remove_index, reverse=True):
+        del pdf_bytes_list[index]
+        del pdf_file_names[index]
+        del p_lang_list[index]
+    if not pdf_bytes_list:
+        logger.warning("No valid PDF or image files to process.")
+        return
+
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 
@@ -506,6 +535,18 @@ async def aio_do_parse(
         end_page_id=None,
         **kwargs,
 ):
+    need_remove_index = _process_office_doc(
+        output_dir,
+        pdf_bytes_list,
+    )
+    for index in sorted(need_remove_index, reverse=True):
+        del pdf_bytes_list[index]
+        del pdf_file_names[index]
+        del p_lang_list[index]
+    if not pdf_bytes_list:
+        logger.warning("No valid PDF or image files to process.")
+        return
+
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 

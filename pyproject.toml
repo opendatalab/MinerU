@@ -21,7 +21,7 @@ dependencies = [
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
-    "pdfminer.six==20250506",
+    "pdfminer.six==20251230",
     "tqdm>=4.67.1",
     "requests",
     "httpx",
@@ -41,10 +41,8 @@ dependencies = [
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.19.1,<1",
     "qwen-vl-utils>=0.0.14,<1",
-    "mammoth>=1.11.0,<2",
-    "defusedxml",
-    "filetype",
-    "markdownify",
+    "defusedxml>=0.7.1,<1",
+    "python-docx>=1.2.0,<2",
 ]
 
 [project.optional-dependencies]
