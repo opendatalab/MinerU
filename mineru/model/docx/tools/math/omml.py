@@ -4,10 +4,8 @@ Office Math Markup Language (OMML)
 Adapted from https://github.com/xiilei/dwml/blob/master/dwml/omml.py
 On 23/01/2025
 """
-
-import logging
-
 import lxml.etree as ET
+from loguru import logger
 from pylatexenc.latexencode import UnicodeToLatexEncoder
 
 from .latex_dict import (
@@ -40,8 +38,6 @@ from .latex_dict import (
 )
 
 OMML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
-
-_log = logging.getLogger(__name__)
 
 
 def load(stream):
@@ -263,7 +259,7 @@ class oMath2Latex(Tag2Method):
         pr = c_dict.get("fPr")
         if pr is None:
             # Handle missing fPr element gracefully
-            _log.debug("Missing fPr element in fraction, using default formatting")
+            logger.debug("Missing fPr element in fraction, using default formatting")
             latex_s = F_DEFAULT
             return latex_s.format(
                 num=c_dict.get("num"),
@@ -290,7 +286,7 @@ class oMath2Latex(Tag2Method):
                 if FUNC.get(t):
                     latex_chars.append(FUNC[t])
                 else:
-                    _log.warning("Function not supported, will default to text: %s", t)
+                    logger.warning("Function not supported, will default to text: %s", t)
                     if isinstance(t, str):
                         latex_chars.append(t)
             elif isinstance(t, str):
