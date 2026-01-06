@@ -44,6 +44,7 @@ dependencies = [
     "defusedxml>=0.7.1,<1",
     "python-docx>=1.2.0,<2",
     "mammoth>=1.11.0,<2",
+    "pylatexenc>=2.10,<3"
 ]
 
 [project.optional-dependencies]

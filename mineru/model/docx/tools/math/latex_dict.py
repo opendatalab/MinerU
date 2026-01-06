@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-
 """
 Adapted from https://github.com/xiilei/dwml/blob/master/dwml/latex_dict.py
-On 25/03/2025
+On 23/01/2025
 """
-
-from __future__ import unicode_literals
 
 CHARS = ("{", "}", "_", "^", "#", "&", "$", "%", "~")
 
@@ -69,6 +65,11 @@ CHR_BO = {
     "\u2210": "\\coprod",
     "\u2211": "\\sum",
     "\u222b": "\\int",
+    "\u222c": "\\iint",
+    "\u222d": "\\iiint",
+    "\u222e": "\\oint",
+    "\u222f": "\\oiint",
+    "\u2230": "\\oiiint",
     "\u22c0": "\\bigwedge",
     "\u22c1": "\\bigvee",
     "\u22c2": "\\bigcap",
@@ -79,7 +80,6 @@ CHR_BO = {
 }
 
 T = {
-    "\u2192": "\\rightarrow ",
     # Greek letters
     "\U0001d6fc": "\\alpha ",
     "\U0001d6fd": "\\beta ",
@@ -215,6 +215,9 @@ FUNC = {
     "coth": "\\coth({fe})",
     "sec": "\\sec({fe})",
     "csc": "\\csc({fe})",
+    "mod": "\\mod {fe}",
+    "max": "\\max({fe})",
+    "min": "\\min({fe})",
 }
 
 FUNC_PLACE = "{fe}"
@@ -255,10 +258,8 @@ D_DEFAULT = {
 }
 
 RAD = "\\sqrt[{deg}]{{{text}}}"
-
 RAD_DEFAULT = "\\sqrt{{{text}}}"
-
-ARR = "\\begin{{array}}{{c}}{text}\\end{{array}}"
+ARR = "{text}"
 
 LIM_FUNC = {
     "lim": "\\lim_{{{lim}}}",
