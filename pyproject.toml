@@ -21,7 +21,7 @@ dependencies = [
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
-    "pdfminer.six==20250506",
+    "pdfminer.six==20251230",
     "tqdm>=4.67.1",
     "requests",
     "httpx",
