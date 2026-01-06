@@ -45,6 +45,11 @@
 
 # 更新记录
 
+- 2026/01/06 2.7.1 发布
+  - fix bug: #4300
+  - 更新pdfminer.six的依赖版本以解决 [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
+  - 支持输入图像的exif方向自动校正，提升OCR识别效果  #4283
+
 - 2025/12/30 2.7.0 发布
   - 简化安装流程，现在不再需要单独安装`vlm`加速引擎依赖包，安装时使用`uv pip install mineru[all]`即可安装所有可选后端的依赖包。
   - 增加全新后端`hybrid`，该后端结合了`pipeline`和`vlm`后端的优势，在vlm的基础上，融入了pipeline的部分能力，在高精度的基础上增加了额外的扩展性：
