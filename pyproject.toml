@@ -21,7 +21,7 @@ dependencies = [
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
-    "pdfminer.six==20251230",
+    "pdfminer.six>=20251230",
     "tqdm>=4.67.1",
     "requests",
     "httpx",
@@ -94,10 +94,10 @@ core = [
     "mineru[pipeline]",
     "mineru[api]",
     "mineru[gradio]",
-    "mineru[mlx] ; sys_platform == 'darwin'",
 ]
 all = [
     "mineru[core]",
+    "mineru[mlx] ; sys_platform == 'darwin'",
     "mineru[vllm] ; sys_platform == 'linux'",
     "mineru[lmdeploy] ; sys_platform == 'windows'",
 ]

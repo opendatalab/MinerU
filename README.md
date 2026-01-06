@@ -45,6 +45,11 @@
 
 # Changelog
 
+- 2026/01/06 2.7.1 Release
+  - fix bug: #4300
+  - Updated pdfminer.six dependency version to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
+  - Support automatic correction of input image exif orientation to improve OCR recognition accuracy  #4283
+
 - 2025/12/30 2.7.0 Release
   - Simplified installation process. No need to separately install `vlm` acceleration engine dependencies. Using `uv pip install mineru[all]` during installation will install all optional backend dependencies.
   - Added new `hybrid` backend, which combines the advantages of `pipeline` and `vlm` backends. Built on vlm, it integrates some capabilities of pipeline, adding extra extensibility on top of high accuracy:
