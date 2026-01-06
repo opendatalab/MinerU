@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
 import logging
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from loguru import logger
 from docx import Document
 from docx.oxml.xmlchemy import BaseOxmlElement
@@ -21,7 +21,7 @@ from mineru.model.utils.docx.mammoth.office_xml import read_str
 from mineru.model.utils.docx.math.omml import oMath2Latex
 from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
-from mineru.utils.hash_utils import bytes_md5
+from mineru.utils.pdf_reader import image_to_b64str
 
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -58,7 +58,7 @@ class DocxConverter:
     - a14: Office 2010 Drawing 命名空间
     """
 
-    def __init__(self, file_path: str = None, output_path: str = None):
+    def __init__(self):
         self.XML_KEY = (
             "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"
         )
@@ -72,8 +72,6 @@ class DocxConverter:
         self.docx_obj = None
         self.max_levels: int = 10  # 文档层次结构的最大层级数
         self.parents: dict = {}  # 父级节点映射
-        self.file_path = file_path
-        self.output_path = Path(output_path, Path(self.file_path).stem)
         self.blocks = []
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
@@ -82,33 +80,15 @@ class DocxConverter:
             {}
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
-        Path.mkdir(self.output_path, parents=True, exist_ok=True)
 
 
     def convert(
         self,
         file_stream: BinaryIO,
-        style_map: str = None,
     ):
         self.docx_obj = Document(file_stream)
         self._walk_linear(self.docx_obj.element.body)
-        #
-        # assert isinstance(webpage_text, str)
-        #
-        # # remove leading and trailing \n
-        # webpage_text = webpage_text.strip()
 
-        # return webpage_text
-
-    # def convert_image(self, image):
-    #     with image.open() as image_bytes:
-    #         img_bytes = image_bytes.read()
-    #         img_buffer_numpy = np.frombuffer(img_bytes, dtype=np.uint8)
-    #         img_numpy = cv2.imdecode(img_buffer_numpy, 1)
-    #         cv2.imwrite(
-    #             self.output_path.joinpath(image.alt_text + ".jpg").as_posix(), img_numpy
-    #         )
-    #     return {"src": self.output_path.joinpath(image.alt_text + ".jpg").as_posix()}
     def _walk_linear(
         self,
         body: BaseOxmlElement,
@@ -486,15 +466,7 @@ class DocxConverter:
         else:
             image_bytes = BytesIO(image_data)
             pil_image = Image.open(image_bytes)
-            # p2 = doc.add_picture(
-            #     parent=self.parents[level - 1],
-            #     image=ImageRef.from_pil(image=pil_image, dpi=72),
-            #     caption=None,
-            #     content_layer=self.content_layer,
-            # )
-            md5 = bytes_md5(image_data)
-            path = f"{self.output_path}/{md5}.jpg"
-            pil_image.save(path)
+            img_base64 = image_to_b64str(pil_image)
             image_block = {
                 "type": BlockType.IMAGE,
                 "bbox": [0, 0, 0, 0],
@@ -510,7 +482,7 @@ class DocxConverter:
                                         "bbox": [0, 0, 0, 0],
                                         "score": 1.0,
                                         "type": ContentType.IMAGE,
-                                        "image_path": path,
+                                        "image_base64": img_base64,
                                     }
                                 ],
                             }

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn
+from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn, _process_office_doc
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
@@ -41,6 +41,18 @@ def do_parse(
     start_page_id=0,  # Start page ID for parsing, default is 0
     end_page_id=None,  # End page ID for parsing, default is None (parse all pages until the end of the document)
 ):
+
+    need_remove_index = _process_office_doc(
+        output_dir,
+        pdf_bytes_list,
+    )
+    for index in sorted(need_remove_index, reverse=True):
+        del pdf_bytes_list[index]
+        del pdf_file_names[index]
+        del p_lang_list[index]
+    if not pdf_bytes_list:
+        logger.warning("No valid PDF or image files to process.")
+        return
 
     if backend == "pipeline":
         for idx, pdf_bytes in enumerate(pdf_bytes_list):
@@ -254,14 +266,15 @@ def parse_doc(
 if __name__ == '__main__':
     # args
     __dir__ = os.path.dirname(os.path.abspath(__file__))
-    pdf_files_dir = os.path.join(__dir__, "pdfs")
+    pdf_files_dir = os.path.join(__dir__, "docx")
     output_dir = os.path.join(__dir__, "output")
     pdf_suffixes = ["pdf"]
+    docx_suffixes = ["docx"]
     image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg"]
 
     doc_path_list = []
     for doc_path in Path(pdf_files_dir).glob('*'):
-        if guess_suffix_by_path(doc_path) in pdf_suffixes + image_suffixes:
+        if guess_suffix_by_path(doc_path) in pdf_suffixes + image_suffixes + docx_suffixes:
             doc_path_list.append(doc_path)
 
     """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
