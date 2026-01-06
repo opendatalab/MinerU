@@ -259,7 +259,7 @@ D_DEFAULT = {
 
 RAD = "\\sqrt[{deg}]{{{text}}}"
 RAD_DEFAULT = "\\sqrt{{{text}}}"
-ARR = "{text}"
+ARR = "\\begin{{array}}{{c}}{text}\\end{{array}}"
 
 LIM_FUNC = {
     "lim": "\\lim_{{{lim}}}",
