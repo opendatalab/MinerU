@@ -14,21 +14,21 @@
     cpu: Hygon C86-4G
     gpu: VA16 / VA1L / VA10L
     torch: 2.8.0+cpu
-    torch-vacc: 1.3.3.626
+    torch-vacc: 1.3.3.777
     vllm: 0.11.1.dev0+gb8b302cde.d20251030.cpu
-    vllm-vacc: 0.11.0.626 
-    driver: 00.25.12.02 d3_3_v2_9_a3_1 3ef7cf3 20251202
+    vllm-vacc: 0.11.0.777
+    driver: 00.25.12.30 d3_3_v2_9_a3_1 a76bf37 20251230
     docker: 28.1.1
     ```
 
 ## 3. 环境准备
 
-- 获取Docker镜像
+- 获取vllm_vacc基础镜像
     ```bash
-    sudo docker pull harbor.vastaitech.com/ai_deliver/vllm_vacc:VVI-25.12.SP1
+    sudo docker pull harbor.vastaitech.com/ai_deliver/vllm_vacc:VVI-25.12.SP2
     ```
 
-- 启动Docker容器
+- 启动容器
     ```bash
     sudo docker run -it \
         --privileged=true \
@@ -36,23 +36,7 @@
         --name vllm_service \
         --ipc=host \
         --network=host \
-        harbor.vastaitech.com/ai_deliver/vllm_vacc:VVI-25.12.SP1 bash
-    ```
-
-
->[!TIP]
-> - 镜像内已包含`torch/vllm`等相关依赖
-> - 和`NVIDIA`硬件下`CUDA_VISIBLE_DEVICES`类似；在`VastAI`硬件中可以使用`VACC_VISIBLE_DEVICES`指定`可见计算卡ID`，如`-e VACC_VISIBLE_DEVICES=0,1,2,3`
-> - 需指定适当的`--shm-size`虚拟内存
-
-## 4. MinerU功能
-
->[!NOTE]
-> - `VastAI`加速卡仅支持使用`vlm-vllm-engine`和`vlm-http-client`形式进行`VLM`模型推理加速
-
-- 进入容器
-    ```bash
-    sudo docker exec -it vllm_service bash
+        harbor.vastaitech.com/ai_deliver/vllm_vacc:VVI-25.12.SP2 bash
     ```
 
 - 安装MinerU
@@ -60,6 +44,10 @@
    - 参考官方文档安装：[README_zh-CN.md#安装-mineru](https://github.com/opendatalab/MinerU/blob/master/README_zh-CN.md#安装-mineru)
 
         ```bash
+        # 启动容器
+        # sudo docker exec -it vllm_service bash
+        
+        # 可选pypi源
         # https://mirrors.163.com/pypi/simple/
         # https://mirrors.aliyun.com/pypi/simple/
         # https://pypi.mirrors.ustc.edu.cn/simple/
@@ -68,26 +56,42 @@
 
         # 通过源码安装MinerU
         git clone https://github.com/opendatalab/MinerU.git
-        git checkout eed479eb56bba93ee99c1a8c255d509bd2f837e5
+        git checkout 8c4b3ef3a20b11ddac9903f25124d24ea82639b5
         pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
 
-        # 使用pip安装MinerU
-        pip install -U "mineru[core]" -i https://mirrors.aliyun.com/pypi/simple
+        # 或使用pip安装MinerU
+        pip install -U "mineru[core]==2.7.0" -i https://mirrors.aliyun.com/pypi/simple
         ```
+
+> [!NOTE]
+> - `vllm_vacc`基础镜像内已包含`torch/vllm`等相关依赖
+> - 截至`2025/12/31`，`VastAI`已支持`MinerU`至最新版本`2.7.0`，`master分支8c4b3ef3`
+> - 和`NVIDIA`硬件下`CUDA_VISIBLE_DEVICES`类似；在`VastAI`硬件中可以使用`VACC_VISIBLE_DEVICES`指定`可见计算卡ID`，如`-e VACC_VISIBLE_DEVICES=0,1,2,3`
+> - 需指定适当的`--shm-size`虚拟内存
+
+## 4. MinerU功能
+
+> [!NOTE]
+> - `VastAI`加速卡仅支持使用`vlm-auto-engine`和`vlm-http-client`形式进行`VLM`模型推理加速
+
+- 进入容器
+    ```bash
+    sudo docker exec -it vllm_service bash
+    ```
 
 - 使用MinerU
 
     - 模型准备，参考官方介绍：[model_source.md](https://github.com/opendatalab/MinerU/blob/master/docs/zh/usage/model_source.md)
 
-    - 方式一：`vlm-vllm-engine`
+    - 方式一：`vlm-auto-engine`
 
         ```bash
         export MINERU_MODEL_SOURCE=modelscope
 
-        # step1, 以`vlm-vllm-engine`方式启动MinerU解析任务
-        mineru -p /path/to/demo/pdfs/demo1.pdf \
+        # step1, 以`vlm-auto-engine`方式启动MinerU解析任务
+        mineru -p image.png \
         -o ./output \
-        -b vlm-vllm-engine \
+        -b vlm-auto-engine \
         --http-timeout 1200 \
         --tensor-parallel-size 2 \
         --enforce_eager \
@@ -108,7 +112,7 @@
         --served-model-name MinerU2.5-2509-1.2B
 
         # step2，以`vlm-http-client`方式启动MinerU解析任务
-        mineru -p /path/to/demo/pdfs/demo1.pdf \
+        mineru -p demo/pdfs/demo1.pdf \
         -o ./output \
         -b vlm-http-client \
         -u http://127.0.0.1:8090 \
@@ -116,8 +120,7 @@
         ```
 
 
->[!NOTE]
-> - 截至`2025/12/23`，`VastAI`已支持`MinerU`至最新版本`2.6.8`，`master分支eed479eb`
+> [!NOTE]
 > - 注意在执行任意与`vllm`相关命令需追加`--enforce_eager`参数
 
 
@@ -140,16 +143,16 @@
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>hybrid-http-client</td>
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-vllm-engine</td>
+      <td>hybrid-auto-engine</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-auto-engine</td>
       <td>🟢</td>
-    </tr>
-    <tr>
-      <td>vlm-lmdeploy-client</td>
-      <td>🔴</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -161,16 +164,16 @@
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>hybrid-http-client</td>
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-vllm-engine</td>
+      <td>hybrid-auto-engine</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-auto-engine</td>
       <td>🟢</td>
-    </tr>
-    <tr>
-      <td>vlm-lmdeploy-engine</td>
-      <td>🔴</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -182,16 +185,16 @@
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-transformers</td>
+      <td>hybrid-http-client</td>
       <td>🔴</td>
     </tr>
     <tr>
-      <td>vlm-vllm-engine</td>
+      <td>hybrid-auto-engine</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-auto-engine</td>
       <td>🟢</td>
-    </tr>
-    <tr>
-      <td>vlm-lmdeploy-engine</td>
-      <td>🔴</td>
     </tr>
     <tr>
       <td>vlm-http-client</td>
@@ -202,18 +205,19 @@
       <td>🟢</td>
     </tr>
     <tr>
-      <td colspan="2">Tensor并行 (--tensor-parallel-size/--tp)</td>
-      <td>🟢 仅支持tp1/tp2</td>
+      <td colspan="2">Tensor并行 (--tensor-parallel-size)</td>
+      <td>🟢</td>
     </tr>
     <tr>
-      <td colspan="2">数据并行 (--data-parallel-size/--dp)</td>
+      <td colspan="2">数据并行 (--data-parallel-size)</td>
       <td>🔴</td>
     </tr>
   </tbody>
 </table>
 
 
-注：  
-🟢: 支持，运行较稳定，精度与Nvidia GPU基本一致  
-🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
-🔴: 不支持，无法运行，或精度存在较大差异
+> [!NOTE]
+> - 🟢: 支持，运行较稳定，精度与NVIDIA GPU基本一致  
+> - 🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
+> - 🔴: 不支持，无法运行，或精度存在较大差异
+> - `vlm-auto-engine`：VastAI仅支持vLLM后端

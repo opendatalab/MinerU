@@ -9,7 +9,14 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
-CONTINUATION_MARKERS = ["(续)", "(续表)", "(continued)", "(cont.)"]
+CONTINUATION_MARKERS = [
+    "(续)",
+    "(续表)",
+    "(续上表)",
+    "(continued)",
+    "(cont.)",
+    "(cont’d)",
+]
 
 
 def calculate_table_total_columns(soup):

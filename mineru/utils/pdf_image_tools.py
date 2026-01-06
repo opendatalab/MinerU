@@ -5,7 +5,7 @@ from io import BytesIO
 import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
-from PIL import Image
+from PIL import Image, ImageOps
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
@@ -41,19 +41,23 @@ def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -
     return image_dict
 
 
-def _load_images_from_pdf_worker(pdf_bytes, dpi, start_page_id, end_page_id, image_type):
+def _load_images_from_pdf_worker(
+    pdf_bytes, dpi, start_page_id, end_page_id, image_type
+):
     """用于进程池的包装函数"""
-    return load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
+    return load_images_from_pdf_core(
+        pdf_bytes, dpi, start_page_id, end_page_id, image_type
+    )
 
 
 def load_images_from_pdf(
-        pdf_bytes: bytes,
-        dpi=200,
-        start_page_id=0,
-        end_page_id=None,
-        image_type=ImageType.PIL,
-        timeout=None,
-        threads=4,
+    pdf_bytes: bytes,
+    dpi=200,
+    start_page_id=0,
+    end_page_id=None,
+    image_type=ImageType.PIL,
+    timeout=None,
+    threads=4,
 ):
     """带超时控制的 PDF 转图片函数,支持多进程加速
 
@@ -77,7 +81,7 @@ def load_images_from_pdf(
             dpi,
             start_page_id,
             get_end_page_id(end_page_id, len(pdf_doc)),
-            image_type
+            image_type,
         ), pdf_doc
     else:
         if timeout is None:
@@ -116,7 +120,7 @@ def load_images_from_pdf(
                     dpi,
                     range_start,
                     range_end,
-                    image_type
+                    image_type,
                 )
                 futures.append((range_start, future))
 
@@ -163,7 +167,14 @@ def load_images_from_pdf_core(
     return images_list
 
 
-def cut_image(bbox: tuple, page_num: int, page_pil_img, return_path, image_writer: FileBasedDataWriter, scale=2):
+def cut_image(
+    bbox: tuple,
+    page_num: int,
+    page_pil_img,
+    return_path,
+    image_writer: FileBasedDataWriter,
+    scale=2,
+):
     """从第page_num页的page中，根据bbox进行裁剪出一张jpg图片，返回图片路径 save_path：需要同时支持s3和本地,
     图片存放在save_path下，文件名是:
     {page_num}_{bbox[0]}_{bbox[1]}_{bbox[2]}_{bbox[3]}.jpg , bbox内数字取整。"""
@@ -197,7 +208,6 @@ def get_crop_img(bbox: tuple, pil_img, scale=2):
 
 
 def get_crop_np_img(bbox: tuple, input_img, scale=2):
-
     if isinstance(input_img, Image.Image):
         np_img = np.asarray(input_img)
     elif isinstance(input_img, np.ndarray):
@@ -212,17 +222,27 @@ def get_crop_np_img(bbox: tuple, input_img, scale=2):
         int(bbox[3] * scale),
     )
 
-    return np_img[scale_bbox[1]:scale_bbox[3], scale_bbox[0]:scale_bbox[2]]
+    return np_img[scale_bbox[1] : scale_bbox[3], scale_bbox[0] : scale_bbox[2]]
+
 
 def images_bytes_to_pdf_bytes(image_bytes):
     # 内存缓冲区
     pdf_buffer = BytesIO()
 
     # 载入并转换所有图像为 RGB 模式
-    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    image = Image.open(BytesIO(image_bytes))
+    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+    image = ImageOps.exif_transpose(image) or image
+    # 只在必要时转换
+    if image.mode != "RGB":
+        image = image.convert("RGB")
 
     # 第一张图保存为 PDF，其余追加
-    image.save(pdf_buffer, format="PDF", save_all=True)
+    image.save(
+        pdf_buffer,
+        format="PDF",
+        # save_all=True
+    )
 
     # 获取 PDF bytes 并重置指针（可选）
     pdf_bytes = pdf_buffer.getvalue()

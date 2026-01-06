@@ -17,8 +17,6 @@ from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
-from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -326,6 +324,7 @@ def _process_hybrid(
         server_url=None,
         **kwargs,
 ):
+    from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
     """同步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
@@ -378,8 +377,8 @@ async def _async_process_hybrid(
         server_url=None,
         **kwargs,
 ):
+    from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
     """异步处理hybrid后端逻辑"""
-
     if not backend.endswith("client"):
         server_url = None
 
