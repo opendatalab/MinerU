@@ -170,7 +170,7 @@ def can_merge_tables(current_table_block, previous_table_block):
     if caption_blocks:
         # 如果所有caption都不以"(续)"、"(续表)"、"(continued)"或"(cont.)"结尾,则不合并
         if not any(
-                any(full_to_half(merge_para_with_text(block).strip()).lower().endswith(marker.lower())
+                any(marker.lower() in full_to_half(merge_para_with_text(block).strip()).lower()
                     for marker in CONTINUATION_MARKERS)
                 for block in caption_blocks
         ):
