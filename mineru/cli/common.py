@@ -9,17 +9,18 @@ from loguru import logger
 import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.model.docx.main import convert_binary
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
 from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
+from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -30,6 +31,9 @@ if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 docx_suffixes = ["docx"]
+pptx_suffixes = ["pptx"]
+xlsx_suffixes = ["xlsx"]
+office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -41,7 +45,7 @@ def read_fn(path):
         file_suffix = guess_suffix_by_bytes(file_bytes, path)
         if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
-        elif file_suffix in pdf_suffixes + docx_suffixes:
+        elif file_suffix in pdf_suffixes + office_suffixes:
             return file_bytes
         else:
             raise Exception(f"Unknown file suffix: {file_suffix}")
@@ -112,10 +116,18 @@ def _process_output(
         f_make_md_mode,
         middle_json,
         model_output=None,
-        is_pipeline=True
+        process_mode="vlm",
 ):
     f_draw_line_sort_bbox = False
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+    if process_mode == "pipeline":
+        make_func = pipeline_union_make
+    elif process_mode == "vlm":
+        make_func = vlm_union_make
+    elif process_mode in office_suffixes:
+        make_func = office_union_make
+    else:
+        raise Exception(f"Unknown process_mode: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
         draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
@@ -124,10 +136,16 @@ def _process_output(
         draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
 
     if f_dump_orig_pdf:
-        md_writer.write(
-            f"{pdf_file_name}_origin.pdf",
-            pdf_bytes,
-        )
+        if process_mode in ["pipeline", "vlm"]:
+            md_writer.write(
+                f"{pdf_file_name}_origin.pdf",
+                pdf_bytes,
+            )
+        elif process_mode in office_suffixes:
+            md_writer.write(
+                f"{pdf_file_name}_origin.{process_mode}",
+                pdf_bytes,
+            )
 
     if f_draw_line_sort_bbox:
         draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_line_sort.pdf")
@@ -135,7 +153,6 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        make_func = pipeline_union_make if is_pipeline else vlm_union_make
         md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}.md",
@@ -143,13 +160,12 @@ def _process_output(
         )
 
     if f_dump_content_list:
-        make_func = pipeline_union_make if is_pipeline else vlm_union_make
         content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
-        if not is_pipeline:
+        if process_mode != "pipeline":
             content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
             md_writer.write_string(
                 f"{pdf_file_name}_content_list_v2.json",
@@ -223,7 +239,7 @@ def _process_pipeline(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, is_pipeline=True
+            f_make_md_mode, middle_json, model_json, process_mode="pipeline"
         )
 
 
@@ -264,7 +280,7 @@ async def _async_process_vlm(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -305,7 +321,7 @@ def _process_vlm(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -357,7 +373,7 @@ def _process_hybrid(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -410,22 +426,53 @@ async def _async_process_hybrid(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
 def _process_office_doc(
         output_dir,
+        pdf_file_names: list[str],
         pdf_bytes_list: list[bytes],
+        f_dump_md=True,
+        f_dump_middle_json=True,
+        f_dump_model_output=True,
+        f_dump_orig_file=True,
+        f_dump_content_list=True,
+        f_make_md_mode=MakeMode.MM_MD,
 ):
     need_remove_index = []
     for i, file_bytes in enumerate(pdf_bytes_list):
+        pdf_file_name = pdf_file_names[i]
         file_suffix = guess_suffix_by_bytes(file_bytes)
         if file_suffix in docx_suffixes:
+
             need_remove_index.append(i)
-            # docx解析流程
-            result = convert_binary(io.BytesIO(file_bytes))
-            pass
+
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"office")
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            middle_json, infer_result = office_docx_analyze(
+                file_bytes,
+                image_writer=image_writer,
+            )
+
+            f_draw_layout_bbox = False
+            f_draw_span_bbox = False
+            pdf_info = middle_json["pdf_info"]
+
+            _process_output(
+                pdf_info, file_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_file,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, infer_result, process_mode="docx"
+            )
+        elif file_suffix in pptx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, PPTX files are not supported: {pdf_file_name}")
+        elif file_suffix in xlsx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, XLSX files are not supported: {pdf_file_name}")
+
     return need_remove_index
 
 
@@ -453,7 +500,14 @@ def do_parse(
 ):
     need_remove_index = _process_office_doc(
         output_dir,
-        pdf_bytes_list,
+        pdf_file_names=pdf_file_names,
+        pdf_bytes_list=pdf_bytes_list,
+        f_dump_md=f_dump_md,
+        f_dump_middle_json=f_dump_middle_json,
+        f_dump_model_output=f_dump_model_output,
+        f_dump_orig_file=f_dump_orig_pdf,
+        f_dump_content_list=f_dump_content_list,
+        f_make_md_mode=f_make_md_mode,
     )
     for index in sorted(need_remove_index, reverse=True):
         del pdf_bytes_list[index]
@@ -537,7 +591,14 @@ async def aio_do_parse(
 ):
     need_remove_index = _process_office_doc(
         output_dir,
-        pdf_bytes_list,
+        pdf_file_names=pdf_file_names,
+        pdf_bytes_list=pdf_bytes_list,
+        f_dump_md=f_dump_md,
+        f_dump_middle_json=f_dump_middle_json,
+        f_dump_model_output=f_dump_model_output,
+        f_dump_orig_file=f_dump_orig_pdf,
+        f_dump_content_list=f_dump_content_list,
+        f_make_md_mode=f_make_md_mode,
     )
     for index in sorted(need_remove_index, reverse=True):
         del pdf_bytes_list[index]

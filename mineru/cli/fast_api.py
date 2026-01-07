@@ -22,7 +22,7 @@ logger.add(sys.stderr, level=log_level)  # 添加新handler
 
 from base64 import b64encode
 
-from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
+from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes, office_suffixes
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
@@ -187,7 +187,7 @@ async def parse_pdf(
 
             # 如果是图像文件或PDF，使用read_fn处理
             file_suffix = guess_suffix_by_path(temp_path)
-            if file_suffix in pdf_suffixes + image_suffixes:
+            if file_suffix in pdf_suffixes + image_suffixes + office_suffixes:
                 try:
                     pdf_bytes = read_fn(temp_path)
                     pdf_bytes_list.append(pdf_bytes)
