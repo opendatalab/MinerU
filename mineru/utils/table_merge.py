@@ -9,13 +9,17 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
-CONTINUATION_MARKERS = [
+CONTINUATION_END_MARKERS = [
     "(续)",
     "(续表)",
     "(续上表)",
     "(continued)",
     "(cont.)",
     "(cont’d)",
+]
+
+CONTINUATION_INLINE_MARKERS = [
+    "(continued)",
 ]
 
 
@@ -168,13 +172,21 @@ def can_merge_tables(current_table_block, previous_table_block):
     # 如果有TABLE_CAPTION类型的块,检查是否至少有一个以"(续)"结尾
     caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
     if caption_blocks:
-        # 如果所有caption都不以"(续)"、"(续表)"、"(continued)"或"(cont.)"结尾,则不合并
-        if not any(
-                any(marker.lower() in full_to_half(merge_para_with_text(block).strip()).lower()
-                    for marker in CONTINUATION_MARKERS)
-                for block in caption_blocks
-        ):
+        # 检查是否至少有一个caption包含续表标识
+        has_continuation_marker = False
+        for block in caption_blocks:
+            caption_text = full_to_half(merge_para_with_text(block).strip()).lower()
+            if (
+                    any(caption_text.endswith(marker.lower()) for marker in CONTINUATION_END_MARKERS)
+                    or any(marker.lower() in caption_text for marker in CONTINUATION_INLINE_MARKERS)
+            ):
+                has_continuation_marker = True
+                break
+
+        # 如果所有caption都不包含续表标识，则不允许合并
+        if not has_continuation_marker:
             return False, None, None, None, None
+
         # 如果current_table_block的caption存在续标识,放宽footnote的限制允许previous_table_block有最多一条footnote
         if footnote_count > 1:
             return False, None, None, None, None
