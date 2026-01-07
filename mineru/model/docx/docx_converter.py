@@ -4,7 +4,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
-import logging
 from PIL import Image, WmfImagePlugin
 from loguru import logger
 from docx import Document
@@ -26,9 +25,6 @@ from mineru.utils.pdf_reader import image_to_b64str
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]
-
-ACCEPTED_FILE_EXTENSIONS = [".docx"]
-_log = logging.getLogger(__name__)
 
 
 class DocxConverter:
@@ -114,7 +110,7 @@ class DocxConverter:
                     added_elements.extend(t)
                 except Exception:
                     # 如果表格解析失败，记录调试信息
-                    _log.debug("could not parse a table, broken docx table")
+                    logger.debug("could not parse a table, broken docx table")
             # 检查图片元素
             elif drawing_blip:
                 # 处理图片元素
@@ -141,7 +137,7 @@ class DocxConverter:
 
             # 忽略其他未知元素并记录日志
             else:
-                _log.debug(f"Ignoring element in DOCX with tag: {tag_name}")
+                logger.debug(f"Ignoring element in DOCX with tag: {tag_name}")
 
     def _handle_tables(self, element: BaseOxmlElement):
         """
@@ -462,7 +458,7 @@ class DocxConverter:
         # 使用 PIL 打开 BytesIO 对象创建图像
         image_data: Optional[bytes] = get_docx_image(drawing_blip)
         if image_data is None:
-            _log.warning("Warning: image cannot be found")
+            logger.warning("Warning: image cannot be found")
         else:
             image_bytes = BytesIO(image_data)
             pil_image = Image.open(image_bytes)
@@ -818,7 +814,7 @@ class DocxConverter:
             return num_fmt in numbered_formats
 
         except Exception as e:
-            _log.debug(f"Error determining if list is numbered: {e}")
+            logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
     def _add_list_item(
