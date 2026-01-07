@@ -163,20 +163,24 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
 def can_merge_tables(current_table_block, previous_table_block):
     """判断两个表格是否可以合并"""
     # 检查表格是否有caption和footnote
+    # 计算previous_table_block中的footnote数量
+    footnote_count = sum(1 for block in previous_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE)
     # 如果有TABLE_CAPTION类型的块,检查是否至少有一个以"(续)"结尾
     caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
     if caption_blocks:
         # 如果所有caption都不以"(续)"、"(续表)"、"(continued)"或"(cont.)"结尾,则不合并
-
         if not any(
                 any(full_to_half(merge_para_with_text(block).strip()).lower().endswith(marker.lower())
                     for marker in CONTINUATION_MARKERS)
                 for block in caption_blocks
         ):
             return False, None, None, None, None
-
-    if any(block["type"] == BlockType.TABLE_FOOTNOTE for block in previous_table_block["blocks"]):
-        return False, None, None, None, None
+        # 如果current_table_block的caption存在续标识,放宽footnote的限制允许previous_table_block有最多一条footnote
+        if footnote_count > 1:
+            return False, None, None, None, None
+    else:
+        if footnote_count > 0:
+            return False, None, None, None, None
 
     # 获取两个表格的HTML内容
     current_html = ""
@@ -363,6 +367,11 @@ def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_foo
                 row.extract()
                 tbody1.append(row)
 
+    # 清空previous_table_block的footnote
+    previous_table_block["blocks"] = [
+        block for block in previous_table_block["blocks"]
+        if block["type"] != BlockType.TABLE_FOOTNOTE
+    ]
     # 添加待合并表格的footnote到前一个表格中
     for table_footnote in wait_merge_table_footnotes:
         temp_table_footnote = table_footnote.copy()
