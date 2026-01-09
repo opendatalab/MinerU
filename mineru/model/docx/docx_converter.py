@@ -181,6 +181,8 @@ class DocxConverter:
         Returns:
             list[RefItem]: 元素引用列表
         """
+        #TODO: 使用element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES) 找到分节位置，第一个分节符和最后一个是单独的p标签，而中间的是在最后一个body元素内的，需要分开判断
+
         elem_ref = []
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
