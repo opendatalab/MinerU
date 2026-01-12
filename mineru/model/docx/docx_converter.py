@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
 import logging
-from PIL import Image
+from PIL import Image, WmfImagePlugin
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -482,7 +482,14 @@ class DocxConverter:
         else:
             image_bytes = BytesIO(image_data)
             pil_image = Image.open(image_bytes)
-            img_base64 = image_to_b64str(pil_image)
+            if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
+                logger.warning(f"Skipping WMF image, size: {pil_image.size}")
+                placeholder = Image.new('RGB', pil_image.size, (240, 240, 240))
+                img_base64 = image_to_b64str(placeholder)
+            else:
+                if pil_image.mode != "RGB":
+                    pil_image = pil_image.convert("RGB")
+                img_base64 = image_to_b64str(pil_image)
             image_block = {
                 "type": BlockType.IMAGE,
                 "bbox": [0, 0, 0, 0],
