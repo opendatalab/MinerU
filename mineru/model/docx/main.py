@@ -11,8 +11,8 @@ def convert_path(file_path: str):
 def convert_binary(file_binary: BinaryIO):
     converter = DocxConverter()
     converter.convert(file_binary)
-    return converter.blocks
+    return converter.pages
 
 if __name__ == "__main__":
     # print(convert_path("test.docx"))
-    print(convert_path("equations.docx"))
+    print(convert_path("section.docx"))

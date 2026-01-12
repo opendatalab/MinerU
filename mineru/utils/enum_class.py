@@ -12,6 +12,7 @@ class BlockType:
     TEXT = 'text'
     TITLE = 'title'
     INTERLINE_EQUATION = 'interline_equation'
+    EQUATION = "equation"  # 公式(独立公式)
     LIST = 'list'
     INDEX = 'index'
     DISCARDED = 'discarded'

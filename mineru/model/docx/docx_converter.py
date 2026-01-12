@@ -7,6 +7,7 @@ from typing import BinaryIO, Optional, Union, Any, Final
 from PIL import Image, WmfImagePlugin
 from loguru import logger
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.oxml.xmlchemy import BaseOxmlElement
 from docx.text.paragraph import Paragraph
 from docx.text.hyperlink import Hyperlink
@@ -68,7 +69,8 @@ class DocxConverter:
         self.docx_obj = None
         self.max_levels: int = 10  # 文档层次结构的最大层级数
         self.parents: dict = {}  # 父级节点映射
-        self.blocks = []
+        self.pages = []
+        self.cur_page = []
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
         self.list_block_stack: list = []  # 列表块堆栈
@@ -77,13 +79,14 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
-
     def convert(
         self,
         file_stream: BinaryIO,
     ):
         self.docx_obj = Document(file_stream)
+        self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
+        self._add_header_footer(self.docx_obj)
 
     def _walk_linear(
         self,
@@ -161,7 +164,7 @@ class DocxConverter:
             "table_type": "",
             "table_nest_level": "",
         }
-        self.blocks.append(table_block)
+        self.cur_page.append(table_block)
 
     def _handle_text_elements(
         self,
@@ -175,8 +178,17 @@ class DocxConverter:
             doc: DoclingDocument 对象
 
         Returns:
-            list[RefItem]: 元素引用列表
+
         """
+        is_section_end = False
+        if element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES):
+            # 如果没有text内容
+            if element.text == "":
+                self.cur_page = []
+                self.pages.append(self.cur_page)
+            else:
+                # 标记本节结束，处理完文本之后再分节
+                is_section_end = True
         elem_ref = []
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
@@ -245,7 +257,7 @@ class DocxConverter:
                     }
                 ],
             }
-            self.blocks.append(title_block)
+            self.cur_page.append(title_block)
             elem_ref.append(id(title_block))
 
         elif "Heading" in p_style_id:
@@ -273,7 +285,7 @@ class DocxConverter:
                     }
                 ],
             }
-            self.blocks.append(h_block)
+            self.cur_page.append(h_block)
             elem_ref.append(id(h_block))
 
         elif len(equations) > 0:
@@ -300,7 +312,7 @@ class DocxConverter:
                         }
                     ],
                 }
-                self.blocks.append(eq_block)
+                self.cur_page.append(eq_block)
                 elem_ref.append(id(eq_block))
             else:
                 # 行内公式
@@ -314,7 +326,7 @@ class DocxConverter:
                         }
                     ],
                 }
-                self.blocks.append(inline_eq_block)
+                self.cur_page.append(inline_eq_block)
                 elem_ref.append(id(inline_eq_block))
                 text_tmp = text
                 for eq in equations:
@@ -395,7 +407,7 @@ class DocxConverter:
                         }
                     ],
                 }
-                self.blocks.append(text_block)
+                self.cur_page.append(text_block)
                 elem_ref.append(id(text_block))
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
@@ -418,8 +430,12 @@ class DocxConverter:
                         }
                     ],
                 }
-                self.blocks.append(text_block)
+                self.cur_page.append(text_block)
                 elem_ref.append(id(text_block))
+
+        if is_section_end:
+            self.cur_page = []
+            self.pages.append(self.cur_page)
 
         return elem_ref
 
@@ -493,7 +509,7 @@ class DocxConverter:
                     }
                 ],
             }
-            self.blocks.append(image_block)
+            self.cur_page.append(image_block)
             elem_ref.append(id(image_block))
         return elem_ref
 
@@ -859,7 +875,7 @@ class DocxConverter:
                 "list_type": "text_list",
                 "ilevel": ilevel,
             }
-            self.blocks.append(list_block)
+            self.cur_page.append(list_block)
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
             # 记录当前引用
@@ -1136,3 +1152,50 @@ class DocxConverter:
             self.list_counters[key] = 0
         self.list_counters[key] += 1
         return self.list_counters[key]
+
+    def _add_header_footer(self, docx_obj: DocxDocument) -> None:
+        """
+        处理页眉和页脚，按照分节顺序添加到 pages 列表中，
+        分为整个文档是否启用奇偶页不同和每一节是否启用首页不同两种情况，
+        暂不考虑包含图片和表格
+        """
+        is_odd_even_different = docx_obj.settings.odd_and_even_pages_header_footer
+        for sec_idx, section in enumerate(docx_obj.sections):
+            hdrs = [section.header]
+            if is_odd_even_different:
+                hdrs.append(section.even_page_header)
+            if section.different_first_page_header_footer:
+                hdrs.append(section.first_page_header)
+            for hdr in hdrs:
+                par = [
+                    txt for txt in (par.text.strip() for par in hdr.paragraphs) if txt
+                ]
+
+                try:
+                    self.pages[sec_idx].append(
+                        {
+                            "type": BlockType.HEADER,
+                            "content": "".join(par),
+                        }
+                    )
+                except IndexError:
+                    logger.error("Section index out of range when adding header.")
+
+            ftrs = [section.footer]
+            if is_odd_even_different:
+                ftrs.append(section.even_page_footer)
+            if section.different_first_page_header_footer:
+                ftrs.append(section.first_page_footer)
+            for ftr in ftrs:
+                par = [
+                    txt for txt in (par.text.strip() for par in ftr.paragraphs) if txt
+                ]
+                try:
+                    self.pages[sec_idx].append(
+                        {
+                            "type": BlockType.FOOTER,
+                            "content": "".join(par),
+                        }
+                    )
+                except IndexError:
+                    logger.error("Section index out of range when adding header.")
