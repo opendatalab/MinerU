@@ -436,7 +436,6 @@ def _process_office_doc(
         pdf_bytes_list: list[bytes],
         f_dump_md=True,
         f_dump_middle_json=True,
-        f_dump_model_output=True,
         f_dump_orig_file=True,
         f_dump_content_list=True,
         f_make_md_mode=MakeMode.MM_MD,
@@ -456,6 +455,7 @@ def _process_office_doc(
                 image_writer=image_writer,
             )
 
+            f_dump_model_output = False
             f_draw_layout_bbox = False
             f_draw_span_bbox = False
             pdf_info = middle_json["pdf_info"]
@@ -504,7 +504,6 @@ def do_parse(
         pdf_bytes_list=pdf_bytes_list,
         f_dump_md=f_dump_md,
         f_dump_middle_json=f_dump_middle_json,
-        f_dump_model_output=f_dump_model_output,
         f_dump_orig_file=f_dump_orig_pdf,
         f_dump_content_list=f_dump_content_list,
         f_make_md_mode=f_make_md_mode,
@@ -595,7 +594,6 @@ async def aio_do_parse(
         pdf_bytes_list=pdf_bytes_list,
         f_dump_md=f_dump_md,
         f_dump_middle_json=f_dump_middle_json,
-        f_dump_model_output=f_dump_model_output,
         f_dump_orig_file=f_dump_orig_pdf,
         f_dump_content_list=f_dump_content_list,
         f_make_md_mode=f_make_md_mode,

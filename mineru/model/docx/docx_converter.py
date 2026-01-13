@@ -4,7 +4,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
-import logging
 from PIL import Image, WmfImagePlugin
 from loguru import logger
 from docx import Document
@@ -27,9 +26,6 @@ from mineru.utils.pdf_reader import image_to_b64str
 ACCEPTED_MIME_TYPE_PREFIXES = [
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]
-
-ACCEPTED_FILE_EXTENSIONS = [".docx"]
-_log = logging.getLogger(__name__)
 
 
 class DocxConverter:
@@ -96,9 +92,6 @@ class DocxConverter:
         self,
         body: BaseOxmlElement,
     ):
-        # 存储已处理的元素引用
-        added_elements = []
-
         for element in body:
             # 获取元素的标签名（去除命名空间前缀）
             tag_name = etree.QName(element).localname
@@ -113,16 +106,14 @@ class DocxConverter:
             if tag_name == "tbl":
                 try:
                     # 处理表格元素
-                    t = self._handle_tables(element)
-                    added_elements.extend(t)
+                    self._handle_tables(element)
                 except Exception:
                     # 如果表格解析失败，记录调试信息
-                    _log.debug("could not parse a table, broken docx table")
+                    logger.debug("could not parse a table, broken docx table")
             # 检查图片元素
             elif drawing_blip:
                 # 处理图片元素
-                pics = self._handle_pictures(drawing_blip)
-                added_elements.extend(pics)
+                self._handle_pictures(drawing_blip)
 
                 # 检查图像后的文本内容
                 if (
@@ -133,18 +124,16 @@ class DocxConverter:
                     is not None
                 ):
                     # 处理文本元素
-                    te1 = self._handle_text_elements(element)
-                    added_elements.extend(te1)
+                    self._handle_text_elements(element)
 
             # 检查文本段落元素
             elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
-                te = self._handle_text_elements(element)
-                added_elements.extend(te)
+                self._handle_text_elements(element)
 
             # 忽略其他未知元素并记录日志
             else:
-                _log.debug(f"Ignoring element in DOCX with tag: {tag_name}")
+                logger.debug(f"Ignoring element in DOCX with tag: {tag_name}")
 
     def _handle_tables(self, element: BaseOxmlElement):
         """
@@ -155,7 +144,6 @@ class DocxConverter:
         Returns:
             list[RefItem]: 元素引用列表
         """
-        elem_ref = []
         table = read_str(element.xml)
         body_reader = body_xml.reader()
         t = body_reader.read_all([table])
@@ -193,7 +181,6 @@ class DocxConverter:
             else:
                 # 标记本节结束，处理完文本之后再分节
                 is_section_end = True
-        elem_ref = []
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
         text, equations = self._handle_equations_in_text(
@@ -201,7 +188,7 @@ class DocxConverter:
         )
 
         if text is None:
-            return elem_ref
+            return None
         text = text.strip()
 
         # 常见的项目符号和编号列表样式。
@@ -222,16 +209,13 @@ class DocxConverter:
             # 通过检查 numFmt 来确认这是否实际上是编号列表
             is_numbered = self._is_numbered_list(numid, ilevel)
 
-            li = self._add_list_item(
+            self._add_list_item(
                 numid=numid,
                 ilevel=ilevel,
                 elements=paragraph_elements,
                 is_numbered=is_numbered,
             )
 
-            elem_ref.extend(li)  # 必须是引用!!!
-            # self._update_history(p_style_id, p_level, numid, ilevel)
-            return elem_ref
         elif (  # 列表结束处理
             numid is None
             and self.pre_num_id != -1
@@ -246,23 +230,11 @@ class DocxConverter:
         if p_style_id in ["Title"]:
             title_block = {
                 "type": BlockType.TITLE,
-                "bbox": [0, 0, 0, 0],
-                "lines": [
-                    {
-                        "bbox": [0, 0, 0, 0],
-                        "spans": [
-                            {
-                                "bbox": [0, 0, 0, 0],
-                                "score": 1.0,
-                                "content": text,
-                                "type": "text",
-                            }
-                        ],
-                    }
-                ],
+                "level": 1,
+                "is_numbered_style": False,
+                "content": text,
             }
             self.cur_page.append(title_block)
-            elem_ref.append(id(title_block))
 
         elif "Heading" in p_style_id:
             style_element = getattr(paragraph.style, "element", None)
@@ -273,65 +245,28 @@ class DocxConverter:
             else:
                 is_numbered_style = False
             h_block = {
-                "type": "text",
-                "bbox": [0, 0, 0, 0],
-                "lines": [
-                    {
-                        "bbox": [0, 0, 0, 0],
-                        "spans": [
-                            {
-                                "bbox": [0, 0, 0, 0],
-                                "score": 1.0,
-                                "content": text,
-                                "type": "text",
-                            }
-                        ],
-                    }
-                ],
+                "type": BlockType.TITLE,
+                "level": p_level+1 if p_level is not None else 2,
+                "is_numbered_style": is_numbered_style,
+                "content": text,
             }
             self.cur_page.append(h_block)
-            elem_ref.append(id(h_block))
 
         elif len(equations) > 0:
-            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
-                text
-            ) > 0:
+            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(text) > 0:
                 # 独立公式
                 eq_block = {
                     "type": BlockType.INTERLINE_EQUATION,
-                    "bbox": [0, 0, 0, 0],
-                    "lines": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "spans": [
-                                {
-                                    "bbox": [0, 0, 0, 0],
-                                    "score": 1.0,
-                                    "content": text.replace("<eq>", "").replace(
-                                        "</eq>", ""
-                                    ),
-                                    "type": ContentType.INTERLINE_EQUATION,
-                                }
-                            ],
-                        }
-                    ],
+                    "content": text.replace("<eq>", "").replace("</eq>", ""),
                 }
                 self.cur_page.append(eq_block)
-                elem_ref.append(id(eq_block))
             else:
-                # 行内公式
-                inline_eq_block = {
+                # 包含行内公式的文本块
+                text_with_inline_eq_block = {
                     "type": BlockType.TEXT,
-                    "bbox": [0, 0, 0, 0],
-                    "lines": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "spans": [],
-                        }
-                    ],
+                    "contnet": "",
                 }
-                self.cur_page.append(inline_eq_block)
-                elem_ref.append(id(inline_eq_block))
+                self.cur_page.append(text_with_inline_eq_block)
                 text_tmp = text
                 for eq in equations:
                     if len(text_tmp) == 0:
@@ -343,38 +278,11 @@ class DocxConverter:
                     text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
 
                     if len(pre_eq_text) > 0:
-                        inline_eq_item_1 = {
-                            "bbox": [0, 0, 0, 0],
-                            "score": 1.0,
-                            "content": pre_eq_text,
-                            "type": ContentType.TEXT,
-                        }
-                        inline_eq_block["lines"][0]["spans"].append(inline_eq_item_1)
-                        elem_ref.append(id(inline_eq_item_1))
-                    # e2 = doc.add_text(
-                    #     label=DocItemLabel.FORMULA,
-                    #     parent=inline_equation,
-                    #     text=eq.replace("<eq>", "").replace("</eq>", ""),
-                    #     content_layer=self.content_layer,
-                    # )
-                    inline_eq_item_2 = {
-                        "bbox": [0, 0, 0, 0],
-                        "score": 1.0,
-                        "content": eq.replace("<eq>", "").replace("</eq>", ""),
-                        "type": ContentType.INLINE_EQUATION,
-                    }
-                    inline_eq_block["lines"][0]["spans"].append(inline_eq_item_2)
-                    elem_ref.append(id(inline_eq_item_2))
+                        text_with_inline_eq_block["contnet"] += pre_eq_text
+                    text_with_inline_eq_block["contnet"] += eq
 
                 if len(text_tmp) > 0:
-                    inline_eq_item_3 = {
-                        "bbox": [0, 0, 0, 0],
-                        "score": 1.0,
-                        "content": text_tmp.strip(),
-                        "type": ContentType.TEXT,
-                    }
-                    inline_eq_block["lines"][0]["spans"].append(inline_eq_item_3)
-                    elem_ref.append(id(inline_eq_item_3))
+                    text_with_inline_eq_block["contnet"] += text_tmp.strip()
         elif p_style_id in [
             "Paragraph",
             "Normal",
@@ -386,62 +294,25 @@ class DocxConverter:
             "Quote",
         ]:
             for text, format, hyperlink in paragraph_elements:
-                # t2 = doc.add_text(
-                #     label=DocItemLabel.TEXT,
-                #     parent=parent,
-                #     text=text,
-                #     formatting=format,
-                #     hyperlink=hyperlink,
-                #     content_layer=self.content_layer,
-                # )
                 text_block = {
                     "type": BlockType.TEXT,
-                    "bbox": [0, 0, 0, 0],
-                    "lines": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "spans": [
-                                {
-                                    "bbox": [0, 0, 0, 0],
-                                    "score": 1.0,
-                                    "content": text,
-                                    "type": ContentType.TEXT,
-                                }
-                            ],
-                        }
-                    ],
+                    "content": text,
                 }
                 self.cur_page.append(text_block)
-                elem_ref.append(id(text_block))
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
             # 因此我们将所有其他标签视为纯文本
             for text, format, hyperlink in paragraph_elements:
                 text_block = {
                     "type": BlockType.TEXT,
-                    "bbox": [0, 0, 0, 0],
-                    "lines": [
-                        {
-                            "bbox": [0, 0, 0, 0],
-                            "spans": [
-                                {
-                                    "bbox": [0, 0, 0, 0],
-                                    "score": 1.0,
-                                    "content": text,
-                                    "type": ContentType.TEXT,
-                                }
-                            ],
-                        }
-                    ],
+                    "content": text,
                 }
                 self.cur_page.append(text_block)
-                elem_ref.append(id(text_block))
 
         if is_section_end:
             self.cur_page = []
             self.pages.append(self.cur_page)
 
-        return elem_ref
 
     def _handle_pictures(self, drawing_blip: Any):
         """
@@ -474,11 +345,10 @@ class DocxConverter:
                 image_data = image_part.blob  # 获取二进制图像数据
             return image_data
 
-        elem_ref = []
         # 使用 PIL 打开 BytesIO 对象创建图像
         image_data: Optional[bytes] = get_docx_image(drawing_blip)
         if image_data is None:
-            _log.warning("Warning: image cannot be found")
+            logger.warning("Warning: image cannot be found")
         else:
             image_bytes = BytesIO(image_data)
             pil_image = Image.open(image_bytes)
@@ -492,30 +362,10 @@ class DocxConverter:
                 img_base64 = image_to_b64str(pil_image)
             image_block = {
                 "type": BlockType.IMAGE,
-                "bbox": [0, 0, 0, 0],
-                "blocks": [
-                    {
-                        "type": BlockType.IMAGE_BODY,
-                        "bbox": [0, 0, 0, 0],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 0, 0],
-                                "span": [
-                                    {
-                                        "bbox": [0, 0, 0, 0],
-                                        "score": 1.0,
-                                        "type": ContentType.IMAGE,
-                                        "image_base64": img_base64,
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
+                "content": img_base64,
             }
             self.cur_page.append(image_block)
-            elem_ref.append(id(image_block))
-        return elem_ref
+
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
         """
@@ -834,7 +684,7 @@ class DocxConverter:
             return num_fmt in numbered_formats
 
         except Exception as e:
-            _log.debug(f"Error determining if list is numbered: {e}")
+            logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
     def _add_list_item(
@@ -872,7 +722,6 @@ class DocxConverter:
                 list_attribute = "unordered"
             list_block = {
                 "type": BlockType.LIST,
-                "bbox": [0, 0, 0, 0],
                 "attribute": list_attribute,
                 "list_nest_level": 1,
                 "list_items": [],
@@ -896,14 +745,11 @@ class DocxConverter:
 
             list_item = {
                 "item_type": "text",
-                "bbox": [0, 0, 0, 0],
                 "item_content": [
                     {
-                        "bbox": [0, 0, 0, 0],
                         "type": BlockType.TEXT,
                         "text_content_list": [
                             {
-                                "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
                                 "content": enum_marker + elem_text,
                             }
@@ -928,7 +774,6 @@ class DocxConverter:
                 list_attribute = "unordered"
             list_block = {
                 "type": BlockType.LIST,
-                "bbox": [0, 0, 0, 0],
                 "attribute": list_attribute,
                 "list_nest_level": 1,
                 "list_items": [],
@@ -960,14 +805,11 @@ class DocxConverter:
                 enum_marker = ""
             list_item = {
                 "item_type": "text",
-                "bbox": [0, 0, 0, 0],
                 "item_content": [
                     {
-                        "bbox": [0, 0, 0, 0],
                         "type": BlockType.TEXT,
                         "text_content_list": [
                             {
-                                "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
                                 "content": enum_marker + elem_text,
                             }
@@ -1004,14 +846,11 @@ class DocxConverter:
 
             list_item = {
                 "item_type": "text",
-                "bbox": [0, 0, 0, 0],
                 "item_content": [
                     {
-                        "bbox": [0, 0, 0, 0],
                         "type": BlockType.TEXT,
                         "text_content_list": [
                             {
-                                "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
                                 "content": enum_marker + elem_text,
                             }
@@ -1039,14 +878,11 @@ class DocxConverter:
 
             list_item = {
                 "item_type": "text",
-                "bbox": [0, 0, 0, 0],
                 "item_content": [
                     {
-                        "bbox": [0, 0, 0, 0],
                         "type": BlockType.TEXT,
                         "text_content_list": [
                             {
-                                "bbox": [0, 0, 0, 0],
                                 "type": ContentType.TEXT,
                                 "content": enum_marker + elem_text,
                             }
