@@ -9,13 +9,18 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
 
-CONTINUATION_MARKERS = [
+CONTINUATION_END_MARKERS = [
     "(续)",
     "(续表)",
     "(续上表)",
     "(continued)",
     "(cont.)",
     "(cont’d)",
+    "(…continued)",
+]
+
+CONTINUATION_INLINE_MARKERS = [
+    "(continued)",
 ]
 
 
@@ -163,20 +168,32 @@ def detect_table_headers(soup1, soup2, max_header_rows=5):
 def can_merge_tables(current_table_block, previous_table_block):
     """判断两个表格是否可以合并"""
     # 检查表格是否有caption和footnote
+    # 计算previous_table_block中的footnote数量
+    footnote_count = sum(1 for block in previous_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE)
     # 如果有TABLE_CAPTION类型的块,检查是否至少有一个以"(续)"结尾
     caption_blocks = [block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION]
     if caption_blocks:
-        # 如果所有caption都不以"(续)"、"(续表)"、"(continued)"或"(cont.)"结尾,则不合并
+        # 检查是否至少有一个caption包含续表标识
+        has_continuation_marker = False
+        for block in caption_blocks:
+            caption_text = full_to_half(merge_para_with_text(block).strip()).lower()
+            if (
+                    any(caption_text.endswith(marker.lower()) for marker in CONTINUATION_END_MARKERS)
+                    or any(marker.lower() in caption_text for marker in CONTINUATION_INLINE_MARKERS)
+            ):
+                has_continuation_marker = True
+                break
 
-        if not any(
-                any(full_to_half(merge_para_with_text(block).strip()).lower().endswith(marker.lower())
-                    for marker in CONTINUATION_MARKERS)
-                for block in caption_blocks
-        ):
+        # 如果所有caption都不包含续表标识，则不允许合并
+        if not has_continuation_marker:
             return False, None, None, None, None
 
-    if any(block["type"] == BlockType.TABLE_FOOTNOTE for block in previous_table_block["blocks"]):
-        return False, None, None, None, None
+        # 如果current_table_block的caption存在续标识,放宽footnote的限制允许previous_table_block有最多一条footnote
+        if footnote_count > 1:
+            return False, None, None, None, None
+    else:
+        if footnote_count > 0:
+            return False, None, None, None, None
 
     # 获取两个表格的HTML内容
     current_html = ""
@@ -363,6 +380,11 @@ def perform_table_merge(soup1, soup2, previous_table_block, wait_merge_table_foo
                 row.extract()
                 tbody1.append(row)
 
+    # 清空previous_table_block的footnote
+    previous_table_block["blocks"] = [
+        block for block in previous_table_block["blocks"]
+        if block["type"] != BlockType.TABLE_FOOTNOTE
+    ]
     # 添加待合并表格的footnote到前一个表格中
     for table_footnote in wait_merge_table_footnotes:
         temp_table_footnote = table_footnote.copy()
