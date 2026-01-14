@@ -10,7 +10,7 @@ from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_in
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width, height):
+    def __init__(self, page_blocks: list):
         self.page_blocks = page_blocks
 
         blocks = []
