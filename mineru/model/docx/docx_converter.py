@@ -114,18 +114,6 @@ class DocxConverter:
             elif drawing_blip:
                 # 处理图片元素
                 self._handle_pictures(drawing_blip)
-
-                # 检查图像后的文本内容
-                if (
-                    tag_name == "p"
-                    and element.find(
-                        ".//w:t", namespaces=DocxConverter._BLIP_NAMESPACES
-                    )
-                    is not None
-                ):
-                    # 处理文本元素
-                    self._handle_text_elements(element)
-
             # 检查文本段落元素
             elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
@@ -215,7 +203,8 @@ class DocxConverter:
                 elements=paragraph_elements,
                 is_numbered=is_numbered,
             )
-
+            # 列表项已处理，返回
+            return None
         elif (  # 列表结束处理
             numid is None
             and self.pre_num_id != -1
@@ -228,13 +217,14 @@ class DocxConverter:
             self.list_counters = {}
 
         if p_style_id in ["Title"]:
-            title_block = {
-                "type": BlockType.TITLE,
-                "level": 1,
-                "is_numbered_style": False,
-                "content": text,
-            }
-            self.cur_page.append(title_block)
+            if text != "":
+                title_block = {
+                    "type": BlockType.TITLE,
+                    "level": 1,
+                    "is_numbered_style": False,
+                    "content": text,
+                }
+                self.cur_page.append(title_block)
 
         elif "Heading" in p_style_id:
             style_element = getattr(paragraph.style, "element", None)
@@ -244,16 +234,19 @@ class DocxConverter:
                 )
             else:
                 is_numbered_style = False
-            h_block = {
-                "type": BlockType.TITLE,
-                "level": p_level+1 if p_level is not None else 2,
-                "is_numbered_style": is_numbered_style,
-                "content": text,
-            }
-            self.cur_page.append(h_block)
+            if text != "":
+                h_block = {
+                    "type": BlockType.TITLE,
+                    "level": p_level + 1 if p_level is not None else 2,
+                    "is_numbered_style": is_numbered_style,
+                    "content": text,
+                }
+                self.cur_page.append(h_block)
 
         elif len(equations) > 0:
-            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(text) > 0:
+            if (paragraph.text is None or len(paragraph.text.strip()) == 0) and len(
+                text
+            ) > 0:
                 # 独立公式
                 eq_block = {
                     "type": BlockType.INTERLINE_EQUATION,
@@ -294,25 +287,35 @@ class DocxConverter:
             "Quote",
         ]:
             for text, format, hyperlink in paragraph_elements:
-                text_block = {
-                    "type": BlockType.TEXT,
-                    "content": text,
-                }
-                self.cur_page.append(text_block)
+                if text != "":
+                    text_block = {
+                        "type": BlockType.TEXT,
+                        "content": text,
+                    }
+                    self.cur_page.append(text_block)
+        # 判断是否是 Caption
+        elif self._is_caption(element):
+            for text, format, hyperlink in paragraph_elements:
+                if text != "":
+                    caption_block = {
+                        "type": "caption",
+                        "content": text,
+                    }
+                    self.cur_page.append(caption_block)
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
             # 因此我们将所有其他标签视为纯文本
             for text, format, hyperlink in paragraph_elements:
-                text_block = {
-                    "type": BlockType.TEXT,
-                    "content": text,
-                }
-                self.cur_page.append(text_block)
+                if text != "":
+                    text_block = {
+                        "type": BlockType.TEXT,
+                        "content": text,
+                    }
+                    self.cur_page.append(text_block)
 
         if is_section_end:
             self.cur_page = []
             self.pages.append(self.cur_page)
-
 
     def _handle_pictures(self, drawing_blip: Any):
         """
@@ -354,7 +357,7 @@ class DocxConverter:
             pil_image = Image.open(image_bytes)
             if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
                 logger.warning(f"Skipping WMF image, size: {pil_image.size}")
-                placeholder = Image.new('RGB', pil_image.size, (240, 240, 240))
+                placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
                 img_base64 = image_to_b64str(placeholder)
             else:
                 if pil_image.mode != "RGB":
@@ -365,7 +368,6 @@ class DocxConverter:
                 "content": img_base64,
             }
             self.cur_page.append(image_block)
-
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
         """
@@ -995,7 +997,7 @@ class DocxConverter:
 
     def _add_header_footer(self, docx_obj: DocxDocument) -> None:
         """
-        处理页眉和页脚，按照分节顺序添加到 pages 列表中，
+        处理页眉和页脚，按照分节顺序添加到 pages 列表中，过滤掉空字符串和纯数字内容
         分为整个文档是否启用奇偶页不同和每一节是否启用首页不同两种情况，
         暂不考虑包含图片和表格
         """
@@ -1010,16 +1012,17 @@ class DocxConverter:
                 par = [
                     txt for txt in (par.text.strip() for par in hdr.paragraphs) if txt
                 ]
-
-                try:
-                    self.pages[sec_idx].append(
-                        {
-                            "type": BlockType.HEADER,
-                            "content": "".join(par),
-                        }
-                    )
-                except IndexError:
-                    logger.error("Section index out of range when adding header.")
+                text = "".join(par)
+                if text != "" and not text.isdigit():
+                    try:
+                        self.pages[sec_idx].append(
+                            {
+                                "type": BlockType.HEADER,
+                                "content": text,
+                            }
+                        )
+                    except IndexError:
+                        logger.error("Section index out of range when adding header.")
 
             ftrs = [section.footer]
             if is_odd_even_different:
@@ -1030,12 +1033,34 @@ class DocxConverter:
                 par = [
                     txt for txt in (par.text.strip() for par in ftr.paragraphs) if txt
                 ]
-                try:
-                    self.pages[sec_idx].append(
-                        {
-                            "type": BlockType.FOOTER,
-                            "content": "".join(par),
-                        }
-                    )
-                except IndexError:
-                    logger.error("Section index out of range when adding header.")
+                text = "".join(par)
+                if text != "" and not text.isdigit():
+                    try:
+                        self.pages[sec_idx].append(
+                            {
+                                "type": BlockType.FOOTER,
+                                "content": text,
+                            }
+                        )
+                    except IndexError:
+                        logger.error("Section index out of range when adding header.")
+
+    def _is_caption(self, element: BaseOxmlElement) -> bool:
+        """
+        根据 insertText 中是否有 SEQ 字段来判断是否为 caption
+
+        Args:
+            element: 段落元素对象
+
+        Returns:
+            bool: 如果是标题返回 True，否则返回 False
+        """
+        instr_texts = element.findall(
+            ".//w:instrText", namespaces=DocxConverter._BLIP_NAMESPACES
+        )
+
+        for instr in instr_texts:
+            if instr.text and "SEQ" in instr.text:
+                return True
+        else:
+            return False

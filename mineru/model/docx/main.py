@@ -13,6 +13,6 @@ def convert_binary(file_binary: BinaryIO):
     converter.convert(file_binary)
     return converter.pages
 
+
 if __name__ == "__main__":
-    # print(convert_path("test.docx"))
-    print(convert_path("section.docx"))
+    print(convert_path("test.docx"))
