@@ -17,36 +17,10 @@ class MagicModel:
         self.all_spans = []
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
-            block_bbox = block_info["bbox"]
-            try:
-                x1, y1, x2, y2 = block_bbox
-                x_1, y_1, x_2, y_2 = (
-                    int(x1 * width),
-                    int(y1 * height),
-                    int(x2 * width),
-                    int(y2 * height),
-                )
-                if x_2 < x_1:
-                    x_1, x_2 = x_2, x_1
-                if y_2 < y_1:
-                    y_1, y_2 = y_2, y_1
-                block_bbox = (x_1, y_1, x_2, y_2)
-                block_type = block_info["type"]
-                block_content = block_info["content"]
-                block_angle = block_info["angle"]
 
-                # print(f"坐标: {block_bbox}")
-                # print(f"类型: {block_type}")
-                # print(f"内容: {block_content}")
-                # print("-" * 50)
-            except Exception as e:
-                # 如果解析失败，可能是因为格式不正确，跳过这个块
-                logger.warning(f"Invalid block format: {block_info}, error: {e}")
-                continue
-
+            block_type = block_info["type"]
+            block_content = block_info["content"]
             span_type = "unknown"
-            code_block_sub_type = None
-            guess_lang = None
 
             if block_type in [
                 "text",
@@ -72,12 +46,6 @@ class MagicModel:
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
                 span_type = ContentType.TABLE
-            elif block_type in ["code", "algorithm"]:
-                block_content = code_content_clean(block_content)
-                code_block_sub_type = block_type
-                block_type = BlockType.CODE_BODY
-                span_type = ContentType.TEXT
-                guess_lang = guess_language_by_text(block_content)
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION

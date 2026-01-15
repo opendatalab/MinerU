@@ -202,6 +202,8 @@ class DocxConverter:
                 ilevel=ilevel,
                 elements=paragraph_elements,
                 is_numbered=is_numbered,
+                text=text,
+                equations=equations,
             )
             # 列表项已处理，返回
             return None
@@ -689,6 +691,27 @@ class DocxConverter:
             logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
+    def _build_text_content_list_with_equations(
+        self, text: str, equations: list
+    ) -> list:
+        """
+        构建包含行内公式的 text_content_list。
+
+        Args:
+            text: 处理后的文本（包含公式标记，如 <eq>...</eq>）
+            equations: 公式列表
+
+        Returns:
+            list: text_content_list 内容列表
+        """
+        # 直接返回包含 <eq></eq> 标记的文本内容，与其他 text/title 保持一致
+        return [
+            {
+                "type": ContentType.TEXT,
+                "content": text,
+            }
+        ]
+
     def _add_list_item(
         self,
         *,
@@ -696,6 +719,8 @@ class DocxConverter:
         ilevel: int,
         elements: list,
         is_numbered: bool = False,
+        text: str = "",
+        equations: list = None,
     ) -> list:
         """
         添加列表项。
@@ -706,10 +731,14 @@ class DocxConverter:
             ilevel: 缩进等级
             elements: 元素列表
             is_numbered: 是否编号
+            text: 处理后的文本（包含公式标记）
+            equations: 公式列表
 
         Returns:
             list[RefItem]: 元素引用列表
         """
+        if equations is None:
+            equations = []
         elem_ref: list = []
         if not elements:
             return elem_ref
@@ -725,9 +754,7 @@ class DocxConverter:
             list_block = {
                 "type": BlockType.LIST,
                 "attribute": list_attribute,
-                "list_nest_level": 1,
                 "list_items": [],
-                "list_type": "text_list",
                 "ilevel": ilevel,
             }
             self.cur_page.append(list_block)
@@ -735,27 +762,18 @@ class DocxConverter:
             self.list_block_stack.append(list_block)
             # 记录当前引用
             elem_ref.append(id(list_block))
-            elem_text = ""
-            for text, format, hyperlink in elements:
-                elem_text += text
 
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
+            # 构建 text_content_list，处理行内公式
+            text_content_list = self._build_text_content_list_with_equations(
+                text, equations
+            )
 
             list_item = {
                 "item_type": "text",
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": [
-                            {
-                                "type": ContentType.TEXT,
-                                "content": enum_marker + elem_text,
-                            }
-                        ],
+                        "text_content_list": text_content_list,
                     }
                 ],
             }
@@ -774,17 +792,13 @@ class DocxConverter:
                 list_attribute = "ordered"
             else:
                 list_attribute = "unordered"
+
             list_block = {
                 "type": BlockType.LIST,
                 "attribute": list_attribute,
-                "list_nest_level": 1,
                 "list_items": [],
-                "list_type": "text_list",
                 "ilevel": ilevel,
             }
-            # 增加目前栈内的 nest level
-            for block in self.list_block_stack:
-                block["list_nest_level"] += 1
             # 获取栈顶的列表块
             parent_list_block = self.list_block_stack[-1]
             # 将新列表块添加为父列表块的最新列表项的子块
@@ -795,27 +809,17 @@ class DocxConverter:
             self.list_block_stack.append(list_block)
             elem_ref.append(id(list_block))
 
-            # 创建列表项
-            elem_text = ""
-            for text, format, hyperlink in elements:
-                elem_text += text
+            # 构建 text_content_list，处理行内公式
+            text_content_list = self._build_text_content_list_with_equations(
+                text, equations
+            )
 
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
             list_item = {
                 "item_type": "text",
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": [
-                            {
-                                "type": ContentType.TEXT,
-                                "content": enum_marker + elem_text,
-                            }
-                        ],
+                        "text_content_list": text_content_list,
                     }
                 ],
             }
@@ -837,26 +841,17 @@ class DocxConverter:
                 self.list_block_stack.pop()
             list_block = self.list_block_stack[-1]
 
-            elem_text = ""
-            for text, format, hyperlink in elements:
-                elem_text += text
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
+            # 构建 text_content_list，处理行内公式
+            text_content_list = self._build_text_content_list_with_equations(
+                text, equations
+            )
 
             list_item = {
                 "item_type": "text",
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": [
-                            {
-                                "type": ContentType.TEXT,
-                                "content": enum_marker + elem_text,
-                            }
-                        ],
+                        "text_content_list": text_content_list,
                     }
                 ],
             }
@@ -868,27 +863,18 @@ class DocxConverter:
         elif self.pre_num_id == numid or self.pre_ilevel == ilevel:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
-            elem_text = ""
-            for text, format, hyperlink in elements:
-                elem_text += text
 
-            if is_numbered:
-                counter = self._get_list_counter(numid, ilevel)
-                enum_marker = str(counter) + "."
-            else:
-                enum_marker = ""
+            # 构建 text_content_list，处理行内公式
+            text_content_list = self._build_text_content_list_with_equations(
+                text, equations
+            )
 
             list_item = {
                 "item_type": "text",
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": [
-                            {
-                                "type": ContentType.TEXT,
-                                "content": enum_marker + elem_text,
-                            }
-                        ],
+                        "text_content_list": text_content_list,
                     }
                 ],
             }
