@@ -19,23 +19,14 @@ class MagicModel:
         for index, block_info in enumerate(page_blocks):
 
             block_type = block_info["type"]
+            span_type = "unknown"
 
             if block_type in [
                 "text",
                 "title",
-                "image_caption",
-                "image_footnote",
-                "table_caption",
-                "table_footnote",
-                "code_caption",
-                "ref_text",
-                "phonetic",
+                "caption",
                 "header",
                 "footer",
-                "page_number",
-                "aside_text",
-                "page_footnote",
-                "list"
             ]:
                 span_type = ContentType.TEXT
             elif block_type in ["image"]:
@@ -48,21 +39,18 @@ class MagicModel:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION
 
-            #  code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为algorithm
-            switch_code_to_algorithm = False
-
             if span_type in ["image", "table"]:
                 span = {
-                    "bbox": block_bbox,
                     "type": span_type,
                 }
                 if span_type == ContentType.TABLE:
-                    span["html"] = block_content
+                    span["html"] = block_info.get("content", "")
+                elif span_type == ContentType.IMAGE:
+                    span["image_base64"] = block_info.get("content", "")
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
-                    "bbox": block_bbox,
                     "type": span_type,
-                    "content": isolated_formula_clean(block_content),
+                    "content": block_content,
                 }
             else:
 
