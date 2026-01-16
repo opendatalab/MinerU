@@ -19,8 +19,6 @@ class MagicModel:
         for index, block_info in enumerate(page_blocks):
 
             block_type = block_info["type"]
-            block_content = block_info["content"]
-            span_type = "unknown"
 
             if block_type in [
                 "text",

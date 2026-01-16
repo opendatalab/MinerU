@@ -1,4 +1,3 @@
-import os
 import re
 from io import BytesIO
 from pathlib import Path
@@ -79,6 +78,175 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
+    @staticmethod
+    def _escape_hyperlink_text(text: str) -> str:
+        """
+        转义超链接文本中的方括号。
+
+        Args:
+            text: 要转义的文本
+
+        Returns:
+            str: 转义后的文本
+        """
+        if not text:
+            return text
+        # 转义方括号
+        text = text.replace("[", "\\[").replace("]", "\\]")
+        return text
+
+    @staticmethod
+    def _escape_hyperlink_url(url: str) -> str:
+        """
+        转义超链接 URL 中的括号。
+
+        Args:
+            url: 要转义的 URL
+
+        Returns:
+            str: 转义后的 URL
+        """
+        if not url:
+            return url
+        # 对括号进行 URL 编码
+        url = url.replace("(", "%28").replace(")", "%29")
+        return url
+
+    @classmethod
+    def _format_text_with_hyperlink(
+        cls, text: str, hyperlink: Optional[Union[AnyUrl, Path]]
+    ) -> str:
+        """
+        将文本和超链接格式化为 Markdown 格式 [文本](链接)。
+
+        Args:
+            text: 文本内容
+            hyperlink: 超链接地址
+
+        Returns:
+            str: 格式化后的文本
+        """
+        if not text:
+            return text
+
+        # 检查超链接是否有效（非空）
+        if hyperlink is None:
+            return text
+
+        hyperlink_str = str(hyperlink)
+        if not hyperlink_str or hyperlink_str.strip() == "" or hyperlink_str == ".":
+            return text
+
+        # 转义文本中的方括号和链接中的括号
+        # escaped_text = cls._escape_hyperlink_text(text)
+        # escaped_url = cls._escape_hyperlink_url(hyperlink_str)
+
+        return f"<hyperlink><text>{text}</text><url>{hyperlink_str}</url></hyperlink>"
+
+    def _build_text_from_elements(
+        self, paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]]
+    ) -> str:
+        """
+        从 paragraph_elements 重组文本，应用超链接格式。
+
+        Args:
+            paragraph_elements: 段落元素列表
+
+        Returns:
+            str: 重组后的文本
+        """
+        result_parts = []
+        for text, format, hyperlink in paragraph_elements:
+            if text:
+                formatted_text = self._format_text_with_hyperlink(text, hyperlink)
+                result_parts.append(formatted_text)
+        return " ".join(result_parts) if result_parts else ""
+
+    def _build_text_with_equations_and_hyperlinks(
+        self,
+        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]],
+        text_with_equations: str,
+        equations: list,
+    ) -> str:
+        """
+        构建同时包含公式和超链接的文本。
+
+        此方法将公式标记插入到带有超链接格式的文本中。
+
+        Args:
+            paragraph_elements: 段落元素列表，包含超链接信息
+            text_with_equations: 包含公式标记的原始文本
+            equations: 公式列表
+
+        Returns:
+            str: 包含公式标记和超链接格式的文本
+        """
+        if not equations:
+            # 没有公式，直接返回带超链接的文本
+            return self._build_text_from_elements(paragraph_elements)
+
+        # 检查是否有超链接
+        has_hyperlink = any(
+            hyperlink is not None and str(hyperlink).strip() not in ("", ".")
+            for _, _, hyperlink in paragraph_elements
+        )
+
+        if not has_hyperlink:
+            # 没有超链接，直接返回带公式的文本
+            return text_with_equations
+
+        # 同时有公式和超链接，需要合并处理
+        # 策略：在带超链接的文本基础上，将公式标记插入到正确的位置
+
+        # 1. 先构建带超链接的文本（但不格式化超链接文本）
+        #    记录每个元素的原始文本和对应的超链接格式化结果
+        element_mappings = []
+        for text, format, hyperlink in paragraph_elements:
+            if text:
+                formatted_text = self._format_text_with_hyperlink(text, hyperlink)
+                element_mappings.append((text, formatted_text))
+
+        # 2. 在 text_with_equations 中定位每个元素的原始文本，然后替换为格式化后的文本
+        result_text = text_with_equations
+        for original_text, formatted_text in element_mappings:
+            if original_text != formatted_text:
+                # 只有当文本被格式化为超链接时才需要替换
+                # 需要确保不替换公式标记内的文本
+                result_text = self._replace_text_outside_equations(
+                    result_text, original_text, formatted_text
+                )
+
+        return result_text
+
+    def _replace_text_outside_equations(
+        self, text: str, old_text: str, new_text: str
+    ) -> str:
+        """
+        在公式标记外替换文本。
+
+        Args:
+            text: 原始文本
+            old_text: 要替换的文本
+            new_text: 替换后的文本
+
+        Returns:
+            str: 替换后的文本
+        """
+        # 分割文本为公式和非公式部分
+        eq_pattern = re.compile(r"(<eq>.*?</eq>)")
+        parts = eq_pattern.split(text)
+
+        result_parts = []
+        for part in parts:
+            if part.startswith("<eq>") and part.endswith("</eq>"):
+                # 公式部分，保持不变
+                result_parts.append(part)
+            else:
+                # 非公式部分，进行替换
+                result_parts.append(part.replace(old_text, new_text, 1))
+
+        return "".join(result_parts)
+
     def convert(
         self,
         file_stream: BinaryIO,
@@ -137,12 +305,8 @@ class DocxConverter:
         t = body_reader.read_all([table])
         res = convert_document_element_to_html(t.value[0])
         table_block = {
-            "image_source": "",
-            "html": res.value,
-            "table_caption": "",
-            "table_footnote": "",
-            "table_type": "",
-            "table_nest_level": "",
+            "type": BlockType.TABLE,
+            "content": res.value,
         }
         self.cur_page.append(table_block)
 
@@ -219,12 +383,16 @@ class DocxConverter:
             self.list_counters = {}
 
         if p_style_id in ["Title"]:
-            if text != "":
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
+            if content_text != "":
                 title_block = {
                     "type": BlockType.TITLE,
                     "level": 1,
                     "is_numbered_style": False,
-                    "content": text,
+                    "content": content_text,
                 }
                 self.cur_page.append(title_block)
 
@@ -236,12 +404,16 @@ class DocxConverter:
                 )
             else:
                 is_numbered_style = False
-            if text != "":
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
+            if content_text != "":
                 h_block = {
                     "type": BlockType.TITLE,
                     "level": p_level + 1 if p_level is not None else 2,
                     "is_numbered_style": is_numbered_style,
-                    "content": text,
+                    "content": content_text,
                 }
                 self.cur_page.append(h_block)
 
@@ -251,33 +423,20 @@ class DocxConverter:
             ) > 0:
                 # 独立公式
                 eq_block = {
-                    "type": BlockType.INTERLINE_EQUATION,
+                    "type": BlockType.EQUATION,
                     "content": text.replace("<eq>", "").replace("</eq>", ""),
                 }
                 self.cur_page.append(eq_block)
             else:
-                # 包含行内公式的文本块
+                # 包含行内公式的文本块，同时支持超链接
+                content_text = self._build_text_with_equations_and_hyperlinks(
+                    paragraph_elements, text, equations
+                )
                 text_with_inline_eq_block = {
                     "type": BlockType.TEXT,
-                    "contnet": "",
+                    "content": content_text,
                 }
                 self.cur_page.append(text_with_inline_eq_block)
-                text_tmp = text
-                for eq in equations:
-                    if len(text_tmp) == 0:
-                        break
-
-                    split_text_tmp = text_tmp.split(eq.strip(), maxsplit=1)
-
-                    pre_eq_text = split_text_tmp[0]
-                    text_tmp = "" if len(split_text_tmp) == 1 else split_text_tmp[1]
-
-                    if len(pre_eq_text) > 0:
-                        text_with_inline_eq_block["contnet"] += pre_eq_text
-                    text_with_inline_eq_block["contnet"] += eq
-
-                if len(text_tmp) > 0:
-                    text_with_inline_eq_block["contnet"] += text_tmp.strip()
         elif p_style_id in [
             "Paragraph",
             "Normal",
@@ -288,32 +447,35 @@ class DocxConverter:
             "ListBullet",
             "Quote",
         ]:
-            for text, format, hyperlink in paragraph_elements:
-                if text != "":
-                    text_block = {
-                        "type": BlockType.TEXT,
-                        "content": text,
-                    }
-                    self.cur_page.append(text_block)
+            # 构建带超链接的文本
+            content_text = self._build_text_from_elements(paragraph_elements)
+            if content_text != "":
+                text_block = {
+                    "type": BlockType.TEXT,
+                    "content": content_text,
+                }
+                self.cur_page.append(text_block)
         # 判断是否是 Caption
         elif self._is_caption(element):
-            for text, format, hyperlink in paragraph_elements:
-                if text != "":
-                    caption_block = {
-                        "type": "caption",
-                        "content": text,
-                    }
-                    self.cur_page.append(caption_block)
+            # 构建带超链接的文本
+            content_text = self._build_text_from_elements(paragraph_elements)
+            if content_text != "":
+                caption_block = {
+                    "type": "caption",
+                    "content": content_text,
+                }
+                self.cur_page.append(caption_block)
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
             # 因此我们将所有其他标签视为纯文本
-            for text, format, hyperlink in paragraph_elements:
-                if text != "":
-                    text_block = {
-                        "type": BlockType.TEXT,
-                        "content": text,
-                    }
-                    self.cur_page.append(text_block)
+            # 构建带超链接的文本
+            content_text = self._build_text_from_elements(paragraph_elements)
+            if content_text != "":
+                text_block = {
+                    "type": BlockType.TEXT,
+                    "content": content_text,
+                }
+                self.cur_page.append(text_block)
 
         if is_section_end:
             self.cur_page = []
@@ -692,7 +854,10 @@ class DocxConverter:
             return False
 
     def _build_text_content_list_with_equations(
-        self, text: str, equations: list
+        self,
+        text: str,
+        equations: list,
+        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]] = None,
     ) -> list:
         """
         构建包含行内公式的 text_content_list。
@@ -700,15 +865,24 @@ class DocxConverter:
         Args:
             text: 处理后的文本（包含公式标记，如 <eq>...</eq>）
             equations: 公式列表
+            paragraph_elements: 段落元素列表，包含超链接信息
 
         Returns:
             list: text_content_list 内容列表
         """
+        # 如果有 paragraph_elements，使用带超链接的文本
+        if paragraph_elements is not None:
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
+        else:
+            content_text = text
+
         # 直接返回包含 <eq></eq> 标记的文本内容，与其他 text/title 保持一致
         return [
             {
                 "type": ContentType.TEXT,
-                "content": text,
+                "content": content_text,
             }
         ]
 
@@ -763,9 +937,9 @@ class DocxConverter:
             # 记录当前引用
             elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式
+            # 构建 text_content_list，处理行内公式和超链接
             text_content_list = self._build_text_content_list_with_equations(
-                text, equations
+                text, equations, elements
             )
 
             list_item = {
@@ -809,9 +983,9 @@ class DocxConverter:
             self.list_block_stack.append(list_block)
             elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式
+            # 构建 text_content_list，处理行内公式和超链接
             text_content_list = self._build_text_content_list_with_equations(
-                text, equations
+                text, equations, elements
             )
 
             list_item = {
@@ -841,9 +1015,9 @@ class DocxConverter:
                 self.list_block_stack.pop()
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式
+            # 构建 text_content_list，处理行内公式和超链接
             text_content_list = self._build_text_content_list_with_equations(
-                text, equations
+                text, equations, elements
             )
 
             list_item = {
@@ -864,9 +1038,9 @@ class DocxConverter:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式
+            # 构建 text_content_list，处理行内公式和超链接
             text_content_list = self._build_text_content_list_with_equations(
-                text, equations
+                text, equations, elements
             )
 
             list_item = {
