@@ -1155,11 +1155,40 @@ class DocxConverter:
         self.list_counters[key] += 1
         return self.list_counters[key]
 
+    def _process_header_footer_paragraph(self, paragraph: Paragraph) -> str:
+        """
+        处理页眉/页脚中的单个段落，支持行内公式和超链接。
+
+        Args:
+            paragraph: 段落对象
+
+        Returns:
+            str: 处理后的文本内容（包含公式标记和超链接格式）
+        """
+        paragraph_elements = self._get_paragraph_elements(paragraph)
+        text, equations = self._handle_equations_in_text(
+            element=paragraph._element, text=paragraph.text
+        )
+
+        if text is None:
+            return ""
+
+        text = text.strip()
+        if not text:
+            return ""
+
+        # 构建包含公式和超链接的文本
+        content_text = self._build_text_with_equations_and_hyperlinks(
+            paragraph_elements, text, equations
+        )
+
+        return content_text
+
     def _add_header_footer(self, docx_obj: DocxDocument) -> None:
         """
         处理页眉和页脚，按照分节顺序添加到 pages 列表中，过滤掉空字符串和纯数字内容
         分为整个文档是否启用奇偶页不同和每一节是否启用首页不同两种情况，
-        暂不考虑包含图片和表格
+        支持行内公式和超链接
         """
         is_odd_even_different = docx_obj.settings.odd_and_even_pages_header_footer
         for sec_idx, section in enumerate(docx_obj.sections):
@@ -1169,10 +1198,13 @@ class DocxConverter:
             if section.different_first_page_header_footer:
                 hdrs.append(section.first_page_header)
             for hdr in hdrs:
-                par = [
-                    txt for txt in (par.text.strip() for par in hdr.paragraphs) if txt
-                ]
-                text = "".join(par)
+                # 处理每个段落，支持公式和超链接
+                processed_parts = []
+                for par in hdr.paragraphs:
+                    content = self._process_header_footer_paragraph(par)
+                    if content:
+                        processed_parts.append(content)
+                text = " ".join(processed_parts)
                 if text != "" and not text.isdigit():
                     try:
                         self.pages[sec_idx].append(
@@ -1190,10 +1222,13 @@ class DocxConverter:
             if section.different_first_page_header_footer:
                 ftrs.append(section.first_page_footer)
             for ftr in ftrs:
-                par = [
-                    txt for txt in (par.text.strip() for par in ftr.paragraphs) if txt
-                ]
-                text = "".join(par)
+                # 处理每个段落，支持公式和超链接
+                processed_parts = []
+                for par in ftr.paragraphs:
+                    content = self._process_header_footer_paragraph(par)
+                    if content:
+                        processed_parts.append(content)
+                text = " ".join(processed_parts)
                 if text != "" and not text.isdigit():
                     try:
                         self.pages[sec_idx].append(
@@ -1203,7 +1238,7 @@ class DocxConverter:
                             }
                         )
                     except IndexError:
-                        logger.error("Section index out of range when adding header.")
+                        logger.error("Section index out of range when adding footer.")
 
     def _is_caption(self, element: BaseOxmlElement) -> bool:
         """
