@@ -17,6 +17,7 @@ CONTINUATION_END_MARKERS = [
     "(cont.)",
     "(cont’d)",
     "(…continued)",
+    "续表",
 ]
 
 CONTINUATION_INLINE_MARKERS = [
