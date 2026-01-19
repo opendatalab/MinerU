@@ -1294,12 +1294,8 @@ class DocxConverter:
             if chart is not None:
                 # 如果找到 chart 元素，构造空的表格块，后续回填html
                 table_block = {
-                    "image_source": "",
-                    "html": "",
-                    "table_caption": "",
-                    "table_footnote": "",
-                    "table_type": "",
-                    "table_nest_level": "",
+                    "type": BlockType.TABLE,
+                    "content": "",
                 }
                 self.cur_page.append(table_block)
                 self.chart_list.append(table_block)
@@ -1339,4 +1335,4 @@ class DocxConverter:
                             content = zf.read(name)
                             excel_data = pd.read_excel(BytesIO(content))
                             html = excel_data.to_html(index=False, header=True)
-                            self.chart_list[chart_idx - 1]["html"] = html
+                            self.chart_list[chart_idx - 1]["content"] = html
