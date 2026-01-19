@@ -1,9 +1,11 @@
 import os
 import re
+import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
+import pandas as pd
 from PIL import Image, WmfImagePlugin
 from loguru import logger
 from docx import Document
@@ -39,6 +41,7 @@ class DocxConverter:
         "wps": "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
         "w10": "urn:schemas-microsoft-com:office:word",
         "a14": "http://schemas.microsoft.com/office/drawing/2010/main",
+        "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
     }
     """
     Word 文档中使用的 XML 命名空间映射。
@@ -66,6 +69,7 @@ class DocxConverter:
             ".//a:blip", namespaces=DocxConverter._BLIP_NAMESPACES
         )
 
+        self.file_stream = None
         self.docx_obj = None
         self.max_levels: int = 10  # 文档层次结构的最大层级数
         self.parents: dict = {}  # 父级节点映射
@@ -78,15 +82,18 @@ class DocxConverter:
             {}
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
+        self.chart_list = []  # 图表列表
 
     def convert(
         self,
         file_stream: BinaryIO,
     ):
+        self.file_stream = file_stream
         self.docx_obj = Document(file_stream)
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
+        self._add_chart_table()
 
     def _walk_linear(
         self,
@@ -114,6 +121,9 @@ class DocxConverter:
             elif drawing_blip:
                 # 处理图片元素
                 self._handle_pictures(drawing_blip)
+            # 检查DrawingML元素
+            elif drawingml_els:
+                self._handle_drawingml(drawingml_els)
             # 检查文本段落元素
             elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
@@ -336,6 +346,7 @@ class DocxConverter:
                 drawing_blip: 绘图 blip 对象
 
             Returns:
+
                 Optional[bytes]: 图像数据
             """
             image_data: Optional[bytes] = None
@@ -1064,3 +1075,67 @@ class DocxConverter:
                 return True
         else:
             return False
+
+    def _handle_drawingml(self, elements: list[BaseOxmlElement]):
+        """
+        处理 DrawingML 元素，目前先处理 chart 元素。
+
+        Args:
+            elements: 包含 DrawingML 元素的列表
+
+        Returns:
+
+        """
+        for element in elements:
+            chart = element.find(
+                ".//c:chart", namespaces=DocxConverter._BLIP_NAMESPACES
+            )
+            if chart is not None:
+                # 如果找到 chart 元素，构造空的表格块，后续回填html
+                table_block = {
+                    "image_source": "",
+                    "html": "",
+                    "table_caption": "",
+                    "table_footnote": "",
+                    "table_type": "",
+                    "table_nest_level": "",
+                }
+                self.cur_page.append(table_block)
+                self.chart_list.append(table_block)
+
+    def _add_chart_table(self):
+        idx_xlsx_map = {}
+        rel_pattern = re.compile(r"word/charts/_rels/chart(\d+)\.xml\.rels$")
+
+        # 定义命名空间
+        namespaces = {
+            "r": "http://schemas.openxmlformats.org/package/2006/relationships"
+        }
+
+        with zipfile.ZipFile(self.file_stream, "r") as zf:
+            for name in zf.namelist():
+                match = rel_pattern.match(name)
+                if match:
+                    # 读取 .rels 文件内容
+                    rels_content = zf.read(name)
+                    # 解析 XML
+                    rels_root = etree.fromstring(rels_content)
+
+                    # 查找所有 Relationship 元素
+                    for rel in rels_root.findall(
+                        ".//r:Relationship", namespaces=namespaces
+                    ):
+                        target = rel.get("Target")
+                        if target and target.endswith(".xlsx"):
+                            path = Path(target)
+                            idx_xlsx_map[path.name] = int(match.group(1))
+
+        with zipfile.ZipFile(self.file_stream, "r") as zf:
+            for name in zf.namelist():
+                if name.startswith("word/embeddings/"):
+                    for path_name, chart_idx in idx_xlsx_map.items():
+                        if name.endswith(path_name):
+                            content = zf.read(name)
+                            excel_data = pd.read_excel(BytesIO(content))
+                            html = excel_data.to_html(index=False, header=True)
+                            self.chart_list[chart_idx - 1]["html"] = html
