@@ -86,7 +86,11 @@ def get_device():
                 if torch_npu.npu.is_available():
                     return "npu"
             except Exception as e:
-                pass
+                try:
+                    if torch.gcu.is_available():
+                        return "gcu"
+                except Exception as e:
+                    pass
         return "cpu"
 
 
