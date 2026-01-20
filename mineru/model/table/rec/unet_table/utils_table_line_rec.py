@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 from scipy.spatial import distance as dist
 from skimage import measure
+from skimage import __version__ as skimage_version
+from packaging import version
 
 
 def transform_preds(coords, center, scale, output_size, rot=0):
@@ -295,7 +297,11 @@ def min_area_rect_box(
     """
     boxes = []
     for region in regions:
-        if region.bbox_area > H * W * 3 / 4:  # 过滤大的单元格
+        if version.parse(skimage_version) >= version.parse("0.26.0"):
+            region_bbox_area = region.area_bbox
+        else:
+            region_bbox_area = region.bbox_area
+        if region_bbox_area > H * W * 3 / 4:  # 过滤大的单元格
             continue
         rect = cv2.minAreaRect(region.coords[:, ::-1])
 
