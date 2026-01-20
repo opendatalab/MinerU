@@ -45,6 +45,12 @@
 
 # 更新记录
 
+- 2026/01/23 2.7.2 发布
+  - 新增国产算力平台适配:
+    - [海光 DCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
+    - [燧原 GCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+  - 跨页表合并优化，提升合并成功率与合并效果
+
 - 2026/01/06 2.7.1 发布
   - fix bug: #4300
   - 更新pdfminer.six的依赖版本以解决 [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
