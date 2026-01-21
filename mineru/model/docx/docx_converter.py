@@ -475,7 +475,7 @@ class DocxConverter:
             )
             if content_text != "":
                 caption_block = {
-                    "type": "caption",
+                    "type": BlockType.CAPTION,
                     "content": content_text,
                 }
                 self.cur_page.append(caption_block)
@@ -928,13 +928,8 @@ class DocxConverter:
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content":[
-                    {
-                        "type": BlockType.TEXT,
-                        "content": content_text,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             elem_ref.append(id(list_item))
             list_block["list_items"].append(list_item)
@@ -962,8 +957,12 @@ class DocxConverter:
             parent_list_block = self.list_block_stack[-1]
             # 将新列表块添加为父列表块的最新列表项的子块
             newest_list_item = parent_list_block["list_items"][-1]
-            newest_list_item["item_type"] = "list"  # 修改类型为列表
-            newest_list_item["item_content"].append(list_block)
+            newest_list_item["type"] = BlockType.LIST  # 修改类型为列表
+            if isinstance((newest_list_item["content"]), str):
+                # 如果内容是字符串，则转换为列表
+                newest_list_item["content"] = [{"type": BlockType.TEXT, "content": newest_list_item["content"],}]
+            newest_list_item["content"].append(list_block)
+
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
             elem_ref.append(id(list_block))
@@ -974,13 +973,8 @@ class DocxConverter:
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "content": content_text,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             list_block["list_items"].append(list_item)
             # 更新目前缩进
@@ -1006,13 +1000,8 @@ class DocxConverter:
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "content": content_text,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             elem_ref.append(id(list_item))
             list_block["list_items"].append(list_item)
@@ -1029,13 +1018,8 @@ class DocxConverter:
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "content": content_text,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             list_block["list_items"].append(list_item)
             elem_ref.append(id(list_item))
