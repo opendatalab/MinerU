@@ -457,8 +457,10 @@ class DocxConverter:
             "ListBullet",
             "Quote",
         ]:
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -467,8 +469,10 @@ class DocxConverter:
                 self.cur_page.append(text_block)
         # 判断是否是 Caption
         elif self._is_caption(element):
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 caption_block = {
                     "type": "caption",
@@ -478,8 +482,10 @@ class DocxConverter:
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
             # 因此我们将所有其他标签视为纯文本
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -864,38 +870,6 @@ class DocxConverter:
             logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
-    def _build_text_content_list_with_equations(
-        self,
-        text: str,
-        equations: list,
-        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]] = None,
-    ) -> list:
-        """
-        构建包含行内公式的 text_content_list。
-
-        Args:
-            text: 处理后的文本（包含公式标记，如 <eq>...</eq>）
-            equations: 公式列表
-            paragraph_elements: 段落元素列表，包含超链接信息
-
-        Returns:
-            list: text_content_list 内容列表
-        """
-        # 如果有 paragraph_elements，使用带超链接的文本
-        if paragraph_elements is not None:
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                paragraph_elements, text, equations
-            )
-        else:
-            content_text = text
-
-        # 直接返回包含 <eq></eq> 标记的文本内容，与其他 text/title 保持一致
-        return [
-            {
-                "type": ContentType.TEXT,
-                "content": content_text,
-            }
-        ]
 
     def _add_list_item(
         self,
@@ -948,17 +922,17 @@ class DocxConverter:
             # 记录当前引用
             elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
                 "item_type": "text",
-                "item_content": [
+                "item_content":[
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
+                        "content": content_text,
                     }
                 ],
             }
@@ -994,9 +968,9 @@ class DocxConverter:
             self.list_block_stack.append(list_block)
             elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
@@ -1004,7 +978,7 @@ class DocxConverter:
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
+                        "content": content_text,
                     }
                 ],
             }
@@ -1026,9 +1000,9 @@ class DocxConverter:
                 self.list_block_stack.pop()
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
@@ -1036,7 +1010,7 @@ class DocxConverter:
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
+                        "content": content_text,
                     }
                 ],
             }
@@ -1049,9 +1023,9 @@ class DocxConverter:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
@@ -1059,7 +1033,7 @@ class DocxConverter:
                 "item_content": [
                     {
                         "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
+                        "content": content_text,
                     }
                 ],
             }
