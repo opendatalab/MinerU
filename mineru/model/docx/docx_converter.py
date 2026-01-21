@@ -421,7 +421,7 @@ class DocxConverter:
             if content_text != "":
                 h_block = {
                     "type": BlockType.TITLE,
-                    "level": p_level + 1 if p_level is not None else 2,
+                    "level": p_level if p_level is not None else 2,
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }
@@ -898,9 +898,8 @@ class DocxConverter:
         """
         if equations is None:
             equations = []
-        elem_ref: list = []
         if not elements:
-            return elem_ref
+            return None
 
         # 情况 1: 不存在上一个列表ID
         if self.pre_num_id == -1:
@@ -919,8 +918,6 @@ class DocxConverter:
             self.cur_page.append(list_block)
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
-            # 记录当前引用
-            elem_ref.append(id(list_block))
 
             # 构建 content_text，处理行内公式和超链接
             content_text = self._build_text_with_equations_and_hyperlinks(
@@ -931,7 +928,7 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
-            elem_ref.append(id(list_item))
+
             list_block["list_items"].append(list_item)
             self.pre_num_id = numid
             self.pre_ilevel = ilevel
@@ -965,7 +962,6 @@ class DocxConverter:
 
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
-            elem_ref.append(id(list_block))
 
             # 构建 content_text，处理行内公式和超链接
             content_text = self._build_text_with_equations_and_hyperlinks(
@@ -1003,7 +999,6 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
-            elem_ref.append(id(list_item))
             list_block["list_items"].append(list_item)
             self.pre_ilevel = ilevel
 
@@ -1022,9 +1017,6 @@ class DocxConverter:
                 "content": content_text,
             }
             list_block["list_items"].append(list_item)
-            elem_ref.append(id(list_item))
-
-        return elem_ref
 
     def _find_ilevel_list_block(self, outer_block, ilevel: int):
         """
