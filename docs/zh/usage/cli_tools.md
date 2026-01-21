@@ -120,3 +120,9 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_HYBRID_FORCE_PIPELINE_ENABLE`：
     * 用于强制将 hybrid-* 后端中的 文本提取部分使用 小模型 进行处理
     * 默认为`false`，可通过环境变量设置为`true`来启用该功能，从而在某些极端情况下减少幻觉的发生。
+
+- `MINERU_VL_MODEL_NAME`：
+    * 用于指定 vlm/hybrid 后端使用的模型名称，这将允许您在同时存在多个模型的远程openai-server中指定 MinerU 运行所需的模型。
+
+- `MINERU_VL_API_KEY`:
+    * 用于指定 vlm/hybrid 后端使用的API Key，这将允许您在远程openai-server中进行身份验证。
