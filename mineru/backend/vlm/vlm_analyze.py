@@ -99,6 +99,20 @@ class ModelSingleton:
                         import vllm
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], str):
+                            try:
+                                kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                            except json.JSONDecodeError:
+                                logger.warning(
+                                    f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
+                                del kwargs["compilation_config"]
+                    else:
+                        compilation_config = set_compilation_config()
+                        if compilation_config:
+                            kwargs["compilation_config"] = compilation_config
+
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:
@@ -114,6 +128,20 @@ class ModelSingleton:
                         from vllm.v1.engine.async_llm import AsyncLLM
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], str):
+                            try:
+                                kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                            except json.JSONDecodeError:
+                                logger.warning(
+                                    f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
+                                del kwargs["compilation_config"]
+                    else:
+                        compilation_config = set_compilation_config()
+                        if compilation_config:
+                            kwargs["compilation_config"] = compilation_config
+
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:

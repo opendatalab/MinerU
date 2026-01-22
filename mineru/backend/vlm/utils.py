@@ -101,3 +101,18 @@ def set_default_batch_size() -> int:
         logger.warning(f'Error determining VRAM: {e}, using default batch_ratio: 1')
         batch_size = 1
     return batch_size
+
+
+def set_compilation_config() -> dict:
+    device = get_device()
+    compilation_config = {}
+    if str(device).startswith('musa'):
+        try:
+            import torch
+            if torch.musa.is_available():
+                compilation_config = {
+                    "simple_cuda_graph": true
+                }
+        except Exception as e:
+            pass
+    return compilation_config
