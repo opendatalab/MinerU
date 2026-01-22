@@ -111,6 +111,7 @@ def set_compilation_config() -> dict:
             import torch
             if torch.musa.is_available():
                 compilation_config = {
+                    "cudagraph_capture_sizes": [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 24, 28, 30],
                     "simple_cuda_graph": True
                 }
         except Exception as e:
