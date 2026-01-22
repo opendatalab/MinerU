@@ -90,7 +90,11 @@ def get_device():
                     if torch.gcu.is_available():
                         return "gcu"
                 except Exception as e:
-                    pass
+                    try:
+                        if torch.musa.is_available():
+                            return "musa"
+                    except Exception as e:
+                        pass
         return "cpu"
 
 

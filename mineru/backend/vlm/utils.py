@@ -20,6 +20,8 @@ def enable_custom_logits_processors() -> bool:
         compute_capability = "8.0"
     elif hasattr(torch, 'gcu') and torch.gcu.is_available():
         compute_capability = "8.0"
+    elif hasattr(torch, 'musa') and torch.musa.is_available():
+        compute_capability = "8.0"
     else:
         logger.info("CUDA not available, disabling custom_logits_processors")
         return False
