@@ -1,11 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import time
+import json
 
 from loguru import logger
 
 from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size, \
-    set_lmdeploy_backend
+    set_lmdeploy_backend, set_compilation_config
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
