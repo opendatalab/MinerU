@@ -111,7 +111,7 @@ def set_compilation_config() -> dict:
             import torch
             if torch.musa.is_available():
                 compilation_config = {
-                    "simple_cuda_graph": true
+                    "simple_cuda_graph": True
                 }
         except Exception as e:
             pass
