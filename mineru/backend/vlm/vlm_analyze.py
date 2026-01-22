@@ -144,13 +144,17 @@ class ModelSingleton:
                                 "simple_cuda_graph": True
                             }
                             block_size = 32
-                            kwargs["compilation_config"] = compilation_config
+                            kwargs["compilation_config"] = json.dumps(compilation_config)
                             kwargs["block_size"] = block_size
 
                     if "compilation_config" in kwargs:
-                        if isinstance(kwargs["compilation_config"], str):
+                        if isinstance(kwargs["compilation_config"], dict):
+                            # 如果是字典，转换为 JSON 字符串
+                            kwargs["compilation_config"] = json.dumps(kwargs["compilation_config"])
+                        elif isinstance(kwargs["compilation_config"], str):
+                            # 验证是否为有效 JSON
                             try:
-                                kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                                json.loads(kwargs["compilation_config"])
                             except json.JSONDecodeError:
                                 logger.warning(
                                     f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
