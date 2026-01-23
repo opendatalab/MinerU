@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import time
+import json
 
 from loguru import logger
 
@@ -99,6 +100,30 @@ class ModelSingleton:
                         import vllm
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
+
+                    """
+                    # musa vllm v1 引擎特殊配置
+                    device = get_device()
+                    if device.startswith("musa"):
+                        import torch
+                        if torch.musa.is_available():
+                            compilation_config = {
+                                "cudagraph_capture_sizes": [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 24, 28, 30],
+                                "simple_cuda_graph": True
+                            }
+                            block_size = 32
+                            kwargs["compilation_config"] = compilation_config
+                            kwargs["block_size"] = block_size
+                    """
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], str):
+                            try:
+                                kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                            except json.JSONDecodeError:
+                                logger.warning(
+                                    f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
+                                del kwargs["compilation_config"]
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:
@@ -112,8 +137,38 @@ class ModelSingleton:
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
+                        from vllm.config import CompilationConfig
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+
+                    """
+                    # musa vllm v1 引擎特殊配置
+                    device = get_device()
+                    if device.startswith("musa"):
+                        import torch
+                        if torch.musa.is_available():
+                            compilation_config = CompilationConfig(
+                                cudagraph_capture_sizes=[1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 24, 28, 30],
+                                simple_cuda_graph=True
+                            )
+                            block_size = 32
+                            kwargs["compilation_config"] = compilation_config
+                            kwargs["block_size"] = block_size
+                    """
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], dict):
+                            # 如果是字典，转换为 CompilationConfig 对象
+                            kwargs["compilation_config"] = CompilationConfig(**kwargs["compilation_config"])
+                        elif isinstance(kwargs["compilation_config"], str):
+                            # 如果是 JSON 字符串，先解析再转换
+                            try:
+                                config_dict = json.loads(kwargs["compilation_config"])
+                                kwargs["compilation_config"] = CompilationConfig(**config_dict)
+                            except (json.JSONDecodeError, TypeError) as e:
+                                logger.warning(
+                                    f"Failed to parse compilation_config: {kwargs['compilation_config']}, error: {e}")
+                                del kwargs["compilation_config"]
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:

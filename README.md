@@ -45,6 +45,9 @@
 
 # Changelog
 
+- 2026/01/23 2.7.2 Release
+  - Cross-page table merging optimization, improving merge success rate and merge quality
+
 - 2026/01/06 2.7.1 Release
   - fix bug: #4300
   - Updated pdfminer.six dependency version to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
