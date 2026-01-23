@@ -186,6 +186,18 @@ def model_init(model_name: str):
             bf_16_support = True
     elif device_name.startswith("mps"):
         bf_16_support = True
+    elif device_name.startswith("gcu"):
+        if hasattr(torch, 'gcu') and torch.gcu.is_available():
+            if torch.gcu.is_bf16_supported():
+                bf_16_support = True
+    elif device_name.startswith("musa"):
+        if hasattr(torch, 'musa') and torch.musa.is_available():
+            if torch.musa.is_bf16_supported():
+                bf_16_support = True
+    elif device_name.startswith("npu"):
+        if hasattr(torch, 'npu') and torch.npu.is_available():
+            if torch.npu.is_bf16_supported():
+                bf_16_support = True
 
     if model_name == 'layoutreader':
         # 检测modelscope的缓存目录是否存在

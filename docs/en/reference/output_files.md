@@ -29,12 +29,12 @@ The following sections provide detailed descriptions of each file's purpose and 
 
 ![layout page example](../images/layout_example.png)
 
-### Text Spans File (spans.pdf)
+### Text Spans File (span.pdf)
 
 > [!NOTE]
 > Only applicable to pipeline backend
 
-**File naming format**: `{original_filename}_spans.pdf`
+**File naming format**: `{original_filename}_span.pdf`
 
 **Functionality**:
 
@@ -702,7 +702,7 @@ The above files constitute MinerU's complete output results. Users can choose ap
   
 - **Debugging and verification** (Use visualization files):
     * layout.pdf
-    * spans.pdf 
+    * span.pdf 
   
 - **Content extraction**: (Use simplified files):
     * *.md

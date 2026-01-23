@@ -45,6 +45,17 @@
 
 # Changelog
 
+- 2026/01/23 2.7.2 Release
+  - Added support for domestic computing platforms Hygon, Enflame, and Moore Threads. Currently, the officially supported domestic computing platforms include:
+    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/) 
+    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/) 
+    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/) 
+    - [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
+    - [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+    - [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+  - MinerU continues to ensure compatibility with domestic hardware platforms, supporting mainstream chip architectures. With secure and reliable technology, we empower researchers, government, and enterprises to reach new heights in document digitization!
+  - Cross-page table merging optimization, improving merge success rate and merge quality
+
 - 2026/01/06 2.7.1 Release
   - fix bug: #4300
   - Updated pdfminer.six dependency version to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
