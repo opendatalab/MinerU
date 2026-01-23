@@ -4,7 +4,7 @@
 os: Ubuntu 22.04.4 LTS  
 cpu: Intel x86-64
 gcu: Enflame S60 
-driver:  1.7.0.9
+driver: 1.7.0.9
 docker: 28.0.1
 ```
 
