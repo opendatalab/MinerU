@@ -47,9 +47,9 @@
 
 - 2026/01/23 2.7.2 Release
   - Added support for domestic computing platforms Hygon, Enflame, and Moore Threads. Currently, the officially supported domestic computing platforms include:
-    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend.md) 
-    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead.md) 
-    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX.md) 
+    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/) 
+    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/) 
+    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/) 
     - [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
     - [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
