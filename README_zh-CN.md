@@ -47,9 +47,9 @@
 
 - 2026/01/23 2.7.2 发布
   - 新增国产算力平台海光、燧原、摩尔线程的适配支持，目前已由官方适配并支持的国产算力平台包括:
-    - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend.md) 
-    - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead.md) 
-    - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX.md) 
+    - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
+    - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
+    - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
     - [海光 DCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [燧原 GCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
     - [摩尔线程 MUSA](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
