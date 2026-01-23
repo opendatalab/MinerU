@@ -53,6 +53,7 @@
     - [海光 DCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [燧原 GCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
     - [摩尔线程 MUSA](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+  - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
   - 跨页表合并优化，提升合并成功率与合并效果
 
 - 2026/01/06 2.7.1 发布
