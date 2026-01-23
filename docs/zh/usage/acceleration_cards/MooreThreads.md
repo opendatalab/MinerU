@@ -27,7 +27,6 @@ docker run -u root --name mineru_docker \
     --shm-size=80g \
     --privileged \
     -e MTHREADS_VISIBLE_DEVICES=all \
-    -e MINERU_DEVICE_MODE=musa \
     -e MINERU_MODEL_SOURCE=local \
     -it mineru:musa-vllm-latest \
     /bin/bash
@@ -40,6 +39,11 @@ docker run -u root --name mineru_docker \
 ## 4. 注意事项
 
 不同环境下，MinerU对MooreThreads加速卡的支持情况如下表所示：
+
+>[!NOTE]
+> **兼容性说明**：由于摩尔线程（MooreThreads）目前对 vLLM v1 引擎的支持尚待完善，MinerU 现阶段采用 v0 引擎作为适配方案。
+> 受此限制，vLLM 的异步引擎（Async Engine）功能存在兼容性问题，可能导致部分使用场景无法正常运行。
+> 我们将持续跟进摩尔线程对 vLLM v1 引擎的支持进展，并及时在 MinerU 中进行相应的适配与优化。
 
 <table border="1">
   <thead>
@@ -72,7 +76,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -85,7 +89,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -97,7 +101,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🟢</td>
+      <td>🔴</td>
     </tr>
   </tbody>
 </table>
