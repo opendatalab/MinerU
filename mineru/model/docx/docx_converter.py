@@ -474,7 +474,7 @@ class DocxConverter:
             if content_text != "":
                 h_block = {
                     "type": BlockType.TITLE,
-                    "level": p_level + 1 if p_level is not None else 2,
+                    "level": p_level if p_level is not None else 2,
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }
@@ -510,8 +510,10 @@ class DocxConverter:
             "ListBullet",
             "Quote",
         ]:
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -520,19 +522,23 @@ class DocxConverter:
                 self.cur_page.append(text_block)
         # 判断是否是 Caption
         elif self._is_caption(element):
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 caption_block = {
-                    "type": "caption",
+                    "type": BlockType.CAPTION,
                     "content": content_text,
                 }
                 self.cur_page.append(caption_block)
         else:
             # 文本样式名称不仅有默认值，还可能有用户自定义值
             # 因此我们将所有其他标签视为纯文本
-            # 构建带超链接的文本
-            content_text = self._build_text_from_elements(paragraph_elements)
+            # 构建包含公式和超链接的文本
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                paragraph_elements, text, equations
+            )
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -917,38 +923,6 @@ class DocxConverter:
             logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
-    def _build_text_content_list_with_equations(
-        self,
-        text: str,
-        equations: list,
-        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]] = None,
-    ) -> list:
-        """
-        构建包含行内公式的 text_content_list。
-
-        Args:
-            text: 处理后的文本（包含公式标记，如 <eq>...</eq>）
-            equations: 公式列表
-            paragraph_elements: 段落元素列表，包含超链接信息
-
-        Returns:
-            list: text_content_list 内容列表
-        """
-        # 如果有 paragraph_elements，使用带超链接的文本
-        if paragraph_elements is not None:
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                paragraph_elements, text, equations
-            )
-        else:
-            content_text = text
-
-        # 直接返回包含 <eq></eq> 标记的文本内容，与其他 text/title 保持一致
-        return [
-            {
-                "type": ContentType.TEXT,
-                "content": content_text,
-            }
-        ]
 
     def _add_list_item(
         self,
@@ -977,9 +951,8 @@ class DocxConverter:
         """
         if equations is None:
             equations = []
-        elem_ref: list = []
         if not elements:
-            return elem_ref
+            return None
 
         # 情况 1: 不存在上一个列表ID
         if self.pre_num_id == -1:
@@ -998,24 +971,17 @@ class DocxConverter:
             self.cur_page.append(list_block)
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
-            # 记录当前引用
-            elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
-            elem_ref.append(id(list_item))
+
             list_block["list_items"].append(list_item)
             self.pre_num_id = numid
             self.pre_ilevel = ilevel
@@ -1041,25 +1007,23 @@ class DocxConverter:
             parent_list_block = self.list_block_stack[-1]
             # 将新列表块添加为父列表块的最新列表项的子块
             newest_list_item = parent_list_block["list_items"][-1]
-            newest_list_item["item_type"] = "list"  # 修改类型为列表
-            newest_list_item["item_content"].append(list_block)
+            newest_list_item["type"] = BlockType.LIST  # 修改类型为列表
+            if isinstance((newest_list_item["content"]), str):
+                # 如果内容是字符串，则转换为列表
+                newest_list_item["content"] = [{"type": BlockType.TEXT, "content": newest_list_item["content"],}]
+            newest_list_item["content"].append(list_block)
+
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
-            elem_ref.append(id(list_block))
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             list_block["list_items"].append(list_item)
             # 更新目前缩进
@@ -1079,21 +1043,15 @@ class DocxConverter:
                 self.list_block_stack.pop()
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
-            elem_ref.append(id(list_item))
             list_block["list_items"].append(list_item)
             self.pre_ilevel = ilevel
 
@@ -1102,24 +1060,16 @@ class DocxConverter:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
-            # 构建 text_content_list，处理行内公式和超链接
-            text_content_list = self._build_text_content_list_with_equations(
-                text, equations, elements
+            # 构建 content_text，处理行内公式和超链接
+            content_text = self._build_text_with_equations_and_hyperlinks(
+                elements, text, equations
             )
 
             list_item = {
-                "item_type": "text",
-                "item_content": [
-                    {
-                        "type": BlockType.TEXT,
-                        "text_content_list": text_content_list,
-                    }
-                ],
+                "type": BlockType.TEXT,
+                "content": content_text,
             }
             list_block["list_items"].append(list_item)
-            elem_ref.append(id(list_item))
-
-        return elem_ref
 
     def _find_ilevel_list_block(self, outer_block, ilevel: int):
         """
@@ -1347,12 +1297,8 @@ class DocxConverter:
             if chart is not None:
                 # 如果找到 chart 元素，构造空的表格块，后续回填html
                 table_block = {
-                    "image_source": "",
-                    "html": "",
-                    "table_caption": "",
-                    "table_footnote": "",
-                    "table_type": "",
-                    "table_nest_level": "",
+                    "type": BlockType.TABLE,
+                    "content": "",
                 }
                 self.cur_page.append(table_block)
                 self.chart_list.append(table_block)
