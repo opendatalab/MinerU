@@ -83,6 +83,7 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
+        self.processed_textbox_elements: list[int] = []
 
     def convert(
         self,
@@ -109,6 +110,58 @@ class DocxConverter:
             drawingml_els = element.findall(
                 ".//w:drawing", namespaces=DocxConverter._BLIP_NAMESPACES
             )
+
+            # 检查文本框内容（支持多种文本框格式）
+            # 仅当该元素之前未被处理时才处理
+            element_id = id(element)
+            if element_id not in self.processed_textbox_elements:
+                # 现代 Word 文本框
+                txbx_xpath = etree.XPath(
+                    ".//w:txbxContent|.//v:textbox//w:p",
+                    namespaces=DocxConverter._BLIP_NAMESPACES,
+                )
+                textbox_elements = txbx_xpath(element)
+
+                # 未找到现代文本框，检查替代/旧版文本框格式
+                if not textbox_elements and tag_name in ["drawing", "pict"]:
+                    # 额外检查 DrawingML 和 VML 格式中的文本框
+                    alt_txbx_xpath = etree.XPath(
+                        ".//wps:txbx//w:p|.//w10:wrap//w:p|.//a:p//a:t",
+                        namespaces=DocxConverter._BLIP_NAMESPACES,
+                    )
+                    textbox_elements = alt_txbx_xpath(element)
+
+                    # 检查不在标准文本框内的形状文本
+                    if not textbox_elements:
+                        shape_text_xpath = etree.XPath(
+                            ".//a:bodyPr/ancestor::*//a:t|.//a:txBody//a:t",
+                            namespaces=DocxConverter._BLIP_NAMESPACES,
+                        )
+                        shape_text_elements = shape_text_xpath(element)
+                        if shape_text_elements:
+                            # 从形状文本创建自定义文本元素
+                            text_content = " ".join(
+                                [t.text for t in shape_text_elements if t.text]
+                            )
+                            if text_content.strip():
+                                logger.debug(
+                                    f"Found shape text: {text_content[:50]}..."
+                                )
+                                self.cur_page.append(
+                                    {
+                                        "type": BlockType.TEXT,
+                                        "content": text_content,
+                                    }
+                                )
+                if textbox_elements:
+                    self.processed_textbox_elements.append(element_id)
+                    for tb_element in textbox_elements:
+                        self.processed_textbox_elements.append(id(tb_element))
+
+                    logger.debug(
+                        f"Found textbox content with {len(textbox_elements)} elements"
+                    )
+                    self._handle_textbox_content(textbox_elements)
 
             if tag_name == "tbl":
                 try:
@@ -1139,3 +1192,189 @@ class DocxConverter:
                             excel_data = pd.read_excel(BytesIO(content))
                             html = excel_data.to_html(index=False, header=True)
                             self.chart_list[chart_idx - 1]["html"] = html
+
+    def _handle_textbox_content(
+        self,
+        textbox_elements: list,
+    ):
+        """
+        处理文本框内容并将其添加到文档结构。
+        """
+        # 收集并组织段落
+        container_paragraphs = self._collect_textbox_paragraphs(textbox_elements)
+
+        # 处理所有段落
+        all_paragraphs = []
+
+        # 对每个容器内的段落进行排序，然后按容器顺序处理
+        for paragraphs in container_paragraphs.values():
+            # 按容器内的垂直位置进行排序
+            sorted_container_paragraphs = sorted(
+                paragraphs,
+                key=lambda x: (
+                    x[1] is None,
+                    x[1] if x[1] is not None else float("inf"),
+                ),
+            )
+
+            # 将排序后的段落添加到待处理列表
+            all_paragraphs.extend(sorted_container_paragraphs)
+
+        # 跟踪已处理段落以避免重复（相同内容和位置）
+        processed_paragraphs = set()
+
+        # 处理所有段落
+        for p, position in all_paragraphs:
+            # 创建 Paragraph 对象以获取文本内容
+            paragraph = Paragraph(p, self.docx_obj)
+            text_content = paragraph.text
+
+            # 基于内容和位置创建唯一标识
+            paragraph_id = (text_content, position)
+
+            # 如果该段落（相同内容和位置）已处理，则跳过
+            if paragraph_id in processed_paragraphs:
+                logger.debug(
+                    f"Skipping duplicate paragraph: content='{text_content[:50]}...', position={position}"
+                )
+                continue
+
+            # 将该段落标记为已处理
+            processed_paragraphs.add(paragraph_id)
+
+            self._handle_text_elements(p)
+        return
+
+    def _collect_textbox_paragraphs(self, textbox_elements):
+        """
+        从文本框元素中收集并组织段落。
+        """
+        processed_paragraphs = []
+        container_paragraphs = {}
+
+        for element in textbox_elements:
+            element_id = id(element)
+            # 如果已处理相同元素，则跳过
+            if element_id in processed_paragraphs:
+                continue
+
+            tag_name = etree.QName(element).localname
+            processed_paragraphs.append(element_id)
+
+            # 处理直接找到的段落（VML 文本框）
+            if tag_name == "p":
+                # 查找包含该段落的文本框或形状元素
+                container_id = None
+                for ancestor in element.iterancestors():
+                    if any(ns in ancestor.tag for ns in ["textbox", "shape", "txbx"]):
+                        container_id = id(ancestor)
+                        break
+
+                if container_id not in container_paragraphs:
+                    container_paragraphs[container_id] = []
+                container_paragraphs[container_id].append(
+                    (element, self._get_paragraph_position(element))
+                )
+
+            # 处理 txbxContent 元素（Word DrawingML 文本框）
+            elif tag_name == "txbxContent":
+                paragraphs = element.findall(".//w:p", namespaces=element.nsmap)
+                container_id = id(element)
+                if container_id not in container_paragraphs:
+                    container_paragraphs[container_id] = []
+
+                for p in paragraphs:
+                    p_id = id(p)
+                    if p_id not in processed_paragraphs:
+                        processed_paragraphs.append(p_id)
+                        container_paragraphs[container_id].append(
+                            (p, self._get_paragraph_position(p))
+                        )
+            else:
+                # 尝试从未知元素中提取任何段落
+                paragraphs = element.findall(".//w:p", namespaces=element.nsmap)
+                container_id = id(element)
+                if container_id not in container_paragraphs:
+                    container_paragraphs[container_id] = []
+
+                for p in paragraphs:
+                    p_id = id(p)
+                    if p_id not in processed_paragraphs:
+                        processed_paragraphs.append(p_id)
+                        container_paragraphs[container_id].append(
+                            (p, self._get_paragraph_position(p))
+                        )
+
+        return container_paragraphs
+
+    def _get_paragraph_position(self, paragraph_element):
+        """
+        从段落元素提取垂直位置信息。
+        """
+        # 先尝试直接从包含顺序相关属性的 w:p 元素获取索引
+        if (
+            hasattr(paragraph_element, "getparent")
+            and paragraph_element.getparent() is not None
+        ):
+            parent = paragraph_element.getparent()
+            # 获取所有段落兄弟节点
+            paragraphs = [
+                p for p in parent.getchildren() if etree.QName(p).localname == "p"
+            ]
+            # 查找当前段落在其兄弟节点中的索引
+            try:
+                paragraph_index = paragraphs.index(paragraph_element)
+                return paragraph_index  # 使用索引作为位置以保证一致的排序
+            except ValueError:
+                pass
+
+        # 在元素及其祖先中查找位置提示属性
+        for elem in (*[paragraph_element], *paragraph_element.iterancestors()):
+            # 检查直接的位置信息属性
+            for attr_name in ["y", "top", "positionY", "y-position", "position"]:
+                value = elem.get(attr_name)
+                if value:
+                    try:
+                        # 移除任何非数字字符（如 'pt', 'px' 等）
+                        clean_value = re.sub(r"[^0-9.]", "", value)
+                        if clean_value:
+                            return float(clean_value)
+                    except (ValueError, TypeError):
+                        pass
+
+            # 检查 transform 属性中的位移信息
+            transform = elem.get("transform")
+            if transform:
+                # 从 transform 矩阵中提取 translate 的第二个参数
+                match = re.search(r"translate\([^,]+,\s*([0-9.]+)", transform)
+                if match:
+                    try:
+                        return float(match.group(1))
+                    except ValueError:
+                        pass
+
+            # 检查 Word 格式中的锚点或相对位置指示器
+            # 'dist' 类属性可以表示相对位置
+            for attr_name in ["distT", "distB", "anchor", "relativeFrom"]:
+                if elem.get(attr_name) is not None:
+                    return elem.sourceline  # 使用 XML 源行号作为回退
+
+        # 针对 VML 形状，查找特定属性
+        for ns_uri in paragraph_element.nsmap.values():
+            if "vml" in ns_uri:
+                # 尝试从 style 属性提取 top 值
+                style = paragraph_element.get("style")
+                if style:
+                    match = re.search(r"top:([0-9.]+)pt", style)
+                    if match:
+                        try:
+                            return float(match.group(1))
+                        except ValueError:
+                            pass
+
+        # 如果没有更好的位置指示，则使用 XML 源行号作为顺序的代理
+        return (
+            paragraph_element.sourceline
+            if hasattr(paragraph_element, "sourceline")
+            else None
+        )
