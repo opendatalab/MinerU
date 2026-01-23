@@ -50,9 +50,9 @@
     - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
     - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
     - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
-    - [海光 DCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
-    - [燧原 GCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
-    - [摩尔线程 MUSA](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+    - [海光 Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
+    - [燧原 Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+    - [摩尔线程 MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
   - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
   - 跨页表合并优化，提升合并成功率与合并效果
 
