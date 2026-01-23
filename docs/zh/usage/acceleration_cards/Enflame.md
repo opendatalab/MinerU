@@ -22,19 +22,12 @@ docker build --network=host -t mineru:gcu-vllm-latest -f gcu.Dockerfile .
 
 ```bash
 docker run -u root --name mineru_docker \
-    --network=host \
-    --ipc=host \
-    --shm-size=16G \
-    --device=/dev/kfd \
-    --device=/dev/mkfd \
-    --device=/dev/dri \
-    -v /opt/hyhal:/opt/hyhal \
-    --group-add video \
-    --cap-add=SYS_PTRACE \
-    --security-opt seccomp=unconfined \
-    -e MINERU_MODEL_SOURCE=local \
-    -it mineru:dcu-vllm-latest \
-    /bin/bash
+      --network=host \
+      --ipc=host \
+      --privileged \
+      -e MINERU_MODEL_SOURCE=modelscope \
+      -it enflame:docker_images_topsrider_i3x_3.6.20260106_vllm0.11 \
+      /bin/bash
 ```
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
