@@ -70,7 +70,7 @@ pipeline = [
     "ultralytics>=8.3.48,<9",
     "doclayout_yolo==0.0.4",
     "dill>=0.3.8,<1",
-    "PyYAML>=6.0.2,<7",
+    "PyYAML>=6.0.1,<7",
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
