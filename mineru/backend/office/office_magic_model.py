@@ -117,19 +117,11 @@ class MagicModel:
             else:
                 raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
 
-            # 构造line对象
-            if block_type in [BlockType.CODE_BODY]:
-                if switch_code_to_algorithm and code_block_sub_type == "code":
-                    code_block_sub_type = "algorithm"
-                line = {"bbox": block_bbox, "spans": spans, "extra": {"type": code_block_sub_type, "guess_lang": guess_lang}}
-            else:
-                line = {"bbox": block_bbox, "spans": spans}
 
             blocks.append(
                 {
                     "bbox": block_bbox,
                     "type": block_type,
-                    "angle": block_angle,
                     "lines": [line],
                     "index": index,
                 }

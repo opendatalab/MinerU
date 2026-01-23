@@ -5,6 +5,7 @@ class BlockType:
     TABLE = 'table'
     IMAGE_BODY = 'image_body'
     TABLE_BODY = 'table_body'
+    CAPTION = 'caption' # word的通用caption类型
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
     IMAGE_FOOTNOTE = 'image_footnote'
