@@ -586,9 +586,3 @@ def merge_table(page_info_list):
         for block in current_table_block["blocks"]:
             block['lines'] = []
             block[SplitFlag.LINES_DELETED] = True
-
-
-
-
-
-
