@@ -108,4 +108,4 @@ docker run -u root --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->MooreThreads 加速卡指定可用加速卡的方式与Nvidia GPU类似，请参考[GPU 枚举](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/install_guide/#gpu-%E6%9E%9A%E4%B8%BE)
+>MooreThreads加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[GPU 枚举](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/install_guide/#gpu-%E6%9E%9A%E4%B8%BE)

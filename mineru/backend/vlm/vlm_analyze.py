@@ -100,6 +100,9 @@ class ModelSingleton:
                         import vllm
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
+
+                    """
+                    # musa vllm v1 引擎特殊配置
                     device = get_device()
                     if device.startswith("musa"):
                         import torch
@@ -111,6 +114,7 @@ class ModelSingleton:
                             block_size = 32
                             kwargs["compilation_config"] = compilation_config
                             kwargs["block_size"] = block_size
+                    """
 
                     if "compilation_config" in kwargs:
                         if isinstance(kwargs["compilation_config"], str):
@@ -136,6 +140,9 @@ class ModelSingleton:
                         from vllm.config import CompilationConfig
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+
+                    """
+                    # musa vllm v1 引擎特殊配置
                     device = get_device()
                     if device.startswith("musa"):
                         import torch
@@ -147,6 +154,7 @@ class ModelSingleton:
                             block_size = 32
                             kwargs["compilation_config"] = compilation_config
                             kwargs["block_size"] = block_size
+                    """
 
                     if "compilation_config" in kwargs:
                         if isinstance(kwargs["compilation_config"], dict):
