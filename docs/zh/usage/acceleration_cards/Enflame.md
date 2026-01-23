@@ -26,8 +26,8 @@ docker run -u root --name mineru_docker \
     --ipc=host \
     --privileged \
     -e MINERU_MODEL_SOURCE=local \
-    -it enflame:docker_images_topsrider_i3x_3.6.20260106_vllm0.11 \
-  /bin/bash
+    -it mineru:gcu-vllm-latest \
+    /bin/bash
 ```
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
@@ -105,4 +105,5 @@ docker run -u root --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->GCU加速卡指定可用加速卡的方式与AMD GPU类似，请参考[GPU isolation techniques](https://rocm.docs.amd.com/en/docs-6.2.4/conceptual/gpu-isolation.html)
+>GCU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+>将环境变量`CUDA_VISIBLE_DEVICES`替换为`TOPS_VISIBLE_DEVICES`即可。 

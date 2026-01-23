@@ -49,6 +49,7 @@
   - 新增国产算力平台适配:
     - [海光 DCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [燧原 GCU](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+    - [摩尔线程 MUSA](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
   - 跨页表合并优化，提升合并成功率与合并效果
 
 - 2026/01/06 2.7.1 发布
