@@ -257,8 +257,10 @@ def tie_up_category_by_index(
             elif index_diff == min_index_diff:
                 best_subject_indices.append(i)
 
+        if len(best_subject_indices) == 1:
+            best_subject_idx = best_subject_indices[0]
         # 如果有多个主体的index差值相同（最多两个），根据边缘距离进行筛选
-        if len(best_subject_indices) > 1:
+        elif len(best_subject_indices) == 2:
             # 计算所有候选主体的边缘距离
             edge_distances = [(idx, bbox_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
             edge_dist_diff = abs(edge_distances[0][1] - edge_distances[1][1])
@@ -285,7 +287,7 @@ def tie_up_category_by_index(
                     logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Center distance: {center_dist}")
                 best_subject_idx = min(center_distances, key=lambda x: x[1])[0]
         else:
-            best_subject_idx = best_subject_indices[0]
+            raise ValueError("More than two subjects have the same minimal index difference, which is unexpected.")
 
         # 将客体添加到最佳主体的obj_bboxes中
         result_dict[best_subject_idx]["obj_bboxes"].append(extract_object_func(obj))
