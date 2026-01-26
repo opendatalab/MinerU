@@ -349,7 +349,8 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     # 调用通用方法
     return tie_up_category_by_index(
         get_subjects,
-        get_objects
+        get_objects,
+        object_block_type=object_block_type
     )
 
 
