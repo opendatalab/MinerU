@@ -2,6 +2,8 @@
 包含两个MagicModel类中重复使用的方法和逻辑
 """
 from typing import List, Dict, Any, Callable
+
+from loguru import logger
 from mineru.utils.boxbase import bbox_distance, bbox_center_distance, is_in
 
 
@@ -176,7 +178,10 @@ def tie_up_category_by_index(
 ):
     """
     基于index的类别关联方法，用于将主体对象与客体对象进行关联
-    客体优先匹配给index最接近的主体，index差值相同时使用bbox中心点距离作为tiebreaker
+    客体优先匹配给index最接近的主体，匹配优先级为：
+    1. index差值（最高优先级）
+    2. bbox边缘距离（相邻边距离）
+    3. bbox中心点距离（最低优先级，作为最终tiebreaker）
 
     参数:
         get_subjects_func: 函数，提取主体对象
@@ -228,16 +233,34 @@ def tie_up_category_by_index(
             elif index_diff == min_index_diff:
                 best_subject_indices.append(i)
 
-        # 如果有多个主体的index差值相同，使用中心点距离作为tiebreaker
+        # 如果有多个主体的index差值相同，先使用边缘距离，再使用中心点距离作为tiebreaker
         if len(best_subject_indices) > 1:
-            min_center_dist = float("inf")
-            best_subject_idx = best_subject_indices[0]
+            min_edge_dist = float("inf")
+            best_edge_indices = []
 
+            # 第一步：找出边缘距离最小的所有主体
             for idx in best_subject_indices:
-                center_dist = bbox_center_distance(obj["bbox"], subjects[idx]["bbox"])
-                if center_dist < min_center_dist:
-                    min_center_dist = center_dist
-                    best_subject_idx = idx
+                edge_dist = bbox_distance(obj["bbox"], subjects[idx]["bbox"])
+                logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Edge distance: {edge_dist}")
+                if edge_dist < min_edge_dist:
+                    min_edge_dist = edge_dist
+                    best_edge_indices = [idx]
+                elif edge_dist == min_edge_dist:
+                    best_edge_indices.append(idx)
+
+            # 第二步：如果边缘距离也相同，使用中心点距离作为最终tiebreaker
+            if len(best_edge_indices) > 1:
+                min_center_dist = float("inf")
+                best_subject_idx = best_edge_indices[0]
+
+                for idx in best_edge_indices:
+                    center_dist = bbox_center_distance(obj["bbox"], subjects[idx]["bbox"])
+                    logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Center distance: {center_dist}")
+                    if center_dist < min_center_dist:
+                        min_center_dist = center_dist
+                        best_subject_idx = idx
+            else:
+                best_subject_idx = best_edge_indices[0]
         else:
             best_subject_idx = best_subject_indices[0]
 
