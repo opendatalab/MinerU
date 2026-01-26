@@ -212,6 +212,29 @@ def tie_up_category_by_index(
             "sub_idx": i,
         }
 
+    # 提取所有客体的index集合，用于计算有效index差值
+    object_indices = set(obj["index"] for obj in objects)
+
+    def calc_effective_index_diff(obj_index: int, sub_index: int) -> int:
+        """
+        计算有效的index差值
+        有效差值 = 绝对差值 - 区间内其他客体的数量
+        即：如果obj_index和sub_index之间的差值是由其他客体造成的，则应该扣除这部分差值
+        """
+        if obj_index == sub_index:
+            return 0
+
+        start, end = min(obj_index, sub_index), max(obj_index, sub_index)
+        abs_diff = end - start
+
+        # 计算区间(start, end)内有多少个其他客体的index
+        other_objects_count = 0
+        for idx in range(start + 1, end):
+            if idx in object_indices:
+                other_objects_count += 1
+
+        return abs_diff - other_objects_count
+
     # 为每个客体找到最匹配的主体
     for obj in objects:
         if len(subjects) == 0:
@@ -222,10 +245,10 @@ def tie_up_category_by_index(
         min_index_diff = float("inf")
         best_subject_indices = []
 
-        # 找出index差值最小的所有主体
+        # 找出有效index差值最小的所有主体
         for i, subject in enumerate(subjects):
             sub_index = subject["index"]
-            index_diff = abs(obj_index - sub_index)
+            index_diff = calc_effective_index_diff(obj_index, sub_index)
 
             if index_diff < min_index_diff:
                 min_index_diff = index_diff
