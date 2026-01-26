@@ -82,7 +82,7 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
-        self.processed_textbox_elements: list[int] = []
+        self.processed_textbox_elements: list = []
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -281,8 +281,7 @@ class DocxConverter:
 
             # 检查文本框内容（支持多种文本框格式）
             # 仅当该元素之前未被处理时才处理
-            element_id = id(element)
-            if element_id not in self.processed_textbox_elements:
+            if element not in self.processed_textbox_elements:
                 # 现代 Word 文本框
                 txbx_xpath = etree.XPath(
                     ".//w:txbxContent|.//v:textbox//w:p",
@@ -322,9 +321,9 @@ class DocxConverter:
                                     }
                                 )
                 if textbox_elements:
-                    self.processed_textbox_elements.append(element_id)
+                    self.processed_textbox_elements.append(element)
                     for tb_element in textbox_elements:
-                        self.processed_textbox_elements.append(id(tb_element))
+                        self.processed_textbox_elements.append(tb_element)
 
                     logger.debug(
                         f"Found textbox content with {len(textbox_elements)} elements"
@@ -923,7 +922,6 @@ class DocxConverter:
             logger.debug(f"Error determining if list is numbered: {e}")
             return False
 
-
     def _add_list_item(
         self,
         *,
@@ -1010,7 +1008,12 @@ class DocxConverter:
             newest_list_item["type"] = BlockType.LIST  # 修改类型为列表
             if isinstance((newest_list_item["content"]), str):
                 # 如果内容是字符串，则转换为列表
-                newest_list_item["content"] = [{"type": BlockType.TEXT, "content": newest_list_item["content"],}]
+                newest_list_item["content"] = [
+                    {
+                        "type": BlockType.TEXT,
+                        "content": newest_list_item["content"],
+                    }
+                ]
             newest_list_item["content"].append(list_block)
 
             # 入栈, 记录当前的列表块
