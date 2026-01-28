@@ -65,8 +65,6 @@ class DocxConverter:
 
         self.file_stream = None
         self.docx_obj = None
-        self.max_levels: int = 10  # 文档层次结构的最大层级数
-        self.parents: dict = {}  # 父级节点映射
         self.pages = []
         self.cur_page = []
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
