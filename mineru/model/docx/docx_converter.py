@@ -344,6 +344,18 @@ class DocxConverter:
             # 检查DrawingML元素
             elif drawingml_els:
                 self._handle_drawingml(drawingml_els)
+            # 检查 sdt 元素
+            elif tag_name == "sdt":
+                sdt_content = element.find(
+                    ".//w:sdtContent", namespaces=DocxConverter._BLIP_NAMESPACES
+                )
+                if sdt_content is not None:
+                    # Iterate paragraphs, runs, or text inside <w:sdtContent>.
+                    paragraphs = sdt_content.findall(
+                        ".//w:p", namespaces=DocxConverter._BLIP_NAMESPACES
+                    )
+                    for p in paragraphs:
+                        self._handle_text_elements(p)
             # 检查文本段落元素
             elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
