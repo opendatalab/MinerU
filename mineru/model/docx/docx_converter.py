@@ -150,7 +150,10 @@ class DocxConverter:
         return f"<hyperlink><text>{text}</text><url>{hyperlink_str}</url></hyperlink>"
 
     def _build_text_from_elements(
-        self, paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]]
+        self,
+        paragraph_elements: list[
+            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]
+        ],
     ) -> str:
         """
         从 paragraph_elements 重组文本，应用超链接格式。
@@ -170,7 +173,9 @@ class DocxConverter:
 
     def _build_text_with_equations_and_hyperlinks(
         self,
-        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]],
+        paragraph_elements: list[
+            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]
+        ],
         text_with_equations: str,
         equations: list,
     ) -> str:
@@ -278,6 +283,8 @@ class DocxConverter:
             drawingml_els = element.findall(
                 ".//w:drawing", namespaces=DocxConverter._BLIP_NAMESPACES
             )
+            if drawingml_els:
+                self._handle_drawingml(drawingml_els)
 
             # 检查文本框内容（支持多种文本框格式）
             # 仅当该元素之前未被处理时才处理
@@ -341,9 +348,6 @@ class DocxConverter:
             elif drawing_blip:
                 # 处理图片元素
                 self._handle_pictures(drawing_blip)
-            # 检查DrawingML元素
-            elif drawingml_els:
-                self._handle_drawingml(drawingml_els)
             # 检查 sdt 元素
             elif tag_name == "sdt":
                 sdt_content = element.find(
