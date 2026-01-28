@@ -24,11 +24,6 @@ from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_reader import image_to_b64str
 
-ACCEPTED_MIME_TYPE_PREFIXES = [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]
-
-
 class DocxConverter:
     _BLIP_NAMESPACES: Final = {
         "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
