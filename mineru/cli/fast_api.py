@@ -94,7 +94,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 def cleanup_file(file_path: str) -> None:
-    """清理临时 zip 文件"""
+    """清理临时文件或目录"""
     try:
         if os.path.exists(file_path):
             if os.path.isfile(file_path):
