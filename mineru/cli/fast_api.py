@@ -4,7 +4,6 @@ import os
 import re
 import tempfile
 import asyncio
-import fastapi
 import uvicorn
 import click
 import zipfile
