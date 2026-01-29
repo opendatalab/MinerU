@@ -86,7 +86,11 @@ docker run -u root --name mineru_docker --privileged=true \
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
 
 >[!NOTE]
-> 由于310p加速卡不支持bf16精度，因此在使用该加速卡时，执行任意与`vllm`相关命令需追加`--enforce-eager --dtype float16`参数。
+> 由于310p加速卡不支持图模式与bf16精度，因此在使用该加速卡时，执行任意与`vllm`相关命令需追加`--enforce-eager --dtype float16`参数。
+> 例如:
+> ```bash
+> mineru-openai-server --port 30000 --enforce-eager --dtype float16
+> ```   
 
 ## 4. 注意事项
 
