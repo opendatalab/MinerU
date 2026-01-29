@@ -4,9 +4,11 @@ import os
 import re
 import tempfile
 import asyncio
+import fastapi
 import uvicorn
 import click
 import zipfile
+import shutil
 from pathlib import Path
 import glob
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
@@ -15,6 +17,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from starlette.background import BackgroundTask
 from typing import List, Optional
 from loguru import logger
+from fastapi import BackgroundTasks
 
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
@@ -30,23 +33,29 @@ from mineru.version import __version__
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
 
+
 # 并发控制依赖函数
 async def limit_concurrency():
     if _request_semaphore is not None:
         if _request_semaphore.locked():
             raise HTTPException(
                 status_code=503,
-                detail=f"Server is at maximum capacity: {os.getenv('MINERU_API_MAX_CONCURRENT_REQUESTS', 'unset')}. Please try again later."
+                detail=f"Server is at maximum capacity: {os.getenv('MINERU_API_MAX_CONCURRENT_REQUESTS', 'unset')}. Please try again later.",
             )
         async with _request_semaphore:
             yield
     else:
         yield
 
+
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are enabled.
     # To disable the FastAPI docs and schema endpoints, set the environment variable MINERU_API_ENABLE_FASTAPI_DOCS=0.
-    enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in ("1", "true", "yes")
+    enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
@@ -56,7 +65,9 @@ def create_app():
     # 初始化并发控制器：从环境变量MINERU_API_MAX_CONCURRENT_REQUESTS读取
     global _request_semaphore
     try:
-        max_concurrent_requests = int(os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "0"))
+        max_concurrent_requests = int(
+            os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "0")
+        )
     except ValueError:
         max_concurrent_requests = 0
 
@@ -67,6 +78,7 @@ def create_app():
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     return app
 
+
 app = create_app()
 
 
@@ -76,19 +88,24 @@ def sanitize_filename(filename: str) -> str:
     移除路径遍历字符, 保留 Unicode 字母、数字、._-
     禁止隐藏文件
     """
-    sanitized = re.sub(r'[/\\\.]{2,}|[/\\]', '', filename)
-    sanitized = re.sub(r'[^\w.-]', '_', sanitized, flags=re.UNICODE)
-    if sanitized.startswith('.'):
-        sanitized = '_' + sanitized[1:]
-    return sanitized or 'unnamed'
+    sanitized = re.sub(r"[/\\\.]{2,}|[/\\]", "", filename)
+    sanitized = re.sub(r"[^\w.-]", "_", sanitized, flags=re.UNICODE)
+    if sanitized.startswith("."):
+        sanitized = "_" + sanitized[1:]
+    return sanitized or "unnamed"
+
 
 def cleanup_file(file_path: str) -> None:
     """清理临时 zip 文件"""
     try:
         if os.path.exists(file_path):
-            os.remove(file_path)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
     except Exception as e:
         logger.warning(f"fail clean file {file_path}: {e}")
+
 
 def encode_image(image_path: str) -> str:
     """Encode image using base64"""
@@ -96,7 +113,9 @@ def encode_image(image_path: str) -> str:
         return b64encode(f.read()).decode()
 
 
-def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str) -> Optional[str]:
+def get_infer_result(
+    file_suffix_identifier: str, pdf_name: str, parse_dir: str
+) -> Optional[str]:
     """从结果文件中读取推理结果"""
     result_file_path = os.path.join(parse_dir, f"{pdf_name}{file_suffix_identifier}")
     if os.path.exists(result_file_path):
@@ -107,11 +126,13 @@ def get_infer_result(file_suffix_identifier: str, pdf_name: str, parse_dir: str)
 
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
-        files: List[UploadFile] = File(..., description="Upload pdf or image files for parsing"),
-        output_dir: str = Form("./output", description="Output local directory"),
-        lang_list: List[str] = Form(
-            ["ch"],
-            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
+    files: List[UploadFile] = File(
+        ..., description="Upload pdf or image files for parsing"
+    ),
+    output_dir: str = Form("./output", description="Output local directory"),
+    lang_list: List[str] = Form(
+        ["ch"],
+        description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
 - ch: Chinese, English, Chinese Traditional.
 - ch_lite: Chinese, English, Chinese Traditional, Japanese.
 - ch_server: Chinese, English, Chinese Traditional, Japanese.
@@ -129,41 +150,55 @@ async def parse_pdf(
 - east_slavic: Russian, Belarusian, Ukrainian, English.
 - cyrillic: Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English.
 - devanagari: Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English.
-"""
-        ),
-        backend: str = Form(
-            "hybrid-auto-engine",
-            description="""The backend for parsing:
+""",
+    ),
+    backend: str = Form(
+        "hybrid-auto-engine",
+        description="""The backend for parsing:
 - pipeline: More general, supports multiple languages, hallucination-free.
 - vlm-auto-engine: High accuracy via local computing power, supports Chinese and English documents only.
 - vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
 - hybrid-auto-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
-- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages."""
-        ),
-        parse_method: str = Form(
-            "auto",
-            description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
+- hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages.""",
+    ),
+    parse_method: str = Form(
+        "auto",
+        description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
 - auto: Automatically determine the method based on the file type
 - txt: Use text extraction method
 - ocr: Use OCR method for image-based PDFs
-"""
-        ),
-        formula_enable: bool = Form(True, description="Enable formula parsing."),
-        table_enable: bool = Form(True, description="Enable table parsing."),
-        server_url: Optional[str] = Form(
-            None,
-            description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000"
-        ),
-        return_md: bool = Form(True, description="Return markdown content in response"),
-        return_middle_json: bool = Form(False, description="Return middle JSON in response"),
-        return_model_output: bool = Form(False, description="Return model output JSON in response"),
-        return_content_list: bool = Form(False, description="Return content list JSON in response"),
-        return_images: bool = Form(False, description="Return extracted images in response"),
-        response_format_zip: bool = Form(False, description="Return results as a ZIP file instead of JSON"),
-        start_page_id: int = Form(0, description="The starting page for PDF parsing, beginning from 0"),
-        end_page_id: int = Form(99999, description="The ending page for PDF parsing, beginning from 0"),
+""",
+    ),
+    formula_enable: bool = Form(True, description="Enable formula parsing."),
+    table_enable: bool = Form(True, description="Enable table parsing."),
+    server_url: Optional[str] = Form(
+        None,
+        description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000",
+    ),
+    return_md: bool = Form(True, description="Return markdown content in response"),
+    return_middle_json: bool = Form(
+        False, description="Return middle JSON in response"
+    ),
+    return_model_output: bool = Form(
+        False, description="Return model output JSON in response"
+    ),
+    return_content_list: bool = Form(
+        False, description="Return content list JSON in response"
+    ),
+    return_images: bool = Form(
+        False, description="Return extracted images in response"
+    ),
+    response_format_zip: bool = Form(
+        False, description="Return results as a ZIP file instead of JSON"
+    ),
+    start_page_id: int = Form(
+        0, description="The starting page for PDF parsing, beginning from 0"
+    ),
+    end_page_id: int = Form(
+        99999, description="The ending page for PDF parsing, beginning from 0"
+    ),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
-
     # 获取命令行配置参数
     config = getattr(app.state, "config", {})
 
@@ -171,6 +206,7 @@ async def parse_pdf(
         # 创建唯一的输出目录
         unique_dir = os.path.join(output_dir, str(uuid.uuid4()))
         os.makedirs(unique_dir, exist_ok=True)
+        background_tasks.add_task(cleanup_file, unique_dir)
 
         # 处理上传的PDF文件
         pdf_file_names = []
@@ -196,20 +232,21 @@ async def parse_pdf(
                 except Exception as e:
                     return JSONResponse(
                         status_code=400,
-                        content={"error": f"Failed to load file: {str(e)}"}
+                        content={"error": f"Failed to load file: {str(e)}"},
                     )
             else:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"Unsupported file type: {file_suffix}"}
+                    content={"error": f"Unsupported file type: {file_suffix}"},
                 )
-
 
         # 设置语言列表，确保与文件数量一致
         actual_lang_list = lang_list
         if len(actual_lang_list) != len(pdf_file_names):
             # 如果语言列表长度不匹配，使用第一个语言或默认"ch"
-            actual_lang_list = [actual_lang_list[0] if actual_lang_list else "ch"] * len(pdf_file_names)
+            actual_lang_list = [
+                actual_lang_list[0] if actual_lang_list else "ch"
+            ] * len(pdf_file_names)
 
         # 调用异步处理函数
         await aio_do_parse(
@@ -231,13 +268,15 @@ async def parse_pdf(
             f_dump_content_list=return_content_list,
             start_page_id=start_page_id,
             end_page_id=end_page_id,
-            **config
+            **config,
         )
 
         # 根据 response_format_zip 决定返回类型
         if response_format_zip:
             zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="mineru_results_")
             os.close(zip_fd)
+            background_tasks.add_task(cleanup_file, zip_path)
+
             with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 for pdf_name in pdf_file_names:
                     safe_pdf_name = sanitize_filename(pdf_name)
@@ -247,7 +286,9 @@ async def parse_pdf(
                     elif backend.startswith("vlm"):
                         parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
                     elif backend.startswith("hybrid"):
-                        parse_dir = os.path.join(unique_dir, pdf_name, f"hybrid_{parse_method}")
+                        parse_dir = os.path.join(
+                            unique_dir, pdf_name, f"hybrid_{parse_method}"
+                        )
 
                     if not os.path.exists(parse_dir):
                         continue
@@ -256,35 +297,63 @@ async def parse_pdf(
                     if return_md:
                         path = os.path.join(parse_dir, f"{pdf_name}.md")
                         if os.path.exists(path):
-                            zf.write(path, arcname=os.path.join(safe_pdf_name, f"{safe_pdf_name}.md"))
+                            zf.write(
+                                path,
+                                arcname=os.path.join(
+                                    safe_pdf_name, f"{safe_pdf_name}.md"
+                                ),
+                            )
 
                     if return_middle_json:
                         path = os.path.join(parse_dir, f"{pdf_name}_middle.json")
                         if os.path.exists(path):
-                            zf.write(path, arcname=os.path.join(safe_pdf_name, f"{safe_pdf_name}_middle.json"))
+                            zf.write(
+                                path,
+                                arcname=os.path.join(
+                                    safe_pdf_name, f"{safe_pdf_name}_middle.json"
+                                ),
+                            )
 
                     if return_model_output:
                         path = os.path.join(parse_dir, f"{pdf_name}_model.json")
                         if os.path.exists(path):
-                            zf.write(path, arcname=os.path.join(safe_pdf_name, os.path.basename(path)))
+                            zf.write(
+                                path,
+                                arcname=os.path.join(
+                                    safe_pdf_name, os.path.basename(path)
+                                ),
+                            )
 
                     if return_content_list:
                         path = os.path.join(parse_dir, f"{pdf_name}_content_list.json")
                         if os.path.exists(path):
-                            zf.write(path, arcname=os.path.join(safe_pdf_name, f"{safe_pdf_name}_content_list.json"))
+                            zf.write(
+                                path,
+                                arcname=os.path.join(
+                                    safe_pdf_name, f"{safe_pdf_name}_content_list.json"
+                                ),
+                            )
 
                     # 写入图片
                     if return_images:
                         images_dir = os.path.join(parse_dir, "images")
-                        image_paths = glob.glob(os.path.join(glob.escape(images_dir), "*.jpg"))
+                        image_paths = glob.glob(
+                            os.path.join(glob.escape(images_dir), "*.jpg")
+                        )
                         for image_path in image_paths:
-                            zf.write(image_path, arcname=os.path.join(safe_pdf_name, "images", os.path.basename(image_path)))
+                            zf.write(
+                                image_path,
+                                arcname=os.path.join(
+                                    safe_pdf_name,
+                                    "images",
+                                    os.path.basename(image_path),
+                                ),
+                            )
 
             return FileResponse(
                 path=zip_path,
                 media_type="application/zip",
                 filename="results.zip",
-                background=BackgroundTask(cleanup_file, zip_path)
             )
         else:
             # 构建 JSON 结果
@@ -298,17 +367,27 @@ async def parse_pdf(
                 elif backend.startswith("vlm"):
                     parse_dir = os.path.join(unique_dir, pdf_name, "vlm")
                 elif backend.startswith("hybrid"):
-                    parse_dir = os.path.join(unique_dir, pdf_name, f"hybrid_{parse_method}")
+                    parse_dir = os.path.join(
+                        unique_dir, pdf_name, f"hybrid_{parse_method}"
+                    )
 
                 if os.path.exists(parse_dir):
                     if return_md:
-                        data["md_content"] = get_infer_result(".md", pdf_name, parse_dir)
+                        data["md_content"] = get_infer_result(
+                            ".md", pdf_name, parse_dir
+                        )
                     if return_middle_json:
-                        data["middle_json"] = get_infer_result("_middle.json", pdf_name, parse_dir)
+                        data["middle_json"] = get_infer_result(
+                            "_middle.json", pdf_name, parse_dir
+                        )
                     if return_model_output:
-                        data["model_output"] = get_infer_result("_model.json", pdf_name, parse_dir)
+                        data["model_output"] = get_infer_result(
+                            "_model.json", pdf_name, parse_dir
+                        )
                     if return_content_list:
-                        data["content_list"] = get_infer_result("_content_list.json", pdf_name, parse_dir)
+                        data["content_list"] = get_infer_result(
+                            "_content_list.json", pdf_name, parse_dir
+                        )
                     if return_images:
                         images_dir = os.path.join(parse_dir, "images")
                         safe_pattern = os.path.join(glob.escape(images_dir), "*.jpg")
@@ -325,24 +404,24 @@ async def parse_pdf(
                 content={
                     "backend": backend,
                     "version": __version__,
-                    "results": result_dict
-                }
+                    "results": result_dict,
+                },
             )
     except Exception as e:
         logger.exception(e)
         return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to process file: {str(e)}"}
+            status_code=500, content={"error": f"Failed to process file: {str(e)}"}
         )
 
 
-@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.command(
+    context_settings=dict(ignore_unknown_options=True, allow_extra_args=True)
+)
 @click.pass_context
-@click.option('--host', default='127.0.0.1', help='Server host (default: 127.0.0.1)')
-@click.option('--port', default=8000, type=int, help='Server port (default: 8000)')
-@click.option('--reload', is_flag=True, help='Enable auto-reload (development mode)')
+@click.option("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+@click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
+@click.option("--reload", is_flag=True, help="Enable auto-reload (development mode)")
 def main(ctx, host, port, reload, **kwargs):
-
     kwargs.update(arg_parse(ctx))
 
     # 将配置参数存储到应用状态中
@@ -359,12 +438,7 @@ def main(ctx, host, port, reload, **kwargs):
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
     print(f"API documentation: http://{host}:{port}/docs")
 
-    uvicorn.run(
-        "mineru.cli.fast_api:app",
-        host=host,
-        port=port,
-        reload=reload
-    )
+    uvicorn.run("mineru.cli.fast_api:app", host=host, port=port, reload=reload)
 
 
 if __name__ == "__main__":
