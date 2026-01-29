@@ -195,7 +195,7 @@ async def parse_pdf(
     end_page_id: int = Form(
         99999, description="The ending page for PDF parsing, beginning from 0"
     ),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    background_tasks: BackgroundTasks,
 ):
     # 获取命令行配置参数
     config = getattr(app.state, "config", {})
