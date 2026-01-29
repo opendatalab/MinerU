@@ -13,7 +13,6 @@ import glob
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
-from starlette.background import BackgroundTask
 from typing import List, Optional
 from loguru import logger
 from fastapi import BackgroundTasks
