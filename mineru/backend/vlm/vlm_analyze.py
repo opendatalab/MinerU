@@ -148,15 +148,16 @@ class ModelSingleton:
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
 
+
                     # musa vllm v1 引擎特殊配置
                     # device = get_device()
-                    # if device_type.startswith("musa"):
+                    # if device.startswith("musa"):
                     #     import torch
                     #     if torch.musa.is_available():
-                    #         compilation_config = {
-                    #             "cudagraph_capture_sizes": [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 24, 28, 30],
-                    #             "simple_cuda_graph": True
-                    #         }
+                    #         compilation_config = CompilationConfig(
+                    #             cudagraph_capture_sizes=[1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 24, 28, 30],
+                    #             simple_cuda_graph=True
+                    #         )
                     #         block_size = 32
                     #         kwargs["compilation_config"] = compilation_config
                     #         kwargs["block_size"] = block_size
@@ -164,10 +165,10 @@ class ModelSingleton:
                     # corex vllm v1 引擎特殊配置
                     device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
                     if device_type.lower() == "corex":
-                        compilation_config = {
-                            "cudagraph_mode": "FULL_DECODE_ONLY",
-                            "level": 0
-                        }
+                        compilation_config = CompilationConfig(
+                            cudagraph_mode="FULL_DECODE_ONLY",
+                            level=0
+                        )
                         kwargs["compilation_config"] = compilation_config
 
                     if "compilation_config" in kwargs:
