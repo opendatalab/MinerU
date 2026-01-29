@@ -16,17 +16,17 @@ from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 from loguru import logger
 from fastapi import BackgroundTasks
-
-log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
-logger.remove()  # 移除默认handler
-logger.add(sys.stderr, level=log_level)  # 添加新handler
-
 from base64 import b64encode
 
 from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
+
+log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
+logger.remove()  # 移除默认handler
+logger.add(sys.stderr, level=log_level)  # 添加新handler
+
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
@@ -124,6 +124,7 @@ def get_infer_result(
 
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(
         ..., description="Upload pdf or image files for parsing"
     ),
@@ -195,7 +196,6 @@ async def parse_pdf(
     end_page_id: int = Form(
         99999, description="The ending page for PDF parsing, beginning from 0"
     ),
-    background_tasks: BackgroundTasks,
 ):
     # 获取命令行配置参数
     config = getattr(app.state, "config", {})
