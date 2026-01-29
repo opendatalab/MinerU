@@ -1,5 +1,5 @@
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + iluvatar GPU.
-FROM
+FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/corex:4.4.0_torch2.7.1_vllm0.11.2_py3.10
 
 
 # Install Noto fonts for Chinese characters
