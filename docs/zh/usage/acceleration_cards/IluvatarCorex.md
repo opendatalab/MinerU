@@ -3,7 +3,7 @@
 ```
 os: Ubuntu 22.04.5 LTS  
 cpu: Intel x86-64
-gcu: Iluvatar BI-V150
+gpu: Iluvatar BI-V150
 driver: 4.4.0
 docker: 28.1.1
 ```
