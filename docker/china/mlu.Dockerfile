@@ -22,7 +22,7 @@ RUN /bin/bash -c '\
         source /torch/venv3/pytorch_infer/bin/activate; \
     fi && \
     python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install "mineru[core]>=2.7.3" \
+    python3 -m pip install "mineru[core]>=2.7.4" \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \
