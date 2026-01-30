@@ -39,9 +39,6 @@ class PptxConverter:
             self.pages.pop()
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
-        slide_width = pptx_obj.slide_width
-        slide_height = pptx_obj.slide_height
-
         # 遍历每一张幻灯片
         for _, slide in enumerate(pptx_obj.slides):
 
