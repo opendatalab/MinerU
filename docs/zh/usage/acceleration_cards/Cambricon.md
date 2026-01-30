@@ -62,12 +62,15 @@ docker run --name mineru_docker \
 
 >[!TIP]
 > 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用`vllm`,请执行以下操作：
+>
 > - 替换上述命令中的`mineru:mlu-lmdeploy-latest`为`mineru:mlu-vllm-latest`
+>
 > - 进入容器后，通过以下命令切换venv环境：
 >   ```bash
 >   source /torch/venv3/pytorch_infer/bin/activate
 >   ```
->   切换成功后，您可以在命令行前看到`(pytorch_infer)`的标识，这表示您已成功进入`vllm`的虚拟环境。
+>
+> - 切换成功后，您可以在命令行前看到`(pytorch_infer)`的标识，这表示您已成功进入`vllm`的虚拟环境。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
