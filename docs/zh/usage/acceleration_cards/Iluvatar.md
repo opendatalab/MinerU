@@ -47,6 +47,9 @@ docker run --name mineru_docker \
 
 ## 4. 注意事项
 
+>[!TIP]
+>目前Iluvatar方案使用vllm作为推理引擎时，可能出现服务停止后显存无法正常释放的问题，如果遇到该问题，请重启Docker容器以释放显存。
+
 不同环境下，MinerU对Iluvatar加速卡的支持情况如下表所示：
 
 <table border="1">
