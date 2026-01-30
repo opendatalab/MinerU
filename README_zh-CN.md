@@ -45,15 +45,20 @@
 
 # 更新记录
 
-- 2026/01/23 2.7.2 发布
-  - 新增国产算力平台海光、燧原、摩尔线程的适配支持，目前已由官方适配并支持的国产算力平台包括:
+- 2026/01/30 2.7.4 发布
+  - 新增国产算力平台天数智芯、寒武纪的适配支持，目前已由官方适配并支持的国产算力平台包括:
     - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
     - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
     - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
     - [海光 Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [燧原 Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
     - [摩尔线程 MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+    - [天数智芯 IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
+    - [寒武纪 Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
   - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
+
+- 2026/01/23 2.7.2 发布
+  - 新增国产算力平台海光、燧原、摩尔线程的适配支持
   - 跨页表合并优化，提升合并成功率与合并效果
 
 - 2026/01/06 2.7.1 发布
