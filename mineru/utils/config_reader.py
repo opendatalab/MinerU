@@ -94,7 +94,11 @@ def get_device():
                         if torch.musa.is_available():
                             return "musa"
                     except Exception as e:
-                        pass
+                        try:
+                            if torch.mlu.is_available():
+                                return "mlu"
+                        except Exception as e:
+                            pass
         return "cpu"
 
 

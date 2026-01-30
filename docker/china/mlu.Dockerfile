@@ -1,0 +1,28 @@
+# Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + Cambricon MLU.
+FROM
+
+
+# Install Noto fonts for Chinese characters
+RUN apt-get update && \
+    apt-get install -y \
+        fonts-noto-core \
+        fonts-noto-cjk \
+        fontconfig && \
+    fc-cache -fv && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install mineru latest
+RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
+    python3 -m pip install 'mineru[core]>=2.7.3' \
+                            numpy==1.26.4 \
+                            opencv-python==4.11.0.86 \
+                            accelerate==1.2.0 \
+                            -i https://mirrors.aliyun.com/pypi/simple && \
+    python3 -m pip cache purge
+
+# Download models and update the configuration file
+RUN /bin/bash -c "mineru-models-download -s modelscope -m all"
+
+# Set the entry point to activate the virtual environment and run the command line tool
+ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

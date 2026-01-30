@@ -15,9 +15,10 @@
     * [海光 Hygon](acceleration_cards/Hygon.md) 🚀
     * [燧原 Enflame](acceleration_cards/Enflame.md) 🚀
     * [摩尔线程 MooreThreads](acceleration_cards/MooreThreads.md) 🚀
+    * [天数智芯 IluvatarCorex](acceleration_cards/IluvatarCorex.md) 🚀
+    * [寒武纪 Cambricon](acceleration_cards/Cambricon.md) 🚀
     * [AMD](acceleration_cards/AMD.md)  [#3662](https://github.com/opendatalab/MinerU/discussions/3662) ❤️
     * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) [#3767](https://github.com/opendatalab/MinerU/pull/3767) ❤️
-    * [寒武纪 Cambricon](acceleration_cards/Cambricon.md) [#4004](https://github.com/opendatalab/MinerU/discussions/4004) ❤️
     * [瀚博 VastAI](acceleration_cards/VastAI.md) [#4237](https://github.com/opendatalab/MinerU/discussions/4237)❤️
 - 插件与生态
     * [Cherry Studio](plugin/Cherry_Studio.md)
