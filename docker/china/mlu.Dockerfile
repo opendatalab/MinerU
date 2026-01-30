@@ -3,7 +3,7 @@
 FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/camb:qwen_vl2.5
 ARG BACKEND=lmdeploy
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + Cambricon MLU.
-# FROM cambricon-base/pytorch:v25.04.0-torch2.6.0-torchmlu1.26.1-ubuntu22.04-py310
+# FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/mlu:vllm0.8.3-torch2.6.0-torchmlu1.26.1-ubuntu22.04-py310
 # ARG BACKEND=vllm
 
 # Install Noto fonts for Chinese characters

@@ -11,7 +11,7 @@ docker: 28.3.0
 ## 2. 环境准备
 
 >[!NOTE]
->Ascend加速卡支持使用`vllm`或`lmdeploy`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
+>Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
 ### 2.1 使用 Dockerfile 构建镜像 （lmdeploy）
 
@@ -63,10 +63,11 @@ docker run --name mineru_docker \
 >[!TIP]
 > 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用`vllm`,请执行以下操作：
 > - 替换上述命令中的`mineru:mlu-lmdeploy-latest`为`mineru:mlu-vllm-latest`
-> - 进入容器后，切换venv环境：
+> - 进入容器后，通过以下命令切换venv环境：
 >   ```bash
 >   source /torch/venv3/pytorch_infer/bin/activate
 >   ```
+> - 切换成功后，您可以在命令行前看到`(pytorch_infer)`的标识，这表示您已成功进入`vllm`的虚拟环境。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
@@ -82,7 +83,8 @@ docker run --name mineru_docker \
 不同环境下，MinerU对Cambricon加速卡的支持情况如下表所示：
 
 >[!TIP]
-> 下表中`lmdeploy`黄灯问题为不能批量输出文件夹，单文件输入正常，`vllm`黄灯问题为在精度未对齐，在部分场景下可能出现预期外结果。
+> - `lmdeploy`黄灯问题为不能批量输出文件夹，单文件输入正常
+> - `vllm`黄灯问题为在精度未对齐，在部分场景下可能出现预期外结果。
 
 <table border="1">
   <thead>
