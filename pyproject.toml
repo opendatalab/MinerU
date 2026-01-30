@@ -42,6 +42,7 @@ dependencies = [
     "mineru-vl-utils>=0.1.19.1,<1",
     "qwen-vl-utils>=0.0.14,<1",
     "python-docx>=1.2.0,<2",
+    'pypptx-with-oxml>=1.0.3,<2',
     "mammoth>=1.11.0,<2",
     "pylatexenc>=2.10,<3",
     "lxml>=4.0.0,<7.0.0",
