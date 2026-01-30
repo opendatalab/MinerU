@@ -11,7 +11,7 @@ docker: 28.3.0
 ## 2. 环境准备
 
 >[!NOTE]
->Ascend加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
+>Cambricon加速卡支持使用`lmdeploy`或`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用其中之一:
 
 ### 2.1 使用 Dockerfile 构建镜像 （lmdeploy）
 
