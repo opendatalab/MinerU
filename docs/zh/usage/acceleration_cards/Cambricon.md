@@ -3,7 +3,7 @@
 ```
 os: Ubuntu 22.04.5 LTS  
 cpu: Hygon Hygon C86 7490
-gcu: MLU590-M9D
+mlu: MLU590-M9D
 driver: v6.2.11
 docker: 28.3.0
 ```
