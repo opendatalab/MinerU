@@ -75,7 +75,7 @@ docker run --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -113,7 +113,7 @@ docker run --name mineru_docker \
     </tr>
     <tr>
       <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🟢</td>
+      <td>🔴</td>
     </tr>
   </tbody>
 </table>
@@ -125,3 +125,4 @@ docker run --name mineru_docker \
 
 >[!TIP]
 >Cambricon加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+>将环境变量`CUDA_VISIBLE_DEVICES`替换为`MLU_VISIBLE_DEVICES`即可。 
