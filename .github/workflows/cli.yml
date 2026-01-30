@@ -20,13 +20,13 @@ jobs:
 
     steps:
       - name: PDF cli
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: dev
           fetch-depth: 2
 
       - name: install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: install&test
         run: |

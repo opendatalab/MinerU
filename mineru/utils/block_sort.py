@@ -198,6 +198,10 @@ def model_init(model_name: str):
         if hasattr(torch, 'npu') and torch.npu.is_available():
             if torch.npu.is_bf16_supported():
                 bf_16_support = True
+    elif device_name.startswith("mlu"):
+        if hasattr(torch, 'mlu') and torch.mlu.is_available():
+            if torch.mlu.is_bf16_supported():
+                bf_16_support = True
 
     if model_name == 'layoutreader':
         # 检测modelscope的缓存目录是否存在

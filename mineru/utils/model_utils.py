@@ -429,6 +429,9 @@ def clean_memory(device='cuda'):
     elif str(device).startswith("musa"):
         if torch.musa.is_available():
             torch.musa.empty_cache()
+    elif str(device).startswith("mlu"):
+        if torch.mlu.is_available():
+            torch.mlu.empty_cache()
     gc.collect()
 
 
@@ -470,5 +473,8 @@ def get_vram(device) -> int:
     elif str(device).startswith("musa"):
         if torch.musa.is_available():
             total_memory = round(torch.musa.get_device_properties(device).total_memory / (1024 ** 3))  # 转为 GB
+    elif str(device).startswith("mlu"):
+        if torch.mlu.is_available():
+            total_memory = round(torch.mlu.get_device_properties(device).total_memory / (1024 ** 3))  # 转为 GB
 
     return total_memory

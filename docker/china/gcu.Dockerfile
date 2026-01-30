@@ -2,7 +2,7 @@
 FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/gcu:docker_images_topsrider_i3x_3.6.20260106_vllm0.11_pytorch2.8.0
 
 
-# Install libgl for opencv support & Noto fonts for Chinese characters
+# Install Noto fonts for Chinese characters
 RUN echo 'deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse\n\
 deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse\n\
 deb http://mirrors.aliyun.com/ubuntu/ noble-backports main restricted universe multiverse\n\
