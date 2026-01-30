@@ -45,7 +45,7 @@
 
 # Changelog
 
-- 2026/02/13 2.7.4 Release
+- 2026/01/30 2.7.4 Release
   - Added support for domestic computing platforms IluvatarCorex and Cambricon. Currently, the officially supported domestic computing platforms include:
     - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/) 
     - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/) 
