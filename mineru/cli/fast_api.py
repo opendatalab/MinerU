@@ -197,6 +197,27 @@ async def parse_pdf(
         99999, description="The ending page for PDF parsing, beginning from 0"
     ),
 ):
+    # 参数验证
+    if start_page_id < 0:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "start_page_id must be non-negative (>= 0)"},
+        )
+    
+    if end_page_id < 0:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "end_page_id must be non-negative (>= 0)"},
+        )
+    
+    if start_page_id > end_page_id:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": f"start_page_id ({start_page_id}) must be less than or equal to end_page_id ({end_page_id})"
+            },
+        )
+
     # 获取命令行配置参数
     config = getattr(app.state, "config", {})
 
