@@ -72,7 +72,7 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_MODEL_SOURCE`：
     * 用于指定模型来源
     * 支持`huggingface/modelscope/local`
-    * 默认为`huggingface`可通过环境变量切换为`modelscope`或使用本地模型。
+    * 默认为`huggingface`可通过环境变量切换为`modelscope`使用国内加速源或切换至`local`以使用本地模型。
   
 - `MINERU_TOOLS_CONFIG_JSON`：
     * 用于指定配置文件路径
@@ -98,6 +98,12 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
 - `MINERU_PDF_RENDER_TIMEOUT`：
     * 用于设置将PDF渲染为图片的超时时间（秒）
     * 默认为`300`秒，可通过环境变量设置为其他值以调整渲染图片的超时时间。
+    * 仅在linux和macOS系统中生效。
+
+- `MINERU_PDF_RENDER_THREADS`：
+    * 用于设置将PDF渲染为图片时使用的线程数
+    * 默认为`4`，可通过环境变量设置为其他值以调整渲染图片时的线程数。
+    * 仅在linux和macOS系统中生效。
 
 - `MINERU_INTRA_OP_NUM_THREADS`：
     * 用于设置onnx模型的intra_op线程数，影响单个算子的计算速度
