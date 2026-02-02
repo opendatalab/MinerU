@@ -77,7 +77,8 @@ Here are the environment variables and their descriptions:
 - `MINERU_MODEL_SOURCE`: 
     * Used to specify model source
     * supports `huggingface/modelscope/local`
-    * defaults to `huggingface`, can be switched to `modelscope` or local models through environment variables.
+    * Default is `huggingface`; you can switch via an environment variable to `modelscope` to use a domestic acceleration mirror, or switch to `local` to use a local model.
+
   
 - `MINERU_TOOLS_CONFIG_JSON`: 
     * Used to specify configuration file path
@@ -101,8 +102,14 @@ Here are the environment variables and their descriptions:
     * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
 
 - `MINERU_PDF_RENDER_TIMEOUT`:
-    * Used to set the timeout period (in seconds) for rendering PDF to images
-    * Default is `300` seconds, can be set to other values via environment variable to adjust the image rendering timeout.
+    * Used to set the timeout (in seconds) for rendering PDFs to images.
+    * Default is `300` seconds; you can set a different value via an environment variable to adjust the rendering timeout.
+    * Only effective on Linux and macOS systems.
+
+- `MINERU_PDF_RENDER_THREADS`:
+    * Used to set the number of threads used when rendering PDFs to images.
+    * Default is `4`; you can set a different value via an environment variable to adjust the number of threads for image rendering.
+    * Only effective on Linux and macOS systems.
 
 - `MINERU_INTRA_OP_NUM_THREADS`:
     * Used to set the intra_op thread count for ONNX models, affects the computation speed of individual operators
