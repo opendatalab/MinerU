@@ -11,6 +11,10 @@ def get_load_images_timeout() -> int:
     return get_value_from_string(env_value, 300)
 
 
+def get_load_images_threads() -> int:
+    env_value = os.getenv('MINERU_PDF_RENDER_THREADS', None)
+    return get_value_from_string(env_value, 4)
+
 def get_value_from_string(env_value: str, default_value: int) -> int:
     if env_value is not None:
         try:
