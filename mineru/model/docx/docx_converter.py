@@ -24,11 +24,6 @@ from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_reader import image_to_b64str
 
-ACCEPTED_MIME_TYPE_PREFIXES = [
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]
-
-
 class DocxConverter:
     _BLIP_NAMESPACES: Final = {
         "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -70,8 +65,6 @@ class DocxConverter:
 
         self.file_stream = None
         self.docx_obj = None
-        self.max_levels: int = 10  # 文档层次结构的最大层级数
-        self.parents: dict = {}  # 父级节点映射
         self.pages = []
         self.cur_page = []
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
