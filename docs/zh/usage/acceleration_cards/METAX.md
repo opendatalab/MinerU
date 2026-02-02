@@ -148,4 +148,5 @@ docker run --ipc host \
 🔴: 不支持，无法运行，或精度存在较大差异  
 
 >[!TIP]
->MACA加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明。
+> - MACA加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明。
+> - 在METAX平台可以通过`mx-smi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。

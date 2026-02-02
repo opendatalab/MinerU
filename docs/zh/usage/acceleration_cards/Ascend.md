@@ -175,4 +175,5 @@ docker run -u root --name mineru_docker --privileged=true \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)
+> - NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)
+> - 在Ascend平台可以通过`npu-smi info`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
