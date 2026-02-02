@@ -1,6 +1,6 @@
 # 基础镜像配置 vLLM 或 LMDeploy ，请根据实际需要选择其中一个，要求 amd64(x86-64) CPU + Cambricon MLU.
 # Base image containing the LMDEPLOY inference environment, requiring amd64(x86-64) CPU + Cambricon MLU.
-FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/camb:qwen_vl2.5
+FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/camb:qwen2.5_vl
 ARG BACKEND=lmdeploy
 # Base image containing the vLLM inference environment, requiring amd64(x86-64) CPU + Cambricon MLU.
 # FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/mlu:vllm0.8.3-torch2.6.0-torchmlu1.26.1-ubuntu22.04-py310

@@ -105,5 +105,6 @@ docker run -u root --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->GCU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+> - GCU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
 >将环境变量`CUDA_VISIBLE_DEVICES`替换为`TOPS_VISIBLE_DEVICES`即可。 
+> - 在Enflame平台可以通过`efsmi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。

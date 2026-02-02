@@ -2,7 +2,7 @@
 以下为本指南测试使用的平台信息，供参考：
 ```
 os: Ubuntu 22.04.3 LTS  
-cpu: Hygon Hygon C86-4G(x86-64)
+cpu: Hygon C86-4G(x86-64)
 dcu: BW200
 driver: 6.3.13-V1.12.0a
 docker: 20.10.24
@@ -112,4 +112,5 @@ docker run -u root --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->DCU加速卡指定可用加速卡的方式与AMD GPU类似，请参考[GPU isolation techniques](https://rocm.docs.amd.com/en/docs-6.2.4/conceptual/gpu-isolation.html)
+> - DCU加速卡指定可用加速卡的方式与AMD GPU类似，请参考[GPU isolation techniques](https://rocm.docs.amd.com/en/docs-6.2.4/conceptual/gpu-isolation.html)
+> - 在Hygon平台可以通过`hy-smi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。

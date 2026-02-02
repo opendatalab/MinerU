@@ -36,24 +36,11 @@ docker run --name mineru_docker \
    --privileged \
    --ipc=host \
    --network=host \
-   --cap-add SYS_PTRACE \
-   --device=/dev/mem \
-   --device=/dev/dri \
-   --device=/dev/infiniband \
-   --device=/dev/cambricon_ctl \
-   --device=/dev/cambricon_dev0 \
-   --device=/dev/cambricon_dev1 \
-   --device=/dev/cambricon_dev2 \
-   --device=/dev/cambricon_dev3 \
-   --device=/dev/cambricon_dev4 \
-   --device=/dev/cambricon_dev5 \
-   --device=/dev/cambricon_dev6 \
-   --device=/dev/cambricon_dev7 \
-   --group-add video \
    --shm-size=400g \
    --ulimit memlock=-1 \
-   --security-opt seccomp=unconfined \
-   --security-opt apparmor=unconfined \
+   -v /dev:/dev \
+   -v /lib/modules:/lib/modules:ro \
+   -v /usr/bin/cnmon:/usr/bin/cnmon \
    -e MINERU_MODEL_SOURCE=local \
    -e MINERU_LMDEPLOY_DEVICE=camb \
    -it mineru:mlu-lmdeploy-latest \
@@ -86,7 +73,7 @@ docker run --name mineru_docker \
 不同环境下，MinerU对Cambricon加速卡的支持情况如下表所示：
 
 >[!TIP]
-> - `lmdeploy`黄灯问题为不能批量输出文件夹，单文件输入正常
+> - `lmdeploy`黄灯问题为不能输入文件夹使用批量解析功能，输入单个文件时表现正常。
 > - `vllm`黄灯问题为在精度未对齐，在部分场景下可能出现预期外结果。
 
 <table border="1">
@@ -168,5 +155,6 @@ docker run --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
->Cambricon加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+> - Cambricon加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
 >将环境变量`CUDA_VISIBLE_DEVICES`替换为`MLU_VISIBLE_DEVICES`即可。 
+> - 在Cambricon平台可以通过`cnmon`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
