@@ -5,7 +5,6 @@ from loguru import logger
 
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_index
 
 
@@ -15,6 +14,10 @@ class MagicModel:
 
         blocks = []
         self.all_spans = []
+
+        # 对caption块进行分类，将其分类为image_caption或table_caption
+        page_blocks = classify_caption_blocks(page_blocks)
+
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
 
@@ -24,7 +27,8 @@ class MagicModel:
             if block_type in [
                 "text",
                 "title",
-                "caption",
+                "image_caption",
+                "table_caption",
                 "header",
                 "footer",
             ]:
@@ -44,13 +48,14 @@ class MagicModel:
                     "type": span_type,
                 }
                 if span_type == ContentType.TABLE:
-                    span["html"] = block_info.get("content", "")
+                    span["html"] = clean_table_html(block_info.get("content", ""))
                 elif span_type == ContentType.IMAGE:
+                    # jpg格式base64
                     span["image_base64"] = block_info.get("content", "")
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
                     "type": span_type,
-                    "content": block_content,
+                    "content": block_info.get("content", ""),
                 }
             else:
 
@@ -215,6 +220,80 @@ class MagicModel:
 
     def get_all_spans(self):
         return self.all_spans
+
+
+def clean_table_html(html: str) -> str:
+    """
+    清洗表格HTML，只保留对表格结构表示有用的信息。
+
+    保留的属性：
+    - colspan: 列合并
+    - rowspan: 行合并
+
+    清洗的内容：
+    - 移除所有style属性
+    - 移除所有class属性
+    - 移除border等其他属性
+    - 保持表格结构标签（table, thead, tbody, tr, th, td等）
+
+    Args:
+        html: 原始表格HTML字符串
+
+    Returns:
+        清洗后的HTML字符串
+    """
+    if not html:
+        return ""
+
+    # 需要保留的属性（对表格结构有用）
+    preserved_attrs = {'colspan', 'rowspan'}
+
+    def clean_tag(match):
+        """清洗单个标签，只保留结构相关的属性"""
+        full_tag = match.group(0)
+        tag_name = match.group(1).lower()
+
+        # 自闭合标签的处理
+        is_self_closing = full_tag.rstrip().endswith('/>')
+
+        # 提取需要保留的属性
+        kept_attrs = []
+
+        # 匹配所有属性: attr="value" 或 attr='value' 或 attr=value 或单独的attr
+        attr_pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|(\S+))|(\w+)(?=\s|>|/>)'
+        for attr_match in re.finditer(attr_pattern, full_tag):
+            if attr_match.group(5):
+                # 单独的属性（如 disabled），跳过
+                continue
+
+            attr_name = attr_match.group(1)
+            if attr_name is None:
+                continue
+            attr_name = attr_name.lower()
+            attr_value = attr_match.group(2) or attr_match.group(3) or attr_match.group(4) or ""
+
+            # 只保留colspan和rowspan
+            if attr_name in preserved_attrs:
+                kept_attrs.append(f'{attr_name}="{attr_value}"')
+
+        # 重建标签
+        if kept_attrs:
+            attrs_str = ' ' + ' '.join(kept_attrs)
+        else:
+            attrs_str = ''
+
+        if is_self_closing:
+            return f'<{tag_name}{attrs_str}/>'
+        else:
+            return f'<{tag_name}{attrs_str}>'
+
+    # 匹配开始标签（包括自闭合标签），捕获标签名
+    # 匹配 <tagname ...> 或 <tagname .../>
+    tag_pattern = r'<(\w+)(?:\s+[^>]*)?\s*/?>'
+
+    result = re.sub(tag_pattern, clean_tag, html)
+
+    return result
 
 
 def isolated_formula_clean(txt):
@@ -486,3 +565,75 @@ def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
             list_block["sub_type"] = "unknown"
 
     return list_blocks, text_blocks, ref_text_blocks
+
+
+def classify_caption_blocks(page_blocks: list) -> list:
+    """
+    对page_blocks中的caption块进行分类，将其分类为image_caption或table_caption。
+
+    规则：
+    1. 只有与type为table或image相邻的caption可以作为caption
+    2. caption块与table或image中相隔的块全部是caption的情况视为该caption块与table或image相邻
+    3. caption的类型与他前置位相邻的母块type一致（table或image），如果没有前置位母块则检查是否有后置位母块
+    4. 没有相邻母块的caption需要变更type为text
+    """
+    if not page_blocks:
+        return page_blocks
+
+    available_types = ["table", "image"]
+
+    result_blocks = []
+    n = len(page_blocks)
+
+    for i, block in enumerate(page_blocks):
+        if block.get("type") != "caption":
+            result_blocks.append(block)
+            continue
+
+        # 查找前置位相邻的母块（table或image）
+        # 向前查找，跳过连续的caption块
+        prev_parent_type = None
+        j = i - 1
+        while j >= 0:
+            prev_block_type = page_blocks[j].get("type")
+            if prev_block_type in available_types:
+                prev_parent_type = prev_block_type
+                break
+            elif prev_block_type == "caption":
+                # 继续向前查找
+                j -= 1
+            else:
+                # 遇到非caption且非table/image的块，停止查找
+                break
+
+        # 查找后置位相邻的母块（table或image）
+        # 向后查找，跳过连续的caption块
+        next_parent_type = None
+        k = i + 1
+        while k < n:
+            next_block_type = page_blocks[k].get("type")
+            if next_block_type in available_types:
+                next_parent_type = next_block_type
+                break
+            elif next_block_type == "caption":
+                # 继续向后查找
+                k += 1
+            else:
+                # 遇到非caption且非table/image的块，停止查找
+                break
+
+        # 根据规则确定caption类型
+        new_block = block.copy()
+        if prev_parent_type:
+            # 优先使用前置位母块的类型
+            new_block["type"] = f"{prev_parent_type}_caption"
+        elif next_parent_type:
+            # 没有前置位母块，使用后置位母块的类型
+            new_block["type"] = f"{next_parent_type}_caption"
+        else:
+            # 没有相邻母块，变更为text
+            new_block["type"] = "text"
+
+        result_blocks.append(new_block)
+
+    return result_blocks
