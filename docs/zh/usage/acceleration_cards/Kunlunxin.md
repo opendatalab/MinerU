@@ -50,10 +50,7 @@ docker run -u root --name mineru_docker \
 
 ## 4. 注意事项
 
-不同环境下，MinerU对Cambricon加速卡的支持情况如下表所示：
-
->[!TIP]
-> - `vllm`黄灯问题为不支持`hybrid-auto-engine`模式，`vlm-auto-engine`不受影响。
+不同环境下，MinerU对Kunlunxin加速卡的支持情况如下表所示：
 
 <table border="1">
   <thead>
