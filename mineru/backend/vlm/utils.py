@@ -189,17 +189,16 @@ def _apply_server_config(args: list, config: dict) -> None:
     """应用 server 模式的配置"""
     import json
 
-    if "compilation_config_dict" in config:
-        _add_server_arg_if_missing(
-            args, "compilation-config",
-            json.dumps(config["compilation_config_dict"], separators=(',', ':'))
-        )
-
-    for key in ["block_size", "dtype", "distributed_executor_backend"]:
-        if key in config:
+    for key, value in config.items():
+        if key == "compilation_config_dict":
+            _add_server_arg_if_missing(
+                args, "compilation-config",
+                json.dumps(value, separators=(',', ':'))
+            )
+        else:
             # 转换 key 格式: block_size -> block-size
             arg_name = key.replace("_", "-")
-            _add_server_arg_if_missing(args, arg_name, str(config[key]))
+            _add_server_arg_if_missing(args, arg_name, str(value))
 
 
 def _apply_engine_config(kwargs: dict, config: dict, vllm_mode: str) -> None:
@@ -209,16 +208,14 @@ def _apply_engine_config(kwargs: dict, config: dict, vllm_mode: str) -> None:
     except ImportError:
         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
 
-    if "compilation_config_dict" in config:
-        config_dict = config["compilation_config_dict"]
-        if vllm_mode == "sync_engine":
-            compilation_config = config_dict
-        elif vllm_mode == "async_engine":
-            compilation_config = CompilationConfig(**config_dict)
+    for key, value in config.items():
+        if key == "compilation_config_dict":
+            if vllm_mode == "sync_engine":
+                compilation_config = value
+            elif vllm_mode == "async_engine":
+                compilation_config = CompilationConfig(**value)
+            else:
+                continue
+            _add_engine_kwarg_if_missing(kwargs, "compilation_config", compilation_config)
         else:
-            return
-        _add_engine_kwarg_if_missing(kwargs, "compilation_config", compilation_config)
-
-    for key in ["block_size", "dtype", "distributed_executor_backend"]:
-        if key in config:
-            _add_engine_kwarg_if_missing(kwargs, key, config[key])
+            _add_engine_kwarg_if_missing(kwargs, key, value)

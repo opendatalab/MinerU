@@ -38,6 +38,7 @@ docker run -u root --name mineru_docker \
     -v /usr/local/bin/xpu-smi:/usr/local/bin/xpu-smi \
     -w /workspace \
     -e MINERU_MODEL_SOURCE=local \
+    -e MINERU_FORMULA_CH_SUPPORT=true \
     -e MINERU_VLLM_DEVICE=kxpu \
     -it mineru:kxpu-vllm-latest \
     /bin/bash
@@ -72,7 +73,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -85,7 +86,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -98,7 +99,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟡</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>

@@ -104,7 +104,7 @@ docker run -dit --name mineru_docker \
     </tr>
     <tr>
       <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🟡</td>
+      <td>🔴</td>
     </tr>
   </tbody>
 </table>
