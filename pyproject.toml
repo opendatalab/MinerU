@@ -41,6 +41,7 @@ dependencies = [
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=0.1.19.1,<1",
     "qwen-vl-utils>=0.0.14,<1",
+    "triton>=3.0.0",  # 添加 triton 依赖
 ]
 
 [project.optional-dependencies]
@@ -52,12 +53,12 @@ test = [
     "fuzzywuzzy"
 ]
 vlm = [
-    "torch>=2.6.0,<3",
+    "torch>=2.6.0,<3",  # 保持 torch 兼容 CUDA 13.0
     "transformers>=4.51.1,!=4.57.2,<5.0.0",
     "accelerate>=1.5.1",
 ]
 vllm = [
-    "vllm>=0.10.1.1,<0.12",
+    "vllm>=0.10.1.1",  # 移除上限限制，允许 nightly 版本
 ]
 lmdeploy = [
     "lmdeploy>=0.10.2,<0.12",
