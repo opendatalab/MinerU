@@ -25,8 +25,7 @@ docker load -i mineru-vllm.tar
 ## 3. 启动 Docker 容器
 
 ```bash
-docker run -dit --name MinerU \
-    -v /tecogpfs:/tecogpfs \
+docker run -dit --name mineru_docker \
     --privileged \
     --cap-add SYS_PTRACE \
     --cap-add SYS_ADMIN \
