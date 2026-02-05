@@ -98,7 +98,12 @@ def get_device():
                             if torch.mlu.is_available():
                                 return "mlu"
                         except Exception as e:
-                            pass
+                            try:
+                                if torch.sdaa.is_available():
+                                    return "sdaa"
+                            except Exception as e:
+                                pass
+                                                           
         return "cpu"
 
 
