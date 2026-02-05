@@ -10,10 +10,6 @@ docker: 28.0.4
 
 ## 2. 环境准备
 
->[!NOTE]
->Tecorigin加速卡支持使用`vllm`进行VLM模型推理加速。请根据实际需求选择安装和使用:
-
-
 ### 2.1 下载并加载镜像 （vllm）
 
 ```bash
@@ -104,10 +100,6 @@ docker run -dit --name mineru_docker \
     </tr>
     <tr>
       <td colspan="2">openai-server服务（mineru-openai-server）</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td colspan="2">张量并行 (--tensor-parallel-size)</td>
       <td>🟢</td>
     </tr>
     <tr>
