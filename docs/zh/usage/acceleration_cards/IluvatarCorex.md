@@ -36,7 +36,7 @@ docker run --name mineru_docker \
    --security-opt apparmor=unconfined \
    -e VLLM_ENFORCE_CUDA_GRAPH=1 \
    -e MINERU_MODEL_SOURCE=local \
-   -e MINERU_LMDEPLOY_DEVICE=corex \
+   -e MINERU_VLLM_DEVICE=corex \
    -it mineru:corex-vllm-latest \
    /bin/bash
 ```
