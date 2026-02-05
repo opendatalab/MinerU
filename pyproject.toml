@@ -88,7 +88,7 @@ api = [
 ]
 gradio = [
     "gradio>=5.49.1",
-    "gradio-pdf==0.0.22",
+    "gradio-pdf>=0.0.22",
 ]
 core = [
     "mineru[vlm]",
