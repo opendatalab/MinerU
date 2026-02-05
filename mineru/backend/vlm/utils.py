@@ -138,6 +138,8 @@ def _get_device_config(device_type: str) -> dict | None:
             "block_size": 128,
             "dtype": "float16",
             "distributed_executor_backend": "mp",
+            "enable_chunked_prefill": False,
+            "enable_prefix_caching": False,
         },
     }
 
@@ -153,6 +155,12 @@ def _add_server_arg_if_missing(args: list, arg_name: str, value: str) -> None:
     """如果参数不存在，则添加到命令行参数列表"""
     if not _check_server_arg_exists(args, arg_name):
         args.extend([f"--{arg_name}", value])
+
+
+def _add_server_flag_if_missing(args: list, flag_name: str) -> None:
+    """如果 flag 不存在，则添加到命令行参数列表"""
+    if not _check_server_arg_exists(args, flag_name):
+        args.append(f"--{flag_name}")
 
 
 def _add_engine_kwarg_if_missing(kwargs: dict, key: str, value) -> None:
@@ -198,6 +206,9 @@ def _apply_server_config(args: list, config: dict) -> None:
         else:
             # 转换 key 格式: block_size -> block-size
             arg_name = key.replace("_", "-")
+            if arg_name in {"enable-chunked-prefill", "enable-prefix-caching"} and value is False:
+                _add_server_flag_if_missing(args, f"no-{arg_name}")
+                continue
             _add_server_arg_if_missing(args, arg_name, str(value))
 
 
