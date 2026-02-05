@@ -2,7 +2,7 @@
 以下为本指南测试使用的平台信息，供参考：
 ```
 os: Ubuntu 22.04.5 LTS  
-cpu: AMD EPYC 9654 96-Core Processor
+cpu: AMD EPYC (amd64)
 gpu: T100
 driver: 3.0.0
 docker: 28.0.4
@@ -46,7 +46,7 @@ docker run -dit --name mineru_docker \
 
 ## 4. 注意事项
 
-不同环境下，MinerU对T100加速卡的支持情况如下表所示：
+不同环境下，MinerU对Tecorigin加速卡的支持情况如下表所示：
 
 <table border="1">
   <thead>
@@ -115,6 +115,6 @@ docker run -dit --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
-> - T100加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+> - Tecorigin加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
 >将环境变量`CUDA_VISIBLE_DEVICES`替换为`SDAA_VISIBLE_DEVICES`即可。 
 > - 在太初平台可以通过`teco-smi -c`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
