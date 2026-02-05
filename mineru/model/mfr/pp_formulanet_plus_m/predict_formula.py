@@ -89,7 +89,11 @@ class FormulaRecognizer(BaseOCRV20):
         return rec_formula
 
     def batch_predict(
-        self, images_mfd_res: list, images: list, batch_size: int = 64
+        self,
+        images_mfd_res: list,
+        images: list,
+        batch_size: int = 64,
+        interline_enable: bool = True,
     ) -> list:
         images_formula_list = []
         mf_image_list = []
@@ -105,6 +109,8 @@ class FormulaRecognizer(BaseOCRV20):
             for idx, (xyxy, conf, cla) in enumerate(
                 zip(mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls)
             ):
+                if not interline_enable and cla.item() == 1:
+                    continue  # Skip interline regions if not enabled
                 xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
                 new_item = {
                     "category_id": 13 + int(cla.item()),

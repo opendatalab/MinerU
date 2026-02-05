@@ -1,35 +1,46 @@
 ## 1. 测试平台
 以下为本指南测试使用的平台信息，供参考：
 ```
-os: Ubuntu 22.04.4 LTS  
+os: Ubuntu 22.04.5 LTS  
 cpu: Intel x86-64
-dcu: MTT S4000
-driver: 3.0.0-rc-KuaE2.0
-docker: 24.0.7
+xpu: P800
+driver: 515.58
+docker: 20.10.5
 ```
 
 ## 2. 环境准备
 
-### 2.1 使用 Dockerfile 构建镜像
+### 2.1 使用 Dockerfile 构建镜像 （vllm）
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/musa.Dockerfile
-docker build --network=host -t mineru:musa-vllm-latest -f musa.Dockerfile .
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/kxpu.Dockerfile
+docker build --network=host -t mineru:kxpu-vllm-latest -f kxpu.Dockerfile .
 ```
-
 
 ## 3. 启动 Docker 容器
 
 ```bash
 docker run -u root --name mineru_docker \
-    --network=host \
-    --ipc=host \
-    --shm-size=80g \
-    --privileged \
-    -e MTHREADS_VISIBLE_DEVICES=all \
-    -e MINERU_VLLM_DEVICE=musa \
+    --device=/dev/xpu0:/dev/xpu0 \
+    --device=/dev/xpu1:/dev/xpu1 \
+    --device=/dev/xpu2:/dev/xpu2 \
+    --device=/dev/xpu3:/dev/xpu3 \
+    --device=/dev/xpu4:/dev/xpu4 \
+    --device=/dev/xpu5:/dev/xpu5 \
+    --device=/dev/xpu6:/dev/xpu6 \
+    --device=/dev/xpu7:/dev/xpu7 \
+    --device=/dev/xpuctrl:/dev/xpuctrl \
+    --net=host \
+    --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+    --tmpfs /dev/shm:rw,nosuid,nodev,exec,size=32g \
+    --cap-add=SYS_PTRACE \
+    -v /home/users/vllm-kunlun:/home/vllm-kunlun \
+    -v /usr/local/bin/xpu-smi:/usr/local/bin/xpu-smi \
+    -w /workspace \
     -e MINERU_MODEL_SOURCE=local \
-    -it mineru:musa-vllm-latest \
+    -e MINERU_FORMULA_CH_SUPPORT=true \
+    -e MINERU_VLLM_DEVICE=kxpu \
+    -it mineru:kxpu-vllm-latest \
     /bin/bash
 ```
 
@@ -39,12 +50,10 @@ docker run -u root --name mineru_docker \
 
 ## 4. 注意事项
 
-不同环境下，MinerU对MooreThreads加速卡的支持情况如下表所示：
+不同环境下，MinerU对Cambricon加速卡的支持情况如下表所示：
 
->[!NOTE]
-> **兼容性说明**：由于摩尔线程（MooreThreads）目前对 vLLM v1 引擎的支持尚待完善，MinerU 现阶段采用 v0 引擎作为适配方案。
-> 受此限制，vLLM 的异步引擎（Async Engine）功能存在兼容性问题，可能导致部分使用场景无法正常运行。
-> 我们将持续跟进摩尔线程对 vLLM v1 引擎的支持进展，并及时在 MinerU 中进行相应的适配与优化。
+>[!TIP]
+> - `vllm`黄灯问题为不支持`hybrid-auto-engine`模式，`vlm-auto-engine`不受影响。
 
 <table border="1">
   <thead>
@@ -77,7 +86,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -90,7 +99,7 @@ docker run -u root --name mineru_docker \
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🔴</td>
+      <td>🟢</td>
     </tr>
     <tr>
       <td>&lt;vlm/hybrid&gt;-http-client</td>
@@ -113,5 +122,6 @@ docker run -u root --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
-> - MooreThreads加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[GPU 枚举](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/install_guide/#gpu-%E6%9E%9A%E4%B8%BE)
-> - 在MooreThreads平台可以通过`mthreads-gmi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
+> - Kunlunxin加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
+>将环境变量`CUDA_VISIBLE_DEVICES`替换为`XPU_VISIBLE_DEVICES`即可。 
+> - 在Kunlunxin平台可以通过`xpu-smi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
