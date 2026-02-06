@@ -45,17 +45,22 @@
 
 # Changelog
 
-- 2026/01/30 2.7.4 Release
-  - Added support for domestic computing platforms IluvatarCorex and Cambricon. Currently, the officially supported domestic computing platforms include:
-    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/) 
-    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/) 
-    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/) 
+- 2026/02/06 2.7.6 Release
+  - Added support for the domestic computing platforms Kunlunxin and Tecorigin; currently, the domestic computing platforms that have been adapted and supported by the official team and vendors include:
+    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
+    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
+    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
     - [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
     - [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
     - [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
     - [IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
     - [Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
-  - MinerU continues to ensure compatibility with domestic hardware platforms, supporting mainstream chip architectures. With secure and reliable technology, we empower researchers, government, and enterprises to reach new heights in document digitization!
+    - [Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
+    - [Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)  
+  - MinerU continues to support domestic hardware platforms and mainstream chip architectures. With secure and reliable technology, it helps research, government, and enterprise users reach new heights in document digitization!
+
+- 2026/01/30 2.7.4 Release
+  - Added support for domestic computing platforms IluvatarCorex and Cambricon.
 
 - 2026/01/23 2.7.2 Release
   - Added support for domestic computing platforms Hygon, Enflame, and Moore Threads.
