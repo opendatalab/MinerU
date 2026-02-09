@@ -2,8 +2,8 @@
 以下为本指南测试使用的平台信息，供参考：
 ```
 os: Ubuntu 22.04.4 LTS
-cpu: Intel(R) Xeon(R) Platinum 8380 CPU
-gpu: Biren106C
+cpu: Intel x86-64
+gpu: Biren 106C
 driver: 1.10.0
 docker: 28.0.4
 ```
@@ -14,7 +14,6 @@ docker: 28.0.4
 
 ```bash
 wget http://birentech.com/xxx/MinerU/mineru-vllm.tar 链接获取请联系壁仞内部人员（邮箱：MonaLiu@birentech.com）
-
 docker load -i mineru-vllm.tar
 ```
 

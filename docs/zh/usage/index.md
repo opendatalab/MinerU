@@ -19,6 +19,7 @@
     * [寒武纪 Cambricon](acceleration_cards/Cambricon.md) 🚀
     * [昆仑芯 Kunlunxin](acceleration_cards/Kunlunxin.md) 🚀
     * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) ❤️
+    * [壁仞 Biren](acceleration_cards/Biren.md) ❤️
     * [AMD #3662](https://github.com/opendatalab/MinerU/discussions/3662) ❤️
     * [瀚博 VastAI](acceleration_cards/VastAI.md) [#4237](https://github.com/opendatalab/MinerU/discussions/4237)❤️
 - 插件与生态
