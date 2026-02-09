@@ -55,7 +55,6 @@ class MagicModel:
                     "content": block_content,
                 }
             elif block_type in ["list"]:
-                block_type = BlockType.LIST
                 # 解析嵌套列表结构，生成与VLM一致的blocks结构
                 parsed_list = parse_list_block(block_info)
                 if parsed_list:
@@ -87,7 +86,6 @@ class MagicModel:
             if block_type == BlockType.TITLE:
                 block["is_numbered_style"] = block_info.get("is_numbered_style", False)
                 block["level"] = block_info.get("level", 1)
-
             blocks.append(block)
 
         self.image_blocks = []
@@ -127,21 +125,8 @@ class MagicModel:
         self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(self.list_blocks, self.text_blocks, self.ref_text_blocks)
         self.image_blocks, not_include_image_blocks = fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
         self.table_blocks, not_include_table_blocks = fix_two_layer_blocks(self.table_blocks, BlockType.TABLE)
-        self.code_blocks, not_include_code_blocks = fix_two_layer_blocks(self.code_blocks, BlockType.CODE)
-        for code_block in self.code_blocks:
-            for block in code_block['blocks']:
-                if block['type'] == BlockType.CODE_BODY:
-                    if len(block["lines"]) > 0:
-                        line = block["lines"][0]
-                        code_block["sub_type"] = line["extra"]["type"]
-                        if code_block["sub_type"] in ["code"]:
-                            code_block["guess_lang"] = line["extra"]["guess_lang"]
-                        del line["extra"]
-                    else:
-                        code_block["sub_type"] = "code"
-                        code_block["guess_lang"] = "txt"
 
-        for block in not_include_image_blocks + not_include_table_blocks + not_include_code_blocks:
+        for block in not_include_image_blocks + not_include_table_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
