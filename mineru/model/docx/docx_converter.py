@@ -944,8 +944,19 @@ class DocxConverter:
         """
         添加列表项。
 
+        生成的列表结构：
+        {
+            "type": "list",
+            "attribute": "ordered" / "unordered",
+            "ilevel": 0,
+            "content": [
+                {"type": "text", "content": "列表项文本"},
+                {"type": "list", "attribute": "...", "ilevel": 1, "content": [...]},
+                {"type": "text", "content": "另一个列表项"}
+            ]
+        }
+
         Args:
-            doc: DoclingDocument 对象
             numid: 列表ID
             ilevel: 缩进等级
             elements: 元素列表
@@ -961,14 +972,19 @@ class DocxConverter:
         if not elements:
             return None
 
-        # 情况 1: 不存在上一个列表ID
+        # 构建 content_text，处理行内公式和超链接
+        content_text = self._build_text_with_equations_and_hyperlinks(
+            elements, text, equations
+        )
+
+        # 确定列表属性
+        list_attribute = "ordered" if is_numbered else "unordered"
+
+        # 情况 1: 不存在上一个列表ID，创建新的顶层列表
         if self.pre_num_id == -1:
             # 为新编号序列重置计数器，确保编号从1开始
             self._reset_list_counters_for_new_sequence(numid)
-            if is_numbered:
-                list_attribute = "ordered"
-            else:
-                list_attribute = "unordered"
+
             list_block = {
                 "type": BlockType.LIST,
                 "attribute": list_attribute,
@@ -979,11 +995,6 @@ class DocxConverter:
             # 入栈, 记录当前的列表块
             self.list_block_stack.append(list_block)
 
-            # 构建 content_text，处理行内公式和超链接
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                elements, text, equations
-            )
-
             list_item = {
                 "type": BlockType.TEXT,
                 "content": content_text,
@@ -992,52 +1003,35 @@ class DocxConverter:
             list_block["content"].append(list_item)
             self.pre_num_id = numid
             self.pre_ilevel = ilevel
-        # 情况 2: 增加缩进，打开子列表, 嵌套列表的 num_id 和父列表的 num_id 相同, ilevel (缩进级别) 不同
+
+        # 情况 2: 增加缩进，打开子列表
         elif (
             self.pre_num_id == numid  # 同一个列表
             and self.pre_ilevel != -1  # 上一个缩进级别已知
             and self.pre_ilevel < ilevel  # 当前层级比之前更缩进
         ):
-            # 为新增的缩进级别创建列表块
-            if is_numbered:
-                list_attribute = "ordered"
-            else:
-                list_attribute = "unordered"
-
-            list_block = {
+            # 创建新的子列表块
+            child_list_block = {
                 "type": BlockType.LIST,
                 "attribute": list_attribute,
                 "content": [],
                 "ilevel": ilevel,
             }
-            # 获取栈顶的列表块
+
+            # 获取栈顶的列表块，将子列表直接添加到其content中
             parent_list_block = self.list_block_stack[-1]
-            # 将新列表块添加为父列表块的最新列表项的子块
-            newest_list_item = parent_list_block["content"][-1]
-            newest_list_item["type"] = BlockType.LIST  # 修改类型为列表
-            if isinstance((newest_list_item["content"]), str):
-                # 如果内容是字符串，则转换为列表
-                newest_list_item["content"] = [
-                    {
-                        "type": BlockType.TEXT,
-                        "content": newest_list_item["content"],
-                    }
-                ]
-            newest_list_item["content"].append(list_block)
+            parent_list_block["content"].append(child_list_block)
 
             # 入栈, 记录当前的列表块
-            self.list_block_stack.append(list_block)
+            self.list_block_stack.append(child_list_block)
 
-            # 构建 content_text，处理行内公式和超链接
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                elements, text, equations
-            )
-
+            # 添加当前列表项到子列表
             list_item = {
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
-            list_block["content"].append(list_item)
+            child_list_block["content"].append(list_item)
+
             # 更新目前缩进
             self.pre_ilevel = ilevel
 
@@ -1055,11 +1049,6 @@ class DocxConverter:
                 self.list_block_stack.pop()
             list_block = self.list_block_stack[-1]
 
-            # 构建 content_text，处理行内公式和超链接
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                elements, text, equations
-            )
-
             list_item = {
                 "type": BlockType.TEXT,
                 "content": content_text,
@@ -1072,10 +1061,6 @@ class DocxConverter:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
-            # 构建 content_text，处理行内公式和超链接
-            content_text = self._build_text_with_equations_and_hyperlinks(
-                elements, text, equations
-            )
 
             list_item = {
                 "type": BlockType.TEXT,

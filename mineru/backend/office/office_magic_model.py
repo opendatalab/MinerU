@@ -25,7 +25,6 @@ class MagicModel:
             block_content = block_info.get("content", "")
             if not block_content:
                 continue
-            span_type = "unknown"
 
             if block_type in [
                 "text",
@@ -35,105 +34,61 @@ class MagicModel:
                 "header",
                 "footer",
             ]:
-                span_type = ContentType.TEXT
+                span = parse_text_block_spans(block_content)
+
             elif block_type in ["image"]:
                 block_type = BlockType.IMAGE_BODY
-                span_type = ContentType.IMAGE
+                span = {
+                    "type": ContentType.IMAGE,
+                    "image_base64": block_content,
+                }
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
-                span_type = ContentType.TABLE
+                span = {
+                    "type": ContentType.TABLE,
+                    "html": clean_table_html(block_content),
+                }
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
-                span_type = ContentType.INTERLINE_EQUATION
-
-            if span_type in ["image", "table"]:
                 span = {
-                    "type": span_type,
-                }
-                if span_type == ContentType.TABLE:
-                    span["html"] = clean_table_html(block_content)
-                elif span_type == ContentType.IMAGE:
-                    # jpg格式base64
-                    span["image_base64"] = block_content
-            elif span_type in [ContentType.INTERLINE_EQUATION]:
-                span = {
-                    "type": span_type,
+                    "type": ContentType.INTERLINE_EQUATION,
                     "content": block_content,
                 }
+            elif block_type in ["list"]:
+                block_type = BlockType.LIST
+                # 解析嵌套列表结构，生成与VLM一致的blocks结构
+                parsed_list = parse_list_block(block_info)
+                if parsed_list:
+                    # 使用外层index作为列表block的index
+                    parsed_list["index"] = index
+                    blocks.append(parsed_list)
+                continue
             else:
-
-                if block_content:
-                    block_content = clean_content(block_content)
-
-                if block_content and block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
-
-                    switch_code_to_algorithm = True
-
-                    # 生成包含文本和公式的span列表
-                    spans = []
-                    last_end = 0
-
-                    # 查找所有公式
-                    for match in re.finditer(r'\\\((.+?)\\\)', block_content):
-                        start, end = match.span()
-
-                        # 添加公式前的文本
-                        if start > last_end:
-                            text_before = block_content[last_end:start]
-                            if text_before.strip():
-                                spans.append({
-                                    "bbox": block_bbox,
-                                    "type": ContentType.TEXT,
-                                    "content": text_before
-                                })
-
-                        # 添加公式（去除\(和\)）
-                        formula = match.group(1)
-                        spans.append({
-                            "bbox": block_bbox,
-                            "type": ContentType.INLINE_EQUATION,
-                            "content": formula.strip()
-                        })
-
-                        last_end = end
-
-                    # 添加最后一个公式后的文本
-                    if last_end < len(block_content):
-                        text_after = block_content[last_end:]
-                        if text_after.strip():
-                            spans.append({
-                                "bbox": block_bbox,
-                                "type": ContentType.TEXT,
-                                "content": text_after
-                            })
-
-                    span = spans
-                else:
-                    span = {
-                        "bbox": block_bbox,
-                        "type": span_type,
-                        "content": block_content,
-                    }
+                # 未知类型，跳过
+                continue
 
             # 处理span类型并添加到all_spans
-            if isinstance(span, dict) and "bbox" in span:
-                self.all_spans.append(span)
-                spans = [span]
+            if isinstance(span, dict):
+                line = {
+                    "spans": [span]
+                }
             elif isinstance(span, list):
-                self.all_spans.extend(span)
-                spans = span
+                line = {
+                    "spans":span
+                }
             else:
-                raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
+                raise ValueError(f"Unsupported span type: {type(span)}")
 
-
-            blocks.append(
-                {
-                    "bbox": block_bbox,
+            block = {
                     "type": block_type,
                     "lines": [line],
                     "index": index,
-                }
-            )
+            }
+            if block_type == BlockType.TITLE:
+                block["is_numbered_style"] = block_info.get("is_numbered_style", False)
+                block["level"] = block_info.get("level", 1)
+
+            blocks.append(block)
 
         self.image_blocks = []
         self.table_blocks = []
@@ -221,8 +176,170 @@ class MagicModel:
     def get_discarded_blocks(self):
         return self.discarded_blocks
 
-    def get_all_spans(self):
-        return self.all_spans
+
+def parse_text_block_spans(content: str) -> list:
+    """
+    解析文本类block的content，提取其中的文本、行内公式和超链接。
+
+    支持的标签格式：
+    - <eq>...</eq>: 行内公式
+    - <hyperlink><text>...</text><url>...</url></hyperlink>: 超链接
+
+    Args:
+        content: 文本块的content字符串，可能包含特殊标签
+
+    Returns:
+        包含多个span的列表，每个span是一个字典，包含type和content等字段
+    """
+    if not content:
+        return []
+
+    spans = []
+    last_end = 0
+    pos = 0
+
+    while pos < len(content):
+        # 查找行内公式标签 <eq>...</eq>
+        eq_start = content.find('<eq>', pos)
+        # 查找超链接标签 <hyperlink>
+        hyperlink_start = content.find('<hyperlink>', pos)
+
+        # 确定下一个标签的位置
+        next_tag_pos = -1
+        next_tag_type = None
+
+        if eq_start != -1 and (hyperlink_start == -1 or eq_start < hyperlink_start):
+            next_tag_pos = eq_start
+            next_tag_type = 'eq'
+        elif hyperlink_start != -1:
+            next_tag_pos = hyperlink_start
+            next_tag_type = 'hyperlink'
+
+        # 没有找到任何标签，处理剩余文本
+        if next_tag_pos == -1:
+            remaining_text = content[last_end:]
+            if remaining_text:
+                spans.append({
+                    "type": ContentType.TEXT,
+                    "content": remaining_text
+                })
+            break
+
+        # 处理标签前的文本
+        if next_tag_pos > last_end:
+            text_before = content[last_end:next_tag_pos]
+            if text_before:
+                spans.append({
+                    "type": ContentType.TEXT,
+                    "content": text_before
+                })
+
+        # 处理行内公式
+        if next_tag_type == 'eq':
+            eq_end = content.find('</eq>', next_tag_pos)
+            if eq_end != -1:
+                # 提取公式内容（去除<eq>和</eq>标签）
+                formula_content = content[next_tag_pos + 4:eq_end]
+                spans.append({
+                    "type": ContentType.INLINE_EQUATION,
+                    "content": formula_content
+                })
+                pos = eq_end + 5  # 跳过</eq>
+                last_end = pos
+            else:
+                # 未找到闭合标签，将<eq>作为普通文本处理
+                spans.append({
+                    "type": ContentType.TEXT,
+                    "content": content[last_end:]
+                })
+                break
+
+        # 处理超链接
+        elif next_tag_type == 'hyperlink':
+            hyperlink_end = content.find('</hyperlink>', next_tag_pos)
+            if hyperlink_end != -1:
+                # 提取超链接内容
+                hyperlink_content = content[next_tag_pos + 11:hyperlink_end]
+
+                # 解析<text>和<url>标签
+                text_start = hyperlink_content.find('<text>')
+                text_end = hyperlink_content.find('</text>')
+                url_start = hyperlink_content.find('<url>')
+                url_end = hyperlink_content.find('</url>')
+
+                if text_start != -1 and text_end != -1 and url_start != -1 and url_end != -1:
+                    link_text = hyperlink_content[text_start + 6:text_end]
+                    link_url = hyperlink_content[url_start + 5:url_end]
+
+                    spans.append({
+                        "type": ContentType.HYPERLINK,
+                        "content": link_text,
+                        "url": link_url
+                    })
+                    pos = hyperlink_end + 12  # 跳过</hyperlink>
+                    last_end = pos
+                else:
+                    # 超链接格式不正确，作为普通文本处理
+                    spans.append({
+                        "type": ContentType.TEXT,
+                        "content": content[last_end:]
+                    })
+                    break
+            else:
+                # 未找到闭合标签，将<hyperlink>作为普通文本处理
+                spans.append({
+                    "type": ContentType.TEXT,
+                    "content": content[last_end:]
+                })
+                break
+
+    return spans
+
+
+def parse_list_block(list_block: dict):
+    """
+    递归解析嵌套列表结构，生成与VLM一致的blocks结构。
+
+    Args:
+        list_block: 列表块字典
+
+    Returns:
+        tuple: (解析后的列表block, 下一个可用索引)
+    """
+    content = list_block.get("content", [])
+    if not content:
+        return None
+
+    blocks = []
+
+    for item in content:
+        item_type = item.get("type", "")
+
+        if item_type == "text":
+            # 解析文本项（可能包含行内公式和超链接）
+            text_content = item.get("content", "")
+            spans = parse_text_block_spans(text_content)
+            text_block = {
+                "type": BlockType.TEXT,
+                "lines": [{"spans": spans}]
+            }
+            blocks.append(text_block)
+
+        elif item_type == "list":
+            # 递归解析嵌套列表
+            nested_list = parse_list_block(item)
+            if nested_list:
+                blocks.append(nested_list)
+
+    # 构建当前列表block
+    result = {
+        "type": BlockType.LIST,
+        "attribute": list_block.get("attribute", "unordered"),
+        "ilevel": list_block.get("ilevel", 0),
+        "blocks": blocks
+    }
+
+    return result
 
 
 def clean_table_html(html: str) -> str:
@@ -328,21 +445,6 @@ def code_content_clean(content):
     if start_idx < end_idx:
         return "\n".join(lines[start_idx:end_idx]).strip()
     return ""
-
-
-def clean_content(content):
-    if content and content.count("\\[") == content.count("\\]") and content.count("\\[") > 0:
-        # Function to handle each match
-        def replace_pattern(match):
-            # Extract content between \[ and \]
-            inner_content = match.group(1)
-            return f"[{inner_content}]"
-
-        # Find all patterns of \[x\] and apply replacement
-        pattern = r'\\\[(.*?)\\\]'
-        content = re.sub(pattern, replace_pattern, content)
-
-    return content
 
 
 def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):

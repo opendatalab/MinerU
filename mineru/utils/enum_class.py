@@ -40,6 +40,7 @@ class ContentType:
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
     CODE = 'code'
+    HYPERLINK = 'hyperlink'
 
 
 class ContentTypeV2:
