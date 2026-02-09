@@ -172,7 +172,8 @@ def tie_up_category_by_index(
         get_subjects_func: Callable,
         get_objects_func: Callable,
         extract_subject_func: Callable = None,
-        extract_object_func: Callable = None
+        extract_object_func: Callable = None,
+        include_bbox: bool = True
 ):
     """
     基于index的类别关联方法，用于将主体对象与客体对象进行关联
@@ -229,7 +230,7 @@ def tie_up_category_by_index(
                 best_subject_indices.append(i)
 
         # 如果有多个主体的index差值相同，使用中心点距离作为tiebreaker
-        if len(best_subject_indices) > 1:
+        if len(best_subject_indices) > 1 and include_bbox:
             min_center_dist = float("inf")
             best_subject_idx = best_subject_indices[0]
 

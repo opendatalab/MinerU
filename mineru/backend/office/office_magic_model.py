@@ -122,7 +122,6 @@ class MagicModel:
             else:
                 continue
 
-        self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(self.list_blocks, self.text_blocks, self.ref_text_blocks)
         self.image_blocks, not_include_image_blocks = fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
         self.table_blocks, not_include_table_blocks = fix_two_layer_blocks(self.table_blocks, BlockType.TABLE)
 
@@ -436,172 +435,102 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     """基于index的主客体关联包装函数"""
     # 定义获取主体和客体对象的函数
     def get_subjects():
-        return reduct_overlap(
-            list(
-                map(
-                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle": x["angle"]},
-                    filter(
-                        lambda x: x["type"] == subject_block_type,
-                        blocks,
-                    ),
-                )
+        return list(
+            map(
+                lambda x: {"lines": x["lines"], "index": x["index"]},
+                filter(
+                    lambda x: x["type"] == subject_block_type,
+                    blocks,
+                ),
             )
         )
 
     def get_objects():
-        return reduct_overlap(
-            list(
-                map(
-                    lambda x: {"bbox": x["bbox"], "lines": x["lines"], "index": x["index"], "angle": x["angle"]},
-                    filter(
-                        lambda x: x["type"] == object_block_type,
-                        blocks,
-                    ),
-                )
+        return list(
+            map(
+                lambda x: {"lines": x["lines"], "index": x["index"]},
+                filter(
+                    lambda x: x["type"] == object_block_type,
+                    blocks,
+                ),
             )
         )
 
     # 调用通用方法
     return tie_up_category_by_index(
         get_subjects,
-        get_objects
+        get_objects,
+        include_bbox=False,
     )
 
 
-def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
+def get_type_blocks(blocks, block_type: Literal["image", "table"]):
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
-    with_footnotes = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_footnote")
     ret = []
     for v in with_captions:
         record = {
             f"{block_type}_body": v["sub_bbox"],
             f"{block_type}_caption_list": v["obj_bboxes"],
         }
-        filter_idx = v["sub_idx"]
-        d = next(filter(lambda x: x["sub_idx"] == filter_idx, with_footnotes))
-        record[f"{block_type}_footnote_list"] = d["obj_bboxes"]
         ret.append(record)
     return ret
 
 
-def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
+def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table"]):
     need_fix_blocks = get_type_blocks(blocks, fix_type)
     fixed_blocks = []
     not_include_blocks = []
     processed_indices = set()
 
-    # 特殊处理表格类型，确保标题在表格前，注脚在表格后
-    if fix_type in ["table", "image"]:
-        # 收集所有不合适的caption和footnote
-        misplaced_captions = []  # 存储(caption, 原始block索引)
-        misplaced_footnotes = []  # 存储(footnote, 原始block索引)
+    # 将每个block的caption_list中不连续index的元素提出来作为普通block处理
+    for block in need_fix_blocks:
+        caption_list = block[f"{fix_type}_caption_list"]
+        body_index = block[f"{fix_type}_body"]["index"]
 
-        # 第一步：移除不符合位置要求的footnote
-        for block_idx, block in enumerate(need_fix_blocks):
-            body = block[f"{fix_type}_body"]
-            body_index = body["index"]
+        # 处理caption_list (从body往前看,caption在body之前)
+        if caption_list:
+            # 按index降序排列,从最接近body的开始检查
+            caption_list.sort(key=lambda x: x["index"], reverse=True)
+            filtered_captions = [caption_list[0]]
+            for i in range(1, len(caption_list)):
+                prev_index = caption_list[i - 1]["index"]
+                curr_index = caption_list[i]["index"]
 
-            # 检查footnote应在body后或同位置
-            valid_footnotes = []
-            for footnote in block[f"{fix_type}_footnote_list"]:
-                if footnote["index"] >= body_index:
-                    valid_footnotes.append(footnote)
+                # 检查是否连续
+                if curr_index == prev_index - 1:
+                    filtered_captions.append(caption_list[i])
                 else:
-                    misplaced_footnotes.append((footnote, block_idx))
-            block[f"{fix_type}_footnote_list"] = valid_footnotes
-
-        # 第三步：重新分配不合规的footnote到合适的body
-        for footnote, original_block_idx in misplaced_footnotes:
-            footnote_index = footnote["index"]
-            best_block_idx = None
-            min_distance = float('inf')
-
-            # 寻找索引小于等于footnote_index的最近body
-            for idx, block in enumerate(need_fix_blocks):
-                body_index = block[f"{fix_type}_body"]["index"]
-                if body_index <= footnote_index and idx != original_block_idx:
-                    distance = footnote_index - body_index
-                    if distance < min_distance:
-                        min_distance = distance
-                        best_block_idx = idx
-
-            if best_block_idx is not None:
-                # 找到合适的body，添加到对应block的footnote_list
-                need_fix_blocks[best_block_idx][f"{fix_type}_footnote_list"].append(footnote)
-            else:
-                # 没找到合适的body，作为普通block处理
-                not_include_blocks.append(footnote)
-
-        # 第四步:将每个block的caption_list和footnote_list中不连续index的元素提出来作为普通block处理
-        for block in need_fix_blocks:
-            caption_list = block[f"{fix_type}_caption_list"]
-            footnote_list = block[f"{fix_type}_footnote_list"]
-            body_index = block[f"{fix_type}_body"]["index"]
-
-            # 处理caption_list (从body往前看,caption在body之前)
-            if caption_list:
-                # 按index降序排列,从最接近body的开始检查
-                caption_list.sort(key=lambda x: x["index"], reverse=True)
-                filtered_captions = [caption_list[0]]
-                for i in range(1, len(caption_list)):
-                    prev_index = caption_list[i - 1]["index"]
-                    curr_index = caption_list[i]["index"]
-
-                    # 检查是否连续
-                    if curr_index == prev_index - 1:
+                    # 检查gap中是否只有body_index
+                    gap_indices = set(range(curr_index + 1, prev_index))
+                    if gap_indices == {body_index}:
+                        # gap中只有body_index,不算真正的gap
                         filtered_captions.append(caption_list[i])
                     else:
-                        # 检查gap中是否只有body_index
-                        gap_indices = set(range(curr_index + 1, prev_index))
-                        if gap_indices == {body_index}:
-                            # gap中只有body_index,不算真正的gap
-                            filtered_captions.append(caption_list[i])
-                        else:
-                            # 出现真正的gap,后续所有caption都作为普通block
-                            not_include_blocks.extend(caption_list[i:])
-                            break
-                # 恢复升序
-                filtered_captions.reverse()
-                block[f"{fix_type}_caption_list"] = filtered_captions
-
-            # 处理footnote_list (从body往后看,footnote在body之后)
-            if footnote_list:
-                # 按index升序排列,从最接近body的开始检查
-                footnote_list.sort(key=lambda x: x["index"])
-                filtered_footnotes = [footnote_list[0]]
-                for i in range(1, len(footnote_list)):
-                    # 检查是否与前一个footnote连续
-                    if footnote_list[i]["index"] == footnote_list[i - 1]["index"] + 1:
-                        filtered_footnotes.append(footnote_list[i])
-                    else:
-                        # 出现gap,后续所有footnote都作为普通block
-                        not_include_blocks.extend(footnote_list[i:])
+                        # 出现真正的gap,后续所有caption都作为普通block
+                        not_include_blocks.extend(caption_list[i:])
                         break
-                block[f"{fix_type}_footnote_list"] = filtered_footnotes
+            # 恢复升序
+            filtered_captions.reverse()
+            block[f"{fix_type}_caption_list"] = filtered_captions
 
     # 构建两层结构blocks
     for block in need_fix_blocks:
         body = block[f"{fix_type}_body"]
         caption_list = block[f"{fix_type}_caption_list"]
-        footnote_list = block[f"{fix_type}_footnote_list"]
 
         body["type"] = f"{fix_type}_body"
         for caption in caption_list:
             caption["type"] = f"{fix_type}_caption"
             processed_indices.add(caption["index"])
-        for footnote in footnote_list:
-            footnote["type"] = f"{fix_type}_footnote"
-            processed_indices.add(footnote["index"])
 
         processed_indices.add(body["index"])
 
         two_layer_block = {
             "type": fix_type,
-            "bbox": body["bbox"],
             "blocks": [body],
             "index": body["index"],
         }
-        two_layer_block["blocks"].extend([*caption_list, *footnote_list])
+        two_layer_block["blocks"].extend([*caption_list])
         # 对blocks按index排序
         two_layer_block["blocks"].sort(key=lambda x: x["index"])
 
@@ -614,47 +543,6 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
             not_include_blocks.append(block)
 
     return fixed_blocks, not_include_blocks
-
-
-def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
-    for list_block in list_blocks:
-        list_block["blocks"] = []
-        if "lines" in list_block:
-            del list_block["lines"]
-
-    temp_text_blocks = text_blocks + ref_text_blocks
-    need_remove_blocks = []
-    for block in temp_text_blocks:
-        for list_block in list_blocks:
-            if calculate_overlap_area_in_bbox1_area_ratio(block["bbox"], list_block["bbox"]) >= 0.8:
-                list_block["blocks"].append(block)
-                need_remove_blocks.append(block)
-                break
-
-    for block in need_remove_blocks:
-        if block in text_blocks:
-            text_blocks.remove(block)
-        elif block in ref_text_blocks:
-            ref_text_blocks.remove(block)
-
-    # 移除blocks为空的list_block
-    list_blocks = [lb for lb in list_blocks if lb["blocks"]]
-
-    for list_block in list_blocks:
-        # 统计list_block["blocks"]中所有block的type，用众数作为list_block的sub_type
-        type_count = {}
-        for sub_block in list_block["blocks"]:
-            sub_block_type = sub_block["type"]
-            if sub_block_type not in type_count:
-                type_count[sub_block_type] = 0
-            type_count[sub_block_type] += 1
-
-        if type_count:
-            list_block["sub_type"] = max(type_count, key=type_count.get)
-        else:
-            list_block["sub_type"] = "unknown"
-
-    return list_blocks, text_blocks, ref_text_blocks
 
 
 def classify_caption_blocks(page_blocks: list) -> list:

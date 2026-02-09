@@ -13,9 +13,6 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     table_blocks = magic_model.get_table_blocks()
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
-    code_blocks = magic_model.get_code_blocks()
-    ref_text_blocks = magic_model.get_ref_text_blocks()
-    phonetic_blocks = magic_model.get_phonetic_blocks()
     list_blocks = magic_model.get_list_blocks()
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
@@ -24,9 +21,6 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     page_blocks.extend([
         *image_blocks,
         *table_blocks,
-        *code_blocks,
-        *ref_text_blocks,
-        *phonetic_blocks,
         *title_blocks,
         *text_blocks,
         *interline_equation_blocks,
