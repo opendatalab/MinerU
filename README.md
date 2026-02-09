@@ -57,6 +57,7 @@
     - [Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
     - [Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
     - [Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)  
+    - [Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
   - MinerU continues to support domestic hardware platforms and mainstream chip architectures. With secure and reliable technology, it helps research, government, and enterprise users reach new heights in document digitization!
 
 - 2026/01/30 2.7.4 Release
