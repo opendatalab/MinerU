@@ -1,0 +1,343 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/demo/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/demo/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/demo/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/faq/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/faq/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/faq/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/quick_start/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/quick_start/docker_deployment/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/docker_deployment/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/quick_start/extension_modules/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/extension_modules/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/reference/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/reference/changelog/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/changelog/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/changelog/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/reference/output_files/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/output_files/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/output_files/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/usage/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/usage/advanced_cli_parameters/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/advanced_cli_parameters/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/usage/cli_tools/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/cli_tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/cli_tools/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/usage/model_source/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/model_source/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/model_source/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/usage/quick_usage/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/quick_usage/"/>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/quick_usage/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/demo/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/demo/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/demo/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/faq/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/faq/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/faq/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/quick_start/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/docker_deployment/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/quick_start/extension_modules/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/reference/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/reference/changelog/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/changelog/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/changelog/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/reference/output_files/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/reference/output_files/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/reference/output_files/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/advanced_cli_parameters/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/cli_tools/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/cli_tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/cli_tools/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/model_source/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/model_source/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/model_source/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/quick_usage/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/quick_usage/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://opendatalab.github.io/MinerU/usage/quick_usage/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/AMD/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/AMD/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/VastAI/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/VastAI/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/BISHENG/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/BISHENG/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/Cherry_Studio/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/Cherry_Studio/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/Coze/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/Coze/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/DataFlow/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/DataFlow/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/Dify/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/Dify/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/DingTalk/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/DingTalk/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/FastGPT/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/FastGPT/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/ModelWhale/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/ModelWhale/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/RagFlow/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/RagFlow/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/Sider/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/Sider/"/>
+    </url>
+    <url>
+        <loc>https://opendatalab.github.io/MinerU/zh/usage/plugin/n8n/</loc>
+        <lastmod>2026-02-09</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh" href="https://opendatalab.github.io/MinerU/zh/usage/plugin/n8n/"/>
+    </url>
+</urlset>
