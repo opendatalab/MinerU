@@ -57,6 +57,7 @@
     - [寒武纪 Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
     - [昆仑芯 Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
     - [太初元碁 Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)
+    - [壁仞 Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
   - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
 
 - 2026/01/30 2.7.4 发布
