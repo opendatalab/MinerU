@@ -341,6 +341,9 @@ class DocxConverter:
             elif drawing_blip:
                 # 处理图片元素
                 self._handle_pictures(drawing_blip)
+                # 如果是段落元素，同时处理其中的文本内容（如描述性文字）
+                if tag_name == "p":
+                    self._handle_text_elements(element)
             # 检查 sdt 元素
             elif tag_name == "sdt":
                 sdt_content = element.find(
@@ -569,19 +572,19 @@ class DocxConverter:
 
         """
 
-        def get_docx_image(drawing_blip: Any) -> Optional[bytes]:
+        def get_docx_image(image: Any) -> Optional[bytes]:
             """
             获取 DOCX 图像数据。
 
             Args:
-                drawing_blip: 绘图 blip 对象
+                image: 单个 blip 元素
 
             Returns:
 
                 Optional[bytes]: 图像数据
             """
             image_data: Optional[bytes] = None
-            rId = drawing_blip[0].get(
+            rId = image.get(
                 "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
             )
             if rId in self.docx_obj.part.rels:
@@ -590,26 +593,27 @@ class DocxConverter:
                 image_data = image_part.blob  # 获取二进制图像数据
             return image_data
 
-        # 使用 PIL 打开 BytesIO 对象创建图像
-        image_data: Optional[bytes] = get_docx_image(drawing_blip)
-        if image_data is None:
-            logger.warning("Warning: image cannot be found")
-        else:
-            image_bytes = BytesIO(image_data)
-            pil_image = Image.open(image_bytes)
-            if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
-                logger.warning(f"Skipping WMF image, size: {pil_image.size}")
-                placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
-                img_base64 = image_to_b64str(placeholder)
+        # 遍历所有 blip 元素，支持 group images（多个 blip）
+        for image in drawing_blip:
+            image_data: Optional[bytes] = get_docx_image(image)
+            if image_data is None:
+                logger.warning("Warning: image cannot be found")
             else:
-                if pil_image.mode != "RGB":
-                    pil_image = pil_image.convert("RGB")
-                img_base64 = image_to_b64str(pil_image)
-            image_block = {
-                "type": BlockType.IMAGE,
-                "content": img_base64,
-            }
-            self.cur_page.append(image_block)
+                image_bytes = BytesIO(image_data)
+                pil_image = Image.open(image_bytes)
+                if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
+                    logger.warning(f"Skipping WMF image, size: {pil_image.size}")
+                    placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+                    img_base64 = image_to_b64str(placeholder)
+                else:
+                    if pil_image.mode != "RGB":
+                        pil_image = pil_image.convert("RGB")
+                    img_base64 = image_to_b64str(pil_image)
+                image_block = {
+                    "type": BlockType.IMAGE,
+                    "content": img_base64,
+                }
+                self.cur_page.append(image_block)
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
         """
