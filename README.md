@@ -45,6 +45,33 @@
 
 # Changelog
 
+- 2026/02/06 2.7.6 Release
+  - Added support for the domestic computing platforms Kunlunxin and Tecorigin; currently, the domestic computing platforms that have been adapted and supported by the official team and vendors include:
+    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
+    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
+    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
+    - [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
+    - [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+    - [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+    - [IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
+    - [Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
+    - [Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
+    - [Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)  
+    - [Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
+  - MinerU continues to support domestic hardware platforms and mainstream chip architectures. With secure and reliable technology, it helps research, government, and enterprise users reach new heights in document digitization!
+
+- 2026/01/30 2.7.4 Release
+  - Added support for domestic computing platforms IluvatarCorex and Cambricon.
+
+- 2026/01/23 2.7.2 Release
+  - Added support for domestic computing platforms Hygon, Enflame, and Moore Threads.
+  - Cross-page table merging optimization, improving merge success rate and merge quality.
+
+- 2026/01/06 2.7.1 Release
+  - fix bug: #4300
+  - Updated pdfminer.six dependency version to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
+  - Support automatic correction of input image exif orientation to improve OCR recognition accuracy  #4283
+
 - 2025/12/30 2.7.0 Release
   - Simplified installation process. No need to separately install `vlm` acceleration engine dependencies. Using `uv pip install mineru[all]` during installation will install all optional backend dependencies.
   - Added new `hybrid` backend, which combines the advantages of `pipeline` and `vlm` backends. Built on vlm, it integrates some capabilities of pipeline, adding extra extensibility on top of high accuracy:

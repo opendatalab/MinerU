@@ -1,11 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import time
+import json
 
 from loguru import logger
 
 from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size, \
-    set_lmdeploy_backend
+    set_lmdeploy_backend, mod_kwargs_by_device_type
 from .model_output_to_middle_json import result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf
@@ -99,6 +100,17 @@ class ModelSingleton:
                         import vllm
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-engine backend.")
+
+                    kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="sync_engine")
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], str):
+                            try:
+                                kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                            except json.JSONDecodeError:
+                                logger.warning(
+                                    f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
+                                del kwargs["compilation_config"]
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:
@@ -112,8 +124,25 @@ class ModelSingleton:
                     try:
                         from vllm.engine.arg_utils import AsyncEngineArgs
                         from vllm.v1.engine.async_llm import AsyncLLM
+                        from vllm.config import CompilationConfig
                     except ImportError:
                         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+
+                    kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="async_engine")
+
+                    if "compilation_config" in kwargs:
+                        if isinstance(kwargs["compilation_config"], dict):
+                            # 如果是字典，转换为 CompilationConfig 对象
+                            kwargs["compilation_config"] = CompilationConfig(**kwargs["compilation_config"])
+                        elif isinstance(kwargs["compilation_config"], str):
+                            # 如果是 JSON 字符串，先解析再转换
+                            try:
+                                config_dict = json.loads(kwargs["compilation_config"])
+                                kwargs["compilation_config"] = CompilationConfig(**config_dict)
+                            except (json.JSONDecodeError, TypeError) as e:
+                                logger.warning(
+                                    f"Failed to parse compilation_config: {kwargs['compilation_config']}, error: {e}")
+                                del kwargs["compilation_config"]
                     if "gpu_memory_utilization" not in kwargs:
                         kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
                     if "model" not in kwargs:

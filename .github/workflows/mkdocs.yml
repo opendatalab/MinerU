@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout master
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: dev
       - name: Deploy docs

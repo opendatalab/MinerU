@@ -103,6 +103,9 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content)
 
+                if block_type == "title" and block_content:
+                    block_content = re.sub(r'\n\s*', ' ', block_content).strip()
+
                 if block_content and block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
 
                     switch_code_to_algorithm = True
@@ -349,7 +352,8 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     # 调用通用方法
     return tie_up_category_by_index(
         get_subjects,
-        get_objects
+        get_objects,
+        object_block_type=object_block_type
     )
 
 

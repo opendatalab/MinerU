@@ -45,6 +45,33 @@
 
 # 更新记录
 
+- 2026/02/06 2.7.6 发布
+  - 新增国产算力平台昆仑芯、太初元碁的适配支持，目前已由官方和厂商适配并支持的国产算力平台包括:
+    - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
+    - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
+    - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
+    - [海光 Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
+    - [燧原 Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
+    - [摩尔线程 MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
+    - [天数智芯 IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
+    - [寒武纪 Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
+    - [昆仑芯 Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
+    - [太初元碁 Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)
+    - [壁仞 Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
+  - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
+
+- 2026/01/30 2.7.4 发布
+  - 新增国产算力平台天数智芯、寒武纪的适配支持。
+
+- 2026/01/23 2.7.2 发布
+  - 新增国产算力平台海光、燧原、摩尔线程的适配支持
+  - 跨页表合并优化，提升合并成功率与合并效果
+
+- 2026/01/06 2.7.1 发布
+  - fix bug: #4300
+  - 更新pdfminer.six的依赖版本以解决 [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
+  - 支持输入图像的exif方向自动校正，提升OCR识别效果  #4283
+
 - 2025/12/30 2.7.0 发布
   - 简化安装流程，现在不再需要单独安装`vlm`加速引擎依赖包，安装时使用`uv pip install mineru[all]`即可安装所有可选后端的依赖包。
   - 增加全新后端`hybrid`，该后端结合了`pipeline`和`vlm`后端的优势，在vlm的基础上，融入了pipeline的部分能力，在高精度的基础上增加了额外的扩展性：

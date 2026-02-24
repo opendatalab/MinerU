@@ -344,6 +344,7 @@ def _process_hybrid(
         server_url=None,
         **kwargs,
 ):
+    from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
     """同步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
@@ -396,8 +397,8 @@ async def _async_process_hybrid(
         server_url=None,
         **kwargs,
 ):
+    from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
     """异步处理hybrid后端逻辑"""
-
     if not backend.endswith("client"):
         server_url = None
 

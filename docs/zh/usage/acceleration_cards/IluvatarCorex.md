@@ -2,43 +2,44 @@
 以下为本指南测试使用的平台信息，供参考：
 ```
 os: Ubuntu 22.04.5 LTS  
-cpu: AMD EPYC (amd64)
-gpu: T100
-driver: 3.0.0
-docker: 28.0.4
+cpu: Intel x86-64
+gpu: Iluvatar BI-V150
+driver: 4.4.0
+docker: 28.1.1
 ```
 
 ## 2. 环境准备
 
-### 2.1 下载并加载镜像 （vllm）
+### 2.1 使用 Dockerfile 构建镜像
 
 ```bash
-wget http://wb.tecorigin.com:8082/repository/teco-customer-repo/Course/MinerU/mineru-vllm.tar
-
-docker load -i mineru-vllm.tar
+wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/corex.Dockerfile
+docker build --network=host -t mineru:corex-vllm-latest -f corex.Dockerfile .
 ```
+
 
 ## 3. 启动 Docker 容器
 
 ```bash
-docker run -dit --name mineru_docker \
-    --privileged \
-    --cap-add SYS_PTRACE \
-    --cap-add SYS_ADMIN \
-    --network=host \
-    --shm-size=500G \
-    mineru:sdaa-vllm-latest \
-    /bin/bash
+docker run --name mineru_docker \
+   -v /usr/src:/usr/src \
+   -v /lib/modules:/lib/modules \
+   -v /dev:/dev \
+   --privileged \
+   --cap-add=ALL \
+   --pid=host \
+   --group-add video \
+   --network=host \
+   --shm-size '400gb' \
+   --ulimit memlock=-1 \
+   --security-opt seccomp=unconfined \
+   --security-opt apparmor=unconfined \
+   -e VLLM_ENFORCE_CUDA_GRAPH=1 \
+   -e MINERU_MODEL_SOURCE=local \
+   -e MINERU_VLLM_DEVICE=corex \
+   -it mineru:corex-vllm-latest \
+   /bin/bash
 ```
-
->[!TIP]
-> 如需使用`vllm`环境,请执行以下操作：
-> - 进入容器后，通过以下命令切换到conda环境：
->   ```bash
->   conda activate vllm_env_py310
->   ```
->
-> - 切换成功后，您可以在命令行前看到`(vllm_env_py310)`的标识，这表示您已成功进入`vllm`的虚拟环境。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
@@ -46,7 +47,10 @@ docker run -dit --name mineru_docker \
 
 ## 4. 注意事项
 
-不同环境下，MinerU对Tecorigin加速卡的支持情况如下表所示：
+>[!TIP]
+>目前Iluvatar方案使用vllm作为推理引擎时，可能出现服务停止后显存无法正常释放的问题，如果遇到该问题，请重启Docker容器以释放显存。
+
+不同环境下，MinerU对Iluvatar加速卡的支持情况如下表所示：
 
 <table border="1">
   <thead>
@@ -104,7 +108,7 @@ docker run -dit --name mineru_docker \
     </tr>
     <tr>
       <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🔴</td>
+      <td>🟢</td>
     </tr>
   </tbody>
 </table>
@@ -115,6 +119,5 @@ docker run -dit --name mineru_docker \
 🔴: 不支持，无法运行，或精度存在较大差异
 
 >[!TIP]
-> - Tecorigin加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明,
->将环境变量`CUDA_VISIBLE_DEVICES`替换为`SDAA_VISIBLE_DEVICES`即可。 
-> - 在太初平台可以通过`teco-smi -c`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。
+> - Iluvatar加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[使用指定GPU设备](https://opendatalab.github.io/MinerU/zh/usage/advanced_cli_parameters/#cuda_visible_devices)章节说明
+> - 在Iluvatar平台可以通过`ixsmi`命令查看加速卡的使用情况，并根据需要指定空闲的加速卡ID以避免资源冲突。

@@ -16,6 +16,12 @@ debug/
 *.ipynb
 .idea
 
+# Python build artifacts
+*.egg-info/
+build/
+dist/
+*.egg
+
 # vscode history
 .history
 

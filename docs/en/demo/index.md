@@ -1,2 +1,1 @@
-<script type="module" src="https://gradio.s3-us-west-2.amazonaws.com/5.35.0/gradio.js"></script>
-<gradio-app src="https://opendatalab-mineru.hf.space"></gradio-app>
+<iframe src="https://opendatalab-mineru.hf.space" style="min-height: calc(-40px + 100vh); width: 100%; flex-grow: 1; border: medium; overflow: auto; height: 1746px;"></iframe>
