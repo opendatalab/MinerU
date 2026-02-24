@@ -1072,13 +1072,6 @@ class DocxConverter:
             }
             list_block["content"].append(list_item)
 
-    def _find_ilevel_list_block(self, outer_block, ilevel: int):
-        """
-        查找某一 ilevel 的 list_block, 由于需要的总是最新的, 并且可能存在相隔开的两个同一 ilevel 的
-        子列表,所以在 list_block 中需要倒序查询最近的子 list_block
-        """
-        pass
-
     def _reset_list_counters_for_new_sequence(self, numid: int):
         """
         开始新的编号序列时重置计数器。
@@ -1152,23 +1145,6 @@ class DocxConverter:
             return int(s)
         except ValueError:
             return default
-
-    def _get_list_counter(self, numid: int, ilvl: int) -> int:
-        """
-        获取并递增特定 numId 和 ilvl 组合的计数器。
-
-        Args:
-            numid: 列表编号ID
-            ilvl: 列表层级
-
-        Returns:
-            int: 当前计数器值
-        """
-        key = (numid, ilvl)
-        if key not in self.list_counters:
-            self.list_counters[key] = 0
-        self.list_counters[key] += 1
-        return self.list_counters[key]
 
     def _process_header_footer_paragraph(self, paragraph: Paragraph) -> str:
         """
