@@ -138,6 +138,9 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content)
 
+                if block_type == "title" and block_content:
+                    block_content = re.sub(r'\n\s*', ' ', block_content).strip()
+
                 if block_content and block_content.count("\\(") == block_content.count("\\)") and block_content.count("\\(") > 0:
 
                     switch_code_to_algorithm = True
