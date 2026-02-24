@@ -399,7 +399,7 @@ class DocxConverter:
 
         """
         is_section_end = False
-        if element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES):
+        if element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES) is not None:
             # 如果没有text内容
             if element.text == "":
                 self.cur_page = []
