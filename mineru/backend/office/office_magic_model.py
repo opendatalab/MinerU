@@ -3,9 +3,8 @@ from typing import Literal
 
 from loguru import logger
 
-from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_index
+from mineru.utils.magic_model_utils import tie_up_category_by_index
 
 
 class MagicModel:
@@ -554,14 +553,56 @@ def classify_caption_blocks(page_blocks: list) -> list:
     2. caption块与table或image中相隔的块全部是caption的情况视为该caption块与table或image相邻
     3. caption的类型与他前置位相邻的母块type一致（table或image），如果没有前置位母块则检查是否有后置位母块
     4. 没有相邻母块的caption需要变更type为text
+    5. 当一个block的type是table或image时，其后续的第一个text块如果以特定前缀开头，则将其设置为相应的caption类型
+       - table后的text块以["表", "table"]开头（不区分大小写）-> table_caption
+       - image后的text块以["图", "fig"]开头（不区分大小写）-> image_caption
     """
     if not page_blocks:
         return page_blocks
 
     available_types = ["table", "image"]
 
-    result_blocks = []
+    # 定义caption前缀匹配规则
+    table_caption_prefixes = ["表", "table"]
+    image_caption_prefixes = ["图", "fig"]
+
+    # 第一步：处理table/image后续的text块，将符合条件的text块标记为caption
+    preprocessed_blocks = []
     n = len(page_blocks)
+
+    for i, block in enumerate(page_blocks):
+        block_type = block.get("type")
+
+        # 检查是否是table或image块
+        if block_type in available_types:
+            preprocessed_blocks.append(block)
+
+            # 查找后续的第一个text块
+            if i + 1 < n:
+                next_block = page_blocks[i + 1]
+                next_block_type = next_block.get("type")
+
+                if next_block_type == "text":
+                    content = next_block.get("content", "").strip().lower()
+
+                    # 根据当前块类型检查是否匹配caption前缀
+                    if block_type == "table":
+                        if any(content.startswith(prefix.lower()) for prefix in table_caption_prefixes):
+                            # 将text块标记为caption，后续会被处理为table_caption
+                            next_block = next_block.copy()
+                            next_block["type"] = "caption"
+                            page_blocks[i + 1] = next_block
+                    elif block_type == "image":
+                        if any(content.startswith(prefix.lower()) for prefix in image_caption_prefixes):
+                            # 将text块标记为caption，后续会被处理为image_caption
+                            next_block = next_block.copy()
+                            next_block["type"] = "caption"
+                            page_blocks[i + 1] = next_block
+        else:
+            preprocessed_blocks.append(block)
+
+    # 第二步：处理caption块的分类
+    result_blocks = []
 
     for i, block in enumerate(page_blocks):
         if block.get("type") != "caption":
