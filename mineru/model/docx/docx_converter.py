@@ -1183,6 +1183,50 @@ class DocxConverter:
                 return level - 1  # 转换为 0-based
         return None
 
+    def _is_flat_list_toc(
+        self, items: list[tuple[int, str, list, list]]
+    ) -> bool:
+        """
+        检测目录是否为扁平列表（插图清单、列表清单等），
+        这类目录的所有条目应在同一层级，不应嵌套。
+
+        策略：检查是否超过 50% 的条目以"图"或"表"开头。
+        """
+        match_count = 0
+        total_count = 0
+        for _level, text, _elements, _equations in items:
+            stripped = text.strip()
+            if not stripped:
+                continue
+            total_count += 1
+            if re.match(r'^[图表][\d\s.]', stripped) or re.match(
+                r'^(Figure|Table)\s+\d', stripped, re.IGNORECASE
+            ):
+                match_count += 1
+        if total_count == 0:
+            return False
+        return match_count / total_count > 0.5
+
+    def _correct_toc_level_by_text(self, toc_level: int, text: str) -> int:
+        """
+        通过文本中的编号深度修正目录项的层级。
+
+        仅对 toc_level > 0 的条目进行修正，避免影响顶层章节标题。
+        例如：
+        - "1.1 LYSO..." (toc 3 → ilevel=2) → text depth 2 → 返回 1
+        - "1.1.1 LYSO..." (toc 3 → ilevel=2) → text depth 3 → 返回 2
+        - "本章小结" (toc 1 → ilevel=0) → 返回 0（不修正）
+        """
+        if toc_level == 0:
+            return 0
+        stripped = text.strip()
+        match = re.match(r'^(\d+(?:\.\d+)*)', stripped)
+        if match:
+            parts = match.group(1).split('.')
+            # "1.1" -> 2 parts -> level 1; "1.1.1" -> 3 parts -> level 2
+            return len(parts) - 1
+        return toc_level
+
     def _add_index_item(
         self,
         *,
@@ -1284,6 +1328,10 @@ class DocxConverter:
         """
         处理目录SDT内容，将其转换为层级化的INDEX块。
 
+        两阶段处理：
+        1. 收集所有段落及其层级；
+        2. 检测目录类型（常规目录 vs 扁平列表），对层级进行修正后写入索引块。
+
         Args:
             sdt_content: w:sdtContent XML元素
         """
@@ -1291,10 +1339,8 @@ class DocxConverter:
             ".//w:p", namespaces=DocxConverter._BLIP_NAMESPACES
         )
 
-        # 重置索引状态，开始新的目录块
-        self.index_block_stack = []
-        self.pre_index_ilevel = -1
-
+        # --- 第一阶段：收集所有条目 ---
+        toc_items: list[tuple[int, str, list, list]] = []
         for p in paragraphs:
             try:
                 p_obj = Paragraph(p, self.docx_obj)
@@ -1308,20 +1354,36 @@ class DocxConverter:
                 if not text:
                     continue
 
-                # 获取目录项层级
                 toc_level = self._get_toc_item_level(p_obj)
                 if toc_level is None:
                     toc_level = 0
 
-                self._add_index_item(
-                    ilevel=toc_level,
-                    elements=paragraph_elements,
-                    text=text,
-                    equations=equations,
-                )
+                toc_items.append((toc_level, text, paragraph_elements, equations))
             except Exception as e:
-                logger.debug(f"Error processing TOC paragraph: {e}")
+                logger.debug(f"Error collecting TOC paragraph: {e}")
                 continue
+
+        # --- 第二阶段：修正层级并写入索引块 ---
+        is_flat = self._is_flat_list_toc(toc_items)
+
+        # 重置索引状态，开始新的目录块
+        self.index_block_stack = []
+        self.pre_index_ilevel = -1
+
+        for toc_level, text, elements, equations in toc_items:
+            if is_flat:
+                # 插图/列表清单：强制全部扁平（层级 0）
+                corrected_level = 0
+            else:
+                # 常规目录：依据文本编号深度修正层级，解决 docx 跳级问题
+                corrected_level = self._correct_toc_level_by_text(toc_level, text)
+
+            self._add_index_item(
+                ilevel=corrected_level,
+                elements=elements,
+                text=text,
+                equations=equations,
+            )
 
         # 处理完成后重置索引状态
         self.index_block_stack = []
