@@ -71,30 +71,60 @@ def merge_para_with_text(para_block):
     return para_text
 
 
-def merge_list_to_markdown(list_block):
-    """Recursively convert a nested list block to markdown text."""
-    result = ''
+def _flatten_list_items(list_block):
+    """Recursively flatten nested list blocks into a list of prefixed item strings."""
+    items = []
     ilevel = list_block.get('ilevel', 0)
     attribute = list_block.get('attribute', 'unordered')
-    indent = '  ' * ilevel  # 2 spaces per indentation level
+    indent = '    ' * ilevel
     ordered_counter = 1
 
     for block in list_block.get('blocks', []):
-        block_type = block['type']
-        if block_type == BlockType.LIST:
-            # Nested sub-list: recurse
-            result += merge_list_to_markdown(block)
+        if block['type'] == BlockType.LIST:
+            items.extend(_flatten_list_items(block))
         else:
-            # Regular text / inline-equation item
             item_text = merge_para_with_text(block)
             if item_text.strip():
                 if attribute == 'ordered':
-                    result += f"{indent}{ordered_counter}. {item_text}\n"
+                    items.append(f"{indent}{ordered_counter}. {item_text}")
                     ordered_counter += 1
                 else:
-                    result += f"{indent}- {item_text}\n"
+                    items.append(f"{indent}- {item_text}")
 
-    return result
+    return items
+
+
+def _flatten_list_items_v2(list_block):
+    """Recursively flatten nested list blocks into v2-structured item dicts."""
+    items = []
+    ilevel = list_block.get('ilevel', 0)
+    attribute = list_block.get('attribute', 'unordered')
+    ordered_counter = 1
+
+    for block in list_block.get('blocks', []):
+        if block['type'] == BlockType.LIST:
+            items.extend(_flatten_list_items_v2(block))
+        else:
+            item_content = merge_para_with_text_v2(block)
+            if item_content:
+                if attribute == 'ordered':
+                    prefix = f"{'    ' * ilevel}{ordered_counter}."
+                    ordered_counter += 1
+                else:
+                    prefix = f"{'    ' * ilevel}-"
+                items.append({
+                    'item_type': 'text',
+                    'ilevel': ilevel,
+                    'prefix': prefix,
+                    'item_content': item_content,
+                })
+
+    return items
+
+
+def merge_list_to_markdown(list_block):
+    """Recursively convert a nested list block to markdown text."""
+    return '\n'.join(_flatten_list_items(list_block)) + '\n'
 
 
 def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
@@ -145,33 +175,24 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
     return page_markdown
 
 
-def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):
+def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     para_type = para_block['type']
     para_content = {}
     if para_type in [
         BlockType.TEXT,
-        BlockType.REF_TEXT,
-        BlockType.PHONETIC,
         BlockType.HEADER,
         BlockType.FOOTER,
-        BlockType.PAGE_NUMBER,
-        BlockType.ASIDE_TEXT,
-        BlockType.PAGE_FOOTNOTE,
     ]:
         para_content = {
             'type': para_type,
             'text': merge_para_with_text(para_block),
         }
     elif para_type == BlockType.LIST:
+        attribute = para_block.get('attribute', 'unordered')
         para_content = {
             'type': para_type,
-            'sub_type': para_block.get('sub_type', ''),
-            'list_items':[],
+            'list_items': _flatten_list_items(para_block),
         }
-        for block in para_block['blocks']:
-            item_text = merge_para_with_text(block)
-            if item_text.strip():
-                para_content['list_items'].append(item_text)
     elif para_type == BlockType.TITLE:
         title_level = get_title_level(para_block)
         para_content = {
@@ -187,7 +208,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
             'text_format': 'latex',
         }
     elif para_type == BlockType.IMAGE:
-        para_content = {'type': ContentType.IMAGE, 'img_path': '', BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
+        para_content = {'type': ContentType.IMAGE, 'img_path': '', BlockType.IMAGE_CAPTION: []}
         for block in para_block['blocks']:
             if block['type'] == BlockType.IMAGE_BODY:
                 for line in block['lines']:
@@ -197,72 +218,34 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
             if block['type'] == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(merge_para_with_text(block))
-            if block['type'] == BlockType.IMAGE_FOOTNOTE:
-                para_content[BlockType.IMAGE_FOOTNOTE].append(merge_para_with_text(block))
     elif para_type == BlockType.TABLE:
-        para_content = {'type': ContentType.TABLE, 'img_path': '', BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
+        para_content = {'type': ContentType.TABLE, BlockType.TABLE_CAPTION: []}
         for block in para_block['blocks']:
             if block['type'] == BlockType.TABLE_BODY:
                 for line in block['lines']:
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
-
                             if span.get('html', ''):
                                 para_content[BlockType.TABLE_BODY] = f"{span['html']}"
-
-                            if span.get('image_path', ''):
-                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
-
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
-            if block['type'] == BlockType.TABLE_FOOTNOTE:
-                para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_with_text(block))
-    elif para_type == BlockType.CODE:
-        para_content = {'type': BlockType.CODE, 'sub_type': para_block["sub_type"], BlockType.CODE_CAPTION: []}
-        for block in para_block['blocks']:
-            if block['type'] == BlockType.CODE_BODY:
-                para_content[BlockType.CODE_BODY] = merge_para_with_text(block)
-                if para_block["sub_type"] == BlockType.CODE:
-                    para_content["guess_lang"] = para_block["guess_lang"]
-            if block['type'] == BlockType.CODE_CAPTION:
-                para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
-
-    page_width, page_height = page_size
-    para_bbox = para_block.get('bbox')
-    if para_bbox:
-        x0, y0, x1, y1 = para_bbox
-        para_content['bbox'] = [
-            int(x0 * 1000 / page_width),
-            int(y0 * 1000 / page_height),
-            int(x1 * 1000 / page_width),
-            int(y1 * 1000 / page_height),
-        ]
 
     para_content['page_idx'] = page_idx
 
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
+def make_blocks_to_content_list_v2(para_block, img_buket_path):
     para_type = para_block['type']
     para_content = {}
     if para_type in [
         BlockType.HEADER,
         BlockType.FOOTER,
-        BlockType.ASIDE_TEXT,
-        BlockType.PAGE_NUMBER,
-        BlockType.PAGE_FOOTNOTE,
     ]:
         if para_type == BlockType.HEADER:
             content_type = ContentTypeV2.PAGE_HEADER
         elif para_type == BlockType.FOOTER:
             content_type = ContentTypeV2.PAGE_FOOTER
-        elif para_type == BlockType.ASIDE_TEXT:
-            content_type = ContentTypeV2.PAGE_ASIDE_TEXT
-        elif para_type == BlockType.PAGE_NUMBER:
-            content_type = ContentTypeV2.PAGE_NUMBER
-        elif para_type == BlockType.PAGE_FOOTNOTE:
-            content_type = ContentTypeV2.PAGE_FOOTNOTE
         else:
             raise ValueError(f"Unknown para_type: {para_type}")
         para_content = {
@@ -290,7 +273,6 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
             }
     elif para_type in [
         BlockType.TEXT,
-        BlockType.PHONETIC
     ]:
         para_content = {
             'type': ContentTypeV2.PARAGRAPH,
@@ -299,18 +281,16 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
             }
         }
     elif para_type == BlockType.INTERLINE_EQUATION:
-        image_path, math_content = get_body_data(para_block)
+        _, math_content = get_body_data(para_block)
         para_content = {
             'type': ContentTypeV2.EQUATION_INTERLINE,
             'content': {
                 'math_content': math_content,
                 'math_type': 'latex',
-                'image_source': {'path': f"{img_buket_path}/{image_path}"},
             }
         }
     elif para_type == BlockType.IMAGE:
         image_caption = []
-        image_footnote = []
         image_path, _ = get_body_data(para_block)
         image_source = {
             'path': f"{img_buket_path}/{image_path}",
@@ -318,23 +298,16 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
         for block in para_block['blocks']:
             if block['type'] == BlockType.IMAGE_CAPTION:
                 image_caption.extend(merge_para_with_text_v2(block))
-            if block['type'] == BlockType.IMAGE_FOOTNOTE:
-                image_footnote.extend(merge_para_with_text_v2(block))
         para_content = {
             'type': ContentTypeV2.IMAGE,
             'content': {
                 'image_source': image_source,
                 'image_caption': image_caption,
-                'image_footnote': image_footnote,
             }
         }
     elif para_type == BlockType.TABLE:
         table_caption = []
-        table_footnote = []
-        image_path, html = get_body_data(para_block)
-        image_source = {
-            'path': f"{img_buket_path}/{image_path}",
-        }
+        _, html = get_body_data(para_block)
         if html.count("<table") > 1:
             table_nest_level = 2
         else:
@@ -351,101 +324,28 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
         for block in para_block['blocks']:
             if block['type'] == BlockType.TABLE_CAPTION:
                 table_caption.extend(merge_para_with_text_v2(block))
-            if block['type'] == BlockType.TABLE_FOOTNOTE:
-                table_footnote.extend(merge_para_with_text_v2(block))
         para_content = {
             'type': ContentTypeV2.TABLE,
             'content': {
-                'image_source': image_source,
                 'table_caption': table_caption,
-                'table_footnote': table_footnote,
                 'html': html,
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
             }
         }
-    elif para_type == BlockType.CODE:
-        code_caption = []
-        code_content = []
-        for block in para_block['blocks']:
-            if block['type'] == BlockType.CODE_CAPTION:
-                code_caption.extend(merge_para_with_text_v2(block))
-            if block['type'] == BlockType.CODE_BODY:
-                code_content = merge_para_with_text_v2(block)
-        sub_type = para_block["sub_type"]
-        if sub_type == BlockType.CODE:
-            para_content = {
-                'type': ContentTypeV2.CODE,
-                'content': {
-                    'code_caption': code_caption,
-                    'code_content': code_content,
-                    'code_language': para_block.get('guess_lang', 'txt'),
-                }
-            }
-        elif sub_type == BlockType.ALGORITHM:
-            para_content = {
-                'type': ContentTypeV2.ALGORITHM,
-                'content': {
-                    'algorithm_caption': code_caption,
-                    'algorithm_content': code_content,
-                }
-            }
-        else:
-            raise ValueError(f"Unknown code sub_type: {sub_type}")
-    elif para_type == BlockType.REF_TEXT:
-        para_content = {
-            'type': ContentTypeV2.LIST,
-            'content': {
-                'list_type': ContentTypeV2.LIST_REF,
-                'list_items': [
-                    {
-                        'item_type': 'text',
-                        'item_content': merge_para_with_text_v2(para_block),
-                    }
-                ],
-            }
-        }
     elif para_type == BlockType.LIST:
-        if 'sub_type' in para_block:
-            if para_block['sub_type'] == BlockType.REF_TEXT:
-                list_type = ContentTypeV2.LIST_REF
-            elif para_block['sub_type'] == BlockType.TEXT:
-                list_type = ContentTypeV2.LIST_TEXT
-            else:
-                raise ValueError(f"Unknown list sub_type: {para_block['sub_type']}")
-        else:
-            list_type = ContentTypeV2.LIST_TEXT
-        list_items = []
-        for block in para_block['blocks']:
-            item_content = merge_para_with_text_v2(block)
-            if item_content:
-                list_items.append({
-                    'item_type': 'text',
-                    'item_content': item_content,
-                })
+        list_type = ContentTypeV2.LIST_TEXT
+        attribute = para_block.get('attribute', 'unordered')
         para_content = {
             'type': ContentTypeV2.LIST,
             'content': {
                 'list_type': list_type,
-                'list_items': list_items,
+                'attribute': attribute,
+                'list_items': _flatten_list_items_v2(para_block),
             }
         }
 
-    page_width, page_height = page_size
-    para_bbox = para_block.get('bbox')
-    if para_bbox:
-        x0, y0, x1, y1 = para_bbox
-        para_content['bbox'] = [
-            int(x0 * 1000 / page_width),
-            int(y0 * 1000 / page_height),
-            int(x1 * 1000 / page_width),
-            int(y1 * 1000 / page_height),
-        ]
-
     return para_content
-
-
-
 
 
 def get_body_data(para_block):
@@ -486,84 +386,20 @@ def get_body_data(para_block):
 
 
 def merge_para_with_text_v2(para_block):
-    block_text = ''
-    for line in para_block['lines']:
-        for span in line['spans']:
-            if span['type'] in [ContentType.TEXT]:
-                span['content'] = full_to_half_exclude_marks(span['content'])
-                block_text += span['content']
-    block_lang = detect_lang(block_text)
-
     para_content = []
-    para_type = para_block['type']
     for i, line in enumerate(para_block['lines']):
         for j, span in enumerate(line['spans']):
             span_type = span['type']
             if span.get("content", '').strip():
                 if span_type == ContentType.TEXT:
-                    if para_type == BlockType.PHONETIC:
-                        span_type = ContentTypeV2.SPAN_PHONETIC
-                    else:
-                        span_type = ContentTypeV2.SPAN_TEXT
+                    span_type = ContentTypeV2.SPAN_TEXT
                 if span_type == ContentType.INLINE_EQUATION:
                     span_type = ContentTypeV2.SPAN_EQUATION_INLINE
-                if span_type in [
-                    ContentTypeV2.SPAN_TEXT,
-                ]:
-                    # 定义CJK语言集合(中日韩)
-                    cjk_langs = {'zh', 'ja', 'ko'}
-                    # logger.info(f'block_lang: {block_lang}, content: {content}')
-
-                    # 判断是否为行末span
-                    is_last_span = j == len(line['spans']) - 1
-
-                    if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
-                        if is_last_span:
-                            span_content = span['content']
-                        else:
-                            span_content = f"{span['content']} "
-                    else:
-                        # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
-                        if (
-                                is_last_span
-                                and is_hyphen_at_line_end(span['content'])
-                        ):
-                            # 如果下一行的第一个span是小写字母开头，删除连字符
-                            if (
-                                    i + 1 < len(para_block['lines'])
-                                    and para_block['lines'][i + 1].get('spans')
-                                    and para_block['lines'][i + 1]['spans'][0].get('type') == ContentType.TEXT
-                                    and para_block['lines'][i + 1]['spans'][0].get('content', '')
-                                    and para_block['lines'][i + 1]['spans'][0]['content'][0].islower()
-                            ):
-                                span_content = span['content'][:-1]
-                            else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
-                                span_content = span['content']
-                        else:
-                            # 西方文本语境下content间需要空格分隔
-                            span_content = f"{span['content']} "
-
-                    if para_content and para_content[-1]['type'] == span_type:
-                        # 合并相同类型的span
-                        para_content[-1]['content'] += span_content
-                    else:
-                        span_content = {
-                            'type': span_type,
-                            'content': span_content,
-                        }
-                        para_content.append(span_content)
-
-                elif span_type in [
-                    ContentTypeV2.SPAN_PHONETIC,
-                    ContentTypeV2.SPAN_EQUATION_INLINE,
-                ]:
-                    span_content = {
-                        'type': span_type,
-                        'content': span['content'],
-                    }
-                    para_content.append(span_content)
-                else:
-                    logger.warning(f"Unknown span type in merge_para_with_text_v2: {span_type}")
+                span_content = {
+                    'type': span_type,
+                    'content': span['content'],
+                }
+                para_content.append(span_content)
     return para_content
 
 
