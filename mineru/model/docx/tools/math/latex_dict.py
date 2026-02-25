@@ -124,6 +124,7 @@ T = {
     "\u2197": "\\nearrow ",
     "\u2198": "\\searrow ",
     "\u2199": "\\swarrow ",
+    "\u2026": "\\ldots ",  # HORIZONTAL ELLIPSIS (…) — pylatexenc maps this to \textellipsis (text-mode), override to \ldots (math-mode)
     "\u22ee": "\\vdots ",
     "\u22ef": "\\cdots ",
     "\u22f0": "\\adots ",
