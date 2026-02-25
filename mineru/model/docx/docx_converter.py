@@ -20,6 +20,7 @@ from mammoth.docx import body_xml
 
 from mineru.model.docx.tools.office_xml import read_str
 from mineru.model.docx.tools.math.omml import oMath2Latex
+from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.docx_fomatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_reader import image_to_b64str
@@ -601,14 +602,25 @@ class DocxConverter:
             else:
                 image_bytes = BytesIO(image_data)
                 pil_image = Image.open(image_bytes)
-                if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
-                    logger.warning(f"Skipping WMF image, size: {pil_image.size}")
-                    placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
-                    img_base64 = image_to_b64str(placeholder)
+                if pil_image.format in ("WMF", "EMF"):
+                    if is_windows_environment():
+                        # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
+                        # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
+                        pil_image.load()
+                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                    else:
+                        logger.warning(f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}")
+                        # 创建与原图同样大小的浅灰色占位图
+                        placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+                        img_base64 = image_to_b64str(placeholder, image_format="JPEG")
                 else:
+                    # 处理常规图片
                     if pil_image.mode != "RGB":
-                        pil_image = pil_image.convert("RGB")
-                    img_base64 = image_to_b64str(pil_image)
+                        # RGBA, P, L 等模式保留原貌并存为 PNG (PNG支持透明度)
+                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                    else:
+                        # 纯 RGB 图片存为 JPEG 以减小体积
+                        img_base64 = image_to_b64str(pil_image, image_format="JPEG")
                 image_block = {
                     "type": BlockType.IMAGE,
                     "content": img_base64,

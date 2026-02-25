@@ -1,4 +1,5 @@
 
+import base64
 import re
 from collections import defaultdict
 
@@ -6,6 +7,7 @@ from loguru import logger
 
 from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType
+from mineru.utils.hash_utils import str_sha256
 from mineru.version import __version__
 
 
@@ -14,6 +16,35 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
 
     magic_model = MagicModel(page_blocks)
     image_blocks = magic_model.get_image_blocks()
+
+    # Write embedded images to local storage via image_writer
+    if image_writer:
+        for img_block in image_blocks:
+            for sub_block in img_block.get("blocks", []):
+                if sub_block.get("type") != "image_body":
+                    continue
+                for line in sub_block.get("lines", []):
+                    for span in line.get("spans", []):
+                        img_b64 = span.get("image_base64", "")
+                        if not img_b64:
+                            continue
+                        # Parse data URI: data:image/{format};base64,{data}
+                        m = re.match(r'data:image/(\w+);base64,(.+)', img_b64, re.DOTALL)
+                        if not m:
+                            logger.warning(f"Unrecognized image_base64 format in page {page_index}, skipping.")
+                            continue
+                        fmt = m.group(1)
+                        ext = "jpg" if fmt == "jpeg" else fmt
+                        try:
+                            img_bytes = base64.b64decode(m.group(2))
+                        except Exception as e:
+                            logger.warning(f"Failed to decode image_base64 on page {page_index}: {e}")
+                            continue
+                        img_path = f"{str_sha256(img_b64)}.{ext}"
+                        image_writer.write(img_path, img_bytes)
+                        span["image_path"] = img_path
+                        del span["image_base64"]
+
     table_blocks = magic_model.get_table_blocks()
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
