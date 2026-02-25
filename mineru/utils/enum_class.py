@@ -54,6 +54,7 @@ class ContentTypeV2:
     LIST = 'list'
     LIST_TEXT = 'text_list'
     LIST_REF = 'reference_list'
+    INDEX = 'index'
     TITLE = 'title'
     PARAGRAPH = 'paragraph'
     SPAN_TEXT = 'text'

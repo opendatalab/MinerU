@@ -78,7 +78,7 @@ def _flatten_list_items(list_block):
     ordered_counter = 1
 
     for block in list_block.get('blocks', []):
-        if block['type'] == BlockType.LIST:
+        if block['type'] in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items(block))
         else:
             item_text = merge_para_with_text(block)
@@ -100,7 +100,7 @@ def _flatten_list_items_v2(list_block):
     ordered_counter = 1
 
     for block in list_block.get('blocks', []):
-        if block['type'] == BlockType.LIST:
+        if block['type'] in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items_v2(block))
         else:
             item_content = merge_para_with_text_v2(block)
@@ -132,7 +132,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
         para_type = para_block['type']
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
-        elif para_type == BlockType.LIST:
+        elif para_type in [BlockType.LIST, BlockType.INDEX]:
             para_text = merge_list_to_markdown(para_block)
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
@@ -187,6 +187,11 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
         }
     elif para_type == BlockType.LIST:
         attribute = para_block.get('attribute', 'unordered')
+        para_content = {
+            'type': para_type,
+            'list_items': _flatten_list_items(para_block),
+        }
+    elif para_type == BlockType.INDEX:
         para_content = {
             'type': para_type,
             'list_items': _flatten_list_items(para_block),
@@ -339,6 +344,14 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             'content': {
                 'list_type': list_type,
                 'attribute': attribute,
+                'list_items': _flatten_list_items_v2(para_block),
+            }
+        }
+    elif para_type == BlockType.INDEX:
+        para_content = {
+            'type': ContentTypeV2.INDEX,
+            'content': {
+                'list_type': ContentTypeV2.LIST_TEXT,
                 'list_items': _flatten_list_items_v2(para_block),
             }
         }

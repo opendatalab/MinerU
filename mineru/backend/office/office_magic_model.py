@@ -61,6 +61,13 @@ class MagicModel:
                     parsed_list["index"] = index
                     blocks.append(parsed_list)
                 continue
+            elif block_type in ["index"]:
+                # 解析嵌套索引结构（目录），生成与list一致的blocks结构
+                parsed_index = parse_index_block(block_info)
+                if parsed_index:
+                    parsed_index["index"] = index
+                    blocks.append(parsed_index)
+                continue
             else:
                 # 未知类型，跳过
                 continue
@@ -97,6 +104,7 @@ class MagicModel:
         self.ref_text_blocks = []
         self.phonetic_blocks = []
         self.list_blocks = []
+        self.index_blocks = []
         for block in blocks:
             if block["type"] in [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]:
                 self.image_blocks.append(block)
@@ -118,6 +126,8 @@ class MagicModel:
                 self.discarded_blocks.append(block)
             elif block["type"] == BlockType.LIST:
                 self.list_blocks.append(block)
+            elif block["type"] == BlockType.INDEX:
+                self.index_blocks.append(block)
             else:
                 continue
 
@@ -131,6 +141,9 @@ class MagicModel:
 
     def get_list_blocks(self):
         return self.list_blocks
+
+    def get_index_blocks(self):
+        return self.index_blocks
 
     def get_image_blocks(self):
         return self.image_blocks
@@ -319,6 +332,48 @@ def parse_list_block(list_block: dict):
         "type": BlockType.LIST,
         "attribute": list_block.get("attribute", "unordered"),
         "ilevel": list_block.get("ilevel", 0),
+        "blocks": blocks
+    }
+
+    return result
+
+
+def parse_index_block(index_block: dict):
+    """
+    递归解析嵌套索引结构（目录），生成与list一致的blocks结构。
+
+    Args:
+        index_block: 索引块字典
+
+    Returns:
+        解析后的索引block字典，若内容为空则返回 None
+    """
+    content = index_block.get("content", [])
+    if not content:
+        return None
+
+    blocks = []
+
+    for item in content:
+        item_type = item.get("type", "")
+
+        if item_type == "text":
+            text_content = item.get("content", "")
+            spans = parse_text_block_spans(text_content)
+            text_block = {
+                "type": BlockType.TEXT,
+                "lines": [{"spans": spans}]
+            }
+            blocks.append(text_block)
+
+        elif item_type == "index":
+            nested_index = parse_index_block(item)
+            if nested_index:
+                blocks.append(nested_index)
+
+    result = {
+        "type": BlockType.INDEX,
+        "ilevel": index_block.get("ilevel", 0),
         "blocks": blocks
     }
 

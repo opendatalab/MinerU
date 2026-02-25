@@ -49,6 +49,7 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
     list_blocks = magic_model.get_list_blocks()
+    index_blocks = magic_model.get_index_blocks()
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
@@ -60,6 +61,7 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
         *text_blocks,
         *interline_equation_blocks,
         *list_blocks,
+        *index_blocks,
     ])
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])

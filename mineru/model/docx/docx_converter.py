@@ -74,6 +74,8 @@ class DocxConverter:
         self.list_counters: dict[tuple[int, int], int] = (
             {}
         )  # 列表计数器 (numId, ilvl) -> count
+        self.index_block_stack: list = []  # 目录索引块堆栈
+        self.pre_index_ilevel: int = -1  # 上一个目录项的缩进等级
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
@@ -351,12 +353,16 @@ class DocxConverter:
                     ".//w:sdtContent", namespaces=DocxConverter._BLIP_NAMESPACES
                 )
                 if sdt_content is not None:
-                    # Iterate paragraphs, runs, or text inside <w:sdtContent>.
-                    paragraphs = sdt_content.findall(
-                        ".//w:p", namespaces=DocxConverter._BLIP_NAMESPACES
-                    )
-                    for p in paragraphs:
-                        self._handle_text_elements(p)
+                    if self._is_toc_sdt(element):
+                        # 处理目录SDT，转换为INDEX块
+                        self._handle_sdt_as_index(sdt_content)
+                    else:
+                        # 其他SDT元素，按普通文本处理
+                        paragraphs = sdt_content.findall(
+                            ".//w:p", namespaces=DocxConverter._BLIP_NAMESPACES
+                        )
+                        for p in paragraphs:
+                            self._handle_text_elements(p)
             # 检查文本段落元素
             elif tag_name == "p":
                 # 处理文本元素（包括段落属性如"tcPr", "sectPr"等）
@@ -1099,6 +1105,227 @@ class DocxConverter:
         keys_to_reset = [key for key in self.list_counters.keys() if key[0] == numid]
         for key in keys_to_reset:
             self.list_counters[key] = 0
+
+    def _is_toc_sdt(self, element: BaseOxmlElement) -> bool:
+        """
+        检测SDT元素是否为目录(Table of Contents)。
+
+        检测策略：
+        1. 检查 w:sdtPr 中的 docPartGallery 或 tag 元素
+        2. 回退到检查内容中的段落样式是否为 "TOC N" 格式
+
+        Args:
+            element: SDT XML元素
+
+        Returns:
+            bool: 如果是目录SDT返回 True，否则返回 False
+        """
+        # 方法1: 检查 w:sdtPr 中的 docPartGallery
+        sdt_pr = element.find("w:sdtPr", namespaces=DocxConverter._BLIP_NAMESPACES)
+        if sdt_pr is not None:
+            doc_part_gallery = sdt_pr.find(
+                ".//w:docPartGallery", namespaces=DocxConverter._BLIP_NAMESPACES
+            )
+            if doc_part_gallery is not None:
+                val = doc_part_gallery.get(self.XML_KEY, "")
+                if "Table of Contents" in val or "toc" in val.lower():
+                    return True
+
+            # 检查 tag 元素的值
+            tag_elem = sdt_pr.find("w:tag", namespaces=DocxConverter._BLIP_NAMESPACES)
+            if tag_elem is not None:
+                val = tag_elem.get(self.XML_KEY, "").lower().replace(" ", "")
+                if "toc" in val or "contents" in val or "tableofcontents" in val:
+                    return True
+
+        # 方法2: 检查内容段落的样式是否为 "TOC N" 格式
+        sdt_content = element.find(
+            "w:sdtContent", namespaces=DocxConverter._BLIP_NAMESPACES
+        )
+        if sdt_content is not None:
+            paragraphs = sdt_content.findall(
+                "w:p", namespaces=DocxConverter._BLIP_NAMESPACES
+            )
+            for p in paragraphs[:5]:  # 只检查前5个段落即可判断
+                try:
+                    p_obj = Paragraph(p, self.docx_obj)
+                    if p_obj.style and p_obj.style.name:
+                        style_name = p_obj.style.name
+                        if re.match(r'^TOC\s*\d+$', style_name, re.IGNORECASE) or \
+                           re.match(r'^目录\s*\d+$', style_name):
+                            return True
+                except Exception:
+                    continue
+
+        return False
+
+    def _get_toc_item_level(self, paragraph: Paragraph) -> Optional[int]:
+        """
+        从段落样式中获取目录项的层级（0-based）。
+
+        "TOC 1" -> 0
+        "TOC 2" -> 1
+        "目录 1" -> 0
+
+        Args:
+            paragraph: 段落对象
+
+        Returns:
+            Optional[int]: 层级（0-based），如果不是目录样式则返回 None
+        """
+        if paragraph.style is None:
+            return None
+        style_name = paragraph.style.name
+        if style_name:
+            match = re.match(r'^(?:TOC|目录)\s*(\d+)$', style_name, re.IGNORECASE)
+            if match:
+                level = int(match.group(1))
+                return level - 1  # 转换为 0-based
+        return None
+
+    def _add_index_item(
+        self,
+        *,
+        ilevel: int,
+        elements: list,
+        text: str = "",
+        equations: list = None,
+    ) -> None:
+        """
+        添加目录项到索引块。
+
+        生成的索引结构：
+        {
+            "type": "index",
+            "ilevel": 0,
+            "content": [
+                {"type": "text", "content": "目录项文本"},
+                {"type": "index", "ilevel": 1, "content": [...]},
+            ]
+        }
+
+        Args:
+            ilevel: 缩进等级（0-based）
+            elements: 元素列表
+            text: 处理后的文本（包含公式标记）
+            equations: 公式列表
+        """
+        if equations is None:
+            equations = []
+        if not elements:
+            return
+
+        content_text = self._build_text_with_equations_and_hyperlinks(
+            elements, text, equations
+        )
+
+        # 情况 1: 首个目录项，创建新的顶层索引块
+        if self.pre_index_ilevel == -1:
+            index_block = {
+                "type": BlockType.INDEX,
+                "content": [],
+                "ilevel": ilevel,
+            }
+            self.cur_page.append(index_block)
+            self.index_block_stack.append(index_block)
+
+            index_item = {
+                "type": BlockType.TEXT,
+                "content": content_text,
+            }
+            index_block["content"].append(index_item)
+            self.pre_index_ilevel = ilevel
+
+        # 情况 2: 增加缩进，打开子索引块
+        elif self.pre_index_ilevel < ilevel:
+            child_index_block = {
+                "type": BlockType.INDEX,
+                "content": [],
+                "ilevel": ilevel,
+            }
+            parent_index_block = self.index_block_stack[-1]
+            parent_index_block["content"].append(child_index_block)
+            self.index_block_stack.append(child_index_block)
+
+            index_item = {
+                "type": BlockType.TEXT,
+                "content": content_text,
+            }
+            child_index_block["content"].append(index_item)
+            self.pre_index_ilevel = ilevel
+
+        # 情况 3: 减少缩进，关闭子索引块
+        elif ilevel < self.pre_index_ilevel:
+            while self.index_block_stack:
+                top_block = self.index_block_stack[-1]
+                if top_block["ilevel"] == ilevel:
+                    break
+                self.index_block_stack.pop()
+            if self.index_block_stack:
+                index_block = self.index_block_stack[-1]
+                index_item = {
+                    "type": BlockType.TEXT,
+                    "content": content_text,
+                }
+                index_block["content"].append(index_item)
+            self.pre_index_ilevel = ilevel
+
+        # 情况 4: 同级目录项
+        else:
+            if self.index_block_stack:
+                index_block = self.index_block_stack[-1]
+                index_item = {
+                    "type": BlockType.TEXT,
+                    "content": content_text,
+                }
+                index_block["content"].append(index_item)
+
+    def _handle_sdt_as_index(self, sdt_content: BaseOxmlElement) -> None:
+        """
+        处理目录SDT内容，将其转换为层级化的INDEX块。
+
+        Args:
+            sdt_content: w:sdtContent XML元素
+        """
+        paragraphs = sdt_content.findall(
+            ".//w:p", namespaces=DocxConverter._BLIP_NAMESPACES
+        )
+
+        # 重置索引状态，开始新的目录块
+        self.index_block_stack = []
+        self.pre_index_ilevel = -1
+
+        for p in paragraphs:
+            try:
+                p_obj = Paragraph(p, self.docx_obj)
+                paragraph_elements = self._get_paragraph_elements(p_obj)
+                text, equations = self._handle_equations_in_text(
+                    element=p, text=p_obj.text
+                )
+                if text is None:
+                    continue
+                text = text.strip()
+                if not text:
+                    continue
+
+                # 获取目录项层级
+                toc_level = self._get_toc_item_level(p_obj)
+                if toc_level is None:
+                    toc_level = 0
+
+                self._add_index_item(
+                    ilevel=toc_level,
+                    elements=paragraph_elements,
+                    text=text,
+                    equations=equations,
+                )
+            except Exception as e:
+                logger.debug(f"Error processing TOC paragraph: {e}")
+                continue
+
+        # 处理完成后重置索引状态
+        self.index_block_stack = []
+        self.pre_index_ilevel = -1
 
     def _get_heading_and_level(self, style_label: str) -> tuple[str, Optional[int]]:
         """
