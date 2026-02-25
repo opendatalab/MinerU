@@ -384,9 +384,14 @@ class oMath2Latex(Tag2Method):
         return bo + BLANK.join(res)
 
     def process_unicode(self, s):
-        # s = s if isinstance(s,unicode) else unicode(s,'utf-8')
-        # print(s, self._t_dict.get(s, s), unicode_to_latex(s))
-        # _str.append( self._t_dict.get(s, s) )
+        # Check T dictionary first for known math-mode symbols.
+        # The T dictionary holds explicit math-mode LaTeX mappings and takes precedence
+        # over pylatexenc, which uses text-mode mappings by default and therefore produces
+        # text-mode commands like \textperiodcentered (for U+00B7 ·) that are invalid
+        # inside math environments.
+        t_result = self._t_dict.get(s)
+        if t_result is not None:
+            return t_result
 
         out_latex_str = self.u.unicode_to_latex(s)
 
@@ -402,10 +407,14 @@ class oMath2Latex(Tag2Method):
             out_latex_str = out_latex_str.replace("\\ensuremath{", " ")
             out_latex_str = out_latex_str.replace("}", " ")
 
-        if out_latex_str.strip().startswith("\\text"):
-            out_latex_str = f" \\text{{{out_latex_str}}} "
+        # Do NOT wrap remaining content in \text{}.
+        # Previously this code matched any string starting with "\text" and wrapped it
+        # again, producing invalid constructs like \text{ \textperiodcentered } for
+        # textcomp symbols.  Characters that truly need text mode should be mapped in
+        # the T dictionary above; for all others we keep the pylatexenc output as-is.
 
         return out_latex_str
+
 
     def do_r(self, elm):
         """

@@ -146,6 +146,21 @@ T = {
     # Binary relations
     "\u00b1": "\\pm ",
     "\u2213": "\\mp ",
+    # Multiplication/division operators (text-mode pylatexenc mappings overridden to math-mode)
+    "\u00b7": "\\cdot ",   # MIDDLE DOT (·) — common in Chinese scientific notation
+    "\u22c5": "\\cdot ",   # DOT OPERATOR (⋅)
+    "\u2219": "\\bullet ", # BULLET OPERATOR (∙)
+    "\u00d7": "\\times ",  # MULTIPLICATION SIGN (×)
+    "\u00f7": "\\div ",    # DIVISION SIGN (÷)
+    "\u2212": "-",         # MINUS SIGN (−)
+    # Degree / prime — avoid ^{} syntax since escape_latex will mangle bare ^ and braces
+    "\u00b0": "\\circ ",   # DEGREE SIGN (°) — caller's context (e.g. 90°) provides the ^
+    "\u2032": "'",         # PRIME (′)
+    "\u2033": "''",        # DOUBLE PRIME (″)
+    # Superscript digits — avoid \texttwosuperior / \textthreesuperior from pylatexenc
+    "\u00b2": "2",
+    "\u00b3": "3",
+    "\u00b9": "1",
     # Italic, Latin, uppercase
     "\U0001d434": "A",
     "\U0001d435": "B",
