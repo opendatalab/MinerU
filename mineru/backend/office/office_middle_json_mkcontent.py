@@ -2,10 +2,8 @@ import os
 
 from loguru import logger
 
-from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
-from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
+from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
-from mineru.utils.language import detect_lang
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -389,17 +387,10 @@ def merge_para_with_text_v2(para_block):
     para_content = []
     for i, line in enumerate(para_block['lines']):
         for j, span in enumerate(line['spans']):
-            span_type = span['type']
             if span.get("content", '').strip():
-                if span_type == ContentType.TEXT:
-                    span_type = ContentTypeV2.SPAN_TEXT
-                if span_type == ContentType.INLINE_EQUATION:
-                    span_type = ContentTypeV2.SPAN_EQUATION_INLINE
-                span_content = {
-                    'type': span_type,
-                    'content': span['content'],
-                }
-                para_content.append(span_content)
+                if span['type'] == ContentType.INLINE_EQUATION:
+                    span['type'] = ContentTypeV2.SPAN_EQUATION_INLINE
+                para_content.append(span)
     return para_content
 
 

@@ -17,7 +17,7 @@ log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes, office_suffixes
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.hash_utils import str_sha256
@@ -29,17 +29,24 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
     try:
         file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
-        # 根据 backend 确定 parse_method
-        if backend.startswith("vlm"):
+
+        # 检测 office 文件类型
+        file_suffix = Path(doc_path).suffix.lower().lstrip('.')
+        if file_suffix in office_suffixes:
+            # office 文件使用固定的 env_name，parse_method 设为默认值（aio_do_parse 内部会处理）
+            env_name = "office"
+            parse_method = "auto"
+        elif backend.startswith("vlm"):
+            # 根据 backend 确定 parse_method
             parse_method = "vlm"
+            env_name = parse_method
         else:
             parse_method = 'ocr' if is_ocr else 'auto'
-
-        # 根据 backend 类型准备环境目录
-        if backend.startswith("hybrid"):
-            env_name = f"hybrid_{parse_method}"
-        else:
-            env_name = parse_method
+            # 根据 backend 类型准备环境目录
+            if backend.startswith("hybrid"):
+                env_name = f"hybrid_{parse_method}"
+            else:
+                env_name = parse_method
 
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, env_name)
 
@@ -91,20 +98,38 @@ def image_to_base64(image_path):
 
 
 def replace_image_with_base64(markdown_text, image_dir_path):
+    # MIME类型映射
+    mime_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+    }
+
     # 匹配Markdown中的图片标签
     pattern = r'\!\[(?:[^\]]*)\]\(([^)]+)\)'
 
     # 替换图片链接
     def replace(match):
         relative_path = match.group(1)
-        # 只处理以.jpg结尾的图片
-        if relative_path.endswith('.jpg'):
-            full_path = os.path.join(image_dir_path, relative_path)
-            base64_image = image_to_base64(full_path)
-            return f'![{relative_path}](data:image/jpeg;base64,{base64_image})'
+        # 获取文件扩展名（不区分大小写）
+        file_ext = os.path.splitext(relative_path)[1].lower()
+
+        # 如果是支持的图片格式，转换为base64
+        if file_ext in mime_types:
+            try:
+                full_path = os.path.join(image_dir_path, relative_path)
+                base64_image = image_to_base64(full_path)
+                mime_type = mime_types[file_ext]
+                return f'![{relative_path}](data:{mime_type};base64,{base64_image})'
+            except Exception as e:
+                logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
+                return match.group(0)
         else:
             # 其他格式的图片保持原样
             return match.group(0)
+
     # 应用替换
     return re.sub(pattern, replace, markdown_text)
 
@@ -113,9 +138,17 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     # 如果language包含()，则提取括号前的内容作为实际语言
     if '(' in language and ')' in language:
         language = language.split('(')[0].strip()
-    file_path = to_pdf(file_path)
+
+    # office 文件不需要转换为 PDF，直接使用原始文件路径
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+    if is_office:
+        parse_file_path = file_path
+    else:
+        parse_file_path = to_pdf(file_path)
+
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
+    local_md_dir, file_name = await parse_pdf(parse_file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -126,8 +159,11 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
     md_content = replace_image_with_base64(txt_content, local_md_dir)
-    # 返回转换后的PDF路径
-    new_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
+    # office 文件没有 layout PDF，返回 None；其他格式返回转换后的 PDF 路径
+    if is_office:
+        new_pdf_path = None
+    else:
+        new_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
 
     return md_content, txt_content, archive_zip_path, new_pdf_path
 
@@ -194,6 +230,16 @@ def to_pdf(file_path):
         tmp_pdf_file.write(pdf_bytes)
 
     return tmp_file_path
+
+
+def to_pdf_preview(file_path):
+    """用于 PDF 预览的转换函数，office 文件不支持预览，返回 None。"""
+    if file_path is None:
+        return None
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    if file_suffix in office_suffixes:
+        return None
+    return to_pdf(file_path)
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
@@ -398,7 +444,7 @@ def main(ctx,
         except Exception as e:
             logger.exception(e)
 
-    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
+    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
@@ -476,7 +522,7 @@ def main(ctx,
         clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
 
         input_file.change(
-            fn=to_pdf,
+            fn=to_pdf_preview,
             inputs=input_file,
             outputs=pdf_show,
             api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用

@@ -114,7 +114,7 @@ class DocxConverter:
 
     @classmethod
     def _format_text_with_hyperlink(
-        cls, text: str, hyperlink: Optional[Union[AnyUrl, Path]]
+        cls, text: str, hyperlink: Optional[Union[AnyUrl, Path, str]]
     ) -> str:
         """
         将文本和超链接格式化为 Markdown 格式 [文本](链接)。
@@ -146,7 +146,7 @@ class DocxConverter:
     def _build_text_from_elements(
         self,
         paragraph_elements: list[
-            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]
+            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]
         ],
     ) -> str:
         """
@@ -168,7 +168,7 @@ class DocxConverter:
     def _build_text_with_equations_and_hyperlinks(
         self,
         paragraph_elements: list[
-            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]
+            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]
         ],
         text_with_equations: str,
         equations: list,
@@ -635,7 +635,7 @@ class DocxConverter:
             paragraph: 段落对象
 
         Returns:
-            list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]]:
+            list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]]:
             段落元素列表，每个元素包含文本、格式和超链接信息
         """
 
@@ -644,7 +644,7 @@ class DocxConverter:
             return [("", None, None)]
 
         paragraph_elements: list[
-            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path]]]
+            tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]
         ] = []
         group_text = ""
         previous_format = None
@@ -653,7 +653,12 @@ class DocxConverter:
         for c in paragraph.iter_inner_content():
             if isinstance(c, Hyperlink):
                 text = c.text
-                hyperlink = Path(c.address)
+                # 若地址为 URL（含 ://），直接保留字符串，避免 Path 将 // 规范化为 /
+                address = c.address
+                if address and "://" in address:
+                    hyperlink = address
+                else:
+                    hyperlink = Path(address) if address else Path(".")
                 format = (
                     self._get_format_from_run(c.runs[0])
                     if c.runs and len(c.runs) > 0
