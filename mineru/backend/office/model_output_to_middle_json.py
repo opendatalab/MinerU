@@ -232,7 +232,7 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
             if count < len(indices):
                 target_idx = indices[count]
                 pid, bidx, _ = body_targets[target_idx]
-                span['target_anchor'] = f"block-p{pid}-b{bidx}"
+                span['target_anchor'] = [pid, bidx]
                 consumed_targets.add(target_idx)
                 used_counts[normalized] = count + 1
                 break
