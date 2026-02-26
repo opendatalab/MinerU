@@ -342,11 +342,23 @@ class DocxConverter:
                     logger.debug("could not parse a table, broken docx table")
             # 检查图片元素
             elif drawing_blip:
-                # 处理图片元素
-                self._handle_pictures(drawing_blip)
-                # 如果是段落元素，同时处理其中的文本内容（如描述性文字）
-                if tag_name == "p":
+                # 判断图片是否为锚定（浮动）图片
+                is_anchored = bool(
+                    element.findall(
+                        ".//wp:anchor",
+                        namespaces=DocxConverter._BLIP_NAMESPACES,
+                    )
+                )
+                # 锚定图片在段落中浮动定位，段落文本应出现在图片之前
+                if is_anchored and tag_name == "p":
                     self._handle_text_elements(element)
+                    self._handle_pictures(drawing_blip)
+                else:
+                    # 处理图片元素
+                    self._handle_pictures(drawing_blip)
+                    # 如果是段落元素，同时处理其中的文本内容（如描述性文字）
+                    if tag_name == "p":
+                        self._handle_text_elements(element)
             # 检查 sdt 元素
             elif tag_name == "sdt":
                 sdt_content = element.find(
