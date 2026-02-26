@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import time
-import urllib.parse
 import zipfile
 from pathlib import Path
 
@@ -264,9 +263,8 @@ def update_file_preview(file_path, request: gr.Request):
                 or request.headers.get('host', 'localhost:7860'))
         proto = request.headers.get('x-forwarded-proto', 'http')
         base_url = f"{proto}://{host}"
-        public_url = f"{base_url}/file={file_path}"
-        encoded_url = urllib.parse.quote(public_url, safe='')
-        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={encoded_url}"
+        public_url = f"{base_url}/gradio_api/file={file_path}"
+        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={public_url}"
         html_content = (
             f'<iframe src="{viewer_url}" '
             f'width="100%" height="800px" frameborder="0" '
