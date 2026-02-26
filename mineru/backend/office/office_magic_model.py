@@ -405,6 +405,8 @@ def clean_table_html(html: str) -> str:
 
     # 需要保留的属性（对表格结构有用）
     preserved_attrs = {'colspan', 'rowspan'}
+    # img 标签需要额外保留的属性（内联 base64 图片内容）
+    img_preserved_attrs = {'src', 'alt', 'width', 'height'}
 
     def clean_tag(match):
         """清洗单个标签，只保留结构相关的属性"""
@@ -413,6 +415,9 @@ def clean_table_html(html: str) -> str:
 
         # 自闭合标签的处理
         is_self_closing = full_tag.rstrip().endswith('/>')
+
+        # img 标签额外保留图片相关属性（如内联 base64 src）
+        current_preserved = preserved_attrs | (img_preserved_attrs if tag_name == 'img' else set())
 
         # 提取需要保留的属性
         kept_attrs = []
@@ -430,8 +435,8 @@ def clean_table_html(html: str) -> str:
             attr_name = attr_name.lower()
             attr_value = attr_match.group(2) or attr_match.group(3) or attr_match.group(4) or ""
 
-            # 只保留colspan和rowspan
-            if attr_name in preserved_attrs:
+            # 只保留指定属性（表格结构属性，img 标签还额外保留图片内容属性）
+            if attr_name in current_preserved:
                 kept_attrs.append(f'{attr_name}="{attr_value}"')
 
         # 重建标签

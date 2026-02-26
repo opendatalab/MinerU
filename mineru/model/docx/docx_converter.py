@@ -68,6 +68,8 @@ class DocxConverter:
         self.docx_obj = None
         self.pages = []
         self.cur_page = []
+        self._mammoth_tables_html: list = []   # 完整文档 mammoth 预解析的表格 HTML 列表
+        self._mammoth_table_idx: int = 0       # 当前预解析表格游标
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
         self.list_block_stack: list = []  # 列表块堆栈
@@ -259,7 +261,12 @@ class DocxConverter:
         file_stream: BinaryIO,
     ):
         self.file_stream = file_stream
-        self.docx_obj = Document(file_stream)
+        # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
+        file_bytes = file_stream.read()
+        # 使用完整文档 mammoth 转换预解析所有表格，获得完整上下文（编号/图片/样式等）
+        self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
+        self._mammoth_table_idx = 0
+        self.docx_obj = Document(BytesIO(file_bytes))
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
@@ -384,15 +391,65 @@ class DocxConverter:
             else:
                 logger.debug(f"Ignoring element in DOCX with tag: {tag_name}")
 
+    def _preparse_tables_with_mammoth(self, file_bytes: bytes) -> list:
+        """
+        使用 mammoth 完整文档转换预解析所有顶层表格的 HTML。
+
+        孤立模式下（仅传入 <w:tbl> XML 片段），mammoth 缺少编号定义
+        （word/numbering.xml）、样式（word/styles.xml）和关系
+        （word/_rels/document.xml.rels）等上下文，在遇到含列表项或图片
+        的单元格时会抛出 AttributeError。通过完整文档转换，mammoth 可
+        获得完整上下文，从而正确处理这些情况。
+
+        图片会被 mammoth 转换为内联 data-URI base64 格式（<img src="data:...">）。
+
+        Returns:
+            list[str]: 文档中所有顶层表格的 HTML 字符串列表，按文档顺序排列
+        """
+        try:
+            import mammoth as _mammoth
+            from bs4 import BeautifulSoup as _BeautifulSoup
+
+            result = _mammoth.convert_to_html(BytesIO(file_bytes))
+            soup = _BeautifulSoup(result.value, 'html.parser')
+
+            # 仅保留顶层表格，排除嵌套在其他表格单元格内的子表格
+            all_tables = soup.find_all('table')
+            top_level_tables = [t for t in all_tables if not t.find_parent('table')]
+
+            logger.debug(
+                f"Pre-parsed {len(top_level_tables)} top-level tables via full mammoth conversion"
+            )
+            return [str(t) for t in top_level_tables]
+        except Exception as e:
+            logger.debug(f"Could not pre-parse tables with full mammoth conversion: {e}")
+            return []
+
     def _handle_tables(self, element: BaseOxmlElement):
         """
         处理表格。
+
+        优先使用完整文档 mammoth 转换的预解析结果（支持列表、图片、样式等
+        复杂单元格内容），若预解析结果耗尽则回退到孤立 XML 解析模式。
 
         Args:
             element: 元素对象
         Returns:
             list[RefItem]: 元素引用列表
         """
+        # 优先使用预解析表格（完整文档上下文，能正确处理列表/图片等）
+        if self._mammoth_table_idx < len(self._mammoth_tables_html):
+            html = self._mammoth_tables_html[self._mammoth_table_idx]
+            self._mammoth_table_idx += 1
+            html = self._normalize_table_colspans(html)
+            table_block = {
+                "type": BlockType.TABLE,
+                "content": html,
+            }
+            self.cur_page.append(table_block)
+            return
+
+        # 回退：孤立 XML 解析模式（原始方案，不含文档上下文）
         table = read_str(element.xml)
         body_reader = body_xml.reader()
         t = body_reader.read_all([table])

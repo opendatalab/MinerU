@@ -107,31 +107,39 @@ def replace_image_with_base64(markdown_text, image_dir_path):
         '.webp': 'image/webp',
     }
 
-    # 匹配Markdown中的图片标签
-    pattern = r'\!\[(?:[^\]]*)\]\(([^)]+)\)'
-
-    # 替换图片链接
-    def replace(match):
-        relative_path = match.group(1)
-        # 获取文件扩展名（不区分大小写）
+    def _path_to_data_uri(relative_path):
         file_ext = os.path.splitext(relative_path)[1].lower()
+        if file_ext not in mime_types:
+            return None
+        try:
+            full_path = os.path.join(image_dir_path, relative_path)
+            base64_image = image_to_base64(full_path)
+            return f'data:{mime_types[file_ext]};base64,{base64_image}'
+        except Exception as e:
+            logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
+            return None
 
-        # 如果是支持的图片格式，转换为base64
-        if file_ext in mime_types:
-            try:
-                full_path = os.path.join(image_dir_path, relative_path)
-                base64_image = image_to_base64(full_path)
-                mime_type = mime_types[file_ext]
-                return f'![{relative_path}](data:{mime_type};base64,{base64_image})'
-            except Exception as e:
-                logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
-                return match.group(0)
-        else:
-            # 其他格式的图片保持原样
-            return match.group(0)
+    # 匹配Markdown中的图片标签 ![...](path)
+    def replace_md(match):
+        relative_path = match.group(1)
+        data_uri = _path_to_data_uri(relative_path)
+        if data_uri:
+            return f'![{relative_path}]({data_uri})'
+        return match.group(0)
 
-    # 应用替换
-    return re.sub(pattern, replace, markdown_text)
+    result = re.sub(r'\!\[(?:[^\]]*)\]\(([^)]+)\)', replace_md, markdown_text)
+
+    # 匹配HTML表格中的 <img src="path"> (跳过已有的data: URI)
+    def replace_html_src(match):
+        relative_path = match.group(1)
+        data_uri = _path_to_data_uri(relative_path)
+        if data_uri:
+            return f'src="{data_uri}"'
+        return match.group(0)
+
+    result = re.sub(r'src="(?!data:)([^"]+)"', replace_html_src, result)
+
+    return result
 
 
 async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):

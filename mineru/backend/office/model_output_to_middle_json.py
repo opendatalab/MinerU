@@ -11,6 +11,33 @@ from mineru.utils.hash_utils import str_sha256
 from mineru.version import __version__
 
 
+def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
+    """将 data-URI 格式的 base64 图片解码并通过 image_writer 保存到本地。
+
+    Args:
+        b64_data_uri: 形如 ``data:image/{fmt};base64,{data}`` 的字符串。
+        image_writer:  DataWriter 实例，用于将字节写入本地存储。
+        page_index:    当前页索引，仅用于日志信息。
+
+    Returns:
+        保存成功时返回相对路径字符串（如 ``"abc123.png"``），否则返回 ``None``。
+    """
+    m = re.match(r'data:image/(\w+);base64,(.+)', b64_data_uri, re.DOTALL)
+    if not m:
+        logger.warning(f"Unrecognized image_base64 format in page {page_index}, skipping.")
+        return None
+    fmt = m.group(1)
+    ext = "jpg" if fmt == "jpeg" else fmt
+    try:
+        img_bytes = base64.b64decode(m.group(2))
+    except Exception as e:
+        logger.warning(f"Failed to decode image_base64 on page {page_index}: {e}")
+        return None
+    img_path = f"{str_sha256(b64_data_uri)}.{ext}"
+    image_writer.write(img_path, img_bytes)
+    return img_path
+
+
 def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     """将blocks转换为页面信息"""
 
@@ -28,24 +55,39 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                         img_b64 = span.get("image_base64", "")
                         if not img_b64:
                             continue
-                        # Parse data URI: data:image/{format};base64,{data}
-                        m = re.match(r'data:image/(\w+);base64,(.+)', img_b64, re.DOTALL)
-                        if not m:
-                            logger.warning(f"Unrecognized image_base64 format in page {page_index}, skipping.")
-                            continue
-                        fmt = m.group(1)
-                        ext = "jpg" if fmt == "jpeg" else fmt
-                        try:
-                            img_bytes = base64.b64decode(m.group(2))
-                        except Exception as e:
-                            logger.warning(f"Failed to decode image_base64 on page {page_index}: {e}")
-                            continue
-                        img_path = f"{str_sha256(img_b64)}.{ext}"
-                        image_writer.write(img_path, img_bytes)
-                        span["image_path"] = img_path
-                        del span["image_base64"]
+                        img_path = _save_base64_image(img_b64, image_writer, page_index)
+                        if img_path:
+                            span["image_path"] = img_path
+                            del span["image_base64"]
 
     table_blocks = magic_model.get_table_blocks()
+
+    # Replace inline base64 images inside table HTML with local paths
+    if image_writer:
+        for tbl_block in table_blocks:
+            for sub_block in tbl_block.get("blocks", []):
+                if sub_block.get("type") != "table_body":
+                    continue
+                for line in sub_block.get("lines", []):
+                    for span in line.get("spans", []):
+                        if span.get("type") != "table":
+                            continue
+                        html = span.get("html", "")
+                        if not html or "base64," not in html:
+                            continue
+
+                        def _replace_src(m_src, _writer=image_writer, _idx=page_index):
+                            img_path = _save_base64_image(m_src.group(1), _writer, _idx)
+                            if img_path:
+                                return f'src="{img_path}"'
+                            return m_src.group(0)  # keep original on failure
+
+                        span["html"] = re.sub(
+                            r'src="(data:image/[^"]+)"',
+                            _replace_src,
+                            html,
+                        )
+
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
     list_blocks = magic_model.get_list_blocks()

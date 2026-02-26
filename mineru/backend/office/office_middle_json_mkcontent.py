@@ -1,4 +1,5 @@
 import os
+import re
 
 from loguru import logger
 
@@ -18,6 +19,17 @@ display_left_delimiter = delimiters['display']['left']
 display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
+
+
+def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
+    """Prefix local-path img src attributes in table HTML with img_buket_path."""
+    if not html or not img_buket_path:
+        return html
+    return re.sub(
+        r'src="(?!data:)([^"]+)"',
+        lambda m: f'src="{img_buket_path}/{m.group(1)}"',
+        html,
+    )
 
 
 def get_title_level(para_block):
@@ -216,7 +228,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
-                                    para_text += f"\n{span['html']}\n"
+                                    para_text += f"\n{_prefix_table_img_src(span['html'], img_buket_path)}\n"
                 for block in para_block['blocks']:  # 2nd.拼table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
@@ -284,7 +296,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = _prefix_table_img_src(span['html'], img_buket_path)
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
 
@@ -386,7 +398,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             'type': ContentTypeV2.TABLE,
             'content': {
                 'table_caption': table_caption,
-                'html': html,
+                'html': _prefix_table_img_src(html, img_buket_path),
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
             }
