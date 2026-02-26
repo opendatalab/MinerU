@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 import zipfile
 from pathlib import Path
 
@@ -242,6 +243,49 @@ def to_pdf_preview(file_path):
     return to_pdf(file_path)
 
 
+def update_file_preview(file_path, request: gr.Request):
+    """处理文件上传：根据文件类型显示/隐藏元素并返回预览内容。
+    - office 文件：隐藏参数选项，显示 Microsoft 在线预览 iframe
+    - PDF/图片文件：显示参数选项，显示 PDF 预览组件
+    """
+    if file_path is None:
+        return (
+            gr.update(visible=True),        # options_group - 恢复显示
+            gr.update(value=None, visible=True),  # doc_show (PDF) - 清空并显示
+            gr.update(value="", visible=False),   # office_html - 隐藏
+        )
+
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+
+    if is_office:
+        # 构建可公开访问的文件 URL，供 Microsoft 在线预览使用
+        host = (request.headers.get('x-forwarded-host')
+                or request.headers.get('host', 'localhost:7860'))
+        proto = request.headers.get('x-forwarded-proto', 'http')
+        base_url = f"{proto}://{host}"
+        public_url = f"{base_url}/file={file_path}"
+        encoded_url = urllib.parse.quote(public_url, safe='')
+        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={encoded_url}"
+        html_content = (
+            f'<iframe src="{viewer_url}" '
+            f'width="100%" height="800px" frameborder="0" '
+            f'style="border: none;"></iframe>'
+        )
+        return (
+            gr.update(visible=False),                        # options_group - 隐藏
+            gr.update(value=None, visible=False),            # doc_show - 隐藏
+            gr.update(value=html_content, visible=True),     # office_html - 显示
+        )
+    else:
+        pdf_path = to_pdf_preview(file_path)
+        return (
+            gr.update(visible=True),                         # options_group - 显示
+            gr.update(value=pdf_path, visible=True),         # doc_show - 显示 PDF 预览
+            gr.update(value="", visible=False),              # office_html - 隐藏
+        )
+
+
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
 @click.option(
@@ -325,7 +369,7 @@ def main(ctx,
             "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
             "convert": "Convert",
             "clear": "Clear",
-            "pdf_preview": "PDF preview",
+            "doc_preview": "Document preview",
             "examples": "Examples:",
             "convert_result": "Convert result",
             "md_rendering": "Markdown rendering",
@@ -356,7 +400,7 @@ def main(ctx,
             "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
             "convert": "转换",
             "clear": "清除",
-            "pdf_preview": "PDF 预览",
+            "doc_preview": "文档预览",
             "examples": "示例：",
             "convert_result": "转换结果",
             "md_rendering": "Markdown 渲染",
@@ -451,28 +495,31 @@ def main(ctx,
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
                     input_file = gr.File(label=i18n("upload_file"), file_types=suffixes)
-                with gr.Row():
-                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                with gr.Row():
-                    drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
-                    preferred_option = "hybrid-auto-engine"
-                    if http_client_enable:
-                        drop_list.extend(["vlm-http-client", "hybrid-http-client"])
-                    backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
-                with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
-                with gr.Row(equal_height=True):
-                    with gr.Column():
-                        gr.Markdown(i18n("recognition_options"))
-                        table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                    with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
-                        is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
+                # 下面这些选项在上传 office 文件时会被自动隐藏
+                with gr.Group() as options_group:
+                    with gr.Row():
+                        max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
+                    with gr.Row():
+                        drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
+                        preferred_option = "hybrid-auto-engine"
+                        if http_client_enable:
+                            drop_list.extend(["vlm-http-client", "hybrid-http-client"])
+                        backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
+                    with gr.Row(visible=False) as client_options:
+                        url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
+                    with gr.Row(equal_height=True):
+                        with gr.Column():
+                            gr.Markdown(i18n("recognition_options"))
+                            table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
+                            formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                        with gr.Column(visible=False) as ocr_options:
+                            language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
+                            is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
                 with gr.Row():
                     change_bu = gr.Button(i18n("convert"))
                     clear_bu = gr.ClearButton(value=i18n("clear"))
-                pdf_show = PDF(label=i18n("pdf_preview"), interactive=False, visible=True, height=800)
+                doc_show = PDF(label=i18n("doc_preview"), interactive=False, visible=True, height=800)
+                office_html = gr.HTML(value="", visible=False)
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
@@ -519,19 +566,28 @@ def main(ctx,
             # api_visibility="private"  # gradio 6 以上版本使用
             api_name=False  # gradio 6 以下版本使用
         )
-        clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
+        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html])
+
+        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
+        clear_bu.click(
+            fn=lambda: (gr.update(visible=True), gr.update(value=None, visible=True), gr.update(value="", visible=False)),
+            inputs=[],
+            outputs=[options_group, doc_show, office_html],
+            api_name=False,  # gradio 6 以下版本使用
+            # api_visibility="private"  # gradio 6 以上版本使用
+        )
 
         input_file.change(
-            fn=to_pdf_preview,
+            fn=update_file_preview,
             inputs=input_file,
-            outputs=pdf_show,
-            api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用
-            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+            outputs=[options_group, doc_show, office_html],
+            api_name=False,  # gradio 6 以下版本使用
+            # api_visibility="private"  # gradio 6 以上版本使用
         )
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
-            outputs=[md, md_text, output_file, pdf_show],
+            outputs=[md, md_text, output_file, doc_show],
             api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
             # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
         )
