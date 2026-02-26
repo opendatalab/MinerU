@@ -125,18 +125,73 @@ def merge_list_to_markdown(list_block):
     return '\n'.join(_flatten_list_items(list_block)) + '\n'
 
 
-def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path=''):
+def _flatten_index_items(index_block):
+    """Recursively flatten index (TOC) blocks into markdown list items.
+
+    Strips the trailing tab+page-number from span content and, when target
+    location fields are present on a span, wraps the text in a markdown
+    hyperlink pointing to the body-block anchor.
+    """
+    items = []
+    ilevel = index_block.get('ilevel', 0)
+    indent = '    ' * ilevel
+
+    for child in index_block.get('blocks', []):
+        if child.get('type') == BlockType.INDEX:
+            items.extend(_flatten_index_items(child))
+        elif child.get('type') == BlockType.TEXT:
+            text_parts = []
+            target_anchor = None
+            for line in child.get('lines', []):
+                for span in line.get('spans', []):
+                    content = span.get('content', '')
+                    # Strip trailing tab + page number (e.g. "引言\t1" -> "引言")
+                    if '\t' in content:
+                        content = content.split('\t', 1)[0]
+                    content = content.strip()
+                    if content:
+                        text_parts.append(content)
+                    if 'target_anchor' in span and target_anchor is None:
+                        pid, bidx = span['target_anchor']
+                        target_anchor = f"block-p{pid}-b{bidx}"
+
+            item_text = ''.join(text_parts).strip()
+            if not item_text:
+                continue
+
+            if target_anchor is not None:
+                item_text = f"[{item_text}](#{target_anchor})"
+
+            items.append(f"{indent}- {item_text}")
+
+    return items
+
+
+def merge_index_to_markdown(index_block):
+    """Convert a nested index (TOC) block to markdown with hyperlinks."""
+    return '\n'.join(_flatten_index_items(index_block)) + '\n'
+
+
+def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=None):
     page_markdown = []
     for para_block in para_blocks:
         para_text = ''
         para_type = para_block['type']
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
-        elif para_type in [BlockType.LIST, BlockType.INDEX]:
+        elif para_type == BlockType.LIST:
             para_text = merge_list_to_markdown(para_block)
+        elif para_type == BlockType.INDEX:
+            para_text = merge_index_to_markdown(para_block)
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
-            para_text = f'{"#" * title_level} {merge_para_with_text(para_block)}'
+            title_text = merge_para_with_text(para_block)
+            block_idx = para_block.get('index')
+            if page_idx is not None and block_idx is not None:
+                anchor = f'<a id="block-p{page_idx}-b{block_idx}"></a>'
+                para_text = f'{anchor}\n{"#" * title_level} {title_text}'
+            else:
+                para_text = f'{"#" * title_level} {title_text}'
         elif para_type == BlockType.IMAGE:
             if make_mode == MakeMode.NLP_MD:
                 continue
@@ -420,7 +475,8 @@ def union_make(pdf_info_dict: list,
         if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
             if not paras_of_layout:
                 continue
-            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path)
+            page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path,
+                                                   page_idx=page_idx)
             output_content.extend(page_markdown)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
