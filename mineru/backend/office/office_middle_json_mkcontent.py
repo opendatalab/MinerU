@@ -32,6 +32,18 @@ def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
     )
 
 
+def _replace_eq_tags_in_table_html(html: str) -> str:
+    """Replace <eq>...</eq> tags in table HTML with inline math delimiters."""
+    if not html:
+        return html
+    return re.sub(
+        r'<eq>(.*?)</eq>',
+        lambda m: f' {inline_left_delimiter}{m.group(1)}{inline_right_delimiter} ',
+        html,
+        flags=re.DOTALL,
+    )
+
+
 def get_title_level(para_block):
     title_level = para_block.get('level', 2)
     return title_level
@@ -228,7 +240,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
-                                    para_text += f"\n{_prefix_table_img_src(span['html'], img_buket_path)}\n"
+                                    para_text += f"\n{_replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))}\n"
                 for block in para_block['blocks']:  # 2nd.拼table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
@@ -296,7 +308,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = _prefix_table_img_src(span['html'], img_buket_path)
+                                para_content[BlockType.TABLE_BODY] = _replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
 
@@ -398,7 +410,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             'type': ContentTypeV2.TABLE,
             'content': {
                 'table_caption': table_caption,
-                'html': _prefix_table_img_src(html, img_buket_path),
+                'html': _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path)),
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
             }
