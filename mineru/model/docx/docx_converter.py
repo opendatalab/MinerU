@@ -100,6 +100,25 @@ class DocxConverter:
         return text
 
     @staticmethod
+    def _minify_html(html: str) -> str:
+        """
+        移除HTML中的格式化空白（换行、缩进等）。
+
+        Args:
+            html: 要处理的HTML字符串
+
+        Returns:
+            str: 去除格式化后的HTML
+        """
+        if not html:
+            return html
+        # 移除标签之间的换行符和制表符
+        html = re.sub(r'>\s+<', '><', html)
+        # 移除行首尾无关的空白
+        html = re.sub(r'\n\s*', '', html)
+        return html
+
+    @staticmethod
     def _escape_hyperlink_url(url: str) -> str:
         """
         转义超链接 URL 中的括号。
@@ -1920,7 +1939,7 @@ class DocxConverter:
                             content = zf.read(name)
                             excel_data = pd.read_excel(BytesIO(content))
                             html = excel_data.to_html(index=False, header=True)
-                            self.chart_list[chart_idx - 1]["content"] = html
+                            self.chart_list[chart_idx - 1]["content"] = self._minify_html(html)
 
     def _handle_textbox_content(
         self,
