@@ -405,6 +405,14 @@ class DocxConverter:
                     self._handle_textbox_content(textbox_elements)
 
             if tag_name == "tbl":
+                # 表格是顶层块级元素，会中断活跃列表的上下文。
+                # 若不重置列表状态，后续列表项会被追加到表格之前创建的列表块中，
+                # 导致表格在 cur_page 中出现在那些列表项之后，产生顺序错乱。
+                if self.pre_num_id != -1:
+                    self.pre_num_id = -1
+                    self.pre_ilevel = -1
+                    self.list_block_stack = []
+                    self.list_counters = {}
                 try:
                     # 处理表格元素
                     self._handle_tables(element)

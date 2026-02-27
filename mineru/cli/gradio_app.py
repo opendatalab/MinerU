@@ -525,7 +525,7 @@ def main(ctx,
                     change_bu = gr.Button(i18n("convert"))
                     clear_bu = gr.ClearButton(value=i18n("clear"))
                 doc_show = PDF(label=i18n("doc_preview"), interactive=False, visible=True, height=800)
-                office_html = gr.HTML(label=i18n("doc_preview"), show_label=True, value="", visible=False)
+                office_html = gr.HTML(value="", visible=False)
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
