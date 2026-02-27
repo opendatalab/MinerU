@@ -819,7 +819,7 @@ class DocxConverter:
                 if content_text:
                     title_block = {
                         "type": BlockType.TITLE,
-                        "level": ilevel + 2,
+                        "level": ilevel + 1,
                         "is_numbered_style": is_numbered,
                         "content": content_text,
                     }
