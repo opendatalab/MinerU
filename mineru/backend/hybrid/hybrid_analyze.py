@@ -3,8 +3,10 @@ import os
 import time
 from collections import defaultdict
 
+import re
 import cv2
 import numpy as np
+import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
@@ -29,6 +31,37 @@ MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 
 not_extract_list = [item.value for item in NotExtractType]
+
+
+def detect_garbled_text_from_pdf(pdf_bytes, max_pages=3):
+    """
+    检测PDF中pypdfium2解析的文字是否包含乱码
+    """
+    try:
+        pdf_doc = pdfium.PdfDocument(pdf_bytes)
+        total_pages = len(pdf_doc)
+        pages_to_check = min(max_pages, total_pages)
+        garbled_count = 0
+        for page_idx in range(pages_to_check):
+            try:
+                page = pdf_doc[page_idx]
+                textpage = page.get_textpage()
+                page_text = textpage.get_text_bounded()
+                if len(page_text) == 0:
+                    continue
+                abnormal_chars = sum(1 for c in page_text if not c.isprintable() and c not in ' \t\n\r')
+                abnormal_ratio = abnormal_chars / len(re.sub('\s', '', page_text))
+                if abnormal_ratio > 0.5:
+                    garbled_count += 1
+            except Exception as e:
+                continue
+        pdf_doc.close()
+        if pages_to_check > 0 and garbled_count >= pages_to_check // 2:
+            return True
+        else:
+            return False
+    except Exception as e:
+        return False
 
 def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
     # 确定OCR设置
@@ -366,8 +399,13 @@ def get_batch_ratio(device):
     return batch_ratio
 
 
-def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enable: bool) -> bool:
+def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enable: bool, pdf_bytes: bytes = None) -> bool:
     """判断是否启用VLM OCR"""
+
+    if pdf_bytes is not None:
+        if detect_garbled_text_from_pdf(pdf_bytes):
+            return True
+
     force_enable = os.getenv("MINERU_FORCE_VLM_OCR_ENABLE", "0").lower() in ("1", "true", "yes")
     if force_enable:
         return True
@@ -409,7 +447,7 @@ def doc_analyze(
 
     # 确定OCR配置
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable, pdf_bytes)
 
     infer_start = time.time()
     # VLM提取
@@ -481,7 +519,7 @@ async def aio_doc_analyze(
 
     # 确定OCR配置
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable, pdf_bytes)
 
     infer_start = time.time()
     # VLM提取
