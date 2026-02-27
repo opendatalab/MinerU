@@ -78,6 +78,7 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.index_block_stack: list = []  # 目录索引块堆栈
         self.pre_index_ilevel: int = -1  # 上一个目录项的缩进等级
+        self.heading_list_numids: set = set()  # 用作章节标题的列表numId集合
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
@@ -328,6 +329,8 @@ class DocxConverter:
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
         self.docx_obj = Document(BytesIO(file_bytes))
+        # 预扫描文档，识别用作章节标题的列表numId
+        self.heading_list_numids = self._detect_heading_list_numids()
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
@@ -802,14 +805,34 @@ class DocxConverter:
             # 通过检查 numFmt 来确认这是否实际上是编号列表
             is_numbered = self._is_numbered_list(numid, ilevel)
 
-            self._add_list_item(
-                numid=numid,
-                ilevel=ilevel,
-                elements=paragraph_elements,
-                is_numbered=is_numbered,
-                text=text,
-                equations=equations,
-            )
+            if numid in self.heading_list_numids:
+                # 该列表被用作章节标题（列表项间穿插了正文内容），直接转换为title block
+                # 先关闭任何活跃的普通列表
+                if self.pre_num_id != -1:
+                    self.pre_num_id = -1
+                    self.pre_ilevel = -1
+                    self.list_block_stack = []
+                    self.list_counters = {}
+                content_text = self._build_text_with_equations_and_hyperlinks(
+                    paragraph_elements, text, equations
+                )
+                if content_text:
+                    title_block = {
+                        "type": BlockType.TITLE,
+                        "level": ilevel + 2,
+                        "is_numbered_style": is_numbered,
+                        "content": content_text,
+                    }
+                    self.cur_page.append(title_block)
+            else:
+                self._add_list_item(
+                    numid=numid,
+                    ilevel=ilevel,
+                    elements=paragraph_elements,
+                    is_numbered=is_numbered,
+                    text=text,
+                    equations=equations,
+                )
             # 列表项已处理，返回
             return None
         elif (  # 列表结束处理
@@ -1454,6 +1477,67 @@ class DocxConverter:
                 "content": content_text,
             }
             list_block["content"].append(list_item)
+
+    def _detect_heading_list_numids(self) -> set:
+        """
+        预扫描文档，检测用作章节标题的列表numId。
+
+        判断依据：若某个numId的列表项之间穿插了非列表的正文内容（段落/表格等），
+        则认为该numId的列表被用作章节标题，应将其列表项转换为title block。
+
+        Returns:
+            set: 应当转换为标题块的列表numId集合
+        """
+        heading_numids = set()
+        # 收集文档元素序列：("list", numid) 或 ("content", None)
+        items = []
+
+        for element in self.docx_obj.element.body:
+            tag_name = etree.QName(element).localname
+            if tag_name == "p":
+                try:
+                    paragraph = Paragraph(element, self.docx_obj)
+                    p_style_id, _ = self._get_label_and_level(paragraph)
+                    numid, ilevel = self._get_numId_and_ilvl(paragraph)
+                    if numid == 0:
+                        numid = None
+                    text = paragraph.text.strip() if paragraph.text else ""
+                except Exception:
+                    continue
+
+                if (
+                    numid is not None
+                    and ilevel is not None
+                    and p_style_id not in ["Title", "Heading"]
+                    and text
+                ):
+                    items.append(("list", numid))
+                elif p_style_id not in ["Title", "Heading"] and text:
+                    items.append(("content", None))
+            elif tag_name == "tbl":
+                items.append(("content", None))
+
+        # 对每个numId，检测其列表项之间是否有正文内容穿插
+        # seen_numids[numid] = True 表示该numId的最后一个列表项之后出现了正文内容
+        seen_numids: dict[int, bool] = {}
+
+        for item_type, numid in items:
+            if item_type == "list":
+                if numid in seen_numids and seen_numids[numid]:
+                    # 上次列表项之后出现了正文内容，判定为标题列表
+                    heading_numids.add(numid)
+                seen_numids[numid] = False  # 重置：记录该numId出现了新列表项
+            elif item_type == "content":
+                # 将所有已见numId标记为"之后出现了正文内容"
+                for nid in seen_numids:
+                    seen_numids[nid] = True
+
+        if heading_numids:
+            logger.debug(
+                f"Detected heading-style list numIds (will convert to title blocks): {heading_numids}"
+            )
+
+        return heading_numids
 
     def _reset_list_counters_for_new_sequence(self, numid: int):
         """
