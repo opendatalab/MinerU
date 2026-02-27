@@ -21,6 +21,42 @@ inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
 
+def _apply_markdown_style(content: str, style: list) -> str:
+    """
+    按照字体样式列表对文本内容应用 Markdown 格式。
+
+    支持的样式：bold, italic, underline, strikethrough
+    组合顺序：先处理 bold/italic（内层），再处理 strikethrough 和 underline（外层）。
+
+    Args:
+        content: 待格式化的文本内容
+        style: 样式列表，如 ["bold", "italic"]
+
+    Returns:
+        str: 应用 Markdown 格式后的文本
+    """
+    if not style or not content:
+        return content
+
+    # bold 和 italic 可合并为 ***text***
+    if 'bold' in style and 'italic' in style:
+        content = f'***{content}***'
+    elif 'bold' in style:
+        content = f'**{content}**'
+    elif 'italic' in style:
+        content = f'*{content}*'
+
+    # strikethrough: ~~text~~
+    if 'strikethrough' in style:
+        content = f'~~{content}~~'
+
+    # underline: markdown 无原生语法，使用 HTML <u> 标签
+    if 'underline' in style:
+        content = f'<u>{content}</u>'
+
+    return content
+
+
 def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
     """Prefix local-path img src attributes in table HTML with img_buket_path."""
     if not html or not img_buket_path:
@@ -61,19 +97,36 @@ def merge_para_with_text(para_block):
     for line in para_block['lines']:
         for span in line['spans']:
             span_type = span['type']
-            content = ''
+            span_style = span.get('style', [])
+
             if span_type == ContentType.TEXT:
-                content = span['content']
+                original_content = span['content']
+                content_stripped = original_content.strip()
+                if content_stripped:
+                    # Apply markdown style to stripped content, then restore surrounding whitespace
+                    styled = _apply_markdown_style(content_stripped, span_style)
+                    leading = original_content[:len(original_content) - len(original_content.lstrip())]
+                    trailing = original_content[len(original_content.rstrip()):]
+                    parts.append((span_type, leading + styled + trailing))
+                elif original_content:
+                    # Whitespace-only span: preserve as spacing between styled parts
+                    parts.append((span_type, original_content))
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
+                content = content.strip()
+                if content:
+                    parts.append((span_type, content))
             elif span_type == ContentType.INTERLINE_EQUATION:
                 content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
+                content = content.strip()
+                if content:
+                    parts.append((span_type, content))
             elif span_type == ContentType.HYPERLINK:
-                content = f"[{span['content']}]({span.get('url', '')})"
-
-            content = content.strip()
-            if content:
-                parts.append((span_type, content))
+                link_text = span['content'].strip()
+                if link_text:
+                    link_text = _apply_markdown_style(link_text, span_style)
+                    content = f"[{link_text}]({span.get('url', '')})"
+                    parts.append((span_type, content))
 
     # Second pass: join parts, keeping one space on each side of inline equations
     para_text = ''

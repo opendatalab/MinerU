@@ -135,16 +135,47 @@ class DocxConverter:
         url = url.replace("(", "%28").replace(")", "%29")
         return url
 
+    @staticmethod
+    def _get_style_str_from_format(format_obj) -> Optional[str]:
+        """
+        从 Formatting 对象提取样式字符串。
+
+        Args:
+            format_obj: Formatting 对象
+
+        Returns:
+            Optional[str]: 样式字符串（如 "bold,italic"），无样式时返回 None
+        """
+        if format_obj is None:
+            return None
+        styles = []
+        if format_obj.bold:
+            styles.append('bold')
+        if format_obj.italic:
+            styles.append('italic')
+        if format_obj.underline:
+            styles.append('underline')
+        if format_obj.strikethrough:
+            styles.append('strikethrough')
+        return ','.join(styles) if styles else None
+
     @classmethod
     def _format_text_with_hyperlink(
-        cls, text: str, hyperlink: Optional[Union[AnyUrl, Path, str]]
+        cls,
+        text: str,
+        hyperlink: Optional[Union[AnyUrl, Path, str]],
+        style_str: Optional[str] = None,
     ) -> str:
         """
-        将文本和超链接格式化为 Markdown 格式 [文本](链接)。
+        将文本和超链接格式化，支持字体样式标记。
+
+        无超链接时：有样式包裹为 <text style="...">文本</text>，无样式直接返回文本。
+        有超链接时：格式化为 <hyperlink><text [style="..."]>文本</text><url>链接</url></hyperlink>。
 
         Args:
             text: 文本内容
             hyperlink: 超链接地址
+            style_str: 样式字符串（如 "bold,italic"），无样式时为 None
 
         Returns:
             str: 格式化后的文本
@@ -154,17 +185,24 @@ class DocxConverter:
 
         # 检查超链接是否有效（非空）
         if hyperlink is None:
+            # 无超链接：只有有样式时才包裹 <text> 标签
+            if style_str:
+                return f'<text style="{style_str}">{text}</text>'
             return text
 
         hyperlink_str = str(hyperlink)
         if not hyperlink_str or hyperlink_str.strip() == "" or hyperlink_str == ".":
+            if style_str:
+                return f'<text style="{style_str}">{text}</text>'
             return text
 
-        # 转义文本中的方括号和链接中的括号
-        # escaped_text = cls._escape_hyperlink_text(text)
-        # escaped_url = cls._escape_hyperlink_url(hyperlink_str)
+        # 有超链接：构建 <text> 标签（含可选样式）
+        if style_str:
+            text_tag = f'<text style="{style_str}">{text}</text>'
+        else:
+            text_tag = f'<text>{text}</text>'
 
-        return f"<hyperlink><text>{text}</text><url>{hyperlink_str}</url></hyperlink>"
+        return f"<hyperlink>{text_tag}<url>{hyperlink_str}</url></hyperlink>"
 
     def _build_text_from_elements(
         self,
@@ -173,7 +211,7 @@ class DocxConverter:
         ],
     ) -> str:
         """
-        从 paragraph_elements 重组文本，应用超链接格式。
+        从 paragraph_elements 重组文本，应用超链接格式和字体样式。
 
         Args:
             paragraph_elements: 段落元素列表
@@ -182,9 +220,10 @@ class DocxConverter:
             str: 重组后的文本
         """
         result_parts = []
-        for text, format, hyperlink in paragraph_elements:
+        for text, format_obj, hyperlink in paragraph_elements:
             if text:
-                formatted_text = self._format_text_with_hyperlink(text, hyperlink)
+                style_str = self._get_style_str_from_format(format_obj)
+                formatted_text = self._format_text_with_hyperlink(text, hyperlink, style_str)
                 result_parts.append(formatted_text)
         return " ".join(result_parts) if result_parts else ""
 
@@ -197,20 +236,18 @@ class DocxConverter:
         equations: list,
     ) -> str:
         """
-        构建同时包含公式和超链接的文本。
-
-        此方法将公式标记插入到带有超链接格式的文本中。
+        构建同时包含公式、超链接和字体样式的文本。
 
         Args:
-            paragraph_elements: 段落元素列表，包含超链接信息
+            paragraph_elements: 段落元素列表，包含格式和超链接信息
             text_with_equations: 包含公式标记的原始文本
             equations: 公式列表
 
         Returns:
-            str: 包含公式标记和超链接格式的文本
+            str: 包含公式标记、超链接格式和字体样式的文本
         """
         if not equations:
-            # 没有公式，直接返回带超链接的文本
+            # 没有公式，直接返回带超链接和样式的文本
             return self._build_text_from_elements(paragraph_elements)
 
         # 检查是否有超链接
@@ -219,27 +256,32 @@ class DocxConverter:
             for _, _, hyperlink in paragraph_elements
         )
 
-        if not has_hyperlink:
-            # 没有超链接，直接返回带公式的文本
+        # 检查是否有字体样式
+        has_style = any(
+            fmt is not None and (fmt.bold or fmt.italic or fmt.underline or fmt.strikethrough)
+            for _, fmt, _ in paragraph_elements
+        )
+
+        if not has_hyperlink and not has_style:
+            # 没有超链接也没有样式，直接返回带公式的文本
             return text_with_equations
 
-        # 同时有公式和超链接，需要合并处理
-        # 策略：在带超链接的文本基础上，将公式标记插入到正确的位置
+        # 同时有公式和超链接/样式，需要合并处理
+        # 策略：在带公式的文本基础上，将样式/超链接标记插入到正确的位置
 
-        # 1. 先构建带超链接的文本（但不格式化超链接文本）
-        #    记录每个元素的原始文本和对应的超链接格式化结果
+        # 1. 记录每个元素的原始文本和对应的格式化结果
         element_mappings = []
-        for text, format, hyperlink in paragraph_elements:
+        for text, format_obj, hyperlink in paragraph_elements:
             if text:
-                formatted_text = self._format_text_with_hyperlink(text, hyperlink)
+                style_str = self._get_style_str_from_format(format_obj)
+                formatted_text = self._format_text_with_hyperlink(text, hyperlink, style_str)
                 element_mappings.append((text, formatted_text))
 
         # 2. 在 text_with_equations 中定位每个元素的原始文本，然后替换为格式化后的文本
         result_text = text_with_equations
         for original_text, formatted_text in element_mappings:
             if original_text != formatted_text:
-                # 只有当文本被格式化为超链接时才需要替换
-                # 需要确保不替换公式标记内的文本
+                # 只有当文本被格式化（添加样式或超链接）时才需要替换
                 result_text = self._replace_text_outside_equations(
                     result_text, original_text, formatted_text
                 )
