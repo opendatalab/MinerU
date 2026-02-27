@@ -1003,8 +1003,14 @@ class DocxConverter:
                     if is_windows_environment():
                         # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
                         # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
-                        pil_image.load()
-                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                        try:
+                            pil_image.load()
+                            img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                        except OSError as e:
+                            logger.warning(f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
+                            # 如果渲染失败，创建与原图同样大小的浅灰色占位图
+                            placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+                            img_base64 = image_to_b64str(placeholder, image_format="JPEG")
                     else:
                         logger.warning(f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}")
                         # 创建与原图同样大小的浅灰色占位图
