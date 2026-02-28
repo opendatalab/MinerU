@@ -626,6 +626,10 @@ class DocxConverter:
             elif 'oMath' in subt.tag and 'oMathPara' not in subt.tag:
                 try:
                     latex = str(oMath2Latex(subt)).strip()
+                    # 公式开头如果含有无法渲染的“~”符号（通常由文档中的NBSP产生），
+                    # 把它们移除，否则Markdown/LaTeX渲染会失败。
+                    if latex.startswith('~'):
+                        latex = latex.lstrip('~ ')
                     if latex:
                         items.append(self.equation_bookends.format(EQ=latex))
                 except Exception as e:
@@ -1151,6 +1155,8 @@ class DocxConverter:
                     texts_and_equations.append(subt.text)
             elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
                 latex_equation = str(oMath2Latex(subt)).strip()
+                if latex_equation.startswith('~'):
+                    latex_equation = latex_equation.lstrip('~ ')
                 if len(latex_equation) > 0:
                     only_equations.append(
                         self.equation_bookends.format(EQ=latex_equation)
