@@ -384,12 +384,6 @@ class oMath2Latex(Tag2Method):
         return bo + BLANK.join(res)
 
     def process_unicode(self, s):
-        # treat non-breaking space as regular space to avoid LaTeX tilde (~)
-        # NBSP frequently appears in formulas from Word and pylatexenc converts
-        # it to "~" which later becomes "\~" and breaks rendering.
-        if s == "\xa0":
-            return " "
-
         # Check T dictionary first for known math-mode symbols.
         # The T dictionary holds explicit math-mode LaTeX mappings and takes precedence
         # over pylatexenc, which uses text-mode mappings by default and therefore produces

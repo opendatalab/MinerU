@@ -136,37 +136,6 @@ class DocxConverter:
         url = url.replace("(", "%28").replace(")", "%29")
         return url
 
-    def _normalize_latex_equation(self, latex: str) -> str:
-        """
-        对从 OMML 转换得到的 LaTeX 公式进行后处理，修正带编号的等式以及
-        由于 \<eqArr> 环境生成的 array 包装。
-
-        修复内容：
-        * 如果公式由 ``\begin{array}{c}...\end{array}`` 包裹, 去掉外层 array。
-        * 将内部出现的 ``#(n)`` 或 ``\\#(n)`` 序号替换为 ``\\tag{n}``。
-        * 保证 ``\tag`` 前只有一个空格。
-
-        Args:
-            latex: 原始 LaTeX 字符串
-        Returns:
-            str: 处理后的 LaTeX 字符串
-        """
-        if not latex:
-            return latex
-
-        # 去掉外层 array 容器，它只是为 Word 的 eqArr 结构服务。
-        # 注意 latex 字符串中反斜线是单个，所以用单斜线模式。
-        latex = re.sub(r"^\\begin\{array\}\{c\}(.*)\\end\{array\}$", r"\1", latex, flags=re.DOTALL)
-
-        # 把序号标记从 "#(1)" 形式转换为 \tag。
-        # 匹配可选的反斜线，因为 oMath2Latex 会对 "#" 进行转义。
-        latex = re.sub(r"(?:\\)?#\s*\(([^)]+)\)", r"\\tag{\1}", latex)
-
-        # 确保 \tag 之前有且只有一个空格
-        latex = re.sub(r"\s*\\tag", r" \\tag", latex)
-
-        return latex
-
     @staticmethod
     def _get_style_str_from_format(format_obj) -> Optional[str]:
         """
@@ -657,12 +626,6 @@ class DocxConverter:
             elif 'oMath' in subt.tag and 'oMathPara' not in subt.tag:
                 try:
                     latex = str(oMath2Latex(subt)).strip()
-                    # 公式开头如果含有无法渲染的“~”符号（通常由文档中的NBSP产生），
-                    # 把它们移除，否则Markdown/LaTeX渲染会失败。
-                    if latex.startswith('~'):
-                        latex = latex.lstrip('~ ')
-                    # normalize tags produced by eqArr environments (#(1) style)
-                    latex = self._normalize_latex_equation(latex)
                     if latex:
                         items.append(self.equation_bookends.format(EQ=latex))
                 except Exception as e:
@@ -1188,12 +1151,6 @@ class DocxConverter:
                     texts_and_equations.append(subt.text)
             elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
                 latex_equation = str(oMath2Latex(subt)).strip()
-                if latex_equation.startswith('~'):
-                    latex_equation = latex_equation.lstrip('~ ')
-                # apply normalization for number tags and eqArr arrays
-                latex_equation = self._normalize_latex_equation(latex_equation)
-                # normalize any tag markers (#(n) or \#(n)) to \tag{n}
-                latex_equation = self._normalize_latex_equation(latex_equation)
                 if len(latex_equation) > 0:
                     only_equations.append(
                         self.equation_bookends.format(EQ=latex_equation)
