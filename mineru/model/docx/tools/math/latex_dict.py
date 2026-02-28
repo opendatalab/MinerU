@@ -3,7 +3,7 @@ Adapted from https://github.com/xiilei/dwml/blob/master/dwml/latex_dict.py
 On 23/01/2025
 """
 
-CHARS = ("{", "}", "_", "^", "#", "&", "$", "%", "~")
+CHARS = ("{", "}", "_", "^", "#", "&", "$", "%")
 
 BLANK = ""
 BACKSLASH = "\\"
@@ -80,6 +80,10 @@ CHR_BO = {
 }
 
 T = {
+    # Whitespace characters
+    " ": " ",   # NON-BREAKING SPACE (U+00A0) — pylatexenc maps this to "~" (text-mode),
+                   # which escape_latex would mangle to "\~" (invalid in math mode);
+                   # use a plain space instead.
     # Greek letters
     "\U0001d6fc": "\\alpha ",
     "\U0001d6fd": "\\beta ",

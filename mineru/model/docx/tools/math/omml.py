@@ -4,6 +4,8 @@ Office Math Markup Language (OMML)
 Adapted from https://github.com/xiilei/dwml/blob/master/dwml/omml.py
 On 23/01/2025
 """
+import re
+
 import lxml.etree as ET
 from loguru import logger
 from pylatexenc.latexencode import UnicodeToLatexEncoder
@@ -317,13 +319,37 @@ class oMath2Latex(Tag2Method):
 
     def do_eqarr(self, elm):
         """
-        the Array object
+        the Array object.
+
+        Handles two cases:
+        1. Single-row eqArr with a right-aligned equation tag encoded as
+           ``\\#(n)`` at the end of the row (OMML column-alignment syntax).
+           The ``#`` column separator and the equation number ``(n)`` are
+           converted to LaTeX ``\\tag{n}`` so KaTeX can render the tag,
+           and the unnecessary ``\\begin{array}{c}...\\end{array}`` wrapper
+           is omitted.
+        2. Single-row eqArr without a tag: content is returned as-is (no
+           array wrapper needed).
+        3. Multi-row eqArr: kept as ``\\begin{array}{c}...\\end{array}``.
         """
-        return ARR.format(
-            text=BRK.join(
-                [t for stag, t, e in self.process_children_list(elm, include=("e",))]
-            )
-        )
+        rows = [t for stag, t, e in self.process_children_list(elm, include=("e",))]
+
+        if len(rows) == 1:
+            row = rows[0]
+            # Detect the OMML equation-tag pattern: the text element "#(n)" is
+            # stored verbatim inside the row; do_r converts "#" via pylatexenc
+            # to "\# " (escaped hash with surrounding spaces due to brace-
+            # protection stripping).  Match that at the end of the row,
+            # allowing optional whitespace between "\#" and the opening "(".
+            tag_match = re.search(r'\\#\s*\(([^)]*)\)\s*$', row)
+            if tag_match:
+                formula = row[:tag_match.start()].rstrip()
+                tag_content = tag_match.group(1)
+                return f'{formula}\\tag{{{tag_content}}}'
+            # Single row without tag — no array wrapper required.
+            return row
+
+        return ARR.format(text=BRK.join(rows))
 
     def do_limlow(self, elm):
         """
