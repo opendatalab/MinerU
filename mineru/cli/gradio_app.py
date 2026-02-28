@@ -254,16 +254,16 @@ def to_pdf_preview(file_path):
     return to_pdf(file_path)
 
 
-def update_file_preview(file_path, request: gr.Request):
-    """处理文件上传：根据文件类型显示/隐藏元素并返回预览内容。
-    - office 文件：隐藏参数选项，显示 Microsoft 在线预览 iframe
-    - PDF/图片文件：显示参数选项，显示 PDF 预览组件
+def update_file_options_html(file_path, request: gr.Request):
+    """处理文件上传第一阶段：根据文件类型更新 options_group 和 office_html。
+    将 doc_show（gradio_pdf.PDF）的更新拆分到独立的 .then() 事件中，
+    以规避 gradio_pdf 0.0.24 在 Gradio 6 中对 value=None 处理不当导致的
+    整个事件 processing 状态卡死的兼容性问题。
     """
     if file_path is None:
         return (
-            gr.update(visible=True),        # options_group - 恢复显示
-            gr.update(value=None, visible=True),  # doc_show (PDF) - 清空并显示
-            gr.update(value="", visible=False),   # office_html - 隐藏
+            gr.update(visible=True),             # options_group - 恢复显示
+            gr.update(value="", visible=False),  # office_html - 隐藏
         )
 
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
@@ -283,17 +283,34 @@ def update_file_preview(file_path, request: gr.Request):
             f'style="border: none;"></iframe>'
         )
         return (
-            gr.update(visible=False),                        # options_group - 隐藏
-            gr.update(value=None, visible=False),            # doc_show - 隐藏
-            gr.update(value=html_content, visible=True),     # office_html - 显示
+            gr.update(visible=False),                    # options_group - 隐藏
+            gr.update(value=html_content, visible=True), # office_html - 显示
         )
     else:
-        pdf_path = to_pdf_preview(file_path)
         return (
-            gr.update(visible=True),                         # options_group - 显示
-            gr.update(value=pdf_path, visible=True),         # doc_show - 显示 PDF 预览
-            gr.update(value="", visible=False),              # office_html - 隐藏
+            gr.update(visible=True),             # options_group - 显示
+            gr.update(value="", visible=False),  # office_html - 隐藏
         )
+
+
+def update_doc_show(file_path):
+    """处理文件上传第二阶段：单独更新 doc_show（gradio_pdf.PDF）组件。
+    对 office 文件仅改变 visible，避免传递 value=None 触发
+    gradio_pdf 0.0.24 在 Gradio 6 中无法完成的加载周期。
+    """
+    if file_path is None:
+        # 无文件时恢复显示并清空（clear 按钮路径）
+        return gr.update(value=None, visible=True)
+
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+
+    if is_office:
+        # 仅隐藏，不改变 value，避免触发 gradio_pdf 加载周期导致事件 pending 卡死
+        return gr.update(visible=False)
+    else:
+        pdf_path = to_pdf_preview(file_path)
+        return gr.update(value=pdf_path, visible=True)
 
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
@@ -587,10 +604,18 @@ def main(ctx,
             **_private_api_kwargs
         )
 
+        # 第一阶段：快速更新 options_group 和 office_html，不涉及 gradio_pdf 组件
+        # 第二阶段（.then）：单独更新 doc_show，使 office_html 的 processing 遮罩
+        # 在第一阶段完成后立即消失，规避 gradio_pdf 0.0.24 与 Gradio 6 的兼容性问题。
         input_file.change(
-            fn=update_file_preview,
+            fn=update_file_options_html,
             inputs=input_file,
-            outputs=[options_group, doc_show, office_html],
+            outputs=[options_group, office_html],
+            **_private_api_kwargs
+        ).then(
+            fn=update_doc_show,
+            inputs=input_file,
+            outputs=[doc_show],
             **_private_api_kwargs
         )
         _to_md_api_kwargs = {"api_visibility": "public" if api_enable else "private"} if IS_GRADIO_6 else {"api_name": "to_markdown" if api_enable else False}
