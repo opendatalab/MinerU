@@ -21,7 +21,7 @@ from mammoth.docx import body_xml
 from mineru.model.docx.tools.office_xml import read_str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.utils.check_sys_env import is_windows_environment
-from mineru.utils.docx_fomatting import Formatting, Script
+from mineru.utils.docx_formatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_reader import image_to_b64str
 
