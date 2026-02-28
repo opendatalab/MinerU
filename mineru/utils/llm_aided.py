@@ -36,6 +36,9 @@ def llm_aided_title(page_info_list, title_aided_config):
                 title_dict[f"{i}"] = [title_text, line_avg_height, int(page_info['page_idx']) + 1]
                 i += 1
     # logger.info(f"Title list: {title_dict}")
+    if len(title_dict) == 0:
+        logger.info("No titles detected, skipping LLM-aided title optimization.")
+        return
 
     title_optimize_prompt = f"""输入的内容是一篇文档中所有标题组成的字典，请根据以下指南优化标题的结果，使结果符合正常文档的层次结构：
 
