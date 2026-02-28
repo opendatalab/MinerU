@@ -13,11 +13,15 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
+# 检测 Gradio 版本，用于兼容 Gradio 5 和 Gradio 6
+_gradio_major_version = int(gr.__version__.split('.')[0])
+IS_GRADIO_6 = _gradio_major_version >= 6
+
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes, office_suffixes
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes, office_suffixes, docx_suffixes
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.hash_utils import str_sha256
@@ -355,7 +359,7 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please upload a PDF or image",
+            "upload_file": "Please select a file to upload (PDF, DOCX, or image)",
             "max_pages": "Max convert pages",
             "backend": "Backend",
             "server_url": "Server URL",
@@ -386,7 +390,7 @@ def main(ctx,
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请上传 PDF 或图片",
+            "upload_file": "请选择要上传的文件（PDF、DOCX 或图片）",
             "max_pages": "最大转换页数",
             "backend": "解析后端",
             "server_url": "服务器地址",
@@ -494,7 +498,8 @@ def main(ctx,
         except Exception as e:
             logger.exception(e)
 
-    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
+    # suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
+    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + docx_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
@@ -518,13 +523,14 @@ def main(ctx,
                             gr.Markdown(i18n("recognition_options"))
                             table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
                             formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                        with gr.Column(visible=False) as ocr_options:
+                        with gr.Column() as ocr_options:
                             language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
                             is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
                 with gr.Row():
                     change_bu = gr.Button(i18n("convert"))
                     clear_bu = gr.ClearButton(value=i18n("clear"))
-                doc_show = PDF(label=i18n("doc_preview"), interactive=False, visible=True, height=800)
+                _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
+                doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=800)
                 office_html = gr.HTML(value="", visible=False)
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
@@ -538,39 +544,38 @@ def main(ctx,
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
-                with gr.Tabs():
+                with gr.Blocks():
                     with gr.Tab(i18n("md_rendering")):
+                        _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md = gr.Markdown(
                             label=i18n("md_rendering"),
                             height=1200,
-                            # buttons=["copy"],  # gradio 6 以上版本使用
-                            show_copy_button=True,  # gradio 6 以下版本使用
                             latex_delimiters=latex_delimiters,
-                            line_breaks=True
+                            line_breaks=True,
+                            **_md_copy_kwargs
                         )
                     with gr.Tab(i18n("md_text")):
+                        _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md_text = gr.TextArea(
                             lines=45,
-                            # buttons=["copy"],  # gradio 6 以上版本使用
-                            show_copy_button=True,  # gradio 6 以下版本使用
-                            label=i18n("md_text")
+                            label=i18n("md_text"),
+                            **_textarea_copy_kwargs
                         )
 
         # 添加事件处理
+        _private_api_kwargs = {"api_visibility": "private"} if IS_GRADIO_6 else {"api_name": False}
         backend.change(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            # api_visibility="private"  # gradio 6 以上版本使用
-            api_name=False  # gradio 6 以下版本使用
+            **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            # api_visibility="private"  # gradio 6 以上版本使用
-            api_name=False  # gradio 6 以下版本使用
+            **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html])
 
@@ -579,34 +584,35 @@ def main(ctx,
             fn=lambda: (gr.update(visible=True), gr.update(value=None, visible=True), gr.update(value="", visible=False)),
             inputs=[],
             outputs=[options_group, doc_show, office_html],
-            api_name=False,  # gradio 6 以下版本使用
-            # api_visibility="private"  # gradio 6 以上版本使用
+            **_private_api_kwargs
         )
 
         input_file.change(
             fn=update_file_preview,
             inputs=input_file,
             outputs=[options_group, doc_show, office_html],
-            api_name=False,  # gradio 6 以下版本使用
-            # api_visibility="private"  # gradio 6 以上版本使用
+            **_private_api_kwargs
         )
+        _to_md_api_kwargs = {"api_visibility": "public" if api_enable else "private"} if IS_GRADIO_6 else {"api_name": "to_markdown" if api_enable else False}
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
             outputs=[md, md_text, output_file, doc_show],
-            api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
-            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+            **_to_md_api_kwargs
         )
 
-    footer_links = ["gradio", "settings"]
-    if api_enable:
-        footer_links.append("api")
+    if IS_GRADIO_6:
+        footer_links = ["gradio", "settings"]
+        if api_enable:
+            footer_links.append("api")
+        _launch_kwargs = {"footer_links": footer_links}
+    else:
+        _launch_kwargs = {"show_api": api_enable}
     demo.launch(
         server_name=server_name,
         server_port=server_port,
-        # footer_links=footer_links,  # gradio 6 以上版本使用
-        show_api=api_enable,  # gradio 6 以下版本使用
-        i18n=i18n
+        i18n=i18n,
+        **_launch_kwargs,
     )
 
 
