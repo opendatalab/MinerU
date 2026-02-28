@@ -64,7 +64,8 @@ class DocxConverter:
             ".//a:blip", namespaces=DocxConverter._BLIP_NAMESPACES
         )
 
-        self.file_stream = None
+        # 存放文档字节数据，用于需要重读 ZIP 的辅助方法
+        self._file_bytes: bytes = b''
         self.docx_obj = None
         self.pages = []
         self.cur_page = []
@@ -322,9 +323,10 @@ class DocxConverter:
         self,
         file_stream: BinaryIO,
     ):
-        self.file_stream = file_stream
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
+        # 保存一份字节副本用于后续需要重新打开 ZIP 的方法
+        self._file_bytes = file_bytes
         # 使用完整文档 mammoth 转换预解析所有表格，获得完整上下文（编号/图片/样式等）
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
@@ -2069,7 +2071,8 @@ class DocxConverter:
             "r": "http://schemas.openxmlformats.org/package/2006/relationships"
         }
 
-        with zipfile.ZipFile(self.file_stream, "r") as zf:
+        # first pass: read relationships from rewindable byte buffer
+        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
             for name in zf.namelist():
                 match = rel_pattern.match(name)
                 if match:
@@ -2087,7 +2090,8 @@ class DocxConverter:
                             path = Path(target)
                             idx_xlsx_map[path.name] = int(match.group(1))
 
-        with zipfile.ZipFile(self.file_stream, "r") as zf:
+        # second pass: again open buffer rather than original stream
+        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
             for name in zf.namelist():
                 if name.startswith("word/embeddings/"):
                     for path_name, chart_idx in idx_xlsx_map.items():
