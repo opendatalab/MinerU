@@ -2034,9 +2034,9 @@ class DocxConverter:
         for instr in instr_texts:
             if instr.text and "SEQ" in instr.text:
                 return True
-        else:
-            return False
 
+        return False
+    
     def _handle_drawingml(self, elements: list[BaseOxmlElement]):
         """
         处理 DrawingML 元素，目前先处理 chart 元素。
