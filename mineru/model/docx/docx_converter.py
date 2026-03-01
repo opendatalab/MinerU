@@ -323,6 +323,19 @@ class DocxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        # 重置所有实例状态，确保同一实例多次调用 convert() 时不会残留上次的数据
+        self.pages = []
+        self.cur_page = []
+        self.pre_num_id = -1
+        self.pre_ilevel = -1
+        self.list_block_stack = []
+        self.list_counters = {}
+        self.index_block_stack = []
+        self.pre_index_ilevel = -1
+        self.heading_list_numids = set()
+        self.chart_list = []
+        self.processed_textbox_elements = []
+
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
         # 保存一份字节副本用于后续需要重新打开 ZIP 的方法

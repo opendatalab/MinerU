@@ -30,12 +30,15 @@ class PptxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        self.pages = []
+        self.cur_page = []
+        self.list_block_stack = []
         self.file_stream = file_stream
         self.pptx_obj = Presentation(self.file_stream)
         self.pages.append(self.cur_page)
         if self.pptx_obj:
             self._walk_linear(self.pptx_obj)
-        if self.pages[-1] == []:
+        if self.pages and self.pages[-1] == []:
             self.pages.pop()
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
