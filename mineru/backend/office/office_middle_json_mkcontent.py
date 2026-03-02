@@ -109,8 +109,16 @@ def merge_para_with_text(para_block):
                     trailing = original_content[len(original_content.rstrip()):]
                     parts.append((span_type, leading + styled + trailing))
                 elif original_content:
-                    # Whitespace-only span: preserve as spacing between styled parts
-                    parts.append((span_type, original_content))
+                    # Whitespace-only span: apply visible styles if present,
+                    # otherwise preserve as spacing between styled parts
+                    _visible = {'underline', 'strikethrough'}
+                    if span_style and any(s in _visible for s in span_style):
+                        # 将original_content替换为&nbsp;
+                        original_content = original_content.replace(" ", "&nbsp;")
+                        styled = _apply_markdown_style(original_content, span_style)
+                        parts.append((span_type, styled))
+                    else:
+                        parts.append((span_type, original_content))
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
                 content = content.strip()
@@ -529,10 +537,16 @@ def get_body_data(para_block):
 
 
 def merge_para_with_text_v2(para_block):
+    _visible_styles = {'underline', 'strikethrough'}
     para_content = []
     for i, line in enumerate(para_block['lines']):
         for j, span in enumerate(line['spans']):
-            if span.get("content", '').strip():
+            content = span.get("content", '')
+            span_style = span.get('style', [])
+            has_visible_style = bool(
+                span_style and any(s in _visible_styles for s in span_style)
+            )
+            if content.strip() or (content and has_visible_style):
                 if span['type'] == ContentType.INLINE_EQUATION:
                     span['type'] = ContentTypeV2.SPAN_EQUATION_INLINE
                 para_content.append(span)

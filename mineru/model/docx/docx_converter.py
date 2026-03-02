@@ -161,6 +161,23 @@ class DocxConverter:
             styles.append('strikethrough')
         return ','.join(styles) if styles else None
 
+    @staticmethod
+    def _has_visible_style(format_obj) -> bool:
+        """
+        检查格式是否包含可见样式（下划线或删除线）。
+
+        空白文本在有这些样式时仍然是可见的，应当保留。
+
+        Args:
+            format_obj: Formatting 对象
+
+        Returns:
+            bool: 是否包含可见样式
+        """
+        if format_obj is None:
+            return False
+        return bool(format_obj.underline or format_obj.strikethrough)
+
     @classmethod
     def _format_text_with_hyperlink(
         cls,
@@ -227,7 +244,7 @@ class DocxConverter:
                 style_str = self._get_style_str_from_format(format_obj)
                 formatted_text = self._format_text_with_hyperlink(text, hyperlink, style_str)
                 result_parts.append(formatted_text)
-        return " ".join(result_parts) if result_parts else ""
+        return "".join(result_parts) if result_parts else ""
 
     def _build_text_with_equations_and_hyperlinks(
         self,
@@ -1089,13 +1106,18 @@ class DocxConverter:
             else:
                 continue
 
-            if (len(text.strip()) and format != previous_format) or (
+            # 当新 run 有可见内容（非空或带可见样式的空白）且格式变化时触发分组
+            has_visible_content = len(text.strip()) > 0 or self._has_visible_style(format)
+            if (has_visible_content and format != previous_format) or (
                 hyperlink is not None
             ):
-                # 如果非空文本的样式发生变化，则添加前一个组
-                if len(group_text.strip()) > 0:
+                # 前一组有实质内容（非空或带可见样式的空白）时才保存
+                prev_has_visible = len(group_text.strip()) > 0 or (
+                    group_text and self._has_visible_style(previous_format)
+                )
+                if prev_has_visible:
                     paragraph_elements.append(
-                        (group_text.strip(), previous_format, None)
+                        (group_text, previous_format, None)
                     )
                 group_text = ""
 
@@ -1109,8 +1131,11 @@ class DocxConverter:
             group_text += text
 
         # 格式化最后一个组
-        if len(group_text.strip()) > 0:
-            paragraph_elements.append((group_text.strip(), format, None))
+        last_has_visible = len(group_text.strip()) > 0 or (
+            group_text and self._has_visible_style(format)
+        )
+        if last_has_visible:
+            paragraph_elements.append((group_text, format, None))
 
         return paragraph_elements
 
@@ -1132,6 +1157,17 @@ class DocxConverter:
         is_strikethrough = run.font.strike or False
         # 将任何非 None 的下划线值转换为 True
         is_underline = bool(run.underline is not None and run.underline)
+
+        # 检测着重符号 (w:em)：若存在非 none 的 em 值，则视为下划线样式
+        _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        rPr = run._element.find(f'{{{_W}}}rPr')
+        if rPr is not None:
+            em = rPr.find(f'{{{_W}}}em')
+            if em is not None:
+                em_val = em.get(f'{{{_W}}}val', '')
+                if em_val and em_val != 'none':
+                    is_underline = True
+
         is_sub = run.font.subscript or False
         is_sup = run.font.superscript or False
         script = Script.SUB if is_sub else Script.SUPER if is_sup else Script.BASELINE
