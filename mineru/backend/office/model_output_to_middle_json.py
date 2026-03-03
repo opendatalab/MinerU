@@ -9,6 +9,19 @@ from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import str_sha256
 from mineru.version import __version__
+from mineru.utils.config_reader import get_latex_delimiter_config
+
+
+latex_delimiters_config = get_latex_delimiter_config()
+
+default_delimiters = {
+    'display': {'left': '$$', 'right': '$$'},
+    'inline': {'left': '$', 'right': '$'}
+}
+
+delimiters = latex_delimiters_config if latex_delimiters_config else default_delimiters
+inline_left_delimiter = delimiters['inline']['left']
+inline_right_delimiter = delimiters['inline']['right']
 
 
 def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
@@ -201,7 +214,7 @@ def _build_toc_text_from_block(block: dict) -> str:
             if not c:
                 continue
             if span.get('type') == ContentType.INLINE_EQUATION:
-                parts.append(f'${c}$')
+                parts.append(f'{inline_left_delimiter}{c}{inline_right_delimiter}')
             else:
                 parts.append(c)
     return ''.join(parts).strip()
