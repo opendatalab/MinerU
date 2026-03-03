@@ -1092,6 +1092,14 @@ class DocxConverter:
         group_text = ""
         previous_format = None
 
+        # 字段代码超链接内联检测状态（处理 w:fldChar + w:instrText 形式的超链接）
+        _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        _field_in = False       # 当前是否在字段域内
+        _field_url = None       # 当前字段域解析出的 URL
+        _field_phase = None     # 'instr' 或 'result'
+        _field_acc_text = ""    # 累积的显示文本
+        _field_acc_format = None  # 首个显示 run 的格式
+
         # 遍历段落的 runs 并按格式分组
         for c in paragraph.iter_inner_content():
             if isinstance(c, Hyperlink):
@@ -1108,9 +1116,64 @@ class DocxConverter:
                     else None
                 )
             elif isinstance(c, Run):
-                text = c.text
-                hyperlink = None
-                format = self._get_format_from_run(c)
+                # ---- 字段代码超链接内联检测 ----
+                fld_char = c._element.find(f"{{{_W_NS}}}fldChar")
+                if fld_char is not None:
+                    fld_type = fld_char.get(f"{{{_W_NS}}}fldCharType")
+                    if fld_type == "begin":
+                        _field_in = True
+                        _field_url = None
+                        _field_phase = "instr"
+                        _field_acc_text = ""
+                        _field_acc_format = None
+                        continue
+                    elif fld_type == "separate":
+                        _field_phase = "result"
+                        continue
+                    elif fld_type == "end":
+                        if _field_url and _field_acc_text.strip():
+                            # 将累积的字段代码超链接作为一个整体处理
+                            text = _field_acc_text
+                            hyperlink = _field_url
+                            format = _field_acc_format
+                        else:
+                            _field_in = False
+                            _field_url = None
+                            _field_phase = None
+                            _field_acc_text = ""
+                            _field_acc_format = None
+                            continue
+                        _field_in = False
+                        _field_url = None
+                        _field_phase = None
+                        _field_acc_text = ""
+                        _field_acc_format = None
+                        # 继续执行下方的 hyperlink 统一处理逻辑
+                    else:
+                        continue
+                else:
+                    instr_elem = c._element.find(f"{{{_W_NS}}}instrText")
+                    if instr_elem is not None and _field_phase == "instr":
+                        # 捕获 HYPERLINK 指令中的 URL
+                        if instr_elem.text:
+                            m = re.search(r'HYPERLINK\s+"([^"]+)"', instr_elem.text)
+                            if m:
+                                _field_url = m.group(1)
+                        continue
+
+                    if _field_in and _field_phase == "result":
+                        # 显示文本 run：累积到字段文本
+                        t_elem = c._element.find(f"{{{_W_NS}}}t")
+                        if t_elem is not None:
+                            _field_acc_text += c.text
+                            if _field_acc_format is None:
+                                _field_acc_format = self._get_format_from_run(c)
+                        continue
+
+                    # 普通 run
+                    text = c.text
+                    hyperlink = None
+                    format = self._get_format_from_run(c)
             else:
                 continue
 
