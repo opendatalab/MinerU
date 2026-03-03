@@ -41,6 +41,16 @@ from .latex_dict import (
 
 OMML_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
 
+# Mapping from OMML <m:scr> values to LaTeX math font commands.
+# Used in do_r to convert math script/font style to appropriate LaTeX commands.
+SCR_TO_LATEX = {
+    "script":       "\\mathscr{{{0}}}",       # 手写体/花体 — \mathscr covers both upper and lowercase
+    "fraktur":      "\\mathfrak{{{0}}}",       # 德国哥特体 — \mathfrak for upper and lowercase
+    "double-struck": "\\mathbb{{{0}}}",        # 双线体/黑板粗体 — \mathbb
+    "sans-serif":   "\\mathsf{{{0}}}",         # 无衬线体
+    "monospace":    "\\mathtt{{{0}}}",         # 等宽字体
+}
+
 
 def load(stream):
     tree = ET.parse(stream)
@@ -465,6 +475,18 @@ class oMath2Latex(Tag2Method):
 
         if "}" not in base_proc_str and "\\}" in proc_str:
             proc_str = proc_str.replace("\\}", "}")
+
+        # Handle <m:scr> math font style (script, fraktur, double-struck, etc.)
+        # OMML encodes math alphabets via <m:rPr><m:scr m:val="..."/> rather than
+        # Unicode math-alphabet codepoints, so we must apply the LaTeX wrapper here.
+        rPr = elm.find(f"{OMML_NS}rPr")
+        if rPr is not None:
+            scr_elem = rPr.find(f"{OMML_NS}scr")
+            if scr_elem is not None:
+                scr_val = scr_elem.get(f"{OMML_NS}val")
+                latex_template = SCR_TO_LATEX.get(scr_val)
+                if latex_template and proc_str.strip():
+                    proc_str = latex_template.format(proc_str.strip())
 
         return proc_str
 

@@ -151,6 +151,12 @@ T = {
     # Binary relations
     "\u00b1": "\\pm ",
     "\u2213": "\\mp ",
+    # Characters whose pylatexenc text-mode mappings are invalid in math environments
+    "\u00f0": "\\eth ",          # ð LATIN SMALL LETTER ETH — pylatexenc: \dh (tipa, not in KaTeX/MathJax)
+    "\u0131": "\\imath ",        # ı LATIN SMALL LETTER DOTLESS I — pylatexenc: \i (text-mode only)
+    "\u2127": "\\mho ",          # ℧ INVERTED OHM SIGN — pylatexenc: \textmho (textcomp, not in KaTeX/MathJax)
+    "\u212e": "e",               # ℮ ESTIMATED SIGN — pylatexenc: \textestimated (no math equivalent; use 'e')
+    "\u00c5": "\\mathring{A} ",  # Å LATIN CAPITAL LETTER A WITH RING — pylatexenc: \r{A} (text-mode only)
     # Multiplication/division operators (text-mode pylatexenc mappings overridden to math-mode)
     "\u00b7": "\\cdot ",   # MIDDLE DOT (·) — common in Chinese scientific notation
     "\u22c5": "\\cdot ",   # DOT OPERATOR (⋅)
@@ -166,6 +172,23 @@ T = {
     "\u00b2": "2",
     "\u00b3": "3",
     "\u00b9": "1",
+    # Big operators as plain text characters — pylatexenc maps some to non-KaTeX commands
+    # (e.g. ∯→\surfintegral, ∰→\volintegral, ∱→\clwintegral) which don't render in KaTeX/MathJax.
+    # Override with standard KaTeX-compatible commands; if no KaTeX equivalent exists, keep Unicode.
+    "\u222f": "\\oiint ",          # ∯ SURFACE INTEGRAL — pylatexenc: \surfintegral (not in KaTeX)
+    "\u2230": "\\oiiint ",         # ∰ VOLUME INTEGRAL — pylatexenc: \volintegral (not in KaTeX)
+    "\u2231": "\u2231",            # ∱ CLOCKWISE INTEGRAL — pylatexenc: \clwintegral (not in KaTeX); keep Unicode
+    "\u2232": "\u2232",            # ∲ CLOCKWISE CONTOUR INTEGRAL — no KaTeX equivalent; keep Unicode
+    "\u2233": "\u2233",            # ∳ ANTICLOCKWISE CONTOUR INTEGRAL — no KaTeX equivalent; keep Unicode
+    # N-ary operators: ⨀⨁⨂ have KaTeX commands; ⨃⨄ do not — keep Unicode for those
+    "\u2a00": "\\bigodot ",        # ⨀ N-ARY CIRCLED DOT OPERATOR
+    "\u2a01": "\\bigoplus ",       # ⨁ N-ARY CIRCLED PLUS OPERATOR
+    "\u2a02": "\\bigotimes ",      # ⨂ N-ARY CIRCLED TIMES OPERATOR
+    "\u2a03": "\u2a03",            # ⨃ N-ARY UNION WITH DOT — no exact KaTeX equivalent; keep Unicode
+    "\u2a04": "\u2a04",            # ⨄ N-ARY UNION WITH PLUS — no exact KaTeX equivalent; keep Unicode
+    # Wave arrows — pylatexenc: \arrowwaveleft / \arrowwaveright (not in KaTeX); keep Unicode
+    "\u219c": "\u219c",            # ↜ LEFTWARDS WAVE ARROW
+    "\u219d": "\u219d",            # ↝ RIGHTWARDS WAVE ARROW
     # Italic, Latin, uppercase
     "\U0001d434": "A",
     "\U0001d435": "B",
