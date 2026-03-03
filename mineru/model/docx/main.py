@@ -15,4 +15,4 @@ def convert_binary(file_binary: BinaryIO):
 
 
 if __name__ == "__main__":
-    print(convert_path("../../../demo/docx/test.docx"))
+    print(convert_path("../../../demo/docx/demo1.docx"))
