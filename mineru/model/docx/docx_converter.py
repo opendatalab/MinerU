@@ -1136,6 +1136,11 @@ class DocxConverter:
                             text = _field_acc_text
                             hyperlink = _field_url
                             format = _field_acc_format
+                        elif _field_acc_text.strip():
+                            # 非超链接字段（如 SEQ 序号字段），将累积的显示文本作为普通文本处理
+                            text = _field_acc_text
+                            hyperlink = None
+                            format = _field_acc_format
                         else:
                             _field_in = False
                             _field_url = None
