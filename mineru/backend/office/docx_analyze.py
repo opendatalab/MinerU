@@ -29,15 +29,42 @@ def office_docx_analyze(
     return middle_json, results
 
 if __name__ == '__main__':
-    docx_path = "../../../demo/docx/demo1.docx"
+    # Resolve a default docx file relative to this script so the example
+    # works no matter what the current working directory is when the
+    # module is executed.  Allow the user to override the path via a
+    # command-line argument for even greater flexibility.
+    from pathlib import Path
+    import argparse
+
+    script_root = Path(__file__).resolve().parent.parent.parent.parent
+    default_docx = script_root / "demo" / "docx" / "demo1.docx"
+
+    parser = argparse.ArgumentParser(
+        description="Quick demo runner for office_docx_analyze"
+    )
+    parser.add_argument(
+        "docx",
+        nargs="?",
+        default=str(default_docx),
+        help="path to docx file (defaults to demo/docx/demo1.docx relative to project root)"
+    )
+    parser.add_argument(
+        "--output-images",
+        help="directory to write image outputs",
+        default="./output_images"
+    )
+    args = parser.parse_args()
+
+    docx_path = Path(args.docx)
     from mineru.data.data_reader_writer import FileBasedDataWriter
+
     with open(docx_path, 'rb') as f:
         file_bytes = f.read()
-    image_writer = FileBasedDataWriter("./output_images")
+    image_writer = FileBasedDataWriter(args.output_images)
     middle_json, results = office_docx_analyze(
         file_bytes,
         image_writer=image_writer,
     )
 
     import json
-    print(json.dumps(middle_json, indent=2, ensure_ascii=False))
+    logger.info(json.dumps(middle_json, indent=2, ensure_ascii=False))
