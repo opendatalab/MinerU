@@ -13,11 +13,15 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
+# 检测 Gradio 版本，用于兼容 Gradio 5 和 Gradio 6
+_gradio_major_version = int(gr.__version__.split('.')[0])
+IS_GRADIO_6 = _gradio_major_version >= 6
+
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes
+from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes, office_suffixes, docx_suffixes
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.hash_utils import str_sha256
@@ -29,17 +33,24 @@ async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, t
     try:
         file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
         pdf_data = read_fn(doc_path)
-        # 根据 backend 确定 parse_method
-        if backend.startswith("vlm"):
+
+        # 检测 office 文件类型
+        file_suffix = Path(doc_path).suffix.lower().lstrip('.')
+        if file_suffix in office_suffixes:
+            # office 文件使用固定的 env_name，parse_method 设为默认值（aio_do_parse 内部会处理）
+            env_name = "office"
+            parse_method = "auto"
+        elif backend.startswith("vlm"):
+            # 根据 backend 确定 parse_method
             parse_method = "vlm"
+            env_name = parse_method
         else:
             parse_method = 'ocr' if is_ocr else 'auto'
-
-        # 根据 backend 类型准备环境目录
-        if backend.startswith("hybrid"):
-            env_name = f"hybrid_{parse_method}"
-        else:
-            env_name = parse_method
+            # 根据 backend 类型准备环境目录
+            if backend.startswith("hybrid"):
+                env_name = f"hybrid_{parse_method}"
+            else:
+                env_name = parse_method
 
         local_image_dir, local_md_dir = prepare_env(output_dir, file_name, env_name)
 
@@ -91,31 +102,65 @@ def image_to_base64(image_path):
 
 
 def replace_image_with_base64(markdown_text, image_dir_path):
-    # 匹配Markdown中的图片标签
-    pattern = r'\!\[(?:[^\]]*)\]\(([^)]+)\)'
+    # MIME类型映射
+    mime_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+    }
 
-    # 替换图片链接
-    def replace(match):
-        relative_path = match.group(1)
-        # 只处理以.jpg结尾的图片
-        if relative_path.endswith('.jpg'):
+    def _path_to_data_uri(relative_path):
+        file_ext = os.path.splitext(relative_path)[1].lower()
+        if file_ext not in mime_types:
+            return None
+        try:
             full_path = os.path.join(image_dir_path, relative_path)
             base64_image = image_to_base64(full_path)
-            return f'![{relative_path}](data:image/jpeg;base64,{base64_image})'
-        else:
-            # 其他格式的图片保持原样
-            return match.group(0)
-    # 应用替换
-    return re.sub(pattern, replace, markdown_text)
+            return f'data:{mime_types[file_ext]};base64,{base64_image}'
+        except Exception as e:
+            logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
+            return None
+
+    # 匹配Markdown中的图片标签 ![...](path)
+    def replace_md(match):
+        relative_path = match.group(1)
+        data_uri = _path_to_data_uri(relative_path)
+        if data_uri:
+            return f'![{relative_path}]({data_uri})'
+        return match.group(0)
+
+    result = re.sub(r'\!\[(?:[^\]]*)\]\(([^)]+)\)', replace_md, markdown_text)
+
+    # 匹配HTML表格中的 <img src="path"> (跳过已有的data: URI)
+    def replace_html_src(match):
+        relative_path = match.group(1)
+        data_uri = _path_to_data_uri(relative_path)
+        if data_uri:
+            return f'src="{data_uri}"'
+        return match.group(0)
+
+    result = re.sub(r'src="(?!data:)([^"]+)"', replace_html_src, result)
+
+    return result
 
 
 async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
     # 如果language包含()，则提取括号前的内容作为实际语言
     if '(' in language and ')' in language:
         language = language.split('(')[0].strip()
-    file_path = to_pdf(file_path)
+
+    # office 文件不需要转换为 PDF，直接使用原始文件路径
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+    if is_office:
+        parse_file_path = file_path
+    else:
+        parse_file_path = to_pdf(file_path)
+
     # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = await parse_pdf(file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
+    local_md_dir, file_name = await parse_pdf(parse_file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
     archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
@@ -126,8 +171,11 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
     md_content = replace_image_with_base64(txt_content, local_md_dir)
-    # 返回转换后的PDF路径
-    new_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
+    # office 文件没有 layout PDF，返回 None；其他格式返回转换后的 PDF 路径
+    if is_office:
+        new_pdf_path = None
+    else:
+        new_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
 
     return md_content, txt_content, archive_zip_path, new_pdf_path
 
@@ -196,6 +244,75 @@ def to_pdf(file_path):
     return tmp_file_path
 
 
+def to_pdf_preview(file_path):
+    """用于 PDF 预览的转换函数，office 文件不支持预览，返回 None。"""
+    if file_path is None:
+        return None
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    if file_suffix in office_suffixes:
+        return None
+    return to_pdf(file_path)
+
+
+def update_file_options_html(file_path, request: gr.Request):
+    """处理文件上传第一阶段：根据文件类型更新 options_group 和 office_html。
+    将 doc_show（gradio_pdf.PDF）的更新拆分到独立的 .then() 事件中，
+    以规避 gradio_pdf 0.0.24 在 Gradio 6 中对 value=None 处理不当导致的
+    整个事件 processing 状态卡死的兼容性问题。
+    """
+    if file_path is None:
+        return (
+            gr.update(visible=True),             # options_group - 恢复显示
+            gr.update(value="", visible=False),  # office_html - 隐藏
+        )
+
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+
+    if is_office:
+        # 构建可公开访问的文件 URL，供 Microsoft 在线预览使用
+        host = (request.headers.get('x-forwarded-host')
+                or request.headers.get('host', 'localhost:7860'))
+        proto = request.headers.get('x-forwarded-proto', 'http')
+        base_url = f"{proto}://{host}"
+        public_url = f"{base_url}/gradio_api/file={file_path}"
+        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={public_url}"
+        html_content = (
+            f'<iframe src="{viewer_url}" '
+            f'width="100%" height="960px" frameborder="0" '
+            f'style="border: none;"></iframe>'
+        )
+        return (
+            gr.update(visible=False),                    # options_group - 隐藏
+            gr.update(value=html_content, visible=True), # office_html - 显示
+        )
+    else:
+        return (
+            gr.update(visible=True),             # options_group - 显示
+            gr.update(value="", visible=False),  # office_html - 隐藏
+        )
+
+
+def update_doc_show(file_path):
+    """处理文件上传第二阶段：单独更新 doc_show（gradio_pdf.PDF）组件。
+    对 office 文件仅改变 visible，避免传递 value=None 触发
+    gradio_pdf 0.0.24 在 Gradio 6 中无法完成的加载周期。
+    """
+    if file_path is None:
+        # 无文件时恢复显示并清空（clear 按钮路径）
+        return gr.update(value=None, visible=True)
+
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    is_office = file_suffix in office_suffixes
+
+    if is_office:
+        # 仅隐藏，不改变 value，避免触发 gradio_pdf 加载周期导致事件 pending 卡死
+        return gr.update(visible=False)
+    else:
+        pdf_path = to_pdf_preview(file_path)
+        return gr.update(value=pdf_path, visible=True)
+
+
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
 @click.option(
@@ -259,7 +376,7 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please upload a PDF or image",
+            "upload_file": "Please select a file to upload (PDF, DOCX, or image)",
             "max_pages": "Max convert pages",
             "backend": "Backend",
             "server_url": "Server URL",
@@ -279,7 +396,7 @@ def main(ctx,
             "force_ocr_info": "Enable only if the result is extremely poor. Requires correct OCR language.",
             "convert": "Convert",
             "clear": "Clear",
-            "pdf_preview": "PDF preview",
+            "doc_preview": "Document preview",
             "examples": "Examples:",
             "convert_result": "Convert result",
             "md_rendering": "Markdown rendering",
@@ -290,7 +407,7 @@ def main(ctx,
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请上传 PDF 或图片",
+            "upload_file": "请选择要上传的文件（PDF、DOCX 或图片）",
             "max_pages": "最大转换页数",
             "backend": "解析后端",
             "server_url": "服务器地址",
@@ -310,7 +427,7 @@ def main(ctx,
             "force_ocr_info": "仅在识别效果极差时启用，需选择正确的 OCR 语言。",
             "convert": "转换",
             "clear": "清除",
-            "pdf_preview": "PDF 预览",
+            "doc_preview": "文档预览",
             "examples": "示例：",
             "convert_result": "转换结果",
             "md_rendering": "Markdown 渲染",
@@ -398,35 +515,40 @@ def main(ctx,
         except Exception as e:
             logger.exception(e)
 
-    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
+    # suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
+    suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + docx_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
                 with gr.Row():
                     input_file = gr.File(label=i18n("upload_file"), file_types=suffixes)
-                with gr.Row():
-                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                with gr.Row():
-                    drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
-                    preferred_option = "hybrid-auto-engine"
-                    if http_client_enable:
-                        drop_list.extend(["vlm-http-client", "hybrid-http-client"])
-                    backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
-                with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
-                with gr.Row(equal_height=True):
-                    with gr.Column():
-                        gr.Markdown(i18n("recognition_options"))
-                        table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                        formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                    with gr.Column(visible=False) as ocr_options:
-                        language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
-                        is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
+                # 下面这些选项在上传 office 文件时会被自动隐藏
+                with gr.Group() as options_group:
+                    with gr.Row():
+                        max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
+                    with gr.Row():
+                        drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
+                        preferred_option = "hybrid-auto-engine"
+                        if http_client_enable:
+                            drop_list.extend(["vlm-http-client", "hybrid-http-client"])
+                        backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
+                    with gr.Row(visible=False) as client_options:
+                        url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
+                    with gr.Row(equal_height=True):
+                        with gr.Column():
+                            gr.Markdown(i18n("recognition_options"))
+                            table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
+                            formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                        with gr.Column() as ocr_options:
+                            language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
+                            is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
                 with gr.Row():
                     change_bu = gr.Button(i18n("convert"))
                     clear_bu = gr.ClearButton(value=i18n("clear"))
-                pdf_show = PDF(label=i18n("pdf_preview"), interactive=False, visible=True, height=800)
+                _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
+                doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=800)
+                office_html = gr.HTML(value="", visible=False)
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
@@ -439,66 +561,83 @@ def main(ctx,
 
             with gr.Column(variant='panel', scale=5):
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
-                with gr.Tabs():
+                with gr.Blocks():
                     with gr.Tab(i18n("md_rendering")):
+                        _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md = gr.Markdown(
                             label=i18n("md_rendering"),
                             height=1200,
-                            # buttons=["copy"],  # gradio 6 以上版本使用
-                            show_copy_button=True,  # gradio 6 以下版本使用
                             latex_delimiters=latex_delimiters,
-                            line_breaks=True
+                            line_breaks=True,
+                            **_md_copy_kwargs
                         )
                     with gr.Tab(i18n("md_text")):
+                        _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md_text = gr.TextArea(
                             lines=45,
-                            # buttons=["copy"],  # gradio 6 以上版本使用
-                            show_copy_button=True,  # gradio 6 以下版本使用
-                            label=i18n("md_text")
+                            label=i18n("md_text"),
+                            **_textarea_copy_kwargs
                         )
 
         # 添加事件处理
+        _private_api_kwargs = {"api_visibility": "private"} if IS_GRADIO_6 else {"api_name": False}
         backend.change(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            # api_visibility="private"  # gradio 6 以上版本使用
-            api_name=False  # gradio 6 以下版本使用
+            **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
-            # api_visibility="private"  # gradio 6 以上版本使用
-            api_name=False  # gradio 6 以下版本使用
+            **_private_api_kwargs
         )
-        clear_bu.add([input_file, md, pdf_show, md_text, output_file, is_ocr])
+        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html])
 
-        input_file.change(
-            fn=to_pdf,
-            inputs=input_file,
-            outputs=pdf_show,
-            api_name="to_pdf" if api_enable else False,  # gradio 6 以下版本使用
-            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
+        clear_bu.click(
+            fn=lambda: (gr.update(visible=True), gr.update(value=None, visible=True), gr.update(value="", visible=False)),
+            inputs=[],
+            outputs=[options_group, doc_show, office_html],
+            **_private_api_kwargs
         )
+
+        # 第一阶段：快速更新 options_group 和 office_html，不涉及 gradio_pdf 组件
+        # 第二阶段（.then）：单独更新 doc_show，使 office_html 的 processing 遮罩
+        # 在第一阶段完成后立即消失，规避 gradio_pdf 0.0.24 与 Gradio 6 的兼容性问题。
+        input_file.change(
+            fn=update_file_options_html,
+            inputs=input_file,
+            outputs=[options_group, office_html],
+            **_private_api_kwargs
+        ).then(
+            fn=update_doc_show,
+            inputs=input_file,
+            outputs=[doc_show],
+            **_private_api_kwargs
+        )
+        _to_md_api_kwargs = {"api_visibility": "public" if api_enable else "private"} if IS_GRADIO_6 else {"api_name": "to_markdown" if api_enable else False}
         change_bu.click(
             fn=to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
-            outputs=[md, md_text, output_file, pdf_show],
-            api_name="to_markdown" if api_enable else False,  # gradio 6 以下版本使用
-            # api_visibility="public" if api_enable else "private"  # gradio 6 以上版本使用
+            outputs=[md, md_text, output_file, doc_show],
+            **_to_md_api_kwargs
         )
 
-    footer_links = ["gradio", "settings"]
-    if api_enable:
-        footer_links.append("api")
+    if IS_GRADIO_6:
+        footer_links = ["gradio", "settings"]
+        if api_enable:
+            footer_links.append("api")
+        _launch_kwargs = {"footer_links": footer_links}
+    else:
+        _launch_kwargs = {"show_api": api_enable}
     demo.launch(
         server_name=server_name,
         server_port=server_port,
-        # footer_links=footer_links,  # gradio 6 以上版本使用
-        show_api=api_enable,  # gradio 6 以下版本使用
-        i18n=i18n
+        i18n=i18n,
+        **_launch_kwargs,
     )
 
 

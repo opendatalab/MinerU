@@ -176,6 +176,7 @@ def tie_up_category_by_index(
         extract_subject_func: Callable = None,
         extract_object_func: Callable = None,
         object_block_type: str = "object",
+        include_bbox: bool = True,
 ):
     """
     基于index的类别关联方法，用于将主体对象与客体对象进行关联
@@ -261,31 +262,35 @@ def tie_up_category_by_index(
             best_subject_idx = best_subject_indices[0]
         # 如果有多个主体的index差值相同（最多两个），根据边缘距离进行筛选
         elif len(best_subject_indices) == 2:
-            # 计算所有候选主体的边缘距离
-            edge_distances = [(idx, bbox_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
-            edge_dist_diff = abs(edge_distances[0][1] - edge_distances[1][1])
+            # 只有在包含bbox信息时才进行边缘距离的计算和比较，否则直接匹配第一个主体
+            if include_bbox:
+                # 计算所有候选主体的边缘距离
+                edge_distances = [(idx, bbox_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
+                edge_dist_diff = abs(edge_distances[0][1] - edge_distances[1][1])
 
-            for idx, edge_dist in edge_distances:
-                logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Edge distance: {edge_dist}")
+                for idx, edge_dist in edge_distances:
+                    logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Edge distance: {edge_dist}")
 
-            if edge_dist_diff > 2:
-                # 边缘距离差值大于2，匹配边缘距离更小的主体
-                best_subject_idx = min(edge_distances, key=lambda x: x[1])[0]
-                logger.debug(f"Obj index: {obj_index}, edge_dist_diff > 2, matching to subject with min edge distance, index: {subjects[best_subject_idx]['index']}")
-            elif object_block_type == "table_caption":
-                # 边缘距离差值<=2且为table_caption，匹配index更大的主体
-                best_subject_idx = max(best_subject_indices, key=lambda idx: subjects[idx]["index"])
-                logger.debug(f"Obj index: {obj_index}, edge_dist_diff <= 2 and table_caption, matching to later subject with index: {subjects[best_subject_idx]['index']}")
-            elif object_block_type.endswith("footnote"):
-                # 边缘距离差值<=2且为footnote，匹配index更小的主体
-                best_subject_idx = min(best_subject_indices, key=lambda idx: subjects[idx]["index"])
-                logger.debug(f"Obj index: {obj_index}, edge_dist_diff <= 2 and footnote, matching to earlier subject with index: {subjects[best_subject_idx]['index']}")
+                if edge_dist_diff > 2:
+                    # 边缘距离差值大于2，匹配边缘距离更小的主体
+                    best_subject_idx = min(edge_distances, key=lambda x: x[1])[0]
+                    logger.debug(f"Obj index: {obj_index}, edge_dist_diff > 2, matching to subject with min edge distance, index: {subjects[best_subject_idx]['index']}")
+                elif object_block_type == "table_caption":
+                    # 边缘距离差值<=2且为table_caption，匹配index更大的主体
+                    best_subject_idx = max(best_subject_indices, key=lambda idx: subjects[idx]["index"])
+                    logger.debug(f"Obj index: {obj_index}, edge_dist_diff <= 2 and table_caption, matching to later subject with index: {subjects[best_subject_idx]['index']}")
+                elif object_block_type.endswith("footnote"):
+                    # 边缘距离差值<=2且为footnote，匹配index更小的主体
+                    best_subject_idx = min(best_subject_indices, key=lambda idx: subjects[idx]["index"])
+                    logger.debug(f"Obj index: {obj_index}, edge_dist_diff <= 2 and footnote, matching to earlier subject with index: {subjects[best_subject_idx]['index']}")
+                else:
+                    # 边缘距离差值<=2 且不适用特殊匹配规则，使用中心点距离匹配
+                    center_distances = [(idx, bbox_center_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
+                    for idx, center_dist in center_distances:
+                        logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Center distance: {center_dist}")
+                    best_subject_idx = min(center_distances, key=lambda x: x[1])[0]
             else:
-                # 边缘距离差值<=2 且不适用特殊匹配规则，使用中心点距离匹配
-                center_distances = [(idx, bbox_center_distance(obj["bbox"], subjects[idx]["bbox"])) for idx in best_subject_indices]
-                for idx, center_dist in center_distances:
-                    logger.debug(f"Obj index: {obj_index}, Sub index: {subjects[idx]['index']}, Center distance: {center_dist}")
-                best_subject_idx = min(center_distances, key=lambda x: x[1])[0]
+                best_subject_idx = best_subject_indices[0]
         else:
             raise ValueError("More than two subjects have the same minimal index difference, which is unexpected.")
 

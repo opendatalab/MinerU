@@ -46,7 +46,7 @@ def image_to_b64str(
     image_format: str = "JPEG",
 ) -> str:
     image_bytes = image_to_bytes(image, image_format)
-    return base64.b64encode(image_bytes).decode("utf-8")
+    return f"data:image/{image_format.lower()};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
 
 
 def base64_to_pil_image(
