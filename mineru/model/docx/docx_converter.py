@@ -1533,8 +1533,14 @@ class DocxConverter:
         # 确定列表属性
         list_attribute = "ordered" if is_numbered else "unordered"
 
-        # 情况 1: 不存在上一个列表ID，创建新的顶层列表
-        if self.pre_num_id == -1:
+        # 情况 1: 不存在上一个列表ID，或遇到了不同 numId 的新列表，创建新的顶层列表
+        if self.pre_num_id == -1 or self.pre_num_id != numid:
+            # 切换到不同的列表时，先重置旧列表状态
+            if self.pre_num_id != -1:
+                self.pre_num_id = -1
+                self.pre_ilevel = -1
+                self.list_block_stack = []
+                self.list_counters = {}
             # 为新编号序列重置计数器，确保编号从1开始
             self._reset_list_counters_for_new_sequence(numid)
 
