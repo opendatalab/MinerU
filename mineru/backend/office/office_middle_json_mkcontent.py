@@ -230,9 +230,10 @@ def _flatten_index_items(index_block):
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
                     content = span.get('content', '')
-                    # Strip trailing tab + page number (e.g. "引言\t1" -> "引言")
+                    # Strip trailing tab + page number (e.g. "引言\t1" -> "引言",
+                    # "1.1\t研究对象\t5" -> "1.1 研究对象")
                     if '\t' in content:
-                        content = content.split('\t', 1)[0]
+                        content = content.rsplit('\t', 1)[0].replace('\t', ' ')
                     content = content.strip()
                     if content:
                         text_parts.append(content)

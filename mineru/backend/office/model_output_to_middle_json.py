@@ -252,7 +252,11 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
     for span in toc_spans:
         content = span.get('content', '')
         if '\t' in content:
-            toc_text = content.split('\t', 1)[0].strip()
+            # The last tab separates the page number; strip it.
+            # Internal tabs separate section number from title (e.g. "1.1\t研究对象\t5"
+            # -> "1.1\t研究对象").  _normalize_for_match removes \t via \s+, and
+            # _strip_section_number's \s* already consumes the tab after the number.
+            toc_text = content.rsplit('\t', 1)[0].strip()
         else:
             toc_text = content.strip()
 
@@ -292,7 +296,7 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
         if 'target_anchor' in span:
             continue
         content = span.get('content', '')
-        toc_text = content.split('\t', 1)[0].strip() if '\t' in content else content.strip()
+        toc_text = content.rsplit('\t', 1)[0].strip() if '\t' in content else content.strip()
         if not toc_text:
             continue
 
