@@ -1076,7 +1076,15 @@ class DocxConverter:
 
         # 目前保留空段落以保持向后兼容性:
         if paragraph.text.strip() == "":
-            return [("", None, None)]
+            # 检查是否存在带可见样式（下划线或删除线）的空白文本 run。
+            # 有可见样式的空白文本（如带下划线的空格）在视觉上是可见的，应予保留，
+            # 因此跳过提前返回，交由后续完整 run 处理流程处理。
+            has_visible_style_run = any(
+                isinstance(c, Run) and c.text and self._has_visible_style(self._get_format_from_run(c))
+                for c in paragraph.iter_inner_content()
+            )
+            if not has_visible_style_run:
+                return [("", None, None)]
 
         paragraph_elements: list[
             tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]
@@ -1131,11 +1139,13 @@ class DocxConverter:
             group_text += text
 
         # 格式化最后一个组
+        # 注意：使用 previous_format（当前累积组的格式），而非 format（最后一次循环迭代的格式）。
+        # 最后一次迭代可能是无样式的空 run，若使用 format 会导致样式丢失。
         last_has_visible = len(group_text.strip()) > 0 or (
-            group_text and self._has_visible_style(format)
+            group_text and self._has_visible_style(previous_format)
         )
         if last_has_visible:
-            paragraph_elements.append((group_text, format, None))
+            paragraph_elements.append((group_text, previous_format, None))
 
         return paragraph_elements
 
