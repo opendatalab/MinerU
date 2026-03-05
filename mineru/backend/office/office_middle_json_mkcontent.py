@@ -214,8 +214,8 @@ def _flatten_index_items(index_block):
     """Recursively flatten index (TOC) blocks into markdown list items.
 
     Strips the trailing tab+page-number from span content and, when target
-    location fields are present on a span, wraps the text in a markdown
-    hyperlink pointing to the body-block anchor.
+    location fields are present on the leaf text block, wraps the text in
+    a markdown hyperlink pointing to the body-block anchor.
 
     Styling (bold, italic, underline, strikethrough) is applied via
     _apply_markdown_style.  HYPERLINK spans are rendered as plain styled
@@ -235,7 +235,12 @@ def _flatten_index_items(index_block):
             items.extend(_flatten_index_items(child))
         elif child.get('type') == BlockType.TEXT:
             span_items = []   # list of (content, span_type, span_style)
-            target_anchor = None
+            target_anchor = child.get('target_anchor')
+            if isinstance(target_anchor, list) and len(target_anchor) == 2:
+                pid, bidx = target_anchor
+                target_anchor = f"block-p{pid}-b{bidx}"
+            else:
+                target_anchor = None
 
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
@@ -243,9 +248,6 @@ def _flatten_index_items(index_block):
                     span_style = span.get('style', [])
                     span_type = span.get('type')
                     span_items.append((content, span_type, span_style))
-                    if 'target_anchor' in span and target_anchor is None:
-                        pid, bidx = span['target_anchor']
-                        target_anchor = f"block-p{pid}-b{bidx}"
 
             if not span_items:
                 continue
@@ -277,38 +279,70 @@ def _flatten_index_items(index_block):
 
             # ----------------------------------------------------------
             # Step 2: Apply markdown styles and build the final text.
+            #
+            # If all non-equation spans share the same non-empty style
+            # (common in TOC entries like all-bold), apply style once to
+            # the whole item to avoid fragmented markers such as
+            # "**foo****bar**".
             # ----------------------------------------------------------
-            raw_parts = []
-            for content, span_type, span_style in stripped_span_items:
-                if not content:
-                    continue
-                if span_type == ContentType.INLINE_EQUATION:
-                    # Wrap inline equations with configured delimiters
-                    raw_parts.append(
-                        f'{inline_left_delimiter}{content}{inline_right_delimiter}'
-                    )
-                elif span_type == ContentType.HYPERLINK:
-                    # TOC hyperlinks use document-internal bookmark refs; output
-                    # only the styled display text without the URL.
-                    link_text = content.strip()
-                    if link_text:
-                        link_text = _apply_markdown_style(link_text, span_style)
-                    leading = content[:len(content) - len(content.lstrip())]
-                    trailing = content[len(content.rstrip()):]
-                    raw_parts.append(leading + link_text + trailing)
-                else:
-                    # TEXT span: apply markdown style while preserving
-                    # surrounding whitespace (e.g. leading space after section #).
-                    stripped = content.strip()
-                    if stripped:
-                        styled = _apply_markdown_style(stripped, span_style)
+            non_eq_styles = [
+                tuple(span_style)
+                for content, span_type, span_style in stripped_span_items
+                if content and span_type != ContentType.INLINE_EQUATION
+            ]
+            uniform_style = None
+            if non_eq_styles:
+                first_style = non_eq_styles[0]
+                if first_style and all(s == first_style for s in non_eq_styles):
+                    uniform_style = list(first_style)
+
+            if uniform_style:
+                raw_parts = []
+                for content, span_type, _span_style in stripped_span_items:
+                    if not content:
+                        continue
+                    if span_type == ContentType.INLINE_EQUATION:
+                        raw_parts.append(
+                            f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                        )
+                    else:
+                        # For TOC rendering, hyperlink spans output as plain text.
+                        raw_parts.append(content)
+                item_text = ''.join(raw_parts).strip()
+                if item_text:
+                    item_text = _apply_markdown_style(item_text, uniform_style)
+            else:
+                raw_parts = []
+                for content, span_type, span_style in stripped_span_items:
+                    if not content:
+                        continue
+                    if span_type == ContentType.INLINE_EQUATION:
+                        # Wrap inline equations with configured delimiters
+                        raw_parts.append(
+                            f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                        )
+                    elif span_type == ContentType.HYPERLINK:
+                        # TOC hyperlinks use document-internal bookmark refs; output
+                        # only the styled display text without the URL.
+                        link_text = content.strip()
+                        if link_text:
+                            link_text = _apply_markdown_style(link_text, span_style)
                         leading = content[:len(content) - len(content.lstrip())]
                         trailing = content[len(content.rstrip()):]
-                        raw_parts.append(leading + styled + trailing)
-                    elif content:
-                        raw_parts.append(content)
+                        raw_parts.append(leading + link_text + trailing)
+                    else:
+                        # TEXT span: apply markdown style while preserving
+                        # surrounding whitespace (e.g. leading space after section #).
+                        stripped = content.strip()
+                        if stripped:
+                            styled = _apply_markdown_style(stripped, span_style)
+                            leading = content[:len(content) - len(content.lstrip())]
+                            trailing = content[len(content.rstrip()):]
+                            raw_parts.append(leading + styled + trailing)
+                        elif content:
+                            raw_parts.append(content)
 
-            item_text = ''.join(raw_parts).strip()
+                item_text = ''.join(raw_parts).strip()
             if not item_text:
                 continue
 
@@ -402,7 +436,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     elif para_type == BlockType.INDEX:
         para_content = {
             'type': para_type,
-            'list_items': _flatten_list_items(para_block),
+            'list_items': _flatten_index_items(para_block),
         }
     elif para_type == BlockType.TITLE:
         title_level = get_title_level(para_block)
@@ -659,4 +693,3 @@ def union_make(pdf_info_dict: list,
     elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     return None
-

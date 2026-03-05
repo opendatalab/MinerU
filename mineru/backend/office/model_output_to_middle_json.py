@@ -231,20 +231,89 @@ def _get_block_text(block: dict) -> str:
     return ''.join(parts).strip()
 
 
-def _collect_toc_spans(index_block: dict, result: list) -> None:
-    """Depth-first collect all leaf text spans from an index block tree."""
+def _collect_toc_span_entries(index_block: dict, result: list) -> None:
+    """Depth-first collect (span, owner text-block) pairs from index tree."""
     for child in index_block.get('blocks', []):
         if child.get('type') == BlockType.INDEX:
-            _collect_toc_spans(child, result)
+            _collect_toc_span_entries(child, result)
         elif child.get('type') == BlockType.TEXT:
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
                     if span.get('content', '').strip():
-                        result.append(span)
+                        result.append({
+                            "span": span,
+                            "text_block": child,
+                        })
+
+
+def _build_index_spans_from_title_block(
+    title_block: dict,
+    section_prefix: str = "",
+    default_style: list | None = None,
+) -> list[dict]:
+    """Build TOC spans from a matched title block while preserving equations.
+
+    Hyperlink spans inside body titles are converted to plain TEXT spans in the
+    TOC so the whole TOC item can use a single internal anchor target.
+    """
+    rebuilt_spans: list[dict] = []
+    for line in title_block.get('lines', []):
+        for span in line.get('spans', []):
+            content = span.get('content', '')
+            if not content:
+                continue
+
+            span_type = span.get('type')
+            if span_type == ContentType.HYPERLINK:
+                span_type = ContentType.TEXT
+
+            new_span = {
+                "type": span_type,
+                "content": content,
+            }
+            if span_type != ContentType.INLINE_EQUATION:
+                style = span.get('style') or default_style
+                if style:
+                    new_span["style"] = list(style)
+            rebuilt_spans.append(new_span)
+
+    if not rebuilt_spans:
+        return []
+
+    if section_prefix:
+        for span in rebuilt_spans:
+            if span.get('type') != ContentType.INLINE_EQUATION:
+                span['content'] = section_prefix + span.get('content', '')
+                break
+        else:
+            prefix_span = {
+                "type": ContentType.TEXT,
+                "content": section_prefix,
+            }
+            if default_style:
+                prefix_span["style"] = list(default_style)
+            rebuilt_spans.insert(0, prefix_span)
+
+    # Merge adjacent TEXT spans with identical styles for cleaner output.
+    merged_spans: list[dict] = []
+    for span in rebuilt_spans:
+        if (
+            merged_spans
+            and span.get('type') == ContentType.TEXT
+            and merged_spans[-1].get('type') == ContentType.TEXT
+            and tuple(span.get('style', [])) == tuple(merged_spans[-1].get('style', []))
+        ):
+            merged_spans[-1]['content'] = (
+                merged_spans[-1].get('content', '') + span.get('content', '')
+            )
+        else:
+            merged_spans.append(span)
+
+    return merged_spans
 
 
 def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
-    """Annotate each leaf span inside index blocks with target_page_idx / target_block_idx.
+    """Annotate index entries with matched body heading anchors.
 
     Uses sequential order-based matching so that duplicate titles (e.g.
     multiple "本章小结") are correctly assigned to successive body blocks
@@ -288,11 +357,11 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
     # ------------------------------------------------------------------
     # 3. Collect TOC spans in document order
     # ------------------------------------------------------------------
-    toc_spans: list[dict] = []
+    toc_span_entries: list[dict] = []
     for page_info in pdf_info:
         for block in page_info.get('para_blocks', []):
             if block.get('type') == BlockType.INDEX:
-                _collect_toc_spans(block, toc_spans)
+                _collect_toc_span_entries(block, toc_span_entries)
 
     # ------------------------------------------------------------------
     # 4. Pass 1 — exact-normalized sequential matching.
@@ -303,7 +372,11 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
     used_counts: dict[str, int] = defaultdict(int)
     consumed_targets: set[int] = set()
 
-    for span in toc_spans:
+    for entry in toc_span_entries:
+        span = entry['span']
+        text_block = entry['text_block']
+        if text_block.get('target_anchor') is not None:
+            continue
         content = span.get('content', '')
         if '\t' in content:
             # The last tab separates the page number; strip it.
@@ -332,7 +405,7 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
             if count < len(indices):
                 target_idx = indices[count]
                 pid, bidx, _ = body_targets[target_idx]
-                span['target_anchor'] = [pid, bidx]
+                text_block['target_anchor'] = [pid, bidx]
                 consumed_targets.add(target_idx)
                 used_counts[normalized] = count + 1
                 break
@@ -346,8 +419,10 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
     _MIN_COVERAGE = 0.5
     remaining = sorted(set(range(len(body_targets))) - consumed_targets)
 
-    for span in toc_spans:
-        if 'target_anchor' in span:
+    for entry in toc_span_entries:
+        span = entry['span']
+        text_block = entry['text_block']
+        if text_block.get('target_anchor') is not None:
             continue
         content = span.get('content', '')
         toc_text = content.rsplit('\t', 1)[0].strip() if '\t' in content else content.strip()
@@ -371,10 +446,11 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
                     continue
                 if body_norm.startswith(toc_norm) or toc_norm.startswith(body_norm):
                     pid, bidx, _ = body_targets[body_idx]
-                    span['target_anchor'] = [pid, bidx]
+                    text_block['target_anchor'] = [pid, bidx]
+                    consumed_targets.add(body_idx)
                     remaining.pop(j)
                     break
-            if 'target_anchor' in span:
+            if text_block.get('target_anchor') is not None:
                 break
 
     # ------------------------------------------------------------------
@@ -470,7 +546,7 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
         ]
 
         # Skip if already matched.
-        if any('target_anchor' in s for s in all_spans):
+        if text_block.get('target_anchor') is not None:
             continue
 
         # Only process entries that contain an inline-equation span
@@ -555,7 +631,6 @@ def _link_index_spans_to_body_blocks(middle_json: dict) -> None:
             if matched:
                 break
 
-
 def _apply_match(
     text_block: dict,
     all_spans: list,
@@ -563,28 +638,26 @@ def _apply_match(
     t_bidx: int,
     block_lookup: dict,
 ) -> None:
-    """Set target_anchor on the first non-empty span and restore full heading text.
+    """Set target_anchor on the block and restore full heading spans.
 
     Used by Pass 3 after an equation-stripped match has been found.
-    The first non-empty span receives the ``target_anchor`` and its content
-    is replaced with the full body-heading text (inline equations wrapped
-    with ``$...$``).  Surplus spans are removed from the TEXT block's lines
-    so that no empty ``inline_equation`` or ``text`` remnants appear in the
-    middle-JSON output.
+    Rebuilds the TOC entry from the matched title block spans so inline
+    equations remain separate spans in middle-json output.
     """
     if not all_spans:
         return
 
-    # Set target_anchor on the first non-empty span.
-    for s in all_spans:
-        if s.get('content', '').strip():
-            s['target_anchor'] = [t_pid, t_bidx]
-            break
+    text_block['target_anchor'] = [t_pid, t_bidx]
 
     # Extract the section-number prefix from the first span, if present.
     # e.g. "2.\t标题内包含公式 " → left side before \t is "2." → prefix "2. "
     section_prefix = ''
+    default_style = None
     for s in all_spans:
+        if s.get('type') != ContentType.INLINE_EQUATION and default_style is None:
+            if s.get('style'):
+                default_style = list(s.get('style', []))
+
         if s.get('type') == ContentType.INLINE_EQUATION:
             continue
         orig = s.get('content', '')
@@ -596,18 +669,16 @@ def _apply_match(
                 section_prefix = left.rstrip('.') + '. '
         break
 
-    # Rebuild the first span with the full heading text and remove all
-    # other spans from the TEXT block so no empty remnants are left behind.
+    # Rebuild the TOC spans from the matched body heading.
     body_blk = block_lookup.get((t_pid, t_bidx))
     if body_blk:
-        new_text = _build_toc_text_from_block(body_blk)
-        if new_text:
-            first_span = all_spans[0]
-            first_span['content'] = section_prefix + new_text
-            # Trim every line's spans list to contain only the first span,
-            # removing the surplus inline_equation / text fragments.
-            for line in text_block.get('lines', []):
-                line['spans'] = [s for s in line['spans'] if s is first_span]
+        rebuilt_spans = _build_index_spans_from_title_block(
+            body_blk,
+            section_prefix=section_prefix,
+            default_style=default_style,
+        )
+        if rebuilt_spans:
+            text_block['lines'] = [{"spans": rebuilt_spans}]
 
 
 def result_to_middle_json(model_output_blocks_list, image_writer):
