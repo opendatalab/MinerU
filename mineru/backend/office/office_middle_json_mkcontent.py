@@ -216,6 +216,15 @@ def _flatten_index_items(index_block):
     Strips the trailing tab+page-number from span content and, when target
     location fields are present on a span, wraps the text in a markdown
     hyperlink pointing to the body-block anchor.
+
+    Styling (bold, italic, underline, strikethrough) is applied via
+    _apply_markdown_style.  HYPERLINK spans are rendered as plain styled
+    text (without the URL) because TOC entries use document-internal
+    bookmark links, not external URLs.
+
+    The tab+page-number is stripped from the raw content BEFORE markdown
+    style markers are applied, so that closing markers (e.g. ``**``) are
+    never inadvertently removed by the tab-stripping step.
     """
     items = []
     ilevel = index_block.get('ilevel', 0)
@@ -225,32 +234,81 @@ def _flatten_index_items(index_block):
         if child.get('type') == BlockType.INDEX:
             items.extend(_flatten_index_items(child))
         elif child.get('type') == BlockType.TEXT:
-            raw_parts = []
+            span_items = []   # list of (content, span_type, span_style)
             target_anchor = None
+
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
                     content = span.get('content', '')
-                    if content:
-                        # Wrap inline equations with configured delimiters
-                        if span.get('type') == ContentType.INLINE_EQUATION:
-                            raw_parts.append(
-                                f'{inline_left_delimiter}{content}{inline_right_delimiter}'
-                            )
-                        else:
-                            raw_parts.append(content)
+                    span_style = span.get('style', [])
+                    span_type = span.get('type')
+                    span_items.append((content, span_type, span_style))
                     if 'target_anchor' in span and target_anchor is None:
                         pid, bidx = span['target_anchor']
                         target_anchor = f"block-p{pid}-b{bidx}"
 
-            # Combine all span content into one string, then strip the trailing
-            # tab + page-number in a single pass (e.g. "2.\t标题\t5" → "2. 标题").
-            # Applying rsplit once ensures that an internal tab between section
-            # number and title text (e.g. "1.1\t研究对象") becomes a space while
-            # only the rightmost tab separator (before the page count) is removed.
-            combined = ''.join(raw_parts)
-            if '\t' in combined:
-                combined = combined.rsplit('\t', 1)[0].replace('\t', ' ')
-            item_text = combined.strip()
+            if not span_items:
+                continue
+
+            # ----------------------------------------------------------
+            # Step 1: Strip the trailing tab+page-number from the raw
+            # (unstyled) content BEFORE applying markdown markers.
+            #
+            # Find the last non-equation span that contains a tab; strip
+            # everything after its last tab (the page-number separator).
+            # Then replace any remaining internal tabs with spaces so that
+            # "1.1\t研究对象" → "1.1 研究对象".
+            # ----------------------------------------------------------
+            last_tab_span_idx = -1
+            for i, (content, span_type, _) in enumerate(span_items):
+                if span_type != ContentType.INLINE_EQUATION and '\t' in content:
+                    last_tab_span_idx = i
+
+            # Build stripped span_items
+            stripped_span_items = []
+            for i, (content, span_type, span_style) in enumerate(span_items):
+                if span_type != ContentType.INLINE_EQUATION:
+                    if i == last_tab_span_idx:
+                        # Strip from last tab onwards (removes tab + page number)
+                        content = content.rsplit('\t', 1)[0]
+                    # Replace remaining internal tabs with spaces
+                    content = content.replace('\t', ' ')
+                stripped_span_items.append((content, span_type, span_style))
+
+            # ----------------------------------------------------------
+            # Step 2: Apply markdown styles and build the final text.
+            # ----------------------------------------------------------
+            raw_parts = []
+            for content, span_type, span_style in stripped_span_items:
+                if not content:
+                    continue
+                if span_type == ContentType.INLINE_EQUATION:
+                    # Wrap inline equations with configured delimiters
+                    raw_parts.append(
+                        f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                    )
+                elif span_type == ContentType.HYPERLINK:
+                    # TOC hyperlinks use document-internal bookmark refs; output
+                    # only the styled display text without the URL.
+                    link_text = content.strip()
+                    if link_text:
+                        link_text = _apply_markdown_style(link_text, span_style)
+                    leading = content[:len(content) - len(content.lstrip())]
+                    trailing = content[len(content.rstrip()):]
+                    raw_parts.append(leading + link_text + trailing)
+                else:
+                    # TEXT span: apply markdown style while preserving
+                    # surrounding whitespace (e.g. leading space after section #).
+                    stripped = content.strip()
+                    if stripped:
+                        styled = _apply_markdown_style(stripped, span_style)
+                        leading = content[:len(content) - len(content.lstrip())]
+                        trailing = content[len(content.rstrip()):]
+                        raw_parts.append(leading + styled + trailing)
+                    elif content:
+                        raw_parts.append(content)
+
+            item_text = ''.join(raw_parts).strip()
             if not item_text:
                 continue
 
