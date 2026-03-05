@@ -1189,18 +1189,34 @@ class DocxConverter:
         # 遍历段落的 runs 并按格式分组
         for c in paragraph.iter_inner_content():
             if isinstance(c, Hyperlink):
-                text = c.text
                 # 若地址为 URL（含 ://），直接保留字符串，避免 Path 将 // 规范化为 /
                 address = c.address
                 if address and "://" in address:
                     hyperlink = address
                 else:
                     hyperlink = Path(address) if address else Path(".")
-                format = (
-                    self._get_format_from_run(c.runs[0])
-                    if c.runs and len(c.runs) > 0
-                    else None
-                )
+                # Hyperlink 内可能包含多个 run（且样式不同，如 TOC 项中的删除线/斜体）。
+                # 按 run 粒度展开，避免只取首个 run 导致样式丢失。
+                if c.runs and len(c.runs) > 0:
+                    # 先落盘当前累积的普通文本分组
+                    prev_has_visible = len(group_text.strip()) > 0 or (
+                        group_text and self._has_visible_style(previous_format)
+                    )
+                    if prev_has_visible:
+                        paragraph_elements.append((group_text, previous_format, None))
+                    group_text = ""
+
+                    for h_run in c.runs:
+                        h_text = h_run.text or ""
+                        h_format = self._get_format_from_run(h_run)
+                        # 保留非空文本（含制表符）以及带可见样式的空白 run
+                        if h_text != "" or self._has_visible_style(h_format):
+                            paragraph_elements.append((h_text, h_format, hyperlink))
+                    # 保持 previous_format 为最近的普通文本格式，不跨越超链接合并
+                    continue
+                else:
+                    text = c.text
+                    format = None
             elif isinstance(c, Run):
                 # ---- 字段代码超链接内联检测 ----
                 fld_char = c._element.find(f"{{{_W_NS}}}fldChar")
@@ -1304,6 +1320,66 @@ class DocxConverter:
         return paragraph_elements
 
     @classmethod
+    def _resolve_style_chain_bool(
+        cls,
+        style_obj,
+        attr_name: str,
+    ) -> Optional[bool]:
+        """从样式继承链中解析布尔字体属性。"""
+        style = style_obj
+        while style is not None:
+            font = getattr(style, "font", None)
+            if font is not None:
+                if attr_name == "underline":
+                    value = font.underline
+                elif attr_name == "strikethrough":
+                    value = font.strike
+                else:
+                    value = getattr(font, attr_name, None)
+                if value is not None:
+                    return bool(value)
+            style = getattr(style, "base_style", None)
+        return None
+
+    @classmethod
+    def _resolve_run_bool_with_inheritance(
+        cls,
+        run: Run,
+        attr_name: str,
+    ) -> bool:
+        """解析 run 的字体属性，支持 run/字符样式/段落样式继承。"""
+        if attr_name == "underline":
+            direct_value = run.underline
+        elif attr_name == "strikethrough":
+            direct_value = run.font.strike
+        else:
+            direct_value = getattr(run, attr_name, None)
+
+        if direct_value is not None:
+            return bool(direct_value)
+
+        # 先看 run 级字符样式链（跳过 Hyperlink 默认字符样式，避免把默认下划线
+        # 误当作正文强调样式注入到解析结果中）
+        run_style = getattr(run, "style", None)
+        run_style_id = str(getattr(run_style, "style_id", "") or "").lower()
+        run_style_name = str(getattr(run_style, "name", "") or "").lower()
+        is_hyperlink_style = (
+            run_style_id == "hyperlink" or "hyperlink" in run_style_name
+        )
+        if not is_hyperlink_style:
+            inherited = cls._resolve_style_chain_bool(run_style, attr_name)
+            if inherited is not None:
+                return inherited
+
+        # 再看所在段落样式链
+        parent = getattr(run, "_parent", None)
+        inherited = cls._resolve_style_chain_bool(getattr(parent, "style", None), attr_name)
+        if inherited is not None:
+            return inherited
+
+        return False
+
+    @classmethod
     def _get_format_from_run(cls, run: Run) -> Optional[Formatting]:
         """
         从 Run 对象获取格式信息。
@@ -1314,13 +1390,10 @@ class DocxConverter:
         Returns:
             Optional[Formatting]: 格式对象
         """
-        # .bold 和 .italic 属性是布尔值，但 .underline 可能是枚举
-        # 如 WD_UNDERLINE.THICK (值为 6)，所以需要转换为布尔值
-        is_bold = run.bold or False
-        is_italic = run.italic or False
-        is_strikethrough = run.font.strike or False
-        # 将任何非 None 的下划线值转换为 True
-        is_underline = bool(run.underline is not None and run.underline)
+        is_bold = cls._resolve_run_bool_with_inheritance(run, "bold")
+        is_italic = cls._resolve_run_bool_with_inheritance(run, "italic")
+        is_strikethrough = cls._resolve_run_bool_with_inheritance(run, "strikethrough")
+        is_underline = cls._resolve_run_bool_with_inheritance(run, "underline")
 
         # 检测着重符号 (w:em)：若存在非 none 的 em 值，则视为下划线样式
         _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
