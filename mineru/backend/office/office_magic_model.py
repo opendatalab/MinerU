@@ -89,6 +89,13 @@ class MagicModel:
                     "lines": [line],
                     "index": index,
             }
+            anchor = block_info.get("anchor")
+            if (
+                isinstance(anchor, str)
+                and anchor.strip()
+                and block_type in [BlockType.TITLE, BlockType.TEXT, BlockType.INTERLINE_EQUATION]
+            ):
+                block["anchor"] = anchor.strip()
             if block_type == BlockType.TITLE:
                 block["is_numbered_style"] = block_info.get("is_numbered_style", False)
                 block["level"] = block_info.get("level", 1)
@@ -405,6 +412,9 @@ def parse_index_block(index_block: dict):
                 "type": BlockType.TEXT,
                 "lines": [{"spans": spans}]
             }
+            anchor = item.get("anchor")
+            if isinstance(anchor, str) and anchor.strip():
+                text_block["anchor"] = anchor.strip()
             blocks.append(text_block)
 
         elif item_type == "index":

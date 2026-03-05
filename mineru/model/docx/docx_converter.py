@@ -83,6 +83,7 @@ class DocxConverter:
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
+        self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -178,6 +179,21 @@ class DocxConverter:
             return False
         return bool(format_obj.underline or format_obj.strikethrough)
 
+    @staticmethod
+    def _is_hidden_run(run: Run) -> bool:
+        """Check whether a run is marked as hidden text in Word."""
+        _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        rpr = run._element.find(f"{{{_W}}}rPr")
+        if rpr is None:
+            return False
+        # webHidden: commonly used by TOC page-number field runs
+        if rpr.find(f"{{{_W}}}webHidden") is not None:
+            return True
+        # vanish: generic hidden text
+        if rpr.find(f"{{{_W}}}vanish") is not None:
+            return True
+        return False
+
     @classmethod
     def _format_text_with_hyperlink(
         cls,
@@ -246,6 +262,83 @@ class DocxConverter:
                 result_parts.append(formatted_text)
         return "".join(result_parts) if result_parts else ""
 
+    @staticmethod
+    def _split_paragraph_elements_at_eq_boundaries(
+        paragraph_elements: list,
+        non_eq_segments: list,
+    ) -> list:
+        """
+        在公式边界处拆分段落元素，解决格式标注跨公式边界失效的问题。
+
+        当 _get_paragraph_elements 处理含公式（oMath）的段落时，python-docx 的
+        iter_inner_content() 不会遍历 oMath 元素。如果公式前后的文本格式相同，
+        它们会被合并为单个元素，导致文本跨越 <eq> 标签两侧。
+        _replace_text_outside_equations 只在单个非公式片段中搜索，无法找到跨片段的文本，
+        从而导致样式替换失败。
+
+        本方法通过将这些跨边界的合并元素重新拆分为多个片段来修复此问题，
+        使每个元素都对应 text_with_equations 中唯一的非公式片段。
+
+        Args:
+            paragraph_elements: (text, format, hyperlink) 元组的列表
+            non_eq_segments:     从 text_with_equations 中提取的非公式文本片段列表
+
+        Returns:
+            重新拆分后的 (text, format, hyperlink) 列表，每个元素均位于单个公式片段内
+        """
+        if len(non_eq_segments) <= 1:
+            return paragraph_elements
+
+        # 计算各非公式片段的累积结束位置，作为分割边界
+        boundaries: set[int] = set()
+        pos = 0
+        for seg in non_eq_segments[:-1]:   # 最后一个片段后无需分割
+            pos += len(seg)
+            boundaries.add(pos)
+
+        if not boundaries:
+            return paragraph_elements
+
+        # 验证段落元素的拼接文本与非公式片段的拼接文本一致
+        concat_elem_text = "".join(text for text, _, _ in paragraph_elements)
+        concat_seg_text = "".join(non_eq_segments)
+        if concat_elem_text != concat_seg_text:
+            # 文本不匹配时安全降级：原样返回
+            return paragraph_elements
+
+        # 在边界处分割元素
+        result = []
+        text_pos = 0
+        for (text, fmt, hyperlink) in paragraph_elements:
+            if not text:
+                result.append((text, fmt, hyperlink))
+                text_pos += len(text)
+                continue
+
+            elem_start = text_pos
+            elem_end = elem_start + len(text)
+            text_pos = elem_end
+
+            # 找到落在该元素内部的分割点
+            splits_in_elem = sorted(
+                b - elem_start for b in boundaries if elem_start < b < elem_end
+            )
+
+            if not splits_in_elem:
+                result.append((text, fmt, hyperlink))
+            else:
+                prev = 0
+                for split_pos in splits_in_elem:
+                    fragment = text[prev:split_pos]
+                    if fragment:
+                        result.append((fragment, fmt, hyperlink))
+                    prev = split_pos
+                fragment = text[prev:]
+                if fragment:
+                    result.append((fragment, fmt, hyperlink))
+
+        return result
+
     def _build_text_with_equations_and_hyperlinks(
         self,
         paragraph_elements: list[
@@ -287,6 +380,15 @@ class DocxConverter:
 
         # 同时有公式和超链接/样式，需要合并处理
         # 策略：在带公式的文本基础上，将样式/超链接标记插入到正确的位置
+
+        # 0. 拆分 text_with_equations，获取各非公式片段，用于解决跨公式边界的元素合并问题
+        eq_split_pattern = re.compile(r'<eq>.*?</eq>', re.DOTALL)
+        non_eq_segments = eq_split_pattern.split(text_with_equations)
+
+        # 在公式边界处重新拆分段落元素，避免单个元素跨越多个非公式片段
+        paragraph_elements = self._split_paragraph_elements_at_eq_boundaries(
+            paragraph_elements, non_eq_segments
+        )
 
         # 1. 记录每个元素的原始文本和对应的格式化结果
         element_mappings = []
@@ -352,6 +454,7 @@ class DocxConverter:
         self.heading_list_numids = set()
         self.chart_list = []
         self.processed_textbox_elements = []
+        self.toc_anchor_set = set()
 
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
@@ -361,12 +464,27 @@ class DocxConverter:
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
         self.docx_obj = Document(BytesIO(file_bytes))
+        self.toc_anchor_set = self._collect_toc_anchor_set()
         # 预扫描文档，识别用作章节标题的列表numId
         self.heading_list_numids = self._detect_heading_list_numids()
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
         self._add_chart_table()
+
+    def _collect_toc_anchor_set(self) -> set[str]:
+        """Collect TOC hyperlink anchors from the entire document body."""
+        anchor_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
+        )
+        anchors: set[str] = set()
+        for hl in self.docx_obj.element.body.findall(
+            ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            anchor = hl.get(anchor_attr, "").strip()
+            if anchor and anchor.startswith("_Toc"):
+                anchors.add(anchor)
+        return anchors
 
     def _walk_linear(
         self,
@@ -819,6 +937,7 @@ class DocxConverter:
                 is_section_end = True
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
+        paragraph_anchor = self._extract_paragraph_bookmark(element)
         text, equations = self._handle_equations_in_text(
             element=element, text=paragraph.text
         )
@@ -863,6 +982,8 @@ class DocxConverter:
                         "is_numbered_style": is_numbered,
                         "content": content_text,
                     }
+                    if paragraph_anchor:
+                        title_block["anchor"] = paragraph_anchor
                     self.cur_page.append(title_block)
             else:
                 self._add_list_item(
@@ -898,6 +1019,8 @@ class DocxConverter:
                     "is_numbered_style": False,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    title_block["anchor"] = paragraph_anchor
                 self.cur_page.append(title_block)
 
         elif "Heading" in p_style_id:
@@ -919,6 +1042,8 @@ class DocxConverter:
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    h_block["anchor"] = paragraph_anchor
                 self.cur_page.append(h_block)
 
         elif len(equations) > 0:
@@ -940,6 +1065,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_with_inline_eq_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_with_inline_eq_block)
         elif p_style_id in [
             "Paragraph",
@@ -960,6 +1087,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_block)
         # 判断是否是 Caption
         elif self._is_caption(element):
@@ -985,6 +1114,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_block)
 
         if is_section_end:
@@ -1103,18 +1234,37 @@ class DocxConverter:
         # 遍历段落的 runs 并按格式分组
         for c in paragraph.iter_inner_content():
             if isinstance(c, Hyperlink):
-                text = c.text
                 # 若地址为 URL（含 ://），直接保留字符串，避免 Path 将 // 规范化为 /
                 address = c.address
                 if address and "://" in address:
                     hyperlink = address
                 else:
                     hyperlink = Path(address) if address else Path(".")
-                format = (
-                    self._get_format_from_run(c.runs[0])
-                    if c.runs and len(c.runs) > 0
-                    else None
-                )
+                # Hyperlink 内可能包含多个 run（且样式不同，如 TOC 项中的删除线/斜体）。
+                # 按 run 粒度展开，避免只取首个 run 导致样式丢失。
+                if c.runs and len(c.runs) > 0:
+                    # 先落盘当前累积的普通文本分组
+                    prev_has_visible = len(group_text.strip()) > 0 or (
+                        group_text and self._has_visible_style(previous_format)
+                    )
+                    if prev_has_visible:
+                        paragraph_elements.append((group_text, previous_format, None))
+                    group_text = ""
+
+                    for h_run in c.runs:
+                        # Skip hidden runs in hyperlinks, especially TOC page-number fields.
+                        if self._is_hidden_run(h_run):
+                            continue
+                        h_text = h_run.text or ""
+                        h_format = self._get_format_from_run(h_run)
+                        # 保留非空文本（含制表符）以及带可见样式的空白 run
+                        if h_text != "" or self._has_visible_style(h_format):
+                            paragraph_elements.append((h_text, h_format, hyperlink))
+                    # 保持 previous_format 为最近的普通文本格式，不跨越超链接合并
+                    continue
+                else:
+                    text = c.text
+                    format = None
             elif isinstance(c, Run):
                 # ---- 字段代码超链接内联检测 ----
                 fld_char = c._element.find(f"{{{_W_NS}}}fldChar")
@@ -1218,6 +1368,66 @@ class DocxConverter:
         return paragraph_elements
 
     @classmethod
+    def _resolve_style_chain_bool(
+        cls,
+        style_obj,
+        attr_name: str,
+    ) -> Optional[bool]:
+        """从样式继承链中解析布尔字体属性。"""
+        style = style_obj
+        while style is not None:
+            font = getattr(style, "font", None)
+            if font is not None:
+                if attr_name == "underline":
+                    value = font.underline
+                elif attr_name == "strikethrough":
+                    value = font.strike
+                else:
+                    value = getattr(font, attr_name, None)
+                if value is not None:
+                    return bool(value)
+            style = getattr(style, "base_style", None)
+        return None
+
+    @classmethod
+    def _resolve_run_bool_with_inheritance(
+        cls,
+        run: Run,
+        attr_name: str,
+    ) -> bool:
+        """解析 run 的字体属性，支持 run/字符样式/段落样式继承。"""
+        if attr_name == "underline":
+            direct_value = run.underline
+        elif attr_name == "strikethrough":
+            direct_value = run.font.strike
+        else:
+            direct_value = getattr(run, attr_name, None)
+
+        if direct_value is not None:
+            return bool(direct_value)
+
+        # 先看 run 级字符样式链（跳过 Hyperlink 默认字符样式，避免把默认下划线
+        # 误当作正文强调样式注入到解析结果中）
+        run_style = getattr(run, "style", None)
+        run_style_id = str(getattr(run_style, "style_id", "") or "").lower()
+        run_style_name = str(getattr(run_style, "name", "") or "").lower()
+        is_hyperlink_style = (
+            run_style_id == "hyperlink" or "hyperlink" in run_style_name
+        )
+        if not is_hyperlink_style:
+            inherited = cls._resolve_style_chain_bool(run_style, attr_name)
+            if inherited is not None:
+                return inherited
+
+        # 再看所在段落样式链
+        parent = getattr(run, "_parent", None)
+        inherited = cls._resolve_style_chain_bool(getattr(parent, "style", None), attr_name)
+        if inherited is not None:
+            return inherited
+
+        return False
+
+    @classmethod
     def _get_format_from_run(cls, run: Run) -> Optional[Formatting]:
         """
         从 Run 对象获取格式信息。
@@ -1228,13 +1438,10 @@ class DocxConverter:
         Returns:
             Optional[Formatting]: 格式对象
         """
-        # .bold 和 .italic 属性是布尔值，但 .underline 可能是枚举
-        # 如 WD_UNDERLINE.THICK (值为 6)，所以需要转换为布尔值
-        is_bold = run.bold or False
-        is_italic = run.italic or False
-        is_strikethrough = run.font.strike or False
-        # 将任何非 None 的下划线值转换为 True
-        is_underline = bool(run.underline is not None and run.underline)
+        is_bold = cls._resolve_run_bool_with_inheritance(run, "bold")
+        is_italic = cls._resolve_run_bool_with_inheritance(run, "italic")
+        is_strikethrough = cls._resolve_run_bool_with_inheritance(run, "strikethrough")
+        is_underline = cls._resolve_run_bool_with_inheritance(run, "underline")
 
         # 检测着重符号 (w:em)：若存在非 none 的 em 值，则视为下划线样式
         _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -1793,7 +2000,7 @@ class DocxConverter:
         return None
 
     def _is_flat_list_toc(
-        self, items: list[tuple[int, str, list, list]]
+        self, items: list[tuple[int, str, list, list, Optional[str]]]
     ) -> bool:
         """
         检测目录是否为扁平列表（插图清单、列表清单等），
@@ -1803,7 +2010,7 @@ class DocxConverter:
         """
         match_count = 0
         total_count = 0
-        for _level, text, _elements, _equations in items:
+        for _level, text, _elements, _equations, _anchor in items:
             stripped = text.strip()
             if not stripped:
                 continue
@@ -1843,6 +2050,7 @@ class DocxConverter:
         elements: list,
         text: str = "",
         equations: list = None,
+        anchor: Optional[str] = None,
     ) -> None:
         """
         添加目录项到索引块。
@@ -1886,6 +2094,8 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
+            if anchor:
+                index_item["anchor"] = anchor
             index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -1904,6 +2114,8 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
+            if anchor:
+                index_item["anchor"] = anchor
             child_index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -1920,6 +2132,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if anchor:
+                    index_item["anchor"] = anchor
                 index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -1931,7 +2145,55 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if anchor:
+                    index_item["anchor"] = anchor
                 index_block["content"].append(index_item)
+
+    def _extract_paragraph_bookmark(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
+        """Extract a bookmark name from a paragraph, prioritizing TOC bookmarks."""
+        bookmark_name_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
+        )
+        names = []
+        for bm in paragraph_element.findall(
+            ".//w:bookmarkStart", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            name = bm.get(bookmark_name_attr, "").strip()
+            if not name:
+                continue
+            # skip Word navigation artifacts
+            if name.startswith("_GoBack"):
+                continue
+            names.append(name)
+        if not names:
+            return None
+        toc_names = [name for name in names if name.startswith("_Toc")]
+        if toc_names:
+            # Prefer anchors that are actually referenced by TOC hyperlinks.
+            for name in toc_names:
+                if name in self.toc_anchor_set:
+                    return name
+            return toc_names[0]
+        return names[0]
+
+    def _extract_toc_target_anchor(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
+        """Extract internal bookmark target from a TOC paragraph hyperlink."""
+        anchor_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
+        )
+        anchors = []
+        for hl in paragraph_element.findall(
+            ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            anchor = hl.get(anchor_attr, "").strip()
+            if anchor:
+                anchors.append(anchor)
+        if not anchors:
+            return None
+        for anchor in anchors:
+            if anchor.startswith("_Toc"):
+                return anchor
+        return anchors[0]
 
     def _handle_sdt_as_index(self, sdt_content: BaseOxmlElement) -> None:
         """
@@ -1949,7 +2211,7 @@ class DocxConverter:
         )
 
         # --- 第一阶段：收集所有条目 ---
-        toc_items: list[tuple[int, str, list, list]] = []
+        toc_items: list[tuple[int, str, list, list, Optional[str]]] = []
         for p in paragraphs:
             try:
                 p_obj = Paragraph(p, self.docx_obj)
@@ -1957,6 +2219,9 @@ class DocxConverter:
                 text, equations = self._handle_equations_in_text(
                     element=p, text=p_obj.text
                 )
+                target_anchor = self._extract_toc_target_anchor(p)
+                if target_anchor and target_anchor.startswith("_Toc"):
+                    self.toc_anchor_set.add(target_anchor)
                 if text is None:
                     continue
                 text = text.strip()
@@ -1967,7 +2232,9 @@ class DocxConverter:
                 if toc_level is None:
                     toc_level = 0
 
-                toc_items.append((toc_level, text, paragraph_elements, equations))
+                toc_items.append(
+                    (toc_level, text, paragraph_elements, equations, target_anchor)
+                )
             except Exception as e:
                 logger.debug(f"Error collecting TOC paragraph: {e}")
                 continue
@@ -1979,7 +2246,7 @@ class DocxConverter:
         self.index_block_stack = []
         self.pre_index_ilevel = -1
 
-        for toc_level, text, elements, equations in toc_items:
+        for toc_level, text, elements, equations, target_anchor in toc_items:
             if is_flat:
                 # 插图/列表清单：强制全部扁平（层级 0）
                 corrected_level = 0
@@ -1992,6 +2259,7 @@ class DocxConverter:
                 elements=elements,
                 text=text,
                 equations=equations,
+                anchor=target_anchor,
             )
 
         # 处理完成后重置索引状态

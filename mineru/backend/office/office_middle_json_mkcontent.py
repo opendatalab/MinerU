@@ -26,7 +26,7 @@ def _apply_markdown_style(content: str, style: list) -> str:
     按照字体样式列表对文本内容应用 Markdown 格式。
 
     支持的样式：bold, italic, underline, strikethrough
-    组合顺序：先处理 bold/italic（内层），再处理 strikethrough 和 underline（外层）。
+    组合顺序：先处理 underline/strikethrough（内层），再处理 bold/italic（外层）。
 
     Args:
         content: 待格式化的文本内容
@@ -38,21 +38,21 @@ def _apply_markdown_style(content: str, style: list) -> str:
     if not style or not content:
         return content
 
-    # bold 和 italic 可合并为 ***text***
+    # underline: markdown 无原生语法，使用 HTML <u> 标签
+    if 'underline' in style:
+        content = f'<u>{content}</u>'
+
+    # strikethrough: ~~text~~
+    if 'strikethrough' in style:
+        content = f'~~{content}~~'
+
+    # bold 和 italic 作为外层，保证输出更接近 **~~text~~** / **<u>text</u>**
     if 'bold' in style and 'italic' in style:
         content = f'***{content}***'
     elif 'bold' in style:
         content = f'**{content}**'
     elif 'italic' in style:
         content = f'*{content}*'
-
-    # strikethrough: ~~text~~
-    if 'strikethrough' in style:
-        content = f'~~{content}~~'
-
-    # underline: markdown 无原生语法，使用 HTML <u> 标签
-    if 'underline' in style:
-        content = f'<u>{content}</u>'
 
     return content
 
@@ -195,12 +195,16 @@ def _flatten_list_items_v2(list_block):
                     ordered_counter += 1
                 else:
                     prefix = f"{'    ' * ilevel}-"
-                items.append({
+                item = {
                     'item_type': 'text',
                     'ilevel': ilevel,
                     'prefix': prefix,
                     'item_content': item_content,
-                })
+                }
+                anchor = block.get("anchor")
+                if isinstance(anchor, str) and anchor.strip():
+                    item["anchor"] = anchor.strip()
+                items.append(item)
 
     return items
 
@@ -214,8 +218,17 @@ def _flatten_index_items(index_block):
     """Recursively flatten index (TOC) blocks into markdown list items.
 
     Strips the trailing tab+page-number from span content and, when target
-    location fields are present on a span, wraps the text in a markdown
-    hyperlink pointing to the body-block anchor.
+    location fields are present on the leaf text block, wraps the text in
+    a markdown hyperlink pointing to the body-block anchor.
+
+    Styling (bold, italic, underline, strikethrough) is applied via
+    _apply_markdown_style.  HYPERLINK spans are rendered as plain styled
+    text (without the URL) because TOC entries use document-internal
+    bookmark links, not external URLs.
+
+    The tab+page-number is stripped from the raw content BEFORE markdown
+    style markers are applied, so that closing markers (e.g. ``**``) are
+    never inadvertently removed by the tab-stripping step.
     """
     items = []
     ilevel = index_block.get('ilevel', 0)
@@ -225,37 +238,144 @@ def _flatten_index_items(index_block):
         if child.get('type') == BlockType.INDEX:
             items.extend(_flatten_index_items(child))
         elif child.get('type') == BlockType.TEXT:
-            raw_parts = []
-            target_anchor = None
+            span_items = []   # list of (content, span_type, span_style)
+            anchor = child.get('anchor')
+            if not isinstance(anchor, str) or not anchor.strip():
+                anchor = None
+            else:
+                anchor = anchor.strip()
+
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
                     content = span.get('content', '')
-                    if content:
-                        # Wrap inline equations with configured delimiters
-                        if span.get('type') == ContentType.INLINE_EQUATION:
-                            raw_parts.append(
-                                f'{inline_left_delimiter}{content}{inline_right_delimiter}'
-                            )
-                        else:
-                            raw_parts.append(content)
-                    if 'target_anchor' in span and target_anchor is None:
-                        pid, bidx = span['target_anchor']
-                        target_anchor = f"block-p{pid}-b{bidx}"
+                    span_style = span.get('style', [])
+                    span_type = span.get('type')
+                    span_items.append((content, span_type, span_style))
 
-            # Combine all span content into one string, then strip the trailing
-            # tab + page-number in a single pass (e.g. "2.\t标题\t5" → "2. 标题").
-            # Applying rsplit once ensures that an internal tab between section
-            # number and title text (e.g. "1.1\t研究对象") becomes a space while
-            # only the rightmost tab separator (before the page count) is removed.
-            combined = ''.join(raw_parts)
-            if '\t' in combined:
-                combined = combined.rsplit('\t', 1)[0].replace('\t', ' ')
-            item_text = combined.strip()
+            if not span_items:
+                continue
+
+            # ----------------------------------------------------------
+            # Step 1: Strip the trailing tab+page-number from the raw
+            # (unstyled) content BEFORE applying markdown markers.
+            #
+            # Find the last non-equation span that contains a tab; strip
+            # everything after its last tab ONLY when the trailing token
+            # actually looks like a page number.
+            # Then replace any remaining internal tabs with spaces so that
+            # "1.1\t研究对象" → "1.1 研究对象".
+            # ----------------------------------------------------------
+            def _looks_like_page_token(token: str) -> bool:
+                token = token.strip()
+                if not token:
+                    return False
+                # Page tokens are usually short and contain no CJK characters.
+                if len(token) > 12:
+                    return False
+                if re.search(r'[\u4e00-\u9fff]', token):
+                    return False
+                # Arabic / Roman / single-letter page styles.
+                if re.fullmatch(r'\d+', token):
+                    return True
+                if re.fullmatch(r'[ivxlcdm]+', token.lower()):
+                    return True
+                if re.fullmatch(r'[a-zA-Z]', token):
+                    return True
+                return False
+
+            last_tab_span_idx = -1
+            for i, (content, span_type, _) in enumerate(span_items):
+                if span_type != ContentType.INLINE_EQUATION and '\t' in content:
+                    last_tab_span_idx = i
+
+            should_strip_page_tail = False
+            if last_tab_span_idx != -1:
+                last_tab_content = span_items[last_tab_span_idx][0]
+                tab_tail = last_tab_content.rsplit('\t', 1)[1]
+                should_strip_page_tail = _looks_like_page_token(tab_tail)
+
+            # Build stripped span_items
+            stripped_span_items = []
+            for i, (content, span_type, span_style) in enumerate(span_items):
+                if span_type != ContentType.INLINE_EQUATION:
+                    if i == last_tab_span_idx and should_strip_page_tail:
+                        # Strip from last tab onwards (removes tab + page number)
+                        content = content.rsplit('\t', 1)[0]
+                    # Replace remaining internal tabs with spaces
+                    content = content.replace('\t', ' ')
+                stripped_span_items.append((content, span_type, span_style))
+
+            # ----------------------------------------------------------
+            # Step 2: Apply markdown styles and build the final text.
+            #
+            # If all non-equation spans share the same non-empty style
+            # (common in TOC entries like all-bold), apply style once to
+            # the whole item to avoid fragmented markers such as
+            # "**foo****bar**".
+            # ----------------------------------------------------------
+            non_eq_styles = [
+                tuple(span_style)
+                for content, span_type, span_style in stripped_span_items
+                if content and span_type != ContentType.INLINE_EQUATION
+            ]
+            uniform_style = None
+            if non_eq_styles:
+                first_style = non_eq_styles[0]
+                if first_style and all(s == first_style for s in non_eq_styles):
+                    uniform_style = list(first_style)
+
+            if uniform_style:
+                raw_parts = []
+                for content, span_type, _span_style in stripped_span_items:
+                    if not content:
+                        continue
+                    if span_type == ContentType.INLINE_EQUATION:
+                        raw_parts.append(
+                            f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                        )
+                    else:
+                        # For TOC rendering, hyperlink spans output as plain text.
+                        raw_parts.append(content)
+                item_text = ''.join(raw_parts).strip()
+                if item_text:
+                    item_text = _apply_markdown_style(item_text, uniform_style)
+            else:
+                raw_parts = []
+                for content, span_type, span_style in stripped_span_items:
+                    if not content:
+                        continue
+                    if span_type == ContentType.INLINE_EQUATION:
+                        # Wrap inline equations with configured delimiters
+                        raw_parts.append(
+                            f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                        )
+                    elif span_type == ContentType.HYPERLINK:
+                        # TOC hyperlinks use document-internal bookmark refs; output
+                        # only the styled display text without the URL.
+                        link_text = content.strip()
+                        if link_text:
+                            link_text = _apply_markdown_style(link_text, span_style)
+                        leading = content[:len(content) - len(content.lstrip())]
+                        trailing = content[len(content.rstrip()):]
+                        raw_parts.append(leading + link_text + trailing)
+                    else:
+                        # TEXT span: apply markdown style while preserving
+                        # surrounding whitespace (e.g. leading space after section #).
+                        stripped = content.strip()
+                        if stripped:
+                            styled = _apply_markdown_style(stripped, span_style)
+                            leading = content[:len(content) - len(content.lstrip())]
+                            trailing = content[len(content.rstrip()):]
+                            raw_parts.append(leading + styled + trailing)
+                        elif content:
+                            raw_parts.append(content)
+
+                item_text = ''.join(raw_parts).strip()
             if not item_text:
                 continue
 
-            if target_anchor is not None:
-                item_text = f"[{item_text}](#{target_anchor})"
+            if anchor is not None:
+                item_text = f"[{item_text}](#{anchor})"
 
             items.append(f"{indent}- {item_text}")
 
@@ -274,6 +394,14 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         para_type = para_block['type']
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
+            if para_type == BlockType.TEXT:
+                bookmark_anchor = para_block.get("anchor")
+                if (
+                    isinstance(bookmark_anchor, str)
+                    and bookmark_anchor.strip()
+                    and bookmark_anchor.strip().startswith("_Toc")
+                ):
+                    para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{para_text}'
         elif para_type == BlockType.LIST:
             para_text = merge_list_to_markdown(para_block)
         elif para_type == BlockType.INDEX:
@@ -281,10 +409,9 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             title_text = merge_para_with_text(para_block)
-            block_idx = para_block.get('index')
-            if page_idx is not None and block_idx is not None:
-                anchor = f'<a id="block-p{page_idx}-b{block_idx}"></a>'
-                para_text = f'{anchor}\n{"#" * title_level} {title_text}'
+            bookmark_anchor = para_block.get("anchor")
+            if isinstance(bookmark_anchor, str) and bookmark_anchor.strip():
+                para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{"#" * title_level} {title_text}'
             else:
                 para_text = f'{"#" * title_level} {title_text}'
         elif para_type == BlockType.IMAGE:
@@ -344,7 +471,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     elif para_type == BlockType.INDEX:
         para_content = {
             'type': para_type,
-            'list_items': _flatten_list_items(para_block),
+            'list_items': _flatten_index_items(para_block),
         }
     elif para_type == BlockType.TITLE:
         title_level = get_title_level(para_block)
@@ -384,6 +511,9 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
 
     para_content['page_idx'] = page_idx
+    anchor = para_block.get("anchor")
+    if isinstance(anchor, str) and anchor.strip():
+        para_content["anchor"] = anchor.strip()
 
     return para_content
 
@@ -506,6 +636,10 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             }
         }
 
+    anchor = para_block.get("anchor")
+    if isinstance(anchor, str) and anchor.strip():
+        para_content["anchor"] = anchor.strip()
+
     return para_content
 
 
@@ -601,4 +735,3 @@ def union_make(pdf_info_dict: list,
     elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     return None
-
