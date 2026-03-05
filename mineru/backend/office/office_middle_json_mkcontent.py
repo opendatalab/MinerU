@@ -26,7 +26,7 @@ def _apply_markdown_style(content: str, style: list) -> str:
     按照字体样式列表对文本内容应用 Markdown 格式。
 
     支持的样式：bold, italic, underline, strikethrough
-    组合顺序：先处理 bold/italic（内层），再处理 strikethrough 和 underline（外层）。
+    组合顺序：先处理 underline/strikethrough（内层），再处理 bold/italic（外层）。
 
     Args:
         content: 待格式化的文本内容
@@ -38,21 +38,21 @@ def _apply_markdown_style(content: str, style: list) -> str:
     if not style or not content:
         return content
 
-    # bold 和 italic 可合并为 ***text***
+    # underline: markdown 无原生语法，使用 HTML <u> 标签
+    if 'underline' in style:
+        content = f'<u>{content}</u>'
+
+    # strikethrough: ~~text~~
+    if 'strikethrough' in style:
+        content = f'~~{content}~~'
+
+    # bold 和 italic 作为外层，保证输出更接近 **~~text~~** / **<u>text</u>**
     if 'bold' in style and 'italic' in style:
         content = f'***{content}***'
     elif 'bold' in style:
         content = f'**{content}**'
     elif 'italic' in style:
         content = f'*{content}*'
-
-    # strikethrough: ~~text~~
-    if 'strikethrough' in style:
-        content = f'~~{content}~~'
-
-    # underline: markdown 无原生语法，使用 HTML <u> 标签
-    if 'underline' in style:
-        content = f'<u>{content}</u>'
 
     return content
 
