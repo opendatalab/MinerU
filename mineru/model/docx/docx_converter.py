@@ -83,6 +83,7 @@ class DocxConverter:
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
+        self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -177,6 +178,21 @@ class DocxConverter:
         if format_obj is None:
             return False
         return bool(format_obj.underline or format_obj.strikethrough)
+
+    @staticmethod
+    def _is_hidden_run(run: Run) -> bool:
+        """Check whether a run is marked as hidden text in Word."""
+        _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        rpr = run._element.find(f"{{{_W}}}rPr")
+        if rpr is None:
+            return False
+        # webHidden: commonly used by TOC page-number field runs
+        if rpr.find(f"{{{_W}}}webHidden") is not None:
+            return True
+        # vanish: generic hidden text
+        if rpr.find(f"{{{_W}}}vanish") is not None:
+            return True
+        return False
 
     @classmethod
     def _format_text_with_hyperlink(
@@ -438,6 +454,7 @@ class DocxConverter:
         self.heading_list_numids = set()
         self.chart_list = []
         self.processed_textbox_elements = []
+        self.toc_anchor_set = set()
 
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
@@ -447,12 +464,27 @@ class DocxConverter:
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
         self.docx_obj = Document(BytesIO(file_bytes))
+        self.toc_anchor_set = self._collect_toc_anchor_set()
         # 预扫描文档，识别用作章节标题的列表numId
         self.heading_list_numids = self._detect_heading_list_numids()
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
         self._add_chart_table()
+
+    def _collect_toc_anchor_set(self) -> set[str]:
+        """Collect TOC hyperlink anchors from the entire document body."""
+        anchor_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
+        )
+        anchors: set[str] = set()
+        for hl in self.docx_obj.element.body.findall(
+            ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            anchor = hl.get(anchor_attr, "").strip()
+            if anchor and anchor.startswith("_Toc"):
+                anchors.add(anchor)
+        return anchors
 
     def _walk_linear(
         self,
@@ -1033,6 +1065,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_with_inline_eq_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_with_inline_eq_block)
         elif p_style_id in [
             "Paragraph",
@@ -1053,6 +1087,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_block)
         # 判断是否是 Caption
         elif self._is_caption(element):
@@ -1078,6 +1114,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    text_block["anchor"] = paragraph_anchor
                 self.cur_page.append(text_block)
 
         if is_section_end:
@@ -1214,6 +1252,9 @@ class DocxConverter:
                     group_text = ""
 
                     for h_run in c.runs:
+                        # Skip hidden runs in hyperlinks, especially TOC page-number fields.
+                        if self._is_hidden_run(h_run):
+                            continue
                         h_text = h_run.text or ""
                         h_format = self._get_format_from_run(h_run)
                         # 保留非空文本（含制表符）以及带可见样式的空白 run
@@ -2126,9 +2167,13 @@ class DocxConverter:
             names.append(name)
         if not names:
             return None
-        for name in names:
-            if name.startswith("_Toc"):
-                return name
+        toc_names = [name for name in names if name.startswith("_Toc")]
+        if toc_names:
+            # Prefer anchors that are actually referenced by TOC hyperlinks.
+            for name in toc_names:
+                if name in self.toc_anchor_set:
+                    return name
+            return toc_names[0]
         return names[0]
 
     def _extract_toc_target_anchor(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
@@ -2175,6 +2220,8 @@ class DocxConverter:
                     element=p, text=p_obj.text
                 )
                 target_anchor = self._extract_toc_target_anchor(p)
+                if target_anchor and target_anchor.startswith("_Toc"):
+                    self.toc_anchor_set.add(target_anchor)
                 if text is None:
                     continue
                 text = text.strip()

@@ -260,20 +260,45 @@ def _flatten_index_items(index_block):
             # (unstyled) content BEFORE applying markdown markers.
             #
             # Find the last non-equation span that contains a tab; strip
-            # everything after its last tab (the page-number separator).
+            # everything after its last tab ONLY when the trailing token
+            # actually looks like a page number.
             # Then replace any remaining internal tabs with spaces so that
             # "1.1\t研究对象" → "1.1 研究对象".
             # ----------------------------------------------------------
+            def _looks_like_page_token(token: str) -> bool:
+                token = token.strip()
+                if not token:
+                    return False
+                # Page tokens are usually short and contain no CJK characters.
+                if len(token) > 12:
+                    return False
+                if re.search(r'[\u4e00-\u9fff]', token):
+                    return False
+                # Arabic / Roman / single-letter page styles.
+                if re.fullmatch(r'\d+', token):
+                    return True
+                if re.fullmatch(r'[ivxlcdm]+', token.lower()):
+                    return True
+                if re.fullmatch(r'[a-zA-Z]', token):
+                    return True
+                return False
+
             last_tab_span_idx = -1
             for i, (content, span_type, _) in enumerate(span_items):
                 if span_type != ContentType.INLINE_EQUATION and '\t' in content:
                     last_tab_span_idx = i
 
+            should_strip_page_tail = False
+            if last_tab_span_idx != -1:
+                last_tab_content = span_items[last_tab_span_idx][0]
+                tab_tail = last_tab_content.rsplit('\t', 1)[1]
+                should_strip_page_tail = _looks_like_page_token(tab_tail)
+
             # Build stripped span_items
             stripped_span_items = []
             for i, (content, span_type, span_style) in enumerate(span_items):
                 if span_type != ContentType.INLINE_EQUATION:
-                    if i == last_tab_span_idx:
+                    if i == last_tab_span_idx and should_strip_page_tail:
                         # Strip from last tab onwards (removes tab + page number)
                         content = content.rsplit('\t', 1)[0]
                     # Replace remaining internal tabs with spaces
@@ -369,6 +394,14 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         para_type = para_block['type']
         if para_type in [BlockType.TEXT, BlockType.INTERLINE_EQUATION]:
             para_text = merge_para_with_text(para_block)
+            if para_type == BlockType.TEXT:
+                bookmark_anchor = para_block.get("anchor")
+                if (
+                    isinstance(bookmark_anchor, str)
+                    and bookmark_anchor.strip()
+                    and bookmark_anchor.strip().startswith("_Toc")
+                ):
+                    para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{para_text}'
         elif para_type == BlockType.LIST:
             para_text = merge_list_to_markdown(para_block)
         elif para_type == BlockType.INDEX:
