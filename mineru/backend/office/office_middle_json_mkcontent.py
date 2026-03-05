@@ -195,12 +195,16 @@ def _flatten_list_items_v2(list_block):
                     ordered_counter += 1
                 else:
                     prefix = f"{'    ' * ilevel}-"
-                items.append({
+                item = {
                     'item_type': 'text',
                     'ilevel': ilevel,
                     'prefix': prefix,
                     'item_content': item_content,
-                })
+                }
+                anchor = block.get("anchor")
+                if isinstance(anchor, str) and anchor.strip():
+                    item["anchor"] = anchor.strip()
+                items.append(item)
 
     return items
 
@@ -235,12 +239,11 @@ def _flatten_index_items(index_block):
             items.extend(_flatten_index_items(child))
         elif child.get('type') == BlockType.TEXT:
             span_items = []   # list of (content, span_type, span_style)
-            target_anchor = child.get('target_anchor')
-            if isinstance(target_anchor, list) and len(target_anchor) == 2:
-                pid, bidx = target_anchor
-                target_anchor = f"block-p{pid}-b{bidx}"
+            anchor = child.get('anchor')
+            if not isinstance(anchor, str) or not anchor.strip():
+                anchor = None
             else:
-                target_anchor = None
+                anchor = anchor.strip()
 
             for line in child.get('lines', []):
                 for span in line.get('spans', []):
@@ -346,8 +349,8 @@ def _flatten_index_items(index_block):
             if not item_text:
                 continue
 
-            if target_anchor is not None:
-                item_text = f"[{item_text}](#{target_anchor})"
+            if anchor is not None:
+                item_text = f"[{item_text}](#{anchor})"
 
             items.append(f"{indent}- {item_text}")
 
@@ -373,10 +376,9 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             title_text = merge_para_with_text(para_block)
-            block_idx = para_block.get('index')
-            if page_idx is not None and block_idx is not None:
-                anchor = f'<a id="block-p{page_idx}-b{block_idx}"></a>'
-                para_text = f'{anchor}\n{"#" * title_level} {title_text}'
+            bookmark_anchor = para_block.get("anchor")
+            if isinstance(bookmark_anchor, str) and bookmark_anchor.strip():
+                para_text = f'<a id="{bookmark_anchor.strip()}"></a>\n{"#" * title_level} {title_text}'
             else:
                 para_text = f'{"#" * title_level} {title_text}'
         elif para_type == BlockType.IMAGE:
@@ -476,6 +478,9 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
 
     para_content['page_idx'] = page_idx
+    anchor = para_block.get("anchor")
+    if isinstance(anchor, str) and anchor.strip():
+        para_content["anchor"] = anchor.strip()
 
     return para_content
 
@@ -597,6 +602,10 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
                 'list_items': _flatten_list_items_v2(para_block),
             }
         }
+
+    anchor = para_block.get("anchor")
+    if isinstance(anchor, str) and anchor.strip():
+        para_content["anchor"] = anchor.strip()
 
     return para_content
 

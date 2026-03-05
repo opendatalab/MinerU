@@ -905,6 +905,7 @@ class DocxConverter:
                 is_section_end = True
         paragraph = Paragraph(element, self.docx_obj)
         paragraph_elements = self._get_paragraph_elements(paragraph)
+        paragraph_anchor = self._extract_paragraph_bookmark(element)
         text, equations = self._handle_equations_in_text(
             element=element, text=paragraph.text
         )
@@ -949,6 +950,8 @@ class DocxConverter:
                         "is_numbered_style": is_numbered,
                         "content": content_text,
                     }
+                    if paragraph_anchor:
+                        title_block["anchor"] = paragraph_anchor
                     self.cur_page.append(title_block)
             else:
                 self._add_list_item(
@@ -984,6 +987,8 @@ class DocxConverter:
                     "is_numbered_style": False,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    title_block["anchor"] = paragraph_anchor
                 self.cur_page.append(title_block)
 
         elif "Heading" in p_style_id:
@@ -1005,6 +1010,8 @@ class DocxConverter:
                     "is_numbered_style": is_numbered_style,
                     "content": content_text,
                 }
+                if paragraph_anchor:
+                    h_block["anchor"] = paragraph_anchor
                 self.cur_page.append(h_block)
 
         elif len(equations) > 0:
@@ -1952,7 +1959,7 @@ class DocxConverter:
         return None
 
     def _is_flat_list_toc(
-        self, items: list[tuple[int, str, list, list]]
+        self, items: list[tuple[int, str, list, list, Optional[str]]]
     ) -> bool:
         """
         检测目录是否为扁平列表（插图清单、列表清单等），
@@ -1962,7 +1969,7 @@ class DocxConverter:
         """
         match_count = 0
         total_count = 0
-        for _level, text, _elements, _equations in items:
+        for _level, text, _elements, _equations, _anchor in items:
             stripped = text.strip()
             if not stripped:
                 continue
@@ -2002,6 +2009,7 @@ class DocxConverter:
         elements: list,
         text: str = "",
         equations: list = None,
+        anchor: Optional[str] = None,
     ) -> None:
         """
         添加目录项到索引块。
@@ -2045,6 +2053,8 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
+            if anchor:
+                index_item["anchor"] = anchor
             index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -2063,6 +2073,8 @@ class DocxConverter:
                 "type": BlockType.TEXT,
                 "content": content_text,
             }
+            if anchor:
+                index_item["anchor"] = anchor
             child_index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -2079,6 +2091,8 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if anchor:
+                    index_item["anchor"] = anchor
                 index_block["content"].append(index_item)
             self.pre_index_ilevel = ilevel
 
@@ -2090,7 +2104,51 @@ class DocxConverter:
                     "type": BlockType.TEXT,
                     "content": content_text,
                 }
+                if anchor:
+                    index_item["anchor"] = anchor
                 index_block["content"].append(index_item)
+
+    def _extract_paragraph_bookmark(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
+        """Extract a bookmark name from a paragraph, prioritizing TOC bookmarks."""
+        bookmark_name_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
+        )
+        names = []
+        for bm in paragraph_element.findall(
+            ".//w:bookmarkStart", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            name = bm.get(bookmark_name_attr, "").strip()
+            if not name:
+                continue
+            # skip Word navigation artifacts
+            if name.startswith("_GoBack"):
+                continue
+            names.append(name)
+        if not names:
+            return None
+        for name in names:
+            if name.startswith("_Toc"):
+                return name
+        return names[0]
+
+    def _extract_toc_target_anchor(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
+        """Extract internal bookmark target from a TOC paragraph hyperlink."""
+        anchor_attr = (
+            "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
+        )
+        anchors = []
+        for hl in paragraph_element.findall(
+            ".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES
+        ):
+            anchor = hl.get(anchor_attr, "").strip()
+            if anchor:
+                anchors.append(anchor)
+        if not anchors:
+            return None
+        for anchor in anchors:
+            if anchor.startswith("_Toc"):
+                return anchor
+        return anchors[0]
 
     def _handle_sdt_as_index(self, sdt_content: BaseOxmlElement) -> None:
         """
@@ -2108,7 +2166,7 @@ class DocxConverter:
         )
 
         # --- 第一阶段：收集所有条目 ---
-        toc_items: list[tuple[int, str, list, list]] = []
+        toc_items: list[tuple[int, str, list, list, Optional[str]]] = []
         for p in paragraphs:
             try:
                 p_obj = Paragraph(p, self.docx_obj)
@@ -2116,6 +2174,7 @@ class DocxConverter:
                 text, equations = self._handle_equations_in_text(
                     element=p, text=p_obj.text
                 )
+                target_anchor = self._extract_toc_target_anchor(p)
                 if text is None:
                     continue
                 text = text.strip()
@@ -2126,7 +2185,9 @@ class DocxConverter:
                 if toc_level is None:
                     toc_level = 0
 
-                toc_items.append((toc_level, text, paragraph_elements, equations))
+                toc_items.append(
+                    (toc_level, text, paragraph_elements, equations, target_anchor)
+                )
             except Exception as e:
                 logger.debug(f"Error collecting TOC paragraph: {e}")
                 continue
@@ -2138,7 +2199,7 @@ class DocxConverter:
         self.index_block_stack = []
         self.pre_index_ilevel = -1
 
-        for toc_level, text, elements, equations in toc_items:
+        for toc_level, text, elements, equations, target_anchor in toc_items:
             if is_flat:
                 # 插图/列表清单：强制全部扁平（层级 0）
                 corrected_level = 0
@@ -2151,6 +2212,7 @@ class DocxConverter:
                 elements=elements,
                 text=text,
                 equations=equations,
+                anchor=target_anchor,
             )
 
         # 处理完成后重置索引状态

@@ -92,6 +92,9 @@ class MagicModel:
             if block_type == BlockType.TITLE:
                 block["is_numbered_style"] = block_info.get("is_numbered_style", False)
                 block["level"] = block_info.get("level", 1)
+                anchor = block_info.get("anchor")
+                if isinstance(anchor, str) and anchor.strip():
+                    block["anchor"] = anchor.strip()
             blocks.append(block)
 
         self.image_blocks = []
@@ -405,6 +408,9 @@ def parse_index_block(index_block: dict):
                 "type": BlockType.TEXT,
                 "lines": [{"spans": spans}]
             }
+            anchor = item.get("anchor")
+            if isinstance(anchor, str) and anchor.strip():
+                text_block["anchor"] = anchor.strip()
             blocks.append(text_block)
 
         elif item_type == "index":
