@@ -1,5 +1,6 @@
 import os
 import re
+from html import escape
 
 from loguru import logger
 
@@ -19,6 +20,10 @@ display_left_delimiter = delimiters['display']['left']
 display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
+
+OFFICE_STYLE_RENDER_MODE_ENV = 'MINERU_OFFICE_STYLE_RENDER_MODE'
+OFFICE_STYLE_RENDER_MODE_HTML = 'html'
+OFFICE_STYLE_RENDER_MODE_MARKDOWN = 'markdown'
 
 
 def _apply_markdown_style(content: str, style: list) -> str:
@@ -63,6 +68,56 @@ def _apply_markdown_style(content: str, style: list) -> str:
         content = f'<u>{content}</u>'
 
     return content
+
+
+def _apply_html_style(content: str, style: list) -> str:
+    """Apply inline styles with HTML tags for markdown-hostile contexts."""
+    if not style or not content:
+        return content
+
+    if 'bold' in style and 'italic' in style:
+        content = f'<strong><em>{content}</em></strong>'
+    elif 'bold' in style:
+        content = f'<strong>{content}</strong>'
+    elif 'italic' in style:
+        content = f'<em>{content}</em>'
+
+    if 'strikethrough' in style:
+        content = f'<del>{content}</del>'
+
+    if 'underline' in style:
+        content = f'<u>{content}</u>'
+
+    return content
+
+
+def _get_office_style_render_mode() -> str:
+    mode = os.getenv(
+        OFFICE_STYLE_RENDER_MODE_ENV,
+        OFFICE_STYLE_RENDER_MODE_MARKDOWN,
+    ).strip().lower()
+    if mode in {
+        OFFICE_STYLE_RENDER_MODE_HTML,
+        OFFICE_STYLE_RENDER_MODE_MARKDOWN,
+    }:
+        return mode
+    logger.warning(
+        f"Invalid {OFFICE_STYLE_RENDER_MODE_ENV}={mode!r}, "
+        f"fallback to {OFFICE_STYLE_RENDER_MODE_MARKDOWN!r}"
+    )
+    return OFFICE_STYLE_RENDER_MODE_MARKDOWN
+
+
+def _apply_configured_style(content: str, style: list) -> str:
+    if _get_office_style_render_mode() == OFFICE_STYLE_RENDER_MODE_MARKDOWN:
+        return _apply_markdown_style(content, style)
+    return _apply_html_style(content, style)
+
+
+def _render_link(text: str, url: str) -> str:
+    if _get_office_style_render_mode() == OFFICE_STYLE_RENDER_MODE_MARKDOWN:
+        return f'[{text}]({url})'
+    return f'<a href="{escape(url, quote=True)}">{text}</a>'
 
 
 def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
@@ -111,8 +166,7 @@ def merge_para_with_text(para_block):
                 original_content = span['content']
                 content_stripped = original_content.strip()
                 if content_stripped:
-                    # Apply markdown style to stripped content, then restore surrounding whitespace
-                    styled = _apply_markdown_style(content_stripped, span_style)
+                    styled = _apply_configured_style(content_stripped, span_style)
                     leading = original_content[:len(original_content) - len(original_content.lstrip())]
                     trailing = original_content[len(original_content.rstrip()):]
                     parts.append((span_type, leading + styled + trailing))
@@ -123,7 +177,7 @@ def merge_para_with_text(para_block):
                     if span_style and any(s in _visible for s in span_style):
                         # 将original_content替换为&nbsp;
                         original_content = original_content.replace(" ", "&nbsp;")
-                        styled = _apply_markdown_style(original_content, span_style)
+                        styled = _apply_configured_style(original_content, span_style)
                         parts.append((span_type, styled))
                     else:
                         parts.append((span_type, original_content))
@@ -140,8 +194,8 @@ def merge_para_with_text(para_block):
             elif span_type == ContentType.HYPERLINK:
                 link_text = span['content'].strip()
                 if link_text:
-                    link_text = _apply_markdown_style(link_text, span_style)
-                    content = f"[{link_text}]({span.get('url', '')})"
+                    link_text = _apply_configured_style(link_text, span_style)
+                    content = _render_link(link_text, span.get('url', ''))
                     parts.append((span_type, content))
 
     # Second pass: join parts, keeping one space on each side of inline equations
@@ -229,10 +283,10 @@ def _flatten_index_items(index_block):
     location fields are present on the leaf text block, wraps the text in
     a markdown hyperlink pointing to the body-block anchor.
 
-    Styling (bold, italic, underline, strikethrough) is applied via
-    _apply_markdown_style.  HYPERLINK spans are rendered as plain styled
-    text (without the URL) because TOC entries use document-internal
-    bookmark links, not external URLs.
+    Styling (bold, italic, underline, strikethrough) is applied via the
+    configured office style render mode. HYPERLINK spans are rendered as
+    plain styled text (without the URL) because TOC entries use
+    document-internal bookmark links, not external URLs.
 
     The tab+page-number is stripped from the raw content BEFORE markdown
     style markers are applied, so that closing markers (e.g. ``**``) are
@@ -346,7 +400,7 @@ def _flatten_index_items(index_block):
                         raw_parts.append(content)
                 item_text = ''.join(raw_parts).strip()
                 if item_text:
-                    item_text = _apply_markdown_style(item_text, uniform_style)
+                    item_text = _apply_configured_style(item_text, uniform_style)
             else:
                 raw_parts = []
                 for content, span_type, span_style in stripped_span_items:
@@ -362,7 +416,7 @@ def _flatten_index_items(index_block):
                         # only the styled display text without the URL.
                         link_text = content.strip()
                         if link_text:
-                            link_text = _apply_markdown_style(link_text, span_style)
+                            link_text = _apply_configured_style(link_text, span_style)
                         leading = content[:len(content) - len(content.lstrip())]
                         trailing = content[len(content.rstrip()):]
                         raw_parts.append(leading + link_text + trailing)
@@ -371,7 +425,7 @@ def _flatten_index_items(index_block):
                         # surrounding whitespace (e.g. leading space after section #).
                         stripped = content.strip()
                         if stripped:
-                            styled = _apply_markdown_style(stripped, span_style)
+                            styled = _apply_configured_style(stripped, span_style)
                             leading = content[:len(content) - len(content.lstrip())]
                             trailing = content[len(content.rstrip()):]
                             raw_parts.append(leading + styled + trailing)
@@ -383,7 +437,7 @@ def _flatten_index_items(index_block):
                 continue
 
             if anchor is not None:
-                item_text = f"[{item_text}](#{anchor})"
+                item_text = _render_link(item_text, f"#{anchor}")
 
             items.append(f"{indent}- {item_text}")
 
