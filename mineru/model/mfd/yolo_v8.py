@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import List, Union
 
 import torch
@@ -32,13 +33,19 @@ class YOLOv8MFDModel:
         is_batch: bool = False,
         conf: float = None,
     ) -> List:
+        # Windows 平台下，强制使用 CPU 进行预测以绕过 torchvision::nms CUDA 问题
+        # 模型仍在 GPU 上，但预测在 CPU 上执行
+        if sys.platform == 'win32' and str(self.device).startswith('cuda'):
+            predict_device = 'cpu'
+        else:
+            predict_device = self.device
         preds = self.model.predict(
             inputs,
             imgsz=self.imgsz,
             conf=conf if conf is not None else self.conf,
             iou=self.iou,
             verbose=False,
-            device=self.device
+            device=predict_device
         )
         return [pred.cpu() for pred in preds] if is_batch else preds[0].cpu()
 

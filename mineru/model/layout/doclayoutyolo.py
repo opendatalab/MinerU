@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import List, Dict, Union
 
 from doclayout_yolo import YOLOv10
@@ -46,13 +47,20 @@ class DocLayoutYOLOModel:
             })
         return layout_res
 
+    def _get_predict_device(self) -> str:
+        """获取预测设备：Windows 平台 CUDA 环境下使用 CPU 绕过 torchvision::nms 问题"""
+        if sys.platform == 'win32' and str(self.device).startswith('cuda'):
+            return 'cpu'
+        return self.device
+
     def predict(self, image: Union[np.ndarray, Image.Image]) -> List[Dict]:
         prediction = self.model.predict(
             image,
             imgsz=self.imgsz,
             conf=self.conf,
             iou=self.iou,
-            verbose=False
+            verbose=False,
+            device=self._get_predict_device()
         )[0]
         return self._parse_prediction(prediction)
 
@@ -75,6 +83,7 @@ class DocLayoutYOLOModel:
                     conf=conf,
                     iou=self.iou,
                     verbose=False,
+                    device=self._get_predict_device(),
                 )
                 for pred in predictions:
                     results.append(self._parse_prediction(pred))
