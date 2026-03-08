@@ -1,0 +1,3 @@
+requests
+loguru
+schedule

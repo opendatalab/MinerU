@@ -59,8 +59,10 @@ class TianshuLauncher:
                 logger.error("❌ API Server failed to start!")
                 return False
             
+            # 获取显示端口（环境变量优先，用于 Docker 映射）
+            api_display_port = os.getenv('HOST_API_PORT', self.api_port)
             logger.info(f"   ✅ API Server started (PID: {api_proc.pid})")
-            logger.info(f"   📖 API Docs: http://localhost:{self.api_port}/docs")
+            logger.info(f"   📖 API Docs: http://localhost:{api_display_port}/docs")
             logger.info("")
             
             # 2. 启动 LitServe Worker Pool
@@ -85,8 +87,9 @@ class TianshuLauncher:
                 logger.error("❌ LitServe Workers failed to start!")
                 return False
             
+            worker_display_port = os.getenv('HOST_WORKER_PORT', self.worker_port)
             logger.info(f"   ✅ LitServe Workers started (PID: {worker_proc.pid})")
-            logger.info(f"   🔌 Worker Port: {self.worker_port}")
+            logger.info(f"   🔌 Worker Port: {worker_display_port}")
             logger.info(f"   👷 Workers per Device: {self.workers_per_device}")
             logger.info("")
             
@@ -117,11 +120,12 @@ class TianshuLauncher:
             logger.info("✅ All Services Started Successfully!")
             logger.info("=" * 70)
             logger.info("")
+            api_display_port = os.getenv('HOST_API_PORT', self.api_port)
             logger.info("📚 Quick Start:")
-            logger.info(f"   • API Documentation: http://localhost:{self.api_port}/docs")
-            logger.info(f"   • Submit Task:       POST http://localhost:{self.api_port}/api/v1/tasks/submit")
-            logger.info(f"   • Query Status:      GET  http://localhost:{self.api_port}/api/v1/tasks/{{task_id}}")
-            logger.info(f"   • Queue Stats:       GET  http://localhost:{self.api_port}/api/v1/queue/stats")
+            logger.info(f"   • API Documentation: http://localhost:{api_display_port}/docs")
+            logger.info(f"   • Submit Task:       POST http://localhost:{api_display_port}/api/v1/tasks/submit")
+            logger.info(f"   • Query Status:      GET  http://localhost:{api_display_port}/api/v1/tasks/{{task_id}}")
+            logger.info(f"   • Queue Stats:       GET  http://localhost:{api_display_port}/api/v1/queue/stats")
             logger.info("")
             logger.info("🔧 Service Details:")
             for name, proc in self.processes:

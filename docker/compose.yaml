@@ -1,5 +1,8 @@
 services:
   mineru-openai-server:
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
     image: mineru:latest
     container_name: mineru-openai-server
     restart: always
@@ -7,11 +10,26 @@ services:
     ports:
       - 30000:30000
     environment:
-      MINERU_MODEL_SOURCE: local
+      MINERU_MODEL_SOURCE: huggingface
+      HF_HOME: /root/.cache/huggingface
+      PYTHONPATH: /app
+    volumes:
+      - /media/cng420/Development/hf_home:/root/.cache/huggingface
     entrypoint: mineru-openai-server
     command:
       --host 0.0.0.0
       --port 30000
+      --gpu-memory-utilization 0.7
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../mineru
+          target: /app/mineru
+          initial_sync: true
+        - action: rebuild
+          path: ../pyproject.toml
+        - action: rebuild
+          path: global/Dockerfile
       # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
       # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
@@ -29,18 +47,38 @@ services:
               capabilities: [gpu]
 
   mineru-api:
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
     image: mineru:latest
     container_name: mineru-api
     restart: always
     profiles: ["api"]
     ports:
-      - 8000:8000
+      - 8001:8000
     environment:
-      MINERU_MODEL_SOURCE: local
+      MINERU_MODEL_SOURCE: huggingface
+      HF_HOME: /root/.cache/huggingface
+      PYTHONPATH: /app
+      MINERU_VLM_BACKEND: http-client
+      MINERU_VLM_SERVER_URL: http://mineru-openai-server:30000
+    volumes:
+      - /media/cng420/Development/hf_home:/root/.cache/huggingface
     entrypoint: mineru-api
     command:
       --host 0.0.0.0
       --port 8000
+      --reload
+    develop:
+      watch:
+        - action: sync
+          path: ../mineru
+          target: /app/mineru
+          initial_sync: true
+        - action: rebuild
+          path: ../pyproject.toml
+        - action: rebuild
+          path: global/Dockerfile
       # parameters for vllm-engine
       # --data-parallel-size 2  # If using multiple GPUs, increase throughput using vllm's multi-GPU parallel mode
       # --gpu-memory-utilization 0.5  # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
@@ -57,6 +95,9 @@ services:
               capabilities: [gpu]
 
   mineru-gradio:
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
     image: mineru:latest
     container_name: mineru-gradio
     restart: always
@@ -64,11 +105,27 @@ services:
     ports:
       - 7860:7860
     environment:
-      MINERU_MODEL_SOURCE: local
+      MINERU_MODEL_SOURCE: huggingface
+      HF_HOME: /root/.cache/huggingface
+      PYTHONPATH: /app
+      MINERU_VLM_BACKEND: http-client
+      MINERU_VLM_SERVER_URL: http://mineru-openai-server:30000
+    volumes:
+      - /media/cng420/Development/hf_home:/root/.cache/huggingface
     entrypoint: mineru-gradio
     command:
       --server-name 0.0.0.0
       --server-port 7860
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../mineru
+          target: /app/mineru
+          initial_sync: true
+        - action: rebuild
+          path: ../pyproject.toml
+        - action: rebuild
+          path: global/Dockerfile
       # --enable-api false  # If you want to disable the API, set this to false
       # --max-convert-pages 20  # If you want to limit the number of pages for conversion, set this to a specific number
       # parameters for vllm-engine
@@ -84,4 +141,61 @@ services:
           devices:
             - driver: nvidia
               device_ids: ["0"]  # Modify for multiple GPUs: ["0", "1"]
+              capabilities: [gpu]
+
+  mineru-tianshu:
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
+    image: mineru:latest
+    container_name: mineru-tianshu
+    restart: always
+    profiles: ["tianshu"]
+    ports:
+      - 8004:8000
+      - 9004:9000
+    volumes:
+      - /media/cng420/Development/hf_home:/root/.cache/huggingface
+      - /home/cng420/dev/MinerU/projects/mineru_tianshu:/app/projects/mineru_tianshu
+      - /media/cng420/Development/MinerU_OUT:/tmp/mineru_tianshu_output
+    environment:
+      - MINERU_MODEL_SOURCE=huggingface
+      - HF_HOME=/root/.cache/huggingface
+      - PYTHONPATH=/app
+      - MINERU_VLM_BACKEND=http-client
+      - MINERU_VLM_SERVER_URL=http://mineru-openai-server:30000
+      - MINERU_VIRTUAL_VRAM_SIZE=6
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128,garbage_collection_threshold:0.6
+      - MINERU_DEVICE_MODE=cuda
+      - HOST_API_PORT=8004
+      - HOST_WORKER_PORT=9004
+      - NVIDIA_DISABLE_REQUIRE=true
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    working_dir: /app/projects/mineru_tianshu
+    entrypoint: python3
+    command: start_all.py --accelerator cuda --devices 0
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../mineru
+          target: /app/mineru
+          initial_sync: true
+        - action: sync+restart
+          path: ../projects/mineru_tianshu
+          target: /app/projects/mineru_tianshu
+          initial_sync: true
+        - action: rebuild
+          path: ../pyproject.toml
+        - action: rebuild
+          path: global/Dockerfile
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
               capabilities: [gpu]

@@ -18,9 +18,15 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]>=2.7.0' --break-system-packages && \
-    python3 -m pip cache purge
+# Install mineru latest and tianshu dependencies
+RUN python3 -m pip install -U 'mineru[core]>=2.7.0' \
+    litserve>=0.2.0 \
+    'markitdown[all]>=0.1.3' \
+    loguru>=0.7.0 \
+    minio>=7.2.0 \
+    --break-system-packages && \
+    python3 -m pip cache purge && \
+    rm -rf /usr/local/cuda/compat
 
 # Download models and update the configuration file
 RUN /bin/bash -c "mineru-models-download -s huggingface -m all"

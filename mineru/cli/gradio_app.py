@@ -380,23 +380,23 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    vlm_engine = get_vlm_engine("auto", is_async=True)
-    if vlm_engine in ["transformers", "mlx-engine"]:
-        http_client_enable = True
-    else:
-        try:
-            logger.info(f"Start init {vlm_engine}...")
-            from mineru.backend.vlm.vlm_analyze import ModelSingleton
-            model_singleton = ModelSingleton()
-            predictor = model_singleton.get_model(
-                vlm_engine,
-                None,
-                None,
-                **kwargs
-            )
-            logger.info(f"{vlm_engine} init successfully.")
-        except Exception as e:
-            logger.exception(e)
+    # vlm_engine = get_vlm_engine("auto", is_async=True)
+    # if vlm_engine in ["transformers", "mlx-engine"]:
+    #     http_client_enable = True
+    # else:
+    #     try:
+    #         logger.info(f"Start init {vlm_engine}...")
+    #         from mineru.backend.vlm.vlm_analyze import ModelSingleton
+    #         model_singleton = ModelSingleton()
+    #         predictor = model_singleton.get_model(
+    #             vlm_engine,
+    #             None,
+    #             None,
+    #             **kwargs
+    #         )
+    #         logger.info(f"{vlm_engine} init successfully.")
+    #     except Exception as e:
+    #         logger.exception(e)
 
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes]
     with gr.Blocks() as demo:
