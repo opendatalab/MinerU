@@ -254,6 +254,27 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
+# MinerU Background Workflow
+
+This repository includes an automated background workflow located in the `mineru_workflow/` directory. It is designed to continuously process PDF documents.
+
+### Features
+- **Automated Intake**: Monitors `/media/cng420/Development/MinerU_IN` for new PDF files.
+- **API Integration**: Submits documents to a local MinerU Tianshu API instance (`http://localhost:8004`).
+- **Intelligent Renaming**: Automatically renames output folders and files using human-readable titles extracted from the document content (e.g., `Strategic AI Plan 2024.md`).
+- **State Management**: Tracks tasks through `SUBMITTED`, `PROCESSING`, `COMPLETED`, and `ERROR` states using JSON logs.
+
+### Directory Structure
+- **Input**: `/media/cng420/Development/MinerU_IN`
+- **Output**: `/media/cng420/Development/MinerU_OUT`
+- **Workflow Code**: `mineru_workflow/`
+
+### Running the Workflow
+```bash
+cd mineru_workflow
+python main.py
+```
+
 # TODO
 
 - [x] Reading order based on the model  
