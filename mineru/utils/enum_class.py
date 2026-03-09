@@ -100,6 +100,7 @@ class ModelPath:
     pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
     pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
     doclayout_yolo = "models/Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
+    pp_doclayout_v2 = "models/Layout/PP-DocLayoutV2"
     yolo_v8_mfd = "models/MFD/YOLO/yolo_v8_ft.pt"
     unimernet_small = "models/MFR/unimernet_hf_small_2503"
     pp_formulanet_plus_m = "models/MFR/pp_formulanet_plus_m"

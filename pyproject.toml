@@ -85,6 +85,7 @@ pipeline = [
     "torch>=2.6.0,<3",
     "torchvision",
     "transformers>=4.49.0,!=4.51.0,<5.0.0",
+    "safetensors>=0.4.0,<1",
     "onnxruntime>1.17.0",
 ]
 api = [
