@@ -4,15 +4,12 @@ import torch
 from loguru import logger
 
 from .model_list import AtomicModel
-from ...model.layout.doclayoutyolo import DocLayoutYOLOModel
 from ...model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ...model.mfd.yolo_v8 import YOLOv8MFDModel
 from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
-# from ...model.table.rec.RapidTable import RapidTableModel
 from ...model.table.rec.slanet_plus.main import RapidTableModel
 from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.config_reader import get_device
@@ -27,27 +24,6 @@ elif MFR_MODEL.lower() in ['false', '0', 'no']:
 else:
     logger.warning(f"Invalid MINERU_FORMULA_CH_SUPPORT value: {MFR_MODEL}, set to default 'False'")
     MFR_MODEL = "unimernet_small"
-
-
-def get_layout_model_name() -> str:
-    return os.getenv("MINERU_LAYOUT_MODEL", "doclayout_yolo").strip().lower()
-
-
-def get_layout_model_weight(layout_model_name: str) -> str:
-    override_path = os.getenv("MINERU_LAYOUT_MODEL_PATH")
-    if override_path:
-        return override_path
-
-    if layout_model_name == "doclayout_yolo":
-        return str(
-            os.path.join(
-                auto_download_and_get_model_root_path(ModelPath.doclayout_yolo),
-                ModelPath.doclayout_yolo,
-            )
-        )
-    if layout_model_name == "pp_doclayout_v2":
-        return os.getenv("MINERU_PP_DOCLAYOUT_V2_MODEL", ModelPath.pp_doclayout_v2)
-    raise ValueError(f"Unsupported layout model: {layout_model_name}")
 
 
 def img_orientation_cls_model_init():
@@ -93,13 +69,6 @@ def wireless_table_model_init(lang=None):
     return table_model
 
 
-def mfd_model_init(weight, device='cpu'):
-    if str(device).startswith('npu'):
-        device = torch.device(device)
-    mfd_model = YOLOv8MFDModel(weight, device)
-    return mfd_model
-
-
 def mfr_model_init(weight_dir, device='cpu'):
     if MFR_MODEL == "unimernet_small":
         mfr_model = UnimernetModel(weight_dir, device)
@@ -109,13 +78,6 @@ def mfr_model_init(weight_dir, device='cpu'):
         logger.error('MFR model name not allow')
         exit(1)
     return mfr_model
-
-
-def doclayout_yolo_model_init(weight, device='cpu'):
-    if str(device).startswith('npu'):
-        device = torch.device(device)
-    model = DocLayoutYOLOModel(weight, device)
-    return model
 
 
 def pp_doclayout_v2_model_init(weight, device='cpu'):
@@ -190,24 +152,8 @@ class AtomModelSingleton:
 def atom_model_init(model_name: str, **kwargs):
     atom_model = None
     if model_name == AtomicModel.Layout:
-        layout_model_name = kwargs.get('layout_model_name', 'doclayout_yolo')
-        layout_model_weight = kwargs.get('layout_model_weight')
-        if layout_model_name == 'doclayout_yolo':
-            atom_model = doclayout_yolo_model_init(
-                layout_model_weight or kwargs.get('doclayout_yolo_weights'),
-                kwargs.get('device')
-            )
-        elif layout_model_name == 'pp_doclayout_v2':
-            atom_model = pp_doclayout_v2_model_init(
-                layout_model_weight or kwargs.get('pp_doclayout_v2_weights'),
-                kwargs.get('device')
-            )
-        else:
-            logger.error(f'layout model name not allow: {layout_model_name}')
-            exit(1)
-    elif model_name == AtomicModel.MFD:
-        atom_model = mfd_model_init(
-            kwargs.get('mfd_weights'),
+        atom_model = pp_doclayout_v2_model_init(
+            kwargs.get('pp_doclayout_v2_weights'),
             kwargs.get('device')
         )
     elif model_name == AtomicModel.MFR:
@@ -257,19 +203,8 @@ class MineruPipelineModel:
             'DocAnalysis init, this may take some times......'
         )
         atom_model_manager = AtomModelSingleton()
-        layout_model_name = get_layout_model_name()
-        layout_model_weight = get_layout_model_weight(layout_model_name)
 
         if self.apply_formula:
-            # 初始化公式检测模型
-            self.mfd_model = atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.MFD,
-                mfd_weights=str(
-                    os.path.join(auto_download_and_get_model_root_path(ModelPath.yolo_v8_mfd), ModelPath.yolo_v8_mfd)
-                ),
-                device=self.device,
-            )
-
             # 初始化公式解析模型
             if MFR_MODEL == "unimernet_small":
                 mfr_model_path = ModelPath.unimernet_small
@@ -286,11 +221,11 @@ class MineruPipelineModel:
             )
 
         # 初始化layout模型
-        logger.info(f'Using layout model: {layout_model_name}')
         self.layout_model = atom_model_manager.get_atom_model(
             atom_model_name=AtomicModel.Layout,
-            layout_model_name=layout_model_name,
-            layout_model_weight=layout_model_weight,
+            pp_doclayout_v2_weights=str(
+                os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
+            ),
             device=self.device,
         )
         # 初始化ocr

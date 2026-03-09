@@ -14,8 +14,7 @@ from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
 from ...utils.pdf_image_tools import get_crop_np_img
 
-YOLO_LAYOUT_BASE_BATCH_SIZE = 1
-MFD_BASE_BATCH_SIZE = 1
+LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 TABLE_ORI_CLS_BATCH_SIZE = 16
@@ -47,17 +46,20 @@ class BatchAnalyze:
 
         np_images = [np.asarray(image) for image, _, _ in images_with_extra_info]
 
-        # doclayout_yolo
-
+        # pp-doclayout_v2
         images_layout_res += self.model.layout_model.batch_predict(
-            pil_images, YOLO_LAYOUT_BASE_BATCH_SIZE
+            pil_images, LAYOUT_BASE_BATCH_SIZE
         )
 
         if self.formula_enable:
-            # 公式检测
-            images_mfd_res = self.model.mfd_model.batch_predict(
-                np_images, MFD_BASE_BATCH_SIZE
-            )
+            images_mfd_res = []
+            for layout_res in images_layout_res:
+                page_formula_res = []
+                for res in layout_res:
+                    if res.get("label") == "formula":
+                        res.setdefault("latex", "")
+                        page_formula_res.append(res)
+                images_mfd_res.append(page_formula_res)
 
             # 公式识别
             images_formula_list = self.model.mfr_model.batch_predict(
@@ -67,8 +69,11 @@ class BatchAnalyze:
             )
             mfr_count = 0
             for image_index in range(len(np_images)):
-                images_layout_res[image_index] += images_formula_list[image_index]
                 mfr_count += len(images_formula_list[image_index])
+                for formula_res, formula_with_latex in zip(
+                    images_mfd_res[image_index], images_formula_list[image_index]
+                ):
+                    formula_res["latex"] = formula_with_latex.get("latex", "")
 
         # 清理显存
         clean_vram(self.model.device, vram_threshold=8)
@@ -94,8 +99,9 @@ class BatchAnalyze:
 
             for table_res in table_res_list:
                 def get_crop_table_img(scale):
-                    crop_xmin, crop_ymin = int(table_res['poly'][0]), int(table_res['poly'][1])
-                    crop_xmax, crop_ymax = int(table_res['poly'][4]), int(table_res['poly'][5])
+                    crop_xmin, crop_ymin, crop_xmax, crop_ymax = [
+                        int(v) for v in table_res["bbox"]
+                    ]
                     bbox = (int(crop_xmin / scale), int(crop_ymin / scale), int(crop_xmax / scale), int(crop_ymax / scale))
                     return get_crop_np_img(bbox, np_img, scale=scale)
 
@@ -156,7 +162,7 @@ class BatchAnalyze:
                 ocr_result = det_ocr_engine.ocr(bgr_image, rec=False)[0]
                 # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
                 for dt_box in ocr_result:
-                    rec_img_lang_group[_lang].append(
+                    rec_img_lang_group[table_res_dict["lang"]].append(
                         {
                             "cropped_img": get_rotate_crop_image(
                                 bgr_image, np.asarray(dt_box, dtype=np.float32)
@@ -326,7 +332,11 @@ class BatchAnalyze:
                             if dt_boxes_final:
                                 ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
                                 ocr_result_list = get_ocr_result_list(
-                                    ocr_res, useful_list, ocr_res_list_dict['ocr_enable'], bgr_image, _lang
+                                    ocr_res,
+                                    useful_list,
+                                    ocr_res_list_dict['ocr_enable'],
+                                    bgr_image,
+                                    _lang,
                                 )
                                 ocr_res_list_dict['layout_res'].extend(ocr_result_list)
 
@@ -358,7 +368,11 @@ class BatchAnalyze:
                     # Integration results
                     if ocr_res:
                         ocr_result_list = get_ocr_result_list(
-                            ocr_res, useful_list, ocr_res_list_dict['ocr_enable'],bgr_image, _lang
+                            ocr_res,
+                            useful_list,
+                            ocr_res_list_dict['ocr_enable'],
+                            bgr_image,
+                            _lang,
                         )
 
                         ocr_res_list_dict['layout_res'].extend(ocr_result_list)
@@ -370,22 +384,24 @@ class BatchAnalyze:
 
         for layout_res in images_layout_res:
             for layout_res_item in layout_res:
-                if layout_res_item['category_id'] in [15]:
-                    if 'np_img' in layout_res_item and 'lang' in layout_res_item:
-                        lang = layout_res_item['lang']
+                if not layout_res_item.get("_need_ocr_rec"):
+                    continue
+                if 'np_img' in layout_res_item and 'lang' in layout_res_item:
+                    lang = layout_res_item['lang']
 
-                        # Initialize lists for this language if not exist
-                        if lang not in need_ocr_lists_by_lang:
-                            need_ocr_lists_by_lang[lang] = []
-                            img_crop_lists_by_lang[lang] = []
+                    # Initialize lists for this language if not exist
+                    if lang not in need_ocr_lists_by_lang:
+                        need_ocr_lists_by_lang[lang] = []
+                        img_crop_lists_by_lang[lang] = []
 
-                        # Add to the appropriate language-specific lists
-                        need_ocr_lists_by_lang[lang].append(layout_res_item)
-                        img_crop_lists_by_lang[lang].append(layout_res_item['np_img'])
+                    # Add to the appropriate language-specific lists
+                    need_ocr_lists_by_lang[lang].append((layout_res, layout_res_item))
+                    img_crop_lists_by_lang[lang].append(layout_res_item['np_img'])
 
-                        # Remove the fields after adding to lists
-                        layout_res_item.pop('np_img')
-                        layout_res_item.pop('lang')
+                    # Remove temporary fields after collecting
+                    layout_res_item.pop('np_img', None)
+                    layout_res_item.pop('lang', None)
+                    layout_res_item.pop('_need_ocr_rec', None)
 
         if len(img_crop_lists_by_lang) > 0:
 
@@ -408,16 +424,17 @@ class BatchAnalyze:
                     assert len(ocr_res_list) == len(
                         need_ocr_lists_by_lang[lang]), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_lists_by_lang[lang])} for lang: {lang}'
 
+                    items_to_remove = []
                     # Process OCR results for this language
-                    for index, layout_res_item in enumerate(need_ocr_lists_by_lang[lang]):
+                    for index, (page_layout_res, layout_res_item) in enumerate(need_ocr_lists_by_lang[lang]):
                         ocr_text, ocr_score = ocr_res_list[index]
                         layout_res_item['text'] = ocr_text
                         layout_res_item['score'] = float(f"{ocr_score:.3f}")
+                        should_remove = False
                         if ocr_score < OcrConfidence.min_confidence:
-                            layout_res_item['category_id'] = 16
+                            should_remove = True
                         else:
-                            layout_res_bbox = [layout_res_item['poly'][0], layout_res_item['poly'][1],
-                                               layout_res_item['poly'][4], layout_res_item['poly'][5]]
+                            layout_res_bbox = layout_res_item['bbox']
                             layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                             layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
                             if (
@@ -429,7 +446,14 @@ class BatchAnalyze:
                                     and ocr_score < 0.8
                                     and layout_res_width < layout_res_height
                             ):
-                                layout_res_item['category_id'] = 16
+                                should_remove = True
+
+                        if should_remove:
+                            items_to_remove.append((page_layout_res, layout_res_item))
+
+                    for page_layout_res, layout_res_item in items_to_remove:
+                        if layout_res_item in page_layout_res:
+                            page_layout_res.remove(layout_res_item)
 
                     total_processed += len(img_crop_list)
 

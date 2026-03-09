@@ -65,9 +65,48 @@ class FormulaRecognizer(BaseOCRV20):
             character_list=data["PostProcess"]["character_dict"]
         )
 
+    @staticmethod
+    def _normalize_bbox(bbox, image):
+        if bbox is None:
+            return None
+
+        xmin, ymin, xmax, ymax = [int(v) for v in bbox]
+        height, width = image.shape[:2]
+        xmin = max(0, min(width, xmin))
+        xmax = max(0, min(width, xmax))
+        ymin = max(0, min(height, ymin))
+        ymax = max(0, min(height, ymax))
+        if xmax <= xmin or ymax <= ymin:
+            return None
+        return xmin, ymin, xmax, ymax
+
+    @staticmethod
+    def _item_to_bbox(item, image):
+        return FormulaRecognizer._normalize_bbox(item.get("bbox"), image)
+
+    def _build_formula_items(self, mfd_res, image, interline_enable=True):
+        formula_list = []
+        crop_targets = []
+
+        for item in mfd_res or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("label") != "formula":
+                continue
+
+            new_item = dict(item)
+            new_item.setdefault("latex", "")
+            formula_list.append(new_item)
+
+            bbox = self._item_to_bbox(new_item, image)
+            if bbox is not None:
+                crop_targets.append((new_item, bbox))
+
+        return formula_list, crop_targets
+
     def predict(self, img_list, batch_size: int = 64):
         # Reduce batch size by 50% to avoid potential memory issues during inference.
-        batch_size = int(0.5 * batch_size)
+        batch_size = max(1, int(0.5 * batch_size))
         batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=img_list)
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
         batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
@@ -104,30 +143,20 @@ class FormulaRecognizer(BaseOCRV20):
         for image_index in range(len(images_mfd_res)):
             mfd_res = images_mfd_res[image_index]
             image = images[image_index]
-            formula_list = []
+            formula_list, crop_targets = self._build_formula_items(
+                mfd_res, image, interline_enable=interline_enable
+            )
 
-            for idx, (xyxy, conf, cla) in enumerate(
-                zip(mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls)
-            ):
-                if not interline_enable and cla.item() == 1:
-                    continue  # Skip interline regions if not enabled
-                xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
-                new_item = {
-                    "category_id": 13 + int(cla.item()),
-                    "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-                    "score": round(float(conf.item()), 2),
-                    "latex": "",
-                }
-                formula_list.append(new_item)
+            for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
                 bbox_img = image[ymin:ymax, xmin:xmax]
                 area = (xmax - xmin) * (ymax - ymin)
 
                 curr_idx = len(mf_image_list)
                 image_info.append((area, curr_idx, bbox_img))
                 mf_image_list.append(bbox_img)
+                backfill_list.append(formula_item)
 
             images_formula_list.append(formula_list)
-            backfill_list += formula_list
 
         # Stable sort by area
         image_info.sort(key=lambda x: x[0])  # sort by area

@@ -23,11 +23,8 @@ from transformers.models.rt_detr.configuration_rt_detr import RTDetrConfig
 from transformers.models.rt_detr.modeling_rt_detr import RTDetrForObjectDetection, RTDetrModel, RTDetrPreTrainedModel
 from transformers.utils import ModelOutput
 
-
-DEFAULT_PP_DOCLAYOUT_V2_REPO = "PaddlePaddle/PP-DocLayoutV2_safetensors"
 DEFAULT_IMAGE_SIZE = (800, 800)
 DEFAULT_RESCALE_FACTOR = 1.0 / 255.0
-MODEL_ALLOW_PATTERNS = ["config.json", "model.safetensors", "preprocessor_config.json"]
 
 PP_DOCLAYOUT_V2_LABELS = [
     "abstract",           # 0
@@ -160,19 +157,6 @@ def _create_bidirectional_mask(
         torch.zeros(1, dtype=embeds.dtype, device=embeds.device),
         torch.full((1,), min_value, dtype=embeds.dtype, device=embeds.device),
     )
-
-def _resolve_model_dir(weight: str) -> str:
-    expanded_weight = os.path.expanduser(weight)
-    if os.path.isdir(expanded_weight):
-        return expanded_weight
-    if os.path.isfile(expanded_weight):
-        return os.path.dirname(expanded_weight)
-
-    repo_parts = weight.split("/")
-    if not weight.startswith((".", os.path.sep)) and len(repo_parts) == 2:
-        return snapshot_download(repo_id=weight, allow_patterns=MODEL_ALLOW_PATTERNS)
-
-    raise FileNotFoundError(f"PP-DocLayoutV2 model source not found: {weight}")
 
 
 def _load_preprocess_config(model_dir: str) -> Dict:
@@ -916,15 +900,14 @@ class PPDocLayoutV2ForObjectDetection(RTDetrForObjectDetection):
 class PPDocLayoutV2LayoutModel:
     def __init__(
         self,
-        weight: str = DEFAULT_PP_DOCLAYOUT_V2_REPO,
-        device: Optional[str] = None,
+        weight: str,
+        device: Optional[str] = "cuda",
         imgsz: Tuple[int, int] = DEFAULT_IMAGE_SIZE,
         conf: float = 0.5,
     ):
-        self.weight = weight
-        self.device = _select_runtime_device(device)
+        self.device = device
         self.conf = conf
-        self.model_dir = _resolve_model_dir(weight)
+        self.model_dir = weight
         self.preprocess_config = _load_preprocess_config(self.model_dir)
         size = self.preprocess_config.get("size", {})
         self.imgsz = (

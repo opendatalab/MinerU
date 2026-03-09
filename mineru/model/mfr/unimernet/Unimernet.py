@@ -2,8 +2,6 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from mineru.utils.boxbase import calculate_iou
-
 
 class MathDataset(Dataset):
     def __init__(self, image_paths, transform=None):
@@ -34,74 +32,56 @@ class UnimernetModel(object):
         self.model.eval()
 
     @staticmethod
-    def _filter_boxes_by_iou(xyxy, conf, cla, iou_threshold=0.8):
-        """过滤IOU超过阈值的重叠框，保留置信度较高的框。
+    def _normalize_bbox(bbox, image):
+        if bbox is None:
+            return None
 
-        Args:
-            xyxy: 框坐标张量，shape为(N, 4)
-            conf: 置信度张量，shape为(N,)
-            cla: 类别张量，shape为(N,)
-            iou_threshold: IOU阈值，默认0.9
+        xmin, ymin, xmax, ymax = [int(v) for v in bbox]
+        height, width = image.shape[:2]
+        xmin = max(0, min(width, xmin))
+        xmax = max(0, min(width, xmax))
+        ymin = max(0, min(height, ymin))
+        ymax = max(0, min(height, ymax))
+        if xmax <= xmin or ymax <= ymin:
+            return None
+        return xmin, ymin, xmax, ymax
 
-        Returns:
-            过滤后的xyxy, conf, cla张量
-        """
-        if len(xyxy) == 0:
-            return xyxy, conf, cla
+    @staticmethod
+    def _item_to_bbox(item, image):
+        return UnimernetModel._normalize_bbox(item.get("bbox"), image)
 
-        # 转换为CPU进行处理
-        xyxy_cpu = xyxy.cpu()
-        conf_cpu = conf.cpu()
+    def _build_formula_items(self, mfd_res, image, interline_enable=True):
+        formula_list = []
+        crop_targets = []
 
-        n = len(xyxy_cpu)
-        keep = [True] * n
-
-        for i in range(n):
-            if not keep[i]:
+        for item in mfd_res or []:
+            if not isinstance(item, dict):
                 continue
-            bbox1 = xyxy_cpu[i].tolist()
-            for j in range(i + 1, n):
-                if not keep[j]:
-                    continue
-                bbox2 = xyxy_cpu[j].tolist()
-                iou = calculate_iou(bbox1, bbox2)
-                if iou > iou_threshold:
-                    # 保留置信度较高的框
-                    if conf_cpu[i] >= conf_cpu[j]:
-                        keep[j] = False
-                    else:
-                        keep[i] = False
-                        break  # i被删除，跳出内循环
+            if item.get("label") != "formula":
+                continue
 
-        keep_indices = [i for i in range(n) if keep[i]]
-        if len(keep_indices) == n:
-            return xyxy, conf, cla
+            new_item = dict(item)
+            new_item.setdefault("latex", "")
+            formula_list.append(new_item)
 
-        keep_indices = torch.tensor(keep_indices, dtype=torch.long)
-        return xyxy[keep_indices], conf[keep_indices], cla[keep_indices]
+            bbox = self._item_to_bbox(new_item, image)
+            if bbox is not None:
+                crop_targets.append((new_item, bbox))
+
+        return formula_list, crop_targets
 
     def predict(self, mfd_res, image):
-        formula_list = []
+        formula_list, crop_targets = self._build_formula_items(
+            mfd_res, image, interline_enable=True
+        )
         mf_image_list = []
 
-        # 对检测框进行IOU去重，保留置信度较高的框
-        xyxy_filtered, conf_filtered, cla_filtered = self._filter_boxes_by_iou(
-            mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
-        )
-
-        for xyxy, conf, cla in zip(
-            xyxy_filtered.cpu(), conf_filtered.cpu(), cla_filtered.cpu()
-        ):
-            xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
-            new_item = {
-                "category_id": 13 + int(cla.item()),
-                "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-                "score": round(float(conf.item()), 2),
-                "latex": "",
-            }
-            formula_list.append(new_item)
+        for _, (xmin, ymin, xmax, ymax) in crop_targets:
             bbox_img = image[ymin:ymax, xmin:xmax]
             mf_image_list.append(bbox_img)
+
+        if not mf_image_list:
+            return formula_list
 
         dataset = MathDataset(mf_image_list, transform=self.model.transform)
         dataloader = DataLoader(dataset, batch_size=32, num_workers=0)
@@ -112,7 +92,7 @@ class UnimernetModel(object):
             with torch.no_grad():
                 output = self.model.generate({"image": mf_img})
             mfr_res.extend(output["fixed_str"])
-        for res, latex in zip(formula_list, mfr_res):
+        for (res, _), latex in zip(crop_targets, mfr_res):
             res["latex"] = latex
         return formula_list
 
@@ -132,35 +112,20 @@ class UnimernetModel(object):
         for image_index in range(len(images_mfd_res)):
             mfd_res = images_mfd_res[image_index]
             image = images[image_index]
-            formula_list = []
-
-            # 对检测框进行IOU去重，保留置信度较高的框
-            xyxy_filtered, conf_filtered, cla_filtered = self._filter_boxes_by_iou(
-                mfd_res.boxes.xyxy, mfd_res.boxes.conf, mfd_res.boxes.cls
+            formula_list, crop_targets = self._build_formula_items(
+                mfd_res, image, interline_enable=interline_enable
             )
 
-            for idx, (xyxy, conf, cla) in enumerate(zip(
-                    xyxy_filtered, conf_filtered, cla_filtered
-            )):
-                if not interline_enable and cla.item() == 1:
-                    continue  # Skip interline regions if not enabled
-                xmin, ymin, xmax, ymax = [int(p.item()) for p in xyxy]
-                new_item = {
-                    "category_id": 13 + int(cla.item()),
-                    "poly": [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax],
-                    "score": round(float(conf.item()), 2),
-                    "latex": "",
-                }
-                formula_list.append(new_item)
+            for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
                 bbox_img = image[ymin:ymax, xmin:xmax]
                 area = (xmax - xmin) * (ymax - ymin)
 
                 curr_idx = len(mf_image_list)
                 image_info.append((area, curr_idx, bbox_img))
                 mf_image_list.append(bbox_img)
+                backfill_list.append(formula_item)
 
             images_formula_list.append(formula_list)
-            backfill_list += formula_list
 
         # Stable sort by area
         image_info.sort(key=lambda x: x[0])  # sort by area

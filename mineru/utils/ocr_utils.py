@@ -330,11 +330,19 @@ def get_adjusted_mfdetrec_res(single_page_mfdetrec_res, useful_list):
     return adjusted_mfdetrec_res
 
 
-def get_ocr_result_list(ocr_res, useful_list, ocr_enable, bgr_image, lang):
+def get_ocr_result_list(
+    ocr_res,
+    useful_list,
+    ocr_enable,
+    bgr_image,
+    lang,
+):
     paste_x, paste_y, xmin, ymin, xmax, ymax, new_width, new_height = useful_list
     ocr_result_list = []
     ori_im = bgr_image.copy()
     for box_ocr_res in ocr_res:
+        img_crop = None
+        need_ocr_rec = False
 
         if len(box_ocr_res) == 2:
             p1, p2, p3, p4 = box_ocr_res[0]
@@ -349,6 +357,7 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, bgr_image, lang):
             if ocr_enable:
                 tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype('float32'))
                 img_crop = get_rotate_crop_image(ori_im, tmp_box)
+                need_ocr_rec = True
 
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
         # if average_angle_degrees > 0.5:
@@ -377,22 +386,24 @@ def get_ocr_result_list(ocr_res, useful_list, ocr_enable, bgr_image, lang):
         p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
         p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
 
-        if ocr_enable:
-            ocr_result_list.append({
-                'category_id': 15,
-                'poly': p1 + p2 + p3 + p4,
-                'score': 1,
-                'text': text,
-                'np_img': img_crop,
-                'lang': lang,
-            })
-        else:
-            ocr_result_list.append({
-                'category_id': 15,
-                'poly': p1 + p2 + p3 + p4,
-                'score': float(round(score, 2)),
-                'text': text,
-            })
+        bbox = [
+            float(round(p1[0], 4)),
+            float(round(p1[1], 4)),
+            float(round(p3[0], 4)),
+            float(round(p3[1], 4)),
+        ]
+
+        ocr_item = {
+            "label": "ocr_text",
+            "bbox": bbox,
+            "score": 1.0 if ocr_enable else float(round(score, 2)),
+            "text": text,
+        }
+        if need_ocr_rec:
+            ocr_item["np_img"] = img_crop
+            ocr_item["lang"] = lang
+            ocr_item["_need_ocr_rec"] = True
+        ocr_result_list.append(ocr_item)
 
     return ocr_result_list
 
