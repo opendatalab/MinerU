@@ -32,17 +32,17 @@ PP_DOCLAYOUT_V2_LABELS = [
     "aside_text",         # 2
     "chart",              # 3
     "content",            # 4
-    "formula",            # 5
+    "formula",            # 5 display
     "doc_title",          # 6
     "figure_title",       # 7
     "footer",             # 8
-    "footer",             # 9
+    "footer",             # 9 image
     "footnote",           # 10
     "formula_number",     # 11
     "header",             # 12
-    "header",             # 13
+    "header",             # 13 image
     "image",              # 14
-    "formula",            # 15
+    "formula",            # 15 inline
     "number",             # 16
     "paragraph_title",    # 17
     "reference",          # 18
@@ -50,7 +50,7 @@ PP_DOCLAYOUT_V2_LABELS = [
     "seal",               # 20
     "table",              # 21
     "text",               # 22
-    "text",               # 23
+    "text",               # 23 vertical
     "vision_footnote",    # 24
 ]
 
