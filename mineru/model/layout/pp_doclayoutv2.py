@@ -167,22 +167,6 @@ def _load_preprocess_config(model_dir: str) -> Dict:
         return json.load(f)
 
 
-def _select_runtime_device(device: Optional[Union[str, torch.device]]) -> str:
-    if device is None:
-        if torch.cuda.is_available():
-            return "cuda"
-        if torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
-
-    device_str = str(device)
-    if device_str.startswith("cuda") and not torch.cuda.is_available():
-        return "mps" if torch.backends.mps.is_available() else "cpu"
-    if device_str.startswith("mps") and not torch.backends.mps.is_available():
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    return device_str
-
-
 def _label_to_color(label: str) -> Tuple[int, int, int]:
     digest = hashlib.md5(label.encode("utf-8")).digest()
     hue = digest[0] / 255.0
@@ -1079,7 +1063,7 @@ class PPDocLayoutV2LayoutModel:
             color = _label_to_color(res["label"])
             draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=3)
 
-            text = f"{res['index']}: {res['label']} {res['score']:.2f}"
+            text = f"{res['index']}: {res['label']} {res['cls_id']} {res['score']:.2f}"
             text_top = int(round(ymin))
             text_bbox = draw.textbbox((0, 0), text, font=font)
             text_width = text_bbox[2] - text_bbox[0]
@@ -1108,7 +1092,6 @@ class PPDocLayoutV2LayoutModel:
 
 
 __all__ = [
-    "DEFAULT_PP_DOCLAYOUT_V2_REPO",
     "PPDocLayoutV2Config",
     "PPDocLayoutV2ForObjectDetection",
     "PPDocLayoutV2LayoutModel",
@@ -1120,11 +1103,22 @@ __all__ = [
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PP-DocLayoutV2 local inference smoke test")
     parser.add_argument("image", nargs="?", help="Path to an input image. If omitted, only model loading is tested.")
-    parser.add_argument("--model", default=DEFAULT_PP_DOCLAYOUT_V2_REPO, help="HF repo id or local model directory.")
+    parser.add_argument("--model", default=None, help="Model name or path.")
     parser.add_argument("--device", default=None, help="Runtime device, e.g. cpu/mps/cuda.")
     parser.add_argument("--output", default=None, help="Optional path to save the visualization image.")
     parser.add_argument("--no-show", action="store_true", help="Do not open the visualization window.")
     args = parser.parse_args()
+
+    if args.device is None:
+        from mineru.utils.config_reader import get_device
+        args.device = get_device()
+
+    if args.model is None:
+        from mineru.utils.enum_class import ModelPath
+        from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+        args.model = str(
+                os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
+            )
 
     model = PPDocLayoutV2LayoutModel(weight=args.model, device=args.device)
     print(f"model loaded on {model.device}")
