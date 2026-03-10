@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-from huggingface_hub import snapshot_download
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
 from tqdm import tqdm
+import torchvision.transforms.v2.functional as tvF
+from torchvision.transforms import InterpolationMode
 
 import torch
 from transformers import AutoConfig
@@ -888,9 +889,11 @@ class PPDocLayoutV2LayoutModel:
         device: Optional[str] = "cuda",
         imgsz: Tuple[int, int] = DEFAULT_IMAGE_SIZE,
         conf: float = 0.5,
+        use_paddlex_filter_boxes: bool = True,
     ):
         self.device = device
         self.conf = conf
+        self.use_paddlex_filter_boxes = use_paddlex_filter_boxes
         self.model_dir = weight
         self.preprocess_config = _load_preprocess_config(self.model_dir)
         size = self.preprocess_config.get("size", {})
@@ -929,10 +932,15 @@ class PPDocLayoutV2LayoutModel:
 
         pil_image = pil_image.convert("RGB")
         target_size = pil_image.size[1], pil_image.size[0]
-        resized = pil_image.resize(self.imgsz, resample=Image.BICUBIC)
-        pixel_values = np.asarray(resized, dtype=np.float32) * self.rescale_factor
-        pixel_values = np.transpose(pixel_values, (2, 0, 1))
-        return torch.from_numpy(pixel_values), target_size
+        pixel_values = tvF.pil_to_tensor(pil_image)
+        pixel_values = tvF.resize(
+            pixel_values,
+            size=[self.imgsz[1], self.imgsz[0]],
+            interpolation=InterpolationMode.BICUBIC,
+            antialias=False,
+        )
+        pixel_values = pixel_values.to(dtype=torch.float32) * self.rescale_factor
+        return pixel_values, target_size
 
     def _post_process_object_detection(
         self,
@@ -1017,17 +1025,134 @@ class PPDocLayoutV2LayoutModel:
             )
         return layout_res
 
-    def predict(self, image: Union[np.ndarray, Image.Image]) -> List[Dict]:
-        return self.batch_predict([image], batch_size=1)[0]
+    @staticmethod
+    def _calculate_bbox_area(box: Sequence[float]) -> float:
+        xmin, ymin, xmax, ymax = [float(v) for v in box]
+        return max(0.0, xmax - xmin) * max(0.0, ymax - ymin)
+
+    @classmethod
+    def _calculate_overlap_ratio(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
+        x1_min, y1_min, x1_max, y1_max = [float(v) for v in box1]
+        x2_min, y2_min, x2_max, y2_max = [float(v) for v in box2]
+        inter_xmin = max(x1_min, x2_min)
+        inter_ymin = max(y1_min, y2_min)
+        inter_xmax = min(x1_max, x2_max)
+        inter_ymax = min(y1_max, y2_max)
+        inter_area = cls._calculate_bbox_area((inter_xmin, inter_ymin, inter_xmax, inter_ymax))
+        ref_area = min(cls._calculate_bbox_area(box1), cls._calculate_bbox_area(box2))
+        if ref_area <= 0.0:
+            return 0.0
+        return inter_area / ref_area
+
+    @staticmethod
+    def _is_reference_box(box: Dict) -> bool:
+        return box.get("label") == "reference" or int(box.get("cls_id", -1)) == 18
+
+    @staticmethod
+    def _is_inline_formula_box(box: Dict) -> bool:
+        return box.get("label") == "inline_formula" or int(box.get("cls_id", -1)) == 15
+
+    @staticmethod
+    def _renumber_indices(boxes: List[Dict]) -> List[Dict]:
+        for index, box in enumerate(boxes, start=1):
+            box["index"] = index
+        return boxes
+
+    @classmethod
+    def _apply_paddlex_filter_boxes(
+        cls,
+        boxes: List[Dict],
+        drop_inline_formula: bool = True,
+    ) -> List[Dict]:
+        filtered_boxes = [dict(box) for box in boxes if not cls._is_reference_box(box)]
+        dropped_indexes = set()
+
+        for i in range(len(filtered_boxes)):
+            if i in dropped_indexes:
+                continue
+            x1, y1, x2, y2 = filtered_boxes[i]["bbox"]
+            width = float(x2) - float(x1)
+            height = float(y2) - float(y1)
+            if (
+                (width < 6.0 or height < 6.0)
+                and (drop_inline_formula or not cls._is_inline_formula_box(filtered_boxes[i]))
+            ):
+                dropped_indexes.add(i)
+                continue
+
+            for j in range(i + 1, len(filtered_boxes)):
+                if i in dropped_indexes or j in dropped_indexes:
+                    continue
+
+                if (
+                    not drop_inline_formula
+                    and (
+                        cls._is_inline_formula_box(filtered_boxes[i])
+                        or cls._is_inline_formula_box(filtered_boxes[j])
+                    )
+                ):
+                    continue
+
+                overlap_ratio = cls._calculate_overlap_ratio(
+                    filtered_boxes[i]["bbox"],
+                    filtered_boxes[j]["bbox"],
+                )
+                if (
+                    drop_inline_formula
+                    and (
+                        cls._is_inline_formula_box(filtered_boxes[i])
+                        or cls._is_inline_formula_box(filtered_boxes[j])
+                    )
+                ):
+                    if overlap_ratio > 0.5:
+                        if cls._is_inline_formula_box(filtered_boxes[i]):
+                            dropped_indexes.add(i)
+                        if cls._is_inline_formula_box(filtered_boxes[j]):
+                            dropped_indexes.add(j)
+                        continue
+
+                if overlap_ratio > 0.7:
+                    box_area_i = cls._calculate_bbox_area(filtered_boxes[i]["bbox"])
+                    box_area_j = cls._calculate_bbox_area(filtered_boxes[j]["bbox"])
+                    labels = {filtered_boxes[i]["label"], filtered_boxes[j]["label"]}
+                    if labels & {"image", "table", "seal", "chart"} and len(labels) > 1:
+                        if "table" not in labels or labels <= {"table", "image", "seal", "chart"}:
+                            continue
+                    if box_area_i >= box_area_j:
+                        dropped_indexes.add(j)
+                    else:
+                        dropped_indexes.add(i)
+
+        kept_boxes = [
+            box for index, box in enumerate(filtered_boxes) if index not in dropped_indexes
+        ]
+        return cls._renumber_indices(kept_boxes)
+
+    def predict(
+        self,
+        image: Union[np.ndarray, Image.Image],
+        use_paddlex_filter_boxes: Optional[bool] = None,
+    ) -> List[Dict]:
+        return self.batch_predict(
+            [image],
+            batch_size=1,
+            use_paddlex_filter_boxes=use_paddlex_filter_boxes,
+        )[0]
 
     def batch_predict(
         self,
         images: List[Union[np.ndarray, Image.Image]],
         batch_size: int = 1,
+        use_paddlex_filter_boxes: Optional[bool] = None,
     ) -> List[List[Dict]]:
         if len(images) == 0:
             return []
 
+        use_paddlex_filter_boxes = (
+            self.use_paddlex_filter_boxes
+            if use_paddlex_filter_boxes is None
+            else use_paddlex_filter_boxes
+        )
         results: List[List[Dict]] = []
         with torch.no_grad():
             with tqdm(total=len(images), desc="Layout Predict") as pbar:
@@ -1044,7 +1169,10 @@ class PPDocLayoutV2LayoutModel:
                     outputs = self.model(pixel_values=batch_tensor)
                     predictions = self._post_process_object_detection(outputs, target_sizes)
                     for prediction, image_size in zip(predictions, target_sizes):
-                        results.append(self._parse_prediction(prediction, image_size))
+                        layout_res = self._parse_prediction(prediction, image_size)
+                        if use_paddlex_filter_boxes:
+                            layout_res = self._apply_paddlex_filter_boxes(layout_res, drop_inline_formula=False)
+                        results.append(layout_res)
                     pbar.update(len(batch_images))
         return results
 
@@ -1120,11 +1248,14 @@ if __name__ == "__main__":
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
 
-    model = PPDocLayoutV2LayoutModel(weight=args.model, device=args.device)
+    args.image = "/Users/myhloli/pdf/png/academic_paper_img_formula.png"
+
+    model = PPDocLayoutV2LayoutModel(
+        weight=args.model,
+        device=args.device,
+    )
     print(f"model loaded on {model.device}")
 
-    args.image = "/Users/myhloli/pdf/png/academic_paper_img_formula.png"
-    
     if args.image:
         with Image.open(args.image) as img:
             results = model.predict(img)

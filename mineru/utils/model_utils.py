@@ -24,7 +24,6 @@ TEXT_REGION_LABELS = {
     "header",
     "number",
     "paragraph_title",
-    "reference",
     "reference_content",
     "text",
     "vision_footnote",
@@ -113,47 +112,6 @@ def is_inside(small_box, big_box, overlap_threshold=0.8):
     return intersection_area >= overlap_threshold * small_box[4]
 
 
-def calculate_iou(box1, box2):
-    """Calculate IoU between two boxes with appended area."""
-    intersection = calculate_intersection(box1[:4], box2[:4])
-    if not intersection:
-        return 0.0
-
-    intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax = intersection
-    intersection_area = (intersection_xmax - intersection_xmin) * (intersection_ymax - intersection_ymin)
-    union_area = box1[4] + box2[4] - intersection_area
-    return intersection_area / union_area if union_area > 0 else 0.0
-
-
-def remove_high_iou_low_score_blocks(layout_res, iou_threshold=0.9):
-    """Keep the highest-score block when multiple layout blocks have very high IoU."""
-    if len(layout_res) < 2:
-        return layout_res, []
-
-    block_info = [
-        (block, get_coords_and_area(block), float(block.get("score", 0.0)))
-        for block in layout_res
-    ]
-    sorted_indices = sorted(
-        range(len(block_info)),
-        key=lambda idx: block_info[idx][2],
-        reverse=True,
-    )
-
-    kept = []
-    removed = []
-    for idx in sorted_indices:
-        block, bbox_with_area, score = block_info[idx]
-        if any(calculate_iou(bbox_with_area, kept_bbox) >= iou_threshold for _, kept_bbox, _ in kept):
-            removed.append(block)
-            continue
-        kept.append((block, bbox_with_area, score))
-
-    keep_ids = {id(block) for block, _, _ in kept}
-    filtered_layout_res = [block for block in layout_res if id(block) in keep_ids]
-    return filtered_layout_res, removed
-
-
 def remove_nested_ocr_text_blocks(
     ocr_res_list,
     layout_res,
@@ -186,14 +144,8 @@ def remove_nested_ocr_text_blocks(
     return filtered_ocr_res_list, blocks_to_remove
 
 
-def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8, iou_threshold=0.9):
+def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8):
     """Extract OCR, table and other regions from layout results."""
-    filtered_layout_res, _ = remove_high_iou_low_score_blocks(
-        layout_res,
-        iou_threshold=iou_threshold,
-    )
-    layout_res[:] = filtered_layout_res
-
     ocr_res_list = []
     text_res_list = []
     table_res_list = []

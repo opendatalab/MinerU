@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -36,7 +38,11 @@ class UnimernetModel(object):
         if bbox is None:
             return None
 
-        xmin, ymin, xmax, ymax = [int(v) for v in bbox]
+        xmin, ymin, xmax, ymax = [float(v) for v in bbox]
+        xmin = math.floor(xmin)
+        ymin = math.floor(ymin)
+        xmax = math.ceil(xmax)
+        ymax = math.ceil(ymax)
         height, width = image.shape[:2]
         xmin = max(0, min(width, xmin))
         xmax = max(0, min(width, xmax))

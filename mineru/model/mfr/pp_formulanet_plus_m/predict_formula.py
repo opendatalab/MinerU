@@ -1,3 +1,4 @@
+import math
 import os
 import torch
 import yaml
@@ -70,7 +71,11 @@ class FormulaRecognizer(BaseOCRV20):
         if bbox is None:
             return None
 
-        xmin, ymin, xmax, ymax = [int(v) for v in bbox]
+        xmin, ymin, xmax, ymax = [float(v) for v in bbox]
+        xmin = math.floor(xmin)
+        ymin = math.floor(ymin)
+        xmax = math.ceil(xmax)
+        ymax = math.ceil(ymax)
         height, width = image.shape[:2]
         xmin = max(0, min(width, xmin))
         xmax = max(0, min(width, xmax))
