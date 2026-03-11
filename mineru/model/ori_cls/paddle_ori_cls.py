@@ -259,6 +259,7 @@ class PaddleOrientationClsModel:
                         pbar.update(1)
 
     def img_rotate(self, img_info, label):
+        img_info["rotate_label"] = label
         if label == "270":
             img_info["table_img"] = cv2.rotate(
                 np.asarray(img_info["table_img"]),

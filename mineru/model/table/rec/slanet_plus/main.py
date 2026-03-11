@@ -115,6 +115,9 @@ class RapidTable:
     def get_boxes_recs(
         self, ocr_result: List[Union[List[List[float]], str, str]], h: int, w: int
     ) -> Tuple[np.ndarray, Tuple[str, str]]:
+        if not ocr_result:
+            return np.empty((0, 4), dtype=np.float32), []
+
         dt_boxes, rec_res, scores = list(zip(*ocr_result))
         rec_res = list(zip(rec_res, scores))
 
@@ -162,7 +165,7 @@ class RapidTableModel(object):
         bgr_image = cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
         # Continue with OCR on potentially rotated image
 
-        if not ocr_result:
+        if ocr_result is None:
             ocr_result = self.ocr_engine.ocr(bgr_image)[0]
             ocr_result = [
                 [item[0], escape_html(item[1][0]), item[1][1]]
@@ -170,43 +173,40 @@ class RapidTableModel(object):
                 if len(item) == 2 and isinstance(item[1], tuple)
             ]
 
-        if ocr_result:
-            try:
-                table_results = self.table_model.predict(np.asarray(image), ocr_result)
-                html_code = table_results.pred_html
-                table_cell_bboxes = table_results.cell_bboxes
-                logic_points = table_results.logic_points
-                elapse = table_results.elapse
-                return html_code, table_cell_bboxes, logic_points, elapse
-            except Exception as e:
-                logger.exception(e)
+        try:
+            table_results = self.table_model.predict(np.asarray(image), ocr_result or [])
+            html_code = table_results.pred_html
+            table_cell_bboxes = table_results.cell_bboxes
+            logic_points = table_results.logic_points
+            elapse = table_results.elapse
+            return html_code, table_cell_bboxes, logic_points, elapse
+        except Exception as e:
+            logger.exception(e)
 
         return None, None, None, None
 
     def batch_predict(self, table_res_list: List[Dict], batch_size: int = 4) -> None:
         """对传入的字典列表进行批量预测，无返回值"""
 
-        not_none_table_res_list = []
-        for table_res in table_res_list:
-            if table_res.get("ocr_result", None):
-                not_none_table_res_list.append(table_res)
-
-        with tqdm(total=len(not_none_table_res_list), desc="Table-wireless Predict") as pbar:
-            for index in range(0, len(not_none_table_res_list), batch_size):
+        with tqdm(total=len(table_res_list), desc="Table-wireless Predict") as pbar:
+            for index in range(0, len(table_res_list), batch_size):
                 batch_imgs = [
-                    cv2.cvtColor(np.asarray(not_none_table_res_list[i]["table_img"]), cv2.COLOR_RGB2BGR)
-                    for i in range(index, min(index + batch_size, len(not_none_table_res_list)))
+                    cv2.cvtColor(np.asarray(table_res_list[i]["table_img"]), cv2.COLOR_RGB2BGR)
+                    for i in range(index, min(index + batch_size, len(table_res_list)))
                 ]
                 batch_ocrs = [
-                    not_none_table_res_list[i]["ocr_result"]
-                    for i in range(index, min(index + batch_size, len(not_none_table_res_list)))
+                    table_res_list[i].get("ocr_result") or []
+                    for i in range(index, min(index + batch_size, len(table_res_list)))
                 ]
                 results = self.table_model.batch_predict(
                     batch_imgs, batch_ocrs, batch_size=batch_size
                 )
                 for i, result in enumerate(results):
-                    if result.pred_html:
-                        not_none_table_res_list[index + i]['table_res']['html'] = result.pred_html
+                    table_res = table_res_list[index + i]
+                    table_res["wireless_cell_bboxes"] = result.cell_bboxes
+                    table_res["wireless_logic_points"] = result.logic_points
+                    if result.pred_html is not None:
+                        table_res['table_res']['html'] = result.pred_html
 
                 # 更新进度条
                 pbar.update(len(results))
