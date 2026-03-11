@@ -33,17 +33,17 @@ PP_DOCLAYOUT_V2_LABELS = [
     "aside_text",         # 2
     "chart",              # 3
     "content",            # 4
-    "formula",            # 5 display
+    "display_formula",    # 5
     "doc_title",          # 6
     "figure_title",       # 7
     "footer",             # 8
-    "footer",             # 9 image
+    "footer_image",       # 9
     "footnote",           # 10
     "formula_number",     # 11
     "header",             # 12
-    "header",             # 13 image
+    "header_image",       # 13
     "image",              # 14
-    "formula",            # 15 inline
+    "inline_formula",     # 15
     "number",             # 16
     "paragraph_title",    # 17
     "reference",          # 18
@@ -51,7 +51,7 @@ PP_DOCLAYOUT_V2_LABELS = [
     "seal",               # 20
     "table",              # 21
     "text",               # 22
-    "text",               # 23 vertical
+    "vertical_text",      # 23
     "vision_footnote",    # 24
 ]
 
@@ -62,17 +62,17 @@ DEFAULT_CLASS_THRESHOLDS = [
     0.5,   # 2  aside_text
     0.5,   # 3  chart
     0.5,   # 4  content
-    0.4,   # 5  formula
+    0.4,   # 5  display_formula
     0.4,   # 6  doc_title
     0.5,   # 7  figure_title
     0.5,   # 8  footer
-    0.5,   # 9  footer
+    0.5,   # 9  footer_image
     0.5,   # 10 footnote
     0.5,   # 11 formula_number
     0.5,   # 12 header
-    0.5,   # 13 header
+    0.5,   # 13 header_image
     0.5,   # 14 image
-    0.4,   # 15 formula
+    0.4,   # 15 inline_formula
     0.5,   # 16 number
     0.4,   # 17 paragraph_title
     0.5,   # 18 reference
@@ -80,7 +80,7 @@ DEFAULT_CLASS_THRESHOLDS = [
     0.45,  # 20 seal
     0.5,   # 21 table
     0.4,   # 22 text
-    0.4,   # 23 text
+    0.4,   # 23 vertical_text
     0.5,   # 24 vision_footnote
 ]
 
@@ -91,7 +91,7 @@ DEFAULT_CLASS_ORDER = [
     14,  # 2  aside_text
     1,   # 3  chart
     5,   # 4  content
-    7,   # 5  formula
+    7,   # 5  display_formula
     8,   # 6  doc_title
     6,   # 7  figure_title
     11,  # 8  footer
@@ -99,9 +99,9 @@ DEFAULT_CLASS_ORDER = [
     9,   # 10 footnote
     13,  # 11 formula_number
     10,  # 12 header
-    10,  # 13 header
+    10,  # 13 header_image
     1,   # 14 image
-    2,   # 15 formula
+    2,   # 15 inline_formula
     3,   # 16 number
     0,   # 17 paragraph_title
     2,   # 18 reference
@@ -109,7 +109,7 @@ DEFAULT_CLASS_ORDER = [
     12,  # 20 seal
     1,   # 21 table
     2,   # 22 text
-    15,  # 23 text
+    15,  # 23 vertical_text
     6,   # 24 vision_footnote
 ]
 
@@ -984,6 +984,8 @@ class PPDocLayoutV2LayoutModel:
         return results
 
     def _label_id_to_label_name(self, label_id: int) -> str:
+        if 0 <= label_id < len(PP_DOCLAYOUT_V2_LABELS):
+            return PP_DOCLAYOUT_V2_LABELS[label_id]
         return str(self.config.id2label.get(label_id, self.config.id2label.get(str(label_id), label_id)))
 
     @staticmethod
@@ -1248,7 +1250,7 @@ if __name__ == "__main__":
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
 
-    args.image = "/Users/myhloli/pdf/png/academic_paper_img_formula.png"
+    args.image = "/Users/myhloli/pdf/png/table_image2.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,

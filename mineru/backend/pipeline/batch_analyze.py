@@ -56,7 +56,7 @@ class BatchAnalyze:
             for layout_res in images_layout_res:
                 page_formula_res = []
                 for res in layout_res:
-                    if res.get("label") == "formula":
+                    if res.get("label") in ["display_formula", "inline_formula"]:
                         res.setdefault("latex", "")
                         page_formula_res.append(res)
                 images_mfd_res.append(page_formula_res)
@@ -74,6 +74,10 @@ class BatchAnalyze:
                     images_mfd_res[image_index], images_formula_list[image_index]
                 ):
                     formula_res["latex"] = formula_with_latex.get("latex", "")
+        else:
+            for layout_res in images_layout_res:
+                # 移除所有的"inline_formula"
+                layout_res[:] = [res for res in layout_res if res.get("label") != "inline_formula"]
 
         # 清理显存
         clean_vram(self.model.device, vram_threshold=8)

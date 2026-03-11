@@ -26,6 +26,7 @@ TEXT_REGION_LABELS = {
     "paragraph_title",
     "reference_content",
     "text",
+    "vertical_text",
     "vision_footnote",
 }
 
@@ -155,7 +156,7 @@ def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8):
     for i, res in enumerate(layout_res):
         label = res.get("label")
 
-        if label == "formula":
+        if label in ["display_formula", "inline_formula"]:
             xmin, ymin, xmax, ymax = _get_bbox(res)
             single_page_mfdetrec_res.append({
                 "bbox": [xmin, ymin, xmax, ymax],
