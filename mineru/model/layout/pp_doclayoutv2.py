@@ -1033,32 +1033,203 @@ class PPDocLayoutV2LayoutModel:
         return max(0.0, xmax - xmin) * max(0.0, ymax - ymin)
 
     @classmethod
-    def _calculate_overlap_ratio(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
+    def _calculate_intersection_area(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
         x1_min, y1_min, x1_max, y1_max = [float(v) for v in box1]
         x2_min, y2_min, x2_max, y2_max = [float(v) for v in box2]
         inter_xmin = max(x1_min, x2_min)
         inter_ymin = max(y1_min, y2_min)
         inter_xmax = min(x1_max, x2_max)
         inter_ymax = min(y1_max, y2_max)
-        inter_area = cls._calculate_bbox_area((inter_xmin, inter_ymin, inter_xmax, inter_ymax))
+        return cls._calculate_bbox_area((inter_xmin, inter_ymin, inter_xmax, inter_ymax))
+
+    @classmethod
+    def _calculate_overlap_ratio(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
+        inter_area = cls._calculate_intersection_area(box1, box2)
         ref_area = min(cls._calculate_bbox_area(box1), cls._calculate_bbox_area(box2))
         if ref_area <= 0.0:
             return 0.0
         return inter_area / ref_area
+
+    @classmethod
+    def _calculate_iou(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
+        inter_area = cls._calculate_intersection_area(box1, box2)
+        union_area = cls._calculate_bbox_area(box1) + cls._calculate_bbox_area(box2) - inter_area
+        if union_area <= 0.0:
+            return 0.0
+        return inter_area / union_area
+
+    @classmethod
+    def _calculate_cover_ratio(cls, box1: Sequence[float], box2: Sequence[float]) -> float:
+        box1_area = cls._calculate_bbox_area(box1)
+        if box1_area <= 0.0:
+            return 0.0
+        return cls._calculate_intersection_area(box1, box2) / box1_area
 
     @staticmethod
     def _is_reference_box(box: Dict) -> bool:
         return box.get("label") == "reference" or int(box.get("cls_id", -1)) == 18
 
     @staticmethod
+    def _is_display_formula_box(box: Dict) -> bool:
+        return box.get("label") == "display_formula" or int(box.get("cls_id", -1)) == 5
+
+    @staticmethod
     def _is_inline_formula_box(box: Dict) -> bool:
         return box.get("label") == "inline_formula" or int(box.get("cls_id", -1)) == 15
+
+    @staticmethod
+    def _is_formula_box(box: Dict) -> bool:
+        return (
+            PPDocLayoutV2LayoutModel._is_display_formula_box(box)
+            or PPDocLayoutV2LayoutModel._is_inline_formula_box(box)
+        )
+
+    @staticmethod
+    def _is_formula_number_box(box: Dict) -> bool:
+        return box.get("label") == "formula_number" or int(box.get("cls_id", -1)) == 11
+
+    @staticmethod
+    def _set_formula_label(box: Dict, label: str) -> None:
+        if label == "inline_formula":
+            cls_id = 15
+        elif label == "display_formula":
+            cls_id = 5
+        else:
+            raise ValueError(f"Unsupported formula label: {label}")
+        box["label"] = label
+        box["cls_id"] = cls_id
+
+    @staticmethod
+    def _union_bbox(box1: Sequence[float], box2: Sequence[float]) -> List[float]:
+        x1_min, y1_min, x1_max, y1_max = [float(v) for v in box1]
+        x2_min, y2_min, x2_max, y2_max = [float(v) for v in box2]
+        return [
+            round(min(x1_min, x2_min), 4),
+            round(min(y1_min, y2_min), 4),
+            round(max(x1_max, x2_max), 4),
+            round(max(y1_max, y2_max), 4),
+        ]
 
     @staticmethod
     def _renumber_indices(boxes: List[Dict]) -> List[Dict]:
         for index, box in enumerate(boxes, start=1):
             box["index"] = index
         return boxes
+
+    @classmethod
+    def _deduplicate_boxes_by_iou(
+        cls,
+        boxes: List[Dict],
+        iou_threshold: float = 0.9,
+    ) -> List[Dict]:
+        if len(boxes) <= 1:
+            return boxes
+
+        sorted_candidates = sorted(
+            enumerate(boxes),
+            key=lambda item: (-float(item[1].get("score", 0.0)), item[0]),
+        )
+        suppressed_indexes = set()
+        kept_indexes = []
+
+        for candidate_pos, (current_index, current_box) in enumerate(sorted_candidates):
+            if current_index in suppressed_indexes:
+                continue
+            kept_indexes.append(current_index)
+            for other_index, other_box in sorted_candidates[candidate_pos + 1 :]:
+                if other_index in suppressed_indexes:
+                    continue
+                if cls._calculate_iou(current_box["bbox"], other_box["bbox"]) > iou_threshold:
+                    suppressed_indexes.add(other_index)
+
+        kept_indexes.sort()
+        return [boxes[index] for index in kept_indexes]
+
+    @classmethod
+    def _merge_nested_formula_boxes(
+        cls,
+        boxes: List[Dict],
+        overlap_threshold: float = 0.7,
+    ) -> List[Dict]:
+        if len(boxes) <= 1:
+            return boxes
+
+        changed = True
+        while changed:
+            changed = False
+            formula_indexes = [index for index, box in enumerate(boxes) if cls._is_formula_box(box)]
+            for formula_pos, left_index in enumerate(formula_indexes):
+                for right_index in formula_indexes[formula_pos + 1 :]:
+                    left_box = boxes[left_index]
+                    right_box = boxes[right_index]
+                    if cls._calculate_overlap_ratio(left_box["bbox"], right_box["bbox"]) < overlap_threshold:
+                        continue
+
+                    left_area = cls._calculate_bbox_area(left_box["bbox"])
+                    right_area = cls._calculate_bbox_area(right_box["bbox"])
+                    if left_area > right_area:
+                        keep_index, drop_index = left_index, right_index
+                    elif right_area > left_area:
+                        keep_index, drop_index = right_index, left_index
+                    else:
+                        left_score = float(left_box.get("score", 0.0))
+                        right_score = float(right_box.get("score", 0.0))
+                        keep_index, drop_index = (
+                            (left_index, right_index)
+                            if left_score >= right_score
+                            else (right_index, left_index)
+                        )
+
+                    keep_box = boxes[keep_index]
+                    drop_box = boxes[drop_index]
+                    keep_box["bbox"] = cls._union_bbox(keep_box["bbox"], drop_box["bbox"])
+                    keep_box["score"] = round(
+                        max(float(keep_box.get("score", 0.0)), float(drop_box.get("score", 0.0))),
+                        4,
+                    )
+                    del boxes[drop_index]
+                    changed = True
+                    break
+                if changed:
+                    break
+
+        return boxes
+
+    @classmethod
+    def _relabel_formula_boxes(
+        cls,
+        boxes: List[Dict],
+        overlap_threshold: float = 0.7,
+    ) -> List[Dict]:
+        parent_candidates = [
+            box
+            for box in boxes
+            if (
+                not cls._is_formula_box(box)
+                and not cls._is_formula_number_box(box)
+                and not cls._is_reference_box(box)
+            )
+        ]
+
+        for box in boxes:
+            if not cls._is_formula_box(box):
+                continue
+            target_label = "display_formula"
+            for parent_box in parent_candidates:
+                if cls._calculate_cover_ratio(box["bbox"], parent_box["bbox"]) >= overlap_threshold:
+                    target_label = "inline_formula"
+                    break
+            cls._set_formula_label(box, target_label)
+
+        return boxes
+
+    @classmethod
+    def _apply_layout_post_process(cls, boxes: List[Dict]) -> List[Dict]:
+        processed_boxes = [{**box, "bbox": list(box["bbox"])} for box in boxes]
+        processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
+        processed_boxes = cls._merge_nested_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        return cls._renumber_indices(processed_boxes)
 
     @classmethod
     def _apply_paddlex_filter_boxes(
@@ -1174,6 +1345,7 @@ class PPDocLayoutV2LayoutModel:
                         layout_res = self._parse_prediction(prediction, image_size)
                         if use_paddlex_filter_boxes:
                             layout_res = self._apply_paddlex_filter_boxes(layout_res, drop_inline_formula=False)
+                        layout_res = self._apply_layout_post_process(layout_res)
                         results.append(layout_res)
                     pbar.update(len(batch_images))
         return results
@@ -1193,7 +1365,7 @@ class PPDocLayoutV2LayoutModel:
             color = _label_to_color(res["label"])
             draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=3)
 
-            text = f"{res['index']}: {res['label']} {res['cls_id']} {res['score']:.2f}"
+            text = f"{res['index']}: {res['label']} {res['score']:.2f}"
             text_top = int(round(ymin))
             text_bbox = draw.textbbox((0, 0), text, font=font)
             text_width = text_bbox[2] - text_bbox[0]
@@ -1250,7 +1422,7 @@ if __name__ == "__main__":
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
 
-    args.image = "/Users/myhloli/pdf/png/table_image2.png"
+    args.image = "/Users/myhloli/pdf/png/table_image.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,
