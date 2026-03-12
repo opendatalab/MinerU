@@ -11,6 +11,12 @@ class MagicModel:
         """为所有模型数据添加bbox信息(缩放，poly->bbox)"""
         self.__fix_axis()
 
+    @staticmethod
+    def __is_inline_formula_block(layout_det: dict) -> bool:
+        return (
+            layout_det.get('label') == 'inline_formula'
+            or layout_det.get('cls_id') == 15
+        )
 
     def __fix_axis(self):
         need_remove_list = []
@@ -29,6 +35,16 @@ class MagicModel:
                 need_remove_list.append(layout_det)
         for need_remove in need_remove_list:
             layout_dets.remove(need_remove)
+
+        next_index = 1
+        for layout_det in layout_dets:
+            if self.__is_inline_formula_block(layout_det):
+                layout_det.pop('index', None)
+                continue
+
+            if 'index' in layout_det:
+                layout_det['index'] = next_index
+                next_index += 1
 
 
     def __tie_up_category_by_distance_v3(self, subject_category_id, object_category_id):
