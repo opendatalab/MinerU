@@ -10,72 +10,13 @@ class MagicModel:
         self.__scale = scale
         """为所有模型数据添加bbox信息(缩放，poly->bbox)"""
         self.__fix_axis()
-        """删除置信度特别低的模型数据(<0.05),提高质量"""
-        self.__fix_by_remove_low_confidence()
-        """删除高iou(>0.9)数据中置信度较低的那个"""
-        self.__fix_by_remove_high_iou_and_low_confidence()
-        """将部分tbale_footnote修正为image_footnote"""
-        self.__fix_footnote()
-        """处理重叠的image_body和table_body"""
-        self.__fix_by_remove_overlap_image_table_body()
-
-    def __fix_by_remove_overlap_image_table_body(self):
-        need_remove_list = []
-        layout_dets = self.__page_model_info['layout_dets']
-        image_blocks = list(filter(
-            lambda x: x['category_id'] == CategoryId.ImageBody, layout_dets
-        ))
-        table_blocks = list(filter(
-            lambda x: x['category_id'] == CategoryId.TableBody, layout_dets
-        ))
-
-        def add_need_remove_block(blocks):
-            for i in range(len(blocks)):
-                for j in range(i + 1, len(blocks)):
-                    block1 = blocks[i]
-                    block2 = blocks[j]
-                    overlap_box = get_minbox_if_overlap_by_ratio(
-                        block1['bbox'], block2['bbox'], 0.8
-                    )
-                    if overlap_box is not None:
-                        # 判断哪个区块的面积更小，移除较小的区块
-                        area1 = (block1['bbox'][2] - block1['bbox'][0]) * (block1['bbox'][3] - block1['bbox'][1])
-                        area2 = (block2['bbox'][2] - block2['bbox'][0]) * (block2['bbox'][3] - block2['bbox'][1])
-
-                        if area1 <= area2:
-                            block_to_remove = block1
-                            large_block = block2
-                        else:
-                            block_to_remove = block2
-                            large_block = block1
-
-                        if block_to_remove not in need_remove_list:
-                            # 扩展大区块的边界框
-                            x1, y1, x2, y2 = large_block['bbox']
-                            sx1, sy1, sx2, sy2 = block_to_remove['bbox']
-                            x1 = min(x1, sx1)
-                            y1 = min(y1, sy1)
-                            x2 = max(x2, sx2)
-                            y2 = max(y2, sy2)
-                            large_block['bbox'] = [x1, y1, x2, y2]
-                            need_remove_list.append(block_to_remove)
-
-        # 处理图像-图像重叠
-        add_need_remove_block(image_blocks)
-        # 处理表格-表格重叠
-        add_need_remove_block(table_blocks)
-
-        # 从布局中移除标记的区块
-        for need_remove in need_remove_list:
-            if need_remove in layout_dets:
-                layout_dets.remove(need_remove)
 
 
     def __fix_axis(self):
         need_remove_list = []
         layout_dets = self.__page_model_info['layout_dets']
         for layout_det in layout_dets:
-            x0, y0, _, _, x1, y1, _, _ = layout_det['poly']
+            x0, y0, x1, y1 = layout_det['bbox']
             bbox = [
                 int(x0 / self.__scale),
                 int(y0 / self.__scale),
@@ -89,125 +30,6 @@ class MagicModel:
         for need_remove in need_remove_list:
             layout_dets.remove(need_remove)
 
-    def __fix_by_remove_low_confidence(self):
-        need_remove_list = []
-        layout_dets = self.__page_model_info['layout_dets']
-        for layout_det in layout_dets:
-            if layout_det['score'] <= 0.05:
-                need_remove_list.append(layout_det)
-            else:
-                continue
-        for need_remove in need_remove_list:
-            layout_dets.remove(need_remove)
-
-    def __fix_by_remove_high_iou_and_low_confidence(self):
-        need_remove_list = []
-        layout_dets = list(filter(
-            lambda x: x['category_id'] in [
-                    CategoryId.Title,
-                    CategoryId.Text,
-                    CategoryId.ImageBody,
-                    CategoryId.ImageCaption,
-                    CategoryId.TableBody,
-                    CategoryId.TableCaption,
-                    CategoryId.TableFootnote,
-                    CategoryId.InterlineEquation_Layout,
-                    CategoryId.InterlineEquationNumber_Layout,
-                ], self.__page_model_info['layout_dets']
-            )
-        )
-        for i in range(len(layout_dets)):
-            for j in range(i + 1, len(layout_dets)):
-                layout_det1 = layout_dets[i]
-                layout_det2 = layout_dets[j]
-
-                if calculate_iou(layout_det1['bbox'], layout_det2['bbox']) > 0.9:
-
-                    layout_det_need_remove = layout_det1 if layout_det1['score'] < layout_det2['score'] else layout_det2
-
-                    if layout_det_need_remove not in need_remove_list:
-                        need_remove_list.append(layout_det_need_remove)
-
-        for need_remove in need_remove_list:
-            self.__page_model_info['layout_dets'].remove(need_remove)
-
-    def __fix_footnote(self):
-        footnotes = []
-        figures = []
-        tables = []
-
-        for obj in self.__page_model_info['layout_dets']:
-            if obj['category_id'] == CategoryId.TableFootnote:
-                footnotes.append(obj)
-            elif obj['category_id'] == CategoryId.ImageBody:
-                figures.append(obj)
-            elif obj['category_id'] == CategoryId.TableBody:
-                tables.append(obj)
-            if len(footnotes) * len(figures) == 0:
-                continue
-        dis_figure_footnote = {}
-        dis_table_footnote = {}
-
-        for i in range(len(footnotes)):
-            for j in range(len(figures)):
-                pos_flag_count = sum(
-                    list(
-                        map(
-                            lambda x: 1 if x else 0,
-                            bbox_relative_pos(
-                                footnotes[i]['bbox'], figures[j]['bbox']
-                            ),
-                        )
-                    )
-                )
-                if pos_flag_count > 1:
-                    continue
-                dis_figure_footnote[i] = min(
-                    self._bbox_distance(figures[j]['bbox'], footnotes[i]['bbox']),
-                    dis_figure_footnote.get(i, float('inf')),
-                )
-        for i in range(len(footnotes)):
-            for j in range(len(tables)):
-                pos_flag_count = sum(
-                    list(
-                        map(
-                            lambda x: 1 if x else 0,
-                            bbox_relative_pos(
-                                footnotes[i]['bbox'], tables[j]['bbox']
-                            ),
-                        )
-                    )
-                )
-                if pos_flag_count > 1:
-                    continue
-
-                dis_table_footnote[i] = min(
-                    self._bbox_distance(tables[j]['bbox'], footnotes[i]['bbox']),
-                    dis_table_footnote.get(i, float('inf')),
-                )
-        for i in range(len(footnotes)):
-            if i not in dis_figure_footnote:
-                continue
-            if dis_table_footnote.get(i, float('inf')) > dis_figure_footnote[i]:
-                footnotes[i]['category_id'] = CategoryId.ImageFootnote
-
-    def _bbox_distance(self, bbox1, bbox2):
-        left, right, bottom, top = bbox_relative_pos(bbox1, bbox2)
-        flags = [left, right, bottom, top]
-        count = sum([1 if v else 0 for v in flags])
-        if count > 1:
-            return float('inf')
-        if left or right:
-            l1 = bbox1[3] - bbox1[1]
-            l2 = bbox2[3] - bbox2[1]
-        else:
-            l1 = bbox1[2] - bbox1[0]
-            l2 = bbox2[2] - bbox2[0]
-
-        if l2 > l1 and (l2 - l1) / l1 > 0.3:
-            return float('inf')
-
-        return bbox_distance(bbox1, bbox2)
 
     def __tie_up_category_by_distance_v3(self, subject_category_id, object_category_id):
         # 定义获取主体和客体对象的函数
