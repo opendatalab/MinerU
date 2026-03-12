@@ -3,11 +3,14 @@ from enum import Enum
 class BlockType:
     IMAGE = 'image'
     TABLE = 'table'
+    CHART = 'chart'
     IMAGE_BODY = 'image_body'
     TABLE_BODY = 'table_body'
+    CHART_BODY = 'chart_body'
     CAPTION = 'caption'  # generic caption type (e.g., for Word documents)
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
+    CHART_CAPTION = 'chart_caption'
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
     TEXT = 'text'
@@ -35,6 +38,7 @@ class BlockType:
 class ContentType:
     IMAGE = 'image'
     TABLE = 'table'
+    CHART = 'chart'
     TEXT = 'text'
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
@@ -49,6 +53,7 @@ class ContentTypeV2:
     EQUATION_INTERLINE = 'equation_interline'
     IMAGE = 'image'
     TABLE = 'table'
+    CHART = 'chart'
     TABLE_SIMPLE = 'simple_table'
     TABLE_COMPLEX = 'complex_table'
     LIST = 'list'

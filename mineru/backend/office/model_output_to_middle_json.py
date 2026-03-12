@@ -38,6 +38,36 @@ def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
     return img_path
 
 
+def _save_span_image_if_needed(span: dict, image_writer, page_index: int) -> None:
+    """Persist a span-level base64 image and normalize the image_path field."""
+    img_b64 = span.get("image_base64", "")
+    if img_b64:
+        img_path = _save_base64_image(img_b64, image_writer, page_index)
+        if img_path:
+            span["image_path"] = img_path
+            del span["image_base64"]
+            return
+    span.setdefault("image_path", "")
+
+
+def _replace_inline_base64_img_src(markup: str, image_writer, page_index: int) -> str:
+    """Replace inline base64 image sources in HTML-like markup with saved local paths."""
+    if not markup or "base64," not in markup:
+        return markup
+
+    def _replace_src(m_src, _writer=image_writer, _idx=page_index):
+        img_path = _save_base64_image(m_src.group(1), _writer, _idx)
+        if img_path:
+            return f'src="{img_path}"'
+        return m_src.group(0)
+
+    return re.sub(
+        r'src="(data:image/[^"]+)"',
+        _replace_src,
+        markup,
+    )
+
+
 def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     """将blocks转换为页面信息"""
 
@@ -52,15 +82,10 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                     continue
                 for line in sub_block.get("lines", []):
                     for span in line.get("spans", []):
-                        img_b64 = span.get("image_base64", "")
-                        if not img_b64:
-                            continue
-                        img_path = _save_base64_image(img_b64, image_writer, page_index)
-                        if img_path:
-                            span["image_path"] = img_path
-                            del span["image_base64"]
+                        _save_span_image_if_needed(span, image_writer, page_index)
 
     table_blocks = magic_model.get_table_blocks()
+    chart_blocks = magic_model.get_chart_blocks()
 
     # Replace inline base64 images inside table HTML with local paths
     if image_writer:
@@ -72,21 +97,35 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                     for span in line.get("spans", []):
                         if span.get("type") != "table":
                             continue
-                        html = span.get("html", "")
-                        if not html or "base64," not in html:
-                            continue
-
-                        def _replace_src(m_src, _writer=image_writer, _idx=page_index):
-                            img_path = _save_base64_image(m_src.group(1), _writer, _idx)
-                            if img_path:
-                                return f'src="{img_path}"'
-                            return m_src.group(0)  # keep original on failure
-
-                        span["html"] = re.sub(
-                            r'src="(data:image/[^"]+)"',
-                            _replace_src,
-                            html,
+                        span["html"] = _replace_inline_base64_img_src(
+                            span.get("html", ""),
+                            image_writer,
+                            page_index,
                         )
+
+        for chart_block in chart_blocks:
+            for sub_block in chart_block.get("blocks", []):
+                if sub_block.get("type") != "chart_body":
+                    continue
+                for line in sub_block.get("lines", []):
+                    for span in line.get("spans", []):
+                        if span.get("type") != "chart":
+                            continue
+                        _save_span_image_if_needed(span, image_writer, page_index)
+                        span["content"] = _replace_inline_base64_img_src(
+                            span.get("content", ""),
+                            image_writer,
+                            page_index,
+                        )
+    else:
+        for chart_block in chart_blocks:
+            for sub_block in chart_block.get("blocks", []):
+                if sub_block.get("type") != "chart_body":
+                    continue
+                for line in sub_block.get("lines", []):
+                    for span in line.get("spans", []):
+                        if span.get("type") == "chart":
+                            span.setdefault("image_path", "")
 
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
@@ -98,6 +137,7 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     page_blocks = []
     page_blocks.extend([
         *image_blocks,
+        *chart_blocks,
         *table_blocks,
         *title_blocks,
         *text_blocks,

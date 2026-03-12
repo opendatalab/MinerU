@@ -2455,13 +2455,13 @@ class DocxConverter:
                 ".//c:chart", namespaces=DocxConverter._BLIP_NAMESPACES
             )
             if chart is not None:
-                # 如果找到 chart 元素，构造空的表格块，后续回填html
-                table_block = {
-                    "type": BlockType.TABLE,
+                # 如果找到 chart 元素，构造空的图表块，后续回填 html。
+                chart_block = {
+                    "type": BlockType.CHART,
                     "content": "",
                 }
-                self.cur_page.append(table_block)
-                self.chart_list.append(table_block)
+                self.cur_page.append(chart_block)
+                self.chart_list.append(chart_block)
 
     def _add_chart_table(self):
         idx_xlsx_map = {}

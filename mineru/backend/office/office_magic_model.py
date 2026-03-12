@@ -22,7 +22,7 @@ class MagicModel:
 
             block_type = block_info["type"]
             block_content = block_info.get("content", "")
-            if not block_content:
+            if not block_content and block_type != BlockType.CHART:
                 continue
 
             if block_type in [
@@ -30,6 +30,7 @@ class MagicModel:
                 "title",
                 "image_caption",
                 "table_caption",
+                "chart_caption",
                 "header",
                 "footer",
             ]:
@@ -47,6 +48,15 @@ class MagicModel:
                     "type": ContentType.TABLE,
                     "html": clean_table_html(block_content),
                 }
+            elif block_type in ["chart"]:
+                block_type = BlockType.CHART_BODY
+                span = {
+                    "type": ContentType.CHART,
+                    "content": block_content,
+                    "image_path": block_info.get("image_path", ""),
+                }
+                if block_info.get("image_base64"):
+                    span["image_base64"] = block_info["image_base64"]
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
                 span = {
@@ -103,6 +113,7 @@ class MagicModel:
 
         self.image_blocks = []
         self.table_blocks = []
+        self.chart_blocks = []
         self.interline_equation_blocks = []
         self.text_blocks = []
         self.title_blocks = []
@@ -117,6 +128,8 @@ class MagicModel:
                 self.image_blocks.append(block)
             elif block["type"] in [BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]:
                 self.table_blocks.append(block)
+            elif block["type"] in [BlockType.CHART_BODY, BlockType.CHART_CAPTION]:
+                self.chart_blocks.append(block)
             elif block["type"] in [BlockType.CODE_BODY, BlockType.CODE_CAPTION]:
                 self.code_blocks.append(block)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
@@ -140,8 +153,9 @@ class MagicModel:
 
         self.image_blocks, not_include_image_blocks = fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
         self.table_blocks, not_include_table_blocks = fix_two_layer_blocks(self.table_blocks, BlockType.TABLE)
+        self.chart_blocks, not_include_chart_blocks = fix_two_layer_blocks(self.chart_blocks, BlockType.CHART)
 
-        for block in not_include_image_blocks + not_include_table_blocks:
+        for block in not_include_image_blocks + not_include_table_blocks + not_include_chart_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
@@ -157,6 +171,9 @@ class MagicModel:
 
     def get_table_blocks(self):
         return self.table_blocks
+
+    def get_chart_blocks(self):
+        return self.chart_blocks
 
     def get_code_blocks(self):
         return self.code_blocks
@@ -574,7 +591,7 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     )
 
 
-def get_type_blocks(blocks, block_type: Literal["image", "table"]):
+def get_type_blocks(blocks, block_type: Literal["image", "table", "chart"]):
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
     ret = []
     for v in with_captions:
@@ -586,7 +603,7 @@ def get_type_blocks(blocks, block_type: Literal["image", "table"]):
     return ret
 
 
-def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table"]):
+def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "chart"]):
     need_fix_blocks = get_type_blocks(blocks, fix_type)
     fixed_blocks = []
     not_include_blocks = []
@@ -657,27 +674,29 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table"]):
 
 def classify_caption_blocks(page_blocks: list) -> list:
     """
-    对page_blocks中的caption块进行分类，将其分类为image_caption或table_caption。
+    对page_blocks中的caption块进行分类，将其分类为image_caption、table_caption或chart_caption。
 
     规则：
-    1. 只有与type为table或image相邻的caption可以作为caption
-    2. caption块与table或image中相隔的块全部是caption的情况视为该caption块与table或image相邻
-    3. caption的类型与他前置位相邻的母块type一致（table或image），如果没有前置位母块则检查是否有后置位母块
+    1. 只有与type为table、image或chart相邻的caption可以作为caption
+    2. caption块与table、image或chart中相隔的块全部是caption的情况视为该caption块与母块相邻
+    3. caption的类型与他前置位相邻的母块type一致，如果没有前置位母块则检查是否有后置位母块
     4. 没有相邻母块的caption需要变更type为text
-    5. 当一个block的type是table或image时，其后续的第一个text块如果以特定前缀开头，则将其设置为相应的caption类型
+    5. 当一个block的type是table、image或chart时，其后续的第一个text块如果以特定前缀开头，则将其设置为相应的caption类型
        - table后的text块以["表", "table"]开头（不区分大小写）-> table_caption
        - image后的text块以["图", "fig"]开头（不区分大小写）-> image_caption
+       - chart后的text块以["图", "fig", "chart"]开头（不区分大小写）-> chart_caption
     """
     if not page_blocks:
         return page_blocks
 
-    available_types = ["table", "image"]
+    available_types = ["table", "image", "chart"]
 
     # 定义caption前缀匹配规则
     table_caption_prefixes = ["表", "table"]
     image_caption_prefixes = ["图", "fig"]
+    chart_caption_prefixes = ["图", "fig", "chart"]
 
-    # 第一步：处理table/image后续的text块，将符合条件的text块标记为caption
+    # 第一步：处理table/image/chart后续的text块，将符合条件的text块标记为caption
     preprocessed_blocks = []
     n = len(page_blocks)
 
@@ -709,6 +728,12 @@ def classify_caption_blocks(page_blocks: list) -> list:
                             next_block = next_block.copy()
                             next_block["type"] = "caption"
                             page_blocks[i + 1] = next_block
+                    elif block_type == "chart":
+                        if any(content.startswith(prefix.lower()) for prefix in chart_caption_prefixes):
+                            # 将text块标记为caption，后续会被处理为chart_caption
+                            next_block = next_block.copy()
+                            next_block["type"] = "caption"
+                            page_blocks[i + 1] = next_block
         else:
             preprocessed_blocks.append(block)
 
@@ -720,7 +745,7 @@ def classify_caption_blocks(page_blocks: list) -> list:
             result_blocks.append(block)
             continue
 
-        # 查找前置位相邻的母块（table或image）
+        # 查找前置位相邻的母块（table、image或chart）
         # 向前查找，跳过连续的caption块
         prev_parent_type = None
         j = i - 1
@@ -733,10 +758,10 @@ def classify_caption_blocks(page_blocks: list) -> list:
                 # 继续向前查找
                 j -= 1
             else:
-                # 遇到非caption且非table/image的块，停止查找
+                # 遇到非caption且非table/image/chart的块，停止查找
                 break
 
-        # 查找后置位相邻的母块（table或image）
+        # 查找后置位相邻的母块（table、image或chart）
         # 向后查找，跳过连续的caption块
         next_parent_type = None
         k = i + 1
@@ -749,7 +774,7 @@ def classify_caption_blocks(page_blocks: list) -> list:
                 # 继续向后查找
                 k += 1
             else:
-                # 遇到非caption且非table/image的块，停止查找
+                # 遇到非caption且非table/image/chart的块，停止查找
                 break
 
         # 根据规则确定caption类型
