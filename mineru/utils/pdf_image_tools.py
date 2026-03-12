@@ -11,6 +11,7 @@ from PIL import Image, ImageOps
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
+from mineru.utils.bbox_utils import normalize_to_int_bbox
 from mineru.utils.os_env_config import get_load_images_timeout, get_load_images_threads
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
@@ -246,13 +247,10 @@ def cut_image(
 
 
 def get_crop_img(bbox: tuple, pil_img, scale=2):
-    scale_bbox = (
-        int(bbox[0] * scale),
-        int(bbox[1] * scale),
-        int(bbox[2] * scale),
-        int(bbox[3] * scale),
-    )
-    return pil_img.crop(scale_bbox)
+    scale_bbox = normalize_to_int_bbox([float(v) * scale for v in bbox])
+    if scale_bbox is None:
+        return pil_img.crop((0, 0, 0, 0))
+    return pil_img.crop(tuple(scale_bbox))
 
 
 def get_crop_np_img(bbox: tuple, input_img, scale=2):
@@ -263,12 +261,13 @@ def get_crop_np_img(bbox: tuple, input_img, scale=2):
     else:
         raise ValueError("Input must be a pillow object or a numpy array.")
 
-    scale_bbox = (
-        int(bbox[0] * scale),
-        int(bbox[1] * scale),
-        int(bbox[2] * scale),
-        int(bbox[3] * scale),
+    height, width = np_img.shape[:2]
+    scale_bbox = normalize_to_int_bbox(
+        [float(v) * scale for v in bbox],
+        image_size=(height, width),
     )
+    if scale_bbox is None:
+        return np_img[0:0, 0:0]
 
     return np_img[scale_bbox[1] : scale_bbox[3], scale_bbox[0] : scale_bbox[2]]
 

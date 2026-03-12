@@ -1,3 +1,4 @@
+import math
 import os
 import time
 import gc
@@ -40,7 +41,7 @@ def _get_bbox(item):
 
 def _get_int_bbox(item):
     xmin, ymin, xmax, ymax = _get_bbox(item)
-    return int(xmin), int(ymin), int(xmax), int(ymax)
+    return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
 
 
 def _set_bbox(item, bbox):

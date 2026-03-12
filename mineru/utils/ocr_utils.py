@@ -3,6 +3,8 @@ import copy
 import cv2
 import numpy as np
 
+from .bbox_utils import normalize_to_int_bbox
+
 
 class OcrConfidence:
     min_confidence = 0.5
@@ -386,12 +388,9 @@ def get_ocr_result_list(
         p3 = [p3[0] - paste_x + xmin, p3[1] - paste_y + ymin]
         p4 = [p4[0] - paste_x + xmin, p4[1] - paste_y + ymin]
 
-        bbox = [
-            float(round(p1[0], 4)),
-            float(round(p1[1], 4)),
-            float(round(p3[0], 4)),
-            float(round(p3[1], 4)),
-        ]
+        bbox = normalize_to_int_bbox([p1, p2, p3, p4])
+        if bbox is None:
+            continue
 
         ocr_item = {
             "label": "ocr_text",

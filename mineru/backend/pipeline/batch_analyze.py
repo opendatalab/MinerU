@@ -15,6 +15,7 @@ from ...model.table.rec.unet_table.utils_table_recover import (
     sorted_ocr_boxes as sorted_table_boxes,
 )
 from ...utils.config_reader import get_formula_enable, get_table_enable
+from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res, clean_vram
 from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
 from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
@@ -37,32 +38,8 @@ class BatchAnalyze:
         self.enable_ocr_det_batch = enable_ocr_det_batch
 
     @staticmethod
-    def _normalize_bbox(box) -> list[float] | None:
-        arr = np.asarray(box, dtype=np.float32)
-        if arr.size == 0:
-            return None
-        if arr.ndim == 2 and arr.shape[-1] == 2:
-            xs = arr[:, 0]
-            ys = arr[:, 1]
-        else:
-            flat = arr.reshape(-1)
-            if flat.size == 4:
-                return [
-                    float(flat[0]),
-                    float(flat[1]),
-                    float(flat[2]),
-                    float(flat[3]),
-                ]
-            if flat.size < 8:
-                return None
-            xs = flat[0::2]
-            ys = flat[1::2]
-        return [
-            float(np.min(xs)),
-            float(np.min(ys)),
-            float(np.max(xs)),
-            float(np.max(ys)),
-        ]
+    def _normalize_bbox(box) -> list[int] | None:
+        return normalize_to_int_bbox(box)
 
     @staticmethod
     def _bbox_center(bbox) -> tuple[float, float]:
@@ -76,9 +53,9 @@ class BatchAnalyze:
         )
 
     @staticmethod
-    def _rotate_local_bbox(local_bbox: list[float], table_width: float, table_height: float, rotate_label: str) -> list[float]:
+    def _rotate_local_bbox(local_bbox: list[float], table_width: float, table_height: float, rotate_label: str) -> list[int]:
         if rotate_label not in {"90", "270"}:
-            return local_bbox
+            return normalize_to_int_bbox(local_bbox)
 
         corners = np.asarray(
             [
@@ -99,12 +76,7 @@ class BatchAnalyze:
                 [[y, table_width - x] for x, y in corners],
                 dtype=np.float32,
             )
-        return [
-            float(np.min(rotated[:, 0])),
-            float(np.min(rotated[:, 1])),
-            float(np.max(rotated[:, 0])),
-            float(np.max(rotated[:, 1])),
-        ]
+        return normalize_to_int_bbox(rotated)
 
     def _page_bbox_to_table_bbox(self, item_bbox: list[float], table_bbox: list[float], rotate_label: str) -> list[float]:
         table_width = float(table_bbox[2] - table_bbox[0])
@@ -120,12 +92,10 @@ class BatchAnalyze:
     @staticmethod
     def _crop_image_to_data_uri(page_np_img: np.ndarray, bbox: list[float]) -> str:
         h, w = page_np_img.shape[:2]
-        x0 = max(int(np.floor(bbox[0])), 0)
-        y0 = max(int(np.floor(bbox[1])), 0)
-        x1 = min(int(np.ceil(bbox[2])), w)
-        y1 = min(int(np.ceil(bbox[3])), h)
-        if x0 >= x1 or y0 >= y1:
+        int_bbox = normalize_to_int_bbox(bbox, image_size=(h, w))
+        if int_bbox is None:
             return ""
+        x0, y0, x1, y1 = int_bbox
 
         crop = page_np_img[y0:y1, x0:x1]
         if crop.size == 0:
@@ -344,10 +314,11 @@ class BatchAnalyze:
 
             for table_res in table_res_list:
                 def get_crop_table_img(scale):
-                    crop_xmin, crop_ymin, crop_xmax, crop_ymax = [
-                        int(v) for v in table_res["bbox"]
-                    ]
-                    bbox = (int(crop_xmin / scale), int(crop_ymin / scale), int(crop_xmax / scale), int(crop_ymax / scale))
+                    bbox = normalize_to_int_bbox(
+                        [float(v) / float(scale) for v in table_res["bbox"]]
+                    )
+                    if bbox is None:
+                        return np_img[0:0, 0:0]
                     return get_crop_np_img(bbox, np_img, scale=scale)
 
                 wireless_table_img = get_crop_table_img(scale = 1)
