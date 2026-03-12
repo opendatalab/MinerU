@@ -235,6 +235,41 @@ class BatchAnalyze:
 
         return rich_items
 
+    def _should_remove_table_internal_layout_item(
+        self,
+        layout_item: dict,
+        table_bbox: list[float],
+    ) -> bool:
+        label = layout_item.get("label")
+        if label not in {"display_formula", "inline_formula", *TABLE_RICH_IMAGE_LABELS}:
+            return False
+
+        item_bbox = layout_item.get("bbox")
+        if item_bbox is None:
+            return False
+
+        center = self._bbox_center(item_bbox)
+        return self._point_in_bbox(center, table_bbox, tolerance=0.5)
+
+    def _remove_table_internal_layout_items(self, table_res_list_all_page: list[dict]) -> None:
+        for table_res_dict in table_res_list_all_page:
+            table_bbox = table_res_dict["table_res"].get("bbox")
+            if table_bbox is None:
+                continue
+
+            page_layout_res = table_res_dict.get("page_layout_res")
+            if not page_layout_res:
+                continue
+
+            page_layout_res[:] = [
+                layout_item
+                for layout_item in page_layout_res
+                if not self._should_remove_table_internal_layout_item(
+                    layout_item,
+                    table_bbox,
+                )
+            ]
+
     @staticmethod
     def _match_cell_index(item_bbox: list[float], cell_bboxes: list[list[float]]) -> int | None:
         if not cell_bboxes:
@@ -615,6 +650,8 @@ class BatchAnalyze:
                     start_index = html_code.find("<table>")
                     end_index = html_code.rfind("</table>") + len("</table>")
                     table_res_dict["table_res"]["html"] = html_code[start_index:end_index]
+
+            self._remove_table_internal_layout_items(table_res_list_all_page)
 
         # OCR det
         if self.enable_ocr_det_batch:
