@@ -24,6 +24,8 @@ from transformers.models.rt_detr.configuration_rt_detr import RTDetrConfig
 from transformers.models.rt_detr.modeling_rt_detr import RTDetrForObjectDetection, RTDetrModel, RTDetrPreTrainedModel
 from transformers.utils import ModelOutput
 
+from mineru.utils.bbox_utils import normalize_to_int_bbox
+
 DEFAULT_IMAGE_SIZE = (800, 800)
 DEFAULT_RESCALE_FACTOR = 1.0 / 255.0
 
@@ -989,16 +991,8 @@ class PPDocLayoutV2LayoutModel:
         return str(self.config.id2label.get(label_id, self.config.id2label.get(str(label_id), label_id)))
 
     @staticmethod
-    def _clip_bbox(box: Sequence[float], image_size: Tuple[int, int]) -> Optional[List[float]]:
-        height, width = image_size
-        xmin, ymin, xmax, ymax = [float(v) for v in box]
-        xmin = max(0.0, min(float(width), xmin))
-        xmax = max(0.0, min(float(width), xmax))
-        ymin = max(0.0, min(float(height), ymin))
-        ymax = max(0.0, min(float(height), ymax))
-        if xmax <= xmin or ymax <= ymin:
-            return None
-        return [round(xmin, 4), round(ymin, 4), round(xmax, 4), round(ymax, 4)]
+    def _clip_bbox(box: Sequence[float], image_size: Tuple[int, int]) -> Optional[List[int]]:
+        return normalize_to_int_bbox(box, image_size=image_size)
 
     def _parse_prediction(self, result: Dict[str, torch.Tensor], image_size: Tuple[int, int]) -> List[Dict]:
         layout_res = []
@@ -1100,14 +1094,14 @@ class PPDocLayoutV2LayoutModel:
         box["cls_id"] = cls_id
 
     @staticmethod
-    def _union_bbox(box1: Sequence[float], box2: Sequence[float]) -> List[float]:
+    def _union_bbox(box1: Sequence[float], box2: Sequence[float]) -> List[int]:
         x1_min, y1_min, x1_max, y1_max = [float(v) for v in box1]
         x2_min, y2_min, x2_max, y2_max = [float(v) for v in box2]
         return [
-            round(min(x1_min, x2_min), 4),
-            round(min(y1_min, y2_min), 4),
-            round(max(x1_max, x2_max), 4),
-            round(max(y1_max, y2_max), 4),
+            math.floor(min(x1_min, x2_min)),
+            math.floor(min(y1_min, y2_min)),
+            math.ceil(max(x1_max, x2_max)),
+            math.ceil(max(y1_max, y2_max)),
         ]
 
     @staticmethod
@@ -1422,7 +1416,7 @@ if __name__ == "__main__":
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
 
-    args.image = "/Users/myhloli/pdf/png/table_image.png"
+    args.image = "/Users/myhloli/pdf/png/table_image3.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,

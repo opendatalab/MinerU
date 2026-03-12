@@ -119,6 +119,12 @@ def get_table_enable(table_enable):
     return table_enable
 
 
+def get_ocr_det_mask_inline_formula_enable(enable):
+    enable_env = os.getenv('MINERU_OCR_DET_MASK_INLINE_FORMULA_ENABLE')
+    enable = enable if enable_env is None else enable_env.lower() == 'true'
+    return enable
+
+
 def get_latex_delimiter_config():
     config = read_config()
     if config is None:
