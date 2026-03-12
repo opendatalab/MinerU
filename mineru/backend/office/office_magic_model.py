@@ -14,7 +14,7 @@ class MagicModel:
         blocks = []
         self.all_spans = []
 
-        # 对caption块进行分类，将其分类为image_caption或table_caption
+        # 对caption块进行分类，将其分类为image_caption, table_caption, chart_caption
         page_blocks = classify_caption_blocks(page_blocks)
 
         # 解析每个块
@@ -53,7 +53,6 @@ class MagicModel:
                 span = {
                     "type": ContentType.CHART,
                     "content": block_content,
-                    "image_path": block_info.get("image_path", ""),
                 }
                 if block_info.get("image_base64"):
                     span["image_base64"] = block_info["image_base64"]
@@ -117,10 +116,7 @@ class MagicModel:
         self.interline_equation_blocks = []
         self.text_blocks = []
         self.title_blocks = []
-        self.code_blocks = []
         self.discarded_blocks = []
-        self.ref_text_blocks = []
-        self.phonetic_blocks = []
         self.list_blocks = []
         self.index_blocks = []
         for block in blocks:
@@ -130,8 +126,6 @@ class MagicModel:
                 self.table_blocks.append(block)
             elif block["type"] in [BlockType.CHART_BODY, BlockType.CHART_CAPTION]:
                 self.chart_blocks.append(block)
-            elif block["type"] in [BlockType.CODE_BODY, BlockType.CODE_CAPTION]:
-                self.code_blocks.append(block)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
                 self.interline_equation_blocks.append(block)
             elif block["type"] == BlockType.TEXT:

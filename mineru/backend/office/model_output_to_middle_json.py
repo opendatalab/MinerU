@@ -73,9 +73,12 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
 
     magic_model = MagicModel(page_blocks)
     image_blocks = magic_model.get_image_blocks()
+    table_blocks = magic_model.get_table_blocks()
+    chart_blocks = magic_model.get_chart_blocks()
 
-    # Write embedded images to local storage via image_writer
     if image_writer:
+
+        # Write embedded images to local storage via image_writer
         for img_block in image_blocks:
             for sub_block in img_block.get("blocks", []):
                 if sub_block.get("type") != "image_body":
@@ -84,11 +87,7 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                     for span in line.get("spans", []):
                         _save_span_image_if_needed(span, image_writer, page_index)
 
-    table_blocks = magic_model.get_table_blocks()
-    chart_blocks = magic_model.get_chart_blocks()
-
-    # Replace inline base64 images inside table HTML with local paths
-    if image_writer:
+        # Replace inline base64 images inside table HTML with local paths
         for tbl_block in table_blocks:
             for sub_block in tbl_block.get("blocks", []):
                 if sub_block.get("type") != "table_body":
@@ -103,6 +102,7 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                             page_index,
                         )
 
+        # Replace inline base64 images inside chart content with local paths
         for chart_block in chart_blocks:
             for sub_block in chart_block.get("blocks", []):
                 if sub_block.get("type") != "chart_body":
@@ -112,20 +112,6 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
                         if span.get("type") != "chart":
                             continue
                         _save_span_image_if_needed(span, image_writer, page_index)
-                        span["content"] = _replace_inline_base64_img_src(
-                            span.get("content", ""),
-                            image_writer,
-                            page_index,
-                        )
-    else:
-        for chart_block in chart_blocks:
-            for sub_block in chart_block.get("blocks", []):
-                if sub_block.get("type") != "chart_body":
-                    continue
-                for line in sub_block.get("lines", []):
-                    for span in line.get("spans", []):
-                        if span.get("type") == "chart":
-                            span.setdefault("image_path", "")
 
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
