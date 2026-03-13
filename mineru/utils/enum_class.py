@@ -13,6 +13,7 @@ class BlockType:
     CHART_CAPTION = 'chart_caption'
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
+    Chart_FOOTNOTE = 'chart_footnote'
     TEXT = 'text'
     TITLE = 'title'
     INTERLINE_EQUATION = 'interline_equation'
@@ -34,6 +35,14 @@ class BlockType:
     ASIDE_TEXT = "aside_text"
     PAGE_FOOTNOTE = "page_footnote"
 
+    # Added in pp_doclayout_v2
+    ABSTRACT = "abstract"
+    DOC_TITLE = "doc_title"
+    PARAGRAPH_TITLE = "paragraph_title"
+    VERTICAL_TEXT = "vertical_text"
+    SEAL = "seal"
+    HEADER_IMAGE = "header_image"
+    FOOTER_IMAGE = "footer_image"
 
 class ContentType:
     IMAGE = 'image'
@@ -72,24 +81,6 @@ class ContentTypeV2:
     PAGE_NUMBER = "page_number"
     PAGE_ASIDE_TEXT = "page_aside_text"
     PAGE_FOOTNOTE = "page_footnote"
-
-
-class CategoryId:
-    Title = 0
-    Text = 1
-    Abandon = 2
-    ImageBody = 3
-    ImageCaption = 4
-    TableBody = 5
-    TableCaption = 6
-    TableFootnote = 7
-    InterlineEquation_Layout = 8
-    InterlineEquationNumber_Layout = 9
-    InlineEquation = 13
-    InterlineEquation_YOLO = 14
-    OcrText = 15
-    LowScoreText = 16
-    ImageFootnote = 101
 
 
 class MakeMode:

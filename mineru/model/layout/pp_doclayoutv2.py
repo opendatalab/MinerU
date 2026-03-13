@@ -30,31 +30,31 @@ DEFAULT_IMAGE_SIZE = (800, 800)
 DEFAULT_RESCALE_FACTOR = 1.0 / 255.0
 
 PP_DOCLAYOUT_V2_LABELS = [
-    "abstract",           # 0
-    "algorithm",          # 1
-    "aside_text",         # 2
-    "chart",              # 3
-    "content",            # 4
-    "display_formula",    # 5
-    "doc_title",          # 6
-    "figure_title",       # 7
-    "footer",             # 8
-    "footer_image",       # 9
-    "footnote",           # 10
-    "formula_number",     # 11
-    "header",             # 12
-    "header_image",       # 13
-    "image",              # 14
-    "inline_formula",     # 15
-    "number",             # 16
-    "paragraph_title",    # 17
-    "reference",          # 18
-    "reference_content",  # 19
-    "seal",               # 20
-    "table",              # 21
-    "text",               # 22
-    "vertical_text",      # 23
-    "vision_footnote",    # 24
+    "abstract",           # 0 论文摘要
+    "algorithm",          # 1 算法
+    "aside_text",         # 2 页边注文本，通常位于页面边缘，提供补充信息或注释，与主内容相关但不直接包含在内
+    "chart",              # 3 图表，通常包含数据可视化元素，如柱状图、折线图、饼图等，用于展示数据关系和趋势
+    "content",            # 4 只在大的目录块中出现，其他地方未见
+    "display_formula",    # 5 独立展示的公式，通常占据整行或多行，具有较大字体和清晰的布局，以突出其重要性和可读性
+    "doc_title",          # 6 文章标题，一篇文章的主标题
+    "figure_title",       # 7 image/chart/table的caption
+    "footer",             # 8 页脚文本
+    "footer_image",       # 9 页脚图片
+    "footnote",           # 10 page footnote，通常位于页面底部，提供对正文中特定内容的补充说明、引用来源或其他相关信息
+    "formula_number",     # 11 公式编号，通常与display_formula配合使用，标识独立展示的公式在文档中的位置和顺序，便于引用和索引
+    "header",             # 12 页眉文本
+    "header_image",       # 13 页眉图片
+    "image",              # 14 图片
+    "inline_formula",     # 15 行内公式
+    "number",             # 16 页码
+    "paragraph_title",    # 17 段落标题，有别与文章标题
+    "reference",          # 18 参考文献，list外框
+    "reference_content",  # 19 参考文献内容，list item
+    "seal",               # 20 印章
+    "table",              # 21 表格
+    "text",               # 22 一般文本
+    "vertical_text",      # 23 竖排文本
+    "vision_footnote",    # 24 image/chart/table的footnote
 ]
 
 # Per-class confidence threshold used before reading-order decoding.
@@ -1416,7 +1416,7 @@ if __name__ == "__main__":
                 os.path.join(auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2), ModelPath.pp_doclayout_v2)
             )
 
-    args.image = "/Users/myhloli/pdf/png/table_image3.png"
+    args.image = "/Users/myhloli/pdf/png/index.png"
 
     model = PPDocLayoutV2LayoutModel(
         weight=args.model,
