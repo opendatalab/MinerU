@@ -11,6 +11,7 @@ class BlockType:
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
     CHART_CAPTION = 'chart_caption'
+    FOOTNOTE = 'footnote'  # pp_layout中的vision_footnote
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
     Chart_FOOTNOTE = 'chart_footnote'
@@ -43,6 +44,7 @@ class BlockType:
     SEAL = "seal"
     HEADER_IMAGE = "header_image"
     FOOTER_IMAGE = "footer_image"
+    FORMULA_NUMBER = "formula_number"
 
 class ContentType:
     IMAGE = 'image'

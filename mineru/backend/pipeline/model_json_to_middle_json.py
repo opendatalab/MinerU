@@ -28,10 +28,17 @@ from mineru.utils.hash_utils import bytes_md5
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False, formula_enabled=True):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
-    # page_img_md5 = str_md5(image_dict["img_base64"])
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     page_w, page_h = map(int, page.get_size())
-    magic_model = MagicModel(page_model_info, scale)
+    magic_model = MagicModel(
+        page_model_info,
+        page,
+        scale,
+        page_pil_img,
+        page_w,
+        page_h,
+        ocr_enable
+    )
 
     """从magic_model对象中获取后面会用到的区块信息"""
     discarded_blocks = magic_model.get_discarded()
@@ -39,133 +46,8 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     title_blocks = magic_model.get_title_blocks()
     inline_equations, interline_equations, interline_equation_blocks = magic_model.get_equations()
 
-    img_groups = magic_model.get_imgs()
-    table_groups = magic_model.get_tables()
-
-    """对image和table的区块分组"""
-    img_body_blocks, img_caption_blocks, img_footnote_blocks, maybe_text_image_blocks = process_groups(
-        img_groups, 'image_body', 'image_caption_list', 'image_footnote_list'
-    )
-
-    table_body_blocks, table_caption_blocks, table_footnote_blocks, _ = process_groups(
-        table_groups, 'table_body', 'table_caption_list', 'table_footnote_list'
-    )
-
     """获取所有的spans信息"""
     spans = magic_model.get_all_spans()
-
-    """某些图可能是文本块，通过简单的规则判断一下"""
-    if len(maybe_text_image_blocks) > 0:
-        for block in maybe_text_image_blocks:
-            should_add_to_text_blocks = False
-
-            if ocr_enable:
-                # 找到与当前block重叠的text spans
-                span_in_block_list = [
-                    span for span in spans
-                    if span['type'] == 'text' and
-                       calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block['bbox']) > 0.7
-                ]
-
-                if len(span_in_block_list) > 0:
-                    # 计算spans总面积
-                    spans_area = sum(
-                        (span['bbox'][2] - span['bbox'][0]) * (span['bbox'][3] - span['bbox'][1])
-                        for span in span_in_block_list
-                    )
-
-                    # 计算block面积
-                    block_area = (block['bbox'][2] - block['bbox'][0]) * (block['bbox'][3] - block['bbox'][1])
-
-                    # 判断是否符合文本图条件
-                    if block_area > 0 and spans_area / block_area > 0.25:
-                        should_add_to_text_blocks = True
-
-            # 根据条件决定添加到哪个列表
-            if should_add_to_text_blocks:
-                block.pop('group_id', None)  # 移除group_id
-                text_blocks.append(block)
-            else:
-                img_body_blocks.append(block)
-
-
-    """将所有区块的bbox整理到一起"""
-    if formula_enabled:
-        interline_equation_blocks = []
-
-    if len(interline_equation_blocks) > 0:
-
-        for block in interline_equation_blocks:
-            spans.append({
-                "type": ContentType.INTERLINE_EQUATION,
-                'score': block['score'],
-                "bbox": block['bbox'],
-                "content": "",
-            })
-
-        all_bboxes, all_discarded_blocks, footnote_blocks = prepare_block_bboxes(
-            img_body_blocks, img_caption_blocks, img_footnote_blocks,
-            table_body_blocks, table_caption_blocks, table_footnote_blocks,
-            discarded_blocks,
-            text_blocks,
-            title_blocks,
-            interline_equation_blocks,
-            page_w,
-            page_h,
-        )
-    else:
-        all_bboxes, all_discarded_blocks, footnote_blocks = prepare_block_bboxes(
-            img_body_blocks, img_caption_blocks, img_footnote_blocks,
-            table_body_blocks, table_caption_blocks, table_footnote_blocks,
-            discarded_blocks,
-            text_blocks,
-            title_blocks,
-            interline_equations,
-            page_w,
-            page_h,
-        )
-
-    """在删除重复span之前，应该通过image_body和table_body的block过滤一下image和table的span"""
-    """顺便删除大水印并保留abandon的span"""
-    spans = remove_outside_spans(spans, all_bboxes, all_discarded_blocks)
-
-    """删除重叠spans中置信度较低的那些"""
-    spans, dropped_spans_by_confidence = remove_overlaps_low_confidence_spans(spans)
-    """删除重叠spans中较小的那些"""
-    spans, dropped_spans_by_span_overlap = remove_overlaps_min_spans(spans)
-
-    """根据parse_mode，构造spans，主要是文本类的字符填充"""
-    if ocr_enable:
-        pass
-    else:
-        """使用新版本的混合ocr方案."""
-        spans = txt_spans_extract(page, spans, page_pil_img, scale, all_bboxes, all_discarded_blocks)
-
-    """先处理不需要排版的discarded_blocks"""
-    discarded_block_with_spans, spans = fill_spans_in_blocks(
-        all_discarded_blocks, spans, 0.4
-    )
-    fix_discarded_blocks = fix_discarded_block(discarded_block_with_spans)
-
-    """如果当前页面没有有效的bbox则跳过"""
-    if len(all_bboxes) == 0 and len(fix_discarded_blocks) == 0:
-        return None
-
-    """对image/table/interline_equation截图"""
-    for span in spans:
-        if span['type'] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
-            span = cut_image_and_table(
-                span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale
-            )
-
-    """span填充进block"""
-    block_with_spans, spans = fill_spans_in_blocks(all_bboxes, spans, 0.5)
-
-    """对block进行fix操作"""
-    fix_blocks = fix_block_spans(block_with_spans)
-
-    """对block进行排序"""
-    sorted_blocks = sort_blocks_by_bbox(fix_blocks, page_w, page_h, footnote_blocks)
 
     """构造page_info"""
     page_info = make_page_info_dict(sorted_blocks, page_index, page_w, page_h, fix_discarded_blocks)
