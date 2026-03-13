@@ -28,6 +28,22 @@ Multilingual_PP-OCRv3_det_infer:
     name: DBHead
     k: 50
 
+seal_PP-OCRv4_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.75
+    det: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
 ch_PP-OCRv5_det_infer:
   model_type: det
   algorithm: DB
