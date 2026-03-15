@@ -54,11 +54,45 @@
 > [!IMPORTANT]
 > 2.5版本vlm后端的输出存在较大变化，与pipeline版本存在不兼容情况，如需基于结构化输出进行二次开发，请仔细阅读本文档内容。
 
+### 快速指南：提取分页文本
+
+对于需要按页面组织提取文本内容的下游应用：
+
+- **不要使用** `*_model.json` — 该文件仅包含布局几何信息（边界框、类别、置信度分数），**不包含文本内容**
+- **应使用** `*_content_list.json` — 该文件包含实际文本内容及页面索引
+- **页面映射**：使用 `page_idx` 字段（从0开始）按页面分组内容块
+
+示例代码：
+```python
+import json
+
+# 加载内容列表
+with open('document_content_list.json') as f:
+    content_list = json.load(f)
+
+# 按页面分组
+pages = {}
+for block in content_list:
+    page_idx = block['page_idx']
+    if page_idx not in pages:
+        pages[page_idx] = []
+    pages[page_idx].append(block)
+
+# 提取第0页的文本
+page_0_text = []
+for block in pages[0]:
+    if block['type'] == 'text':
+        page_0_text.append(block['text'])
+```
+
 ### pipeline 后端 输出结果
 
 #### 模型推理结果 (model.json)
 
 **文件命名格式**：`{原文件名}_model.json`
+
+> [!NOTE]
+> 该文件仅包含**布局检测结果**（边界框、类别、置信度分数），**不包含**提取的文本内容。如需提取文本，请使用 `*_content_list.json`。
 
 ##### 数据结构定义
 
@@ -350,6 +384,9 @@ inference_result: list[PageInferenceResults] = []
 #### 内容列表 (content_list.json)
 
 **文件命名格式**：`{原文件名}_content_list.json`
+
+> [!TIP]
+> **这是提取文本的主要文件。** 与 `*_model.json`（仅含几何信息）不同，`*_content_list.json` 包含实际文本内容和页面索引，便于按页提取。
 
 ##### 功能说明
 
