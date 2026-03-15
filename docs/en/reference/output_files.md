@@ -54,11 +54,45 @@ The following sections provide detailed descriptions of each file's purpose and 
 > [!IMPORTANT]
 > The VLM backend output has significant changes in version 2.5 and is not backward-compatible with the pipeline backend. If you plan to build secondary development on structured outputs, please read this document carefully.
 
+### Quick Guide: Extracting Per-Page Text
+
+For downstream applications that need to extract text content organized by page:
+
+- **DO NOT use** `*_model.json` — this file contains only layout geometry (bounding boxes, categories, scores) with **no text content**
+- **USE** `*_content_list.json` — this file contains the actual text content along with the page index
+- **Page mapping**: Use the `page_idx` field (0-indexed) to group content blocks by page
+
+Example workflow:
+```python
+import json
+
+# Load content list
+with open('document_content_list.json') as f:
+    content_list = json.load(f)
+
+# Group by page
+pages = {}
+for block in content_list:
+    page_idx = block['page_idx']
+    if page_idx not in pages:
+        pages[page_idx] = []
+    pages[page_idx].append(block)
+
+# Extract text from page 0
+page_0_text = []
+for block in pages[0]:
+    if block['type'] == 'text':
+        page_0_text.append(block['text'])
+```
+
 ### Pipeline Backend Output Results
 
 #### Model Inference Results (model.json)
 
 **File naming format**: `{original_filename}_model.json`
+
+> [!NOTE]
+> This file contains **layout detection results only** (bounding boxes, categories, confidence scores). It does **not** contain extracted text content. For text extraction, use `*_content_list.json` instead.
 
 ##### Data Structure Definition
 
@@ -350,6 +384,9 @@ Level 1 blocks (table | image)
 #### Content List (content_list.json)
 
 **File naming format**: `{original_filename}_content_list.json`
+
+> [!TIP]
+> **This is the primary file for text extraction.** Unlike `*_model.json` (which only has geometry), `*_content_list.json` contains actual text content with page indices for easy per-page extraction.
 
 ##### Functionality
 
