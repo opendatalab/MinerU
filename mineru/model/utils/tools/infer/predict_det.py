@@ -18,6 +18,7 @@ class TextDetector(BaseOCRV20):
             'DetResizeForTest': {
                 'limit_side_len': args.det_limit_side_len,
                 'limit_type': args.det_limit_type,
+                'max_side_limit': args.det_max_side_limit,
             }
         }, {
             'NormalizeImage': {
@@ -42,6 +43,7 @@ class TextDetector(BaseOCRV20):
             postprocess_params["unclip_ratio"] = args.det_db_unclip_ratio
             postprocess_params["use_dilation"] = args.use_dilation
             postprocess_params["score_mode"] = args.det_db_score_mode
+            postprocess_params["box_type"] = args.det_box_type
         elif self.det_algorithm == "DB++":
             postprocess_params['name'] = 'DBPostProcess'
             postprocess_params["thresh"] = args.det_db_thresh
@@ -50,6 +52,7 @@ class TextDetector(BaseOCRV20):
             postprocess_params["unclip_ratio"] = args.det_db_unclip_ratio
             postprocess_params["use_dilation"] = args.use_dilation
             postprocess_params["score_mode"] = args.det_db_score_mode
+            postprocess_params["box_type"] = args.det_box_type
             pre_process_list[1] = {
                 'NormalizeImage': {
                     'std': [1.0, 1.0, 1.0],
@@ -119,6 +122,18 @@ class TextDetector(BaseOCRV20):
         for module in self.net.modules():
             if hasattr(module, 'rep'):
                 module.rep()
+
+    def _should_only_clip_det_res(self):
+        if self.det_algorithm == "SAST" and getattr(self, "det_sast_polygon", False):
+            return True
+        if self.det_algorithm in ["DB", "DB++", "PSE", "FCE"]:
+            return getattr(self.postprocess_op, "box_type", "quad") == "poly"
+        return False
+
+    def _filter_det_res(self, dt_boxes, image_shape):
+        if self._should_only_clip_det_res():
+            return self.filter_tag_det_res_only_clip(dt_boxes, image_shape)
+        return self.filter_tag_det_res(dt_boxes, image_shape)
 
     def _batch_process_same_size(self, img_list):
         """
@@ -206,12 +221,7 @@ class TextDetector(BaseOCRV20):
             dt_boxes = post_result[0]['points']
 
             # 过滤和裁剪检测框
-            if (self.det_algorithm == "SAST" and
-                self.det_sast_polygon) or (self.det_algorithm in ["PSE", "FCE"] and
-                                           self.postprocess_op.box_type == 'poly'):
-                dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_imgs[i].shape)
-            else:
-                dt_boxes = self.filter_tag_det_res(dt_boxes, ori_imgs[i].shape)
+            dt_boxes = self._filter_det_res(dt_boxes, ori_imgs[i].shape)
 
             batch_results.append((dt_boxes, total_elapse / len(img_list)))
 
@@ -290,10 +300,10 @@ class TextDetector(BaseOCRV20):
         img_height, img_width = image_shape[0:2]
         dt_boxes_new = []
         for box in dt_boxes:
+            box = np.array(box)
             box = self.clip_det_res(box, img_height, img_width)
             dt_boxes_new.append(box)
-        dt_boxes = np.array(dt_boxes_new)
-        return dt_boxes
+        return dt_boxes_new
 
     def __call__(self, img):
         ori_shape = img.shape
@@ -331,12 +341,7 @@ class TextDetector(BaseOCRV20):
 
         post_result = self.postprocess_op(preds, shape_list)
         dt_boxes = post_result[0]['points']
-        if (self.det_algorithm == "SAST" and
-            self.det_sast_polygon) or (self.det_algorithm in ["PSE", "FCE"] and
-                                       self.postprocess_op.box_type == 'poly'):
-            dt_boxes = self.filter_tag_det_res_only_clip(dt_boxes, ori_shape)
-        else:
-            dt_boxes = self.filter_tag_det_res(dt_boxes, ori_shape)
+        dt_boxes = self._filter_det_res(dt_boxes, ori_shape)
 
         elapse = time.time() - starttime
         return dt_boxes, elapse

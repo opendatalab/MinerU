@@ -44,6 +44,22 @@ seal_PP-OCRv4_det_infer:
     name: DBHead
     k: 50
 
+seal_PP-OCRv4_det_server_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPHGNet_small
+    det: True
+  Neck:
+    name: LKPAN
+    out_channels: 256
+    intracl: true
+  Head:
+    name: PFHeadLocal
+    k: 50
+    mode: "large"
+
 ch_PP-OCRv5_det_infer:
   model_type: det
   algorithm: DB

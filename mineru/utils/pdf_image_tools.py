@@ -285,9 +285,13 @@ def images_bytes_to_pdf_bytes(image_bytes):
         image = image.convert("RGB")
 
     # 第一张图保存为 PDF，其余追加
+    # Keep image inputs at the same raster size when CLI later renders the
+    # wrapper PDF at 200 dpi; PIL defaults to 72 dpi for PDF output, which
+    # would upscale the image and noticeably hurt seal OCR detection quality.
     image.save(
         pdf_buffer,
         format="PDF",
+        resolution=200.0,
         # save_all=True
     )
 

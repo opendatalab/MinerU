@@ -889,4 +889,51 @@ class BatchAnalyze:
 
                     total_processed += len(img_crop_list)
 
+        seal_ocr_model = None
+        for ocr_res_list_dict in tqdm(ocr_res_list_all_page, desc="Seal-ocr Predict"):
+            layout_res = ocr_res_list_dict['layout_res']
+            np_img = ocr_res_list_dict['np_img']
+            image_h, image_w = np_img.shape[:2]
+
+            for layout_res_item in layout_res:
+                if layout_res_item.get("label") != "seal":
+                    continue
+
+                layout_res_item["text"] = ""
+                seal_bbox = normalize_to_int_bbox(
+                    layout_res_item.get("bbox"),
+                    image_size=(image_h, image_w),
+                )
+                if seal_bbox is None:
+                    continue
+
+                x0, y0, x1, y1 = seal_bbox
+                seal_crop_rgb = np_img[y0:y1, x0:x1]
+                if seal_crop_rgb.size == 0:
+                    continue
+
+                if seal_ocr_model is None:
+                    seal_ocr_model = atom_model_manager.get_atom_model(
+                        atom_model_name=AtomicModel.OCR,
+                        lang="seal",
+                    )
+
+                seal_crop_bgr = cv2.cvtColor(seal_crop_rgb, cv2.COLOR_RGB2BGR)
+                seal_ocr_res = seal_ocr_model.ocr(seal_crop_bgr, det=True, rec=True)[0]
+                if not seal_ocr_res:
+                    continue
+
+                seal_texts = []
+                for seal_item in seal_ocr_res:
+                    if not seal_item or len(seal_item) != 2:
+                        continue
+                    rec_result = seal_item[1]
+                    if not rec_result or len(rec_result) < 1:
+                        continue
+                    rec_text = rec_result[0]
+                    if rec_text:
+                        seal_texts.append(rec_text)
+
+                layout_res_item["text"] = seal_texts
+
         return images_layout_res

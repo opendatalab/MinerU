@@ -68,6 +68,10 @@ lang:
     rec: en_PP-OCRv5_rec_infer.pth
     dict: ppocrv5_en_dict.txt
   seal:
+    det: seal_PP-OCRv4_det_server_infer.pth
+    rec: ch_PP-OCRv5_rec_server_infer.pth
+    dict: ppocrv5_dict.txt
+  seal_lite:
     det: seal_PP-OCRv4_det_infer.pth
     rec: ch_PP-OCRv5_rec_infer.pth
     dict: ppocrv5_dict.txt
