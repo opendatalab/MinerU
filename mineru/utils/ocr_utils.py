@@ -11,6 +11,7 @@ class OcrConfidence:
     min_width = 3
 
 LINE_WIDTH_TO_HEIGHT_RATIO_THRESHOLD = 4  # 一般情况下，行宽度超过高度4倍时才是一个正常的横向文本块
+TEXT_REC_ROTATE_RATIO = 1.5
 
 
 def merge_spans_to_line(spans, threshold=0.6):
@@ -358,7 +359,7 @@ def get_ocr_result_list(
 
             if ocr_enable:
                 tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype('float32'))
-                img_crop = get_rotate_crop_image(ori_im, tmp_box)
+                img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
                 need_ocr_rec = True
 
         # average_angle_degrees = calculate_angle_degrees(box_ocr_res[0])
@@ -463,7 +464,24 @@ def get_rotate_crop_image(img, points):
         borderMode=cv2.BORDER_REPLICATE,
         flags=cv2.INTER_CUBIC)
     dst_img_height, dst_img_width = dst_img.shape[0:2]
-    rotate_radio = 2
-    if dst_img_height * 1.0 / dst_img_width >= rotate_radio:
+    if dst_img_height * 1.0 / dst_img_width >= TEXT_REC_ROTATE_RATIO:
         dst_img = np.rot90(dst_img)
     return dst_img
+
+
+def rotate_vertical_crop_if_needed(crop_img, rotate_ratio=TEXT_REC_ROTATE_RATIO):
+    if crop_img is None or crop_img.size == 0:
+        return crop_img
+
+    crop_height, crop_width = crop_img.shape[:2]
+    if crop_width == 0:
+        return crop_img
+
+    if crop_height * 1.0 / crop_width >= rotate_ratio:
+        return np.rot90(crop_img)
+    return crop_img
+
+
+def get_rotate_crop_image_for_text_rec(img, points):
+    crop_img = get_rotate_crop_image(img, points)
+    return rotate_vertical_crop_if_needed(crop_img)

@@ -14,7 +14,14 @@ from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from mineru.utils.ocr_utils import check_img, preprocess_image, sorted_boxes, merge_det_boxes, update_det_boxes, get_rotate_crop_image
+from mineru.utils.ocr_utils import (
+    check_img,
+    preprocess_image,
+    sorted_boxes,
+    merge_det_boxes,
+    update_det_boxes,
+    get_rotate_crop_image_for_text_rec,
+)
 from mineru.model.utils.tools.infer.predict_system import TextSystem
 from mineru.model.utils.tools.infer import pytorchocr_utility as utility
 import argparse
@@ -366,9 +373,11 @@ class PytorchPaddleOCR(TextSystem):
             if mfd_res:
                 dt_boxes = update_det_boxes(dt_boxes, mfd_res)
 
+            # Standard text OCR rotates tall crops before recognition.
+            # Seal OCR keeps its dedicated poly-crop path above.
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
-                img_crop = get_rotate_crop_image(ori_im, tmp_box)
+                img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
                 img_crop_list.append(img_crop)
 
         rec_res, elapse = self.text_recognizer(img_crop_list)

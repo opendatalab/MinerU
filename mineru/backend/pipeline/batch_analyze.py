@@ -23,7 +23,12 @@ from ...utils.config_reader import (
 from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.model_utils import crop_img, get_res_list_from_layout_res, clean_vram
 from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
-from ...utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, OcrConfidence, get_rotate_crop_image
+from ...utils.ocr_utils import (
+    get_adjusted_mfdetrec_res,
+    get_ocr_result_list,
+    OcrConfidence,
+    get_rotate_crop_image_for_text_rec,
+)
 from ...utils.pdf_image_tools import get_crop_np_img
 
 LAYOUT_BASE_BATCH_SIZE = 1
@@ -533,7 +538,7 @@ class BatchAnalyze:
                 for dt_box in dt_boxes_final:
                     rec_img_lang_group[table_res_dict["lang"]].append(
                         {
-                            "cropped_img": get_rotate_crop_image(
+                            "cropped_img": get_rotate_crop_image_for_text_rec(
                                 bgr_image, np.asarray(dt_box, dtype=np.float32)
                             ),
                             "dt_box": np.asarray(dt_box, dtype=np.float32),
