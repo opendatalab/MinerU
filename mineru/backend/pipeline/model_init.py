@@ -277,21 +277,17 @@ class HybridModelSingleton:
             )
         return self._models[key]
 
-def ocr_det_batch_setting(device):
-    # 检测torch的版本号
+def ocr_det_batch_setting():
     import torch
     from packaging import version
-
     device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
-
-    if (
-            version.parse(torch.__version__) >= version.parse("2.8.0")
-            or str(device).startswith('mps')
-            or device_type.lower() in ["corex"]
-    ):
+    if device_type.lower() in ["corex"]:
         enable_ocr_det_batch = False
     else:
+        if version.parse(torch.__version__) >= version.parse("2.8.0"):
+            os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
         enable_ocr_det_batch = True
+
     return enable_ocr_det_batch
 
 class MineruHybridModel:
@@ -308,7 +304,7 @@ class MineruHybridModel:
 
         self.lang = lang
 
-        self.enable_ocr_det_batch = ocr_det_batch_setting(self.device)
+        self.enable_ocr_det_batch = ocr_det_batch_setting()
 
         if str(self.device).startswith('npu'):
             try:
