@@ -1,5 +1,7 @@
-from mineru.utils.boxbase import bbox_center_distance, bbox_distance
+from mineru.utils.boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
+    merge_spans_to_line, line_sort_spans_by_left_to_right
 from mineru.utils.span_pre_proc import txt_spans_extract
 
 
@@ -89,17 +91,114 @@ class MagicModel:
                 block_type = self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES[layout_det['label']]
                 block_index = layout_det['index']
                 block_score = layout_det['score']
-                self.page_blocks.append({
-                    "bbox": block_bbox,
-                    "type": block_type,
-                    "index": block_index,
-                    "score": block_score,
-                })
+                block = self.__copy_block_fields(
+                    layout_det,
+                    type=block_type,
+                    bbox=block_bbox,
+                    index=block_index,
+                    score=block_score,
+                )
+                self.page_blocks.append(block)
 
         self.page_blocks.sort(key=lambda x: x["index"])
-        self.__classify_visual_blocks()
 
+        span_type = "unknown"
+        for block in self.page_blocks:
+            if block["type"] in [
+                BlockType.ABSTRACT,
+                BlockType.ALGORITHM,
+                BlockType.ASIDE_TEXT,
+                BlockType.INDEX,
+                BlockType.DOC_TITLE,
+                BlockType.CAPTION,
+                BlockType.FOOTER,
+                BlockType.PAGE_FOOTNOTE,
+                BlockType.FORMULA_NUMBER,
+                BlockType.HEADER,
+                BlockType.PAGE_NUMBER,
+                BlockType.PARAGRAPH_TITLE,
+                BlockType.REF_TEXT,
+                BlockType.TEXT,
+                BlockType.VERTICAL_TEXT,
+                BlockType.FOOTNOTE,
+            ]:
+                span_type = ContentType.TEXT
+            elif block["type"] in [BlockType.IMAGE]:
+                span_type = ContentType.IMAGE
+            elif block["type"] in [BlockType.TABLE]:
+                span_type = ContentType.TABLE
+            elif block["type"] in [BlockType.CHART]:
+                span_type = ContentType.CHART
+            elif block["type"] in [BlockType.INTERLINE_EQUATION]:
+                span_type = ContentType.INTERLINE_EQUATION
+            elif block["type"] in [BlockType.SEAL]:
+                span_type = ContentType.SEAL
+
+            if span_type in [
+                ContentType.IMAGE,
+                ContentType.TABLE,
+                ContentType.CHART,
+                ContentType.INTERLINE_EQUATION,
+                ContentType.SEAL
+            ]:
+                span = {
+                    "bbox": block["bbox"],
+                    "type": span_type,
+                }
+                if span_type == ContentType.TABLE:
+                    span["html"] = block["html"]
+                if span_type == ContentType.INTERLINE_EQUATION:
+                    span["content"] = block["latex"]
+                if span_type == ContentType.SEAL:
+                    span["content"] = block.get("text")
+
+                # 构造line对象
+                spans = [span]
+                line = {"bbox": block["bbox"], "spans": spans}
+                block["lines"] = [line]
+            else:
+                # span填充
+                block_spans = []
+                for span in self.page_text_inline_formula_spans:
+                    if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block["bbox"]) > 0.5:
+                        block_spans.append(span)
+                # 从spans删除已经放入block_spans中的span
+                if len(block_spans) > 0:
+                    for span in block_spans:
+                        self.page_text_inline_formula_spans.remove(span)
+
+                block["spans"] = block_spans
+                block = self.__fix_text_block(block)
+
+
+        self.__classify_visual_blocks()
         return None
+
+
+    @staticmethod
+    def __fix_text_block(block):
+        if block["type"] == BlockType.VERTICAL_TEXT:
+            # 如果是纵向文本块，则按纵向lines处理
+            block_lines = merge_spans_to_vertical_line(block['spans'])
+            sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
+        else:
+            block_lines = merge_spans_to_line(block['spans'])
+            sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
+
+        block['lines'] = sort_block_lines
+        del block['spans']
+        return block
+
+    @staticmethod
+    def __copy_block_fields(block, **overrides):
+        copied_block = {
+            key: value
+            for key, value in block.items()
+            if key not in {"cls_id", "label"}
+        }
+        copied_block.update(overrides)
+        return copied_block
+
 
     @staticmethod
     def __is_inline_formula_block(layout_det: dict) -> bool:
@@ -342,12 +441,7 @@ class MagicModel:
 
     @staticmethod
     def __make_child_block(block, block_type):
-        return {
-            "type": block_type,
-            "bbox": block["bbox"],
-            "index": block["index"],
-            "score": block.get("score"),
-        }
+        return MagicModel.__copy_block_fields(block, type=block_type)
 
     def __sync_layout_det_type(self, block_index, block_type):
         layout_det = self.__layout_det_by_index.get(block_index)

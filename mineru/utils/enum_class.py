@@ -56,6 +56,7 @@ class ContentType:
     EQUATION = 'equation'
     CODE = 'code'
     HYPERLINK = 'hyperlink'
+    SEAL = 'seal'
 
 
 class ContentTypeV2:
