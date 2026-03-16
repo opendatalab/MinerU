@@ -194,13 +194,11 @@ def batch_image_analyze(
     import torch
     from packaging import version
     device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
-    if (
-            version.parse(torch.__version__) >= version.parse("2.8.0")
-            or str(device).startswith('mps')
-            or device_type.lower() in ["corex"]
-    ):
+    if device_type.lower() in ["corex"]:
         enable_ocr_det_batch = False
     else:
+        if version.parse(torch.__version__) >= version.parse("2.8.0"):
+            os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
         enable_ocr_det_batch = True
 
     batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable, enable_ocr_det_batch)
