@@ -31,7 +31,7 @@ MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 TABLE_ORI_CLS_BATCH_SIZE = 16
 TABLE_Wired_Wireless_CLS_BATCH_SIZE = 16
-TABLE_RICH_IMAGE_LABELS = {"image", "chart", "seal"}
+TABLE_RICH_IMAGE_LABELS = {"image", "chart"}
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 TABLE_OCR_DET_DEBUG_DIR = os.path.join(PROJECT_ROOT, "output_images", "table_ocr_det_debug")
 
