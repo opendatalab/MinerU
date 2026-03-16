@@ -896,7 +896,7 @@ class BatchAnalyze:
                     seal_ocr_items.append((ocr_res_list_dict, layout_res_item))
 
         seal_ocr_model = None
-        for ocr_res_list_dict, layout_res_item in tqdm(seal_ocr_items, desc="Seal-ocr Predict"):
+        for ocr_res_list_dict, layout_res_item in tqdm(seal_ocr_items, desc="Seal Predict"):
             np_img = ocr_res_list_dict['np_img']
             image_h, image_w = np_img.shape[:2]
             layout_res_item["text"] = ""
