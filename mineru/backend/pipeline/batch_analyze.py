@@ -195,6 +195,22 @@ class BatchAnalyze:
             cv2.polylines(det_boxes_image, [points], isClosed=True, color=(0, 0, 255), thickness=2)
         cv2.imwrite(det_boxes_path, det_boxes_image)
 
+    @staticmethod
+    def _prune_empty_ocr_text_blocks(layout_res: list[dict], ocr_enable: bool) -> None:
+        if not ocr_enable or not layout_res:
+            return
+
+        def keep_item(item: dict) -> bool:
+            if item.get("label") != "ocr_text":
+                return True
+
+            text = item.get("text")
+            if isinstance(text, str):
+                return bool(text.strip())
+            return bool(text)
+
+        layout_res[:] = [item for item in layout_res if keep_item(item)]
+
     def _collect_table_rich_items(self, table_res_dict: dict) -> list[dict]:
         rich_items = []
         table_bbox = table_res_dict["table_res"]["bbox"]
@@ -940,5 +956,11 @@ class BatchAnalyze:
                     seal_texts.append(rec_text)
 
             layout_res_item["text"] = seal_texts
+
+        for ocr_res_list_dict in ocr_res_list_all_page:
+            self._prune_empty_ocr_text_blocks(
+                ocr_res_list_dict["layout_res"],
+                ocr_res_list_dict["ocr_enable"],
+            )
 
         return images_layout_res
