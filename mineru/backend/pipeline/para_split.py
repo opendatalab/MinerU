@@ -40,7 +40,12 @@ def __process_blocks(blocks):
         if i + 1 < len(blocks):
             next_block = blocks[i + 1]
             # 如果下一个块不是 text 类型且是 title 或 interline_equation 类型
-            if next_block['type'] in ['title', 'interline_equation']:
+            if next_block['type'] in [
+                BlockType.ABSTRACT,
+                BlockType.INTERLINE_EQUATION,
+                BlockType.DOC_TITLE,
+                BlockType.PARAGRAPH_TITLE,
+            ]:
                 result.append(current_group)
                 current_group = []
 

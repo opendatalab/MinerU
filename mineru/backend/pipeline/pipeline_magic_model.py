@@ -148,7 +148,13 @@ class MagicModel:
         self.preproc_blocks = []
         self.discarded_blocks = []
         for block in self.page_blocks:
-            if block["type"] in [BlockType.HEADER, BlockType.FOOTER, BlockType.PAGE_NUMBER, BlockType.ASIDE_TEXT, BlockType.PAGE_FOOTNOTE]:
+            if block["type"] in [
+                BlockType.HEADER,
+                BlockType.FOOTER,
+                BlockType.PAGE_NUMBER,
+                BlockType.ASIDE_TEXT,
+                BlockType.PAGE_FOOTNOTE
+            ]:
                 self.discarded_blocks.append(block)
             else:
                 self.preproc_blocks.append(block)
