@@ -17,9 +17,11 @@ class MagicModel:
         "doc_title": BlockType.DOC_TITLE,
         "figure_title": BlockType.CAPTION,
         "footer": BlockType.FOOTER,
+        "footer_image": BlockType.FOOTER,
         "footnote": BlockType.PAGE_FOOTNOTE,
         "formula_number": BlockType.FORMULA_NUMBER,
         "header": BlockType.HEADER,
+        "header_image": BlockType.HEADER,
         "image": BlockType.IMAGE,
         "number": BlockType.PAGE_NUMBER,
         "paragraph_title": BlockType.PARAGRAPH_TITLE,
@@ -59,7 +61,7 @@ class MagicModel:
         page_pil_img=None,
         page_w=None,
         page_h=None,
-        ocr_enable=True,
+        ocr_enable=False,
     ):
         self.__page_model_info = page_model_info
         self.page_inline_formula = []
@@ -68,22 +70,22 @@ class MagicModel:
         self.image_groups = []
         self.table_groups = []
         self.chart_groups = []
+        self.all_image_spans = []
         self.__layout_det_by_index = {}
         self.__scale = scale
         self.__fix_axis()  # bbox坐标修正，删除高度或者宽度小于等于0的spans
         self.__post_process()  # index重排，填充行内公式和文本span
-        self.page_text_inline_formula_spans = self.page_inline_formula + self.page_ocr_res
-
         if not ocr_enable:
             virtual_block = [0, 0, page_w, page_h, None, None, None, "text"]
-            self.page_text_inline_formula_spans = txt_spans_extract(
+            self.page_ocr_res = txt_spans_extract(
                 page,
-                self.page_text_inline_formula_spans,
+                self.page_ocr_res,
                 page_pil_img,
                 scale,
                 [virtual_block],
                 [],
             )
+        self.page_text_inline_formula_spans = self.page_inline_formula + self.page_ocr_res
 
         for layout_det in self.__page_model_info['layout_dets']:
             if layout_det.get('label') in self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES:
@@ -101,7 +103,57 @@ class MagicModel:
                 self.page_blocks.append(block)
 
         self.page_blocks.sort(key=lambda x: x["index"])
+        self.__build_page_blocks()
+        self.__classify_visual_blocks()
+        self.__build_return_blocks()
 
+
+    @staticmethod
+    def __fix_text_block(block):
+        if block["type"] == BlockType.VERTICAL_TEXT:
+            # 如果是纵向文本块，则按纵向lines处理
+            block_lines = merge_spans_to_vertical_line(block['spans'])
+            sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
+        else:
+            block_lines = merge_spans_to_line(block['spans'])
+            sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
+
+        block['lines'] = sort_block_lines
+        del block['spans']
+        return block
+
+    @staticmethod
+    def __copy_block_fields(block, **overrides):
+        copied_block = {
+            key: value
+            for key, value in block.items()
+            if key not in {"cls_id", "label"}
+        }
+        copied_block.update(overrides)
+        return copied_block
+
+
+    @staticmethod
+    def __is_inline_formula_block(layout_det: dict) -> bool:
+        return (
+            layout_det.get("label") == "inline_formula"
+            or layout_det.get("cls_id") == 15
+        )
+
+    @staticmethod
+    def __is_ocr_text_block(layout_det: dict) -> bool:
+        return layout_det.get("label") == "ocr_text"
+
+    def __build_return_blocks(self):
+        self.preproc_blocks = []
+        self.discarded_blocks = []
+        for block in self.page_blocks:
+            if block["type"] in [BlockType.HEADER, BlockType.FOOTER, BlockType.PAGE_NUMBER, BlockType.ASIDE_TEXT, BlockType.PAGE_FOOTNOTE]:
+                self.discarded_blocks.append(block)
+            else:
+                self.preproc_blocks.append(block)
+
+    def __build_page_blocks(self):
         span_type = "unknown"
         for block in self.page_blocks:
             if block["type"] in [
@@ -147,11 +199,13 @@ class MagicModel:
                 }
                 if span_type == ContentType.TABLE:
                     span["html"] = block["html"]
+                    block.pop("html")
                 if span_type == ContentType.INTERLINE_EQUATION:
                     span["content"] = block["latex"]
                 if span_type == ContentType.SEAL:
                     span["content"] = block.get("text")
 
+                self.all_image_spans.append(span)
                 # 构造line对象
                 spans = [span]
                 line = {"bbox": block["bbox"], "spans": spans}
@@ -169,47 +223,6 @@ class MagicModel:
 
                 block["spans"] = block_spans
                 block = self.__fix_text_block(block)
-
-
-        self.__classify_visual_blocks()
-        return None
-
-
-    @staticmethod
-    def __fix_text_block(block):
-        if block["type"] == BlockType.VERTICAL_TEXT:
-            # 如果是纵向文本块，则按纵向lines处理
-            block_lines = merge_spans_to_vertical_line(block['spans'])
-            sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
-        else:
-            block_lines = merge_spans_to_line(block['spans'])
-            sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
-
-        block['lines'] = sort_block_lines
-        del block['spans']
-        return block
-
-    @staticmethod
-    def __copy_block_fields(block, **overrides):
-        copied_block = {
-            key: value
-            for key, value in block.items()
-            if key not in {"cls_id", "label"}
-        }
-        copied_block.update(overrides)
-        return copied_block
-
-
-    @staticmethod
-    def __is_inline_formula_block(layout_det: dict) -> bool:
-        return (
-            layout_det.get("label") == "inline_formula"
-            or layout_det.get("cls_id") == 15
-        )
-
-    @staticmethod
-    def __is_ocr_text_block(layout_det: dict) -> bool:
-        return layout_det.get("label") == "ocr_text"
 
     def __fix_axis(self):
         need_remove_list = []
@@ -450,6 +463,15 @@ class MagicModel:
 
     def get_page_blocks(self):
         return self.page_blocks
+
+    def get_all_image_spans(self):
+        return self.all_image_spans
+
+    def get_preproc_blocks(self):
+        return self.preproc_blocks
+
+    def get_discarded_blocks(self):
+        return self.discarded_blocks
 
     def get_imgs(self):
         return self.image_groups

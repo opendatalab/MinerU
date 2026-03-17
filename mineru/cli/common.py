@@ -227,7 +227,7 @@ def _process_pipeline(
 
         middle_json = pipeline_result_to_middle_json(
             model_list, images_list, pdf_doc, image_writer,
-            _lang, _ocr_enable, p_formula_enable
+            _lang, _ocr_enable,
         )
 
         pdf_info = middle_json["pdf_info"]

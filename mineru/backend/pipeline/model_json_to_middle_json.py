@@ -9,23 +9,17 @@ from mineru.backend.utils import cross_page_table_merge
 from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
-from mineru.utils.block_pre_proc import prepare_block_bboxes, process_groups
-from mineru.utils.block_sort import sort_blocks_by_bbox
-from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType
+from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence
-from mineru.utils.span_block_fix import fill_spans_in_blocks, fix_discarded_block, fix_block_spans
-from mineru.utils.span_pre_proc import remove_outside_spans, remove_overlaps_low_confidence_spans, \
-    remove_overlaps_min_spans, txt_spans_extract
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
 
 
-def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False, formula_enabled=True):
+def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
@@ -41,28 +35,34 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     )
 
     """从magic_model对象中获取后面会用到的区块信息"""
-    discarded_blocks = magic_model.get_discarded()
-    text_blocks = magic_model.get_text_blocks()
-    title_blocks = magic_model.get_title_blocks()
-    inline_equations, interline_equations, interline_equation_blocks = magic_model.get_equations()
+    preproc_blocks = magic_model.get_preproc_blocks()
+    discarded_blocks = magic_model.get_discarded_blocks()
+    all_image_spans = magic_model.get_all_image_spans()
 
-    """获取所有的spans信息"""
-    spans = magic_model.get_all_spans()
+    # 对image/table/chart/interline_equation的span截图
+    for span in all_image_spans:
+        if span["type"] in [
+            ContentType.IMAGE,
+            ContentType.TABLE,
+            ContentType.CHART,
+            ContentType.SEAL,
+            ContentType.INTERLINE_EQUATION
+        ]:
+            span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     """构造page_info"""
-    page_info = make_page_info_dict(sorted_blocks, page_index, page_w, page_h, fix_discarded_blocks)
+    page_info = make_page_info_dict(preproc_blocks, page_index, page_w, page_h, discarded_blocks)
 
     return page_info
 
 
-def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enabled=True):
+def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
-    formula_enabled = get_formula_enable(formula_enabled)
     for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
         page_info = page_model_info_to_page_info(
-            page_model_info, image_dict, page, image_writer, page_index, ocr_enable=ocr_enable, formula_enabled=formula_enabled
+            page_model_info, image_dict, page, image_writer, page_index, ocr_enable=ocr_enable,
         )
         if page_info is None:
             page_w, page_h = map(int, page.get_size())
@@ -75,11 +75,11 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     text_block_list = []
     for page_info in middle_json["pdf_info"]:
         for block in page_info['preproc_blocks']:
-            if block['type'] in ['table', 'image']:
+            if 'blocks' in block:
                 for sub_block in block['blocks']:
-                    if sub_block['type'] in ['image_caption', 'image_footnote', 'table_caption', 'table_footnote']:
+                    if sub_block.get("type", "").endswith('caption') or sub_block.get("type", "").endswith('footnote'):
                         text_block_list.append(sub_block)
-            elif block['type'] in ['text', 'title']:
+            elif block["type"] not in [BlockType.INTERLINE_EQUATION, BlockType.SEAL]:
                 text_block_list.append(block)
         for block in page_info['discarded_blocks']:
             text_block_list.append(block)
