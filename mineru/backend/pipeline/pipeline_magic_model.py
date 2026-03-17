@@ -1,4 +1,9 @@
-from mineru.utils.boxbase import bbox_center_distance, bbox_distance, calculate_overlap_area_in_bbox1_area_ratio
+from mineru.utils.boxbase import (
+    bbox_center_distance,
+    bbox_distance,
+    calculate_overlap_area_2_minbox_area_ratio,
+    calculate_overlap_area_in_bbox1_area_ratio,
+)
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
     merge_spans_to_line, line_sort_spans_by_left_to_right
@@ -222,7 +227,18 @@ class MagicModel:
                 # span填充
                 block_spans = []
                 for span in self.page_text_inline_formula_spans:
-                    if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block["bbox"]) > 0.5:
+                    overlap_ratio = calculate_overlap_area_in_bbox1_area_ratio(
+                        span['bbox'], block["bbox"]
+                    )
+                    if block["type"] == BlockType.FORMULA_NUMBER:
+                        # OCR 检测框通常会比公式编号框更大，使用最小框重叠比避免编号文字无法回填。
+                        overlap_ratio = max(
+                            overlap_ratio,
+                            calculate_overlap_area_2_minbox_area_ratio(
+                                span['bbox'], block["bbox"]
+                            ),
+                        )
+                    if overlap_ratio > 0.5:
                         block_spans.append(span)
                 # 从spans删除已经放入block_spans中的span
                 if len(block_spans) > 0:
