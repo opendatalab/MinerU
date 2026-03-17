@@ -171,7 +171,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     """formula_number优化"""
     _optimize_formula_number_blocks(middle_json["pdf_info"])
 
-    """分段"""
+    """段落合并"""
     para_split(middle_json["pdf_info"])
 
     """表格跨页合并"""

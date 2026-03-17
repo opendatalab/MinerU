@@ -25,7 +25,7 @@ def __process_blocks(blocks):
         current_block = blocks[i]
 
         # 如果当前块是 text 类型
-        if current_block['type'] == 'text':
+        if current_block['type'] in [BlockType.TEXT, BlockType.INDEX]:
             current_block['bbox_fs'] = copy.deepcopy(current_block['bbox'])
             if 'lines' in current_block and len(current_block['lines']) > 0:
                 current_block['bbox_fs'] = [
@@ -57,6 +57,8 @@ def __process_blocks(blocks):
 
 
 def __is_list_or_index_block(block):
+    if block['type'] == BlockType.INDEX:
+        return BlockType.INDEX
     # 一个block如果是list block 应该同时满足以下特征
     # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.block内有多个line 右侧不顶格（狗牙状）
     # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.多个line以endflag结尾
