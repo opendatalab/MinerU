@@ -210,13 +210,13 @@ class MagicModel:
                 }
                 if span_type == ContentType.TABLE:
                     span["html"] = block.get("html", "")
-                    block.pop("html")
+                    block.pop("html", None)
                 if span_type == ContentType.INTERLINE_EQUATION:
                     span["content"] = block.get("latex", "")
-                    block.pop("latex")
+                    block.pop("latex", None)
                 if span_type == ContentType.SEAL:
                     span["content"] = block.get("text")
-                    block.pop("text")
+                    block.pop("text", None)
 
                 self.all_image_spans.append(span)
                 # 构造line对象
