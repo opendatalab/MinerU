@@ -152,6 +152,19 @@ def _apply_post_ocr(pdf_info_list, lang=None):
             span['score'] = 0.0
 
 
+def _apply_default_title_levels(pdf_info_list):
+    for page_info in pdf_info_list:
+        for block_key in ["preproc_blocks", "para_blocks"]:
+            for block in page_info.get(block_key, []):
+                block_type = block.get("type")
+                if block_type == BlockType.DOC_TITLE:
+                    block["type"] = BlockType.TITLE
+                    block["level"] = 1
+                elif block_type == BlockType.PARAGRAPH_TITLE:
+                    block["type"] = BlockType.TITLE
+                    block["level"] = 2
+
+
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False):
     middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
     for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
@@ -188,6 +201,8 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
                 llm_aided_title_start_time = time.time()
                 llm_aided_title(middle_json["pdf_info"], title_aided_config)
                 logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+    else:
+        _apply_default_title_levels(middle_json["pdf_info"])
 
     """清理内存"""
     pdf_doc.close()
