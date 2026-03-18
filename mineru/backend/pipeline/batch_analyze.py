@@ -49,6 +49,8 @@ class BatchAnalyze:
         formula_enable,
         table_enable,
         enable_ocr_det_batch: bool = True,
+        table_ori_cls_batch_enabled: bool | None = None,
+        text_ocr_det_batch_enabled: bool | None = None,
         mask_inline_formula_for_ocr_det: bool = True,
     ):
         self.batch_ratio = batch_ratio
@@ -56,6 +58,12 @@ class BatchAnalyze:
         self.table_enable = get_table_enable(table_enable)
         self.model_manager = model_manager
         self.enable_ocr_det_batch = enable_ocr_det_batch
+        self.table_ori_cls_batch_enabled = (
+            enable_ocr_det_batch if table_ori_cls_batch_enabled is None else table_ori_cls_batch_enabled
+        )
+        self.text_ocr_det_batch_enabled = (
+            enable_ocr_det_batch if text_ocr_det_batch_enabled is None else text_ocr_det_batch_enabled
+        )
         self.mask_inline_formula_for_ocr_det = (
             get_ocr_det_mask_inline_formula_enable(mask_inline_formula_for_ocr_det)
         )
@@ -480,7 +488,7 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.ImgOrientationCls,
             )
             try:
-                if self.enable_ocr_det_batch:
+                if self.table_ori_cls_batch_enabled:
                     img_orientation_cls_model.batch_predict(table_res_list_all_page,
                                                             det_batch_size=self.batch_ratio * OCR_DET_BASE_BATCH_SIZE,
                                                             batch_size=TABLE_ORI_CLS_BATCH_SIZE)
@@ -673,7 +681,7 @@ class BatchAnalyze:
             self._remove_table_internal_layout_items(table_res_list_all_page)
 
         # OCR det
-        if self.enable_ocr_det_batch:
+        if self.text_ocr_det_batch_enabled:
             # 批处理模式 - 按语言和分辨率分组
             # 收集所有需要OCR检测的裁剪图像
             all_cropped_images_info = []

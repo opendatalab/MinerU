@@ -1,19 +1,25 @@
+import copy
 import os
 import time
 from typing import List, Tuple
+
+import pypdfium2 as pdfium
 from PIL import Image
 from loguru import logger
 
 from .model_init import MineruPipelineModel
+from .model_json_to_middle_json import finalize_middle_json, init_middle_json, page_model_info_to_page_info
 from mineru.utils.config_reader import get_device
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
-from ...utils.pdf_image_tools import load_images_from_pdf
+from ...utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
 from ...utils.model_utils import get_vram, clean_memory
 
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
+
+LOW_MEMORY_DEFAULT_WINDOW_SIZE = 64
 
 class ModelSingleton:
     _instance = None
@@ -65,6 +71,34 @@ def custom_model_init(
     logger.info(f'model init cost: {model_init_cost}')
 
     return custom_model
+
+
+def _get_ocr_enable(pdf_bytes, parse_method: str) -> bool:
+    if parse_method == 'auto':
+        return classify(pdf_bytes) == 'ocr'
+    if parse_method == 'ocr':
+        return True
+    return False
+
+
+def _get_low_memory_window_size(page_count: int) -> int:
+    configured_window_size = int(os.environ.get('MINERU_PIPELINE_WINDOW_SIZE', LOW_MEMORY_DEFAULT_WINDOW_SIZE))
+    return min(page_count, max(1, configured_window_size))
+
+
+def _close_images(images_list):
+    for image_dict in images_list or []:
+        pil_img = image_dict.get('img_pil')
+        if pil_img is not None:
+            try:
+                pil_img.close()
+            except Exception:
+                pass
+
+
+def _build_page_model_info(layout_dets, page_index: int, pil_img: Image.Image):
+    page_info_dict = {'page_no': page_index, 'width': pil_img.width, 'height': pil_img.height}
+    return {'layout_dets': layout_dets, 'page_info': page_info_dict}
 
 
 def doc_analyze(
@@ -151,6 +185,99 @@ def doc_analyze(
         infer_results[pdf_idx].append(page_dict)
 
     return infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list
+
+
+def doc_analyze_low_memory(
+        pdf_bytes,
+        image_writer,
+        lang,
+        parse_method: str = 'auto',
+        formula_enable=True,
+        table_enable=True,
+):
+    _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    doc_closed = False
+    middle_json = init_middle_json()
+    model_list = []
+    try:
+        page_count = len(pdf_doc)
+        if page_count == 0:
+            pdf_doc.close()
+            doc_closed = True
+            return middle_json, model_list
+
+        window_size = _get_low_memory_window_size(page_count)
+        logger.info(
+            f'Pipeline low-memory mode enabled. page_count={page_count}, '
+            f'window_size={window_size}'
+        )
+
+        infer_start = time.time()
+        for window_start in range(0, page_count, window_size):
+            window_end = min(page_count - 1, window_start + window_size - 1)
+            images_list = load_images_from_pdf_doc(
+                pdf_doc,
+                start_page_id=window_start,
+                end_page_id=window_end,
+                image_type=ImageType.PIL,
+            )
+            try:
+                images_with_extra_info = [
+                    (image_dict['img_pil'], _ocr_enable, lang)
+                    for image_dict in images_list
+                ]
+                logger.info(
+                    f'Low-memory batch: pages {window_start + 1}-{window_end + 1}/{page_count} '
+                    f'({len(images_with_extra_info)} pages)'
+                )
+                batch_results = batch_image_analyze(
+                    images_with_extra_info,
+                    formula_enable=formula_enable,
+                    table_enable=table_enable,
+                )
+
+                for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
+                    page_index = window_start + offset
+                    page_model_info = _build_page_model_info(page_layout_dets, page_index, image_dict['img_pil'])
+                    model_list.append(page_model_info)
+
+                    page_info = page_model_info_to_page_info(
+                        copy.deepcopy(page_model_info),
+                        image_dict,
+                        pdf_doc[page_index],
+                        image_writer,
+                        page_index,
+                        ocr_enable=_ocr_enable,
+                    )
+                    if page_info is None:
+                        page_w, page_h = map(int, pdf_doc[page_index].get_size())
+                        page_info = {
+                            'preproc_blocks': [],
+                            'page_idx': page_index,
+                            'page_size': [page_w, page_h],
+                            'discarded_blocks': [],
+                        }
+                    middle_json['pdf_info'].append(page_info)
+            finally:
+                _close_images(images_list)
+                images_list.clear()
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0:
+            logger.debug(
+                f"low-memory infer finished, cost: {infer_time}, "
+                f"speed: {round(len(model_list) / infer_time, 3)} page/s"
+            )
+
+        finalize_middle_json(middle_json['pdf_info'], lang=lang, ocr_enable=_ocr_enable)
+        pdf_doc.close()
+        doc_closed = True
+        return middle_json, model_list
+    finally:
+        if not doc_closed:
+            pdf_doc.close()
 
 
 def batch_image_analyze(

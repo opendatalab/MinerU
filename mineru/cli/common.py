@@ -206,6 +206,32 @@ def _process_pipeline(
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory as pipeline_doc_analyze_low_memory
+
+    pipeline_low_memory = os.getenv('MINERU_PIPELINE_LOW_MEMORY', 'false').lower() in ('1', 'true', 'yes')
+    if pipeline_low_memory:
+        for idx, pdf_bytes in enumerate(pdf_bytes_list):
+            pdf_file_name = pdf_file_names[idx]
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            middle_json, model_list = pipeline_doc_analyze_low_memory(
+                pdf_bytes,
+                image_writer=image_writer,
+                lang=p_lang_list[idx],
+                parse_method=parse_method,
+                formula_enable=p_formula_enable,
+                table_enable=p_table_enable,
+            )
+            model_json = copy.deepcopy(model_list)
+            pdf_info = middle_json["pdf_info"]
+
+            _process_output(
+                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, model_json, process_mode="pipeline"
+            )
+        return
 
     infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
         pipeline_doc_analyze(

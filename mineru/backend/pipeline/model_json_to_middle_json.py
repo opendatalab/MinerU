@@ -165,8 +165,33 @@ def _apply_default_title_levels(pdf_info_list):
                     block["level"] = 2
 
 
-def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False):
-    middle_json = {"pdf_info": [], "_backend":"pipeline", "_version_name": __version__}
+def finalize_middle_json(pdf_info_list, lang=None, ocr_enable=False):
+    """Apply document-level post processing once all page_info entries are ready."""
+    _apply_post_ocr(pdf_info_list, lang=lang)
+    _optimize_formula_number_blocks(pdf_info_list)
+    para_split(pdf_info_list)
+    cross_page_table_merge(pdf_info_list)
+
+    llm_aided_config = get_llm_aided_config()
+    if llm_aided_config is not None:
+        title_aided_config = llm_aided_config.get('title_aided', None)
+        if title_aided_config is not None and title_aided_config.get('enable', False):
+            llm_aided_title_start_time = time.time()
+            llm_aided_title(pdf_info_list, title_aided_config)
+            logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+    else:
+        _apply_default_title_levels(pdf_info_list)
+
+    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(pdf_info_list) >= 10:
+        clean_memory(get_device())
+
+
+def init_middle_json():
+    return {"pdf_info": [], "_backend": "pipeline", "_version_name": __version__}
+
+
+def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enable=None):
+    middle_json = init_middle_json()
     for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
         page = pdf_doc[page_index]
         image_dict = images_list[page_index]
@@ -178,37 +203,8 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
             page_info = make_page_info_dict([], page_index, page_w, page_h, [])
         middle_json["pdf_info"].append(page_info)
 
-    """后置ocr处理"""
-    _apply_post_ocr(middle_json["pdf_info"], lang=lang)
-
-    """formula_number优化"""
-    _optimize_formula_number_blocks(middle_json["pdf_info"])
-
-    """段落合并"""
-    para_split(middle_json["pdf_info"])
-
-    """表格跨页合并"""
-    cross_page_table_merge(middle_json["pdf_info"])
-
-    """llm优化"""
-    llm_aided_config = get_llm_aided_config()
-
-    if llm_aided_config is not None:
-        """标题优化"""
-        title_aided_config = llm_aided_config.get('title_aided', None)
-        if title_aided_config is not None:
-            if title_aided_config.get('enable', False):
-                llm_aided_title_start_time = time.time()
-                llm_aided_title(middle_json["pdf_info"], title_aided_config)
-                logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
-    else:
-        _apply_default_title_levels(middle_json["pdf_info"])
-
-    """清理内存"""
+    finalize_middle_json(middle_json["pdf_info"], lang=lang, ocr_enable=ocr_enable)
     pdf_doc.close()
-    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(model_list) >= 10:
-        clean_memory(get_device())
-
     return middle_json
 
 

@@ -216,6 +216,25 @@ def load_images_from_pdf_core(
     return images_list
 
 
+def load_images_from_pdf_doc(
+    pdf_doc: pdfium.PdfDocument,
+    dpi=200,
+    start_page_id=0,
+    end_page_id=None,
+    image_type=ImageType.PIL,
+):
+    images_list = []
+    pdf_page_num = len(pdf_doc)
+    end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+
+    for index in range(start_page_id, end_page_id + 1):
+        page = pdf_doc[index]
+        image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+        images_list.append(image_dict)
+
+    return images_list
+
+
 def cut_image(
     bbox: tuple,
     page_num: int,
