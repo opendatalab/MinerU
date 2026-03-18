@@ -586,8 +586,6 @@ class BatchAnalyze:
                             [img_dict["dt_box"], html.escape(ocr_res[0]), ocr_res[1]]
                         ]
 
-            clean_vram(self.model.device, vram_threshold=8)
-
             # 先对所有表格使用无线表格模型，然后对分类为有线的表格使用有线表格模型
             wireless_table_model = atom_model_manager.get_atom_model(
                 atom_model_name=AtomicModel.WirelessTable,
