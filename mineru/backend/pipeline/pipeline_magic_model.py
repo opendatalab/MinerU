@@ -209,10 +209,10 @@ class MagicModel:
                     "type": span_type,
                 }
                 if span_type == ContentType.TABLE:
-                    span["html"] = block["html"]
+                    span["html"] = block.get("html", "")
                     block.pop("html")
                 if span_type == ContentType.INTERLINE_EQUATION:
-                    span["content"] = block["latex"]
+                    span["content"] = block.get("latex", "")
                     block.pop("latex")
                 if span_type == ContentType.SEAL:
                     span["content"] = block.get("text")
