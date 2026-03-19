@@ -24,6 +24,7 @@ from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyz
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
+os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
     import torch
     torch.backends.cudnn.enabled = False
