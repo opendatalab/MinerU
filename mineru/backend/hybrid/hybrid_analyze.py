@@ -49,6 +49,15 @@ def ocr_det(
     _ocr_enable,
     batch_radio: int = 1,
 ):
+    def _set_temp_pixel_bbox(res, pixel_bbox):
+        res["_normalized_bbox"] = list(res["bbox"])
+        res["bbox"] = pixel_bbox
+
+    def _restore_normalized_bbox(res):
+        normalized_bbox = res.pop("_normalized_bbox", None)
+        if normalized_bbox is not None:
+            res["bbox"] = normalized_bbox
+
     ocr_res_list = []
     if not hybrid_pipeline_model.enable_ocr_det_batch:
         # 非批处理模式 - 逐页处理
@@ -68,10 +77,13 @@ def ocr_det(
                 y1 = min(img_height, int(res['bbox'][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
-                res['poly'] = [x0, y0, x1, y0, x1, y1, x0, y1]
-                new_image, useful_list = crop_img(
-                    res, np_image, crop_paste_x=50, crop_paste_y=50
-                )
+                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
+                try:
+                    new_image, useful_list = crop_img(
+                        res, np_image, crop_paste_x=50, crop_paste_y=50
+                    )
+                finally:
+                    _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                     page_mfd_res, useful_list
                 )
@@ -104,10 +116,13 @@ def ocr_det(
                 y1 = min(img_height, int(res['bbox'][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
-                res['bbox'] = [x0, y0, x1, y1]
-                new_image, useful_list = crop_img(
-                    res, np_image, crop_paste_x=50, crop_paste_y=50
-                )
+                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
+                try:
+                    new_image, useful_list = crop_img(
+                        res, np_image, crop_paste_x=50, crop_paste_y=50
+                    )
+                finally:
+                    _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                     page_mfd_res, useful_list
                 )
