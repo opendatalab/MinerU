@@ -1,3 +1,4 @@
+import copy
 import re
 from typing import Literal
 
@@ -14,9 +15,7 @@ not_extract_list = [item.value for item in NotExtractType]
 
 class MagicModel:
     def __init__(self,
-        page_blocks: list,
-        page_inline_formula,
-        page_ocr_res,
+        page_model_list: list,
         page,
         scale,
         page_pil_img,
@@ -25,9 +24,11 @@ class MagicModel:
         _ocr_enable,
         _vlm_ocr_enable,
     ):
-        self.page_blocks = page_blocks
-        self.page_inline_formula = page_inline_formula
-        self.page_ocr_res = page_ocr_res
+        (
+            self.page_blocks,
+            self.page_inline_formula,
+            self.page_ocr_res,
+        ) = self._split_page_model_list(copy.deepcopy(page_model_list))
 
         self.width = width
         self.height = height
@@ -37,7 +38,7 @@ class MagicModel:
 
         page_text_inline_formula_spans = []
         if not _vlm_ocr_enable:
-            for inline_formula in page_inline_formula:
+            for inline_formula in self.page_inline_formula:
                 inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
                 inline_formula_latex = inline_formula.pop("latex", "")
                 if inline_formula_latex:
@@ -47,7 +48,7 @@ class MagicModel:
                         "content": inline_formula_latex,
                         "score": inline_formula["score"],
                     })
-            for ocr_res in page_ocr_res:
+            for ocr_res in self.page_ocr_res:
                 ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
                 page_text_inline_formula_spans.append({
                     "bbox": ocr_res["bbox"],
@@ -60,7 +61,7 @@ class MagicModel:
                 page_text_inline_formula_spans = txt_spans_extract(page, page_text_inline_formula_spans, page_pil_img, scale, [virtual_block],[])
 
         # 解析每个块
-        for index, block_info in enumerate(page_blocks):
+        for index, block_info in enumerate(self.page_blocks):
             try:
                 block_bbox = self.cal_real_bbox(block_info["bbox"])
                 block_type = block_info["type"]
@@ -298,6 +299,23 @@ class MagicModel:
         for block in not_include_image_blocks + not_include_table_blocks + not_include_code_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
+
+    @staticmethod
+    def _split_page_model_list(page_model_list):
+        page_blocks = []
+        page_inline_formula = []
+        page_ocr_res = []
+
+        for item in page_model_list:
+            item_type = item.get("type") or item.get("label")
+            if item_type == "inline_formula":
+                page_inline_formula.append(item)
+            elif item_type == "ocr_text":
+                page_ocr_res.append(item)
+            else:
+                page_blocks.append(item)
+
+        return page_blocks, page_inline_formula, page_ocr_res
 
     def cal_real_bbox(self, bbox):
         x1, y1, x2, y2 = bbox
