@@ -63,7 +63,10 @@ class UnimernetModel(object):
         for item in mfd_res or []:
             if not isinstance(item, dict):
                 continue
-            if item.get("label") not in ["inline_formula", "display_formula"]:
+            label = item.get("label")
+            if label not in ["inline_formula", "display_formula"]:
+                continue
+            if not interline_enable and label == "display_formula":
                 continue
 
             new_item = dict(item)
