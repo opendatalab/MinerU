@@ -200,6 +200,62 @@ def normalize_poly_to_bbox(item, page_width, page_height):
     item.pop('poly', None)
 
 
+def normalize_bbox_to_unit(item, page_width, page_height):
+    """将像素级bbox归一化为[0, 1]区间"""
+    bbox = item.get('bbox')
+    if bbox is None or len(bbox) != 4:
+        return False
+
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    if (
+        0.0 <= x0 <= 1.0
+        and 0.0 <= y0 <= 1.0
+        and 0.0 <= x1 <= 1.0
+        and 0.0 <= y1 <= 1.0
+    ):
+        normalized_bbox = [x0, y0, x1, y1]
+    else:
+        normalized_bbox = [
+            x0 / page_width,
+            y0 / page_height,
+            x1 / page_width,
+            y1 / page_height,
+        ]
+    item['bbox'] = [round(min(max(v, 0), 1), 3) for v in normalized_bbox]
+    item.pop('poly', None)
+    return True
+
+
+def _formula_item_to_pixel_bbox(item):
+    bbox = item.get('bbox')
+    if bbox is not None and len(bbox) == 4:
+        return [int(float(v)) for v in bbox]
+
+    return None
+
+
+def _build_inline_formula_inputs(images_layout_res):
+    inline_formula_inputs = []
+    for layout_res in images_layout_res:
+        page_inline_formula_inputs = []
+        for res in layout_res:
+            if res.get('label') not in ['inline_formula', 'display_formula']:
+                continue
+            bbox = res.get('bbox')
+            if bbox is None or len(bbox) != 4:
+                continue
+            page_inline_formula_inputs.append(
+                {
+                    "label": "inline_formula",
+                    "bbox": list(bbox),
+                    "score": float(res.get('score', 0.0)),
+                    "latex": res.get('latex', ''),
+                }
+            )
+        inline_formula_inputs.append(page_inline_formula_inputs)
+    return inline_formula_inputs
+
+
 def _process_ocr_and_formulas(
     images_pil_list,
     results,
@@ -227,13 +283,14 @@ def _process_ocr_and_formulas(
     if inline_formula_enable:
         # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
         np_images = mask_image_regions(np_images, results)
-        # 公式检测
-        images_mfd_res = hybrid_pipeline_model.mfd_model.batch_predict(np_images, batch_size=1, conf=0.5)
+        # 使用layout模型提供行内公式检测框
+        images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(np_images, batch_size=1)
+        images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
             images_mfd_res,
             np_images,
-            batch_size=batch_radio*MFR_BASE_BATCH_SIZE,
+            batch_size=batch_radio * MFR_BASE_BATCH_SIZE,
             interline_enable=True,
         )
     else:
@@ -243,11 +300,10 @@ def _process_ocr_and_formulas(
     for page_inline_formula_list in inline_formula_list:
         page_mfd_res = []
         for formula in page_inline_formula_list:
-            formula['category_id'] = 13
-            page_mfd_res.append({
-                "bbox": [int(formula['poly'][0]), int(formula['poly'][1]),
-                         int(formula['poly'][4]), int(formula['poly'][5])],
-            })
+            bbox = _formula_item_to_pixel_bbox(formula)
+            if bbox is None:
+                continue
+            page_mfd_res.append({"bbox": bbox})
         mfd_res.append(page_mfd_res)
 
     # vlm没有执行ocr，需要ocr_det
@@ -267,7 +323,7 @@ def _process_ocr_and_formulas(
         for page_ocr_res_list in ocr_res_list:
             for ocr_res in page_ocr_res_list:
                 if 'np_img' in ocr_res:
-                    need_ocr_list.append(ocr_res)
+                    need_ocr_list.append((page_ocr_res_list, ocr_res))
                     img_crop_list.append(ocr_res.pop('np_img'))
         if len(img_crop_list) > 0:
             # Process OCR
@@ -276,13 +332,15 @@ def _process_ocr_and_formulas(
             # Verify we have matching counts
             assert len(ocr_result_list) == len(need_ocr_list), f'ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}'
 
+            items_to_remove = []
             # Process OCR results for this language
-            for index, need_ocr_res in enumerate(need_ocr_list):
+            for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
                 ocr_text, ocr_score = ocr_result_list[index]
                 need_ocr_res['text'] = ocr_text
                 need_ocr_res['score'] = float(f"{ocr_score:.3f}")
+                should_remove = False
                 if ocr_score < OcrConfidence.min_confidence:
-                    need_ocr_res['category_id'] = 16
+                    should_remove = True
                 else:
                     layout_res_bbox = [need_ocr_res['poly'][0], need_ocr_res['poly'][1],
                                        need_ocr_res['poly'][4], need_ocr_res['poly'][5]]
@@ -297,7 +355,14 @@ def _process_ocr_and_formulas(
                             and ocr_score < 0.8
                             and layout_res_width < layout_res_height
                     ):
-                        need_ocr_res['category_id'] = 16
+                        should_remove = True
+
+                if should_remove:
+                    items_to_remove.append((page_ocr_res_list, need_ocr_res))
+
+            for page_ocr_res_list, need_ocr_res in items_to_remove:
+                if need_ocr_res in page_ocr_res_list:
+                    page_ocr_res_list.remove(need_ocr_res)
 
     return inline_formula_list, ocr_res_list, hybrid_pipeline_model
 
@@ -315,7 +380,7 @@ def _normalize_bbox(
             page_width, page_height = page_pil_image.size
             # 处理公式列表
             for formula in page_inline_formula_list:
-                normalize_poly_to_bbox(formula, page_width, page_height)
+                normalize_bbox_to_unit(formula, page_width, page_height)
             # 处理OCR结果列表
             for ocr_res in page_ocr_res_list:
                 normalize_poly_to_bbox(ocr_res, page_width, page_height)

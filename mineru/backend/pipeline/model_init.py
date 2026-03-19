@@ -327,11 +327,14 @@ class MineruHybridModel:
         )
 
         if formula_enable:
-            # 初始化公式检测模型
-            self.mfd_model = self.atom_model_manager.get_atom_model(
-                atom_model_name=AtomicModel.MFD,
-                mfd_weights=str(
-                    os.path.join(auto_download_and_get_model_root_path(ModelPath.yolo_v8_mfd), ModelPath.yolo_v8_mfd)
+            # 初始化layout模型，用于提供行内公式检测框
+            self.layout_model = self.atom_model_manager.get_atom_model(
+                atom_model_name=AtomicModel.Layout,
+                pp_doclayout_v2_weights=str(
+                    os.path.join(
+                        auto_download_and_get_model_root_path(ModelPath.pp_doclayout_v2),
+                        ModelPath.pp_doclayout_v2,
+                    )
                 ),
                 device=self.device,
             )
