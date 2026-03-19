@@ -104,7 +104,7 @@ def ocr_det(
                 y1 = min(img_height, int(res['bbox'][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
-                res['poly'] = [x0, y0, x1, y0, x1, y1, x0, y1]
+                res['bbox'] = [x0, y0, x1, y1]
                 new_image, useful_list = crop_img(
                     res, np_image, crop_paste_x=50, crop_paste_y=50
                 )
@@ -189,16 +189,6 @@ def mask_image_regions(np_images, results):
             np_image[y0:y1, x0:x1, :] = 255
     return np_images
 
-def normalize_poly_to_bbox(item, page_width, page_height):
-    """将poly坐标归一化为bbox"""
-    poly = item['poly']
-    x0 = min(max(poly[0] / page_width, 0), 1)
-    y0 = min(max(poly[1] / page_height, 0), 1)
-    x1 = min(max(poly[4] / page_width, 0), 1)
-    y1 = min(max(poly[5] / page_height, 0), 1)
-    item['bbox'] = [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)]
-    item.pop('poly', None)
-
 
 def normalize_bbox_to_unit(item, page_width, page_height):
     """将像素级bbox归一化为[0, 1]区间"""
@@ -222,7 +212,6 @@ def normalize_bbox_to_unit(item, page_width, page_height):
             y1 / page_height,
         ]
     item['bbox'] = [round(min(max(v, 0), 1), 3) for v in normalized_bbox]
-    item.pop('poly', None)
     return True
 
 
@@ -383,7 +372,7 @@ def _normalize_bbox(
                 normalize_bbox_to_unit(formula, page_width, page_height)
             # 处理OCR结果列表
             for ocr_res in page_ocr_res_list:
-                normalize_poly_to_bbox(ocr_res, page_width, page_height)
+                normalize_bbox_to_unit(ocr_res, page_width, page_height)
 
 
 def get_batch_ratio(device):

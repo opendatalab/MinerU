@@ -49,13 +49,12 @@ class MagicModel:
                     })
             for ocr_res in page_ocr_res:
                 ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
-                if ocr_res['category_id'] == 15:
-                    page_text_inline_formula_spans.append({
-                        "bbox": ocr_res["bbox"],
-                        "type": ContentType.TEXT,
-                        "content": ocr_res["text"],
-                        "score": ocr_res["score"],
-                    })
+                page_text_inline_formula_spans.append({
+                    "bbox": ocr_res["bbox"],
+                    "type": ContentType.TEXT,
+                    "content": ocr_res["text"],
+                    "score": ocr_res["score"],
+                })
             if not _ocr_enable:
                 virtual_block = [0, 0, width, height, None, None, None, "text"]
                 page_text_inline_formula_spans = txt_spans_extract(page, page_text_inline_formula_spans, page_pil_img, scale, [virtual_block],[])
