@@ -3,6 +3,7 @@ import io
 import json
 import os
 import copy
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from loguru import logger
@@ -205,77 +206,71 @@ def _process_pipeline(
         f_make_md_mode,
 ):
     """处理pipeline后端逻辑"""
-    from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi as pipeline_doc_analyze_low_memory_multi
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi_streaming as pipeline_doc_analyze_low_memory_multi_streaming
 
-    if is_low_memory_enabled():
-        image_writer_list = []
-        md_writer_list = []
-        local_output_info = []
-        for idx, pdf_bytes in enumerate(pdf_bytes_list):
-            pdf_file_name = pdf_file_names[idx]
-            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
-            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-            image_writer_list.append(image_writer)
-            md_writer_list.append(md_writer)
-            local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
-
-        middle_json_list, model_list_list, _ = pipeline_doc_analyze_low_memory_multi(
-            pdf_bytes_list,
-            image_writer_list,
-            p_lang_list,
-            parse_method=parse_method,
-            formula_enable=p_formula_enable,
-            table_enable=p_table_enable,
-        )
-
-        for idx, (middle_json, model_list) in enumerate(zip(middle_json_list, model_list_list)):
-            model_json = copy.deepcopy(model_list)
-            pdf_info = middle_json["pdf_info"]
-            pdf_file_name, local_image_dir, local_md_dir = local_output_info[idx]
-            md_writer = md_writer_list[idx]
-            pdf_bytes = pdf_bytes_list[idx]
-            _process_output(
-                pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-                f_make_md_mode, middle_json, model_json, process_mode="pipeline"
-            )
-        return
-
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list, p_lang_list, parse_method=parse_method,
-            formula_enable=p_formula_enable, table_enable=p_table_enable
-        )
-    )
-
-    for idx, model_list in enumerate(infer_results):
-        model_json = copy.deepcopy(model_list)
+    image_writer_list = []
+    md_writer_list = []
+    local_output_info = []
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        image_writer_list.append(image_writer)
+        md_writer_list.append(md_writer)
+        local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
-        images_list = all_image_lists[idx]
-        pdf_doc = all_pdf_docs[idx]
-        _lang = lang_list[idx]
-        _ocr_enable = ocr_enabled_list[idx]
+    output_futures = []
 
-        middle_json = pipeline_result_to_middle_json(
-            model_list, images_list, pdf_doc, image_writer,
-            _lang, _ocr_enable,
-        )
+    def run_output_task(doc_index, middle_json, model_list):
+        pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
+        md_writer = md_writer_list[doc_index]
+        pdf_bytes = pdf_bytes_list[doc_index]
+        logger.info(f"Pipeline output start: doc{doc_index}")
+        try:
+            _process_output(
+                middle_json["pdf_info"], pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, model_list, process_mode="pipeline"
+            )
+            logger.info(f"Pipeline output complete: doc{doc_index}")
+        except Exception:
+            logger.exception(f"Pipeline output failed: doc{doc_index}")
+            raise
 
-        pdf_info = middle_json["pdf_info"]
-        pdf_bytes = pdf_bytes_list[idx]
+    with ThreadPoolExecutor(max_workers=1) as output_executor:
+        def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+            logger.info(
+                f"Pipeline doc ready: doc{doc_index} pages={len(middle_json['pdf_info'])} output_submitted=1"
+            )
+            future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
+            output_futures.append(future)
 
-        _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, process_mode="pipeline"
-        )
+        if is_low_memory_enabled():
+            pipeline_doc_analyze_low_memory_multi_streaming(
+                pdf_bytes_list,
+                image_writer_list,
+                p_lang_list,
+                on_doc_ready,
+                parse_method=parse_method,
+                formula_enable=p_formula_enable,
+                table_enable=p_table_enable,
+            )
+        else:
+            pipeline_doc_analyze_streaming(
+                pdf_bytes_list,
+                image_writer_list,
+                p_lang_list,
+                on_doc_ready,
+                parse_method=parse_method,
+                formula_enable=p_formula_enable,
+                table_enable=p_table_enable,
+            )
+
+        for future in output_futures:
+            future.result()
+    return
 
 
 async def _async_process_vlm(

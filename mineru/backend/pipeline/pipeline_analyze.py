@@ -8,7 +8,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from .model_init import MineruPipelineModel
-from .model_json_to_middle_json import append_batch_results_to_middle_json, finalize_middle_json, init_middle_json
+from .model_json_to_middle_json import append_batch_results_to_middle_json, finalize_middle_json, init_middle_json, result_to_middle_json
 from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
@@ -98,6 +98,38 @@ def _format_doc_slices(batch_slices):
         f"doc{item['doc_index']}:{item['page_start'] + 1}-{item['page_end'] + 1}"
         for item in batch_slices
     )
+
+
+def _build_page_result(page_idx: int, pil_img: Image.Image, layout_dets):
+    page_info_dict = {'page_no': page_idx, 'width': pil_img.width, 'height': pil_img.height}
+    return {'layout_dets': layout_dets, 'page_info': page_info_dict}
+
+
+def _finalize_low_memory_context(context, on_doc_ready):
+    if context['closed']:
+        return
+    finalize_middle_json(
+        context['middle_json']['pdf_info'],
+        lang=context['lang'],
+        ocr_enable=context['ocr_enable'],
+    )
+    logger.info(
+        f"Pipeline doc ready: doc{context['doc_index']} pages={context['page_count']}"
+    )
+    on_doc_ready(
+        context['doc_index'],
+        context['model_list'],
+        context['middle_json'],
+        context['ocr_enable'],
+    )
+    context['pdf_doc'].close()
+    context['closed'] = True
+
+
+def _emit_zero_page_contexts(doc_contexts, on_doc_ready):
+    for context in doc_contexts:
+        if context['page_count'] == 0 and not context['closed']:
+            _finalize_low_memory_context(context, on_doc_ready)
 
 def doc_analyze(
         pdf_bytes_list,
@@ -204,10 +236,151 @@ def doc_analyze_low_memory(
     return middle_json_list[0], model_list_list[0]
 
 
-def doc_analyze_low_memory_multi(
+def doc_analyze_streaming(
         pdf_bytes_list,
         image_writer_list,
         lang_list,
+        on_doc_ready,
+        parse_method: str = 'auto',
+        formula_enable=True,
+        table_enable=True,
+):
+    if not (len(pdf_bytes_list) == len(image_writer_list) == len(lang_list)):
+        raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
+
+    min_batch_inference_size = int(os.environ.get('MINERU_MIN_BATCH_INFERENCE_SIZE', 384))
+
+    all_pages_info = []
+    all_doc_contexts = []
+    total_pages = 0
+    load_images_start = time.time()
+    for pdf_idx, (pdf_bytes, image_writer, lang) in enumerate(zip(pdf_bytes_list, image_writer_list, lang_list)):
+        _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
+        images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
+        page_count = len(images_list)
+        total_pages += page_count
+        all_doc_contexts.append(
+            {
+                'doc_index': pdf_idx,
+                'images_list': images_list,
+                'pdf_doc': pdf_doc,
+                'page_count': page_count,
+                'lang': lang,
+                'ocr_enable': _ocr_enable,
+                'image_writer': image_writer,
+                'model_list': [],
+                'closed': False,
+            }
+        )
+        for page_idx, img_dict in enumerate(images_list):
+            all_pages_info.append((
+                pdf_idx,
+                page_idx,
+                img_dict['img_pil'],
+                _ocr_enable,
+                lang,
+            ))
+    load_images_time = round(time.time() - load_images_start, 2)
+    if load_images_time > 0 and total_pages > 0:
+        logger.debug(f"load images cost: {load_images_time}, speed: {round(total_pages / load_images_time, 3)} images/s")
+
+    images_with_extra_info = [(info[2], info[3], info[4]) for info in all_pages_info]
+    batch_images = [
+        images_with_extra_info[i:i + min_batch_inference_size]
+        for i in range(0, len(images_with_extra_info), min_batch_inference_size)
+    ]
+
+    doc_end_offsets = []
+    cumulative_pages = 0
+    for context in all_doc_contexts:
+        cumulative_pages += context['page_count']
+        doc_end_offsets.append(cumulative_pages)
+
+    next_doc_to_emit = 0
+    while next_doc_to_emit < len(all_doc_contexts) and doc_end_offsets[next_doc_to_emit] == 0:
+        context = all_doc_contexts[next_doc_to_emit]
+        middle_json = init_middle_json()
+        finalize_middle_json(
+            middle_json['pdf_info'],
+            lang=context['lang'],
+            ocr_enable=context['ocr_enable'],
+        )
+        logger.info(
+            f"Pipeline doc ready: doc{context['doc_index']} pages={context['page_count']}"
+        )
+        on_doc_ready(
+            context['doc_index'],
+            context['model_list'],
+            middle_json,
+            context['ocr_enable'],
+        )
+        context['pdf_doc'].close()
+        context['closed'] = True
+        next_doc_to_emit += 1
+
+    processed_images_count = 0
+    infer_start = time.time()
+    try:
+        for index, batch_image in enumerate(batch_images):
+            processed_images_count += len(batch_image)
+            logger.info(
+                f'Batch {index + 1}/{len(batch_images)}: '
+                f'{processed_images_count} pages/{len(images_with_extra_info)} pages'
+            )
+            batch_results = batch_image_analyze(batch_image, formula_enable, table_enable)
+            batch_start_index = processed_images_count - len(batch_image)
+            for page_meta, page_result in zip(
+                all_pages_info[batch_start_index: processed_images_count],
+                batch_results,
+            ):
+                pdf_idx, page_idx, pil_img, _, _ = page_meta
+                all_doc_contexts[pdf_idx]['model_list'].append(
+                    _build_page_result(page_idx, pil_img, page_result)
+                )
+
+            while next_doc_to_emit < len(all_doc_contexts) and doc_end_offsets[next_doc_to_emit] <= processed_images_count:
+                context = all_doc_contexts[next_doc_to_emit]
+                middle_json = result_to_middle_json(
+                    context['model_list'],
+                    context['images_list'],
+                    context['pdf_doc'],
+                    context['image_writer'],
+                    context['lang'],
+                    context['ocr_enable'],
+                )
+                logger.info(
+                    f"Pipeline doc ready: doc{context['doc_index']} pages={context['page_count']}"
+                )
+                on_doc_ready(
+                    context['doc_index'],
+                    context['model_list'],
+                    middle_json,
+                    context['ocr_enable'],
+                )
+                _close_images(context['images_list'])
+                context['images_list'].clear()
+                context['closed'] = True
+                next_doc_to_emit += 1
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0 and total_pages > 0:
+            logger.debug(f"infer finished, cost: {infer_time}, speed: {round(total_pages / infer_time, 3)} page/s")
+    finally:
+        for context in all_doc_contexts:
+            if not context['closed']:
+                try:
+                    context['pdf_doc'].close()
+                except Exception:
+                    pass
+                _close_images(context['images_list'])
+                context['images_list'].clear()
+
+
+def doc_analyze_low_memory_multi_streaming(
+        pdf_bytes_list,
+        image_writer_list,
+        lang_list,
+        on_doc_ready,
         parse_method: str = 'auto',
         formula_enable=True,
         table_enable=True,
@@ -217,13 +390,11 @@ def doc_analyze_low_memory_multi(
 
     doc_contexts = []
     total_pages = 0
-    ocr_enabled_list = []
     for doc_index, (pdf_bytes, image_writer, lang) in enumerate(zip(pdf_bytes_list, image_writer_list, lang_list)):
         _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
         pdf_doc = pdfium.PdfDocument(pdf_bytes)
         page_count = len(pdf_doc)
         total_pages += page_count
-        ocr_enabled_list.append(_ocr_enable)
         doc_contexts.append(
             {
                 'doc_index': doc_index,
@@ -240,14 +411,8 @@ def doc_analyze_low_memory_multi(
         )
 
     if total_pages == 0:
-        for context in doc_contexts:
-            context['pdf_doc'].close()
-            context['closed'] = True
-        return (
-            [context['middle_json'] for context in doc_contexts],
-            [context['model_list'] for context in doc_contexts],
-            ocr_enabled_list,
-        )
+        _emit_zero_page_contexts(doc_contexts, on_doc_ready)
+        return
 
     window_size = get_low_memory_window_size(default=64)
     total_batches = (total_pages + window_size - 1) // window_size
@@ -256,6 +421,7 @@ def doc_analyze_low_memory_multi(
         f'total_pages={total_pages}, window_size={window_size}, total_batches={total_batches}'
     )
 
+    _emit_zero_page_contexts(doc_contexts, on_doc_ready)
     processed_pages = 0
     infer_start = time.time()
     try:
@@ -330,13 +496,7 @@ def doc_analyze_low_memory_multi(
                     images_list.clear()
 
                     if context['next_page_idx'] >= context['page_count'] and not context['closed']:
-                        finalize_middle_json(
-                            context['middle_json']['pdf_info'],
-                            lang=context['lang'],
-                            ocr_enable=context['ocr_enable'],
-                        )
-                        context['pdf_doc'].close()
-                        context['closed'] = True
+                        _finalize_low_memory_context(context, on_doc_ready)
 
                 processed_pages += len(batch_images)
 
@@ -352,11 +512,35 @@ def doc_analyze_low_memory_multi(
                 context['pdf_doc'].close()
                 context['closed'] = True
 
-    return (
-        [context['middle_json'] for context in doc_contexts],
-        [context['model_list'] for context in doc_contexts],
-        ocr_enabled_list,
+
+def doc_analyze_low_memory_multi(
+        pdf_bytes_list,
+        image_writer_list,
+        lang_list,
+        parse_method: str = 'auto',
+        formula_enable=True,
+        table_enable=True,
+):
+    middle_json_list = [None] * len(pdf_bytes_list)
+    model_list_list = [None] * len(pdf_bytes_list)
+    ocr_enabled_list = [None] * len(pdf_bytes_list)
+
+    def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+        middle_json_list[doc_index] = middle_json
+        model_list_list[doc_index] = model_list
+        ocr_enabled_list[doc_index] = ocr_enable
+
+    doc_analyze_low_memory_multi_streaming(
+        pdf_bytes_list,
+        image_writer_list,
+        lang_list,
+        on_doc_ready,
+        parse_method=parse_method,
+        formula_enable=formula_enable,
+        table_enable=table_enable,
     )
+
+    return middle_json_list, model_list_list, ocr_enabled_list
 
 
 def batch_image_analyze(
