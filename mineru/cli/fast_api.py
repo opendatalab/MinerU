@@ -5,6 +5,7 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 import uuid
 import zipfile
 from contextlib import asynccontextmanager, suppress
@@ -40,6 +41,7 @@ from mineru.cli.common import (
     read_fn,
 )
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.config_reader import get_device
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
 
@@ -59,6 +61,7 @@ ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
+_mps_parse_lock = threading.Lock()
 
 
 @dataclass
@@ -164,10 +167,10 @@ def create_app():
     global _request_semaphore
     try:
         max_concurrent_requests = int(
-            os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "0")
+            os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", "3")
         )
     except ValueError:
-        max_concurrent_requests = 0
+        max_concurrent_requests = 3
 
     if max_concurrent_requests > 0:
         _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
@@ -654,10 +657,30 @@ async def run_parse_job(
     )
 
     if request_options.backend == "pipeline":
-        await asyncio.to_thread(do_parse, **parse_kwargs)
+        async with serialize_parse_job_if_needed(request_options.backend):
+            await asyncio.to_thread(do_parse, **parse_kwargs)
     else:
-        await aio_do_parse(**parse_kwargs)
+        async with serialize_parse_job_if_needed(request_options.backend):
+            await aio_do_parse(**parse_kwargs)
     return response_file_names
+
+
+def should_serialize_parse_job(backend: str) -> bool:
+    if get_device() != "mps":
+        return False
+    return backend == "pipeline" or backend.startswith(("vlm-", "hybrid-"))
+
+
+@asynccontextmanager
+async def serialize_parse_job_if_needed(backend: str):
+    if not should_serialize_parse_job(backend):
+        yield
+        return
+    await asyncio.to_thread(_mps_parse_lock.acquire)
+    try:
+        yield
+    finally:
+        _mps_parse_lock.release()
 
 
 def create_task_output_dir(task_id: str) -> str:

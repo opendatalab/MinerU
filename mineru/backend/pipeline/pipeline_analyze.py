@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from typing import List, Tuple
 
@@ -22,10 +23,12 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 class ModelSingleton:
     _instance = None
     _models = {}
+    _lock = threading.RLock()
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def get_model(
@@ -35,12 +38,13 @@ class ModelSingleton:
         table_enable=None,
     ):
         key = (lang, formula_enable, table_enable)
-        if key not in self._models:
-            self._models[key] = custom_model_init(
-                lang=lang,
-                formula_enable=formula_enable,
-                table_enable=table_enable,
-            )
+        with self._lock:
+            if key not in self._models:
+                self._models[key] = custom_model_init(
+                    lang=lang,
+                    formula_enable=formula_enable,
+                    table_enable=table_enable,
+                )
         return self._models[key]
 
 

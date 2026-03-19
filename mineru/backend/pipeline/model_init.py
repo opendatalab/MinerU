@@ -1,4 +1,5 @@
 import os
+import threading
 
 import torch
 from loguru import logger
@@ -112,10 +113,12 @@ def ocr_model_init(det_db_box_thresh=0.3,
 class AtomModelSingleton:
     _instance = None
     _models = {}
+    _lock = threading.RLock()
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def get_atom_model(self, atom_model_name: str, **kwargs):
@@ -145,8 +148,9 @@ class AtomModelSingleton:
         else:
             key = atom_model_name
 
-        if key not in self._models:
-            self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
+        with self._lock:
+            if key not in self._models:
+                self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
         return self._models[key]
 
 def atom_model_init(model_name: str, **kwargs):
@@ -258,10 +262,12 @@ class MineruPipelineModel:
 class HybridModelSingleton:
     _instance = None
     _models = {}
+    _lock = threading.RLock()
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
         return cls._instance
 
     def get_model(
@@ -270,11 +276,12 @@ class HybridModelSingleton:
         formula_enable=None,
     ):
         key = (lang, formula_enable)
-        if key not in self._models:
-            self._models[key] = MineruHybridModel(
-                lang=lang,
-                formula_enable=formula_enable,
-            )
+        with self._lock:
+            if key not in self._models:
+                self._models[key] = MineruHybridModel(
+                    lang=lang,
+                    formula_enable=formula_enable,
+                )
         return self._models[key]
 
 def ocr_det_batch_setting():

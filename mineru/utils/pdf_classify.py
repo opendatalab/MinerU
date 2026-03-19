@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
+import threading
 from io import BytesIO
 import numpy as np
 import pypdfium2 as pdfium
@@ -12,6 +13,8 @@ from pdfminer.pdfinterp import PDFResourceManager
 from pdfminer.pdfinterp import PDFPageInterpreter
 from pdfminer.layout import LAParams, LTImage, LTFigure
 from pdfminer.converter import PDFPageAggregator
+
+_pdf_sample_extract_lock = threading.Lock()
 
 
 def classify(pdf_bytes):
@@ -27,6 +30,8 @@ def classify(pdf_bytes):
 
     # 从字节数据加载PDF
     sample_pdf_bytes = extract_pages(pdf_bytes)
+    if not sample_pdf_bytes:
+        return 'ocr'
     pdf = pdfium.PdfDocument(sample_pdf_bytes)
     try:
         # 获取PDF页数
@@ -187,40 +192,50 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
         bytes: 提取页面后的PDF字节数据
     """
 
-    # 从字节数据加载PDF
-    pdf = pdfium.PdfDocument(src_pdf_bytes)
+    with _pdf_sample_extract_lock:
+        pdf = None
+        sample_docs = None
+        try:
+            # 从字节数据加载PDF
+            pdf = pdfium.PdfDocument(src_pdf_bytes)
 
-    # 获取PDF页数
-    total_page = len(pdf)
-    if total_page == 0:
-        # 如果PDF没有页面，直接返回空文档
-        logger.warning("PDF is empty, return empty document")
-        return b''
+            # 获取PDF页数
+            total_page = len(pdf)
+            if total_page == 0:
+                # 如果PDF没有页面，直接返回空文档
+                logger.warning("PDF is empty, return empty document")
+                return b''
 
-    # 选择最多10页
-    select_page_cnt = min(10, total_page)
+            # 小文档直接复用原始字节，避免无意义的 PDF 重写。
+            if total_page <= 10:
+                return src_pdf_bytes
 
-    # 从总页数中随机选择页面
-    page_indices = np.random.choice(total_page, select_page_cnt, replace=False).tolist()
+            # 选择最多10页
+            select_page_cnt = min(10, total_page)
 
-    # 创建一个新的PDF文档
-    sample_docs = pdfium.PdfDocument.new()
+            # 从总页数中随机选择页面
+            page_indices = np.random.choice(total_page, select_page_cnt, replace=False).tolist()
 
-    try:
-        # 将选择的页面导入新文档
-        sample_docs.import_pages(pdf, page_indices)
-        pdf.close()
+            # 创建一个新的PDF文档
+            sample_docs = pdfium.PdfDocument.new()
 
-        # 将新PDF保存到内存缓冲区
-        output_buffer = BytesIO()
-        sample_docs.save(output_buffer)
+            # 将选择的页面导入新文档
+            sample_docs.import_pages(pdf, page_indices)
 
-        # 获取字节数据
-        return output_buffer.getvalue()
-    except Exception as e:
-        pdf.close()
-        logger.exception(e)
-        return b''  # 出错时返回空字节
+            # 将新PDF保存到内存缓冲区
+            output_buffer = BytesIO()
+            sample_docs.save(output_buffer)
+
+            # 获取字节数据
+            return output_buffer.getvalue()
+        except Exception as e:
+            logger.exception(e)
+            return src_pdf_bytes
+        finally:
+            if pdf is not None:
+                pdf.close()
+            if sample_docs is not None:
+                sample_docs.close()
 
 
 def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:

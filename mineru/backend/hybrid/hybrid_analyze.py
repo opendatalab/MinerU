@@ -18,7 +18,12 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     result_to_middle_json,
 )
 from mineru.backend.pipeline.model_init import HybridModelSingleton
-from mineru.backend.vlm.vlm_analyze import ModelSingleton
+from mineru.backend.vlm.vlm_analyze import (
+    ModelSingleton,
+    aio_predictor_execution_guard,
+    predictor_execution_guard,
+    _maybe_enable_serial_execution,
+)
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
@@ -538,6 +543,7 @@ def doc_analyze(
     # 初始化预测器
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     # 加载图像
     load_images_start = time.time()
@@ -556,14 +562,16 @@ def doc_analyze(
     infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
-        model_list = predictor.batch_two_step_extract(images=images_pil_list)
+        with predictor_execution_guard(predictor):
+            model_list = predictor.batch_two_step_extract(images=images_pil_list)
         hybrid_pipeline_model = None
     else:
         batch_ratio = get_batch_ratio(device)
-        model_list = predictor.batch_two_step_extract(
-            images=images_pil_list,
-            not_extract_list=not_extract_list
-        )
+        with predictor_execution_guard(predictor):
+            model_list = predictor.batch_two_step_extract(
+                images=images_pil_list,
+                not_extract_list=not_extract_list
+            )
         model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
             images_pil_list,
             model_list,
@@ -604,6 +612,7 @@ def doc_analyze_low_memory(
 ):
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
@@ -648,12 +657,14 @@ def doc_analyze_low_memory(
                         f'({len(images_pil_list)} pages)'
                     )
                     if _vlm_ocr_enable:
-                        window_model_list = predictor.batch_two_step_extract(images=images_pil_list)
+                        with predictor_execution_guard(predictor):
+                            window_model_list = predictor.batch_two_step_extract(images=images_pil_list)
                     else:
-                        window_model_list = predictor.batch_two_step_extract(
-                            images=images_pil_list,
-                            not_extract_list=not_extract_list
-                        )
+                        with predictor_execution_guard(predictor):
+                            window_model_list = predictor.batch_two_step_extract(
+                                images=images_pil_list,
+                                not_extract_list=not_extract_list
+                            )
                         window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
                             images_pil_list,
                             window_model_list,
@@ -715,6 +726,7 @@ async def aio_doc_analyze(
     # 初始化预测器
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     # 加载图像
     load_images_start = time.time()
@@ -733,14 +745,16 @@ async def aio_doc_analyze(
     infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
-        model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+        async with aio_predictor_execution_guard(predictor):
+            model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
         hybrid_pipeline_model = None
     else:
         batch_ratio = get_batch_ratio(device)
-        model_list = await predictor.aio_batch_two_step_extract(
-            images=images_pil_list,
-            not_extract_list=not_extract_list
-        )
+        async with aio_predictor_execution_guard(predictor):
+            model_list = await predictor.aio_batch_two_step_extract(
+                images=images_pil_list,
+                not_extract_list=not_extract_list
+            )
         model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
             images_pil_list,
             model_list,
@@ -781,6 +795,7 @@ async def aio_doc_analyze_low_memory(
 ):
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     device = get_device()
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
@@ -825,12 +840,14 @@ async def aio_doc_analyze_low_memory(
                         f'({len(images_pil_list)} pages)'
                     )
                     if _vlm_ocr_enable:
-                        window_model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
                     else:
-                        window_model_list = await predictor.aio_batch_two_step_extract(
-                            images=images_pil_list,
-                            not_extract_list=not_extract_list
-                        )
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list = await predictor.aio_batch_two_step_extract(
+                                images=images_pil_list,
+                                not_extract_list=not_extract_list
+                            )
                         window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
                             images_pil_list,
                             window_model_list,

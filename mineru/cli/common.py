@@ -3,6 +3,7 @@ import io
 import json
 import os
 import copy
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -37,6 +38,8 @@ office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+_pdf_rewrite_lock = threading.Lock()
+
 def read_fn(path):
     if not isinstance(path, Path):
         path = Path(path)
@@ -60,34 +63,46 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
-    pdf = pdfium.PdfDocument(pdf_bytes)
-    output_pdf = pdfium.PdfDocument.new()
-    try:
-        end_page_id = get_end_page_id(end_page_id, len(pdf))
+    # pypdfium2 document import/save is not thread-safe across concurrent FastAPI tasks.
+    with _pdf_rewrite_lock:
+        pdf = None
+        output_pdf = None
+        try:
+            pdf = pdfium.PdfDocument(pdf_bytes)
+            page_count = len(pdf)
+            end_page_id = get_end_page_id(end_page_id, page_count)
 
-        # 逐页导入,失败则跳过
-        output_index = 0
-        for page_index in range(start_page_id, end_page_id + 1):
-            try:
-                output_pdf.import_pages(pdf, pages=[page_index])
-                output_index += 1
-            except Exception as page_error:
-                output_pdf.del_page(output_index)
-                logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
-                continue
+            # Avoid rewriting when the caller requests the whole document.
+            if start_page_id <= 0 and end_page_id >= page_count - 1:
+                return pdf_bytes
 
-        # 将新PDF保存到内存缓冲区
-        output_buffer = io.BytesIO()
-        output_pdf.save(output_buffer)
+            output_pdf = pdfium.PdfDocument.new()
 
-        # 获取字节数据
-        output_bytes = output_buffer.getvalue()
-    except Exception as e:
-        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
-        output_bytes = pdf_bytes
-    pdf.close()
-    output_pdf.close()
-    return output_bytes
+            # 逐页导入,失败则跳过
+            output_index = 0
+            for page_index in range(start_page_id, end_page_id + 1):
+                try:
+                    output_pdf.import_pages(pdf, pages=[page_index])
+                    output_index += 1
+                except Exception as page_error:
+                    output_pdf.del_page(output_index)
+                    logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
+                    continue
+
+            # 将新PDF保存到内存缓冲区
+            output_buffer = io.BytesIO()
+            output_pdf.save(output_buffer)
+
+            # 获取字节数据
+            return output_buffer.getvalue()
+        except Exception as e:
+            logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
+            return pdf_bytes
+        finally:
+            if pdf is not None:
+                pdf.close()
+            if output_pdf is not None:
+                output_pdf.close()
 
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
