@@ -1,5 +1,6 @@
 """MinerU File转Markdown转换的FastMCP服务器实现。"""
 
+import asyncio
 import json
 import re
 import traceback
@@ -1011,8 +1012,7 @@ async def _parse_file_local(
     Returns:
         Dict[str, Any]: 包含解析结果的字典
     """
-    # API URL路径
-    api_url = f"{config.LOCAL_MINERU_API_BASE}/file_parse"
+    submit_url = f"{config.LOCAL_MINERU_API_BASE}/tasks"
 
     # 使用Path对象确保文件路径正确
     file_path_obj = Path(file_path)
@@ -1027,33 +1027,58 @@ async def _parse_file_local(
     file_type = file_path_obj.suffix.lower()
     form_data = aiohttp.FormData()
     form_data.add_field(
-        "file", file_data, filename=file_path_obj.name, content_type=file_type
+        "files", file_data, filename=file_path_obj.name, content_type=file_type
     )
     form_data.add_field("parse_method", parse_method)
 
-    config.logger.debug(f"发送本地API请求到: {api_url}")
+    config.logger.debug(f"发送本地API请求到: {submit_url}")
     config.logger.debug(f"上传文件: {file_path_obj.name} (大小: {len(file_data)} 字节)")
 
-    # 发送请求
+    poll_timeout_seconds = 300
+    poll_interval_seconds = 1
+
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, data=form_data) as response:
-                if response.status != 200:
+            async with session.post(submit_url, data=form_data) as response:
+                if response.status != 202:
                     error_text = await response.text()
                     config.logger.error(
                         f"API返回错误状态码: {response.status}, 错误信息: {error_text}"
                     )
                     raise RuntimeError(f"API返回错误: {response.status}, {error_text}")
 
-                result = await response.json()
+                submit_result = await response.json()
+                task_id = submit_result.get("task_id")
+                if not task_id:
+                    raise RuntimeError(f"任务提交成功但未返回 task_id: {submit_result}")
 
-                config.logger.debug(f"本地API响应: {result}")
+                result_url = f"{config.LOCAL_MINERU_API_BASE}/tasks/{task_id}/result"
+                deadline = asyncio.get_running_loop().time() + poll_timeout_seconds
+                while True:
+                    async with session.get(result_url) as result_response:
+                        if result_response.status == 200:
+                            result = await result_response.json()
+                            config.logger.debug(f"本地API响应: {result}")
+                            if "error" in result:
+                                return {"status": "error", "error": result["error"]}
+                            return {"status": "success", "result": result}
 
-                # 处理响应
-                if "error" in result:
-                    return {"status": "error", "error": result["error"]}
+                        if result_response.status == 202:
+                            if asyncio.get_running_loop().time() >= deadline:
+                                raise RuntimeError(
+                                    f"任务 {task_id} 超时未完成，超过 {poll_timeout_seconds} 秒"
+                                )
+                            await asyncio.sleep(poll_interval_seconds)
+                            continue
 
-                return {"status": "success", "result": result}
+                        error_text = await result_response.text()
+                        config.logger.error(
+                            "任务结果查询失败: "
+                            f"task_id={task_id}, status={result_response.status}, error={error_text}"
+                        )
+                        raise RuntimeError(
+                            f"任务结果查询失败: {result_response.status}, {error_text}"
+                        )
     except aiohttp.ClientError as e:
         error_msg = f"与本地API通信时出错: {str(e)}"
         config.logger.error(error_msg)
