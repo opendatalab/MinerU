@@ -99,25 +99,29 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     return page_info
 
 
+def init_middle_json():
+    return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
+
+
+def finalize_middle_json(pdf_info_list):
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    if table_enable:
+        cross_page_table_merge(pdf_info_list)
+
+    if heading_level_import_success:
+        llm_aided_title_start_time = time.time()
+        llm_aided_title(pdf_info_list, title_aided_config)
+        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+
+
 def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
-    middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
+    middle_json = init_middle_json()
     for index, page_blocks in enumerate(model_output_blocks_list):
         page = pdf_doc[index]
         image_dict = images_list[index]
         page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index)
         middle_json["pdf_info"].append(page_info)
 
-    """表格跨页合并"""
-    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
-    if table_enable:
-        cross_page_table_merge(middle_json["pdf_info"])
-
-    """llm优化标题分级"""
-    if heading_level_import_success:
-        llm_aided_title_start_time = time.time()
-        llm_aided_title(middle_json["pdf_info"], title_aided_config)
-        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
-
-    # 关闭pdf文档
+    finalize_middle_json(middle_json["pdf_info"])
     pdf_doc.close()
     return middle_json

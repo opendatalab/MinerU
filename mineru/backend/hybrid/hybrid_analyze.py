@@ -5,22 +5,23 @@ from collections import defaultdict
 
 import cv2
 import numpy as np
+import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
-from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_middle_json
+from mineru.backend.hybrid.hybrid_model_output_to_middle_json import blocks_to_page_info, finalize_middle_json, init_middle_json, result_to_middle_json
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import ModelSingleton
 from mineru.data.data_reader_writer import DataWriter
-from mineru.utils.config_reader import get_device
+from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
 from mineru.utils.pdf_classify import classify
-from mineru.utils.pdf_image_tools import load_images_from_pdf
+from mineru.utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
@@ -381,6 +382,16 @@ def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enabl
     )
 
 
+def _close_images(images_list):
+    for image_dict in images_list or []:
+        pil_img = image_dict.get("img_pil")
+        if pil_img is not None:
+            try:
+                pil_img.close()
+            except Exception:
+                pass
+
+
 def doc_analyze(
         pdf_bytes,
         image_writer: DataWriter | None,
@@ -451,6 +462,124 @@ def doc_analyze(
 
     clean_memory(device)
     return middle_json, results, _vlm_ocr_enable
+
+
+def doc_analyze_low_memory(
+        pdf_bytes,
+        image_writer: DataWriter | None,
+        predictor: MinerUClient | None = None,
+        backend="transformers",
+        parse_method: str = 'auto',
+        language: str = 'ch',
+        inline_formula_enable: bool = True,
+        model_path: str | None = None,
+        server_url: str | None = None,
+        **kwargs,
+):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+
+    device = get_device()
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    results = []
+    doc_closed = False
+    hybrid_pipeline_model = None
+    try:
+        page_count = len(pdf_doc)
+        if page_count == 0:
+            pdf_doc.close()
+            doc_closed = True
+            clean_memory(device)
+            return middle_json, results, _vlm_ocr_enable
+        window_size = min(page_count, get_low_memory_window_size(default=64))
+        total_windows = (page_count + window_size - 1) // window_size
+        logger.info(
+            f'Hybrid low-memory mode enabled. page_count={page_count}, '
+            f'window_size={window_size}, total_windows={total_windows}'
+        )
+
+        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+
+        infer_start = time.time()
+        for window_index, window_start in enumerate(range(0, page_count, window_size)):
+            window_end = min(page_count - 1, window_start + window_size - 1)
+            images_list = load_images_from_pdf_doc(
+                pdf_doc,
+                start_page_id=window_start,
+                end_page_id=window_end,
+                image_type=ImageType.PIL,
+            )
+            try:
+                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                logger.info(
+                    f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                    f'({len(images_pil_list)} pages)'
+                )
+                if _vlm_ocr_enable:
+                    window_results = predictor.batch_two_step_extract(images=images_pil_list)
+                    window_inline_formula_list = [[] for _ in images_pil_list]
+                    window_ocr_res_list = [[] for _ in images_pil_list]
+                else:
+                    window_results = predictor.batch_two_step_extract(
+                        images=images_pil_list,
+                        not_extract_list=not_extract_list
+                    )
+                    window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                        images_pil_list,
+                        window_results,
+                        language,
+                        inline_formula_enable,
+                        _ocr_enable,
+                        batch_radio=batch_ratio,
+                    )
+                    _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
+
+                results.extend(window_results)
+                for offset, (image_dict, page_blocks, page_inline_formula, page_ocr_res) in enumerate(
+                    zip(images_list, window_results, window_inline_formula_list, window_ocr_res_list)
+                ):
+                    page_index = window_start + offset
+                    page = pdf_doc[page_index]
+                    page_info = blocks_to_page_info(
+                        page_blocks,
+                        page_inline_formula,
+                        page_ocr_res,
+                        image_dict,
+                        page,
+                        image_writer,
+                        page_index,
+                        _ocr_enable,
+                        _vlm_ocr_enable,
+                    )
+                    middle_json["pdf_info"].append(page_info)
+            finally:
+                _close_images(images_list)
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0:
+            logger.debug(
+                f"low-memory infer finished, cost: {infer_time}, "
+                f"speed: {round(len(results) / infer_time, 3)} page/s"
+            )
+
+        finalize_middle_json(
+            middle_json["pdf_info"],
+            hybrid_pipeline_model,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+        pdf_doc.close()
+        doc_closed = True
+        clean_memory(device)
+        return middle_json, results, _vlm_ocr_enable
+    finally:
+        if not doc_closed:
+            pdf_doc.close()
 
 
 async def aio_doc_analyze(
@@ -524,3 +653,120 @@ async def aio_doc_analyze(
     clean_memory(device)
     return middle_json, results, _vlm_ocr_enable
 
+
+async def aio_doc_analyze_low_memory(
+    pdf_bytes,
+    image_writer: DataWriter | None,
+    predictor: MinerUClient | None = None,
+    backend="transformers",
+    parse_method: str = 'auto',
+    language: str = 'ch',
+    inline_formula_enable: bool = True,
+    model_path: str | None = None,
+    server_url: str | None = None,
+    **kwargs,
+):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+
+    device = get_device()
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    results = []
+    doc_closed = False
+    hybrid_pipeline_model = None
+    try:
+        page_count = len(pdf_doc)
+        if page_count == 0:
+            pdf_doc.close()
+            doc_closed = True
+            clean_memory(device)
+            return middle_json, results, _vlm_ocr_enable
+        window_size = min(page_count, get_low_memory_window_size(default=64))
+        total_windows = (page_count + window_size - 1) // window_size
+        logger.info(
+            f'Hybrid low-memory mode enabled. page_count={page_count}, '
+            f'window_size={window_size}, total_windows={total_windows}'
+        )
+
+        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+
+        infer_start = time.time()
+        for window_index, window_start in enumerate(range(0, page_count, window_size)):
+            window_end = min(page_count - 1, window_start + window_size - 1)
+            images_list = load_images_from_pdf_doc(
+                pdf_doc,
+                start_page_id=window_start,
+                end_page_id=window_end,
+                image_type=ImageType.PIL,
+            )
+            try:
+                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                logger.info(
+                    f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                    f'({len(images_pil_list)} pages)'
+                )
+                if _vlm_ocr_enable:
+                    window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                    window_inline_formula_list = [[] for _ in images_pil_list]
+                    window_ocr_res_list = [[] for _ in images_pil_list]
+                else:
+                    window_results = await predictor.aio_batch_two_step_extract(
+                        images=images_pil_list,
+                        not_extract_list=not_extract_list
+                    )
+                    window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                        images_pil_list,
+                        window_results,
+                        language,
+                        inline_formula_enable,
+                        _ocr_enable,
+                        batch_radio=batch_ratio,
+                    )
+                    _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
+
+                results.extend(window_results)
+                for offset, (image_dict, page_blocks, page_inline_formula, page_ocr_res) in enumerate(
+                    zip(images_list, window_results, window_inline_formula_list, window_ocr_res_list)
+                ):
+                    page_index = window_start + offset
+                    page = pdf_doc[page_index]
+                    page_info = blocks_to_page_info(
+                        page_blocks,
+                        page_inline_formula,
+                        page_ocr_res,
+                        image_dict,
+                        page,
+                        image_writer,
+                        page_index,
+                        _ocr_enable,
+                        _vlm_ocr_enable,
+                    )
+                    middle_json["pdf_info"].append(page_info)
+            finally:
+                _close_images(images_list)
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0:
+            logger.debug(
+                f"low-memory infer finished, cost: {infer_time}, "
+                f"speed: {round(len(results) / infer_time, 3)} page/s"
+            )
+
+        finalize_middle_json(
+            middle_json["pdf_info"],
+            hybrid_pipeline_model,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+        pdf_doc.close()
+        doc_closed = True
+        clean_memory(device)
+        return middle_json, results, _vlm_ocr_enable
+    finally:
+        if not doc_closed:
+            pdf_doc.close()

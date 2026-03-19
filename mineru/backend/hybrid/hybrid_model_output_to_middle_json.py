@@ -132,6 +132,65 @@ def blocks_to_page_info(
     return page_info
 
 
+def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
+    need_ocr_list = []
+    img_crop_list = []
+    text_block_list = []
+    for page_info in pdf_info_list:
+        for block in page_info['para_blocks']:
+            if block['type'] in ['table', 'image', 'list', 'code']:
+                for sub_block in block['blocks']:
+                    if not sub_block['type'].endswith('body'):
+                        text_block_list.append(sub_block)
+            elif block['type'] in ['text', 'title', 'ref_text']:
+                text_block_list.append(block)
+        for block in page_info['discarded_blocks']:
+            text_block_list.append(block)
+    for block in text_block_list:
+        for line in block['lines']:
+            for span in line['spans']:
+                if 'np_img' in span:
+                    need_ocr_list.append(span)
+                    img_crop_list.append(span['np_img'])
+                    span.pop('np_img')
+    if len(img_crop_list) > 0:
+        ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+        assert len(ocr_res_list) == len(
+            need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
+        for index, span in enumerate(need_ocr_list):
+            ocr_text, ocr_score = ocr_res_list[index]
+            if ocr_score > OcrConfidence.min_confidence:
+                span['content'] = ocr_text
+                span['score'] = float(f"{ocr_score:.3f}")
+            else:
+                span['content'] = ''
+                span['score'] = 0.0
+
+
+def init_middle_json(_ocr_enable, _vlm_ocr_enable):
+    return {
+        "pdf_info": [],
+        "_backend": "hybrid",
+        "_ocr_enable": _ocr_enable,
+        "_vlm_ocr_enable": _vlm_ocr_enable,
+        "_version_name": __version__
+    }
+
+
+def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable):
+    if not (_vlm_ocr_enable or _ocr_enable):
+        _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
+
+    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    if table_enable:
+        cross_page_table_merge(pdf_info_list)
+
+    if heading_level_import_success:
+        llm_aided_title_start_time = time.time()
+        llm_aided_title(pdf_info_list, title_aided_config)
+        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+
+
 def result_to_middle_json(
         model_output_blocks_list,
         inline_formula_list,
@@ -143,13 +202,7 @@ def result_to_middle_json(
         _vlm_ocr_enable,
         hybrid_pipeline_model,
 ):
-    middle_json = {
-        "pdf_info": [],
-        "_backend": "hybrid",
-        "_ocr_enable": _ocr_enable,
-        "_vlm_ocr_enable": _vlm_ocr_enable,
-        "_version_name": __version__
-    }
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
 
     for index, (page_blocks, page_inline_formula, page_ocr_res) in enumerate(zip(model_output_blocks_list, inline_formula_list, ocr_res_list)):
         page = pdf_doc[index]
@@ -161,52 +214,11 @@ def result_to_middle_json(
         )
         middle_json["pdf_info"].append(page_info)
 
-    if not (_vlm_ocr_enable or _ocr_enable):
-        """后置ocr处理"""
-        need_ocr_list = []
-        img_crop_list = []
-        text_block_list = []
-        for page_info in middle_json["pdf_info"]:
-            for block in page_info['para_blocks']:
-                if block['type'] in ['table', 'image', 'list', 'code']:
-                    for sub_block in block['blocks']:
-                        if not sub_block['type'].endswith('body'):
-                            text_block_list.append(sub_block)
-                elif block['type'] in ['text', 'title', 'ref_text']:
-                    text_block_list.append(block)
-            for block in page_info['discarded_blocks']:
-                text_block_list.append(block)
-        for block in text_block_list:
-            for line in block['lines']:
-                for span in line['spans']:
-                    if 'np_img' in span:
-                        need_ocr_list.append(span)
-                        img_crop_list.append(span['np_img'])
-                        span.pop('np_img')
-        if len(img_crop_list) > 0:
-            ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
-            assert len(ocr_res_list) == len(
-                need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
-            for index, span in enumerate(need_ocr_list):
-                ocr_text, ocr_score = ocr_res_list[index]
-                if ocr_score > OcrConfidence.min_confidence:
-                    span['content'] = ocr_text
-                    span['score'] = float(f"{ocr_score:.3f}")
-                else:
-                    span['content'] = ''
-                    span['score'] = 0.0
-
-    """表格跨页合并"""
-    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
-    if table_enable:
-        cross_page_table_merge(middle_json["pdf_info"])
-
-    """llm优化标题分级"""
-    if heading_level_import_success:
-        llm_aided_title_start_time = time.time()
-        llm_aided_title(middle_json["pdf_info"], title_aided_config)
-        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
-
-    # 关闭pdf文档
+    finalize_middle_json(
+        middle_json["pdf_info"],
+        hybrid_pipeline_model,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
     pdf_doc.close()
     return middle_json

@@ -9,7 +9,7 @@ from loguru import logger
 
 from .model_init import MineruPipelineModel
 from .model_json_to_middle_json import finalize_middle_json, init_middle_json, page_model_info_to_page_info
-from mineru.utils.config_reader import get_device
+from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
@@ -18,8 +18,6 @@ from ...utils.model_utils import get_vram, clean_memory
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
-
-LOW_MEMORY_DEFAULT_WINDOW_SIZE = 64
 
 class ModelSingleton:
     _instance = None
@@ -82,8 +80,7 @@ def _get_ocr_enable(pdf_bytes, parse_method: str) -> bool:
 
 
 def _get_low_memory_window_size(page_count: int) -> int:
-    configured_window_size = int(os.environ.get('MINERU_PIPELINE_WINDOW_SIZE', LOW_MEMORY_DEFAULT_WINDOW_SIZE))
-    return min(page_count, max(1, configured_window_size))
+    return min(page_count, get_low_memory_window_size(default=64))
 
 
 def _close_images(images_list):
@@ -209,13 +206,14 @@ def doc_analyze_low_memory(
             return middle_json, model_list
 
         window_size = _get_low_memory_window_size(page_count)
+        total_windows = (page_count + window_size - 1) // window_size
         logger.info(
             f'Pipeline low-memory mode enabled. page_count={page_count}, '
-            f'window_size={window_size}'
+            f'window_size={window_size}, total_windows={total_windows}'
         )
 
         infer_start = time.time()
-        for window_start in range(0, page_count, window_size):
+        for window_index, window_start in enumerate(range(0, page_count, window_size)):
             window_end = min(page_count - 1, window_start + window_size - 1)
             images_list = load_images_from_pdf_doc(
                 pdf_doc,
@@ -229,7 +227,8 @@ def doc_analyze_low_memory(
                     for image_dict in images_list
                 ]
                 logger.info(
-                    f'Low-memory batch: pages {window_start + 1}-{window_end + 1}/{page_count} '
+                    f'Pipeline low-memory window {window_index + 1}/{total_windows}: '
+                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                     f'({len(images_with_extra_info)} pages)'
                 )
                 batch_results = batch_image_analyze(
