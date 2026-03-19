@@ -2,6 +2,7 @@ import sys
 import uuid
 import os
 import re
+import json
 import tempfile
 import asyncio
 import uvicorn
@@ -10,7 +11,15 @@ import zipfile
 import shutil
 from pathlib import Path
 import glob
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    BackgroundTasks,
+)
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
@@ -122,6 +131,50 @@ def get_infer_result(
     return None
 
 
+def get_table_image_names(parse_dir: str, pdf_name: str) -> set[str]:
+    table_image_names = set()
+    content_list_path = os.path.join(parse_dir, f"{pdf_name}_content_list.json")
+    if not os.path.exists(content_list_path):
+        return table_image_names
+    try:
+        with open(content_list_path, "r", encoding="utf-8") as fp:
+            content_list = json.load(fp)
+    except Exception as e:
+        logger.warning(
+            f"Failed to read content list for table filtering: {content_list_path}, error: {e}"
+        )
+        return table_image_names
+    if not isinstance(content_list, list):
+        return table_image_names
+    for item in content_list:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "table":
+            continue
+        image_path = item.get("img_path")
+        if isinstance(image_path, str) and image_path:
+            table_image_names.add(os.path.basename(image_path))
+    return table_image_names
+
+
+def filter_zip_image_paths(
+    image_paths: list[str],
+    parse_dir: str,
+    pdf_name: str,
+    return_table_images: bool,
+) -> list[str]:
+    if return_table_images:
+        return image_paths
+    table_image_names = get_table_image_names(parse_dir, pdf_name)
+    if not table_image_names:
+        return image_paths
+    return [
+        image_path
+        for image_path in image_paths
+        if os.path.basename(image_path) not in table_image_names
+    ]
+
+
 @app.post(path="/file_parse", dependencies=[Depends(limit_concurrency)])
 async def parse_pdf(
     background_tasks: BackgroundTasks,
@@ -186,6 +239,9 @@ async def parse_pdf(
     ),
     return_images: bool = Form(
         False, description="Return extracted images in response"
+    ),
+    return_table_images: bool = Form(
+        True, description="Return table images in ZIP response"
     ),
     response_format_zip: bool = Form(
         False, description="Return results as a ZIP file instead of JSON"
@@ -263,7 +319,8 @@ async def parse_pdf(
             f_dump_middle_json=return_middle_json,
             f_dump_model_output=return_model_output,
             f_dump_orig_pdf=False,
-            f_dump_content_list=return_content_list,
+            f_dump_content_list=return_content_list
+            or (response_format_zip and return_images and not return_table_images),
             start_page_id=start_page_id,
             end_page_id=end_page_id,
             **config,
@@ -289,7 +346,9 @@ async def parse_pdf(
                         )
                     else:
                         # 未知 backend，跳过此文件
-                        logger.warning(f"Unknown backend type: {backend}, skipping {pdf_name}")
+                        logger.warning(
+                            f"Unknown backend type: {backend}, skipping {pdf_name}"
+                        )
                         continue
 
                     if not os.path.exists(parse_dir):
@@ -342,6 +401,12 @@ async def parse_pdf(
                         image_paths = glob.glob(
                             os.path.join(glob.escape(images_dir), "*.jpg")
                         )
+                        image_paths = filter_zip_image_paths(
+                            image_paths=image_paths,
+                            parse_dir=parse_dir,
+                            pdf_name=pdf_name,
+                            return_table_images=return_table_images,
+                        )
                         for image_path in image_paths:
                             zf.write(
                                 image_path,
@@ -374,7 +439,9 @@ async def parse_pdf(
                     )
                 else:
                     # 未知 backend，跳过此文件
-                    logger.warning(f"Unknown backend type: {backend}, skipping {pdf_name}")
+                    logger.warning(
+                        f"Unknown backend type: {backend}, skipping {pdf_name}"
+                    )
                     continue
 
                 if os.path.exists(parse_dir):
