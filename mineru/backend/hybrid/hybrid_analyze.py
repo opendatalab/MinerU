@@ -11,7 +11,7 @@ from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
-from mineru.backend.hybrid.hybrid_model_output_to_middle_json import blocks_to_page_info, finalize_middle_json, init_middle_json, result_to_middle_json
+from mineru.backend.hybrid.hybrid_model_output_to_middle_json import append_page_results_to_middle_json, finalize_middle_json, init_middle_json, result_to_middle_json
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import ModelSingleton
 from mineru.data.data_reader_writer import DataWriter
@@ -505,60 +505,57 @@ def doc_analyze_low_memory(
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
-        for window_index, window_start in enumerate(range(0, page_count, window_size)):
-            window_end = min(page_count - 1, window_start + window_size - 1)
-            images_list = load_images_from_pdf_doc(
-                pdf_doc,
-                start_page_id=window_start,
-                end_page_id=window_end,
-                image_type=ImageType.PIL,
-            )
-            try:
-                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                logger.info(
-                    f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
-                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                    f'({len(images_pil_list)} pages)'
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
                 )
-                if _vlm_ocr_enable:
-                    window_results = predictor.batch_two_step_extract(images=images_pil_list)
-                    window_inline_formula_list = [[] for _ in images_pil_list]
-                    window_ocr_res_list = [[] for _ in images_pil_list]
-                else:
-                    window_results = predictor.batch_two_step_extract(
-                        images=images_pil_list,
-                        not_extract_list=not_extract_list
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
                     )
-                    window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
-                        images_pil_list,
-                        window_results,
-                        language,
-                        inline_formula_enable,
-                        _ocr_enable,
-                        batch_radio=batch_ratio,
-                    )
-                    _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
+                    if _vlm_ocr_enable:
+                        window_results = predictor.batch_two_step_extract(images=images_pil_list)
+                        window_inline_formula_list = [[] for _ in images_pil_list]
+                        window_ocr_res_list = [[] for _ in images_pil_list]
+                    else:
+                        window_results = predictor.batch_two_step_extract(
+                            images=images_pil_list,
+                            not_extract_list=not_extract_list
+                        )
+                        window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                            images_pil_list,
+                            window_results,
+                            language,
+                            inline_formula_enable,
+                            _ocr_enable,
+                            batch_radio=batch_ratio,
+                        )
+                        _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
 
-                results.extend(window_results)
-                for offset, (image_dict, page_blocks, page_inline_formula, page_ocr_res) in enumerate(
-                    zip(images_list, window_results, window_inline_formula_list, window_ocr_res_list)
-                ):
-                    page_index = window_start + offset
-                    page = pdf_doc[page_index]
-                    page_info = blocks_to_page_info(
-                        page_blocks,
-                        page_inline_formula,
-                        page_ocr_res,
-                        image_dict,
-                        page,
+                    results.extend(window_results)
+                    append_page_results_to_middle_json(
+                        middle_json,
+                        window_results,
+                        window_inline_formula_list,
+                        window_ocr_res_list,
+                        images_list,
+                        pdf_doc,
                         image_writer,
-                        page_index,
-                        _ocr_enable,
-                        _vlm_ocr_enable,
+                        page_start_index=window_start,
+                        _ocr_enable=_ocr_enable,
+                        _vlm_ocr_enable=_vlm_ocr_enable,
+                        progress_bar=progress_bar,
                     )
-                    middle_json["pdf_info"].append(page_info)
-            finally:
-                _close_images(images_list)
+                finally:
+                    _close_images(images_list)
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:
@@ -695,60 +692,57 @@ async def aio_doc_analyze_low_memory(
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
-        for window_index, window_start in enumerate(range(0, page_count, window_size)):
-            window_end = min(page_count - 1, window_start + window_size - 1)
-            images_list = load_images_from_pdf_doc(
-                pdf_doc,
-                start_page_id=window_start,
-                end_page_id=window_end,
-                image_type=ImageType.PIL,
-            )
-            try:
-                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                logger.info(
-                    f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
-                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                    f'({len(images_pil_list)} pages)'
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
                 )
-                if _vlm_ocr_enable:
-                    window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
-                    window_inline_formula_list = [[] for _ in images_pil_list]
-                    window_ocr_res_list = [[] for _ in images_pil_list]
-                else:
-                    window_results = await predictor.aio_batch_two_step_extract(
-                        images=images_pil_list,
-                        not_extract_list=not_extract_list
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
                     )
-                    window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
-                        images_pil_list,
-                        window_results,
-                        language,
-                        inline_formula_enable,
-                        _ocr_enable,
-                        batch_radio=batch_ratio,
-                    )
-                    _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
+                    if _vlm_ocr_enable:
+                        window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                        window_inline_formula_list = [[] for _ in images_pil_list]
+                        window_ocr_res_list = [[] for _ in images_pil_list]
+                    else:
+                        window_results = await predictor.aio_batch_two_step_extract(
+                            images=images_pil_list,
+                            not_extract_list=not_extract_list
+                        )
+                        window_inline_formula_list, window_ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                            images_pil_list,
+                            window_results,
+                            language,
+                            inline_formula_enable,
+                            _ocr_enable,
+                            batch_radio=batch_ratio,
+                        )
+                        _normalize_bbox(window_inline_formula_list, window_ocr_res_list, images_pil_list)
 
-                results.extend(window_results)
-                for offset, (image_dict, page_blocks, page_inline_formula, page_ocr_res) in enumerate(
-                    zip(images_list, window_results, window_inline_formula_list, window_ocr_res_list)
-                ):
-                    page_index = window_start + offset
-                    page = pdf_doc[page_index]
-                    page_info = blocks_to_page_info(
-                        page_blocks,
-                        page_inline_formula,
-                        page_ocr_res,
-                        image_dict,
-                        page,
+                    results.extend(window_results)
+                    append_page_results_to_middle_json(
+                        middle_json,
+                        window_results,
+                        window_inline_formula_list,
+                        window_ocr_res_list,
+                        images_list,
+                        pdf_doc,
                         image_writer,
-                        page_index,
-                        _ocr_enable,
-                        _vlm_ocr_enable,
+                        page_start_index=window_start,
+                        _ocr_enable=_ocr_enable,
+                        _vlm_ocr_enable=_vlm_ocr_enable,
+                        progress_bar=progress_bar,
                     )
-                    middle_json["pdf_info"].append(page_info)
-            finally:
-                _close_images(images_list)
+                finally:
+                    _close_images(images_list)
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:

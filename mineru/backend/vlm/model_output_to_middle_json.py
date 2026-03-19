@@ -4,6 +4,7 @@ import time
 import cv2
 import numpy as np
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
@@ -103,6 +104,24 @@ def init_middle_json():
     return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
 
 
+def append_page_blocks_to_middle_json(
+    middle_json,
+    model_output_blocks_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    progress_bar=None,
+):
+    for offset, (page_blocks, image_dict) in enumerate(zip(model_output_blocks_list, images_list)):
+        page_index = page_start_index + offset
+        page = pdf_doc[page_index]
+        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
+        middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+
 def finalize_middle_json(pdf_info_list):
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
@@ -116,11 +135,15 @@ def finalize_middle_json(pdf_info_list):
 
 def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
     middle_json = init_middle_json()
-    for index, page_blocks in enumerate(model_output_blocks_list):
-        page = pdf_doc[index]
-        image_dict = images_list[index]
-        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index)
-        middle_json["pdf_info"].append(page_info)
+    with tqdm(total=len(model_output_blocks_list), desc="Processing pages") as progress_bar:
+        append_page_blocks_to_middle_json(
+            middle_json,
+            model_output_blocks_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            progress_bar=progress_bar,
+        )
 
     finalize_middle_json(middle_json["pdf_info"])
     pdf_doc.close()

@@ -6,6 +6,7 @@ import time
 import cv2
 import numpy as np
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils import cross_page_table_merge
@@ -177,6 +178,40 @@ def init_middle_json(_ocr_enable, _vlm_ocr_enable):
     }
 
 
+def append_page_results_to_middle_json(
+    middle_json,
+    model_output_blocks_list,
+    inline_formula_list,
+    ocr_res_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    _ocr_enable=False,
+    _vlm_ocr_enable=False,
+    progress_bar=None,
+):
+    for offset, (page_blocks, page_inline_formula, page_ocr_res, image_dict) in enumerate(
+        zip(model_output_blocks_list, inline_formula_list, ocr_res_list, images_list)
+    ):
+        page_index = page_start_index + offset
+        page = pdf_doc[page_index]
+        page_info = blocks_to_page_info(
+            page_blocks,
+            page_inline_formula,
+            page_ocr_res,
+            image_dict,
+            page,
+            image_writer,
+            page_index,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+        middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+
 def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable):
     if not (_vlm_ocr_enable or _ocr_enable):
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
@@ -204,15 +239,19 @@ def result_to_middle_json(
 ):
     middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
 
-    for index, (page_blocks, page_inline_formula, page_ocr_res) in enumerate(zip(model_output_blocks_list, inline_formula_list, ocr_res_list)):
-        page = pdf_doc[index]
-        image_dict = images_list[index]
-        page_info = blocks_to_page_info(
-            page_blocks, page_inline_formula, page_ocr_res,
-            image_dict, page, image_writer, index,
-            _ocr_enable, _vlm_ocr_enable
+    with tqdm(total=len(model_output_blocks_list), desc="Processing pages") as progress_bar:
+        append_page_results_to_middle_json(
+            middle_json,
+            model_output_blocks_list,
+            inline_formula_list,
+            ocr_res_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            _ocr_enable=_ocr_enable,
+            _vlm_ocr_enable=_vlm_ocr_enable,
+            progress_bar=progress_bar,
         )
-        middle_json["pdf_info"].append(page_info)
 
     finalize_middle_json(
         middle_json["pdf_info"],

@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import copy
 import os
 import time
 
@@ -55,6 +56,71 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     page_info = make_page_info_dict(preproc_blocks, page_index, page_w, page_h, discarded_blocks)
 
     return page_info
+
+
+def build_page_model_info(page_layout_dets, page_index, pil_img):
+    page_info_dict = {'page_no': page_index, 'width': pil_img.width, 'height': pil_img.height}
+    return {'layout_dets': page_layout_dets, 'page_info': page_info_dict}
+
+
+def append_page_model_infos_to_middle_json(
+    middle_json,
+    page_model_infos,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    ocr_enable=False,
+    progress_bar=None,
+):
+    for offset, (page_model_info, image_dict) in enumerate(zip(page_model_infos, images_list)):
+        page_index = page_start_index + offset
+        page_info = page_model_info_to_page_info(
+            copy.deepcopy(page_model_info),
+            image_dict,
+            pdf_doc[page_index],
+            image_writer,
+            page_index,
+            ocr_enable=ocr_enable,
+        )
+        if page_info is None:
+            page_w, page_h = map(int, pdf_doc[page_index].get_size())
+            page_info = make_page_info_dict([], page_index, page_w, page_h, [])
+        middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+
+def append_batch_results_to_middle_json(
+    middle_json,
+    batch_results,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    ocr_enable=False,
+    model_list=None,
+    progress_bar=None,
+):
+    page_model_infos = []
+    for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
+        page_index = page_start_index + offset
+        page_model_info = build_page_model_info(page_layout_dets, page_index, image_dict['img_pil'])
+        page_model_infos.append(page_model_info)
+
+    if model_list is not None:
+        model_list.extend(page_model_infos)
+
+    append_page_model_infos_to_middle_json(
+        middle_json,
+        page_model_infos,
+        images_list,
+        pdf_doc,
+        image_writer,
+        page_start_index=page_start_index,
+        ocr_enable=ocr_enable,
+        progress_bar=progress_bar,
+    )
 
 
 def _extract_text_from_block(block):
@@ -192,16 +258,16 @@ def init_middle_json():
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enable=None):
     middle_json = init_middle_json()
-    for page_index, page_model_info in tqdm(enumerate(model_list), total=len(model_list), desc="Processing pages"):
-        page = pdf_doc[page_index]
-        image_dict = images_list[page_index]
-        page_info = page_model_info_to_page_info(
-            page_model_info, image_dict, page, image_writer, page_index, ocr_enable=ocr_enable,
+    with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
+        append_page_model_infos_to_middle_json(
+            middle_json,
+            model_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            ocr_enable=ocr_enable,
+            progress_bar=progress_bar,
         )
-        if page_info is None:
-            page_w, page_h = map(int, page.get_size())
-            page_info = make_page_info_dict([], page_index, page_w, page_h, [])
-        middle_json["pdf_info"].append(page_info)
 
     finalize_middle_json(middle_json["pdf_info"], lang=lang, ocr_enable=ocr_enable)
     pdf_doc.close()

@@ -5,10 +5,11 @@ import json
 
 import pypdfium2 as pdfium
 from loguru import logger
+from tqdm import tqdm
 
 from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size, \
     set_lmdeploy_backend, mod_kwargs_by_device_type
-from .model_output_to_middle_json import blocks_to_page_info, finalize_middle_json, init_middle_json, result_to_middle_json
+from .model_output_to_middle_json import append_page_blocks_to_middle_json, finalize_middle_json, init_middle_json, result_to_middle_json
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
 from ...utils.check_sys_env import is_mac_os_version_supported
@@ -287,30 +288,35 @@ def doc_analyze_low_memory(
         )
 
         infer_start = time.time()
-        for window_index, window_start in enumerate(range(0, page_count, window_size)):
-            window_end = min(page_count - 1, window_start + window_size - 1)
-            images_list = load_images_from_pdf_doc(
-                pdf_doc,
-                start_page_id=window_start,
-                end_page_id=window_end,
-                image_type=ImageType.PIL,
-            )
-            try:
-                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                logger.info(
-                    f'VLM low-memory window {window_index + 1}/{total_windows}: '
-                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                    f'({len(images_pil_list)} pages)'
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
                 )
-                window_results = predictor.batch_two_step_extract(images=images_pil_list)
-                results.extend(window_results)
-                for offset, (image_dict, page_blocks) in enumerate(zip(images_list, window_results)):
-                    page_index = window_start + offset
-                    page = pdf_doc[page_index]
-                    page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
-                    middle_json["pdf_info"].append(page_info)
-            finally:
-                _close_images(images_list)
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'VLM low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
+                    )
+                    window_results = predictor.batch_two_step_extract(images=images_pil_list)
+                    results.extend(window_results)
+                    append_page_blocks_to_middle_json(
+                        middle_json,
+                        window_results,
+                        images_list,
+                        pdf_doc,
+                        image_writer,
+                        page_start_index=window_start,
+                        progress_bar=progress_bar,
+                    )
+                finally:
+                    _close_images(images_list)
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:
             logger.debug(
@@ -382,30 +388,35 @@ async def aio_doc_analyze_low_memory(
         )
 
         infer_start = time.time()
-        for window_index, window_start in enumerate(range(0, page_count, window_size)):
-            window_end = min(page_count - 1, window_start + window_size - 1)
-            images_list = load_images_from_pdf_doc(
-                pdf_doc,
-                start_page_id=window_start,
-                end_page_id=window_end,
-                image_type=ImageType.PIL,
-            )
-            try:
-                images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-                logger.info(
-                    f'VLM low-memory window {window_index + 1}/{total_windows}: '
-                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                    f'({len(images_pil_list)} pages)'
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
                 )
-                window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
-                results.extend(window_results)
-                for offset, (image_dict, page_blocks) in enumerate(zip(images_list, window_results)):
-                    page_index = window_start + offset
-                    page = pdf_doc[page_index]
-                    page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
-                    middle_json["pdf_info"].append(page_info)
-            finally:
-                _close_images(images_list)
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'VLM low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
+                    )
+                    window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                    results.extend(window_results)
+                    append_page_blocks_to_middle_json(
+                        middle_json,
+                        window_results,
+                        images_list,
+                        pdf_doc,
+                        image_writer,
+                        page_start_index=window_start,
+                        progress_bar=progress_bar,
+                    )
+                finally:
+                    _close_images(images_list)
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:
             logger.debug(

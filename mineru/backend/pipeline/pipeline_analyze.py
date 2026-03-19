@@ -1,4 +1,3 @@
-import copy
 import os
 import time
 from typing import List, Tuple
@@ -6,9 +5,10 @@ from typing import List, Tuple
 import pypdfium2 as pdfium
 from PIL import Image
 from loguru import logger
+from tqdm import tqdm
 
 from .model_init import MineruPipelineModel
-from .model_json_to_middle_json import finalize_middle_json, init_middle_json, page_model_info_to_page_info
+from .model_json_to_middle_json import append_batch_results_to_middle_json, finalize_middle_json, init_middle_json
 from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
@@ -91,12 +91,6 @@ def _close_images(images_list):
                 pil_img.close()
             except Exception:
                 pass
-
-
-def _build_page_model_info(layout_dets, page_index: int, pil_img: Image.Image):
-    page_info_dict = {'page_no': page_index, 'width': pil_img.width, 'height': pil_img.height}
-    return {'layout_dets': layout_dets, 'page_info': page_info_dict}
-
 
 def doc_analyze(
         pdf_bytes_list,
@@ -213,55 +207,44 @@ def doc_analyze_low_memory(
         )
 
         infer_start = time.time()
-        for window_index, window_start in enumerate(range(0, page_count, window_size)):
-            window_end = min(page_count - 1, window_start + window_size - 1)
-            images_list = load_images_from_pdf_doc(
-                pdf_doc,
-                start_page_id=window_start,
-                end_page_id=window_end,
-                image_type=ImageType.PIL,
-            )
-            try:
-                images_with_extra_info = [
-                    (image_dict['img_pil'], _ocr_enable, lang)
-                    for image_dict in images_list
-                ]
-                logger.info(
-                    f'Pipeline low-memory window {window_index + 1}/{total_windows}: '
-                    f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                    f'({len(images_with_extra_info)} pages)'
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
                 )
-                batch_results = batch_image_analyze(
-                    images_with_extra_info,
-                    formula_enable=formula_enable,
-                    table_enable=table_enable,
-                )
-
-                for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
-                    page_index = window_start + offset
-                    page_model_info = _build_page_model_info(page_layout_dets, page_index, image_dict['img_pil'])
-                    model_list.append(page_model_info)
-
-                    page_info = page_model_info_to_page_info(
-                        copy.deepcopy(page_model_info),
-                        image_dict,
-                        pdf_doc[page_index],
-                        image_writer,
-                        page_index,
-                        ocr_enable=_ocr_enable,
+                try:
+                    images_with_extra_info = [
+                        (image_dict['img_pil'], _ocr_enable, lang)
+                        for image_dict in images_list
+                    ]
+                    logger.info(
+                        f'Pipeline low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_with_extra_info)} pages)'
                     )
-                    if page_info is None:
-                        page_w, page_h = map(int, pdf_doc[page_index].get_size())
-                        page_info = {
-                            'preproc_blocks': [],
-                            'page_idx': page_index,
-                            'page_size': [page_w, page_h],
-                            'discarded_blocks': [],
-                        }
-                    middle_json['pdf_info'].append(page_info)
-            finally:
-                _close_images(images_list)
-                images_list.clear()
+                    batch_results = batch_image_analyze(
+                        images_with_extra_info,
+                        formula_enable=formula_enable,
+                        table_enable=table_enable,
+                    )
+                    append_batch_results_to_middle_json(
+                        middle_json,
+                        batch_results,
+                        images_list,
+                        pdf_doc,
+                        image_writer,
+                        page_start_index=window_start,
+                        ocr_enable=_ocr_enable,
+                        model_list=model_list,
+                        progress_bar=progress_bar,
+                    )
+                finally:
+                    _close_images(images_list)
+                    images_list.clear()
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:
