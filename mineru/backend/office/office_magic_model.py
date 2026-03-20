@@ -169,15 +169,6 @@ class MagicModel:
     def get_chart_blocks(self):
         return self.chart_blocks
 
-    def get_code_blocks(self):
-        return self.code_blocks
-
-    def get_ref_text_blocks(self):
-        return self.ref_text_blocks
-
-    def get_phonetic_blocks(self):
-        return self.phonetic_blocks
-
     def get_title_blocks(self):
         return self.title_blocks
 

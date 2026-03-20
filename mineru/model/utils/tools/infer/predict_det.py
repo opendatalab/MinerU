@@ -303,7 +303,7 @@ class TextDetector(BaseOCRV20):
             box = np.array(box)
             box = self.clip_det_res(box, img_height, img_width)
             dt_boxes_new.append(box)
-        return dt_boxes_new
+        return np.array(dt_boxes_new)
 
     def __call__(self, img):
         ori_shape = img.shape
