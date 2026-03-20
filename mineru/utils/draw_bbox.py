@@ -188,6 +188,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                     elif nested_block["type"] == BlockType.CHART_FOOTNOTE:
                         bbox = nested_block["bbox"]
                         imgs_footnote.append(bbox)
+            elif block["type"] == BlockType.SEAL:
+                imgs_body.append(bbox)
             elif block["type"] == BlockType.TITLE:
                 titles.append(bbox)
             elif block["type"] in [BlockType.TEXT, BlockType.REF_TEXT, BlockType.ABSTRACT]:

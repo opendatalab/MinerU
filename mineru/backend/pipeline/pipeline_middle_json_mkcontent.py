@@ -32,7 +32,14 @@ def make_blocks_to_markdown(paras_of_layout,
             if para_block['lines'][0]['spans'][0].get('content', ''):
                 para_text = merge_para_with_text(para_block)
             else:
-                para_text += f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
+                para_text = f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
+        elif para_type == BlockType.SEAL:
+            if len(para_block['lines']) == 0 or len(para_block['lines'][0]['spans']) == 0:
+                continue
+            para_text = f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
+            if para_block['lines'][0]['spans'][0].get('content', []):
+                content = " ".join(para_block['lines'][0]['spans'][0]['content'])
+                para_text += f"  \n{content}"
         elif para_type == BlockType.IMAGE:
             if mode == MakeMode.NLP_MD:
                 continue
