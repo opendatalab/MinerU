@@ -242,7 +242,7 @@ def _process_pipeline(
         pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
         md_writer = md_writer_list[doc_index]
         pdf_bytes = pdf_bytes_list[doc_index]
-        logger.info(f"Pipeline output start: doc{doc_index}")
+        logger.debug(f"Pipeline output start: doc{doc_index}")
         try:
             _process_output(
                 middle_json["pdf_info"], pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
@@ -250,14 +250,14 @@ def _process_pipeline(
                 f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
                 f_make_md_mode, middle_json, model_list, process_mode="pipeline"
             )
-            logger.info(f"Pipeline output complete: doc{doc_index}")
+            logger.debug(f"Pipeline output complete: doc{doc_index}")
         except Exception:
             logger.exception(f"Pipeline output failed: doc{doc_index}")
             raise
 
     with ThreadPoolExecutor(max_workers=1) as output_executor:
         def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
-            logger.info(
+            logger.debug(
                 f"Pipeline doc ready: doc{doc_index} pages={len(middle_json['pdf_info'])} output_submitted=1"
             )
             future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
