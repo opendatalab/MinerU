@@ -23,6 +23,8 @@ from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
+MAX_PDF_RENDER_PROCESSES = 4
+MIN_PAGES_PER_RENDER_PROCESS = 30
 
 
 def pdf_page_to_image(
@@ -58,6 +60,50 @@ def _load_images_from_pdf_worker(
     """用于进程池的包装函数"""
     return load_images_from_pdf_core(
         pdf_bytes, dpi, start_page_id, end_page_id, image_type
+    )
+
+
+def _calculate_render_process_count(total_pages: int, threads: int, cpu_count=None) -> int:
+    requested_threads = max(1, threads)
+    available_cpus = max(1, cpu_count if cpu_count is not None else (os.cpu_count() or 1))
+    page_limited_threads = max(1, total_pages // MIN_PAGES_PER_RENDER_PROCESS)
+    return min(
+        available_cpus,
+        requested_threads,
+        MAX_PDF_RENDER_PROCESSES,
+        page_limited_threads,
+    )
+
+
+def _build_render_page_ranges(
+    start_page_id: int,
+    end_page_id: int,
+    process_count: int,
+) -> list[tuple[int, int]]:
+    total_pages = end_page_id - start_page_id + 1
+    base_pages, remainder = divmod(total_pages, process_count)
+    page_ranges = []
+    current_page = start_page_id
+
+    for process_idx in range(process_count):
+        pages_in_range = base_pages + (1 if process_idx < remainder else 0)
+        range_end = current_page + pages_in_range - 1
+        page_ranges.append((current_page, range_end))
+        current_page = range_end + 1
+
+    return page_ranges
+
+
+def _get_render_process_plan(
+    start_page_id: int,
+    end_page_id: int,
+    threads: int,
+    cpu_count=None,
+) -> tuple[int, list[tuple[int, int]]]:
+    total_pages = end_page_id - start_page_id + 1
+    actual_threads = _calculate_render_process_count(total_pages, threads, cpu_count)
+    return actual_threads, _build_render_page_ranges(
+        start_page_id, end_page_id, actual_threads
     )
 
 
@@ -101,26 +147,11 @@ def load_images_from_pdf(
             threads = get_load_images_threads()
 
         end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
-
-        # 计算总页数
-        total_pages = end_page_id - start_page_id + 1
-
-        # 实际使用的进程数不超过总页数
-        actual_threads = min(os.cpu_count() or 1, threads, total_pages)
-
-        # 根据实际进程数分组页面范围
-        pages_per_thread = max(1, total_pages // actual_threads)
-        page_ranges = []
-
-        for i in range(actual_threads):
-            range_start = start_page_id + i * pages_per_thread
-            if i == actual_threads - 1:
-                # 最后一个进程处理剩余所有页面
-                range_end = end_page_id
-            else:
-                range_end = start_page_id + (i + 1) * pages_per_thread - 1
-
-            page_ranges.append((range_start, range_end))
+        actual_threads, page_ranges = _get_render_process_plan(
+            start_page_id,
+            end_page_id,
+            threads,
+        )
 
         logger.debug(f"PDF to images using {actual_threads} processes, page ranges: {page_ranges}")
 
