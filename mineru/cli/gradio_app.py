@@ -13,6 +13,7 @@ import gradio as gr
 from gradio_pdf import PDF
 from loguru import logger
 
+os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 # 检测 Gradio 版本，用于兼容 Gradio 5 和 Gradio 6
 _gradio_major_version = int(gr.__version__.split('.')[0])
 IS_GRADIO_6 = _gradio_major_version >= 6

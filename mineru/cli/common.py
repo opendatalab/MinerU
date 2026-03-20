@@ -3,16 +3,19 @@ import io
 import json
 import os
 import copy
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from loguru import logger
 import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
+from mineru.utils.config_reader import is_low_memory_enabled
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
@@ -21,6 +24,7 @@ from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyz
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdf_page_id import get_end_page_id
 
+os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
     import torch
     torch.backends.cudnn.enabled = False
@@ -34,6 +38,8 @@ xlsx_suffixes = ["xlsx"]
 office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+_pdf_rewrite_lock = threading.Lock()
 
 def read_fn(path):
     if not isinstance(path, Path):
@@ -58,34 +64,46 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 
 def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
-    pdf = pdfium.PdfDocument(pdf_bytes)
-    output_pdf = pdfium.PdfDocument.new()
-    try:
-        end_page_id = get_end_page_id(end_page_id, len(pdf))
+    # pypdfium2 document import/save is not thread-safe across concurrent FastAPI tasks.
+    with _pdf_rewrite_lock:
+        pdf = None
+        output_pdf = None
+        try:
+            pdf = pdfium.PdfDocument(pdf_bytes)
+            page_count = len(pdf)
+            end_page_id = get_end_page_id(end_page_id, page_count)
 
-        # 逐页导入,失败则跳过
-        output_index = 0
-        for page_index in range(start_page_id, end_page_id + 1):
-            try:
-                output_pdf.import_pages(pdf, pages=[page_index])
-                output_index += 1
-            except Exception as page_error:
-                output_pdf.del_page(output_index)
-                logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
-                continue
+            # Avoid rewriting when the caller requests the whole document.
+            if start_page_id <= 0 and end_page_id >= page_count - 1:
+                return pdf_bytes
 
-        # 将新PDF保存到内存缓冲区
-        output_buffer = io.BytesIO()
-        output_pdf.save(output_buffer)
+            output_pdf = pdfium.PdfDocument.new()
 
-        # 获取字节数据
-        output_bytes = output_buffer.getvalue()
-    except Exception as e:
-        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
-        output_bytes = pdf_bytes
-    pdf.close()
-    output_pdf.close()
-    return output_bytes
+            # 逐页导入,失败则跳过
+            output_index = 0
+            for page_index in range(start_page_id, end_page_id + 1):
+                try:
+                    output_pdf.import_pages(pdf, pages=[page_index])
+                    output_index += 1
+                except Exception as page_error:
+                    output_pdf.del_page(output_index)
+                    logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
+                    continue
+
+            # 将新PDF保存到内存缓冲区
+            output_buffer = io.BytesIO()
+            output_pdf.save(output_buffer)
+
+            # 获取字节数据
+            return output_buffer.getvalue()
+        except Exception as e:
+            logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
+            return pdf_bytes
+        finally:
+            if pdf is not None:
+                pdf.close()
+            if output_pdf is not None:
+                output_pdf.close()
 
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
@@ -116,7 +134,6 @@ def _process_output(
         model_output=None,
         process_mode="vlm",
 ):
-    f_draw_line_sort_bbox = False
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
     if process_mode == "pipeline":
         make_func = pipeline_union_make
@@ -144,9 +161,6 @@ def _process_output(
                 f"{pdf_file_name}_origin.{process_mode}",
                 pdf_bytes,
             )
-
-    if f_draw_line_sort_bbox:
-        draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_line_sort.pdf")
 
     image_dir = str(os.path.basename(local_image_dir))
 
@@ -204,41 +218,71 @@ def _process_pipeline(
         f_make_md_mode,
 ):
     """处理pipeline后端逻辑"""
-    from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi_streaming as pipeline_doc_analyze_low_memory_multi_streaming
 
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list, p_lang_list, parse_method=parse_method,
-            formula_enable=p_formula_enable, table_enable=p_table_enable
-        )
-    )
-
-    for idx, model_list in enumerate(infer_results):
-        model_json = copy.deepcopy(model_list)
+    image_writer_list = []
+    md_writer_list = []
+    local_output_info = []
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        image_writer_list.append(image_writer)
+        md_writer_list.append(md_writer)
+        local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
-        images_list = all_image_lists[idx]
-        pdf_doc = all_pdf_docs[idx]
-        _lang = lang_list[idx]
-        _ocr_enable = ocr_enabled_list[idx]
+    output_futures = []
 
-        middle_json = pipeline_result_to_middle_json(
-            model_list, images_list, pdf_doc, image_writer,
-            _lang, _ocr_enable, p_formula_enable
-        )
+    def run_output_task(doc_index, middle_json, model_list):
+        pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
+        md_writer = md_writer_list[doc_index]
+        pdf_bytes = pdf_bytes_list[doc_index]
+        logger.debug(f"Pipeline output start: doc{doc_index}")
+        try:
+            _process_output(
+                middle_json["pdf_info"], pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, model_list, process_mode="pipeline"
+            )
+            logger.debug(f"Pipeline output complete: doc{doc_index}")
+        except Exception:
+            logger.exception(f"Pipeline output failed: doc{doc_index}")
+            raise
 
-        pdf_info = middle_json["pdf_info"]
-        pdf_bytes = pdf_bytes_list[idx]
+    with ThreadPoolExecutor(max_workers=1) as output_executor:
+        def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+            logger.debug(
+                f"Pipeline doc ready: doc{doc_index} pages={len(middle_json['pdf_info'])} output_submitted=1"
+            )
+            future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
+            output_futures.append(future)
 
-        _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, process_mode="pipeline"
-        )
+        if is_low_memory_enabled():
+            pipeline_doc_analyze_low_memory_multi_streaming(
+                pdf_bytes_list,
+                image_writer_list,
+                p_lang_list,
+                on_doc_ready,
+                parse_method=parse_method,
+                formula_enable=p_formula_enable,
+                table_enable=p_table_enable,
+            )
+        else:
+            pipeline_doc_analyze_streaming(
+                pdf_bytes_list,
+                image_writer_list,
+                p_lang_list,
+                on_doc_ready,
+                parse_method=parse_method,
+                formula_enable=p_formula_enable,
+                table_enable=p_table_enable,
+            )
+
+        for future in output_futures:
+            future.result()
+    return
 
 
 async def _async_process_vlm(
@@ -268,9 +312,15 @@ async def _async_process_vlm(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = await aio_vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-        )
+        if is_low_memory_enabled():
+            from mineru.backend.vlm.vlm_analyze import aio_doc_analyze_low_memory as aio_vlm_doc_analyze_low_memory
+            middle_json, infer_result = await aio_vlm_doc_analyze_low_memory(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            )
+        else:
+            middle_json, infer_result = await aio_vlm_doc_analyze(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -309,9 +359,15 @@ def _process_vlm(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result = vlm_doc_analyze(
-            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-        )
+        if is_low_memory_enabled():
+            from mineru.backend.vlm.vlm_analyze import doc_analyze_low_memory as vlm_doc_analyze_low_memory
+            middle_json, infer_result = vlm_doc_analyze_low_memory(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            )
+        else:
+            middle_json, infer_result = vlm_doc_analyze(
+                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+            )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -352,16 +408,29 @@ def _process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
-            pdf_bytes,
-            image_writer=image_writer,
-            backend=backend,
-            parse_method=parse_method,
-            language=lang,
-            inline_formula_enable=inline_formula_enable,
-            server_url=server_url,
-            **kwargs,
-        )
+        if is_low_memory_enabled():
+            from mineru.backend.hybrid.hybrid_analyze import doc_analyze_low_memory as hybrid_doc_analyze_low_memory
+            middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze_low_memory(
+                pdf_bytes,
+                image_writer=image_writer,
+                backend=backend,
+                parse_method=parse_method,
+                language=lang,
+                inline_formula_enable=inline_formula_enable,
+                server_url=server_url,
+                **kwargs,
+            )
+        else:
+            middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
+                pdf_bytes,
+                image_writer=image_writer,
+                backend=backend,
+                parse_method=parse_method,
+                language=lang,
+                inline_formula_enable=inline_formula_enable,
+                server_url=server_url,
+                **kwargs,
+            )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -405,16 +474,29 @@ async def _async_process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
-            pdf_bytes,
-            image_writer=image_writer,
-            backend=backend,
-            parse_method=parse_method,
-            language=lang,
-            inline_formula_enable=inline_formula_enable,
-            server_url=server_url,
-            **kwargs,
-        )
+        if is_low_memory_enabled():
+            from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze_low_memory as aio_hybrid_doc_analyze_low_memory
+            middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze_low_memory(
+                pdf_bytes,
+                image_writer=image_writer,
+                backend=backend,
+                parse_method=parse_method,
+                language=lang,
+                inline_formula_enable=inline_formula_enable,
+                server_url=server_url,
+                **kwargs,
+            )
+        else:
+            middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
+                pdf_bytes,
+                image_writer=image_writer,
+                backend=backend,
+                parse_method=parse_method,
+                language=lang,
+                inline_formula_enable=inline_formula_enable,
+                server_url=server_url,
+                **kwargs,
+            )
 
         pdf_info = middle_json["pdf_info"]
 

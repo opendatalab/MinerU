@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final
 
 import pandas as pd
-from PIL import Image, WmfImagePlugin
+from PIL import Image, ImageDraw, ImageFont
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -120,6 +120,94 @@ class DocxConverter:
         # 移除行首尾无关的空白
         html = re.sub(r'\n\s*', '', html)
         return html
+
+    @staticmethod
+    def _load_placeholder_font(font_size: int) -> ImageFont.ImageFont:
+        """
+        加载占位图提示文案字体，优先使用可缩放字体，失败时回退到默认字体。
+
+        Args:
+            font_size: 期望字号
+
+        Returns:
+            ImageFont.ImageFont: 可用于绘制文本的字体对象
+        """
+        for font_name in (
+            "DejaVuSans.ttf",
+            "Arial.ttf",
+            "LiberationSans-Regular.ttf",
+        ):
+            try:
+                return ImageFont.truetype(font_name, font_size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    def _create_text_placeholder(
+        self, size: tuple[int, int], lines: list[str]
+    ) -> Image.Image:
+        """
+        生成带提示文案的浅灰色占位图。
+
+        Args:
+            size: 占位图尺寸
+            lines: 需要绘制的多行提示文本
+
+        Returns:
+            Image.Image: 生成后的占位图
+        """
+        width = max(int(size[0]), 1)
+        height = max(int(size[1]), 1)
+        placeholder = Image.new("RGB", (width, height), (240, 240, 240))
+        draw = ImageDraw.Draw(placeholder)
+
+        border_width = max(1, min(width, height) // 80)
+        draw.rectangle(
+            (0, 0, width - 1, height - 1),
+            outline=(190, 190, 190),
+            width=border_width,
+        )
+
+        max_text_width = max(width - 16, 1)
+        max_text_height = max(height - 16, 1)
+        fallback_text = "WMF/EMF"
+        text = "\n".join(line for line in lines if line)
+        if not text:
+            text = fallback_text
+
+        font = None
+        spacing = 4
+        bbox = None
+        for font_size in range(max(min(width, height) // 7, 10), 7, -1):
+            font = self._load_placeholder_font(font_size)
+            spacing = max(2, font_size // 4)
+            bbox = draw.multiline_textbbox(
+                (0, 0), text, font=font, spacing=spacing, align="center"
+            )
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            if text_width <= max_text_width and text_height <= max_text_height:
+                break
+        else:
+            text = fallback_text
+            font = self._load_placeholder_font(max(min(width, height) // 5, 10))
+            spacing = 2
+            bbox = draw.multiline_textbbox(
+                (0, 0), text, font=font, spacing=spacing, align="center"
+            )
+
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        origin = ((width - text_width) / 2, (height - text_height) / 2)
+        draw.multiline_text(
+            origin,
+            text,
+            fill=(90, 90, 90),
+            font=font,
+            spacing=spacing,
+            align="center",
+        )
+        return placeholder
 
     @staticmethod
     def _escape_hyperlink_url(url: str) -> str:
@@ -1171,13 +1259,24 @@ class DocxConverter:
                             img_base64 = image_to_b64str(pil_image, image_format="PNG")
                         except OSError as e:
                             logger.warning(f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
-                            # 如果渲染失败，创建与原图同样大小的浅灰色占位图
-                            placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+                            placeholder = self._create_text_placeholder(
+                                pil_image.size,
+                                [
+                                    f"{pil_image.format} placeholder",
+                                    "Windows rendering failed",
+                                ],
+                            )
                             img_base64 = image_to_b64str(placeholder, image_format="JPEG")
                     else:
                         logger.warning(f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}")
-                        # 创建与原图同样大小的浅灰色占位图
-                        placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+                        placeholder = self._create_text_placeholder(
+                            pil_image.size,
+                            [
+                                f"{pil_image.format} placeholder",
+                                "Use Windows to parse",
+                                "the original image",
+                            ],
+                        )
                         img_base64 = image_to_b64str(placeholder, image_format="JPEG")
                 else:
                     # 处理常规图片
@@ -2455,13 +2554,13 @@ class DocxConverter:
                 ".//c:chart", namespaces=DocxConverter._BLIP_NAMESPACES
             )
             if chart is not None:
-                # 如果找到 chart 元素，构造空的表格块，后续回填html
-                table_block = {
-                    "type": BlockType.TABLE,
+                # 如果找到 chart 元素，构造空的图表块，后续回填 html。
+                chart_block = {
+                    "type": BlockType.CHART,
                     "content": "",
                 }
-                self.cur_page.append(table_block)
-                self.chart_list.append(table_block)
+                self.cur_page.append(chart_block)
+                self.chart_list.append(chart_block)
 
     def _add_chart_table(self):
         idx_xlsx_map = {}

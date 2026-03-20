@@ -6,6 +6,7 @@ import time
 import cv2
 import numpy as np
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils import cross_page_table_merge
@@ -33,9 +34,7 @@ if llm_aided_config:
 
 
 def blocks_to_page_info(
-        page_blocks,
-        page_inline_formula,
-        page_ocr_res,
+        page_model_list,
         image_dict,
         page,
         image_writer,
@@ -51,9 +50,7 @@ def blocks_to_page_info(
     width, height = map(int, page.get_size())
 
     magic_model = MagicModel(
-        page_blocks,
-        page_inline_formula,
-        page_ocr_res,
+        page_model_list,
         page,
         scale,
         page_pil_img,
@@ -132,18 +129,43 @@ def blocks_to_page_info(
     return page_info
 
 
-def result_to_middle_json(
-        model_output_blocks_list,
-        inline_formula_list,
-        ocr_res_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        _ocr_enable,
-        _vlm_ocr_enable,
-        hybrid_pipeline_model,
-):
-    middle_json = {
+def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
+    need_ocr_list = []
+    img_crop_list = []
+    text_block_list = []
+    for page_info in pdf_info_list:
+        for block in page_info['para_blocks']:
+            if block['type'] in ['table', 'image', 'list', 'code']:
+                for sub_block in block['blocks']:
+                    if not sub_block['type'].endswith('body'):
+                        text_block_list.append(sub_block)
+            elif block['type'] in ['text', 'title', 'ref_text']:
+                text_block_list.append(block)
+        for block in page_info['discarded_blocks']:
+            text_block_list.append(block)
+    for block in text_block_list:
+        for line in block['lines']:
+            for span in line['spans']:
+                if 'np_img' in span:
+                    need_ocr_list.append(span)
+                    img_crop_list.append(span['np_img'])
+                    span.pop('np_img')
+    if len(img_crop_list) > 0:
+        ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+        assert len(ocr_res_list) == len(
+            need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
+        for index, span in enumerate(need_ocr_list):
+            ocr_text, ocr_score = ocr_res_list[index]
+            if ocr_score > OcrConfidence.min_confidence:
+                span['content'] = ocr_text
+                span['score'] = float(f"{ocr_score:.3f}")
+            else:
+                span['content'] = ''
+                span['score'] = 0.0
+
+
+def init_middle_json(_ocr_enable, _vlm_ocr_enable):
+    return {
         "pdf_info": [],
         "_backend": "hybrid",
         "_ocr_enable": _ocr_enable,
@@ -151,62 +173,103 @@ def result_to_middle_json(
         "_version_name": __version__
     }
 
-    for index, (page_blocks, page_inline_formula, page_ocr_res) in enumerate(zip(model_output_blocks_list, inline_formula_list, ocr_res_list)):
-        page = pdf_doc[index]
-        image_dict = images_list[index]
+
+def append_page_results_to_middle_json(
+    middle_json,
+    model_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    _ocr_enable=False,
+    _vlm_ocr_enable=False,
+    progress_bar=None,
+):
+    for offset, (page_model_list, image_dict) in enumerate(
+        zip(model_list, images_list)
+    ):
+        page_index = page_start_index + offset
+        page = pdf_doc[page_index]
         page_info = blocks_to_page_info(
-            page_blocks, page_inline_formula, page_ocr_res,
-            image_dict, page, image_writer, index,
-            _ocr_enable, _vlm_ocr_enable
+            page_model_list,
+            image_dict,
+            page,
+            image_writer,
+            page_index,
+            _ocr_enable,
+            _vlm_ocr_enable,
         )
         middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
 
+
+def append_page_model_list_to_middle_json(
+    middle_json,
+    model_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    _ocr_enable=False,
+    _vlm_ocr_enable=False,
+    progress_bar=None,
+):
+    append_page_results_to_middle_json(
+        middle_json,
+        model_list,
+        images_list,
+        pdf_doc,
+        image_writer,
+        page_start_index=page_start_index,
+        _ocr_enable=_ocr_enable,
+        _vlm_ocr_enable=_vlm_ocr_enable,
+        progress_bar=progress_bar,
+    )
+
+
+def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable):
     if not (_vlm_ocr_enable or _ocr_enable):
-        """后置ocr处理"""
-        need_ocr_list = []
-        img_crop_list = []
-        text_block_list = []
-        for page_info in middle_json["pdf_info"]:
-            for block in page_info['para_blocks']:
-                if block['type'] in ['table', 'image', 'list', 'code']:
-                    for sub_block in block['blocks']:
-                        if not sub_block['type'].endswith('body'):
-                            text_block_list.append(sub_block)
-                elif block['type'] in ['text', 'title', 'ref_text']:
-                    text_block_list.append(block)
-            for block in page_info['discarded_blocks']:
-                text_block_list.append(block)
-        for block in text_block_list:
-            for line in block['lines']:
-                for span in line['spans']:
-                    if 'np_img' in span:
-                        need_ocr_list.append(span)
-                        img_crop_list.append(span['np_img'])
-                        span.pop('np_img')
-        if len(img_crop_list) > 0:
-            ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
-            assert len(ocr_res_list) == len(
-                need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
-            for index, span in enumerate(need_ocr_list):
-                ocr_text, ocr_score = ocr_res_list[index]
-                if ocr_score > OcrConfidence.min_confidence:
-                    span['content'] = ocr_text
-                    span['score'] = float(f"{ocr_score:.3f}")
-                else:
-                    span['content'] = ''
-                    span['score'] = 0.0
+        _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
-    """表格跨页合并"""
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
-        cross_page_table_merge(middle_json["pdf_info"])
+        cross_page_table_merge(pdf_info_list)
 
-    """llm优化标题分级"""
     if heading_level_import_success:
         llm_aided_title_start_time = time.time()
-        llm_aided_title(middle_json["pdf_info"], title_aided_config)
+        llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
-    # 关闭pdf文档
+
+def result_to_middle_json(
+        model_list,
+        images_list,
+        pdf_doc,
+        image_writer,
+        _ocr_enable,
+        _vlm_ocr_enable,
+        hybrid_pipeline_model,
+):
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+
+    with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
+        append_page_model_list_to_middle_json(
+            middle_json,
+            model_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            _ocr_enable=_ocr_enable,
+            _vlm_ocr_enable=_vlm_ocr_enable,
+            progress_bar=progress_bar,
+        )
+
+    finalize_middle_json(
+        middle_json["pdf_info"],
+        hybrid_pipeline_model,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
     pdf_doc.close()
     return middle_json

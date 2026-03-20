@@ -48,6 +48,8 @@ services:
       memlock: -1
       stack: 67108864
     ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
     deploy:
       resources:
         reservations:

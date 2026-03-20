@@ -11,6 +11,7 @@ from PIL import Image, ImageOps
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
+from mineru.utils.bbox_utils import normalize_to_int_bbox
 from mineru.utils.os_env_config import get_load_images_timeout, get_load_images_threads
 from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.enum_class import ImageType
@@ -20,12 +21,20 @@ from mineru.utils.pdf_page_id import get_end_page_id
 from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
 
 
-def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -> dict:
+DEFAULT_PDF_IMAGE_DPI = 200
+# DEFAULT_PDF_IMAGE_DPI = 144
+
+
+def pdf_page_to_image(
+    page: pdfium.PdfPage,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
+    image_type=ImageType.PIL,
+) -> dict:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
 
     Args:
         page (_type_): pdfium.PdfPage
-        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
         image_type (ImageType, optional): The type of image to return. Defaults to ImageType.PIL.
 
     Returns:
@@ -54,7 +63,7 @@ def _load_images_from_pdf_worker(
 
 def load_images_from_pdf(
     pdf_bytes: bytes,
-    dpi=200,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
     start_page_id=0,
     end_page_id=None,
     image_type=ImageType.PIL,
@@ -65,7 +74,7 @@ def load_images_from_pdf(
 
     Args:
         pdf_bytes (bytes): PDF 文件的 bytes
-        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
         start_page_id (int, optional): 起始页码. Defaults to 0.
         end_page_id (int | None, optional): 结束页码. Defaults to None.
         image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
@@ -194,7 +203,7 @@ def _terminate_executor_processes(executor):
 
 def load_images_from_pdf_core(
     pdf_bytes: bytes,
-    dpi=200,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
     start_page_id=0,
     end_page_id=None,
     image_type=ImageType.PIL,  # PIL or BASE64
@@ -211,6 +220,25 @@ def load_images_from_pdf_core(
         images_list.append(image_dict)
 
     pdf_doc.close()
+
+    return images_list
+
+
+def load_images_from_pdf_doc(
+    pdf_doc: pdfium.PdfDocument,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
+    start_page_id=0,
+    end_page_id=None,
+    image_type=ImageType.PIL,
+):
+    images_list = []
+    pdf_page_num = len(pdf_doc)
+    end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+
+    for index in range(start_page_id, end_page_id + 1):
+        page = pdf_doc[index]
+        image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+        images_list.append(image_dict)
 
     return images_list
 
@@ -246,13 +274,10 @@ def cut_image(
 
 
 def get_crop_img(bbox: tuple, pil_img, scale=2):
-    scale_bbox = (
-        int(bbox[0] * scale),
-        int(bbox[1] * scale),
-        int(bbox[2] * scale),
-        int(bbox[3] * scale),
-    )
-    return pil_img.crop(scale_bbox)
+    scale_bbox = normalize_to_int_bbox([float(v) * scale for v in bbox])
+    if scale_bbox is None:
+        return pil_img.crop((0, 0, 0, 0))
+    return pil_img.crop(tuple(scale_bbox))
 
 
 def get_crop_np_img(bbox: tuple, input_img, scale=2):
@@ -263,12 +288,13 @@ def get_crop_np_img(bbox: tuple, input_img, scale=2):
     else:
         raise ValueError("Input must be a pillow object or a numpy array.")
 
-    scale_bbox = (
-        int(bbox[0] * scale),
-        int(bbox[1] * scale),
-        int(bbox[2] * scale),
-        int(bbox[3] * scale),
+    height, width = np_img.shape[:2]
+    scale_bbox = normalize_to_int_bbox(
+        [float(v) * scale for v in bbox],
+        image_size=(height, width),
     )
+    if scale_bbox is None:
+        return np_img[0:0, 0:0]
 
     return np_img[scale_bbox[1] : scale_bbox[3], scale_bbox[0] : scale_bbox[2]]
 
@@ -286,9 +312,13 @@ def images_bytes_to_pdf_bytes(image_bytes):
         image = image.convert("RGB")
 
     # 第一张图保存为 PDF，其余追加
+    # Keep image inputs at the same raster size when CLI later renders the
+    # wrapper PDF at the default DPI; PIL defaults to 72 dpi for PDF output, which
+    # would upscale the image and noticeably hurt seal OCR detection quality.
     image.save(
         pdf_buffer,
         format="PDF",
+        resolution=float(DEFAULT_PDF_IMAGE_DPI),
         # save_all=True
     )
 
