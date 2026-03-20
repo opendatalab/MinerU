@@ -21,12 +21,20 @@ from mineru.utils.pdf_page_id import get_end_page_id
 from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
 
 
-def pdf_page_to_image(page: pdfium.PdfPage, dpi=200, image_type=ImageType.PIL) -> dict:
+DEFAULT_PDF_IMAGE_DPI = 200
+# DEFAULT_PDF_IMAGE_DPI = 144
+
+
+def pdf_page_to_image(
+    page: pdfium.PdfPage,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
+    image_type=ImageType.PIL,
+) -> dict:
     """Convert pdfium.PdfDocument to image, Then convert the image to base64.
 
     Args:
         page (_type_): pdfium.PdfPage
-        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
         image_type (ImageType, optional): The type of image to return. Defaults to ImageType.PIL.
 
     Returns:
@@ -55,7 +63,7 @@ def _load_images_from_pdf_worker(
 
 def load_images_from_pdf(
     pdf_bytes: bytes,
-    dpi=200,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
     start_page_id=0,
     end_page_id=None,
     image_type=ImageType.PIL,
@@ -66,7 +74,7 @@ def load_images_from_pdf(
 
     Args:
         pdf_bytes (bytes): PDF 文件的 bytes
-        dpi (int, optional): reset the dpi of dpi. Defaults to 200.
+        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
         start_page_id (int, optional): 起始页码. Defaults to 0.
         end_page_id (int | None, optional): 结束页码. Defaults to None.
         image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
@@ -195,7 +203,7 @@ def _terminate_executor_processes(executor):
 
 def load_images_from_pdf_core(
     pdf_bytes: bytes,
-    dpi=200,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
     start_page_id=0,
     end_page_id=None,
     image_type=ImageType.PIL,  # PIL or BASE64
@@ -218,7 +226,7 @@ def load_images_from_pdf_core(
 
 def load_images_from_pdf_doc(
     pdf_doc: pdfium.PdfDocument,
-    dpi=200,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
     start_page_id=0,
     end_page_id=None,
     image_type=ImageType.PIL,
@@ -305,12 +313,12 @@ def images_bytes_to_pdf_bytes(image_bytes):
 
     # 第一张图保存为 PDF，其余追加
     # Keep image inputs at the same raster size when CLI later renders the
-    # wrapper PDF at 200 dpi; PIL defaults to 72 dpi for PDF output, which
+    # wrapper PDF at the default DPI; PIL defaults to 72 dpi for PDF output, which
     # would upscale the image and noticeably hurt seal OCR detection quality.
     image.save(
         pdf_buffer,
         format="PDF",
-        resolution=200.0,
+        resolution=float(DEFAULT_PDF_IMAGE_DPI),
         # save_all=True
     )
 
