@@ -426,15 +426,16 @@ class MagicModel:
             else:
                 self.chart_groups.append(group_info)
 
-            rebuilt_page_blocks.append(
-                {
-                    "type": original_block_type,
-                    "bbox": block["bbox"],
-                    "blocks": [body_block, *captions, *footnotes],
-                    "index": block["index"],
-                    "score": block.get("score"),
-                }
-            )
+            two_layer_block = {
+                "type": original_block_type,
+                "bbox": block["bbox"],
+                "blocks": [body_block, *captions, *footnotes],
+                "index": block["index"],
+                "score": block.get("score"),
+            }
+            # 对blocks按index排序
+            two_layer_block["blocks"].sort(key=lambda x: x["index"])
+            rebuilt_page_blocks.append(two_layer_block)
 
         self.page_blocks = rebuilt_page_blocks
 
