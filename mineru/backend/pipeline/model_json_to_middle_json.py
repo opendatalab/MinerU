@@ -245,8 +245,8 @@ def finalize_middle_json(pdf_info_list, lang=None, ocr_enable=False):
             llm_aided_title_start_time = time.time()
             llm_aided_title(pdf_info_list, title_aided_config)
             logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
-    else:
-        _apply_default_title_levels(pdf_info_list)
+
+    _apply_default_title_levels(pdf_info_list)
 
     if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(pdf_info_list) >= 10:
         clean_memory(get_device())
