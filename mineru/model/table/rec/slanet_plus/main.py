@@ -18,7 +18,7 @@ from mineru.utils.models_download_utils import auto_download_and_get_model_root_
 
 
 @dataclass
-class RapidTableInput:
+class PaddleTableInput:
     model_type: Optional[str] = "slanet_plus"
     model_path: Union[str, Path, None, Dict[str, str]] = None
     use_cuda: bool = False
@@ -26,15 +26,15 @@ class RapidTableInput:
 
 
 @dataclass
-class RapidTableOutput:
+class PaddleTableOutput:
     pred_html: Optional[str] = None
     cell_bboxes: Optional[np.ndarray] = None
     logic_points: Optional[np.ndarray] = None
     elapse: Optional[float] = None
 
 
-class RapidTable:
-    def __init__(self, config: RapidTableInput):
+class PaddleTable:
+    def __init__(self, config: PaddleTableInput):
         self.table_structure = TableStructurer(asdict(config))
         self.table_matcher = TableMatch()
 
@@ -42,7 +42,7 @@ class RapidTable:
         self,
         img: np.ndarray,
         ocr_result: List[Union[List[List[float]], str, str]] = None,
-    ) -> RapidTableOutput:
+    ) -> PaddleTableOutput:
         if ocr_result is None:
             raise ValueError("OCR result is None")
 
@@ -66,14 +66,14 @@ class RapidTable:
 
         logic_points = self.table_matcher.decode_logic_points(pred_structures)
         elapse = time.perf_counter() - s
-        return RapidTableOutput(pred_html, cell_bboxes, logic_points, elapse)
+        return PaddleTableOutput(pred_html, cell_bboxes, logic_points, elapse)
 
     def batch_predict(
         self,
         images: List[np.ndarray],
         ocr_results: List[List[Union[List[List[float]], str, str]]],
         batch_size: int = 4,
-    ) -> List[RapidTableOutput]:
+    ) -> List[PaddleTableOutput]:
         """批量处理图像"""
         s = time.perf_counter()
 
@@ -103,7 +103,7 @@ class RapidTable:
             cell_bboxes = cell_bboxes[mask]
 
             logic_points = self.table_matcher.decode_logic_points(pred_structures)
-            result = RapidTableOutput(pred_html, cell_bboxes, logic_points, 0)
+            result = PaddleTableOutput(pred_html, cell_bboxes, logic_points, 0)
             output_results.append(result)
 
         total_elapse = time.perf_counter() - s
@@ -149,16 +149,16 @@ def escape_html(input_string):
     return html.escape(input_string)
 
 
-class RapidTableModel(object):
+class PaddleTableModel(object):
     def __init__(self, ocr_engine):
         slanet_plus_model_path = os.path.join(
             auto_download_and_get_model_root_path(ModelPath.slanet_plus),
             ModelPath.slanet_plus,
         )
-        input_args = RapidTableInput(
+        input_args = PaddleTableInput(
             model_type="slanet_plus", model_path=slanet_plus_model_path
         )
-        self.table_model = RapidTable(input_args)
+        self.table_model = PaddleTable(input_args)
         self.ocr_engine = ocr_engine
 
     def predict(self, image, ocr_result=None):

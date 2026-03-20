@@ -11,7 +11,7 @@ from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
-from ...model.table.rec.slanet_plus.main import RapidTableModel
+from ...model.table.rec.slanet_plus.main import PaddleTableModel
 from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
@@ -66,7 +66,7 @@ def wireless_table_model_init(lang=None):
         lang=lang,
         enable_merge_det_boxes=False
     )
-    table_model = RapidTableModel(ocr_engine)
+    table_model = PaddleTableModel(ocr_engine)
     return table_model
 
 

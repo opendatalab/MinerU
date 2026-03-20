@@ -33,8 +33,6 @@ from loguru import logger
 
 class EP(Enum):
     CPU_EP = "CPUExecutionProvider"
-    CUDA_EP = "CUDAExecutionProvider"
-    DIRECTML_EP = "DmlExecutionProvider"
 
 
 class OrtInferSession:
@@ -43,9 +41,6 @@ class OrtInferSession:
 
         model_path = config.get("model_path", None)
         self._verify_model(model_path)
-
-        self.cfg_use_cuda = config.get("use_cuda", None)
-        self.cfg_use_dml = config.get("use_dml", None)
 
         self.had_providers: List[str] = get_available_providers()
         EP_list = self._get_ep_list()
@@ -56,7 +51,6 @@ class OrtInferSession:
             sess_options=sess_opt,
             providers=EP_list,
         )
-        self._verify_providers()
 
     @staticmethod
     def _init_sess_opts(config: Dict[str, Any]) -> SessionOptions:
@@ -86,125 +80,7 @@ class OrtInferSession:
             "arena_extend_strategy": "kSameAsRequested",
         }
         EP_list = [(EP.CPU_EP.value, cpu_provider_opts)]
-
-        cuda_provider_opts = {
-            "device_id": 0,
-            "arena_extend_strategy": "kNextPowerOfTwo",
-            "cudnn_conv_algo_search": "EXHAUSTIVE",
-            "do_copy_in_default_stream": True,
-        }
-        self.use_cuda = self._check_cuda()
-        if self.use_cuda:
-            EP_list.insert(0, (EP.CUDA_EP.value, cuda_provider_opts))
-
-        self.use_directml = self._check_dml()
-        if self.use_directml:
-            self.logger.info(
-                "Windows 10 or above detected, try to use DirectML as primary provider"
-            )
-            directml_options = (
-                cuda_provider_opts if self.use_cuda else cpu_provider_opts
-            )
-            EP_list.insert(0, (EP.DIRECTML_EP.value, directml_options))
         return EP_list
-
-    def _check_cuda(self) -> bool:
-        if not self.cfg_use_cuda:
-            return False
-
-        cur_device = get_device()
-        if cur_device == "GPU" and EP.CUDA_EP.value in self.had_providers:
-            return True
-
-        self.logger.warning(
-            "%s is not in available providers (%s). Use %s inference by default.",
-            EP.CUDA_EP.value,
-            self.had_providers,
-            self.had_providers[0],
-        )
-        self.logger.info("!!!Recommend to use rapidocr_paddle for inference on GPU.")
-        self.logger.info(
-            "(For reference only) If you want to use GPU acceleration, you must do:"
-        )
-        self.logger.info(
-            "First, uninstall all onnxruntime pakcages in current environment."
-        )
-        self.logger.info(
-            "Second, install onnxruntime-gpu by `pip install onnxruntime-gpu`."
-        )
-        self.logger.info(
-            "\tNote the onnxruntime-gpu version must match your cuda and cudnn version."
-        )
-        self.logger.info(
-            "\tYou can refer this link: https://onnxruntime.ai/docs/execution-providers/CUDA-EP.html"
-        )
-        self.logger.info(
-            "Third, ensure %s is in available providers list. e.g. ['CUDAExecutionProvider', 'CPUExecutionProvider']",
-            EP.CUDA_EP.value,
-        )
-        return False
-
-    def _check_dml(self) -> bool:
-        if not self.cfg_use_dml:
-            return False
-
-        cur_os = platform.system()
-        if cur_os != "Windows":
-            self.logger.warning(
-                "DirectML is only supported in Windows OS. The current OS is %s. Use %s inference by default.",
-                cur_os,
-                self.had_providers[0],
-            )
-            return False
-
-        cur_window_version = int(platform.release().split(".")[0])
-        if cur_window_version < 10:
-            self.logger.warning(
-                "DirectML is only supported in Windows 10 and above OS. The current Windows version is %s. Use %s inference by default.",
-                cur_window_version,
-                self.had_providers[0],
-            )
-            return False
-
-        if EP.DIRECTML_EP.value in self.had_providers:
-            return True
-
-        self.logger.warning(
-            "%s is not in available providers (%s). Use %s inference by default.",
-            EP.DIRECTML_EP.value,
-            self.had_providers,
-            self.had_providers[0],
-        )
-        self.logger.info("If you want to use DirectML acceleration, you must do:")
-        self.logger.info(
-            "First, uninstall all onnxruntime pakcages in current environment."
-        )
-        self.logger.info(
-            "Second, install onnxruntime-directml by `pip install onnxruntime-directml`"
-        )
-        self.logger.info(
-            "Third, ensure %s is in available providers list. e.g. ['DmlExecutionProvider', 'CPUExecutionProvider']",
-            EP.DIRECTML_EP.value,
-        )
-        return False
-
-    def _verify_providers(self):
-        session_providers = self.session.get_providers()
-        first_provider = session_providers[0]
-
-        if self.use_cuda and first_provider != EP.CUDA_EP.value:
-            self.logger.warning(
-                "%s is not avaiable for current env, the inference part is automatically shifted to be executed under %s.",
-                EP.CUDA_EP.value,
-                first_provider,
-            )
-
-        if self.use_directml and first_provider != EP.DIRECTML_EP.value:
-            self.logger.warning(
-                "%s is not available for current env, the inference part is automatically shifted to be executed under %s.",
-                EP.DIRECTML_EP.value,
-                first_provider,
-            )
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))
