@@ -1,3 +1,4 @@
+from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.utils.boxbase import (
     bbox_center_distance,
     bbox_distance,
@@ -38,7 +39,7 @@ class MagicModel:
         "vision_footnote": BlockType.FOOTNOTE,
     }
 
-    VISUAL_MAIN_TYPES = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART)
+    VISUAL_MAIN_TYPES = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.ALGORITHM)
     VISUAL_CHILD_TYPES = (BlockType.CAPTION, BlockType.FOOTNOTE)
     VISUAL_TYPE_MAPPING = {
         BlockType.IMAGE: {
@@ -56,6 +57,11 @@ class MagicModel:
             "caption": BlockType.CHART_CAPTION,
             "footnote": BlockType.CHART_FOOTNOTE,
         },
+        BlockType.ALGORITHM: {
+            "body": BlockType.ALGORITHM_BODY,
+            "caption": BlockType.ALGORITHM_CAPTION,
+            "footnote": BlockType.ALGORITHM_FOOTNOTE,
+        }
     }
 
     def __init__(
@@ -122,6 +128,10 @@ class MagicModel:
         else:
             block_lines = merge_spans_to_line(block['spans'])
             sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
+
+        if block["type"] == BlockType.ALGORITHM:
+            for line in sort_block_lines:
+                line[ListLineTag.IS_LIST_START_LINE] = True
 
         block['lines'] = sort_block_lines
         del block['spans']

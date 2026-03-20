@@ -7,14 +7,17 @@ class BlockType:
     IMAGE_BODY = 'image_body'
     TABLE_BODY = 'table_body'
     CHART_BODY = 'chart_body'
+    ALGORITHM_BODY = 'algorithm_body'
     CAPTION = 'caption'  # generic caption type (e.g., for Word documents)
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
     CHART_CAPTION = 'chart_caption'
+    ALGORITHM_CAPTION = 'algorithm_caption'
     FOOTNOTE = 'footnote'  # pp_layout中的vision_footnote
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
     CHART_FOOTNOTE = 'chart_footnote'
+    ALGORITHM_FOOTNOTE = 'algorithm_footnote'
     TEXT = 'text'
     TITLE = 'title'
     INTERLINE_EQUATION = 'interline_equation'
