@@ -303,7 +303,9 @@ class TextDetector(BaseOCRV20):
             box = np.array(box)
             box = self.clip_det_res(box, img_height, img_width)
             dt_boxes_new.append(box)
-        return np.array(dt_boxes_new)
+        # Polygon detectors may emit a variable number of points per box,
+        # so this path must preserve a ragged outer container.
+        return dt_boxes_new
 
     def __call__(self, img):
         ori_shape = img.shape
