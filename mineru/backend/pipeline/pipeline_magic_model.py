@@ -1,4 +1,5 @@
 from mineru.backend.pipeline.para_split import ListLineTag
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import _merge_para_text
 from mineru.utils.boxbase import (
     bbox_center_distance,
     bbox_distance,
@@ -6,6 +7,7 @@ from mineru.utils.boxbase import (
     calculate_overlap_area_in_bbox1_area_ratio,
 )
 from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
     merge_spans_to_line, line_sort_spans_by_left_to_right
 from mineru.utils.span_pre_proc import txt_spans_extract
@@ -15,7 +17,7 @@ class MagicModel:
 
     PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES = {
         "abstract": BlockType.ABSTRACT,
-        "algorithm": BlockType.ALGORITHM,
+        "algorithm": BlockType.CODE,
         "aside_text": BlockType.ASIDE_TEXT,
         "chart": BlockType.CHART,
         "content": BlockType.INDEX,
@@ -39,7 +41,7 @@ class MagicModel:
         "vision_footnote": BlockType.FOOTNOTE,
     }
 
-    VISUAL_MAIN_TYPES = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.ALGORITHM)
+    VISUAL_MAIN_TYPES = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE)
     VISUAL_CHILD_TYPES = (BlockType.CAPTION, BlockType.FOOTNOTE)
     VISUAL_TYPE_MAPPING = {
         BlockType.IMAGE: {
@@ -57,10 +59,10 @@ class MagicModel:
             "caption": BlockType.CHART_CAPTION,
             "footnote": BlockType.CHART_FOOTNOTE,
         },
-        BlockType.ALGORITHM: {
-            "body": BlockType.ALGORITHM_BODY,
-            "caption": BlockType.ALGORITHM_CAPTION,
-            "footnote": BlockType.ALGORITHM_FOOTNOTE,
+        BlockType.CODE: {
+            "body": BlockType.CODE_BODY,
+            "caption": BlockType.CODE_CAPTION,
+            "footnote": BlockType.CODE_FOOTNOTE,
         }
     }
 
@@ -129,9 +131,18 @@ class MagicModel:
             block_lines = merge_spans_to_line(block['spans'])
             sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
 
-        if block["type"] == BlockType.ALGORITHM:
+        if block["type"] == BlockType.CODE:
             for line in sort_block_lines:
                 line[ListLineTag.IS_LIST_START_LINE] = True
+            code_content = _merge_para_text(
+                {'lines': sort_block_lines},
+                False,
+                '\n'
+            )
+            guess_lang = guess_language_by_text(code_content)
+            if guess_lang not in ["txt", "unknown"]:
+                block["sub_type"] = "code"
+                block["guess_lang"] = guess_lang
 
         block['lines'] = sort_block_lines
         del block['spans']
@@ -172,6 +183,14 @@ class MagicModel:
             ]:
                 self.discarded_blocks.append(block)
             else:
+                # 单独处理code block
+                if block["type"] in [BlockType.CODE]:
+                    for sub_block in block["blocks"]:
+                        if sub_block["type"] == BlockType.CODE_BODY:
+                            block["sub_type"] = sub_block.pop("sub_type", "algorithm")
+                            if block["sub_type"] == "code":
+                                block["guess_lang"] = sub_block.pop("guess_lang", "txt")
+
                 self.preproc_blocks.append(block)
 
     def __build_page_blocks(self):
@@ -179,7 +198,7 @@ class MagicModel:
         for block in self.page_blocks:
             if block["type"] in [
                 BlockType.ABSTRACT,
-                BlockType.ALGORITHM,
+                BlockType.CODE,
                 BlockType.ASIDE_TEXT,
                 BlockType.INDEX,
                 BlockType.DOC_TITLE,

@@ -48,7 +48,7 @@ def make_blocks_to_markdown(paras_of_layout,
                 continue
             elif mode == MakeMode.MM_MD:
                 para_text = merge_visual_blocks_to_markdown(para_block, img_buket_path)
-        elif para_type == BlockType.ALGORITHM:
+        elif para_type == BlockType.CODE:
             para_text = merge_visual_blocks_to_markdown(para_block)
 
         if para_text.strip() == '':
@@ -60,13 +60,14 @@ def make_blocks_to_markdown(paras_of_layout,
 
 
 def merge_visual_blocks_to_markdown(para_block, img_buket_path=''):
-    # 将 image/table/algorithm 这类视觉块的子 block 按阅读顺序拼接成 markdown。
+    # 将 image/table/chart/code 这类视觉块的子 block 按阅读顺序拼接成 markdown。
     # 这里不再写死 caption/body/footnote 的优先级，而是先展开成 segment，
     # 再根据 markdown_line / html_block 两类片段决定分隔方式。
     rendered_segments = []
 
     for block in get_blocks_in_index_order(para_block.get('blocks', [])):
-        rendered_segments.extend(render_visual_block_segments(block, img_buket_path))
+        render_block = _inherit_parent_code_render_metadata(block, para_block)
+        rendered_segments.extend(render_visual_block_segments(render_block, img_buket_path))
 
     para_text = ''
     prev_segment_kind = None
@@ -91,6 +92,27 @@ def get_blocks_in_index_order(blocks):
     ]
 
 
+def _inherit_parent_code_render_metadata(block, parent_block):
+    # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
+    # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
+    if block.get('type') != BlockType.CODE_BODY:
+        return block
+    if parent_block.get('type') != BlockType.CODE:
+        return block
+
+    needs_sub_type = 'sub_type' not in block and 'sub_type' in parent_block
+    needs_guess_lang = 'guess_lang' not in block and 'guess_lang' in parent_block
+    if not needs_sub_type and not needs_guess_lang:
+        return block
+
+    render_block = dict(block)
+    if needs_sub_type:
+        render_block['sub_type'] = parent_block['sub_type']
+    if needs_guess_lang:
+        render_block['guess_lang'] = parent_block['guess_lang']
+    return render_block
+
+
 def render_visual_block_segments(block, img_buket_path=''):
     # 将单个视觉子 block 渲染成一个或多个 segment。
     # 文本类子块统一输出 markdown_line；
@@ -102,9 +124,9 @@ def render_visual_block_segments(block, img_buket_path=''):
         BlockType.IMAGE_FOOTNOTE,
         BlockType.TABLE_CAPTION,
         BlockType.TABLE_FOOTNOTE,
-        BlockType.ALGORITHM_BODY,
-        BlockType.ALGORITHM_CAPTION,
-        BlockType.ALGORITHM_FOOTNOTE,
+        BlockType.CODE_BODY,
+        BlockType.CODE_CAPTION,
+        BlockType.CODE_FOOTNOTE,
         BlockType.CHART_CAPTION,
         BlockType.CHART_FOOTNOTE,
     ]:
@@ -176,6 +198,22 @@ CJK_LANGS = {'zh', 'ja', 'ko'}
 
 
 def merge_para_with_text(para_block):
+    if _is_fenced_code_block(para_block):
+        code_text = _merge_para_text(
+            para_block,
+            escape_markdown=False,
+            list_line_break='\n',
+        )
+        if not code_text:
+            return ''
+        code_text = '\n'.join(line.rstrip() for line in code_text.split('\n'))
+        guess_lang = para_block.get('guess_lang', 'txt') or 'txt'
+        return f"```{guess_lang}\n{code_text}\n```"
+
+    return _merge_para_text(para_block)
+
+
+def _merge_para_text(para_block, escape_markdown=True, list_line_break='  \n'):
     # 将普通文本段落 block 渲染成 markdown 字符串。
     # 处理流程分为三层：
     # 1. 先收集文本内容做语言检测
@@ -185,12 +223,12 @@ def merge_para_with_text(para_block):
     para_parts = []
 
     for line_idx, line in enumerate(para_block['lines']):
-        line_prefix = _line_prefix(line_idx, line)
+        line_prefix = _line_prefix(line_idx, line, list_line_break)
         if line_prefix:
             para_parts.append(line_prefix)
 
         for span_idx, span in enumerate(line['spans']):
-            rendered_span = _render_span(span)
+            rendered_span = _render_span(span, escape_markdown=escape_markdown)
             if rendered_span is None:
                 continue
 
@@ -211,6 +249,13 @@ def merge_para_with_text(para_block):
     return ''.join(para_parts).rstrip()
 
 
+def _is_fenced_code_block(para_block):
+    return (
+        para_block.get('type') == BlockType.CODE_BODY
+        and para_block.get('sub_type') == BlockType.CODE
+    )
+
+
 def _collect_text_for_lang_detection(para_block):
     # 只收集 TEXT span 的内容，用于语言检测。
     # 这里会先做全角转半角，但不会修改原始输入数据。
@@ -228,14 +273,16 @@ def _normalize_text_content(content):
     return full_to_half_exclude_marks(content or '')
 
 
-def _render_span(span):
+def _render_span(span, escape_markdown=True):
     # 将单个 span 渲染成 markdown 片段。
     # 这里只负责“渲染成什么文本”，不决定后面是否补空格。
     span_type = span['type']
     content = ''
 
     if span_type == ContentType.TEXT:
-        content = escape_special_markdown_char(_normalize_text_content(span.get('content', '')))
+        content = _normalize_text_content(span.get('content', ''))
+        if escape_markdown:
+            content = escape_special_markdown_char(content)
     elif span_type == ContentType.INLINE_EQUATION:
         if span.get('content', ''):
             content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
@@ -283,11 +330,11 @@ def _join_rendered_span(para_block, block_lang, line, line_idx, span_idx, span_t
     return content, ' '
 
 
-def _line_prefix(line_idx, line):
+def _line_prefix(line_idx, line, list_line_break='  \n'):
     # 处理进入新 list item 前的 block 级换行。
     # 这里保留历史语义：list 起始行前插入一个 hard break。
     if line_idx >= 1 and line.get(ListLineTag.IS_LIST_START_LINE, False):
-        return '  \n'
+        return list_line_break
     return ''
 
 

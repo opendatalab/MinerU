@@ -7,7 +7,6 @@ class BlockType:
     IMAGE_BODY = 'image_body'
     TABLE_BODY = 'table_body'
     CHART_BODY = 'chart_body'
-    ALGORITHM_BODY = 'algorithm_body'
     CAPTION = 'caption'  # generic caption type (e.g., for Word documents)
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
@@ -17,7 +16,6 @@ class BlockType:
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
     CHART_FOOTNOTE = 'chart_footnote'
-    ALGORITHM_FOOTNOTE = 'algorithm_footnote'
     TEXT = 'text'
     TITLE = 'title'
     INTERLINE_EQUATION = 'interline_equation'
@@ -30,6 +28,7 @@ class BlockType:
     CODE = "code"
     CODE_BODY = "code_body"
     CODE_CAPTION = "code_caption"
+    CODE_FOOTNOTE = "code_footnote"
     ALGORITHM = "algorithm"
     REF_TEXT = "ref_text"
     PHONETIC = "phonetic"
