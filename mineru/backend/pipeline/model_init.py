@@ -141,7 +141,6 @@ class AtomModelSingleton:
         elif atom_model_name == AtomicModel.Layout:
             key = (
                 atom_model_name,
-                kwargs.get('layout_model_name', 'doclayout_yolo'),
                 kwargs.get('layout_model_weight'),
                 kwargs.get('device'),
             )

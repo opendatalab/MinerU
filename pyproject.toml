@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mineru"
 dynamic = ["version"]
-license = { text = "AGPL-3.0" }
+license = { text = "Apache-2.0" }
 description = "A practical tool for converting PDF to Markdown"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 keywords = ["magic-pdf", "mineru", "MinerU", "convert", "pdf", "markdown"]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

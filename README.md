@@ -294,7 +294,7 @@ You can use MinerU for PDF parsing through various methods such as command line,
 
 [LICENSE.md](LICENSE.md)
 
-Currently, some models in this project are trained based on YOLO. However, since YOLO follows the AGPL license, it may impose restrictions on certain use cases. In future iterations, we plan to explore and replace these with models under more permissive licenses to enhance user-friendliness and flexibility.
+The source code in this repository is licensed under Apache License 2.0.
 
 # Acknowledgments
 

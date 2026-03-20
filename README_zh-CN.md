@@ -301,7 +301,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 [LICENSE.md](LICENSE.md)
 
-本项目目前部分模型基于YOLO训练，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的模型，以提升用户友好度及灵活性。
+本仓库源码采用 Apache License 2.0 许可。
 
 # Acknowledgments
 
