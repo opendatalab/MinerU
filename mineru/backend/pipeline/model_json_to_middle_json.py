@@ -16,7 +16,7 @@ from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
-from mineru.utils.ocr_utils import OcrConfidence
+from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
 
@@ -193,7 +193,8 @@ def _apply_post_ocr(pdf_info_list, lang=None):
             for span in line['spans']:
                 if 'np_img' in span:
                     need_ocr_list.append(span)
-                    img_crop_list.append(span['np_img'])
+                    # Keep post-OCR rec aligned with the main OCR pipeline for vertical tall crops.
+                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
                     span.pop('np_img')
 
     if len(img_crop_list) == 0:

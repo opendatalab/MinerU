@@ -14,7 +14,7 @@ from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.ocr_utils import OcrConfidence
+from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.version import __version__
 
@@ -148,7 +148,7 @@ def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
             for span in line['spans']:
                 if 'np_img' in span:
                     need_ocr_list.append(span)
-                    img_crop_list.append(span['np_img'])
+                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
                     span.pop('np_img')
     if len(img_crop_list) > 0:
         ocr_res_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
