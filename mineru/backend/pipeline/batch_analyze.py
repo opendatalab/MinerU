@@ -1,6 +1,4 @@
-import base64
 import html
-import os
 
 import cv2
 from loguru import logger
@@ -10,11 +8,6 @@ import numpy as np
 
 from .model_init import AtomModelSingleton
 from .model_list import AtomicModel
-from ...model.table.rec.unet_table.utils_table_recover import (
-    gather_ocr_list_by_row as gather_table_items_by_row,
-    plot_html_table,
-    sorted_ocr_boxes as sorted_table_boxes,
-)
 from ...utils.config_reader import (
     get_formula_enable,
     get_ocr_det_mask_inline_formula_enable,
@@ -36,9 +29,6 @@ MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 16
 TABLE_ORI_CLS_BATCH_SIZE = 16
 TABLE_Wired_Wireless_CLS_BATCH_SIZE = 16
-TABLE_RICH_IMAGE_LABELS = {"image", "chart"}
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-TABLE_OCR_DET_DEBUG_DIR = os.path.join(PROJECT_ROOT, "output_images", "table_ocr_det_debug")
 
 
 class BatchAnalyze:
@@ -67,77 +57,6 @@ class BatchAnalyze:
         self.mask_inline_formula_for_ocr_det = (
             get_ocr_det_mask_inline_formula_enable(mask_inline_formula_for_ocr_det)
         )
-
-    @staticmethod
-    def _normalize_bbox(box) -> list[int] | None:
-        return normalize_to_int_bbox(box)
-
-    @staticmethod
-    def _bbox_center(bbox) -> tuple[float, float]:
-        return ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
-
-    @staticmethod
-    def _point_in_bbox(point, bbox, tolerance: float = 1.0) -> bool:
-        return (
-            bbox[0] - tolerance <= point[0] <= bbox[2] + tolerance
-            and bbox[1] - tolerance <= point[1] <= bbox[3] + tolerance
-        )
-
-    @staticmethod
-    def _rotate_local_bbox(local_bbox: list[float], table_width: float, table_height: float, rotate_label: str) -> list[int]:
-        if rotate_label not in {"90", "270"}:
-            return normalize_to_int_bbox(local_bbox)
-
-        corners = np.asarray(
-            [
-                [local_bbox[0], local_bbox[1]],
-                [local_bbox[2], local_bbox[1]],
-                [local_bbox[2], local_bbox[3]],
-                [local_bbox[0], local_bbox[3]],
-            ],
-            dtype=np.float32,
-        )
-        if rotate_label == "270":
-            rotated = np.asarray(
-                [[table_height - y, x] for x, y in corners],
-                dtype=np.float32,
-            )
-        else:
-            rotated = np.asarray(
-                [[y, table_width - x] for x, y in corners],
-                dtype=np.float32,
-            )
-        return normalize_to_int_bbox(rotated)
-
-    def _page_bbox_to_table_bbox(self, item_bbox: list[float], table_bbox: list[float], rotate_label: str) -> list[float]:
-        table_width = float(table_bbox[2] - table_bbox[0])
-        table_height = float(table_bbox[3] - table_bbox[1])
-        local_bbox = [
-            float(item_bbox[0] - table_bbox[0]),
-            float(item_bbox[1] - table_bbox[1]),
-            float(item_bbox[2] - table_bbox[0]),
-            float(item_bbox[3] - table_bbox[1]),
-        ]
-        return self._rotate_local_bbox(local_bbox, table_width, table_height, rotate_label)
-
-    @staticmethod
-    def _crop_image_to_data_uri(page_np_img: np.ndarray, bbox: list[float]) -> str:
-        h, w = page_np_img.shape[:2]
-        int_bbox = normalize_to_int_bbox(bbox, image_size=(h, w))
-        if int_bbox is None:
-            return ""
-        x0, y0, x1, y1 = int_bbox
-
-        crop = page_np_img[y0:y1, x0:x1]
-        if crop.size == 0:
-            return ""
-
-        crop_bgr = cv2.cvtColor(crop, cv2.COLOR_RGB2BGR)
-        ok, encoded = cv2.imencode(".jpg", crop_bgr)
-        if not ok:
-            return ""
-        img_base64 = base64.b64encode(encoded.tobytes()).decode("utf-8")
-        return f'<img src="data:image/jpg;base64,{img_base64}">'
 
     @staticmethod
     def _apply_mask_boxes_to_image(
@@ -173,37 +92,6 @@ class BatchAnalyze:
         return self._apply_mask_boxes_to_image(bgr_image, mask_boxes)
 
     @staticmethod
-    def _dump_table_det_debug_images(
-        table_id: int,
-        original_bgr_image: np.ndarray,
-        masked_bgr_image: np.ndarray,
-        dt_boxes_final: list,
-    ) -> None:
-        os.makedirs(TABLE_OCR_DET_DEBUG_DIR, exist_ok=True)
-
-        original_path = os.path.join(
-            TABLE_OCR_DET_DEBUG_DIR,
-            f"table_{table_id:04d}_orig.png",
-        )
-        masked_path = os.path.join(
-            TABLE_OCR_DET_DEBUG_DIR,
-            f"table_{table_id:04d}_masked.png",
-        )
-        det_boxes_path = os.path.join(
-            TABLE_OCR_DET_DEBUG_DIR,
-            f"table_{table_id:04d}_det_boxes.png",
-        )
-
-        cv2.imwrite(original_path, original_bgr_image)
-        cv2.imwrite(masked_path, masked_bgr_image)
-
-        det_boxes_image = original_bgr_image.copy()
-        for dt_box in dt_boxes_final or []:
-            points = np.asarray(dt_box, dtype=np.int32).reshape((-1, 1, 2))
-            cv2.polylines(det_boxes_image, [points], isClosed=True, color=(0, 0, 255), thickness=2)
-        cv2.imwrite(det_boxes_path, det_boxes_image)
-
-    @staticmethod
     def _prune_empty_ocr_text_blocks(layout_res: list[dict], ocr_enable: bool) -> None:
         if not ocr_enable or not layout_res:
             return
@@ -219,172 +107,6 @@ class BatchAnalyze:
 
         layout_res[:] = [item for item in layout_res if keep_item(item)]
 
-    def _collect_table_rich_items(self, table_res_dict: dict) -> list[dict]:
-        rich_items = []
-        table_bbox = table_res_dict["table_res"]["bbox"]
-        rotate_label = table_res_dict.get("rotate_label", "0")
-
-        for layout_item in table_res_dict["page_layout_res"]:
-            label = layout_item.get("label")
-            if label not in {"display_formula", "inline_formula", *TABLE_RICH_IMAGE_LABELS}:
-                continue
-
-            item_bbox = layout_item.get("bbox")
-            if item_bbox is None:
-                continue
-
-            center = self._bbox_center(item_bbox)
-            if not self._point_in_bbox(center, table_bbox, tolerance=0.5):
-                continue
-
-            local_bbox = self._page_bbox_to_table_bbox(item_bbox, table_bbox, rotate_label)
-            if label in {"display_formula", "inline_formula"}:
-                latex = layout_item.get("latex", "").strip()
-                if not latex:
-                    continue
-                rich_items.append(
-                    {
-                        "type": "formula",
-                        "bbox": local_bbox,
-                        "content": f"<eq>{latex}</eq>",
-                    }
-                )
-                continue
-
-            image_tag = self._crop_image_to_data_uri(table_res_dict["page_np_img"], item_bbox)
-            if not image_tag:
-                continue
-            rich_items.append(
-                {
-                    "type": "image",
-                    "bbox": local_bbox,
-                    "content": image_tag,
-                }
-            )
-
-        return rich_items
-
-    def _should_remove_table_internal_layout_item(
-        self,
-        layout_item: dict,
-        table_bbox: list[float],
-    ) -> bool:
-        label = layout_item.get("label")
-        if label not in {"display_formula", "inline_formula", *TABLE_RICH_IMAGE_LABELS}:
-            return False
-
-        item_bbox = layout_item.get("bbox")
-        if item_bbox is None:
-            return False
-
-        center = self._bbox_center(item_bbox)
-        return self._point_in_bbox(center, table_bbox, tolerance=0.5)
-
-    def _remove_table_internal_layout_items(self, table_res_list_all_page: list[dict]) -> None:
-        for table_res_dict in table_res_list_all_page:
-            table_bbox = table_res_dict["table_res"].get("bbox")
-            if table_bbox is None:
-                continue
-
-            page_layout_res = table_res_dict.get("page_layout_res")
-            if not page_layout_res:
-                continue
-
-            page_layout_res[:] = [
-                layout_item
-                for layout_item in page_layout_res
-                if not self._should_remove_table_internal_layout_item(
-                    layout_item,
-                    table_bbox,
-                )
-            ]
-
-    @staticmethod
-    def _match_cell_index(item_bbox: list[float], cell_bboxes: list[list[float]]) -> int | None:
-        if not cell_bboxes:
-            return None
-
-        center = BatchAnalyze._bbox_center(item_bbox)
-        for cell_index, cell_bbox in enumerate(cell_bboxes):
-            if BatchAnalyze._point_in_bbox(center, cell_bbox, tolerance=1.5):
-                return cell_index
-
-        distances = []
-        for cell_index, cell_bbox in enumerate(cell_bboxes):
-            cell_center = BatchAnalyze._bbox_center(cell_bbox)
-            distances.append(
-                (
-                    (center[0] - cell_center[0]) ** 2 + (center[1] - cell_center[1]) ** 2,
-                    cell_index,
-                )
-            )
-        if not distances:
-            return None
-        distances.sort(key=lambda item: item[0])
-        return distances[0][1]
-
-    def _merge_cell_items(self, cell_items: list[dict]) -> str:
-        if not cell_items:
-            return ""
-
-        item_boxes = [item["bbox"] for item in cell_items]
-        _, sorted_idx = sorted_table_boxes(item_boxes, threhold=0.3)
-        ordered_items = [
-            [[*cell_items[index]["bbox"]], cell_items[index]["content"]]
-            for index in sorted_idx
-        ]
-        merged_rows = gather_table_items_by_row(ordered_items, threhold=0.3)
-        return "<br>".join(row[1] for row in merged_rows if row[1])
-
-    def _rebuild_table_html(self, cell_bboxes, logic_points, content_items: list[dict]) -> str | None:
-        if cell_bboxes is None or logic_points is None:
-            return None
-
-        normalized_cells = []
-        for cell_bbox in cell_bboxes:
-            normalized_bbox = self._normalize_bbox(cell_bbox)
-            if normalized_bbox is None:
-                return None
-            normalized_cells.append(normalized_bbox)
-
-        if len(normalized_cells) == 0:
-            return None
-
-        cell_items_map = defaultdict(list)
-        for item in content_items:
-            item_bbox = item.get("bbox")
-            if item_bbox is None:
-                continue
-            cell_index = self._match_cell_index(item_bbox, normalized_cells)
-            if cell_index is None:
-                continue
-            cell_items_map[cell_index].append(item)
-
-        cell_box_map = {}
-        for cell_index, items in cell_items_map.items():
-            cell_html = self._merge_cell_items(items)
-            if cell_html:
-                cell_box_map[cell_index] = [cell_html]
-
-        if not cell_box_map:
-            return None
-
-        normalized_logic_points = [
-            logic_point.tolist() if hasattr(logic_point, "tolist") else list(logic_point)
-            for logic_point in logic_points
-        ]
-        return plot_html_table(normalized_logic_points, cell_box_map)
-
-    def _get_selected_table_structure(self, table_res_dict: dict) -> tuple[object, object]:
-        if table_res_dict.get("selected_table_model") == "wired":
-            return (
-                table_res_dict.get("wired_cell_bboxes"),
-                table_res_dict.get("wired_logic_points"),
-            )
-        return (
-            table_res_dict.get("wireless_cell_bboxes"),
-            table_res_dict.get("wireless_logic_points"),
-        )
 
     def __call__(self, images_with_extra_info: list) -> list:
         if len(images_with_extra_info) == 0:
@@ -474,14 +196,10 @@ class BatchAnalyze:
                                                 'lang':_lang,
                                                 'table_img':wireless_table_img,
                                                 'wired_table_img':wired_table_img,
-                                                'page_layout_res':layout_res,
-                                                'page_np_img':np_img,
-                                                'rotate_label':'0',
                                               })
 
         # 表格识别 table recognition
         if self.table_enable:
-            os.makedirs(TABLE_OCR_DET_DEBUG_DIR, exist_ok=True)
 
             # 图片旋转批量处理
             img_orientation_cls_model = atom_model_manager.get_atom_model(
@@ -513,20 +231,6 @@ class BatchAnalyze:
                     f"Table classification failed: {e}, using default model"
                 )
 
-            for table_res_dict in table_res_list_all_page:
-                table_res_dict["table_rich_items"] = self._collect_table_rich_items(
-                    table_res_dict
-                )
-                table_res_dict["table_det_mask_boxes"] = [
-                    {"bbox": item["bbox"]}
-                    for item in table_res_dict["table_rich_items"]
-                ]
-                table_res_dict["table_formula_mask_boxes"] = [
-                    {"bbox": item["bbox"]}
-                    for item in table_res_dict["table_rich_items"]
-                    if item.get("type") == "formula"
-                ]
-
             # OCR det 过程，顺序执行
             rec_img_lang_group = defaultdict(list)
             det_ocr_engine = atom_model_manager.get_atom_model(
@@ -539,27 +243,9 @@ class BatchAnalyze:
                     tqdm(table_res_list_all_page, desc="Table-ocr det")
             ):
                 bgr_image = cv2.cvtColor(table_res_dict["table_img"], cv2.COLOR_RGB2BGR)
-                det_image = self._apply_mask_boxes_to_image(
-                    bgr_image,
-                    table_res_dict.get("table_det_mask_boxes") or [],
-                )
-                ocr_result = det_ocr_engine.ocr(det_image, rec=False)[0]
-                dt_boxes_sorted = sorted_boxes(np.asarray(ocr_result)) if ocr_result else []
-                dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
-                table_formula_mask_boxes = (
-                    table_res_dict.get("table_formula_mask_boxes") or []
-                )
-                dt_boxes_final = (
-                    update_det_boxes(dt_boxes_merged, table_formula_mask_boxes)
-                    if dt_boxes_merged and table_formula_mask_boxes
-                    else dt_boxes_merged
-                )
-
-                # debug 输出检测结果和调试信息
-                # self._dump_table_det_debug_images(index, bgr_image, det_image, dt_boxes_final)
-
+                ocr_result = det_ocr_engine.ocr(bgr_image, rec=False)[0]
                 # 构造需要 OCR 识别的图片字典，包括cropped_img, dt_box, table_id，并按照语言进行分组
-                for dt_box in dt_boxes_final:
+                for dt_box in ocr_result:
                     rec_img_lang_group[table_res_dict["lang"]].append(
                         {
                             "cropped_img": get_rotate_crop_image_for_text_rec(
@@ -599,8 +285,6 @@ class BatchAnalyze:
                 atom_model_name=AtomicModel.WirelessTable,
             )
             wireless_table_model.batch_predict(table_res_list_all_page)
-            for table_res_dict in table_res_list_all_page:
-                table_res_dict["selected_table_model"] = "wireless"
 
             # 单独拿出有线表格进行预测
             wired_table_res_list = []
@@ -617,55 +301,18 @@ class BatchAnalyze:
                 for table_res_dict in tqdm(
                         wired_table_res_list, desc="Table-wired Predict"
                 ):
+                    if not table_res_dict.get("ocr_result", None):
+                        continue
+
                     wired_table_model = atom_model_manager.get_atom_model(
                         atom_model_name=AtomicModel.WiredTable,
                         lang=table_res_dict["lang"],
                     )
-                    wired_result = wired_table_model.predict(
+                    table_res_dict["table_res"]["html"] = wired_table_model.predict(
                         table_res_dict["wired_table_img"],
-                        table_res_dict.get("ocr_result") or [],
-                        table_res_dict["table_res"].get("html", None),
-                        return_metadata=True,
+                        table_res_dict["ocr_result"],
+                        table_res_dict["table_res"].get("html", None)
                     )
-                    table_res_dict["table_res"]["html"] = wired_result.get("html", "")
-                    table_res_dict["selected_table_model"] = wired_result.get(
-                        "selected_model", "wireless"
-                    )
-                    table_res_dict["wired_cell_bboxes"] = wired_result.get(
-                        "wired_cell_bboxes"
-                    )
-                    table_res_dict["wired_logic_points"] = wired_result.get(
-                        "wired_logic_points"
-                    )
-
-            for table_res_dict in table_res_list_all_page:
-                if not table_res_dict.get("table_rich_items"):
-                    continue
-
-                selected_cell_bboxes, selected_logic_points = (
-                    self._get_selected_table_structure(table_res_dict)
-                )
-                content_items = []
-                for ocr_res in table_res_dict.get("ocr_result") or []:
-                    ocr_bbox = self._normalize_bbox(ocr_res[0])
-                    if ocr_bbox is None or not ocr_res[1]:
-                        continue
-                    content_items.append(
-                        {
-                            "type": "text",
-                            "bbox": ocr_bbox,
-                            "content": ocr_res[1],
-                        }
-                    )
-                content_items.extend(table_res_dict["table_rich_items"])
-
-                rebuilt_html = self._rebuild_table_html(
-                    selected_cell_bboxes,
-                    selected_logic_points,
-                    content_items,
-                )
-                if rebuilt_html:
-                    table_res_dict["table_res"]["html"] = rebuilt_html
 
             # 表格格式清理
             for table_res_dict in table_res_list_all_page:
@@ -678,7 +325,6 @@ class BatchAnalyze:
                     end_index = html_code.rfind("</table>") + len("</table>")
                     table_res_dict["table_res"]["html"] = html_code[start_index:end_index]
 
-            self._remove_table_internal_layout_items(table_res_list_all_page)
 
         # OCR det
         if self.text_ocr_det_batch_enabled:
