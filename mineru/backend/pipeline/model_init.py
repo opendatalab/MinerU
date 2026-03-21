@@ -138,10 +138,9 @@ class AtomModelSingleton:
                 kwargs.get('det_db_unclip_ratio', 1.8),
                 kwargs.get('enable_merge_det_boxes', True)
             )
-        elif atom_model_name == AtomicModel.Layout:
+        elif atom_model_name in [AtomicModel.Layout, AtomicModel.MFR]:
             key = (
                 atom_model_name,
-                kwargs.get('layout_model_weight'),
                 kwargs.get('device'),
             )
         else:
