@@ -5,22 +5,33 @@ from collections import defaultdict
 
 import cv2
 import numpy as np
+import pypdfium2 as pdfium
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
-from mineru.backend.hybrid.hybrid_model_output_to_middle_json import result_to_middle_json
+from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
+    append_page_model_list_to_middle_json,
+    finalize_middle_json,
+    init_middle_json,
+    result_to_middle_json,
+)
 from mineru.backend.pipeline.model_init import HybridModelSingleton
-from mineru.backend.vlm.vlm_analyze import ModelSingleton
+from mineru.backend.vlm.vlm_analyze import (
+    ModelSingleton,
+    aio_predictor_execution_guard,
+    predictor_execution_guard,
+    _maybe_enable_serial_execution,
+)
 from mineru.data.data_reader_writer import DataWriter
-from mineru.utils.config_reader import get_device
+from mineru.utils.config_reader import get_device, get_low_memory_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
 from mineru.utils.pdf_classify import classify
-from mineru.utils.pdf_image_tools import load_images_from_pdf
+from mineru.utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
@@ -43,16 +54,25 @@ def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
 def ocr_det(
     hybrid_pipeline_model,
     np_images,
-    results,
+    model_list,
     mfd_res,
     _ocr_enable,
     batch_radio: int = 1,
 ):
+    def _set_temp_pixel_bbox(res, pixel_bbox):
+        res["_normalized_bbox"] = list(res["bbox"])
+        res["bbox"] = pixel_bbox
+
+    def _restore_normalized_bbox(res):
+        normalized_bbox = res.pop("_normalized_bbox", None)
+        if normalized_bbox is not None:
+            res["bbox"] = normalized_bbox
+
     ocr_res_list = []
     if not hybrid_pipeline_model.enable_ocr_det_batch:
         # 非批处理模式 - 逐页处理
         for np_image, page_mfd_res, page_results in tqdm(
-            zip(np_images, mfd_res, results),
+            zip(np_images, mfd_res, model_list),
             total=len(np_images),
             desc="OCR-det"
         ):
@@ -67,10 +87,13 @@ def ocr_det(
                 y1 = min(img_height, int(res['bbox'][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
-                res['poly'] = [x0, y0, x1, y0, x1, y1, x0, y1]
-                new_image, useful_list = crop_img(
-                    res, np_image, crop_paste_x=50, crop_paste_y=50
-                )
+                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
+                try:
+                    new_image, useful_list = crop_img(
+                        res, np_image, crop_paste_x=50, crop_paste_y=50
+                    )
+                finally:
+                    _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                     page_mfd_res, useful_list
                 )
@@ -90,7 +113,7 @@ def ocr_det(
         all_cropped_images_info = []
 
         for np_image, page_mfd_res, page_results in zip(
-                np_images, mfd_res, results
+                np_images, mfd_res, model_list
         ):
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
@@ -103,10 +126,13 @@ def ocr_det(
                 y1 = min(img_height, int(res['bbox'][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
-                res['poly'] = [x0, y0, x1, y0, x1, y1, x0, y1]
-                new_image, useful_list = crop_img(
-                    res, np_image, crop_paste_x=50, crop_paste_y=50
-                )
+                _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
+                try:
+                    new_image, useful_list = crop_img(
+                        res, np_image, crop_paste_x=50, crop_paste_y=50
+                    )
+                finally:
+                    _restore_normalized_bbox(res)
                 adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
                     page_mfd_res, useful_list
                 )
@@ -166,9 +192,9 @@ def ocr_det(
                         ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
 
-def mask_image_regions(np_images, results):
+def mask_image_regions(np_images, model_list):
     # 根据vlm返回的结果，在每一页中将image、table、equation块mask成白色背景图像
-    for np_image, vlm_page_results in zip(np_images, results):
+    for np_image, vlm_page_results in zip(np_images, model_list):
         img_height, img_width = np_image.shape[:2]
         # 收集需要mask的区域
         mask_regions = []
@@ -188,20 +214,65 @@ def mask_image_regions(np_images, results):
             np_image[y0:y1, x0:x1, :] = 255
     return np_images
 
-def normalize_poly_to_bbox(item, page_width, page_height):
-    """将poly坐标归一化为bbox"""
-    poly = item['poly']
-    x0 = min(max(poly[0] / page_width, 0), 1)
-    y0 = min(max(poly[1] / page_height, 0), 1)
-    x1 = min(max(poly[4] / page_width, 0), 1)
-    y1 = min(max(poly[5] / page_height, 0), 1)
-    item['bbox'] = [round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3)]
-    item.pop('poly', None)
+
+def normalize_bbox_to_unit(item, page_width, page_height):
+    """将像素级bbox归一化为[0, 1]区间"""
+    bbox = item.get('bbox')
+    if bbox is None or len(bbox) != 4:
+        return False
+
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    if (
+        0.0 <= x0 <= 1.0
+        and 0.0 <= y0 <= 1.0
+        and 0.0 <= x1 <= 1.0
+        and 0.0 <= y1 <= 1.0
+    ):
+        normalized_bbox = [x0, y0, x1, y1]
+    else:
+        normalized_bbox = [
+            x0 / page_width,
+            y0 / page_height,
+            x1 / page_width,
+            y1 / page_height,
+        ]
+    item['bbox'] = [round(min(max(v, 0), 1), 3) for v in normalized_bbox]
+    return True
+
+
+def _formula_item_to_pixel_bbox(item):
+    bbox = item.get('bbox')
+    if bbox is not None and len(bbox) == 4:
+        return [int(float(v)) for v in bbox]
+
+    return None
+
+
+def _build_inline_formula_inputs(images_layout_res):
+    inline_formula_inputs = []
+    for layout_res in images_layout_res:
+        page_inline_formula_inputs = []
+        for res in layout_res:
+            if res.get('label') not in ['inline_formula', 'display_formula']:
+                continue
+            bbox = res.get('bbox')
+            if bbox is None or len(bbox) != 4:
+                continue
+            page_inline_formula_inputs.append(
+                {
+                    "label": "inline_formula",
+                    "bbox": list(bbox),
+                    "score": float(res.get('score', 0.0)),
+                    "latex": res.get('latex', ''),
+                }
+            )
+        inline_formula_inputs.append(page_inline_formula_inputs)
+    return inline_formula_inputs
 
 
 def _process_ocr_and_formulas(
     images_pil_list,
-    results,
+    model_list,
     language,
     inline_formula_enable,
     _ocr_enable,
@@ -209,7 +280,7 @@ def _process_ocr_and_formulas(
 ):
     """处理OCR和公式识别"""
 
-    # 遍历results,对文本块截图交由OCR识别
+    # 遍历model_list,对文本块截图交由OCR识别
     # 根据_ocr_enable决定ocr只开det还是det+rec
     # 根据inline_formula_enable决定是使用mfd和ocr结合的方式,还是纯ocr方式
 
@@ -225,14 +296,15 @@ def _process_ocr_and_formulas(
 
     if inline_formula_enable:
         # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
-        np_images = mask_image_regions(np_images, results)
-        # 公式检测
-        images_mfd_res = hybrid_pipeline_model.mfd_model.batch_predict(np_images, batch_size=1, conf=0.5)
+        np_images = mask_image_regions(np_images, model_list)
+        # 使用layout模型提供行内公式检测框
+        images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(np_images, batch_size=1)
+        images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
             images_mfd_res,
             np_images,
-            batch_size=batch_radio*MFR_BASE_BATCH_SIZE,
+            batch_size=batch_radio * MFR_BASE_BATCH_SIZE,
             interline_enable=True,
         )
     else:
@@ -242,18 +314,17 @@ def _process_ocr_and_formulas(
     for page_inline_formula_list in inline_formula_list:
         page_mfd_res = []
         for formula in page_inline_formula_list:
-            formula['category_id'] = 13
-            page_mfd_res.append({
-                "bbox": [int(formula['poly'][0]), int(formula['poly'][1]),
-                         int(formula['poly'][4]), int(formula['poly'][5])],
-            })
+            bbox = _formula_item_to_pixel_bbox(formula)
+            if bbox is None:
+                continue
+            page_mfd_res.append({"bbox": bbox})
         mfd_res.append(page_mfd_res)
 
     # vlm没有执行ocr，需要ocr_det
     ocr_res_list = ocr_det(
         hybrid_pipeline_model,
         np_images,
-        results,
+        model_list,
         mfd_res,
         _ocr_enable,
         batch_radio=batch_radio,
@@ -266,7 +337,7 @@ def _process_ocr_and_formulas(
         for page_ocr_res_list in ocr_res_list:
             for ocr_res in page_ocr_res_list:
                 if 'np_img' in ocr_res:
-                    need_ocr_list.append(ocr_res)
+                    need_ocr_list.append((page_ocr_res_list, ocr_res))
                     img_crop_list.append(ocr_res.pop('np_img'))
         if len(img_crop_list) > 0:
             # Process OCR
@@ -275,16 +346,27 @@ def _process_ocr_and_formulas(
             # Verify we have matching counts
             assert len(ocr_result_list) == len(need_ocr_list), f'ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}'
 
+            items_to_remove = []
             # Process OCR results for this language
-            for index, need_ocr_res in enumerate(need_ocr_list):
+            for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
                 ocr_text, ocr_score = ocr_result_list[index]
                 need_ocr_res['text'] = ocr_text
                 need_ocr_res['score'] = float(f"{ocr_score:.3f}")
+                should_remove = False
                 if ocr_score < OcrConfidence.min_confidence:
-                    need_ocr_res['category_id'] = 16
+                    should_remove = True
                 else:
-                    layout_res_bbox = [need_ocr_res['poly'][0], need_ocr_res['poly'][1],
-                                       need_ocr_res['poly'][4], need_ocr_res['poly'][5]]
+                    layout_res_bbox = need_ocr_res.get("bbox")
+                    if layout_res_bbox is None and need_ocr_res.get("poly") is not None:
+                        layout_res_bbox = [
+                            need_ocr_res['poly'][0],
+                            need_ocr_res['poly'][1],
+                            need_ocr_res['poly'][4],
+                            need_ocr_res['poly'][5],
+                        ]
+                    if layout_res_bbox is None:
+                        should_remove = True
+                        continue
                     layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                     layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
                     if (
@@ -296,9 +378,22 @@ def _process_ocr_and_formulas(
                             and ocr_score < 0.8
                             and layout_res_width < layout_res_height
                     ):
-                        need_ocr_res['category_id'] = 16
+                        should_remove = True
 
-    return inline_formula_list, ocr_res_list, hybrid_pipeline_model
+                if should_remove:
+                    items_to_remove.append((page_ocr_res_list, need_ocr_res))
+
+            for page_ocr_res_list, need_ocr_res in items_to_remove:
+                if need_ocr_res in page_ocr_res_list:
+                    page_ocr_res_list.remove(need_ocr_res)
+
+    _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
+    merged_model_list = _merge_page_sidecar_items(
+        model_list,
+        inline_formula_list,
+        ocr_res_list,
+    )
+    return merged_model_list, hybrid_pipeline_model
 
 
 def _normalize_bbox(
@@ -314,10 +409,52 @@ def _normalize_bbox(
             page_width, page_height = page_pil_image.size
             # 处理公式列表
             for formula in page_inline_formula_list:
-                normalize_poly_to_bbox(formula, page_width, page_height)
+                normalize_bbox_to_unit(formula, page_width, page_height)
             # 处理OCR结果列表
             for ocr_res in page_ocr_res_list:
-                normalize_poly_to_bbox(ocr_res, page_width, page_height)
+                normalize_bbox_to_unit(ocr_res, page_width, page_height)
+
+
+def _build_inline_formula_model_item(formula):
+    return {
+        "type": "inline_formula",
+        "bbox": list(formula["bbox"]),
+        "latex": formula.get("latex", ""),
+        "score": float(formula.get("score", 0.0)),
+    }
+
+
+def _build_ocr_text_model_item(ocr_res):
+    return {
+        "type": "ocr_text",
+        "bbox": list(ocr_res["bbox"]),
+        "text": ocr_res.get("text", ""),
+        "score": float(ocr_res.get("score", 0.0)),
+    }
+
+
+def _merge_page_sidecar_items(
+    model_list,
+    inline_formula_list,
+    ocr_res_list,
+):
+    merged_model_list = []
+    for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
+            model_list, inline_formula_list, ocr_res_list
+    ):
+        merged_page_model_list = list(page_model_list)
+        merged_page_model_list.extend(
+            _build_inline_formula_model_item(formula)
+            for formula in page_inline_formula_list
+            if formula.get("bbox") is not None
+        )
+        merged_page_model_list.extend(
+            _build_ocr_text_model_item(ocr_res)
+            for ocr_res in page_ocr_res_list
+            if ocr_res.get("bbox") is not None
+        )
+        merged_model_list.append(merged_page_model_list)
+    return merged_model_list
 
 
 def get_batch_ratio(device):
@@ -381,6 +518,16 @@ def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enabl
     )
 
 
+def _close_images(images_list):
+    for image_dict in images_list or []:
+        pil_img = image_dict.get("img_pil")
+        if pil_img is not None:
+            try:
+                pil_img.close()
+            except Exception:
+                pass
+
+
 def doc_analyze(
         pdf_bytes,
         image_writer: DataWriter | None,
@@ -396,6 +543,7 @@ def doc_analyze(
     # 初始化预测器
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     # 加载图像
     load_images_start = time.time()
@@ -414,33 +562,30 @@ def doc_analyze(
     infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
-        results = predictor.batch_two_step_extract(images=images_pil_list)
+        with predictor_execution_guard(predictor):
+            model_list = predictor.batch_two_step_extract(images=images_pil_list)
         hybrid_pipeline_model = None
-        inline_formula_list = [[] for _ in images_pil_list]
-        ocr_res_list = [[] for _ in images_pil_list]
     else:
         batch_ratio = get_batch_ratio(device)
-        results = predictor.batch_two_step_extract(
-            images=images_pil_list,
-            not_extract_list=not_extract_list
-        )
-        inline_formula_list, ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+        with predictor_execution_guard(predictor):
+            model_list = predictor.batch_two_step_extract(
+                images=images_pil_list,
+                not_extract_list=not_extract_list
+            )
+        model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
             images_pil_list,
-            results,
+            model_list,
             language,
             inline_formula_enable,
             _ocr_enable,
             batch_radio=batch_ratio,
         )
-        _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     infer_time = round(time.time() - infer_start, 2)
-    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(model_list)/infer_time, 3)} page/s")
 
     # 生成中间JSON
     middle_json = result_to_middle_json(
-        results,
-        inline_formula_list,
-        ocr_res_list,
+        model_list,
         images_list,
         pdf_doc,
         image_writer,
@@ -450,7 +595,120 @@ def doc_analyze(
     )
 
     clean_memory(device)
-    return middle_json, results, _vlm_ocr_enable
+    return middle_json, model_list, _vlm_ocr_enable
+
+
+def doc_analyze_low_memory(
+        pdf_bytes,
+        image_writer: DataWriter | None,
+        predictor: MinerUClient | None = None,
+        backend="transformers",
+        parse_method: str = 'auto',
+        language: str = 'ch',
+        inline_formula_enable: bool = True,
+        model_path: str | None = None,
+        server_url: str | None = None,
+        **kwargs,
+):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
+
+    device = get_device()
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    model_list = []
+    doc_closed = False
+    hybrid_pipeline_model = None
+    try:
+        page_count = len(pdf_doc)
+        if page_count == 0:
+            pdf_doc.close()
+            doc_closed = True
+            clean_memory(device)
+            return middle_json, model_list, _vlm_ocr_enable
+        window_size = min(page_count, get_low_memory_window_size(default=64))
+        total_windows = (page_count + window_size - 1) // window_size
+        logger.info(
+            f'Hybrid low-memory mode enabled. page_count={page_count}, '
+            f'window_size={window_size}, total_windows={total_windows}'
+        )
+
+        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+
+        infer_start = time.time()
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
+                )
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
+                    )
+                    if _vlm_ocr_enable:
+                        with predictor_execution_guard(predictor):
+                            window_model_list = predictor.batch_two_step_extract(images=images_pil_list)
+                    else:
+                        with predictor_execution_guard(predictor):
+                            window_model_list = predictor.batch_two_step_extract(
+                                images=images_pil_list,
+                                not_extract_list=not_extract_list
+                            )
+                        window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                            images_pil_list,
+                            window_model_list,
+                            language,
+                            inline_formula_enable,
+                            _ocr_enable,
+                            batch_radio=batch_ratio,
+                        )
+
+                    model_list.extend(window_model_list)
+                    append_page_model_list_to_middle_json(
+                        middle_json,
+                        window_model_list,
+                        images_list,
+                        pdf_doc,
+                        image_writer,
+                        page_start_index=window_start,
+                        _ocr_enable=_ocr_enable,
+                        _vlm_ocr_enable=_vlm_ocr_enable,
+                        progress_bar=progress_bar,
+                    )
+                finally:
+                    _close_images(images_list)
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0:
+            logger.debug(
+                f"low-memory infer finished, cost: {infer_time}, "
+                f"speed: {round(len(model_list) / infer_time, 3)} page/s"
+            )
+
+        finalize_middle_json(
+            middle_json["pdf_info"],
+            hybrid_pipeline_model,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+        pdf_doc.close()
+        doc_closed = True
+        clean_memory(device)
+        return middle_json, model_list, _vlm_ocr_enable
+    finally:
+        if not doc_closed:
+            pdf_doc.close()
 
 
 async def aio_doc_analyze(
@@ -468,6 +726,7 @@ async def aio_doc_analyze(
     # 初始化预测器
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
 
     # 加载图像
     load_images_start = time.time()
@@ -486,33 +745,30 @@ async def aio_doc_analyze(
     infer_start = time.time()
     # VLM提取
     if _vlm_ocr_enable:
-        results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+        async with aio_predictor_execution_guard(predictor):
+            model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
         hybrid_pipeline_model = None
-        inline_formula_list = [[] for _ in images_pil_list]
-        ocr_res_list = [[] for _ in images_pil_list]
     else:
         batch_ratio = get_batch_ratio(device)
-        results = await predictor.aio_batch_two_step_extract(
-            images=images_pil_list,
-            not_extract_list=not_extract_list
-        )
-        inline_formula_list, ocr_res_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+        async with aio_predictor_execution_guard(predictor):
+            model_list = await predictor.aio_batch_two_step_extract(
+                images=images_pil_list,
+                not_extract_list=not_extract_list
+            )
+        model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
             images_pil_list,
-            results,
+            model_list,
             language,
             inline_formula_enable,
             _ocr_enable,
             batch_radio=batch_ratio,
         )
-        _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     infer_time = round(time.time() - infer_start, 2)
-    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results)/infer_time, 3)} page/s")
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(model_list)/infer_time, 3)} page/s")
 
     # 生成中间JSON
     middle_json = result_to_middle_json(
-        results,
-        inline_formula_list,
-        ocr_res_list,
+        model_list,
         images_list,
         pdf_doc,
         image_writer,
@@ -522,5 +778,117 @@ async def aio_doc_analyze(
     )
 
     clean_memory(device)
-    return middle_json, results, _vlm_ocr_enable
+    return middle_json, model_list, _vlm_ocr_enable
 
+
+async def aio_doc_analyze_low_memory(
+    pdf_bytes,
+    image_writer: DataWriter | None,
+    predictor: MinerUClient | None = None,
+    backend="transformers",
+    parse_method: str = 'auto',
+    language: str = 'ch',
+    inline_formula_enable: bool = True,
+    model_path: str | None = None,
+    server_url: str | None = None,
+    **kwargs,
+):
+    if predictor is None:
+        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+    predictor = _maybe_enable_serial_execution(predictor, backend)
+
+    device = get_device()
+    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
+    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
+
+    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    model_list = []
+    doc_closed = False
+    hybrid_pipeline_model = None
+    try:
+        page_count = len(pdf_doc)
+        if page_count == 0:
+            pdf_doc.close()
+            doc_closed = True
+            clean_memory(device)
+            return middle_json, model_list, _vlm_ocr_enable
+        window_size = min(page_count, get_low_memory_window_size(default=64))
+        total_windows = (page_count + window_size - 1) // window_size
+        logger.info(
+            f'Hybrid low-memory mode enabled. page_count={page_count}, '
+            f'window_size={window_size}, total_windows={total_windows}'
+        )
+
+        batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
+
+        infer_start = time.time()
+        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+            for window_index, window_start in enumerate(range(0, page_count, window_size)):
+                window_end = min(page_count - 1, window_start + window_size - 1)
+                images_list = load_images_from_pdf_doc(
+                    pdf_doc,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
+                )
+                try:
+                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    logger.info(
+                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
+                        f'({len(images_pil_list)} pages)'
+                    )
+                    if _vlm_ocr_enable:
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                    else:
+                        async with aio_predictor_execution_guard(predictor):
+                            window_model_list = await predictor.aio_batch_two_step_extract(
+                                images=images_pil_list,
+                                not_extract_list=not_extract_list
+                            )
+                        window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                            images_pil_list,
+                            window_model_list,
+                            language,
+                            inline_formula_enable,
+                            _ocr_enable,
+                            batch_radio=batch_ratio,
+                        )
+
+                    model_list.extend(window_model_list)
+                    append_page_model_list_to_middle_json(
+                        middle_json,
+                        window_model_list,
+                        images_list,
+                        pdf_doc,
+                        image_writer,
+                        page_start_index=window_start,
+                        _ocr_enable=_ocr_enable,
+                        _vlm_ocr_enable=_vlm_ocr_enable,
+                        progress_bar=progress_bar,
+                    )
+                finally:
+                    _close_images(images_list)
+
+        infer_time = round(time.time() - infer_start, 2)
+        if infer_time > 0:
+            logger.debug(
+                f"low-memory infer finished, cost: {infer_time}, "
+                f"speed: {round(len(model_list) / infer_time, 3)} page/s"
+            )
+
+        finalize_middle_json(
+            middle_json["pdf_info"],
+            hybrid_pipeline_model,
+            _ocr_enable,
+            _vlm_ocr_enable,
+        )
+        pdf_doc.close()
+        doc_closed = True
+        clean_memory(device)
+        return middle_json, model_list, _vlm_ocr_enable
+    finally:
+        if not doc_closed:
+            pdf_doc.close()

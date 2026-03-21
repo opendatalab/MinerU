@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mineru"
 dynamic = ["version"]
-license = { text = "AGPL-3.0" }
+license = { text = "Apache-2.0" }
 description = "A practical tool for converting PDF to Markdown"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 keywords = ["magic-pdf", "mineru", "MinerU", "convert", "pdf", "markdown"]
 classifiers = [
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -60,7 +61,7 @@ test = [
 ]
 vlm = [
     "torch>=2.6.0,<3",
-    "transformers>=4.51.1,!=4.57.2,<5.0.0",
+    "transformers>=4.57.3,<5.0.0",
     "accelerate>=1.5.1",
 ]
 vllm = [
@@ -73,9 +74,6 @@ mlx = [
     "mlx-vlm>=0.3.3,<0.4",
 ]
 pipeline = [
-    "matplotlib>=3.10,<4",
-    "ultralytics>=8.3.48,<9",
-    "doclayout_yolo==0.0.4",
     "dill>=0.3.8,<1",
     "PyYAML>=6.0.1,<7",
     "ftfy>=6.3.1,<7",
@@ -84,7 +82,7 @@ pipeline = [
     "omegaconf>=2.3.0,<3",
     "torch>=2.6.0,<3",
     "torchvision",
-    "transformers>=4.49.0,!=4.51.0,<5.0.0",
+    "transformers>=4.57.3,<5.0.0",
     "onnxruntime>1.17.0",
 ]
 api = [
@@ -93,7 +91,7 @@ api = [
     "uvicorn",
 ]
 gradio = [
-    "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<7",
+    "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
     "gradio-pdf>=0.0.22",
 ]
 core = [

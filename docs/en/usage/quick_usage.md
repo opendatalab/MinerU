@@ -33,6 +33,37 @@ If you need to adjust parsing options through custom parameters, you can also ch
   ```
   >[!TIP]
   >Access `http://127.0.0.1:8000/docs` in your browser to view the API documentation.
+  >
+  >- Health endpoint: `GET /health`
+  >- Task submission endpoint: `POST /tasks`
+  >- Task query endpoints: `GET /tasks/{task_id}`, `GET /tasks/{task_id}/result`
+  >- Compatibility route: `POST /file_parse`, which now behaves the same as `POST /tasks` and returns a `task_id` immediately
+  >- API outputs are controlled by the server and written to `./output` by default
+  >
+  >Async tasks are tracked only in-process for a single `mineru-api` instance. Task status is not preserved across service restarts, `--reload`, or multi-process deployments.
+  >Completed or failed tasks are retained for 24 hours by default, then their task state and output directory are cleaned automatically. After cleanup, task status and result endpoints return `404`.
+  >Use `MINERU_API_TASK_RETENTION_SECONDS` and `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` to adjust retention and cleanup polling intervals.
+  >
+  >Task submission example:
+  >```bash
+  >curl -X POST http://127.0.0.1:8000/tasks \
+  >  -F "files=@demo/pdfs/demo1.pdf" \
+  >  -F "return_md=true"
+  >```
+  >
+  >Compatibility route example:
+  >```bash
+  >curl -X POST http://127.0.0.1:8000/file_parse \
+  >  -F "files=@demo/pdfs/demo1.pdf" \
+  >  -F "return_md=true"
+  >```
+  >
+  >Poll task status and fetch results:
+  >```bash
+  >curl http://127.0.0.1:8000/tasks/<task_id>
+  >curl http://127.0.0.1:8000/tasks/<task_id>/result
+  >curl http://127.0.0.1:8000/health
+  >```
 - Start Gradio WebUI visual frontend:
   ```bash
   mineru-gradio --server-name 0.0.0.0 --server-port 7860

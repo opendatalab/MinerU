@@ -61,11 +61,9 @@ def configure_model(model_dir, model_type):
 def download_pipeline_models():
     """下载Pipeline模型"""
     model_paths = [
-        ModelPath.doclayout_yolo,
-        ModelPath.yolo_v8_mfd,
+        ModelPath.pp_doclayout_v2,
         ModelPath.unimernet_small,
         ModelPath.pytorch_paddle,
-        ModelPath.layout_reader,
         ModelPath.slanet_plus,
         ModelPath.unet_structure,
         ModelPath.paddle_table_cls,

@@ -143,6 +143,20 @@ def _replace_eq_tags_in_table_html(html: str) -> str:
     )
 
 
+def _format_embedded_html(html: str, img_buket_path: str) -> str:
+    """Apply image-path prefixing and equation replacement for HTML-like content."""
+    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
+
+
+def _build_media_path(img_buket_path: str, image_path: str) -> str:
+    """Build a display path while keeping empty image references empty."""
+    if not image_path:
+        return ''
+    if not img_buket_path:
+        return image_path
+    return f"{img_buket_path}/{image_path}"
+
+
 def get_title_level(para_block):
     title_level = para_block.get('level', 2)
     return title_level
@@ -500,9 +514,23 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
-                                    para_text += f"\n{_replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))}\n"
+                                    para_text += f"\n{_format_embedded_html(span['html'], img_buket_path)}\n"
                 for block in para_block['blocks']:  # 2nd.拼table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
+                        para_text += '  \n' + merge_para_with_text(block)
+        elif para_type == BlockType.CHART:
+            if make_mode == MakeMode.NLP_MD:
+                continue
+            elif make_mode == MakeMode.MM_MD:
+                image_path, chart_content = get_body_data(para_block)
+                if chart_content:
+                    para_text += f"\n{_format_embedded_html(chart_content, img_buket_path)}\n"
+                elif image_path:
+                    para_text += f"![]({_build_media_path(img_buket_path, image_path)})"
+                else:
+                    continue
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.CHART_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
         if para_text.strip() == '':
             continue
@@ -568,9 +596,32 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = _replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))
+                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span['html'], img_buket_path)
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
+    elif para_type == BlockType.CHART:
+        para_content = {
+            'type': ContentType.CHART,
+            'img_path': '',
+            'content': '',
+            BlockType.CHART_CAPTION: [],
+        }
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CHART_BODY:
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if span['type'] == ContentType.CHART:
+                            para_content['img_path'] = _build_media_path(
+                                img_buket_path,
+                                span.get('image_path', ''),
+                            )
+                            if span.get('content', ''):
+                                para_content['content'] = _format_embedded_html(
+                                    span['content'],
+                                    img_buket_path,
+                                )
+            if block['type'] == BlockType.CHART_CAPTION:
+                para_content[BlockType.CHART_CAPTION].append(merge_para_with_text(block))
 
     para_content['page_idx'] = page_idx
     anchor = para_block.get("anchor")
@@ -673,9 +724,25 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             'type': ContentTypeV2.TABLE,
             'content': {
                 'table_caption': table_caption,
-                'html': _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path)),
+                'html': _format_embedded_html(html, img_buket_path),
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
+            }
+        }
+    elif para_type == BlockType.CHART:
+        chart_caption = []
+        image_path, chart_content = get_body_data(para_block)
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CHART_CAPTION:
+                chart_caption.extend(merge_para_with_text_v2(block))
+        para_content = {
+            'type': ContentTypeV2.CHART,
+            'content': {
+                'image_source': {
+                    'path': _build_media_path(img_buket_path, image_path),
+                },
+                'content': _format_embedded_html(chart_content, img_buket_path),
+                'chart_caption': chart_caption,
             }
         }
     elif para_type == BlockType.LIST:
@@ -707,10 +774,11 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
 
 def get_body_data(para_block):
     """
-    Extract image_path and html from para_block
+    Extract image_path and body content from para_block
     Returns:
         - For IMAGE/INTERLINE_EQUATION: (image_path, '')
         - For TABLE: (image_path, html)
+        - For CHART: (image_path, content)
         - Default: ('', '')
     """
 
@@ -720,6 +788,8 @@ def get_body_data(para_block):
                 span_type = span.get('type')
                 if span_type == ContentType.TABLE:
                     return span.get('image_path', ''), span.get('html', '')
+                elif span_type == ContentType.CHART:
+                    return span.get('image_path', ''), span.get('content', '')
                 elif span_type == ContentType.IMAGE:
                     return span.get('image_path', ''), ''
                 elif span_type == ContentType.INTERLINE_EQUATION:
@@ -732,9 +802,11 @@ def get_body_data(para_block):
     if 'blocks' in para_block:
         for block in para_block['blocks']:
             block_type = block.get('type')
-            if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CODE_BODY]:
+            if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY, BlockType.CODE_BODY]:
                 result = get_data_from_spans(block.get('lines', []))
                 if result != ('', ''):
+                    return result
+                if block_type == BlockType.CHART_BODY:
                     return result
         return '', ''
 

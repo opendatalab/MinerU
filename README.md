@@ -294,19 +294,14 @@ You can use MinerU for PDF parsing through various methods such as command line,
 
 [LICENSE.md](LICENSE.md)
 
-Currently, some models in this project are trained based on YOLO. However, since YOLO follows the AGPL license, it may impose restrictions on certain use cases. In future iterations, we plan to explore and replace these with models under more permissive licenses to enhance user-friendliness and flexibility.
+The source code in this repository is licensed under Apache License 2.0.
 
 # Acknowledgments
 
-- [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
-- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [UniMERNet](https://github.com/opendatalab/UniMERNet)
-- [RapidTable](https://github.com/RapidAI/RapidTable)
 - [TableStructureRec](https://github.com/RapidAI/TableStructureRec)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
-- [layoutreader](https://github.com/ppaanngggg/layoutreader)
-- [xy-cut](https://github.com/Sanster/xy-cut)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - [pdftext](https://github.com/datalab-to/pdftext)
