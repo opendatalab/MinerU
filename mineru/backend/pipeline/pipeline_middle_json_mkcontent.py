@@ -1,3 +1,6 @@
+import re
+from html import unescape
+
 from loguru import logger
 
 from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
@@ -165,7 +168,10 @@ def render_visual_block_segments(block, img_buket_path=''):
                 if span['type'] != ContentType.TABLE:
                     continue
                 if span.get('html', ''):
-                    rendered_segments.append((span['html'], 'html_block'))
+                    rendered_segments.append((
+                        _format_embedded_html(span['html'], img_buket_path),
+                        'html_block',
+                    ))
                 elif span.get('image_path', ''):
                     rendered_segments.append((f"![]({img_buket_path}/{span['image_path']})", 'markdown_line'))
         return rendered_segments
@@ -202,6 +208,38 @@ inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
 CJK_LANGS = {'zh', 'ja', 'ko'}
+
+
+def _prefix_table_img_src(html, img_buket_path):
+    """Prefix non-data image sources in table HTML with img_buket_path."""
+    if not html or not img_buket_path:
+        return html
+
+    return re.sub(
+        r'src="(?!data:)([^"]+)"',
+        lambda match: f'src="{img_buket_path}/{match.group(1)}"',
+        html,
+    )
+
+
+def _replace_eq_tags_in_table_html(html):
+    """Replace <eq>...</eq> tags in table HTML with inline math delimiters."""
+    if not html:
+        return html
+
+    return re.sub(
+        r'<eq>(.*?)</eq>',
+        lambda match: (
+            f" {inline_left_delimiter}{unescape(match.group(1))}{inline_right_delimiter} "
+        ),
+        html,
+        flags=re.DOTALL,
+    )
+
+
+def _format_embedded_html(html, img_buket_path):
+    """Normalize embedded table HTML for markdown/content outputs."""
+    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
 
 
 def merge_para_with_text(para_block):
@@ -419,7 +457,10 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(
+                                    span['html'],
+                                    img_buket_path,
+                                )
 
                             if span.get('image_path', ''):
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
