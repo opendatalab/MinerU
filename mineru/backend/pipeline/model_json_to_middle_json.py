@@ -215,21 +215,36 @@ def _get_interline_equation_span(block):
     return None
 
 
+def _append_formula_number_tag(equation_block, formula_number_block):
+    equation_span = _get_interline_equation_span(equation_block)
+    tag_content = _normalize_formula_tag_content(_extract_text_from_block(formula_number_block))
+    if equation_span is not None:
+        formula = equation_span.get("content", "")
+        equation_span["content"] = f"{formula}\\tag{{{tag_content}}}"
+
+
 def _optimize_formula_number_blocks(pdf_info_list):
     for page_info in pdf_info_list:
         optimized_blocks = []
-        for block in page_info.get("preproc_blocks", []):
+        blocks = page_info.get("preproc_blocks", [])
+        for index, block in enumerate(blocks):
             if block.get("type") != BlockType.FORMULA_NUMBER:
                 optimized_blocks.append(block)
                 continue
 
-            prev_block = optimized_blocks[-1] if optimized_blocks else None
+            prev_block = blocks[index - 1] if index > 0 else None
             if prev_block and prev_block.get("type") == BlockType.INTERLINE_EQUATION:
-                equation_span = _get_interline_equation_span(prev_block)
-                tag_content = _normalize_formula_tag_content(_extract_text_from_block(block))
-                if equation_span is not None:
-                    formula = equation_span.get("content", "")
-                    equation_span["content"] = f"{formula}\\tag{{{tag_content}}}"
+                _append_formula_number_tag(prev_block, block)
+                continue
+
+            next_block = blocks[index + 1] if index + 1 < len(blocks) else None
+            next_next_block = blocks[index + 2] if index + 2 < len(blocks) else None
+            if (
+                next_block
+                and next_block.get("type") == BlockType.INTERLINE_EQUATION
+                and (next_next_block is None or next_next_block.get("type") != BlockType.FORMULA_NUMBER)
+            ):
+                _append_formula_number_tag(next_block, block)
                 continue
 
             block["type"] = BlockType.TEXT

@@ -291,6 +291,7 @@ REPLACEMENTS_PATTERNS = {
     re.compile(r'\\vDash '): r'\\models ',
     re.compile(r'\\sq \\sqcup '): r'\\square ',
     re.compile(r'\\copyright'): r'©',
+    re.compile(r'\\Dot'): r'\\dot',
 }
 QQUAD_PATTERN = re.compile(r'\\qquad(?!\s)')
 
