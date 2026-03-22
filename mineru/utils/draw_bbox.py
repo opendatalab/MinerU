@@ -233,6 +233,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                 BlockType.INTERLINE_EQUATION,
                 BlockType.LIST,
                 BlockType.INDEX,
+                BlockType.SEAL,
             ]:
                 bbox = block["bbox"]
                 page_block_list.append(bbox)
