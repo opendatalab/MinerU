@@ -1,0 +1,1308 @@
+[
+    {
+        "type": "text",
+        "text": "Knowledge-Enhanced Explainable Hypergraph Convolution Network for Medication Recommendation ",
+        "text_level": 1,
+        "bbox": [
+            133,
+            119,
+            866,
+            161
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Zihan Zhang1, Hongzhi $\\mathbf { L i u } ^ { 1 * }$ , Xiaoshuang $\\mathbf { G u o } ^ { 1 }$ , Tianqi $\\mathbf { S u n } ^ { 1 }$ , Zhonghai $\\mathbf { W } \\mathbf { u } ^ { 2 \\dag }$ ",
+        "bbox": [
+            171,
+            172,
+            823,
+            193
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "1School of Software and Microelectronics, Peking University, Beijing, China 2National Engineering Center of Software Engineering, Peking University, Beijing, China lusia@stu.pku.edu.cn, liuhz@pku.edu.cn, gxs $@$ stu.pku.edu.cn, suntq@stu.pku.edu.cn, wuzh@pku.edu.cn ",
+        "bbox": [
+            151,
+            196,
+            846,
+            238
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Abstract ",
+        "text_level": 1,
+        "bbox": [
+            251,
+            273,
+            312,
+            286
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Medication recommendation systems aim to provide personalized and safe medication options based on individual patient records. However, existing approaches often face challenges related to inadequate modeling of complex relationships within Electronic Health Records (EHRs), data sparsity, and a lack of explainability for recommendations. In this paper, we present a Knowledge-enhanced Explainable HyperGraph Convolution Network (KEHGCN) that constructs a hierarchical hypergraph structure to capture the multi-level relationships within EHR data. By incorporating external knowledge graphs, our approach introduces additional positive relations that help alleviate the impact of data sparsity on model learning. Furthermore, by performing generalized metapath construction and selection on the knowledge graph, our approach achieves effective knowledge filtering and extracts semantically meaningful metapaths, thereby further enhancing the explainability of the recommendation results. We also explicitly introduce negative relations present in the domain knowledge to improve the safety of medication recommendation. Extensive experiments on different hospital departments of MIMIC-III and MIMIC-IV datasets demonstrate that KEHGCN outperforms other state-of-the-art baselines. ",
+        "bbox": [
+            102,
+            297,
+            460,
+            574
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Introduction ",
+        "text_level": 1,
+        "bbox": [
+            228,
+            597,
+            334,
+            612
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Medication recommendation aims to provide accurate and safe medications to a patient at the current visit. Instead of relying on uniform treatment protocols, these systems are designed to consider the distinct medical histories and current conditions of individual patients, thereby enabling more personalized and effective medication recommendations (Liu et al. 2024a; Kim et al. 2025). ",
+        "bbox": [
+            86,
+            618,
+            477,
+            714
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "However, unlike conventional recommendation tasks where user–item interactions are frequently updated (e.g., movies, shopping) (Sun et al. 2024), a key challenge in medication recommendation is the sparsity of Electronic Health Records (EHRs) (Ma et al. 2022). For instance, once a patient is prescribed a certain medication and achieves a satisfactory outcome, further interactions are rarely observed. In addition, most existing methods fail to fully exploit the potential of EHRs themselves. Specifically, conventional approaches often model only simple, pairwise associations between clinical entities and ignore the complex, higher-order dependencies inherent in EHRs. These limitations reduce the ability to accurately model patient and medication preferences. ",
+        "bbox": [
+            86,
+            715,
+            477,
+            825
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            519,
+            273,
+            910,
+            356
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "To alleviate the data sparsity issue, previous works have leveraged a variety of auxiliary information, including medication molecular structures (Yang et al. 2023; Chen et al. 2023; Liang et al. 2025), ontology coding systems (Yao et al. 2023), and even knowledge graphs (Liu et al. 2024b; Mishra and Shridevi 2024). While these approaches help mitigate sparse interactions by introducing heterogeneous side information, they typically focus on positive associations and rarely exploit negative relations. Furthermore, most of these methods offer limited explainability. Therefore, there is a pressing need for frameworks that not only achieve robust predictive performance, but also provide transparent and explainable medication recommendations. ",
+        "bbox": [
+            519,
+            358,
+            911,
+            537
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "In this paper, we propose a novel Knowledge-enhanced Explainable HyperGraph Convolution Network (KEHGCN) for medication recommendation. Specifically, we incorporate relations from external knowledge graphs and construct generalized metapaths, which not only alleviate the challenges of model learning caused by data sparsity in EHRs but also provide explainability for the recommendation results. To more effectively learn the EHRs themselves, we design a hierarchical hypergraph structure to capture the multilevel relationships among medical entities. We also incorporate negative relations into the loss function design to enhance safety. Extensive experiments verify the effectiveness of KEHGCN over state-of-the-art baselines. ",
+        "bbox": [
+            521,
+            540,
+            910,
+            718
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "The contributions of our work are summarized as follows: ",
+        "bbox": [
+            534,
+            720,
+            910,
+            733
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "• We propose a novel Knowledge-Enhanced Explainable HyperGraph Convolution Network (KEHGCN) for medication recommendation. By leveraging external knowledge graphs to alleviate data sparsity and further modeling knowledge through generalized metapaths, our approach enhances the explainability of medication recommendation. • We design a hierarchical hypergraph structure and knowledge-driven hypergraph convolution framework to better capture complex relations and enhance representation learning in EHR data, leading to more accurate medication recommendation. ",
+        "bbox": [
+            526,
+            744,
+            911,
+            888
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "discarded",
+        "text": "\\*Corresponding author: liuhz $@$ pku.edu.cn †Corresponding author: wuzh $@$ pku.edu.cn Copyright $\\mathrm { \\hat { \\mathbb { C } } }$ 2026, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. ",
+        "bbox": [
+            86,
+            838,
+            477,
+            888
+        ],
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            104,
+            69,
+            477,
+            95
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "• Our approach proposes utilizing negative relationships from knowledge graphs, such as contraindications between diseases and medications, to explicitly guide and improve the safety of medication recommendation. ",
+        "bbox": [
+            93,
+            99,
+            478,
+            155
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "• Extensive experiments on departmental partitioned MIMIC-III and MIMIC-IV datasets demonstrate that KEHGCN consistently outperforms state-of-the-art baselines on medication recommendation tasks, achieving superior accuracy, enhanced explainability, and improved safety. ",
+        "bbox": [
+            93,
+            157,
+            478,
+            241
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Related Work ",
+        "text_level": 1,
+        "bbox": [
+            223,
+            253,
+            339,
+            268
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Medication Recommendation ",
+        "text_level": 1,
+        "bbox": [
+            88,
+            273,
+            312,
+            287
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Recent approaches have witnessed rapid progress in medication recommendation systems, evolving from early instancebased (Zhang et al. 2017) and multi-label classification (Choi et al. 2016) approaches focused on single-visit data to sequential models that exploit patient history for personalized recommendations (Yang et al. 2021b). Furthermore, leveraging Graph Neural Networks (GNNs) significantly enhances the ability to model structural relationships and medication interactions within complex medical data (Gao et al. 2022; Shang et al. 2019). Despite these advances, existing efforts mainly rely on conventional graph structures that are limited in representing higher-order dependencies (Jin et al. 2020). Moreover, these approaches typically focus on solely modeling the EHR data, overlooking the potential of integrating external knowledge to enhance representation learning. ",
+        "bbox": [
+            86,
+            291,
+            477,
+            512
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Knowledge-Enhanced Recommendation ",
+        "text_level": 1,
+        "bbox": [
+            88,
+            523,
+            392,
+            539
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Knowledge graphs offer valuable information by encoding entities and their interactions, which can be utilized to address challenges like data sparsity and limited semantic understanding in recommendation systems (Wang et al. 2021; Liu, Zhu, and Wu 2024). In the field of medication recommendation, however, existing knowledgeenhanced approaches are mainly divided into two categories. Embedding-based methods utilize entity and relation embeddings to enrich representations (Gong et al. 2021). GNNbased methods leverage the rich structural information in knowledge graphs through graph neural networks (Saadat et al. 2024). While these strategies effectively improve predictive performance, they generally offer limited explainability, which is a crucial requirement in high-stakes scenarios such as medication recommendation. ",
+        "bbox": [
+            86,
+            542,
+            477,
+            750
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Moreover, most current methods primarily focus on positive relations in knowledge graphs, while negative relations are less systematically incorporated. Although some studies include Drug-Drug Interactions (DDIs) (Ren et al. 2022; Kim et al. 2024), other clinically relevant negative relations, such as the contraindications between diseases and medications, are often overlooked. In addition, though the utilization of metapaths for explainability has been explored in other recommendation domains (Lai et al. 2024; Yang et al. 2025), such explicit modeling and explanation have not been widely adopted in the domain of medication recommendation systems. ",
+        "bbox": [
+            86,
+            751,
+            477,
+            888
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            519,
+            69,
+            910,
+            97
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Preliminaries and Notations ",
+        "text_level": 1,
+        "bbox": [
+            598,
+            114,
+            833,
+            131
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "To ensure effective and safe medication recommendations, it is essential to integrate information from EHR data with external domain knowledge. ",
+        "bbox": [
+            519,
+            140,
+            911,
+            181
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Electronic Health Records (EHRs). EHRs are represented as a sequence of visits $V ~ = ~ \\{ v _ { 1 } , v _ { 2 } , \\ldots , v _ { N } \\}$ , where each visit $\\pmb { v } _ { t } = \\{ { d } _ { t } , \\pmb { p } _ { t } , { m } _ { t } \\}$ . Here, $d _ { t } \\in \\{ 0 , 1 \\} ^ { | D | }$ , $p _ { t } \\in \\{ 0 , 1 \\} ^ { | \\mathcal { P } | }$ , and $m _ { t } \\in \\{ 0 , 1 \\} ^ { | \\mathcal { M } | }$ are binary vectors indicating the presence or absence of each disease, procedure, and medication in the corresponding sets $\\mathcal { D } , \\mathcal { P }$ , and $\\mathcal { M }$ at visit $t$ . This formulation provides a unified, structured representation of the patient’s clinical history. ",
+        "bbox": [
+            519,
+            183,
+            911,
+            297
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Medical Domain Knowledge. We extract a knowledge graph $G _ { u } ~ = ~ ( E , R )$ , where $E$ is the union of heterogeneous biomedical entities and $R$ is the relationship between those entities. Each edge in the knowledge graph is represented as a triplet $( h , r , t )$ , where $h , t \\in E$ and $r ~ \\in ~ R$ . To encode disease-medication safety constraints, we extract a contraindication matrix $\\mathbf { A } _ { c o n t r a } ~ \\in ~ \\mathbb { R } ^ { | \\mathcal { D } | \\times | \\mathcal { M } | }$ from the knowledge graph, where $\\mathbf { A } _ { c o n t r a } [ i , j ] = 1$ indicates that medication $m _ { j } \\in { \\mathcal { M } }$ is contraindicated for disease $d _ { i } \\in \\mathcal { D }$ , and $\\mathbf { A } _ { c o n t r a } [ i , j ] = 0$ otherwise. Moreover, in order to capture potential DDI interactions, we incorporate the adjacency matrix $\\mathbf { A } _ { d d i } \\in \\mathbb { R } ^ { | \\mathcal { M } | \\times | \\mathcal { M } | }$ , where ${ \\bf A } _ { d d i } [ i , j ] = 1$ if medications $m _ { i } , m _ { j } \\in \\mathcal { M }$ are known to have an adverse interaction. ",
+        "bbox": [
+            519,
+            299,
+            911,
+            494
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Problem Definition. The model integrates the EHR data as well as external domain knowledge, including the knowledge graph $G _ { u }$ and DDI relationships as input. The goal of the medication recommendation task is to learn a function $f ( \\cdot )$ , which can predict the medication set $\\begin{array} { r l } { \\hat { y } _ { u _ { i } } ^ { t } } & { { } = } \\end{array}$ $f ( d _ { t } ^ { u _ { i } } , p _ { t } ^ { u _ { i } } , \\dots , V _ { t - 1 } ^ { u _ { i } } )$ for each patient $u _ { i }$ at the $t$ i -th visit, where $\\pmb { d } _ { t } ^ { u _ { i } }$ denotes the current diagnoses, $\\mathbf { \\Delta } p _ { t } ^ { u _ { i } }$ denotes the current procedures, $V _ { t - 1 } ^ { u _ { i } }$ is the patient’s prior visit records, and $\\hat { y } _ { u _ { i } } ^ { t }$ is a multi-label output where each medication takes a value of 0 or 1. For clarity, we omit the patient index $u _ { i }$ in the subsequent discussion. ",
+        "bbox": [
+            519,
+            497,
+            911,
+            651
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "Method ",
+        "text_level": 1,
+        "bbox": [
+            683,
+            670,
+            748,
+            685
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "text",
+        "text": "As shown in Figure 1, the proposed KEHGCN model is composed of three main modules, including hierarchical hypergraph construction and generalized metapath extraction, knowledge-driven hypergraph convolution, and multi-view medication prediction. The hierarchical hypergraph structure and the extracted generalized metapaths are constructed specifically to capture the multi-level and semantic relationships within the EHR data and knowledge graphs. The knowledge-driven hypergraph convolution module aims to enhance entity representation learning by capturing both the co-occurrence and positive semantics. The multi-view medication prediction module integrates both metapath-based and instance-based perspectives to generate the final recommendations. ",
+        "bbox": [
+            521,
+            694,
+            911,
+            887
+        ],
+        "page_idx": 1
+    },
+    {
+        "type": "image",
+        "img_path": "images/81de016a4eb05b698f0caa5a3e564258605d503d9a4c9def21ddbbfd2202c42d.jpg",
+        "image_caption": [
+            "Figure 1: An overview of the proposed KEHGCN method. "
+        ],
+        "image_footnote": [],
+        "bbox": [
+            84,
+            64,
+            911,
+            343
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Hierarchical Hypergraph Construction and Generalized Metapath Extraction ",
+        "text_level": 1,
+        "bbox": [
+            84,
+            395,
+            419,
+            425
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "To comprehensively capture both the complex interplay of medical entities within individual clinical visits and the longitudinal care trajectory of each patient, we design a hierarchical hypergraph structure. For each patient, we construct visit-level hyperedges by unifying all diseases, procedures, and medications occurring during a single visit, and a patient-level hyperedge by aggregating all visit hyperedges across the patient’s medical history. Formally, ",
+        "bbox": [
+            86,
+            428,
+            477,
+            539
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "equation",
+        "img_path": "images/5a677b32f2a80084efc8b085f7aca751bdc80cd6ca44a1aad2d212fa21c0c4cf.jpg",
+        "text": "$$\n\\begin{array} { r } { \\mathcal { E } _ { v _ { i } } = \\mathcal { D } _ { v _ { i } } \\cup \\mathcal { P } _ { v _ { i } } \\cup \\mathcal { M } _ { v _ { i } } , \\quad \\mathcal { E } _ { u _ { j } } = \\{ \\mathcal { E } _ { v _ { m } } , \\mathcal { E } _ { v _ { m + 1 } } , \\ldots , \\mathcal { E } _ { v _ { n } } \\} , } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            88,
+            554,
+            475,
+            573
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "where $\\mathcal { E } _ { v _ { i } }$ denotes the visit hyperedge for the $i$ -th visit (with disease set $\\mathcal { D } _ { v _ { i } }$ , procedure set $\\mathcal { P } _ { v _ { i } }$ , and medication set $\\mathcal { M } _ { v _ { i } }$ ), and $\\mathcal { E } _ { u _ { j } }$ denotes the patient hyperedge that aggregates the visit hyperedges from the first $( m )$ to the last $( n )$ visit of patient $u _ { j }$ . Note that for the current query visit, the visit hyperedge $\\mathcal { E } _ { v _ { t } }$ is constructed by combining the current $t$ -th diseases and procedures, and medications from the previous visit. ",
+        "bbox": [
+            86,
+            583,
+            477,
+            694
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "To filter knowledge and eliminate noise, we construct and select clinically positive metapaths from the external knowledge graph $G _ { u }$ provided by the Unified Medical Language System (UMLS) (Bodenreider 2004). This process leverages rich domain knowledge and enables our model to focus on semantic relations. Specifically, we define metapath $\\Phi$ as a sequence of alternating entities and relations. For instance, metapath (Disease, TreatedBy, Medication) captures the direct treat relationship. Metapath (Disease, MolecularAbnormality, Molecular, ActiveIngredientOf, Medication) (Le 2025) links a disease to a medication through a shared molecular target. Metapath (Disease, ClassifiedAs, Classification, Classifies, Medication) (Maya et al. 2017) connects diseases and medications via clinical classifications. ",
+        "bbox": [
+            86,
+            695,
+            477,
+            887
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "In addition to the above conventional metapaths connecting diseases or procedures with medications through clinical relationships, we introduce a generalized metapath that includes visit hyperedge as a medical entity, e.g., (VisitHyperedge, Includes, Disease, TreatedBy, Medication). The augmented generalized metapath enhances the expressive power of conventional metapath by including visit-level cooccurrences and relationships, so that enables finer-grained medical entity modeling within the same visit. ",
+        "bbox": [
+            519,
+            396,
+            911,
+            521
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "We initialize each type of entity node with a $d .$ dimensional embedding. ",
+        "bbox": [
+            519,
+            522,
+            910,
+            550
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "equation",
+        "img_path": "images/e53b641bb159e1a92e357f09d46fc29b55d4464353a77239fc79e37028b16262.jpg",
+        "text": "$$\n\\begin{array} { r } { \\pmb { h } _ { e _ { i } } = \\pmb { W _ { e } } \\pmb { e _ { i } } \\in \\mathbb { R } ^ { d } , \\quad e \\in \\{ d , p , m , o , c \\} , } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            578,
+            565,
+            851,
+            585
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "where each $e _ { i }$ represents the trainable vector for corresponding node, including disease node $( d _ { i } )$ , procedure node $( p _ { i } )$ , medication node $( m _ { i } )$ , molecular structure node $( o _ { i } )$ , and classification node $( c _ { i } )$ , and $W _ { e } \\in \\mathbb { R } ^ { | E _ { i } | \\times d }$ is the embedding matrix to learn. ",
+        "bbox": [
+            519,
+            593,
+            911,
+            662
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Knowledge-Driven Hypergraph Convolution ",
+        "text_level": 1,
+        "bbox": [
+            519,
+            678,
+            861,
+            694
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "To leverage both co-occurrence relationships and semantic connections among medical entities, we design and implement a knowledge-driven hypergraph convolution method. It involves updating the representations of entity nodes through hypergraph convolution to capture co-occurrence patterns, and applying metapath convolution to integrate semantic information from various metapaths. By concatenating the updated embeddings with a masking mechanism, our method creates comprehensive representations for each entity and visit hyperedge. ",
+        "bbox": [
+            519,
+            700,
+            911,
+            839
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "Hypergraph Convolution for Co-occurrence Relations. In order to capture the co-occurrence relationships within the same visit, we utilize hypergraph convolution to update the representations of the entities. ",
+        "bbox": [
+            519,
+            849,
+            911,
+            888
+        ],
+        "page_idx": 2
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            86,
+            69,
+            307,
+            83
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "img_path": "images/8dbfc9040891cf2ca3b3c70faeafd6cbe6512834f1a80364dfe79e810bf78b30.jpg",
+        "text": "$$\n{ \\pmb { h } } _ { e _ { i } } ^ { ( l + 1 ) } = \\sigma \\left( \\frac { 1 } { | \\mathcal { N } ( \\mathcal { E } _ { v _ { j } } ) | } \\sum _ { e _ { j } \\in \\mathcal { N } ( \\mathcal { E } _ { v _ { j } } ) } { \\pmb { h } } _ { e _ { j } } ^ { ( l ) } { \\pmb { W } } _ { e ^ { \\prime } } \\right) , \\quad e \\in \\{ d , p , m \\} ,\n$$",
+        "text_format": "latex",
+        "bbox": [
+            86,
+            89,
+            475,
+            136
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where h(l+ei denotes the updated embedding of node $e _ { i }$ for at layer $l + 1$ . $\\mathcal { N } ( \\mathcal { E } _ { v _ { j } } )$ denotes the set of nodes connected to the $j$ -th visit hyperedge $\\mathcal { E } _ { v _ { j } }$ . $W _ { e ^ { \\prime } }$ represents the learnable weight matrix shared among different node types, and $\\sigma$ is the activation function sigmoid. ",
+        "bbox": [
+            84,
+            147,
+            477,
+            219
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "To effectively represent each visit hyperedge, we update the visit hyperedge by aggregating the nodes connected to it. This allows us to capture the co-occurrence relationships among the disease, procedure, and medication nodes for a specific visit. The updated visit hyperedge representation is derived as follows: ",
+        "bbox": [
+            84,
+            219,
+            478,
+            303
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "img_path": "images/4dc296280cde6872bf1d0fa644751112a8777726ab3773854128103a1b18fe3e.jpg",
+        "text": "$$\nh _ { \\mathcal { E } _ { v _ { j } } } ^ { ( l + 1 ) } = \\sum _ { e _ { j } \\in \\mathcal { N } ( \\mathcal { E } _ { v _ { j } } ) } \\alpha _ { e _ { j } } h _ { e _ { j } } ^ { ( l + 1 ) } ,\n$$",
+        "text_format": "latex",
+        "bbox": [
+            178,
+            310,
+            383,
+            349
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where h(l+1Evj denotes the embedding of visit hyperedge $\\mathcal { E } _ { v _ { j } }$ at layer $l \\dot { + } 1$ , and $\\alpha _ { e _ { j } }$ represents the self-attention weight assigned to node $e _ { j }$ . ",
+        "bbox": [
+            84,
+            356,
+            477,
+            405
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "By leveraging the connections among diseases, procedures, and medications within each visit, our approach can enhance the representation of individual entities and capture the visit-level prescribing logic to each clinical visit. ",
+        "bbox": [
+            84,
+            405,
+            477,
+            460
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Metapath Convolution for Semantic Knowledge. As shown in Figure 2, the metapath convolution framework is designed to capture the complex semantic knowledge within metapaths. By employing both intra-metapath aggregation and inter-metapath fusion, we can obtain comprehensive representations of nodes by considering not only their local information within a specific metapath, but also the multiple semantic roles a node can acquire in various metapath contexts. ",
+        "bbox": [
+            84,
+            467,
+            478,
+            593
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "image",
+        "img_path": "images/5c28305e29bffb70c0d47b1427e3cbb11fa4e15bcf553a4e14bf87d25efbe9b7.jpg",
+        "image_caption": [
+            "Figure 2: Overview of the integration process in both intrametapath level and inter-metapath level. "
+        ],
+        "image_footnote": [],
+        "bbox": [
+            88,
+            604,
+            475,
+            781
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "(a) Intra-Metapath Aggregation. In order to effectively capture the semantic representations of nodes along a specified metapath $\\Phi _ { k }$ , we perform intra-metapath aggregation to integrate information from all connections within that metapath. ",
+        "bbox": [
+            84,
+            849,
+            478,
+            888
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            517,
+            69,
+            911,
+            95
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "img_path": "images/7dcf18b1d86e341ecec7ddcdbafd40739cf039a87bb63873ee7aeb252c6c3a53.jpg",
+        "text": "$$\nz _ { e _ { i } } ^ { \\Phi _ { k } } = \\sigma \\left( \\sum _ { e _ { j } \\in \\mathcal { N } _ { e _ { i } } ^ { \\Phi _ { k } } } \\beta _ { e _ { i } e _ { j } } ^ { \\Phi _ { k } } h _ { e _ { j } } W _ { k } \\right) , \\quad e \\in \\{ d , p , m , o , c , \\mathcal { E } _ { v } \\} ,\n$$",
+        "text_format": "latex",
+        "bbox": [
+            526,
+            97,
+            901,
+            150
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where zΦkei d enotes the aggregated representation of the target node $e _ { i }$ following metapath $\\Phi _ { k } . \\mathcal { N } _ { e _ { i } } ^ { \\Phi _ { k } }$ denotes the set of neighbors of node $e _ { i }$ within the specific metapath, including one hop, and multiple hops. The attention weight $\\beta _ { e _ { i } e _ { j } } ^ { \\Phi _ { k } }$ quantifies the significance of neighboring node $e _ { j }$ with respect to target node $e _ { i }$ in metapath $\\Phi _ { k }$ . $W _ { k }$ is a learnable weight matrix, and $\\sigma$ denotes the activation function. ",
+        "bbox": [
+            519,
+            160,
+            911,
+            262
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "(b) Inter-Metapath Fusion. The primary goal of the inter-metapath fusion process is to not only integrate the embedding of a specific node obtained from various metapaths, but also to introduce an explainable layer through the design of prior weights. These weights allow us to allocate different levels of significance to distinct metapaths, enabling a more detailed understanding of relationships within the data. Mathematically, the fusion process can be represented as follows: ",
+        "bbox": [
+            519,
+            267,
+            911,
+            392
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "img_path": "images/9f20eb3323133b26f417537fbd744e26c09adf3e8dd5ffee84708a50082f5806.jpg",
+        "text": "$$\n{ \\pmb h } _ { e _ { i } } ^ { p a t h } = \\sum _ { k = 1 } ^ { P } \\left( \\pmb z _ { e _ { i } } ^ { \\Phi _ { k } } \\cdot \\boldsymbol w _ { t } ^ { p r i o r } \\cdot \\alpha _ { k } \\right) , \\quad e \\in \\{ d , p , m , \\mathscr E _ { v } \\} ,\n$$",
+        "text_format": "latex",
+        "bbox": [
+            532,
+            406,
+            897,
+            450
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where $z _ { e _ { i } } ^ { \\Phi _ { k } }$ represents the embeddings of node $e _ { i }$ derived from the intra-metapath aggregation. $w _ { t } ^ { p r i o r }$ denotes predefined prior weights assigned to different metapath types, with $w _ { t r e a t } ^ { p r i o r } = 1$ (representing explicit treat relationships, which are deemed most significant), $w _ { m o l e } ^ { p r i o r } ~ = ~ 0 . 9$ , and $w _ { c l a s s } ^ { p r i o r } = 0 . 8$ . The variable $\\alpha _ { k }$ serves as a learnable weight that scales the prior weights, thus providing the flexibility to adjust the importance of each metapath in the overall representation dynamically. The combination of prior weights and learnable parameters allows the model to assign different scores to each metapath, which provides explainable recommendations by reflecting the contribution of each metapath on the final decision. ",
+        "bbox": [
+            519,
+            460,
+            911,
+            651
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "After obtaining the hypergraph convolution embedding $h _ { e _ { i } } ^ { ( l + 1 ) }$ and metapath convolution embedding $h _ { e _ { i } } ^ { p a t h }$ for each entity node, we concatenate these two vectors together and then processed through a mask layer, followed by MLP to produce the updated node embedding representation $\\boldsymbol { h } _ { e _ { i } } ^ { ' }$ : ",
+        "bbox": [
+            519,
+            651,
+            911,
+            726
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "equation",
+        "img_path": "images/9c5b754f06d859f4ab96d5a69e9d768379aacf3c0407454687f36f9db791537f.jpg",
+        "text": "$$\n\\begin{array} { r } { \\boldsymbol { h } _ { e _ { i } } ^ { ' } = \\mathrm { M L P } \\left( \\operatorname* { m a s k } \\odot \\left[ \\boldsymbol { h } _ { e _ { i } } ^ { ( l + 1 ) } , \\boldsymbol { h } _ { e _ { i } } ^ { p a t h } \\right] \\right) , \\quad e \\in \\{ d , p , m , \\mathcal { E } _ { v } \\} , } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            527,
+            728,
+            900,
+            753
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "where the mask layer is designed to selectively retain information based on the types of convolutions available for each node. For nodes with available metapath connections, the mask is [1, 1] as node $d _ { 1 }$ shown in Figure 1. Conversely, for nodes like $d _ { 2 }$ that only possess hypergraph convolution without associated metapaths, the mask would be $[ 1 , 0 ]$ . This ensures the MLP processes only the relevant portions of the concatenated vector, effectively mitigating noise and enhancing the quality of the updated representation. ",
+        "bbox": [
+            519,
+            762,
+            911,
+            888
+        ],
+        "page_idx": 3
+    },
+    {
+        "type": "text",
+        "text": "Multi-View Medication Prediction ",
+        "text_level": 1,
+        "bbox": [
+            86,
+            68,
+            348,
+            83
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "In this section, we present a multi-view medication prediction that leverages both metapath-based and instance-based methods, which aim to enhance medication recommendation accuracy by integrating rich semantic knowledge and historical treatment information from patient visits. ",
+        "bbox": [
+            86,
+            85,
+            478,
+            155
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Metapath-Based Prediction. In order to leverage the rich semantic knowledge captured in the metapaths, we compute the matching probability between the current visit query hyperedge $h _ { \\mathcal { E } _ { v _ { t } } } ^ { ' }$ and each medication $\\pmb { h } _ { m _ { k } } ^ { ' }$ . ",
+        "bbox": [
+            84,
+            161,
+            478,
+            222
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "img_path": "images/8361448d7343f3a5ce1c56ffcfca10cfeee394842261af162b3aa37bb0163d1a.jpg",
+        "text": "$$\nP ( h _ { \\mathcal { E } _ { v _ { t } } } ^ { ' } , h _ { m _ { k } } ^ { ' } ) = \\mathrm { s o f t m a x } \\left( \\frac { ( h _ { \\mathcal { E } _ { v _ { t } } } ^ { ' } ) ^ { T } \\cdot h _ { m _ { k } } ^ { ' } } { \\| h _ { \\mathcal { E } _ { v _ { t } } } ^ { ' } \\| \\cdot \\| h _ { m _ { k } } ^ { ' } \\| } \\right) ,\n$$",
+        "text_format": "latex",
+        "bbox": [
+            122,
+            234,
+            439,
+            279
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where $P ( h _ { \\varepsilon _ { v _ { t } } } ^ { \\prime } , h _ { m _ { k } } ^ { \\prime } )$ quantifies how likely the current visit query will be prescribed with medication $m _ { k }$ . ",
+        "bbox": [
+            84,
+            284,
+            477,
+            315
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Instance-Based Prediction. To enhance personalized medication recommendations by capturing the longitudinal medical trajectory of each patient, we apply attention aggregation over the visit hyperedges associated with each patient, thereby obtaining the patient hyperedge representation $h _ { \\mathcal { E } _ { u _ { i } } } ^ { ' }$ ",
+        "bbox": [
+            84,
+            321,
+            478,
+            410
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "iWe then compute the cosine similarity sim(h′Eui , h′Euj ) between the current target patient and others to identify similar medical histories. This approach facilitates recommendations for medications proven effective in comparable cases. The similarity for the current patient with himself or herself is defined as 1, which ensures the system to recommend medications that has been previously utilized. The final prediction score is obtained by multiplying the metapath-based score with the instance-based score: ",
+        "bbox": [
+            86,
+            411,
+            478,
+            541
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "img_path": "images/13425ab9a289368d89abc579581abbabc49df0a0bdbfaadab46dd7148479926d.jpg",
+        "text": "$$\n\\hat { y } _ { m _ { k } } ^ { t } = \\sin ( h _ { \\mathcal { E } _ { u _ { i } } } ^ { ' } , h _ { \\mathcal { E } _ { u _ { j } } } ^ { ' } ) \\cdot P ( h _ { \\mathcal { E } _ { v _ { t } } } ^ { ' } , h _ { m _ { k } } ^ { ' } ) .\n$$",
+        "text_format": "latex",
+        "bbox": [
+            147,
+            551,
+            416,
+            575
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "By leveraging both the metapath-based similarity and the instance-based matching score, our approach ultimately improves the robustness and accuracy of medication recommendations. ",
+        "bbox": [
+            84,
+            577,
+            477,
+            632
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Combined Loss for Parameter Learning ",
+        "text_level": 1,
+        "bbox": [
+            88,
+            643,
+            393,
+            659
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "To optimize the learnable parameters, we introduce a combined loss to balance accuracy and safety. For accuracy, we employ two loss functions: binary cross-entropy loss $L _ { b c e }$ , which measures the discrepancy between the predicted probabilities and the actual binary labels for each medication, and multi-label margin loss $L _ { m u l t i }$ , which assesses the margin between the scores of relevant and irrelevant medications. ",
+        "bbox": [
+            84,
+            661,
+            478,
+            772
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "img_path": "images/48ad0fc66f79a0e0ea491991d8d4a7c0b8737ceefc0190b0996c58aa05a0f23e.jpg",
+        "text": "$$\n\\begin{array} { r l r } {  { L _ { b c e } = - \\sum _ { i = 1 } ^ { | \\mathcal { M } | } [ y _ { m _ { i } } ^ { t } \\log ( \\hat { y } _ { m _ { i } } ^ { t } ) + ( 1 - y _ { m _ { i } } ^ { t } ) \\log ( 1 - \\hat { y } _ { m _ { i } } ^ { t } ) ] , } } \\\\ & { } & { L _ { m u l t i } = \\sum _ { i , j : y _ { m _ { i } } ^ { t } = 1 , y _ { m _ { j } } ^ { t } = 0 } \\frac { 1 } { | \\mathcal { M } | } \\operatorname* { m a x } ( 0 , 1 - ( \\hat { y } _ { m _ { i } } ^ { t } - \\hat { y } _ { m _ { j } } ^ { t } ) ) , } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            84,
+            787,
+            482,
+            877
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "table",
+        "img_path": "images/d921612f2b5805a63e3525fc3af13b80eb46d2753b1319f0fdce9e1935ee37e1.jpg",
+        "table_caption": [
+            "Table 1: Characteristics of Datasets "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td>Attribute</td><td>MIMIC-III MIMIC-IV MED</td><td>GU</td><td>MIMIC-IV OMED</td></tr><tr><td># patients # diagnoses</td><td>17,778 5,205</td><td>4,251 3,617</td><td>8,709 9,192</td></tr><tr><td># procedures # medications</td><td>1,416 3,848</td><td>1,036 2,612</td><td>2,380 4,376</td></tr><tr><td>avg.# of visits</td><td>1.34</td><td>1.28</td><td>2.89</td></tr><tr><td>avg.# of diagnoses</td><td>16.34</td><td>8.61</td><td>29.13</td></tr><tr><td>avg.# of procedures</td><td>4.90</td><td>2.59</td><td>4.42</td></tr></table>",
+        "bbox": [
+            519,
+            65,
+            915,
+            208
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where $y _ { m _ { i } } ^ { t }$ represents the ground truth label for the $i$ -th mediication, yˆtmi denotes the predicted probability of the $i$ -th medication at time $t$ . ",
+        "bbox": [
+            519,
+            257,
+            911,
+            300
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "For safety, we design two loss functions: the adverse drugdrug interaction loss $L _ { d d i }$ , based on the DDI adjacency matrix, and the contraindication loss $L _ { c o n t r a }$ , which encodes disease-medication safety constraints. The DDI loss captures potential harmful interactions between medications, and the contraindication loss utilizes the contraindication matrix $\\mathbf { A } _ { c o n t r a }$ extracted from the knowledge graph. ",
+        "bbox": [
+            519,
+            301,
+            911,
+            398
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "img_path": "images/d3fbc13abbba8f2ffcc45c4c7254c02c60eb4ed78502148cfe37e7b1579bb29f.jpg",
+        "text": "$$\n\\begin{array} { r l r } {  { L _ { d d i } = \\sum _ { i = 1 } ^ { | \\mathcal { M } | } \\sum _ { j = 1 } ^ { | \\mathcal { M } | } \\mathbf { A } _ { d d i } [ i , j ] \\cdot \\hat { \\boldsymbol { y } } _ { m _ { i } } ^ { t } \\cdot \\hat { \\boldsymbol { y } } _ { m _ { j } } ^ { t } , } } \\\\ & { } & { \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad \\quad } \\\\ & { } & { \\quad \\quad \\quad \\quad L _ { c o n t r a } = \\sum _ { k = 1 } ^ { | \\mathcal { D } | } \\sum _ { j = 1 } ^ { | \\mathcal { M } | } \\mathbf { A } _ { c o n t r a } [ k , j ] \\cdot \\hat { \\boldsymbol { y } } _ { m _ { j } } ^ { t } \\cdot \\boldsymbol { y } _ { d _ { k } } ^ { t } , } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            557,
+            410,
+            848,
+            506
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where matrix $\\mathbf { A } _ { c o n t r a } [ k , j ]$ indicates the contraindication relationship between disease $d _ { k }$ and medication $m _ { j }$ , with $y _ { d _ { k } } ^ { t }$ indicating whether disease $d _ { k }$ is present in the sample. ",
+        "bbox": [
+            519,
+            507,
+            911,
+            549
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Finally, to balance between accuracy and safety during model training, we integrate all four losses into a comprehensive loss function. ",
+        "bbox": [
+            519,
+            549,
+            911,
+            585
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "equation",
+        "img_path": "images/3ad940c7aae3f8928ef70d0b42e917fa8fe1650473dd5eee4f6c3a2e178e9a1b.jpg",
+        "text": "$$\n\\begin{array} { r l } & { L = \\alpha ( \\beta L _ { b c e } + ( 1 - \\beta ) L _ { m u l t i } ) + ( 1 - \\alpha ) ( \\lambda _ { 1 } L _ { d d i } + \\lambda _ { 2 } L _ { c o n t r a } ) , } \\\\ & { \\alpha = \\left\\{ \\begin{array} { l l } { 1 , } & { \\mathrm { i f } \\mathrm { r a t } \\mathtt { e } _ { h a r m } \\le \\gamma } \\\\ { \\operatorname* { m a x } \\left\\{ 0 , 1 - \\frac { \\mathrm { r a t } \\mathtt { e } _ { h a r m } - \\gamma } { k p } \\right\\} , } & { \\mathrm { i f } \\mathrm { r a t } \\mathtt { e } _ { h a r m } > \\gamma , } \\end{array} \\right. } \\end{array}\n$$",
+        "text_format": "latex",
+        "bbox": [
+            517,
+            585,
+            923,
+            650
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "where rate $h a r m$ is the observed rate of harmful interactions, $\\gamma$ is the harm acceptance threshold for clinical use, and $k p$ is a correction factor that adjusts the influence based on proportionality. The parameter $\\beta$ controls regularization strength, and the selection of $\\lambda _ { 1 }$ and $\\lambda _ { 2 }$ will be discussed in hyperparameter analysis section. ",
+        "bbox": [
+            519,
+            659,
+            911,
+            742
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "This combined approach ensures that the model not only delivers accurate medication recommendations but also prioritizes patient safety through the consideration of negative relations. ",
+        "bbox": [
+            519,
+            743,
+            911,
+            797
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Experiments Experimental Settings ",
+        "text_level": 1,
+        "bbox": [
+            519,
+            810,
+            769,
+            844
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "text",
+        "text": "Datasets and Pre-processing. Our method utilizes the publicly available MIMIC-III (Johnson et al. 2016) and MIMIC-IV (Johnson et al. 2023) datasets for training and testing. ",
+        "bbox": [
+            519,
+            847,
+            911,
+            888
+        ],
+        "page_idx": 4
+    },
+    {
+        "type": "table",
+        "img_path": "images/99ce9f321c703da4a4bef4cff33ad9b0d0fd355a2605863715f22a860bc5ef1d.jpg",
+        "table_caption": [
+            "Table 2: Results of different methods. The best and the runner-up results are highlighted in bold and underline respectively. "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=\"2\">EK</td><td rowspan=\"2\">Methods</td><td colspan=\"4\">MIMIC-III-MED</td><td colspan=\"4\">MIMIC-IV-GU</td><td colspan=\"4\">MIMIC-IV-OMED</td></tr><tr><td>Jaccard ↑ DDI </td><td></td><td>PRAUC ↑</td><td>F1↑</td><td>Jaccard ↑</td><td>DDI</td><td>PRAUC ↑</td><td>F1 ↑</td><td>Jaccard ↑ DDI ↓</td><td></td><td>PRAUC ↑</td><td>F1 ↑</td></tr><tr><td></td><td>LR</td><td>0.3254</td><td>0.0959</td><td>0.6055</td><td>0.4646</td><td>0.2722</td><td>0.2720</td><td>0.5573</td><td>0.3555</td><td>0.2982</td><td>0.0689</td><td>0.5811</td><td>0.3893</td></tr><tr><td></td><td>ECC</td><td>0.2801</td><td>0.0916</td><td>0.6014</td><td>0.4027</td><td>0.2929</td><td>0.2523</td><td>0.5536</td><td>0.3778</td><td>0.3170</td><td>0.0835</td><td>0.5951</td><td>0.4119</td></tr><tr><td></td><td>RETAIN</td><td>0.3180</td><td>0.0956</td><td>0.5863</td><td>0.4696</td><td>0.2516</td><td>0.2481</td><td>0.4849</td><td>0.3542</td><td>0.3292</td><td>0.1492</td><td>0.5980</td><td>0.4188</td></tr><tr><td></td><td>DMNC</td><td>0.2847</td><td>0.0903</td><td>0.5526</td><td>0.4124</td><td>0.3171</td><td>0.2540</td><td>0.4134</td><td>0.4219</td><td>0.3404</td><td>0.0802</td><td>0.5219</td><td>0.4412</td></tr><tr><td></td><td>MICRON</td><td>0.3481</td><td>0.0666</td><td>0.6203</td><td>0.4928</td><td>0.2335</td><td>0.3146</td><td>0.5227</td><td>0.3107</td><td>0.3072</td><td>0.0555</td><td>0.5768</td><td>0.4022</td></tr><tr><td></td><td>LAMRec</td><td>0.3929</td><td>0.0714</td><td>0.6232</td><td>0.5394</td><td>0.3402</td><td>0.1861</td><td>0.5668</td><td>0.4790</td><td>0.3484</td><td>0.0855</td><td>0.5855</td><td>0.4782</td></tr><tr><td></td><td>GAMENet</td><td>0.3737</td><td>0.1130</td><td>0.6198</td><td>0.5250</td><td>0.3264</td><td>0.2790</td><td>0.5566</td><td>0.4480</td><td>0.3515</td><td>0.0595</td><td>0.5989</td><td>0.4762</td></tr><tr><td></td><td>COGNet</td><td>0.3765</td><td>0.1169</td><td>0.6028</td><td>0.5274</td><td>0.3193</td><td>0.1925</td><td>0.4993</td><td>0.4183</td><td>0.3191</td><td>0.0804</td><td>0.5164</td><td>0.4017</td></tr><tr><td></td><td>MoleRec</td><td>0.3843</td><td>0.0737</td><td>0.6205</td><td>0.5355</td><td>0.3433</td><td>0.2870</td><td>0.5675</td><td>0.4569</td><td>0.3415</td><td>0.0591</td><td>0.5924</td><td>0.4644</td></tr><tr><td></td><td>RASNet</td><td>0.3846</td><td>0.0673</td><td>0.6259</td><td>0.5361</td><td>0.2594</td><td>0.2127</td><td>0.4597</td><td>0.3516</td><td>0.2882</td><td>0.0985</td><td>0.5154</td><td>0.3812</td></tr><tr><td></td><td>KEHGCN</td><td>0.3999</td><td>0.0593</td><td>0.6320</td><td>0.5414</td><td>0.3554</td><td>0.1312</td><td>0.5779</td><td>0.4806</td><td>0.3688</td><td>0.0517</td><td>0.6199</td><td>0.5001</td></tr></table>",
+        "bbox": [
+            93,
+            65,
+            905,
+            251
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "The two datasets differ in terms of temporal coverage, data granularity, schema complexity, etc. To better simulate realworld hospital scenarios, we do not use the MIMIC datasets directly; instead, we organize the data based on departmental divisions using the services table from the Hosp module. Table 1 provides details on the datasets from three departments. For the UMLS knowledge graph, we extract the UMLS Metathesaurus full subset sources. We utilize the MRREL.RRF file to extract relationships and metapaths, and employ the MRCONSO.RRF file to establish code mapping relationships with the MIMIC datasets. ",
+        "bbox": [
+            86,
+            303,
+            477,
+            454
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Compared Methods and Metrics. We compare our method with the representative state-of-the-art baselines. Methods like LR, ECC (Read et al. 2011), RETAIN (Choi et al. 2016), DMNC (Le, Tran, and Venkatesh 2018), MI-CRON (Yang et al. 2021a), and LAMRec (Tang et al. 2024) do not utilize external knowledge. In contrast, GAMENet (Shang et al. 2019), COGNet (Wu et al. 2022), MoleRec (Yang et al. 2023), and RASNet (Zhu et al. 2024) incorporate external knowledge into their frameworks. To assess the accuracy and safety of our proposed model, we follow the previous works (Tang et al. 2024) utilizing evaluation metrics including Jaccard Similarity Score, DDI rate, Precision-Recall AUC (PRAUC), and Average F1 Score for reference. ",
+        "bbox": [
+            86,
+            455,
+            477,
+            635
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Implementation Details. We partition the dataset into training, validation, and test sets, allocating the first 2/3 for training, the middle 1/6 for testing, and the last 1/6 for validation. We set the loss function parameters $\\beta ~ = ~ 0 . 9 5$ $k p = 0 . 0 5$ , and acceptance rate $\\gamma ~ = ~ 0 . 0 6$ . The model is trained for 50 epochs using the Adam optimizer with an initial learning rate of $1 e ^ { - 4 }$ . Each baseline method is configured according to the default settings from the original papers or our fine-tuned parameters. ",
+        "bbox": [
+            86,
+            636,
+            477,
+            760
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Performance Comparison ",
+        "text_level": 1,
+        "bbox": [
+            86,
+            772,
+            284,
+            787
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Table 2 presents the comparative performance of different methods. It is evident that our model KEHGCN outperforms all other baselines in all evaluated metrics, with statistically significant improvements (t-test, $p < 0 . 0 1 $ ). Compared with methods that do not apply External Knowledge, our approach demonstrates superior results by integrating KG domain knowledge. As for methods involving External ",
+        "bbox": [
+            86,
+            791,
+            477,
+            888
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Knowledge, our method also achieves notable performance by constructing hierarchical hypergraphs and extracting generalized metapaths. ",
+        "bbox": [
+            519,
+            303,
+            910,
+            344
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "In summary, our method not only enhances performance through the incorporation of knowledge graphs but also fully explores the relationships to support the learning of EHR data. By designing the generalized metapaths and hierarchical hypergraphs, our method is able to learn from multiple perspectives, thereby providing more accurate and reliable medication recommendations for patients. ",
+        "bbox": [
+            519,
+            345,
+            911,
+            441
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "Ablation Study ",
+        "text_level": 1,
+        "bbox": [
+            521,
+            454,
+            635,
+            469
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "text",
+        "text": "To verify the effectiveness of our proposed components, we conduct ablation studies by removing each of the key designs in KEHGCN. Specifically, we consider the following three variants of KEHGCN: 1) w/o HGCN removes the hypergraph convolution, which captures co-occurrence relations; 2) w/o MCN excludes the metapath convolution including intra-metapath aggregation and inter-metapath fusion, which learns the semantic knowledge inherent in the knowledge graph; 3) w/GCN HH substitutes hypergraph convolution with standard graph convolution; 4) w/o Priors excludes prior weights assigned to metapaths. The results in Table 3 demonstrate that removing any of the above components leads to a decline in performance, which indicates that each element of KEHGCN plays a crucial role in improving its overall performance. ",
+        "bbox": [
+            519,
+            474,
+            911,
+            681
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "image",
+        "img_path": "images/095f3d9dfe90a94760d34daef068bd595765a0cc505d94b9ec6b2a87970a6f6f.jpg",
+        "image_caption": [
+            "Hyperparameter Analysis ",
+            "Figure 3: Impact of $\\lambda _ { 1 }$ and $\\lambda _ { 2 }$ on F1 score (accuracy) and DDI rate (safety) in MIMIC-III-MED Dataset. "
+        ],
+        "image_footnote": [],
+        "bbox": [
+            519,
+            732,
+            910,
+            844
+        ],
+        "page_idx": 5
+    },
+    {
+        "type": "table",
+        "img_path": "images/63f69e617cc0243fe73b15107955415f73be4b21ceadc9dd77f4c7b9aa4cbc00.jpg",
+        "table_caption": [
+            "Table 3: Results of ablation study. "
+        ],
+        "table_footnote": [],
+        "table_body": "<table><tr><td rowspan=\"2\">Methods</td><td colspan=\"4\">MIMIC-III-MED</td><td colspan=\"4\">MIMIC-IV-GU</td><td colspan=\"4\">MIMIC-IV-OMED</td></tr><tr><td>Jaccard ↑</td><td>DDI ↓</td><td>PRAUC ↑</td><td>F1↑</td><td>Jaccard ↑</td><td>DDI↓</td><td>PRAUC ↑</td><td>F1↑</td><td>Jaccard ↑</td><td>DDI ↓</td><td>PRAUC ↑</td><td>F1↑</td></tr><tr><td>w/o HGCN</td><td>0.3810</td><td>0.0675</td><td>0.6046</td><td>0.5271</td><td>0.3385</td><td>0.2720</td><td>0.5611</td><td>0.4522</td><td>0.3527</td><td>0.0559</td><td>0.5809</td><td>0.4666</td></tr><tr><td>w/o MCN</td><td>0.3940</td><td>0.0613</td><td>0.6289</td><td>0.5400</td><td>0.3548</td><td>0.2059</td><td>0.5764</td><td>0.4682</td><td>0.3618</td><td>0.0523</td><td>0.6091</td><td>0.4802</td></tr><tr><td>w/GCN HH</td><td>0.3845</td><td>0.0599</td><td>0.6114</td><td>0.5335</td><td>0.3401</td><td>0.2661</td><td>0.5627</td><td>0.4615</td><td>0.3578</td><td>0.0550</td><td>0.5871</td><td>0.4695</td></tr><tr><td>w/o Priors</td><td>0.3950</td><td>0.0597</td><td>0.6305</td><td>0.5410</td><td>0.3498</td><td>0.1607</td><td>0.5715</td><td>0.4733</td><td>0.3564</td><td>0.0591</td><td>0.6002</td><td>0.4768</td></tr><tr><td>KEHGCN</td><td>0.3999</td><td>0.0593</td><td>0.6320</td><td>0.5414</td><td>0.3554</td><td>0.1312</td><td>0.5779</td><td>0.4806</td><td>0.3688</td><td>0.0517</td><td>0.6199</td><td>0.5001</td></tr></table>",
+        "bbox": [
+            89,
+            65,
+            908,
+            167
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "The impact of hyperparameters $\\lambda _ { 1 }$ and $\\lambda _ { 2 }$ on F1 score and DDI rate on MIMIC-III-MED dataset is illustrated in Figure 3, where the green box denotes the optimal parameter values for each metric, and the red box indicates the scenario when $\\lambda _ { 1 } = 1 , \\lambda _ { 2 } = 1$ yields favorable outcomes for both indicators. These parameters are critical for balancing the losses associated with negative relations, where $\\lambda _ { 1 }$ governs the DDI relationships and $\\lambda _ { 2 }$ regulates the contraindications between diseases and medications. Experimental results reveal that when both parameters are set to zero, there is an increase in accuracy (F1). However, the increase is moderately limited because the recommendations involve negative interactions. When $\\lambda _ { 1 }$ is set to 1 while $\\lambda _ { 2 }$ remains 0, the DDI rate achieves its lowest value. However, the optimal balance between accuracy and safety is achieved at the parameter values [1, 1], which indicates that these specific settings effectively enhance performance while minimizing risks associated with safety concerns. By selecting these settings, we aim to ensure robust performance that adheres to both accuracy standards and safety protocols. ",
+        "bbox": [
+            86,
+            218,
+            477,
+            496
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "Case Study ",
+        "text_level": 1,
+        "bbox": [
+            86,
+            510,
+            173,
+            525
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "image",
+        "img_path": "images/9442493b8b4b14a1424cd4166fbc63524685966f8d29207156b707de0a59f709.jpg",
+        "image_caption": [
+            "Figure 4: An example of top-5 metapaths for a specific visit. "
+        ],
+        "image_footnote": [],
+        "bbox": [
+            91,
+            542,
+            441,
+            776
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "One of the key innovations in our work is the provision of explainability in medication recommendations. In the metapath convolution process, we assign prior weights to different types of metapaths. For metapaths that exhibit a direct treatment relationship, we set the maximum weight to ",
+        "bbox": [
+            86,
+            819,
+            477,
+            888
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "1. In addition, we introduce learnable weights to fine-tune these assignments. During each recommendation, we filter and present the top-5 metapaths with the highest weights to patients and clinicians. ",
+        "bbox": [
+            519,
+            219,
+            911,
+            273
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "Figure 4 demonstrates a case study from the MIMIC-IV-OMED dataset, which provides five highest-weighted metapaths for illustration. For direct treatment relationships, the metapaths retain their maximum weight even after the application of adjustable weights. This allows us to directly recommend a medication that corresponds to a specific disease. Such metapaths enhance explainability significantly, as they enable the users to quickly grasp the rationale behind the recommended medication. Additionally, when a disease results from an abnormal molecular structure, and the corresponding medication effectively addresses this anomaly, the explainability offered by such metapaths is remarkably beneficial. Finally, we also observe that metapaths related to medications and diseases within the same classification can provide valuable explanations. ",
+        "bbox": [
+            519,
+            276,
+            911,
+            483
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "To summarize, our approach not only enhances the accuracy and safety of medication recommendations but also prioritizes explainability, facilitating better understanding of healthcare decisions. ",
+        "bbox": [
+            519,
+            484,
+            911,
+            537
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "Conclusion ",
+        "text_level": 1,
+        "bbox": [
+            668,
+            554,
+            763,
+            570
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "In this paper, we propose a novel Knowledge-enhanced Explainable HyperGraph Convolution Network (KEHGCN) that integrates knowledge graph and provides explainability in medication recommendation. To be specific, our method constructs a hierarchical hypergraph structure and applies a knowledge-driven hypergraph convolution network to better capture the multi-level relationships within EHR data. Moreover, the contraindication relations between diseases and medications derived from knowledge graph help regularize the loss function, which is evaluated in our hyperparameter analysis. For future work, we plan to incorporate other types of knowledge sources and multi-modal medical data, such as medical images and genomic information. Additionally, we will explore the integration of other types of negative relations to further enhance the safety of medication recommendations. ",
+        "bbox": [
+            521,
+            575,
+            911,
+            795
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "Acknowledgments ",
+        "text_level": 1,
+        "bbox": [
+            640,
+            811,
+            792,
+            828
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "This work was supported by the S&T Program of Hebei (Grant No.252W7713D) and the National Key Research and Development Program of China (Grant No. 2022YFB2703301). ",
+        "bbox": [
+            519,
+            833,
+            911,
+            888
+        ],
+        "page_idx": 6
+    },
+    {
+        "type": "text",
+        "text": "References Bodenreider, O. 2004. The Unified Medical Language System (UMLS): Integrating Biomedical Terminology. In Nucleic acids research, 32: D267–D270. Chen, Q.; Li, X.; Geng, K.; and Wang, M. 2023. Context-Aware Safe Medication Recommendations with Molecular Graph and DDI Graph Embedding. In Proceedings of the AAAI Conference on Artificial Intelligence, 7053–7060. Choi, E.; Bahadori, M. T.; Sun, J.; Kulas, J.; Schuetz, A.; and Stewart, W. 2016. RETAIN: An Interpretable Predictive Model for Healthcare using Reverse Time Attention Mechanism. In Advances in Neural Information Processing Systems, 3504–3512. Gao, C.; Wang, X.; He, X.; and Li, Y. 2022. Graph Neural Networks for Recommender System. In Proceedings of the Fifteenth ACM International Conference on Web Search and Data Mining, 1623–1625. Gong, F.; Wang, M.; Wang, H.; Wang, S.; and Liu, M. 2021. SMR: Medical Knowledge Graph Embedding for Safe Medicine Recommendation. In Big Data Research, 23: 100174. Jin, Y.; Zhang, W.; He, X.; Wang, X.; and Wang, X. 2020. Syndrome-aware Herb Recommendation with Multi-Graph Convolution Network. In 2020 IEEE 36th International Conference on Data Engineering (ICDE), 145–156. Johnson, A. E.; Pollard, T. J.; Shen, L.; Lehman, L.-w. H.; Feng, M.; Ghassemi, M.; Moody, B.; Szolovits, P.; Celi, L. A.; and Mark, R. G. 2016. MIMIC-III, A Freely Accessible Critical Care Database. In Scientific Data, 3(1): 1–9. Johnson, A. E. W.; Bulgarelli, L.; Shen, L.; Gayles, A.; Shammout, A.; Horng, S.; Pollard, T. J.; Hao, S.; Moody, B.; Gow, B.; et al. 2023. MIMIC-IV, A Freely Accessible Electronic Health Record Dataset. In Scientific Data, 10(1): 1. Kim, T.; Heo, J.; Kim, H.; and Kim, S.-W. 2025. HI-DR: Exploiting Health Status-Aware Attention and an EHR Graph+ for Effective Medication Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence, 11950– 11958. Kim, T.; Heo, J.; Kim, H.; Shin, K.; and Kim, S.-W. 2024. VITA: ’Carefully Chosen and Weighted Less’ Is Better in Medication Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence, 8600–8607. Lai, K.-H.; Yang, Z.-R.; Lai, P.-Y.; Wang, C.-D.; Guizani, M.; and Chen, M. 2024. Knowledge-Aware Explainable Reciprocal Recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence, 8636–8644. Le, D.-H. 2025. Improving Computational Drug Repositioning Through Multi-Source Disease Similarity Networks. Scientific Reports, 15(30773). Le, H.; Tran, T.; and Venkatesh, S. 2018. Dual Memory Neural Computer for Asynchronous Two-view Sequential Learning. In Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, 1637–1645. ",
+        "bbox": [
+            84,
+            63,
+            478,
+            896
+        ],
+        "page_idx": 7
+    },
+    {
+        "type": "text",
+        "text": "Liang, S.; Li, X.; Mu, S.; Li, C.; Lei, Y.; Hou, Y.; and Tengfei, M. 2025. CIDGMed: Causal Inference-Driven Medication Recommendation with Enhanced Dual-Granularity Learning. In Knowledge-Based Systems, 309: 112685.   \nLiu, H.; Zhao, N.; Zhou, J.; Qu, W.; and Ji, Z. 2024a. Chiral Molecular Graph Encoder for Medication Recommendation. In 2024 IEEE International Conference on Bioinformatics and Biomedicine (BIBM), 1036–1041.   \nLiu, H.; Zhu, Y.; and Wu, Z. 2024. Knowledge Graph-Based Behavior Denoising and Preference Learning for Sequential Recommendation. IEEE Transactions on Knowledge and Data Engineering, 36(6): 2490–2503.   \nLiu, S.; Wang, X.; Zhao, X.; and Chen, H. 2024b. DKINet: Medication Recommendation via Domain Knowledge Informed Deep Learning. In 2024 IEEE International Conference on Bioinformatics and Biomedicine (BIBM), 3521– 3526.   \nMa, X.; Wang, Y.; Chu, X.; Ma, L.; Tang, W.; Zhao, J.; Yuan, Y.; and Wang, G. 2022. Patient Health Representation Learning via Correlational Sparse Prior of Medical Features. In IEEE Transactions on Knowledge and Data Engineering, 35(17): 11769–11783.   \nMaya, R.; Yoni, H.; Abdulhakim, T.; Steven, H.; and David, S. 2017. Learning a Health Knowledge Graph from Electronic Medical Records. Scientific Reports, 7(5994).   \nMishra, R.; and Shridevi, S. 2024. Knowledge Graph Driven Medicine Recommendation System Using Graph Neural Networks on Longitudinal Medical Records. In Scientific Reports, 14(1): 25449.   \nRead, J.; Pfahringer, B.; Holmes, G.; and Frank, E. 2011. Classifier Chains for Multi-Label Classification. In Machine learning, 85(3): 333–359.   \nRen, Y.; Shi, Y.; Zhang, K.; Wang, X.; Chen, Z.; and Li, H. 2022. A Drug Recommendation Model Based on Message Propagation and DDI Gating Mechanism. In IEEE Journal of Biomedical and Health Informatics, 26(7): 3478–3485. Saadat, H.; Shah, B.; Halim, Z.; and Anwar, S. 2024. Knowledge Graph-Based Convolutional Network Coupled With Sentiment Analysis Towards Enhanced Drug Recommendation. In IEEE/ACM Transactions on Computational Biology and Bioinformatics, 21(4): 983–994.   \nShang, J.; Xiao, C.; Ma, T.; Li, H.; and Sun, J. 2019. GAMENet: Graph Augmented MEmory Networks for Recommending Medication Combination. In Proceedings of the AAAI Conference on Artificial Intelligence, 1126–1133. Sun, T.; Guo, H.; Zhang, Z.; Liu, H.; and Wu, Z. 2024. Exploiting Multifaceted Nature of Items and Users for Session-Based Recommendation. In Proceedings of the 2024 SIAM International Conference on Data Mining, 580–588.   \nTang, Y.; Liu, N.; Yuan, H.; Yan, Y.; Liu, L.; Tan, W.; and Cui, L. 2024. LAMRec: Label-aware Multi-view Drug Recommendation. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management, 2230–2239. Wang, X.; Huang, T.; Wang, D.; Yuan, Y.; Liu, Z.; He, X.; and Chua, T.-S. 2021. Learning Intents behind Interactions with Knowledge Graph for Recommendation. In Proceedings of the Web Conference 2021, 878–887.   \nWu, R.; Qiu, Z.; Jiang, J.; Qi, G.; and Wu, X. 2022. Conditional Generation Net for Medication Recommendation. In Proceedings of the ACM Web Conference 2022, 935–945. Yang, C.; Xiao, C.; Glass, L.; and Sun, J. 2021a. Change Matters: Medication Change Prediction with Recurrent Residual Networks. In Proceedings of the Thirtieth International Joint Conference on Artificial Intelligence, 3728–3734.   \nYang, C.; Xiao, C.; Ma, F.; Glass, L.; and Sun, J. 2021b. SafeDrug: Dual Molecular Graph Encoders for Recommending Effective and Safe Drug Combinations. In Proceedings of the Thirtieth International Joint Conference on Artificial Intelligence, 3735–3741.   \nYang, N.; Zeng, K.; Wu, Q.; and Yan, J. 2023. MoleRec: Combinatorial Drug Recommendation with Substructure-Aware Molecular Representation Learning. In Proceedings of the ACM Web Conference 2023, 4075–4085.   \nYang, T.; Ren, B.; Gu, C.; Ma, B.; He, T.; and Konomi, S. 2025. Towards Better Course Recommendations: Integrating Multi-Perspective Meta-Paths and Knowledge Graphs. In Proceedings of the 15th International Learning Analytics and Knowledge Conference, 137–147.   \nYao, Z.; Liu, B.; Wang, F.; Sow, D.; and Li, Y. 2023. Ontology-Aware Prescription Recommendation in Treatment Pathways Using Multi-Evidence Healthcare Data. In ACM Transactions on Information Systems, 41(4): 1–29. Zhang, Y.; Chen, R.; Tang, J.; Stewart, W. F.; and Sun, J. 2017. LEAP: Learning to Prescribe Effective and Safe Treatment Combinations for Multimorbidity. In Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, 1315–1324.   \nZhu, Q.; Han, F.; Yang, H.; Liu, J.; Hu, X.; and Wang, B. 2024. RASNet: Recurrent Aggregation Neural Network for Safe and Efficient Drug Recommendation. In Knowledge-Based Systems, 299: 112055. ",
+        "bbox": [
+            517,
+            37,
+            913,
+            893
+        ],
+        "page_idx": 7
+    },
+    {
+        "type": "text",
+        "text": "",
+        "bbox": [
+            84,
+            61,
+            478,
+            638
+        ],
+        "page_idx": 8
+    }
+]
