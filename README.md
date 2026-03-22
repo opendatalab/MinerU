@@ -319,24 +319,18 @@ Currently, some models in this project are trained based on YOLO. However, since
 # Citation
 
 ```bibtex
-@misc{niu2025mineru25decoupledvisionlanguagemodel,
-      title={MinerU2.5: A Decoupled Vision-Language Model for Efficient High-Resolution Document Parsing}, 
-      author={Junbo Niu and Zheng Liu and Zhuangcheng Gu and Bin Wang and Linke Ouyang and Zhiyuan Zhao and Tao Chu and Tianyao He and Fan Wu and Qintong Zhang and Zhenjiang Jin and Guang Liang and Rui Zhang and Wenzheng Zhang and Yuan Qu and Zhifei Ren and Yuefeng Sun and Yuanhong Zheng and Dongsheng Ma and Zirui Tang and Boyu Niu and Ziyang Miao and Hejun Dong and Siyi Qian and Junyuan Zhang and Jingzhou Chen and Fangdong Wang and Xiaomeng Zhao and Liqun Wei and Wei Li and Shasha Wang and Ruiliang Xu and Yuanyuan Cao and Lu Chen and Qianqian Wu and Huaiyu Gu and Lindong Lu and Keming Wang and Dechen Lin and Guanlin Shen and Xuanhe Zhou and Linfeng Zhang and Yuhang Zang and Xiaoyi Dong and Jiaqi Wang and Bo Zhang and Lei Bai and Pei Chu and Weijia Li and Jiang Wu and Lijun Wu and Zhenxiang Li and Guangyu Wang and Zhongying Tu and Chao Xu and Kai Chen and Yu Qiao and Bowen Zhou and Dahua Lin and Wentao Zhang and Conghui He},
-      year={2025},
-      eprint={2509.22186},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2509.22186}, 
+@article{niu2025mineru2,
+  title={Mineru2. 5: A decoupled vision-language model for efficient high-resolution document parsing},
+  author={Niu, Junbo and Liu, Zheng and Gu, Zhuangcheng and Wang, Bin and Ouyang, Linke and Zhao, Zhiyuan and Chu, Tao and He, Tianyao and Wu, Fan and Zhang, Qintong and others},
+  journal={arXiv preprint arXiv:2509.22186},
+  year={2025}
 }
 
-@misc{wang2024mineruopensourcesolutionprecise,
-      title={MinerU: An Open-Source Solution for Precise Document Content Extraction}, 
-      author={Bin Wang and Chao Xu and Xiaomeng Zhao and Linke Ouyang and Fan Wu and Zhiyuan Zhao and Rui Xu and Kaiwen Liu and Yuan Qu and Fukai Shang and Bo Zhang and Liqun Wei and Zhihao Sui and Wei Li and Botian Shi and Yu Qiao and Dahua Lin and Conghui He},
-      year={2024},
-      eprint={2409.18839},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2409.18839}, 
+@article{wang2024mineru,
+  title={Mineru: An open-source solution for precise document content extraction},
+  author={Wang, Bin and Xu, Chao and Zhao, Xiaomeng and Ouyang, Linke and Wu, Fan and Zhao, Zhiyuan and Xu, Rui and Liu, Kaiwen and Qu, Yuan and Shang, Fukai and others},
+  journal={arXiv preprint arXiv:2409.18839},
+  year={2024}
 }
 
 @article{he2024opendatalab,
