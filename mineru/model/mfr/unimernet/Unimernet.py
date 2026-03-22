@@ -4,6 +4,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from ..utils import build_mfr_batch_groups
+
 
 class MathDataset(Dataset):
     def __init__(self, image_paths, transform=None):
@@ -25,7 +27,10 @@ class UnimernetModel(object):
         from .unimernet_hf import UnimernetModel
 
         if _device_.startswith("mps") or _device_.startswith("npu") or _device_.startswith("musa"):
-            self.model = UnimernetModel.from_pretrained(weight_dir, attn_implementation="eager")
+            self.model = UnimernetModel.from_pretrained(
+                weight_dir,
+                attn_implementation="eager",
+            )
         else:
             self.model = UnimernetModel.from_pretrained(weight_dir)
         self.device = torch.device(_device_)
@@ -110,11 +115,13 @@ class UnimernetModel(object):
         images_formula_list = []
         mf_image_list = []
         backfill_list = []
-        image_info = []  # Store (area, original_index, image) tuples
+        image_info = []
 
         for mfd_res, image in zip(images_mfd_res, images):
             formula_list, crop_targets = self._build_formula_items(
-                mfd_res, image, interline_enable=interline_enable
+                mfd_res,
+                image,
+                interline_enable=interline_enable,
             )
 
             for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
@@ -132,23 +139,30 @@ class UnimernetModel(object):
             return images_formula_list
 
         image_info.sort(key=lambda x: x[0])
+        sorted_areas = [x[0] for x in image_info]
         sorted_indices = [x[1] for x in image_info]
         sorted_images = [x[2] for x in image_info]
-        index_mapping = {new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)}
+        index_mapping = {
+            new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
+        }
 
+        batch_groups = build_mfr_batch_groups(sorted_areas, batch_size)
         dataset = MathDataset(sorted_images, transform=self.model.transform)
-        batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1)))
-        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0)
+        dataloader = DataLoader(dataset, batch_sampler=batch_groups, num_workers=0)
 
         mfr_res = []
         with tqdm(total=len(sorted_images), desc="MFR Predict") as pbar:
-            for mf_img in dataloader:
+            for batch_group, mf_img in zip(batch_groups, dataloader):
+                current_batch_size = len(batch_group)
                 mf_img = mf_img.to(dtype=self.model.dtype)
                 mf_img = mf_img.to(self.device)
                 with torch.no_grad():
-                    output = self.model.generate({"image": mf_img}, batch_size=batch_size)
+                    output = self.model.generate(
+                        {"image": mf_img},
+                        batch_size=current_batch_size,
+                    )
                 mfr_res.extend(output["fixed_str"])
-                pbar.update(len(mf_img))
+                pbar.update(current_batch_size)
 
         unsorted_results = [""] * len(mfr_res)
         for new_idx, latex in enumerate(mfr_res):

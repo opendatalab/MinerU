@@ -337,3 +337,76 @@ def latex_rm_whitespace(s: str):
         s = s[:-1]
 
     return s
+
+
+def largest_power_of_two_leq(value: int) -> int:
+    if value < 1:
+        return 0
+    return 2 ** (value.bit_length() - 1)
+
+
+def get_mfr_effective_batch_size(num_items: int, requested_batch_size: int) -> int:
+    return min(
+        requested_batch_size,
+        largest_power_of_two_leq(max(1, num_items)),
+    )
+
+
+def get_mfr_min_dynamic_batch_size(requested_batch_size: int) -> int:
+    return max(1, requested_batch_size // 8)
+
+
+def build_mfr_batch_groups(sorted_areas: list[int], requested_batch_size: int) -> list[list[int]]:
+    if not sorted_areas:
+        return []
+
+    effective_batch_size = get_mfr_effective_batch_size(
+        len(sorted_areas),
+        requested_batch_size,
+    )
+    if effective_batch_size < 1:
+        return []
+
+    min_dynamic_batch_size = get_mfr_min_dynamic_batch_size(requested_batch_size)
+    total_count = len(sorted_areas)
+    if total_count < min_dynamic_batch_size:
+        return [list(range(total_count))]
+
+    base_mean_area = sum(sorted_areas[:effective_batch_size]) / effective_batch_size
+    batch_groups = []
+    cursor = 0
+
+    while cursor < total_count:
+        remaining_count = total_count - cursor
+        if remaining_count < min_dynamic_batch_size:
+            batch_groups.append(list(range(cursor, total_count)))
+            break
+
+        probe_size = min(effective_batch_size, remaining_count)
+        current_mean_area = sum(sorted_areas[cursor : cursor + probe_size]) / probe_size
+        ratio = 1 if base_mean_area <= 0 else current_mean_area / base_mean_area
+
+        candidate_batch_size = effective_batch_size
+        threshold = 4
+        while (
+            ratio >= threshold
+            and candidate_batch_size // 2 >= min_dynamic_batch_size
+        ):
+            candidate_batch_size //= 2
+            threshold *= 2
+
+        candidate_batch_size = min(
+            candidate_batch_size,
+            largest_power_of_two_leq(remaining_count),
+        )
+        batch_groups.append(list(range(cursor, cursor + candidate_batch_size)))
+        cursor += candidate_batch_size
+
+    if (
+        len(batch_groups) >= 2
+        and len(batch_groups[-1]) < min_dynamic_batch_size
+    ):
+        tail_group = batch_groups.pop()
+        batch_groups[-1].extend(tail_group)
+
+    return batch_groups

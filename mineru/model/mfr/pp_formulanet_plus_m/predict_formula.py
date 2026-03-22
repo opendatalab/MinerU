@@ -4,12 +4,12 @@ from pathlib import Path
 
 import torch
 import yaml
-from loguru import logger
 from tqdm import tqdm
 
 from mineru.model.utils.pytorchocr.base_ocr_v20 import BaseOCRV20
 from mineru.model.utils.tools.infer import pytorchocr_utility
 
+from ..utils import build_mfr_batch_groups
 from .processors import (
     LatexImageFormat,
     ToBatch,
@@ -43,7 +43,8 @@ class FormulaRecognizer(BaseOCRV20):
         )
 
         network_config = pytorchocr_utility.AnalysisConfig(
-            self.weights_path, self.yaml_path
+            self.weights_path,
+            self.yaml_path,
         )
         weights = self.read_pytorch_weights(self.weights_path)
 
@@ -144,11 +145,13 @@ class FormulaRecognizer(BaseOCRV20):
         images_formula_list = []
         mf_image_list = []
         backfill_list = []
-        image_info = []  # Store (area, original_index, image) tuples
+        image_info = []
 
         for mfd_res, image in zip(images_mfd_res, images):
             formula_list, crop_targets = self._build_formula_items(
-                mfd_res, image, interline_enable=interline_enable
+                mfd_res,
+                image,
+                interline_enable=interline_enable,
             )
 
             for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
@@ -166,14 +169,18 @@ class FormulaRecognizer(BaseOCRV20):
             return images_formula_list
 
         image_info.sort(key=lambda x: x[0])
+        sorted_areas = [x[0] for x in image_info]
         sorted_indices = [x[1] for x in image_info]
         sorted_images = [x[2] for x in image_info]
         index_mapping = {
             new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
         }
 
-        batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1)))
-        batch_size = max(1, int(0.5 * batch_size))
+        formula_requested_batch_size = max(1, batch_size // 2)
+        batch_groups = build_mfr_batch_groups(
+            sorted_areas,
+            formula_requested_batch_size,
+        )
 
         batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=sorted_images)
         batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
@@ -184,13 +191,13 @@ class FormulaRecognizer(BaseOCRV20):
         rec_formula = []
         with torch.no_grad():
             with tqdm(total=len(inp), desc="MFR Predict") as pbar:
-                for index in range(0, len(inp), batch_size):
-                    batch_data = inp[index : index + batch_size]
+                for batch_group in batch_groups:
+                    batch_data = inp[batch_group]
                     batch_preds = [self.net(batch_data)]
                     batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
                     batch_preds = [bp.cpu().numpy() for bp in batch_preds]
                     rec_formula += self.post_op(batch_preds)
-                    pbar.update(len(batch_data))
+                    pbar.update(len(batch_group))
 
         unsorted_results = [""] * len(rec_formula)
         for new_idx, latex in enumerate(rec_formula):
