@@ -1,19 +1,21 @@
 import math
 import os
-import torch
-import yaml
 from pathlib import Path
 
-from loguru import logger
+import torch
+import yaml
 from tqdm import tqdm
-from mineru.model.utils.tools.infer import pytorchocr_utility
+
 from mineru.model.utils.pytorchocr.base_ocr_v20 import BaseOCRV20
+from mineru.model.utils.tools.infer import pytorchocr_utility
+
+from ..utils import build_mfr_batch_groups
 from .processors import (
-    UniMERNetImgDecode,
-    UniMERNetTestTransform,
     LatexImageFormat,
     ToBatch,
     UniMERNetDecode,
+    UniMERNetImgDecode,
+    UniMERNetTestTransform,
 )
 
 
@@ -33,7 +35,7 @@ class FormulaRecognizer(BaseOCRV20):
             "pytorchocr",
             "utils",
             "resources",
-            "pp_formulanet_arch_config.yaml"
+            "pp_formulanet_arch_config.yaml",
         )
         self.infer_yaml_path = os.path.join(
             weight_dir,
@@ -41,7 +43,8 @@ class FormulaRecognizer(BaseOCRV20):
         )
 
         network_config = pytorchocr_utility.AnalysisConfig(
-            self.weights_path, self.yaml_path
+            self.weights_path,
+            self.yaml_path,
         )
         weights = self.read_pytorch_weights(self.weights_path)
 
@@ -112,28 +115,19 @@ class FormulaRecognizer(BaseOCRV20):
 
         return formula_list, crop_targets
 
-    def predict(self, img_list, batch_size: int = 64):
-        # Reduce batch size by 50% to avoid potential memory issues during inference.
-        batch_size = max(1, int(0.5 * batch_size))
-        batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=img_list)
-        batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
-        batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
-        inp = self.pre_tfs["ToBatch"](imgs=batch_imgs)
-        inp = torch.from_numpy(inp[0])
-        inp = inp.to(self.device)
-        rec_formula = []
-        with torch.no_grad():
-            with tqdm(total=len(inp), desc="MFR Predict") as pbar:
-                for index in range(0, len(inp), batch_size):
-                    batch_data = inp[index: index + batch_size]
-                    # with torch.amp.autocast(device_type=self.device.type):
-                    #     batch_preds = [self.net(batch_data)]
-                    batch_preds = [self.net(batch_data)]
-                    batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
-                    batch_preds = [bp.cpu().numpy() for bp in batch_preds]
-                    rec_formula += self.post_op(batch_preds)
-                    pbar.update(len(batch_preds))
-        return rec_formula
+    def predict(
+        self,
+        mfd_res,
+        image,
+        batch_size: int = 64,
+        interline_enable: bool = True,
+    ) -> list:
+        return self.batch_predict(
+            [mfd_res],
+            [image],
+            batch_size=batch_size,
+            interline_enable=interline_enable,
+        )[0]
 
     def batch_predict(
         self,
@@ -142,17 +136,22 @@ class FormulaRecognizer(BaseOCRV20):
         batch_size: int = 64,
         interline_enable: bool = True,
     ) -> list:
+        if not images_mfd_res:
+            return []
+
+        if len(images_mfd_res) != len(images):
+            raise ValueError("images_mfd_res and images must have the same length.")
+
         images_formula_list = []
         mf_image_list = []
         backfill_list = []
-        image_info = []  # Store (area, original_index, image) tuples
+        image_info = []
 
-        # Collect images with their original indices
-        for image_index in range(len(images_mfd_res)):
-            mfd_res = images_mfd_res[image_index]
-            image = images[image_index]
+        for mfd_res, image in zip(images_mfd_res, images):
             formula_list, crop_targets = self._build_formula_items(
-                mfd_res, image, interline_enable=interline_enable
+                mfd_res,
+                image,
+                interline_enable=interline_enable,
             )
 
             for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
@@ -166,24 +165,40 @@ class FormulaRecognizer(BaseOCRV20):
 
             images_formula_list.append(formula_list)
 
-        # Stable sort by area
-        image_info.sort(key=lambda x: x[0])  # sort by area
+        if not image_info:
+            return images_formula_list
+
+        image_info.sort(key=lambda x: x[0])
+        sorted_areas = [x[0] for x in image_info]
         sorted_indices = [x[1] for x in image_info]
         sorted_images = [x[2] for x in image_info]
-
-        # Create mapping for results
         index_mapping = {
             new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
         }
 
-        if len(sorted_images) > 0:
-            # 进行预测
-            batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1))) if sorted_images else 1
-            rec_formula = self.predict(sorted_images, batch_size)
-        else:
-            rec_formula = []
+        formula_requested_batch_size = max(1, batch_size // 2)
+        batch_groups = build_mfr_batch_groups(
+            sorted_areas,
+            formula_requested_batch_size,
+        )
 
-        # Restore original order
+        batch_imgs = self.pre_tfs["UniMERNetImgDecode"](imgs=sorted_images)
+        batch_imgs = self.pre_tfs["UniMERNetTestTransform"](imgs=batch_imgs)
+        batch_imgs = self.pre_tfs["LatexImageFormat"](imgs=batch_imgs)
+        inp = self.pre_tfs["ToBatch"](imgs=batch_imgs)
+        inp = torch.from_numpy(inp[0]).to(self.device)
+
+        rec_formula = []
+        with torch.no_grad():
+            with tqdm(total=len(inp), desc="MFR Predict") as pbar:
+                for batch_group in batch_groups:
+                    batch_data = inp[batch_group]
+                    batch_preds = [self.net(batch_data)]
+                    batch_preds = [p.reshape([-1]) for p in batch_preds[0]]
+                    batch_preds = [bp.cpu().numpy() for bp in batch_preds]
+                    rec_formula += self.post_op(batch_preds)
+                    pbar.update(len(batch_group))
+
         unsorted_results = [""] * len(rec_formula)
         for new_idx, latex in enumerate(rec_formula):
             original_idx = index_mapping[new_idx]

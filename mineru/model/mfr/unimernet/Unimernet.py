@@ -4,6 +4,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from ..utils import build_mfr_batch_groups
+
 
 class MathDataset(Dataset):
     def __init__(self, image_paths, transform=None):
@@ -23,8 +25,12 @@ class MathDataset(Dataset):
 class UnimernetModel(object):
     def __init__(self, weight_dir, _device_="cpu"):
         from .unimernet_hf import UnimernetModel
+
         if _device_.startswith("mps") or _device_.startswith("npu") or _device_.startswith("musa"):
-            self.model = UnimernetModel.from_pretrained(weight_dir, attn_implementation="eager")
+            self.model = UnimernetModel.from_pretrained(
+                weight_dir,
+                attn_implementation="eager",
+            )
         else:
             self.model = UnimernetModel.from_pretrained(weight_dir)
         self.device = torch.device(_device_)
@@ -79,50 +85,43 @@ class UnimernetModel(object):
 
         return formula_list, crop_targets
 
-    def predict(self, mfd_res, image):
-        formula_list, crop_targets = self._build_formula_items(
-            mfd_res, image, interline_enable=True
-        )
-        mf_image_list = []
-
-        for _, (xmin, ymin, xmax, ymax) in crop_targets:
-            bbox_img = image[ymin:ymax, xmin:xmax]
-            mf_image_list.append(bbox_img)
-
-        if not mf_image_list:
-            return formula_list
-
-        dataset = MathDataset(mf_image_list, transform=self.model.transform)
-        dataloader = DataLoader(dataset, batch_size=32, num_workers=0)
-        mfr_res = []
-        for mf_img in dataloader:
-            mf_img = mf_img.to(dtype=self.model.dtype)
-            mf_img = mf_img.to(self.device)
-            with torch.no_grad():
-                output = self.model.generate({"image": mf_img})
-            mfr_res.extend(output["fixed_str"])
-        for (res, _), latex in zip(crop_targets, mfr_res):
-            res["latex"] = latex
-        return formula_list
+    def predict(
+        self,
+        mfd_res,
+        image,
+        batch_size: int = 64,
+        interline_enable: bool = True,
+    ) -> list:
+        return self.batch_predict(
+            [mfd_res],
+            [image],
+            batch_size=batch_size,
+            interline_enable=interline_enable,
+        )[0]
 
     def batch_predict(
-            self,
-            images_mfd_res: list,
-            images: list,
-            batch_size: int = 64,
-            interline_enable: bool = True,
+        self,
+        images_mfd_res: list,
+        images: list,
+        batch_size: int = 64,
+        interline_enable: bool = True,
     ) -> list:
+        if not images_mfd_res:
+            return []
+
+        if len(images_mfd_res) != len(images):
+            raise ValueError("images_mfd_res and images must have the same length.")
+
         images_formula_list = []
         mf_image_list = []
         backfill_list = []
-        image_info = []  # Store (area, original_index, image) tuples
+        image_info = []
 
-        # Collect images with their original indices
-        for image_index in range(len(images_mfd_res)):
-            mfd_res = images_mfd_res[image_index]
-            image = images[image_index]
+        for mfd_res, image in zip(images_mfd_res, images):
             formula_list, crop_targets = self._build_formula_items(
-                mfd_res, image, interline_enable=interline_enable
+                mfd_res,
+                image,
+                interline_enable=interline_enable,
             )
 
             for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
@@ -136,45 +135,40 @@ class UnimernetModel(object):
 
             images_formula_list.append(formula_list)
 
-        # Stable sort by area
-        image_info.sort(key=lambda x: x[0])  # sort by area
+        if not image_info:
+            return images_formula_list
+
+        image_info.sort(key=lambda x: x[0])
+        sorted_areas = [x[0] for x in image_info]
         sorted_indices = [x[1] for x in image_info]
         sorted_images = [x[2] for x in image_info]
+        index_mapping = {
+            new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
+        }
 
-        # Create mapping for results
-        index_mapping = {new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)}
-
-        # Create dataset with sorted images
+        batch_groups = build_mfr_batch_groups(sorted_areas, batch_size)
         dataset = MathDataset(sorted_images, transform=self.model.transform)
+        dataloader = DataLoader(dataset, batch_sampler=batch_groups, num_workers=0)
 
-        # 如果batch_size > len(sorted_images)，则设置为不超过len(sorted_images)的2的幂
-        batch_size = min(batch_size, max(1, 2 ** (len(sorted_images).bit_length() - 1))) if sorted_images else 1
-
-        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0)
-
-        # Process batches and store results
         mfr_res = []
-        # for mf_img in dataloader:
-
         with tqdm(total=len(sorted_images), desc="MFR Predict") as pbar:
-            for index, mf_img in enumerate(dataloader):
+            for batch_group, mf_img in zip(batch_groups, dataloader):
+                current_batch_size = len(batch_group)
                 mf_img = mf_img.to(dtype=self.model.dtype)
                 mf_img = mf_img.to(self.device)
                 with torch.no_grad():
-                    output = self.model.generate({"image": mf_img}, batch_size=batch_size)
+                    output = self.model.generate(
+                        {"image": mf_img},
+                        batch_size=current_batch_size,
+                    )
                 mfr_res.extend(output["fixed_str"])
-
-                # 更新进度条，每次增加batch_size，但要注意最后一个batch可能不足batch_size
-                current_batch_size = min(batch_size, len(sorted_images) - index * batch_size)
                 pbar.update(current_batch_size)
 
-        # Restore original order
         unsorted_results = [""] * len(mfr_res)
         for new_idx, latex in enumerate(mfr_res):
             original_idx = index_mapping[new_idx]
             unsorted_results[original_idx] = latex
 
-        # Fill results back
         for res, latex in zip(backfill_list, unsorted_results):
             res["latex"] = latex
 

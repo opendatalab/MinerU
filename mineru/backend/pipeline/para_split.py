@@ -287,6 +287,10 @@ def __merge_2_text_blocks(block1, block2):
                             and not span_start_with_num
                             # 下一个block的第一个字符是大写字母
                             and not span_start_with_big_char
+                            # 下一个块的y0要比上一个块的y1小
+                            and block1['bbox'][1] < block2['bbox'][3]
+                            # 两个块任意一个块需要大于1行
+                            and (len(block1['lines']) > 1 or len(block2['lines']) > 1)
                         ):
                             if block1['page_num'] != block2['page_num']:
                                 for line in block1['lines']:
