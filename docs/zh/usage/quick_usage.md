@@ -35,23 +35,24 @@ mineru -p <input_path> -o <output_path>
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
   >
   >- 健康检查接口：`GET /health`
-  >- 任务提交接口：`POST /tasks`
+  >- 异步任务提交接口：`POST /tasks`
+  >- 同步解析接口：`POST /file_parse`
   >- 任务查询接口：`GET /tasks/{task_id}`、`GET /tasks/{task_id}/result`
-  >- 兼容路由：`POST /file_parse`，行为与 `POST /tasks` 相同，都会立即返回 `task_id`
   >- API 输出目录由服务端固定控制，默认写入 `./output`
   >
-  >异步任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
+  >`POST /tasks` 会立即返回 `task_id`；`POST /file_parse` 会在内部提交到同一个任务管理器，等待任务完成后同步返回最终结果。
+  >任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
   >默认任务完成或失败后保留 24 小时，随后自动清理任务状态和输出目录；清理后访问任务状态或结果会返回 `404`。
   >可通过环境变量 `MINERU_API_TASK_RETENTION_SECONDS` 和 `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` 调整保留时长与清理轮询间隔。
   >
-  >任务提交示例：
+  >异步任务提交示例：
   >```bash
   >curl -X POST http://127.0.0.1:8000/tasks \
   >  -F "files=@demo/pdfs/demo1.pdf" \
   >  -F "return_md=true"
   >```
   >
-  >兼容路由示例：
+  >同步解析示例：
   >```bash
   >curl -X POST http://127.0.0.1:8000/file_parse \
   >  -F "files=@demo/pdfs/demo1.pdf" \
