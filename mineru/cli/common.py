@@ -41,12 +41,13 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 _pdf_rewrite_lock = threading.Lock()
 
-def read_fn(path):
+def read_fn(path, file_suffix: str | None = None):
     if not isinstance(path, Path):
         path = Path(path)
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
-        file_suffix = guess_suffix_by_bytes(file_bytes, path)
+        if file_suffix is None:
+            file_suffix = guess_suffix_by_bytes(file_bytes, path)
         if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
         elif file_suffix in pdf_suffixes + office_suffixes:

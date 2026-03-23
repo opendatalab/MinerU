@@ -5,6 +5,7 @@ import sys
 import click
 from pathlib import Path
 from loguru import logger
+from tqdm import tqdm
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
@@ -183,14 +184,14 @@ def main(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    def parse_doc(path_list: list[Path]):
+    def parse_doc(path_list: list[tuple[Path, str | None]]):
         try:
             file_name_list = []
             pdf_bytes_list = []
             lang_list = []
-            for path in path_list:
+            for path, known_suffix in tqdm(path_list, total=len(path_list), desc='Reading documents'):
                 file_name = str(Path(path).stem)
-                pdf_bytes = read_fn(path)
+                pdf_bytes = read_fn(path, file_suffix=known_suffix)
                 file_name_list.append(file_name)
                 pdf_bytes_list.append(pdf_bytes)
                 lang_list.append(lang)
@@ -213,12 +214,14 @@ def main(
 
     if os.path.isdir(input_path):
         doc_path_list = []
-        for doc_path in Path(input_path).glob('*'):
-            if guess_suffix_by_path(doc_path) in pdf_suffixes + image_suffixes + office_suffixes:
-                doc_path_list.append(doc_path)
+        doc_candidates = list(Path(input_path).glob('*'))
+        for doc_path in tqdm(doc_candidates, total=len(doc_candidates), desc='Collecting documents'):
+            file_suffix = guess_suffix_by_path(doc_path)
+            if file_suffix in pdf_suffixes + image_suffixes + office_suffixes:
+                doc_path_list.append((doc_path, file_suffix))
         parse_doc(doc_path_list)
     else:
-        parse_doc([Path(input_path)])
+        parse_doc([(Path(input_path), None)])
 
 if __name__ == '__main__':
     main()
