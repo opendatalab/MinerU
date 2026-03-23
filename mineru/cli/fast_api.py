@@ -54,12 +54,17 @@ TASK_PENDING = "pending"
 TASK_PROCESSING = "processing"
 TASK_COMPLETED = "completed"
 TASK_FAILED = "failed"
+TASK_TERMINAL_STATES = {TASK_COMPLETED, TASK_FAILED}
 SUPPORTED_UPLOAD_SUFFIXES = pdf_suffixes + image_suffixes + office_suffixes
 DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
 DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS = 5 * 60
 DEFAULT_OUTPUT_ROOT = "./output"
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
 DEFAULT_MAX_CONCURRENT_REQUESTS = 3
+FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
+FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
+FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
+FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
@@ -136,6 +141,10 @@ class AsyncParseTask:
                 request.url_for("get_async_task_result", task_id=self.task_id)
             ),
         }
+
+
+class TaskWaitAbortedError(RuntimeError):
+    """Raised when a synchronous file_parse request cannot keep waiting safely."""
 
 
 @asynccontextmanager
@@ -308,6 +317,10 @@ def get_parse_dir(output_dir: str, pdf_name: str, backend: str, parse_method: st
     if candidates:
         return candidates[0]
     raise ValueError(f"Unknown backend type: {backend}")
+
+
+def is_task_terminal(status: str) -> bool:
+    return status in TASK_TERMINAL_STATES
 
 
 def build_result_dict(
@@ -491,6 +504,61 @@ def build_result_response(
     )
 
 
+def build_task_submission_response(task: AsyncParseTask, request: Request) -> JSONResponse:
+    payload = task.to_status_payload(request)
+    payload["message"] = "Task submitted successfully"
+    return JSONResponse(status_code=202, content=payload)
+
+
+def build_sync_file_parse_response(
+    background_tasks: BackgroundTasks,
+    task: AsyncParseTask,
+    request: Request,
+) -> Response:
+    task_payload = task.to_status_payload(request)
+    if task.response_format_zip:
+        response = build_result_response(
+            background_tasks=background_tasks,
+            status_code=200,
+            output_dir=task.output_dir,
+            pdf_file_names=task.file_names,
+            backend=task.backend,
+            parse_method=task.parse_method,
+            return_md=task.return_md,
+            return_middle_json=task.return_middle_json,
+            return_model_output=task.return_model_output,
+            return_content_list=task.return_content_list,
+            return_images=task.return_images,
+            response_format_zip=task.response_format_zip,
+        )
+        response.headers[FILE_PARSE_TASK_ID_HEADER] = task.task_id
+        response.headers[FILE_PARSE_TASK_STATUS_HEADER] = task.status
+        response.headers[FILE_PARSE_TASK_STATUS_URL_HEADER] = task_payload["status_url"]
+        response.headers[FILE_PARSE_TASK_RESULT_URL_HEADER] = task_payload["result_url"]
+        return response
+
+    result_dict = build_result_dict(
+        output_dir=task.output_dir,
+        pdf_file_names=task.file_names,
+        backend=task.backend,
+        parse_method=task.parse_method,
+        return_md=task.return_md,
+        return_middle_json=task.return_middle_json,
+        return_model_output=task.return_model_output,
+        return_content_list=task.return_content_list,
+        return_images=task.return_images,
+    )
+    return JSONResponse(
+        status_code=200,
+        content={
+            **task_payload,
+            "backend": task.backend,
+            "version": __version__,
+            "results": result_dict,
+        },
+    )
+
+
 async def parse_request_form(
     files: list[UploadFile] = File(
         ..., description="Upload pdf or image files for parsing"
@@ -590,28 +658,34 @@ async def save_upload_files(upload_dir: str, files: list[UploadFile]) -> list[St
         original_name = upload.filename or f"upload-{uuid.uuid4()}"
         filename = Path(original_name).name
         destination = Path(upload_dir) / filename
-        with open(destination, "wb") as handle:
-            while True:
-                chunk = await upload.read(1 << 20)
-                if not chunk:
-                    break
-                handle.write(chunk)
+        try:
+            with open(destination, "wb") as handle:
+                while True:
+                    chunk = await upload.read(1 << 20)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
 
-        file_suffix = guess_suffix_by_path(destination)
-        if file_suffix not in SUPPORTED_UPLOAD_SUFFIXES:
+            file_suffix = guess_suffix_by_path(destination)
+            if file_suffix not in SUPPORTED_UPLOAD_SUFFIXES:
+                cleanup_file(str(destination))
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type: {file_suffix}",
+                )
+
+            uploads.append(
+                StoredUpload(
+                    original_name=original_name,
+                    stem=Path(filename).stem,
+                    path=str(destination),
+                )
+            )
+        except Exception:
             cleanup_file(str(destination))
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type: {file_suffix}",
-            )
-
-        uploads.append(
-            StoredUpload(
-                original_name=original_name,
-                stem=Path(filename).stem,
-                path=str(destination),
-            )
-        )
+            raise
+        finally:
+            await upload.close()
     return uploads
 
 
@@ -695,10 +769,9 @@ def create_task_output_dir(task_id: str) -> str:
     return str(task_output_dir)
 
 
-async def submit_async_parse_task_internal(
-    http_request: Request,
+async def create_async_parse_task(
     request_options: ParseRequestOptions,
-) -> JSONResponse:
+) -> AsyncParseTask:
     task_id = str(uuid.uuid4())
     task_output_dir = create_task_output_dir(task_id)
     uploads_dir = os.path.join(task_output_dir, "uploads")
@@ -706,6 +779,7 @@ async def submit_async_parse_task_internal(
 
     try:
         uploads = await save_upload_files(uploads_dir, request_options.files)
+        request_options.files.clear()
         file_names = [upload.stem for upload in uploads]
         task = AsyncParseTask(
             task_id=task_id,
@@ -730,10 +804,7 @@ async def submit_async_parse_task_internal(
             uploads=[upload.path for upload in uploads],
         )
         await task_manager.submit(task)
-
-        payload = task.to_status_payload(http_request)
-        payload["message"] = "Task submitted successfully"
-        return JSONResponse(status_code=202, content=payload)
+        return task
     except HTTPException:
         cleanup_file(task_output_dir)
         raise
@@ -746,6 +817,7 @@ class AsyncTaskManager:
     def __init__(self, fastapi_app: FastAPI):
         self.app = fastapi_app
         self.tasks: dict[str, AsyncParseTask] = {}
+        self.task_events: dict[str, asyncio.Event] = {}
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.dispatcher_task: Optional[asyncio.Task[Any]] = None
         self.cleanup_task: Optional[asyncio.Task[Any]] = None
@@ -754,10 +826,12 @@ class AsyncTaskManager:
         self.is_shutting_down = False
         self.task_retention_seconds = get_task_retention_seconds()
         self.task_cleanup_interval_seconds = get_task_cleanup_interval_seconds()
+        self.manager_wakeup = asyncio.Event()
 
     async def start(self) -> None:
         self.is_shutting_down = False
         self.last_worker_error = None
+        self.manager_wakeup = asyncio.Event()
         if self.dispatcher_task is None or self.dispatcher_task.done():
             self.dispatcher_task = asyncio.create_task(
                 self._dispatcher_loop(), name="mineru-fastapi-task-dispatcher"
@@ -772,6 +846,7 @@ class AsyncTaskManager:
 
     async def shutdown(self) -> None:
         self.is_shutting_down = True
+        self._wake_waiters()
         if self.dispatcher_task is not None:
             self.dispatcher_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -792,10 +867,53 @@ class AsyncTaskManager:
 
     async def submit(self, task: AsyncParseTask) -> None:
         self.tasks[task.task_id] = task
+        self.task_events[task.task_id] = asyncio.Event()
         await self.queue.put(task.task_id)
 
     def get(self, task_id: str) -> Optional[AsyncParseTask]:
         return self.tasks.get(task_id)
+
+    async def wait_for_terminal_state(self, task_id: str) -> AsyncParseTask:
+        task = self.tasks.get(task_id)
+        if task is None:
+            raise TaskWaitAbortedError("Task not found")
+        if is_task_terminal(task.status):
+            return task
+
+        task_event = self.task_events.get(task_id)
+        if task_event is None:
+            raise TaskWaitAbortedError("Task wait handle is unavailable")
+
+        event_wait_task = asyncio.create_task(task_event.wait())
+        manager_wait_task = asyncio.create_task(self.manager_wakeup.wait())
+        done: set[asyncio.Task[Any]] = set()
+        pending: set[asyncio.Task[Any]] = set()
+        try:
+            done, pending = await asyncio.wait(
+                {event_wait_task, manager_wait_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for waiter in pending:
+                waiter.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            for waiter in done:
+                with suppress(asyncio.CancelledError):
+                    waiter.result()
+
+        task = self.tasks.get(task_id)
+        if task is None:
+            if self.is_shutting_down:
+                raise TaskWaitAbortedError("Task manager is shutting down")
+            raise TaskWaitAbortedError("Task was removed before completion")
+        if is_task_terminal(task.status):
+            return task
+        if self.is_shutting_down:
+            raise TaskWaitAbortedError("Task manager is shutting down")
+        raise TaskWaitAbortedError(
+            self.last_worker_error or "Task manager became unavailable while waiting"
+        )
 
     def get_stats(self) -> dict[str, int]:
         stats = {
@@ -825,6 +943,16 @@ class AsyncTaskManager:
             return False
         return self.last_worker_error is None
 
+    def _wake_waiters(self) -> None:
+        self.manager_wakeup.set()
+        for task_event in self.task_events.values():
+            task_event.set()
+
+    def _signal_task_event(self, task_id: str) -> None:
+        task_event = self.task_events.get(task_id)
+        if task_event is not None:
+            task_event.set()
+
     async def _dispatcher_loop(self) -> None:
         try:
             while True:
@@ -840,6 +968,7 @@ class AsyncTaskManager:
             raise
         except Exception as exc:
             self.last_worker_error = str(exc)
+            self._wake_waiters()
             logger.exception("Async task dispatcher crashed")
             raise
 
@@ -881,6 +1010,7 @@ class AsyncTaskManager:
             task.status = TASK_FAILED
             task.error = str(exc)
             task.completed_at = utc_now_iso()
+            self._signal_task_event(task_id)
             logger.exception(f"Async task failed: {task_id}")
 
     async def _run_task(self, task: AsyncParseTask) -> None:
@@ -905,6 +1035,7 @@ class AsyncTaskManager:
         )
         task.status = TASK_COMPLETED
         task.completed_at = utc_now_iso()
+        self._signal_task_event(task.task_id)
 
     def cleanup_expired_tasks(self) -> int:
         if self.task_retention_seconds <= 0:
@@ -921,6 +1052,9 @@ class AsyncTaskManager:
             task = self.tasks.pop(task_id, None)
             if task is None:
                 continue
+            task_event = self.task_events.pop(task_id, None)
+            if task_event is not None:
+                task_event.set()
             cleanup_file(task.output_dir)
             logger.info(f"Cleaned expired async task: {task_id}")
         return len(expired_task_ids)
@@ -947,21 +1081,67 @@ def get_task_manager() -> AsyncTaskManager:
     return task_manager
 
 
-@app.post(path="/file_parse", status_code=202, include_in_schema=False)
+@app.post(
+    path="/file_parse",
+    status_code=200,
+    summary="Synchronously parse uploaded files",
+    description=(
+        "Submit a parsing task to the shared async task manager, wait for it to "
+        "finish, and return the final parsing result in the same response."
+    ),
+)
 async def parse_pdf(
     http_request: Request,
+    background_tasks: BackgroundTasks,
     request_options: ParseRequestOptions = Depends(parse_request_form),
 ):
-    # Compatibility alias for clients still posting to /file_parse.
-    return await submit_async_parse_task_internal(http_request, request_options)
+    task = await create_async_parse_task(request_options)
+    request_options = None
+    task_manager = get_task_manager()
+
+    try:
+        task = await task_manager.wait_for_terminal_state(task.task_id)
+    except TaskWaitAbortedError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={
+                **task.to_status_payload(http_request),
+                "message": "Task manager became unavailable while waiting for result",
+                "error": str(exc),
+            },
+        )
+
+    if task.status == TASK_FAILED:
+        return JSONResponse(
+            status_code=409,
+            content={
+                **task.to_status_payload(http_request),
+                "message": "Task execution failed",
+            },
+        )
+
+    return build_sync_file_parse_response(
+        background_tasks=background_tasks,
+        task=task,
+        request=http_request,
+    )
 
 
-@app.post(path="/tasks", status_code=202)
+@app.post(
+    path="/tasks",
+    status_code=202,
+    summary="Submit an asynchronous parse task",
+    description=(
+        "Submit files for parsing and return immediately with a task id that can be "
+        "checked via the task status and result endpoints."
+    ),
+)
 async def submit_parse_task(
     http_request: Request,
     request_options: ParseRequestOptions = Depends(parse_request_form),
 ):
-    return await submit_async_parse_task_internal(http_request, request_options)
+    task = await create_async_parse_task(request_options)
+    return build_task_submission_response(task, http_request)
 
 
 @app.get(path="/tasks/{task_id}", name="get_async_task_status")
