@@ -65,6 +65,7 @@ class ContentTypeV2:
     ALGORITHM = "algorithm"
     EQUATION_INTERLINE = 'equation_interline'
     IMAGE = 'image'
+    SEAL = 'seal'
     TABLE = 'table'
     CHART = 'chart'
     TABLE_SIMPLE = 'simple_table'
