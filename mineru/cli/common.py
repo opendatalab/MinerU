@@ -172,17 +172,18 @@ def _process_output(
         )
 
     if f_dump_content_list:
+
         content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
-        if process_mode != "pipeline":
-            content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
-            md_writer.write_string(
-                f"{pdf_file_name}_content_list_v2.json",
-                json.dumps(content_list_v2, ensure_ascii=False, indent=4),
-            )
+
+        content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}_content_list_v2.json",
+            json.dumps(content_list_v2, ensure_ascii=False, indent=4),
+        )
 
 
     if f_dump_middle_json:
