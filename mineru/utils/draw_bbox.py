@@ -314,7 +314,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
             page_inline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.INTERLINE_EQUATION:
             page_interline_equation_list.append(span['bbox'])
-        elif span['type'] == ContentType.IMAGE:
+        elif span['type'] in [ContentType.IMAGE, ContentType.CHART, ContentType.SEAL]:
             page_image_list.append(span['bbox'])
         elif span['type'] == ContentType.TABLE:
             page_table_list.append(span['bbox'])
@@ -330,10 +330,9 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
 
         # 构造dropped_list
         for block in page['discarded_blocks']:
-            if block['type'] == BlockType.DISCARDED:
-                for line in block['lines']:
-                    for span in line['spans']:
-                        page_dropped_list.append(span['bbox'])
+            for line in block['lines']:
+                for span in line['spans']:
+                    page_dropped_list.append(span['bbox'])
         dropped_list.append(page_dropped_list)
         # 构造其余useful_list
         # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
@@ -344,11 +343,14 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
                 BlockType.INTERLINE_EQUATION,
                 BlockType.LIST,
                 BlockType.INDEX,
+                BlockType.REF_TEXT,
+                BlockType.ABSTRACT,
+                BlockType.SEAL,
             ]:
                 for line in block['lines']:
                     for span in line['spans']:
                         get_span_info(span)
-            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE]:
+            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE]:
                 for sub_block in block['blocks']:
                     for line in sub_block['lines']:
                         for span in line['spans']:

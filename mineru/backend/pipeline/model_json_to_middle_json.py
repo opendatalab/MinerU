@@ -300,7 +300,7 @@ def _apply_post_ocr(pdf_info_list, lang=None):
             span['score'] = 0.0
 
 
-def _apply_default_title_levels(pdf_info_list):
+def _post_block_process(pdf_info_list):
     for page_info in pdf_info_list:
         for block_key in ["preproc_blocks", "para_blocks"]:
             for block in page_info.get(block_key, []):
@@ -311,6 +311,8 @@ def _apply_default_title_levels(pdf_info_list):
                 elif block_type == BlockType.PARAGRAPH_TITLE:
                     block["type"] = BlockType.TITLE
                     block["level"] = 2
+                elif block_type == BlockType.VERTICAL_TEXT:
+                    block["type"] = BlockType.TEXT
 
 
 def finalize_middle_json(pdf_info_list, lang=None, ocr_enable=False):
@@ -328,7 +330,7 @@ def finalize_middle_json(pdf_info_list, lang=None, ocr_enable=False):
             llm_aided_title(pdf_info_list, title_aided_config)
             logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
-    _apply_default_title_levels(pdf_info_list)
+    _post_block_process(pdf_info_list)
 
     if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(pdf_info_list) >= 10:
         clean_memory(get_device())

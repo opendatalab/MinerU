@@ -56,7 +56,6 @@ class ContentType:
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
-    CODE = 'code'
     HYPERLINK = 'hyperlink'
     SEAL = 'seal'
 
