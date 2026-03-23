@@ -356,24 +356,62 @@ def get_mfr_min_dynamic_batch_size(requested_batch_size: int) -> int:
     return max(1, requested_batch_size // 8)
 
 
+def finalize_mfr_batch_groups(
+    batch_groups: list[list[int]],
+    total_count: int,
+    requested_batch_size: int,
+) -> list[list[int]]:
+    if not batch_groups:
+        return []
+
+    if len(batch_groups) == 1:
+        if total_count <= 1 or requested_batch_size <= total_count:
+            return batch_groups
+
+        first_group_size = largest_power_of_two_leq(total_count - 1)
+        if first_group_size < 1:
+            return batch_groups
+
+        source_group = batch_groups[0]
+        first_group = source_group[:first_group_size]
+        second_group = source_group[first_group_size:]
+        if not first_group or not second_group:
+            return batch_groups
+        return [first_group, second_group]
+
+    while (
+        len(batch_groups) >= 3
+        and len(batch_groups[-1]) < len(batch_groups[-2])
+    ):
+        tail_group = batch_groups.pop()
+        batch_groups[-1].extend(tail_group)
+
+    return batch_groups
+
+
 def build_mfr_batch_groups(sorted_areas: list[int], requested_batch_size: int) -> list[list[int]]:
     if not sorted_areas:
         return []
 
+    total_count = len(sorted_areas)
     effective_batch_size = get_mfr_effective_batch_size(
-        len(sorted_areas),
+        total_count,
         requested_batch_size,
     )
     if effective_batch_size < 1:
         return []
 
     min_dynamic_batch_size = get_mfr_min_dynamic_batch_size(requested_batch_size)
-    total_count = len(sorted_areas)
+    batch_groups = []
     if total_count < min_dynamic_batch_size:
-        return [list(range(total_count))]
+        batch_groups.append(list(range(total_count)))
+        return finalize_mfr_batch_groups(
+            batch_groups,
+            total_count,
+            requested_batch_size,
+        )
 
     base_mean_area = sum(sorted_areas[:effective_batch_size]) / effective_batch_size
-    batch_groups = []
     cursor = 0
 
     while cursor < total_count:
@@ -402,11 +440,8 @@ def build_mfr_batch_groups(sorted_areas: list[int], requested_batch_size: int) -
         batch_groups.append(list(range(cursor, cursor + candidate_batch_size)))
         cursor += candidate_batch_size
 
-    if (
-        len(batch_groups) >= 2
-        and len(batch_groups[-1]) < min_dynamic_batch_size
-    ):
-        tail_group = batch_groups.pop()
-        batch_groups[-1].extend(tail_group)
-
-    return batch_groups
+    return finalize_mfr_batch_groups(
+        batch_groups,
+        total_count,
+        requested_batch_size,
+    )
