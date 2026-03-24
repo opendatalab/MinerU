@@ -27,7 +27,7 @@ from ...utils.pdf_image_tools import get_crop_np_img
 
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
-OCR_DET_BASE_BATCH_SIZE = 16
+OCR_DET_BASE_BATCH_SIZE = 8
 TABLE_ORI_CLS_BATCH_SIZE = 16
 TABLE_Wired_Wireless_CLS_BATCH_SIZE = 16
 
