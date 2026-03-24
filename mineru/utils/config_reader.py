@@ -126,7 +126,7 @@ def get_ocr_det_mask_inline_formula_enable(enable):
 
 
 def is_low_memory_enabled() -> bool:
-    return os.getenv('MINERU_LOW_MEMORY', 'false').lower() in ('1', 'true', 'yes')
+    return os.getenv('MINERU_LOW_MEMORY', 'true').lower() in ('1', 'true', 'yes')
 
 
 def get_low_memory_window_size(default: int = 64) -> int:
