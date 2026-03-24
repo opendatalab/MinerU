@@ -60,6 +60,8 @@ def __is_list_or_index_block(block):
     if block['type'] == BlockType.VERTICAL_TEXT:
         return BlockType.VERTICAL_TEXT
     if block['type'] == BlockType.INDEX:
+        for line in block['lines']:
+            line[ListLineTag.IS_LIST_START_LINE] = True
         return BlockType.INDEX
     # 一个block如果是list block 应该同时满足以下特征
     # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.block内有多个line 右侧不顶格（狗牙状）

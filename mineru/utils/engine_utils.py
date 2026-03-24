@@ -1,8 +1,13 @@
 #  Copyright (c) Opendatalab. All rights reserved.
+import os
+
 from loguru import logger
 
 from mineru.utils.check_sys_env import is_mac_os_version_supported, is_windows_environment, is_mac_environment, \
     is_linux_environment
+
+DISABLE_VLM_ACCELERATION_ENV = "MINERU_DISABLE_VLM_ACCELERATION"
+_TRUE_VALUES = ("1", "true", "yes", "on")
 
 
 def get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
@@ -16,7 +21,13 @@ def get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
     Returns:
         最终选择的引擎名称
     """
-    if inference_engine == 'auto':
+    if _is_vlm_acceleration_disabled():
+        if inference_engine != 'transformers':
+            logger.info(
+                f"{DISABLE_VLM_ACCELERATION_ENV} is enabled, forcing VLM inference engine to transformers."
+            )
+        inference_engine = 'transformers'
+    elif inference_engine == 'auto':
         # 根据操作系统自动选择引擎
         if is_windows_environment():
             inference_engine = _select_windows_engine()
@@ -31,6 +42,11 @@ def get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
     formatted_engine = _format_engine_name(inference_engine)
     logger.info(f"Using {formatted_engine} as the inference engine for VLM.")
     return formatted_engine
+
+
+def _is_vlm_acceleration_disabled() -> bool:
+    value = os.getenv(DISABLE_VLM_ACCELERATION_ENV, "0")
+    return value.strip().lower() in _TRUE_VALUES
 
 
 def _select_windows_engine() -> str:
