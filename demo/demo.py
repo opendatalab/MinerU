@@ -7,7 +7,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2, prepare_env, read_fn, pptx_suffixes, \
+from mineru.cli.common import convert_pdf_bytes_to_bytes, prepare_env, read_fn, pptx_suffixes, \
     xlsx_suffixes, pdf_suffixes, image_suffixes, office_suffixes, docx_suffixes
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
@@ -72,7 +72,7 @@ def do_parse(
 
     if backend == "pipeline":
         for idx, pdf_bytes in enumerate(pdf_bytes_list):
-            new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+            new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
             pdf_bytes_list[idx] = new_pdf_bytes
 
         image_writer_list = []
@@ -149,7 +149,7 @@ def do_parse(
             parse_method = "vlm"
             for idx, pdf_bytes in enumerate(pdf_bytes_list):
                 pdf_file_name = pdf_file_names[idx]
-                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+                pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
                 local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
                 if is_low_memory_enabled():
@@ -174,7 +174,7 @@ def do_parse(
             parse_method = f"hybrid_{parse_method}"
             for idx, pdf_bytes in enumerate(pdf_bytes_list):
                 pdf_file_name = pdf_file_names[idx]
-                pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+                pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
                 local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
                 if is_low_memory_enabled():

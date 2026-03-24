@@ -7,7 +7,7 @@ from loguru import logger
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from mineru.cli.common import (
-    convert_pdf_bytes_to_bytes_by_pypdfium2,
+    convert_pdf_bytes_to_bytes,
     prepare_env,
     read_fn,
 )
@@ -48,7 +48,7 @@ def test_pipeline_with_two_config():
         pdf_bytes_list.append(pdf_bytes)
         p_lang_list.append("en")
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
+        new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes)
         pdf_bytes_list[idx] = new_pdf_bytes
 
     # 获取 pipline 分析结果, 分别测试 txt 和 ocr 两种解析方法的结果
@@ -122,7 +122,7 @@ def test_pipeline_with_two_config():
 #
 #     for idx, pdf_bytes in enumerate(pdf_bytes_list):
 #         pdf_file_name = pdf_file_names[idx]
-#         pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
+#         pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes)
 #         local_image_dir, local_md_dir = prepare_env(
 #             output_dir, pdf_file_name, parse_method="vlm"
 #         )
