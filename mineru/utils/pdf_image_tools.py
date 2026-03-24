@@ -100,18 +100,18 @@ def load_images_from_pdf(
         actual_threads = min(os.cpu_count() or 1, threads, total_pages)
 
         # 根据实际进程数分组页面范围
-        pages_per_thread = max(1, total_pages // actual_threads)
+        quotient = total_pages // actual_threads
+        remainder = total_pages % actual_threads
+
         page_ranges = []
+        current_start_page_id = start_page_id
 
         for i in range(actual_threads):
-            range_start = start_page_id + i * pages_per_thread
-            if i == actual_threads - 1:
-                # 最后一个进程处理剩余所有页面
-                range_end = end_page_id
-            else:
-                range_end = start_page_id + (i + 1) * pages_per_thread - 1
-
+            pages_to_allocate = quotient + (1 if i < remainder else 0)
+            range_start = current_start_page_id
+            range_end = current_start_page_id + pages_to_allocate - 1
             page_ranges.append((range_start, range_end))
+            current_start_page_id = range_end + 1
 
         logger.debug(f"PDF to images using {actual_threads} processes, page ranges: {page_ranges}")
 
