@@ -353,7 +353,7 @@ def get_mfr_effective_batch_size(num_items: int, requested_batch_size: int) -> i
 
 
 def get_mfr_min_dynamic_batch_size(requested_batch_size: int) -> int:
-    return max(1, requested_batch_size // 4)
+    return max(16, requested_batch_size // 4)
 
 
 def finalize_mfr_batch_groups(
