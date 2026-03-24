@@ -182,14 +182,14 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
       <th>显存最低要求</th>
-      <td style="text-align:center;">6GB</td>
-      <td style="text-align:center;">10GB</td>
+      <td style="text-align:center;">4GB</td>
       <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">3GB</td>
+      <td style="text-align:center;">8GB</td>
+      <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
       <th>内存要求</th>
-      <td colspan="3" style="text-align:center;">最低16GB以上,推荐32GB以上</td>
+      <td colspan="3" style="text-align:center;">最低8GB以上,推荐16GB以上</td>
       <td colspan="2" style="text-align:center;">最低8GB</td>
     </tr>
     <tr>

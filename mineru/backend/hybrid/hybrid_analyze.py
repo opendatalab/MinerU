@@ -37,7 +37,7 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
 MFR_BASE_BATCH_SIZE = 16
-OCR_DET_BASE_BATCH_SIZE = 16
+OCR_DET_BASE_BATCH_SIZE = 8
 
 not_extract_list = [item.value for item in NotExtractType]
 
@@ -468,9 +468,9 @@ def get_batch_ratio(device):
     单个client端显存大小 | MINERU_HYBRID_BATCH_RATIO
     ------------------|------------------------
     <= 6   GB         | 8
-    <= 4.5 GB         | 4
-    <= 3   GB         | 2
-    <= 2.5 GB         | 1
+    <= 4   GB         | 4
+    <= 2.5 GB         | 2
+    <= 2   GB         | 1
     例如：
     export MINERU_HYBRID_BATCH_RATIO=4
     """
