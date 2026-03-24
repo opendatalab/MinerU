@@ -260,7 +260,7 @@ def __is_list_or_index_block(block):
 
 
 def __merge_2_text_blocks(block1, block2):
-    if len(block1['lines']) > 0:
+    if len(block1['lines']) > 0 and len(block2['lines']) > 0:
         first_line = block1['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block1_weight = block1['bbox'][2] - block1['bbox'][0]
