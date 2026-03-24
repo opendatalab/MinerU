@@ -83,10 +83,12 @@ def set_default_gpu_memory_utilization() -> float:
     from vllm import __version__ as vllm_version
     device = get_device()
     gpu_memory = get_vram(device)
+    default_gpu_memory_utilization = 0.5
     if version.parse(vllm_version) >= version.parse("0.11.0") and gpu_memory <= 8:
-        return 0.7
-    else:
-        return 0.5
+        default_gpu_memory_utilization = 0.7
+
+    logger.debug(f"vllm_version: {vllm_version}, gpu_memory: {gpu_memory} GB, default_gpu_memory_utilization: {default_gpu_memory_utilization}")
+    return default_gpu_memory_utilization
 
 
 def set_default_batch_size() -> int:
