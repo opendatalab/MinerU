@@ -8,8 +8,6 @@ import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
 from PIL import Image, ImageOps
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfgen import canvas
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.check_sys_env import is_windows_environment
@@ -333,35 +331,27 @@ def get_crop_np_img(bbox: tuple, input_img, scale=2):
 
 
 def images_bytes_to_pdf_bytes(image_bytes):
+    # 内存缓冲区
     pdf_buffer = BytesIO()
 
-    with Image.open(BytesIO(image_bytes)) as source_image:
-        image = ImageOps.exif_transpose(source_image)
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        else:
-            image = image.copy()
+    # 载入并转换所有图像为 RGB 模式
+    image = Image.open(BytesIO(image_bytes))
+    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
+    image = ImageOps.exif_transpose(image) or image
+    # 只在必要时转换
+    if image.mode != "RGB":
+        image = image.convert("RGB")
 
-    # Preserve the original raster content when the CLI later renders the
-    # wrapper PDF back at DEFAULT_PDF_IMAGE_DPI. PIL's PDF writer introduces
-    # enough loss for layout detection to miss text blocks on some image inputs.
-    page_width = image.width * 72.0 / DEFAULT_PDF_IMAGE_DPI
-    page_height = image.height * 72.0 / DEFAULT_PDF_IMAGE_DPI
-
-    pdf_canvas = canvas.Canvas(pdf_buffer, pagesize=(page_width, page_height))
-    pdf_canvas.drawImage(
-        ImageReader(image),
-        0,
-        0,
-        width=page_width,
-        height=page_height,
-        preserveAspectRatio=False,
-        mask="auto",
+    # 第一张图保存为 PDF，其余追加
+    image.save(
+        pdf_buffer,
+        format="PDF",
+        resolution=DEFAULT_PDF_IMAGE_DPI,
+        quality=95,
+        subsampling=0,
     )
-    pdf_canvas.showPage()
-    pdf_canvas.save()
 
+    # 获取 PDF bytes 并重置指针（可选）
     pdf_bytes = pdf_buffer.getvalue()
     pdf_buffer.close()
-    image.close()
     return pdf_bytes
