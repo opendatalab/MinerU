@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -44,6 +45,8 @@ TASKS_ENDPOINT = "/tasks"
 TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
 TASK_RESULT_TIMEOUT_SECONDS = 600
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = 30
+LOCAL_API_CLEANUP_RETRIES = 8
+LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
 
 
 @dataclass(frozen=True)
@@ -154,7 +157,28 @@ class LocalAPIServer:
                     pass
                 self._atexit_registered = False
             if self._cleanup_enabled:
+                self._cleanup_temp_dir()
+
+    def _cleanup_temp_dir(self) -> None:
+        last_error: Exception | None = None
+        for attempt in range(LOCAL_API_CLEANUP_RETRIES):
+            try:
                 self.temp_dir.cleanup()
+                return
+            except FileNotFoundError:
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < LOCAL_API_CLEANUP_RETRIES:
+                    time.sleep(LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS)
+
+        if last_error is not None:
+            logger.warning(
+                "Failed to clean up temporary MinerU API directory {}: {}. "
+                "You can remove it manually after processes release any open handles.",
+                self.temp_root,
+                last_error,
+            )
 
     def read_log_tail(self, max_chars: int = 4000) -> str:
         if not self.log_path.exists():
