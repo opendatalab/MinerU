@@ -34,7 +34,12 @@ from mineru.utils.pdfium_guard import (
 )
 
 from ..version import __version__
-from .common import image_suffixes, office_suffixes, pdf_suffixes
+from .common import (
+    image_suffixes,
+    office_suffixes,
+    pdf_suffixes,
+    uniquify_task_stems,
+)
 from .output_paths import resolve_parse_dir
 from .visualization import (
     VisualizationJob,
@@ -532,20 +537,28 @@ def collect_input_documents(
     if not collected:
         raise click.ClickException(f"No supported documents found under {input_path}")
 
-    stem_to_paths: dict[str, list[Path]] = {}
-    for document in collected:
-        stem_to_paths.setdefault(document.stem, []).append(document.path)
-    duplicate_stems = {
-        stem: paths for stem, paths in stem_to_paths.items() if len(paths) > 1
-    }
-    if duplicate_stems:
-        details = "; ".join(
-            f"{stem}: {', '.join(str(path) for path in paths)}"
-            for stem, paths in sorted(duplicate_stems.items())
+    normalized_stems, renamed_stems = uniquify_task_stems(
+        [document.stem for document in collected]
+    )
+    if renamed_stems:
+        rename_details = ", ".join(
+            f"{document.path.name} -> {effective_stem}"
+            for document, effective_stem in zip(collected, normalized_stems)
+            if document.stem != effective_stem
         )
-        raise click.ClickException(
-            f"Duplicate output stems detected. Rename inputs to avoid collisions: {details}"
+        logger.warning(
+            f"Normalized duplicate document stems within this run: {rename_details}"
         )
+        return [
+            InputDocument(
+                path=document.path,
+                suffix=document.suffix,
+                stem=effective_stem,
+                effective_pages=document.effective_pages,
+                order=document.order,
+            )
+            for document, effective_stem in zip(collected, normalized_stems)
+        ]
 
     return collected
 
