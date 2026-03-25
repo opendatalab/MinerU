@@ -1,6 +1,7 @@
 import threading
+from io import BytesIO
 from contextlib import contextmanager
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Sequence, TypeVar
 
 
 _pdfium_lock = threading.RLock()
@@ -33,3 +34,44 @@ def close_pdfium_document(pdf_doc) -> None:
         return
     with pdfium_guard():
         pdf_doc.close()
+
+
+def rewrite_pdf_bytes_with_pdfium(
+    src_pdf_bytes: bytes,
+    page_indices: Sequence[int] | None = None,
+) -> bytes:
+    import pypdfium2 as pdfium
+
+    pdf_doc = None
+    output_doc = None
+    try:
+        with pdfium_guard():
+            pdf_doc = pdfium.PdfDocument(src_pdf_bytes)
+            total_page_count = len(pdf_doc)
+            if total_page_count == 0:
+                return b""
+
+            if page_indices is None:
+                normalized_page_indices = list(range(total_page_count))
+            else:
+                normalized_page_indices = sorted(
+                    {
+                        page_index
+                        for page_index in page_indices
+                        if 0 <= page_index < total_page_count
+                    }
+                )
+                if not normalized_page_indices:
+                    return b""
+
+            output_doc = pdfium.PdfDocument.new()
+            output_doc.import_pages(pdf_doc, normalized_page_indices)
+
+            output_buffer = BytesIO()
+            output_doc.save(output_buffer)
+            return output_buffer.getvalue()
+    finally:
+        if output_doc is not None:
+            close_pdfium_document(output_doc)
+        if pdf_doc is not None:
+            close_pdfium_document(pdf_doc)

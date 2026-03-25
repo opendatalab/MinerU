@@ -176,9 +176,26 @@ async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True
     if is_office:
         new_pdf_path = None
     else:
-        new_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
+        new_pdf_path = resolve_preview_pdf_path(local_md_dir, file_name)
 
     return md_content, txt_content, archive_zip_path, new_pdf_path
+
+
+def resolve_preview_pdf_path(local_md_dir, file_name):
+    layout_pdf_path = os.path.join(local_md_dir, file_name + '_layout.pdf')
+    if os.path.exists(layout_pdf_path):
+        return layout_pdf_path
+
+    origin_pdf_path = os.path.join(local_md_dir, file_name + '_origin.pdf')
+    if os.path.exists(origin_pdf_path):
+        logger.warning(
+            f"Layout preview PDF not found for {file_name}, "
+            f"falling back to origin PDF: {origin_pdf_path}"
+        )
+        return origin_pdf_path
+
+    logger.warning(f"No preview PDF found for {file_name} under {local_md_dir}")
+    return None
 
 
 latex_delimiters_type_a = [
