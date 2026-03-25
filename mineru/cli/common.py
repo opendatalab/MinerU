@@ -1,12 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import io
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from loguru import logger
-from pypdf import PdfReader, PdfWriter
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
@@ -19,7 +17,7 @@ from mineru.backend.office.office_middle_json_mkcontent import union_make as off
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -61,29 +59,20 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
 
 def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
     try:
-        pdf_stream = io.BytesIO(pdf_bytes)
-        pdf = PdfReader(pdf_stream, strict=False)
-        page_count = len(pdf.pages)
-        end_page_id = get_end_page_id(end_page_id, page_count)
-
-        # Avoid rewriting when the caller requests the whole document.
-        if start_page_id <= 0 and end_page_id >= page_count - 1:
-            return pdf_bytes
-
-        output_pdf = PdfWriter()
-        for page_index in range(start_page_id, end_page_id + 1):
-            try:
-                output_pdf.add_page(pdf.pages[page_index])
-            except Exception as page_error:
-                logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
-                continue
-
-        output_buffer = io.BytesIO()
-        output_pdf.write(output_buffer)
-        return output_buffer.getvalue()
-    except Exception as e:
-        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
-        return pdf_bytes
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+        )
+        if rebuilt_pdf_bytes:
+            return rebuilt_pdf_bytes
+        logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
+    except Exception as fallback_error:
+        logger.warning(
+            f"Error in converting PDF bytes with pdfium: {fallback_error}, "
+            "using original PDF bytes."
+        )
+    return pdf_bytes
 
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
@@ -125,10 +114,16 @@ def _process_output(
         raise Exception(f"Unknown process_mode: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+        try:
+            draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+        except Exception as exc:
+            logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
 
     if f_draw_span_bbox:
-        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+        try:
+            draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+        except Exception as exc:
+            logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
         if process_mode in ["pipeline", "vlm"]:
