@@ -1,5 +1,5 @@
 import asyncio
-import glob
+import mimetypes
 import os
 import re
 import shutil
@@ -282,6 +282,25 @@ def encode_image(image_path: str) -> str:
         return b64encode(f.read()).decode()
 
 
+def get_images_dir_image_paths(images_dir: str) -> list[str]:
+    """Return all supported image files directly under images_dir."""
+    if not os.path.isdir(images_dir):
+        return []
+
+    return sorted(
+        str(path)
+        for path in Path(images_dir).iterdir()
+        if path.is_file() and path.suffix.lstrip(".").lower() in image_suffixes
+    )
+
+
+def get_image_mime_type(image_path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type:
+        return mime_type
+    return "image/jpeg"
+
+
 def get_infer_result(
     file_suffix_identifier: str, pdf_name: str, parse_dir: str
 ) -> Optional[str]:
@@ -360,12 +379,11 @@ def build_result_dict(
             )
         if return_images:
             images_dir = os.path.join(parse_dir, "images")
-            safe_pattern = os.path.join(glob.escape(images_dir), "*.jpg")
-            image_paths = glob.glob(safe_pattern)
+            image_paths = get_images_dir_image_paths(images_dir)
             data["images"] = {
                 os.path.basename(
                     image_path
-                ): f"data:image/jpeg;base64,{encode_image(image_path)}"
+                ): f"data:{get_image_mime_type(image_path)};base64,{encode_image(image_path)}"
                 for image_path in image_paths
             }
     return result_dict
@@ -438,7 +456,7 @@ def create_result_zip(
 
             if return_images:
                 images_dir = os.path.join(parse_dir, "images")
-                image_paths = glob.glob(os.path.join(glob.escape(images_dir), "*.jpg"))
+                image_paths = get_images_dir_image_paths(images_dir)
                 for image_path in image_paths:
                     zf.write(
                         image_path,

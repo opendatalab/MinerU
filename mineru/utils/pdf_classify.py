@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import re
-import threading
 from io import BytesIO
 
 import numpy as np
@@ -16,6 +15,11 @@ from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
+from mineru.utils.pdfium_guard import (
+    close_pdfium_document,
+    open_pdfium_document,
+    pdfium_guard,
+)
 
 PDF_CLASSIFY_STRATEGY_ENV = "MINERU_PDF_CLASSIFY_STRATEGY"
 PDF_CLASSIFY_STRATEGY_HYBRID = "hybrid"
@@ -32,9 +36,6 @@ TEXT_QUALITY_GOOD_THRESHOLD = 0.005
 _ALLOWED_CONTROL_CODES = {9, 10, 13}
 _PRIVATE_USE_AREA_START = 0xE000
 _PRIVATE_USE_AREA_END = 0xF8FF
-
-_pdf_sample_extract_lock = threading.Lock()
-
 
 def classify(pdf_bytes):
     """
@@ -79,48 +80,48 @@ def classify_hybrid(pdf_bytes):
     should_run_pdfminer_fallback = False
 
     try:
-        pdf = pdfium.PdfDocument(pdf_bytes)
-        page_count = len(pdf)
-        if page_count == 0:
-            return "ocr"
-
-        page_indices = get_sample_page_indices(page_count, MAX_SAMPLE_PAGES)
-        if not page_indices:
-            return "ocr"
-
-        if (
-            get_avg_cleaned_chars_per_page_pdfium(pdf, page_indices)
-            < CHARS_THRESHOLD
-        ):
-            return "ocr"
-
-        if detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
-            return "ocr"
-
-        text_quality_signal = get_text_quality_signal_pdfium(pdf, page_indices)
-        total_chars = text_quality_signal["total_chars"]
-        abnormal_ratio = text_quality_signal["abnormal_ratio"]
-
-        if total_chars >= TEXT_QUALITY_MIN_CHARS:
-            if abnormal_ratio >= TEXT_QUALITY_BAD_THRESHOLD:
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            page_count = len(pdf)
+            if page_count == 0:
                 return "ocr"
-            should_run_pdfminer_fallback = abnormal_ratio > TEXT_QUALITY_GOOD_THRESHOLD
-        else:
-            should_run_pdfminer_fallback = True
 
-        if (
-            get_high_image_coverage_ratio_pdfium(pdf, page_indices)
-            >= HIGH_IMAGE_COVERAGE_THRESHOLD
-        ):
-            return "ocr"
+            page_indices = get_sample_page_indices(page_count, MAX_SAMPLE_PAGES)
+            if not page_indices:
+                return "ocr"
+
+            if (
+                get_avg_cleaned_chars_per_page_pdfium(pdf, page_indices)
+                < CHARS_THRESHOLD
+            ):
+                return "ocr"
+
+            if detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+                return "ocr"
+
+            text_quality_signal = get_text_quality_signal_pdfium(pdf, page_indices)
+            total_chars = text_quality_signal["total_chars"]
+            abnormal_ratio = text_quality_signal["abnormal_ratio"]
+
+            if total_chars >= TEXT_QUALITY_MIN_CHARS:
+                if abnormal_ratio >= TEXT_QUALITY_BAD_THRESHOLD:
+                    return "ocr"
+                should_run_pdfminer_fallback = abnormal_ratio > TEXT_QUALITY_GOOD_THRESHOLD
+            else:
+                should_run_pdfminer_fallback = True
+
+            if (
+                get_high_image_coverage_ratio_pdfium(pdf, page_indices)
+                >= HIGH_IMAGE_COVERAGE_THRESHOLD
+            ):
+                return "ocr"
 
     except Exception as e:
         logger.error(f"Failed to classify PDF with hybrid strategy: {e}")
         return "ocr"
 
     finally:
-        if pdf is not None:
-            pdf.close()
+        close_pdfium_document(pdf)
 
     if should_run_pdfminer_fallback:
         sample_pdf_bytes = extract_selected_pages(pdf_bytes, page_indices)
@@ -140,33 +141,35 @@ def classify_legacy(pdf_bytes):
     sample_pdf_bytes = extract_pages(pdf_bytes)
     if not sample_pdf_bytes:
         return "ocr"
-    pdf = pdfium.PdfDocument(sample_pdf_bytes)
+    pdf = None
     try:
-        page_count = len(pdf)
-        if page_count == 0:
-            return "ocr"
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, sample_pdf_bytes)
+            page_count = len(pdf)
+            if page_count == 0:
+                return "ocr"
 
-        pages_to_check = min(page_count, MAX_SAMPLE_PAGES)
+            pages_to_check = min(page_count, MAX_SAMPLE_PAGES)
 
-        if (
-            get_avg_cleaned_chars_per_page(pdf, pages_to_check) < CHARS_THRESHOLD
-        ) or detect_invalid_chars(sample_pdf_bytes):
-            return "ocr"
+            if (
+                get_avg_cleaned_chars_per_page(pdf, pages_to_check) < CHARS_THRESHOLD
+            ) or detect_invalid_chars(sample_pdf_bytes):
+                return "ocr"
 
-        if (
-            get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check)
-            >= HIGH_IMAGE_COVERAGE_THRESHOLD
-        ):
-            return "ocr"
+            if (
+                get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check)
+                >= HIGH_IMAGE_COVERAGE_THRESHOLD
+            ):
+                return "ocr"
 
-        return "txt"
+            return "txt"
 
     except Exception as e:
-        logger.error(f"Failed to classify PDF with legacy strategy: {e}")
+        logger.warning(f"Failed to classify PDF with legacy strategy: {e}")
         return "ocr"
 
     finally:
-        pdf.close()
+        close_pdfium_document(pdf)
 
 
 def get_sample_page_indices(page_count: int, max_pages: int = MAX_SAMPLE_PAGES):
@@ -402,11 +405,11 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
     Extract up to 10 random pages and return them as a new PDF.
     """
 
-    with _pdf_sample_extract_lock:
-        pdf = None
-        sample_docs = None
-        try:
-            pdf = pdfium.PdfDocument(src_pdf_bytes)
+    pdf = None
+    sample_docs = None
+    try:
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, src_pdf_bytes)
             total_page = len(pdf)
             if total_page == 0:
                 logger.warning("PDF is empty, return empty document")
@@ -420,20 +423,18 @@ def extract_pages(src_pdf_bytes: bytes) -> bytes:
                 total_page, select_page_cnt, replace=False
             ).tolist()
 
-            sample_docs = pdfium.PdfDocument.new()
+            sample_docs = open_pdfium_document(pdfium.PdfDocument.new)
             sample_docs.import_pages(pdf, page_indices)
 
             output_buffer = BytesIO()
             sample_docs.save(output_buffer)
             return output_buffer.getvalue()
-        except Exception as e:
-            logger.exception(e)
-            return src_pdf_bytes
-        finally:
-            if pdf is not None:
-                pdf.close()
-            if sample_docs is not None:
-                sample_docs.close()
+    except Exception as e:
+        logger.exception(e)
+        return src_pdf_bytes
+    finally:
+        close_pdfium_document(pdf)
+        close_pdfium_document(sample_docs)
 
 
 def extract_selected_pages(src_pdf_bytes: bytes, page_indices) -> bytes:
@@ -445,11 +446,11 @@ def extract_selected_pages(src_pdf_bytes: bytes, page_indices) -> bytes:
     if not selected_page_indices:
         return b""
 
-    with _pdf_sample_extract_lock:
-        pdf = None
-        sample_docs = None
-        try:
-            pdf = pdfium.PdfDocument(src_pdf_bytes)
+    pdf = None
+    sample_docs = None
+    try:
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, src_pdf_bytes)
             total_page = len(pdf)
             if total_page == 0:
                 logger.warning("PDF is empty, return empty document")
@@ -466,20 +467,18 @@ def extract_selected_pages(src_pdf_bytes: bytes, page_indices) -> bytes:
             if selected_page_indices == list(range(total_page)):
                 return src_pdf_bytes
 
-            sample_docs = pdfium.PdfDocument.new()
+            sample_docs = open_pdfium_document(pdfium.PdfDocument.new)
             sample_docs.import_pages(pdf, selected_page_indices)
 
             output_buffer = BytesIO()
             sample_docs.save(output_buffer)
             return output_buffer.getvalue()
-        except Exception as e:
-            logger.exception(e)
-            return src_pdf_bytes
-        finally:
-            if pdf is not None:
-                pdf.close()
-            if sample_docs is not None:
-                sample_docs.close()
+    except Exception as e:
+        logger.exception(e)
+        return src_pdf_bytes
+    finally:
+        close_pdfium_document(pdf)
+        close_pdfium_document(sample_docs)
 
 
 def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:

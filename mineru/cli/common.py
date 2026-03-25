@@ -13,7 +13,6 @@ from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
-from mineru.utils.config_reader import is_low_memory_enabled
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
@@ -201,7 +200,6 @@ def _process_pipeline(
 ):
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi_streaming as pipeline_doc_analyze_low_memory_multi_streaming
 
     image_writer_list = []
     md_writer_list = []
@@ -241,26 +239,15 @@ def _process_pipeline(
             future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
             output_futures.append(future)
 
-        if is_low_memory_enabled():
-            pipeline_doc_analyze_low_memory_multi_streaming(
-                pdf_bytes_list,
-                image_writer_list,
-                p_lang_list,
-                on_doc_ready,
-                parse_method=parse_method,
-                formula_enable=p_formula_enable,
-                table_enable=p_table_enable,
-            )
-        else:
-            pipeline_doc_analyze_streaming(
-                pdf_bytes_list,
-                image_writer_list,
-                p_lang_list,
-                on_doc_ready,
-                parse_method=parse_method,
-                formula_enable=p_formula_enable,
-                table_enable=p_table_enable,
-            )
+        pipeline_doc_analyze_streaming(
+            pdf_bytes_list,
+            image_writer_list,
+            p_lang_list,
+            on_doc_ready,
+            parse_method=parse_method,
+            formula_enable=p_formula_enable,
+            table_enable=p_table_enable,
+        )
 
         for future in output_futures:
             future.result()
@@ -294,15 +281,9 @@ async def _async_process_vlm(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        if is_low_memory_enabled():
-            from mineru.backend.vlm.vlm_analyze import aio_doc_analyze_low_memory as aio_vlm_doc_analyze_low_memory
-            middle_json, infer_result = await aio_vlm_doc_analyze_low_memory(
-                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-            )
-        else:
-            middle_json, infer_result = await aio_vlm_doc_analyze(
-                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-            )
+        middle_json, infer_result = await aio_vlm_doc_analyze(
+            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+        )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -341,15 +322,9 @@ def _process_vlm(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        if is_low_memory_enabled():
-            from mineru.backend.vlm.vlm_analyze import doc_analyze_low_memory as vlm_doc_analyze_low_memory
-            middle_json, infer_result = vlm_doc_analyze_low_memory(
-                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-            )
-        else:
-            middle_json, infer_result = vlm_doc_analyze(
-                pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
-            )
+        middle_json, infer_result = vlm_doc_analyze(
+            pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url, **kwargs,
+        )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -390,29 +365,16 @@ def _process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        if is_low_memory_enabled():
-            from mineru.backend.hybrid.hybrid_analyze import doc_analyze_low_memory as hybrid_doc_analyze_low_memory
-            middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze_low_memory(
-                pdf_bytes,
-                image_writer=image_writer,
-                backend=backend,
-                parse_method=parse_method,
-                language=lang,
-                inline_formula_enable=inline_formula_enable,
-                server_url=server_url,
-                **kwargs,
-            )
-        else:
-            middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
-                pdf_bytes,
-                image_writer=image_writer,
-                backend=backend,
-                parse_method=parse_method,
-                language=lang,
-                inline_formula_enable=inline_formula_enable,
-                server_url=server_url,
-                **kwargs,
-            )
+        middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            parse_method=parse_method,
+            language=lang,
+            inline_formula_enable=inline_formula_enable,
+            server_url=server_url,
+            **kwargs,
+        )
 
         pdf_info = middle_json["pdf_info"]
 
@@ -456,29 +418,16 @@ async def _async_process_hybrid(
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"hybrid_{parse_method}")
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
 
-        if is_low_memory_enabled():
-            from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze_low_memory as aio_hybrid_doc_analyze_low_memory
-            middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze_low_memory(
-                pdf_bytes,
-                image_writer=image_writer,
-                backend=backend,
-                parse_method=parse_method,
-                language=lang,
-                inline_formula_enable=inline_formula_enable,
-                server_url=server_url,
-                **kwargs,
-            )
-        else:
-            middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
-                pdf_bytes,
-                image_writer=image_writer,
-                backend=backend,
-                parse_method=parse_method,
-                language=lang,
-                inline_formula_enable=inline_formula_enable,
-                server_url=server_url,
-                **kwargs,
-            )
+        middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
+            pdf_bytes,
+            image_writer=image_writer,
+            backend=backend,
+            parse_method=parse_method,
+            language=lang,
+            inline_formula_enable=inline_formula_enable,
+            server_url=server_url,
+            **kwargs,
+        )
 
         pdf_info = middle_json["pdf_info"]
 

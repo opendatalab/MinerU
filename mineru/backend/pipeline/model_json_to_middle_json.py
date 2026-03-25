@@ -21,6 +21,7 @@ from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5, str_sha256
+from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 
 
 def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
@@ -89,7 +90,8 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    page_w, page_h = map(int, page.get_size())
+    with pdfium_guard():
+        page_w, page_h = map(int, page.get_size())
     magic_model = MagicModel(
         page_model_info,
         page,
@@ -141,16 +143,19 @@ def append_page_model_infos_to_middle_json(
 ):
     for offset, (page_model_info, image_dict) in enumerate(zip(page_model_infos, images_list)):
         page_index = page_start_index + offset
+        with pdfium_guard():
+            page = pdf_doc[page_index]
         page_info = page_model_info_to_page_info(
             copy.deepcopy(page_model_info),
             image_dict,
-            pdf_doc[page_index],
+            page,
             image_writer,
             page_index,
             ocr_enable=ocr_enable,
         )
         if page_info is None:
-            page_w, page_h = map(int, pdf_doc[page_index].get_size())
+            with pdfium_guard():
+                page_w, page_h = map(int, pdf_doc[page_index].get_size())
             page_info = make_page_info_dict([], page_index, page_w, page_h, [])
         middle_json["pdf_info"].append(page_info)
         if progress_bar is not None:
@@ -354,7 +359,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
         )
 
     finalize_middle_json(middle_json["pdf_info"], lang=lang, ocr_enable=ocr_enable)
-    pdf_doc.close()
+    close_pdfium_document(pdf_doc)
     return middle_json
 
 

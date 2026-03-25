@@ -13,18 +13,11 @@ from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
-from mineru.utils.config_reader import is_low_memory_enabled
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.vlm.vlm_analyze import doc_analyze_low_memory as vlm_doc_analyze_low_memory
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
 from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi as pipeline_doc_analyze_low_memory_multi
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze_low_memory_multi_streaming as pipeline_doc_analyze_low_memory_multi_streaming
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
-from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
-from mineru.backend.hybrid.hybrid_analyze import doc_analyze_low_memory as hybrid_doc_analyze_low_memory
 from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path, guess_suffix_by_bytes
@@ -113,26 +106,15 @@ def do_parse(
                 future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
                 output_futures.append(future)
 
-            if is_low_memory_enabled():
-                pipeline_doc_analyze_low_memory_multi_streaming(
-                    pdf_bytes_list,
-                    image_writer_list,
-                    p_lang_list,
-                    on_doc_ready,
-                    parse_method=parse_method,
-                    formula_enable=formula_enable,
-                    table_enable=table_enable,
-                )
-            else:
-                pipeline_doc_analyze_streaming(
-                    pdf_bytes_list,
-                    image_writer_list,
-                    p_lang_list,
-                    on_doc_ready,
-                    parse_method=parse_method,
-                    formula_enable=formula_enable,
-                    table_enable=table_enable,
-                )
+            pipeline_doc_analyze_streaming(
+                pdf_bytes_list,
+                image_writer_list,
+                p_lang_list,
+                on_doc_ready,
+                parse_method=parse_method,
+                formula_enable=formula_enable,
+                table_enable=table_enable,
+            )
 
             for future in output_futures:
                 future.result()
@@ -152,10 +134,9 @@ def do_parse(
                 pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
                 local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-                if is_low_memory_enabled():
-                    middle_json, infer_result = vlm_doc_analyze_low_memory(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
-                else:
-                    middle_json, infer_result = vlm_doc_analyze(pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url)
+                middle_json, infer_result = vlm_doc_analyze(
+                    pdf_bytes, image_writer=image_writer, backend=backend, server_url=server_url
+                )
 
                 pdf_info = middle_json["pdf_info"]
 
@@ -177,26 +158,15 @@ def do_parse(
                 pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
                 local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
                 image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-                if is_low_memory_enabled():
-                    middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze_low_memory(
-                        pdf_bytes,
-                        image_writer=image_writer,
-                        backend=backend,
-                        parse_method=parse_method,
-                        language=p_lang_list[idx],
-                        inline_formula_enable=formula_enable,
-                        server_url=server_url,
-                    )
-                else:
-                    middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
-                        pdf_bytes,
-                        image_writer=image_writer,
-                        backend=backend,
-                        parse_method=parse_method,
-                        language=p_lang_list[idx],
-                        inline_formula_enable=formula_enable,
-                        server_url=server_url,
-                    )
+                middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
+                    pdf_bytes,
+                    image_writer=image_writer,
+                    backend=backend,
+                    parse_method=parse_method,
+                    language=p_lang_list[idx],
+                    inline_formula_enable=formula_enable,
+                    server_url=server_url,
+                )
 
                 pdf_info = middle_json["pdf_info"]
 
