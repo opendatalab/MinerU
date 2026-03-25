@@ -10,20 +10,17 @@ Options:
   -v, --version                   显示版本并退出
   -p, --path PATH                 输入文件路径或目录（必填）
   -o, --output PATH               输出目录（必填）
+  --api-url TEXT                  MinerU FastAPI 服务地址；不传时自动拉起本地临时 mineru-api
   -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 pipeline 与 hybrid* 后端）
   -b, --backend [pipeline|hybrid-auto-engine|hybrid-http-client|vlm-auto-engine|vlm-http-client]
                                   解析后端（默认为 hybrid-auto-engine）
   -l, --lang [ch|ch_server|ch_lite|en|korean|japan|chinese_cht|ta|te|ka|th|el|latin|arabic|east_slavic|cyrillic|devanagari]
                                   指定文档语言（可提升 OCR 准确率，仅用于 pipeline 与 hybrid* 后端）
-  -u, --url TEXT                  当使用 http-client 时，需指定服务地址
+  -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址
   -s, --start INTEGER             开始解析的页码（从 0 开始）
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
   -t, --table BOOLEAN             是否启用表格解析（默认开启）
-  -d, --device TEXT               推理设备（如 cpu/cuda/cuda:0/npu/mps，仅 pipeline 后端）
-  --vram INTEGER                  单进程最大 GPU 显存占用(GB)（仅 pipeline 后端）
-  --source [huggingface|modelscope|local]
-                                  模型来源，默认 huggingface
   --help                          显示帮助信息
 ```
 ```bash
@@ -57,23 +54,15 @@ Options:
 
 ## 环境变量说明
 
+> [!NOTE]
+> 从当前版本开始，`mineru` 是基于 `mineru-api` 的编排客户端：
+> - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
+> - 传入 `--api-url` 时，CLI 会直连该 FastAPI 服务
+> - `--url` 不再表示 MinerU API 地址，而是服务端 `vlm/hybrid-http-client` 所需的 OpenAI 兼容地址
+
 MinerU命令行工具的某些参数存在相同功能的环境变量配置，通常环境变量配置的优先级高于命令行参数，且在所有命令行工具中都生效。
 以下是常用的环境变量及其说明： 
 
-- `MINERU_DEVICE_MODE`：
-    * 用于指定推理设备
-    * 支持`cpu/cuda/cuda:0/npu/mps`等设备类型
-    * 仅对`pipeline`后端生效。
-  
-- `MINERU_VIRTUAL_VRAM_SIZE`：
-    * 用于指定单进程最大 GPU 显存占用(GB)
-    * 仅对`pipeline`后端生效。
-  
-- `MINERU_MODEL_SOURCE`：
-    * 用于指定模型来源
-    * 支持`huggingface/modelscope/local`
-    * 默认为`huggingface`可通过环境变量切换为`modelscope`使用国内加速源或切换至`local`以使用本地模型。
-  
 - `MINERU_TOOLS_CONFIG_JSON`：
     * 用于指定配置文件路径
     * 默认为用户目录下的`mineru.json`，可通过环境变量指定其他配置文件路径。

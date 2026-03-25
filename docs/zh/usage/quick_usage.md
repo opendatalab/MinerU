@@ -15,6 +15,8 @@ mineru -p <input_path> -o <output_path>
 > [!TIP]
 > - `<input_path>`：本地 PDF/图片 文件或目录
 > - `<output_path>`：输出目录
+> - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
+> - 传入 `--api-url` 时，CLI 会直连远端或已有本地 FastAPI 服务
 > 
 > 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
 
@@ -35,6 +37,7 @@ mineru -p <input_path> -o <output_path>
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
   >
   >- 健康检查接口：`GET /health`
+  >  返回 `protocol_version`、`processing_window_size`、`max_concurrent_requests` 等服务信息
   >- 异步任务提交接口：`POST /tasks`
   >- 同步解析接口：`POST /file_parse`
   >- 任务查询接口：`GET /tasks/{task_id}`、`GET /tasks/{task_id}/result`
@@ -56,7 +59,9 @@ mineru -p <input_path> -o <output_path>
   >```bash
   >curl -X POST http://127.0.0.1:8000/file_parse \
   >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true"
+  >  -F "return_md=true" \
+  >  -F "response_format_zip=true" \
+  >  -F "return_original_file=true"
   >```
   >
   >轮询任务状态与结果：

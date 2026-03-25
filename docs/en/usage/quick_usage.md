@@ -15,6 +15,8 @@ mineru -p <input_path> -o <output_path>
 > [!TIP]
 >- `<input_path>`: Local PDF/image file or directory
 >- `<output_path>`: Output directory
+>- Without `--api-url`, the CLI launches a temporary local `mineru-api`
+>- With `--api-url`, the CLI connects to an existing local or remote FastAPI service directly
 >
 > For more information about output files, please refer to [Output File Documentation](../reference/output_files.md).
 
@@ -35,6 +37,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >Access `http://127.0.0.1:8000/docs` in your browser to view the API documentation.
   >
   >- Health endpoint: `GET /health`
+  >  Returns `protocol_version`, `processing_window_size`, `max_concurrent_requests`, and task stats
   >- Asynchronous task submission endpoint: `POST /tasks`
   >- Synchronous parsing endpoint: `POST /file_parse`
   >- Task query endpoints: `GET /tasks/{task_id}`, `GET /tasks/{task_id}/result`
@@ -56,7 +59,9 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >```bash
   >curl -X POST http://127.0.0.1:8000/file_parse \
   >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true"
+  >  -F "return_md=true" \
+  >  -F "response_format_zip=true" \
+  >  -F "return_original_file=true"
   >```
   >
   >Poll task status and fetch results:

@@ -40,8 +40,12 @@ from mineru.cli.common import (
     pdf_suffixes,
     read_fn,
 )
+from mineru.cli.api_protocol import (
+    API_PROTOCOL_VERSION,
+    DEFAULT_PROCESSING_WINDOW_SIZE,
+)
 from mineru.utils.cli_parser import arg_parse
-from mineru.utils.config_reader import get_device
+from mineru.utils.config_reader import get_device, get_processing_window_size
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
 
@@ -60,7 +64,7 @@ DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
 DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS = 5 * 60
 DEFAULT_OUTPUT_ROOT = "./output"
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
-DEFAULT_MAX_CONCURRENT_REQUESTS = 3
+DEFAULT_MAX_CONCURRENT_REQUESTS = 1
 FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
 FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
 FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
@@ -70,6 +74,13 @@ FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 _request_semaphore: Optional[asyncio.Semaphore] = None
 _configured_max_concurrent_requests = 0
 _mps_parse_lock = threading.Lock()
+
+
+def env_flag_enabled(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
 
 
 @dataclass
@@ -87,6 +98,7 @@ class ParseRequestOptions:
     return_content_list: bool
     return_images: bool
     response_format_zip: bool
+    return_original_file: bool
     start_page_id: int
     end_page_id: int
 
@@ -117,6 +129,7 @@ class AsyncParseTask:
     return_content_list: bool
     return_images: bool
     response_format_zip: bool
+    return_original_file: bool
     start_page_id: int
     end_page_id: int
     uploads: list[str]
@@ -164,11 +177,7 @@ async def lifespan(app: FastAPI):
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are enabled.
     # To disable the FastAPI docs and schema endpoints, set the environment variable MINERU_API_ENABLE_FASTAPI_DOCS=0.
-    enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    enable_docs = env_flag_enabled("MINERU_API_ENABLE_FASTAPI_DOCS", default=True)
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
@@ -389,6 +398,14 @@ def build_result_dict(
     return result_dict
 
 
+def build_zip_arcname(
+    pdf_name: str,
+    parse_dir: str,
+    relative_path: str,
+) -> str:
+    return os.path.join(pdf_name, os.path.basename(parse_dir), relative_path)
+
+
 def create_result_zip(
     output_dir: str,
     pdf_file_names: list[str],
@@ -399,14 +416,13 @@ def create_result_zip(
     return_model_output: bool,
     return_content_list: bool,
     return_images: bool,
+    return_original_file: bool,
 ) -> str:
     zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="mineru_results_")
     os.close(zip_fd)
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for pdf_name in pdf_file_names:
-            safe_pdf_name = sanitize_filename(pdf_name)
-
             try:
                 parse_dir = get_parse_dir(output_dir, pdf_name, backend, parse_method)
             except ValueError:
@@ -421,7 +437,11 @@ def create_result_zip(
                 if os.path.exists(path):
                     zf.write(
                         path,
-                        arcname=os.path.join(safe_pdf_name, f"{safe_pdf_name}.md"),
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}.md",
+                        ),
                     )
 
             if return_middle_json:
@@ -429,8 +449,10 @@ def create_result_zip(
                 if os.path.exists(path):
                     zf.write(
                         path,
-                        arcname=os.path.join(
-                            safe_pdf_name, f"{safe_pdf_name}_middle.json"
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}_middle.json",
                         ),
                     )
 
@@ -439,8 +461,10 @@ def create_result_zip(
                 if os.path.exists(path):
                     zf.write(
                         path,
-                        arcname=os.path.join(
-                            safe_pdf_name, f"{safe_pdf_name}_model.json"
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}_model.json",
                         ),
                     )
 
@@ -449,8 +473,21 @@ def create_result_zip(
                 if os.path.exists(path):
                     zf.write(
                         path,
-                        arcname=os.path.join(
-                            safe_pdf_name, f"{safe_pdf_name}_content_list.json"
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}_content_list.json",
+                        ),
+                    )
+
+                path = os.path.join(parse_dir, f"{pdf_name}_content_list_v2.json")
+                if os.path.exists(path):
+                    zf.write(
+                        path,
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}_content_list_v2.json",
                         ),
                     )
 
@@ -460,8 +497,26 @@ def create_result_zip(
                 for image_path in image_paths:
                     zf.write(
                         image_path,
-                        arcname=os.path.join(
-                            safe_pdf_name, "images", os.path.basename(image_path)
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            os.path.join("images", os.path.basename(image_path)),
+                        ),
+                    )
+
+            if return_original_file:
+                origin_pattern = f"{pdf_name}_origin."
+                for path in sorted(Path(parse_dir).iterdir()):
+                    if not path.is_file():
+                        continue
+                    if not path.name.startswith(origin_pattern):
+                        continue
+                    zf.write(
+                        str(path),
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            path.name,
                         ),
                     )
     return zip_path
@@ -480,6 +535,7 @@ def build_result_response(
     return_content_list: bool,
     return_images: bool,
     response_format_zip: bool,
+    return_original_file: bool,
 ) -> Response:
     if response_format_zip:
         zip_path = create_result_zip(
@@ -492,6 +548,7 @@ def build_result_response(
             return_model_output=return_model_output,
             return_content_list=return_content_list,
             return_images=return_images,
+            return_original_file=return_original_file,
         )
         background_tasks.add_task(cleanup_file, zip_path)
         return FileResponse(
@@ -548,6 +605,7 @@ def build_sync_file_parse_response(
             return_content_list=task.return_content_list,
             return_images=task.return_images,
             response_format_zip=task.response_format_zip,
+            return_original_file=task.return_original_file,
         )
         response.headers[FILE_PARSE_TASK_ID_HEADER] = task.task_id
         response.headers[FILE_PARSE_TASK_STATUS_HEADER] = task.status
@@ -642,6 +700,13 @@ async def parse_request_form(
     response_format_zip: bool = Form(
         False, description="Return results as a ZIP file instead of JSON"
     ),
+    return_original_file: bool = Form(
+        False,
+        description=(
+            "Include the processed original input file in the ZIP result; "
+            "ignored unless response_format_zip=true"
+        ),
+    ),
     start_page_id: int = Form(
         0, description="The starting page for PDF parsing, beginning from 0"
     ),
@@ -649,6 +714,7 @@ async def parse_request_form(
         99999, description="The ending page for PDF parsing, beginning from 0"
     ),
 ) -> ParseRequestOptions:
+    effective_return_original_file = return_original_file and response_format_zip
     return ParseRequestOptions(
         files=files,
         lang_list=lang_list,
@@ -663,6 +729,7 @@ async def parse_request_form(
         return_content_list=return_content_list,
         return_images=return_images,
         response_format_zip=response_format_zip,
+        return_original_file=effective_return_original_file,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
     )
@@ -746,7 +813,9 @@ async def run_parse_job(
         f_dump_md=request_options.return_md,
         f_dump_middle_json=request_options.return_middle_json,
         f_dump_model_output=request_options.return_model_output,
-        f_dump_orig_pdf=False,
+        f_dump_orig_pdf=(
+            request_options.return_original_file and request_options.response_format_zip
+        ),
         f_dump_content_list=request_options.return_content_list,
         start_page_id=request_options.start_page_id,
         end_page_id=request_options.end_page_id,
@@ -817,6 +886,7 @@ async def create_async_parse_task(
             return_content_list=request_options.return_content_list,
             return_images=request_options.return_images,
             response_format_zip=request_options.response_format_zip,
+            return_original_file=request_options.return_original_file,
             start_page_id=request_options.start_page_id,
             end_page_id=request_options.end_page_id,
             uploads=[upload.path for upload in uploads],
@@ -1213,6 +1283,7 @@ async def get_async_task_result(
         return_content_list=task.return_content_list,
         return_images=task.return_images,
         response_format_zip=task.response_format_zip,
+        return_original_file=task.return_original_file,
     )
 
 
@@ -1245,11 +1316,15 @@ async def health_check():
     return {
         "status": "healthy",
         "version": __version__,
+        "protocol_version": API_PROTOCOL_VERSION,
         "queued_tasks": stats[TASK_PENDING],
         "processing_tasks": stats[TASK_PROCESSING],
         "completed_tasks": stats[TASK_COMPLETED],
         "failed_tasks": stats[TASK_FAILED],
         "max_concurrent_requests": get_max_concurrent_requests(),
+        "processing_window_size": get_processing_window_size(
+            default=DEFAULT_PROCESSING_WINDOW_SIZE
+        ),
         "task_retention_seconds": task_manager.task_retention_seconds,
         "task_cleanup_interval_seconds": task_manager.task_cleanup_interval_seconds,
     }
@@ -1266,26 +1341,21 @@ def main(ctx, host, port, reload, **kwargs):
     kwargs.update(arg_parse(ctx))
 
     app.state.config = kwargs
-
-    try:
-        mcr = int(
-            kwargs.get(
-                "mineru_api_max_concurrent_requests",
-                DEFAULT_MAX_CONCURRENT_REQUESTS,
-            )
-            or DEFAULT_MAX_CONCURRENT_REQUESTS
-        )
-    except ValueError:
-        mcr = DEFAULT_MAX_CONCURRENT_REQUESTS
-    os.environ["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(mcr)
+    access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
 
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
     print(f"API documentation: http://{host}:{port}/docs")
 
     if reload:
-        uvicorn.run("mineru.cli.fast_api:app", host=host, port=port, reload=True)
+        uvicorn.run(
+            "mineru.cli.fast_api:app",
+            host=host,
+            port=port,
+            reload=True,
+            access_log=access_log,
+        )
     else:
-        uvicorn.run(app, host=host, port=port, reload=False)
+        uvicorn.run(app, host=host, port=port, reload=False, access_log=access_log)
 
 
 if __name__ == "__main__":
