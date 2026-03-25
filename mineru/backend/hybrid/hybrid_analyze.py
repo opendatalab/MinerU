@@ -32,6 +32,11 @@ from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_lis
     update_det_boxes, OcrConfidence
 from mineru.utils.pdf_classify import classify
 from mineru.utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
+from mineru.utils.pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
+    open_pdfium_document,
+)
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
@@ -618,15 +623,15 @@ def doc_analyze_low_memory(
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
     try:
-        page_count = len(pdf_doc)
+        page_count = get_pdfium_document_page_count(pdf_doc)
         if page_count == 0:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
             doc_closed = True
             clean_memory(device)
             return middle_json, model_list, _vlm_ocr_enable
@@ -702,13 +707,13 @@ def doc_analyze_low_memory(
             _ocr_enable,
             _vlm_ocr_enable,
         )
-        pdf_doc.close()
+        close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)
         return middle_json, model_list, _vlm_ocr_enable
     finally:
         if not doc_closed:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
 
 
 async def aio_doc_analyze(
@@ -801,15 +806,15 @@ async def aio_doc_analyze_low_memory(
     _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
     _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
 
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
     model_list = []
     doc_closed = False
     hybrid_pipeline_model = None
     try:
-        page_count = len(pdf_doc)
+        page_count = get_pdfium_document_page_count(pdf_doc)
         if page_count == 0:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
             doc_closed = True
             clean_memory(device)
             return middle_json, model_list, _vlm_ocr_enable
@@ -885,10 +890,10 @@ async def aio_doc_analyze_low_memory(
             _ocr_enable,
             _vlm_ocr_enable,
         )
-        pdf_doc.close()
+        close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)
         return middle_json, model_list, _vlm_ocr_enable
     finally:
         if not doc_closed:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)

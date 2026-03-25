@@ -19,6 +19,11 @@ from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_low_memory_window_size
 
 from ...utils.enum_class import ImageType
+from ...utils.pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
+    open_pdfium_document,
+)
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 from mineru_vl_utils import MinerUClient
@@ -322,14 +327,14 @@ def doc_analyze_low_memory(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
     results = []
     doc_closed = False
     try:
-        page_count = len(pdf_doc)
+        page_count = get_pdfium_document_page_count(pdf_doc)
         if page_count == 0:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
             doc_closed = True
             return middle_json, results
         window_size = min(page_count, get_low_memory_window_size(default=64))
@@ -377,12 +382,12 @@ def doc_analyze_low_memory(
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
         finalize_middle_json(middle_json["pdf_info"])
-        pdf_doc.close()
+        close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results
     finally:
         if not doc_closed:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
 
 
 async def aio_doc_analyze(
@@ -426,14 +431,14 @@ async def aio_doc_analyze_low_memory(
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     middle_json = init_middle_json()
     results = []
     doc_closed = False
     try:
-        page_count = len(pdf_doc)
+        page_count = get_pdfium_document_page_count(pdf_doc)
         if page_count == 0:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
             doc_closed = True
             return middle_json, results
         window_size = min(page_count, get_low_memory_window_size(default=64))
@@ -481,9 +486,9 @@ async def aio_doc_analyze_low_memory(
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
         finalize_middle_json(middle_json["pdf_info"])
-        pdf_doc.close()
+        close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results
     finally:
         if not doc_closed:
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)

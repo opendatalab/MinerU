@@ -16,6 +16,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
 
@@ -47,7 +48,8 @@ def blocks_to_page_info(
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    width, height = map(int, page.get_size())
+    with pdfium_guard():
+        width, height = map(int, page.get_size())
 
     magic_model = MagicModel(
         page_model_list,
@@ -189,7 +191,8 @@ def append_page_results_to_middle_json(
         zip(model_list, images_list)
     ):
         page_index = page_start_index + offset
-        page = pdf_doc[page_index]
+        with pdfium_guard():
+            page = pdf_doc[page_index]
         page_info = blocks_to_page_info(
             page_model_list,
             image_dict,
@@ -271,5 +274,5 @@ def result_to_middle_json(
         _ocr_enable,
         _vlm_ocr_enable,
     )
-    pdf_doc.close()
+    close_pdfium_document(pdf_doc)
     return middle_json

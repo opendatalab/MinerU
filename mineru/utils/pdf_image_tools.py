@@ -17,6 +17,12 @@ from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_ima
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
 from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.utils.pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
+    open_pdfium_document,
+    pdfium_guard,
+)
 
 from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
 
@@ -130,23 +136,34 @@ def load_images_from_pdf(
     Raises:
         TimeoutError: 当转换超时时抛出
     """
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
+    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
     if is_windows_environment():
         # Windows 环境下不使用多进程
-        return load_images_from_pdf_core(
-            pdf_bytes,
-            dpi,
-            start_page_id,
-            get_end_page_id(end_page_id, len(pdf_doc)),
-            image_type,
-        ), pdf_doc
+        try:
+            images_list = load_images_from_pdf_core(
+                pdf_bytes,
+                dpi,
+                start_page_id,
+                get_end_page_id(
+                    end_page_id,
+                    get_pdfium_document_page_count(pdf_doc),
+                ),
+                image_type,
+            )
+            return images_list, pdf_doc
+        except Exception:
+            close_pdfium_document(pdf_doc)
+            raise
     else:
         if timeout is None:
             timeout = get_load_images_timeout()
         if threads is None:
             threads = get_load_images_threads()
 
-        end_page_id = get_end_page_id(end_page_id, len(pdf_doc))
+        end_page_id = get_end_page_id(
+            end_page_id,
+            get_pdfium_document_page_count(pdf_doc),
+        )
         actual_threads, page_ranges = _get_render_process_plan(
             start_page_id,
             end_page_id,
@@ -179,7 +196,7 @@ def load_images_from_pdf(
             if not_done:
                 # 超时：强制终止所有子进程
                 _terminate_executor_processes(executor)
-                pdf_doc.close()
+                close_pdfium_document(pdf_doc)
                 raise TimeoutError(f"PDF to images conversion timeout after {timeout}s")
 
             # 所有任务完成，收集结果
@@ -201,7 +218,7 @@ def load_images_from_pdf(
         except Exception as e:
             # 发生任何异常时，确保清理子进程
             _terminate_executor_processes(executor)
-            pdf_doc.close()
+            close_pdfium_document(pdf_doc)
             if isinstance(e, TimeoutError):
                 raise
             raise
@@ -240,17 +257,20 @@ def load_images_from_pdf_core(
     image_type=ImageType.PIL,  # PIL or BASE64
 ):
     images_list = []
-    pdf_doc = pdfium.PdfDocument(pdf_bytes)
-    pdf_page_num = len(pdf_doc)
-    end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+    pdf_doc = None
+    try:
+        with pdfium_guard():
+            pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            pdf_page_num = len(pdf_doc)
+            end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    for index in range(start_page_id, end_page_id + 1):
-        # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
-        page = pdf_doc[index]
-        image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-        images_list.append(image_dict)
-
-    pdf_doc.close()
+            for index in range(start_page_id, end_page_id + 1):
+                # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
+                page = pdf_doc[index]
+                image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+                images_list.append(image_dict)
+    finally:
+        close_pdfium_document(pdf_doc)
 
     return images_list
 
@@ -263,13 +283,14 @@ def load_images_from_pdf_doc(
     image_type=ImageType.PIL,
 ):
     images_list = []
-    pdf_page_num = len(pdf_doc)
-    end_page_id = get_end_page_id(end_page_id, pdf_page_num)
+    with pdfium_guard():
+        pdf_page_num = len(pdf_doc)
+        end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    for index in range(start_page_id, end_page_id + 1):
-        page = pdf_doc[index]
-        image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-        images_list.append(image_dict)
+        for index in range(start_page_id, end_page_id + 1):
+            page = pdf_doc[index]
+            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+            images_list.append(image_dict)
 
     return images_list
 

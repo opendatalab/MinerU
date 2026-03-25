@@ -13,6 +13,7 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
 
@@ -37,7 +38,8 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     # page_pil_img = image_dict["img_pil"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    width, height = map(int, page.get_size())
+    with pdfium_guard():
+        width, height = map(int, page.get_size())
 
     magic_model = MagicModel(page_blocks, width, height)
     image_blocks = magic_model.get_image_blocks()
@@ -115,7 +117,8 @@ def append_page_blocks_to_middle_json(
 ):
     for offset, (page_blocks, image_dict) in enumerate(zip(model_output_blocks_list, images_list)):
         page_index = page_start_index + offset
-        page = pdf_doc[page_index]
+        with pdfium_guard():
+            page = pdf_doc[page_index]
         page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
         middle_json["pdf_info"].append(page_info)
         if progress_bar is not None:
@@ -146,5 +149,5 @@ def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_
         )
 
     finalize_middle_json(middle_json["pdf_info"])
-    pdf_doc.close()
+    close_pdfium_document(pdf_doc)
     return middle_json

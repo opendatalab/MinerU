@@ -15,6 +15,11 @@ from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
 from ...utils.model_utils import get_vram, clean_memory
+from ...utils.pdfium_guard import (
+    close_pdfium_document,
+    get_pdfium_document_page_count,
+    open_pdfium_document,
+)
 
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
@@ -113,7 +118,7 @@ def _close_doc_context(context):
     if context['closed']:
         return
     try:
-        context['pdf_doc'].close()
+        close_pdfium_document(context['pdf_doc'])
     except Exception:
         pass
     _close_images(context['images_list'])
@@ -138,7 +143,7 @@ def _finalize_low_memory_context(context, on_doc_ready):
         context['middle_json'],
         context['ocr_enable'],
     )
-    context['pdf_doc'].close()
+    close_pdfium_document(context['pdf_doc'])
     context['closed'] = True
 
 
@@ -180,7 +185,7 @@ def doc_analyze(
         for pdf_doc in all_pdf_docs:
             if pdf_doc is not None:
                 try:
-                    pdf_doc.close()
+                    close_pdfium_document(pdf_doc)
                 except Exception:
                     pass
         for images_list in all_image_lists:
@@ -377,8 +382,8 @@ def doc_analyze_low_memory_multi_streaming(
     total_pages = 0
     for doc_index, (pdf_bytes, image_writer, lang) in enumerate(zip(pdf_bytes_list, image_writer_list, lang_list)):
         _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
-        pdf_doc = pdfium.PdfDocument(pdf_bytes)
-        page_count = len(pdf_doc)
+        pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+        page_count = get_pdfium_document_page_count(pdf_doc)
         total_pages += page_count
         doc_contexts.append(
             {
@@ -494,7 +499,7 @@ def doc_analyze_low_memory_multi_streaming(
     finally:
         for context in doc_contexts:
             if not context['closed']:
-                context['pdf_doc'].close()
+                close_pdfium_document(context['pdf_doc'])
                 context['closed'] = True
 
 
