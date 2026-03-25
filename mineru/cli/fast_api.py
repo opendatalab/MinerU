@@ -40,6 +40,7 @@ from mineru.cli.common import (
     pdf_suffixes,
     read_fn,
 )
+from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_PROCESSING_WINDOW_SIZE,
@@ -329,22 +330,15 @@ def normalize_lang_list(lang_list: list[str], file_count: int) -> list[str]:
 
 
 def get_parse_dir(output_dir: str, pdf_name: str, backend: str, parse_method: str) -> str:
-    candidates = []
-    if backend.startswith("pipeline"):
-        candidates.append(os.path.join(output_dir, pdf_name, parse_method))
-    elif backend.startswith("vlm"):
-        candidates.append(os.path.join(output_dir, pdf_name, "vlm"))
-    elif backend.startswith("hybrid"):
-        candidates.append(os.path.join(output_dir, pdf_name, f"hybrid_{parse_method}"))
-
-    candidates.append(os.path.join(output_dir, pdf_name, "office"))
-    for candidate in candidates:
-        if os.path.exists(candidate):
-            return candidate
-
-    if candidates:
-        return candidates[0]
-    raise ValueError(f"Unknown backend type: {backend}")
+    return str(
+        resolve_parse_dir(
+            output_dir,
+            pdf_name,
+            backend,
+            parse_method,
+            allow_office_fallback=True,
+        )
+    )
 
 
 def is_task_terminal(status: str) -> bool:
