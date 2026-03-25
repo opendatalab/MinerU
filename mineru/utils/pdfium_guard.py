@@ -3,6 +3,8 @@ from io import BytesIO
 from contextlib import contextmanager
 from typing import Any, Callable, Sequence, TypeVar
 
+from mineru.utils.pdf_page_id import get_end_page_id
+
 
 _pdfium_lock = threading.RLock()
 
@@ -38,6 +40,8 @@ def close_pdfium_document(pdf_doc) -> None:
 
 def rewrite_pdf_bytes_with_pdfium(
     src_pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
     page_indices: Sequence[int] | None = None,
 ) -> bytes:
     import pypdfium2 as pdfium
@@ -51,9 +55,7 @@ def rewrite_pdf_bytes_with_pdfium(
             if total_page_count == 0:
                 return b""
 
-            if page_indices is None:
-                normalized_page_indices = list(range(total_page_count))
-            else:
+            if page_indices is not None:
                 normalized_page_indices = sorted(
                     {
                         page_index
@@ -63,6 +65,11 @@ def rewrite_pdf_bytes_with_pdfium(
                 )
                 if not normalized_page_indices:
                     return b""
+            else:
+                normalized_end_page_id = get_end_page_id(end_page_id, total_page_count)
+                normalized_page_indices = list(
+                    range(start_page_id, normalized_end_page_id + 1)
+                )
 
             output_doc = pdfium.PdfDocument.new()
             output_doc.import_pages(pdf_doc, normalized_page_indices)

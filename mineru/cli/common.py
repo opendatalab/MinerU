@@ -17,13 +17,7 @@ from mineru.backend.office.office_middle_json_mkcontent import union_make as off
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.utils.pdf_page_id import get_end_page_id
-from mineru.utils.pdfium_guard import (
-    close_pdfium_document,
-    get_pdfium_document_page_count,
-    open_pdfium_document,
-    rewrite_pdf_bytes_with_pdfium,
-)
+from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -63,38 +57,19 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
     return local_image_dir, local_md_dir
 
 
-def _build_requested_page_indices(start_page_id, end_page_id, page_count):
-    if page_count <= 0:
-        return []
-
-    normalized_end_page_id = get_end_page_id(end_page_id, page_count)
-    if start_page_id <= 0 and normalized_end_page_id >= page_count - 1:
-        return None
-    return list(range(start_page_id, normalized_end_page_id + 1))
-
-
-def _get_pdfium_page_count(pdf_bytes):
-    import pypdfium2 as pdfium
-
-    pdf_doc = None
-    try:
-        pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-        return get_pdfium_document_page_count(pdf_doc)
-    finally:
-        close_pdfium_document(pdf_doc)
-
-
 def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
     try:
-        page_count = _get_pdfium_page_count(pdf_bytes)
-        page_indices = _build_requested_page_indices(start_page_id, end_page_id, page_count)
-        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(pdf_bytes, page_indices=page_indices)
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+        )
         if rebuilt_pdf_bytes:
             return rebuilt_pdf_bytes
         logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
     except Exception as fallback_error:
         logger.warning(
-            f"Error in converting PDF bytes with pdfium fallback: {fallback_error}, "
+            f"Error in converting PDF bytes with pdfium: {fallback_error}, "
             "using original PDF bytes."
         )
     return pdf_bytes
