@@ -1,6 +1,5 @@
-import asyncio
 import threading
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import contextmanager
 from typing import Any, Callable, TypeVar
 
 
@@ -13,15 +12,6 @@ T = TypeVar("T")
 def pdfium_guard():
     with _pdfium_lock:
         yield
-
-
-@asynccontextmanager
-async def aio_pdfium_guard():
-    await asyncio.to_thread(_pdfium_lock.acquire)
-    try:
-        yield
-    finally:
-        _pdfium_lock.release()
 
 
 def open_pdfium_document(
