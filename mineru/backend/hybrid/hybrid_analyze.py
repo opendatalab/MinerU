@@ -15,7 +15,6 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     append_page_model_list_to_middle_json,
     finalize_middle_json,
     init_middle_json,
-    result_to_middle_json,
 )
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import (
@@ -25,13 +24,13 @@ from mineru.backend.vlm.vlm_analyze import (
     _maybe_enable_serial_execution,
 )
 from mineru.data.data_reader_writer import DataWriter
-from mineru.utils.config_reader import get_device, get_low_memory_window_size
+from mineru.utils.config_reader import get_device, get_processing_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
 from mineru.utils.pdf_classify import classify
-from mineru.utils.pdf_image_tools import load_images_from_pdf, load_images_from_pdf_doc
+from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
     get_pdfium_document_page_count,
@@ -545,76 +544,6 @@ def doc_analyze(
         server_url: str | None = None,
         **kwargs,
 ):
-    # 初始化预测器
-    if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
-    predictor = _maybe_enable_serial_execution(predictor, backend)
-
-    # 加载图像
-    load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
-    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    load_images_time = round(time.time() - load_images_start, 2)
-    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
-
-    # 获取设备信息
-    device = get_device()
-
-    # 确定OCR配置
-    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
-
-    infer_start = time.time()
-    # VLM提取
-    if _vlm_ocr_enable:
-        with predictor_execution_guard(predictor):
-            model_list = predictor.batch_two_step_extract(images=images_pil_list)
-        hybrid_pipeline_model = None
-    else:
-        batch_ratio = get_batch_ratio(device)
-        with predictor_execution_guard(predictor):
-            model_list = predictor.batch_two_step_extract(
-                images=images_pil_list,
-                not_extract_list=not_extract_list
-            )
-        model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
-            images_pil_list,
-            model_list,
-            language,
-            inline_formula_enable,
-            _ocr_enable,
-            batch_radio=batch_ratio,
-        )
-    infer_time = round(time.time() - infer_start, 2)
-    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(model_list)/infer_time, 3)} page/s")
-
-    # 生成中间JSON
-    middle_json = result_to_middle_json(
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        _ocr_enable,
-        _vlm_ocr_enable,
-        hybrid_pipeline_model,
-    )
-
-    clean_memory(device)
-    return middle_json, model_list, _vlm_ocr_enable
-
-
-def doc_analyze_low_memory(
-        pdf_bytes,
-        image_writer: DataWriter | None,
-        predictor: MinerUClient | None = None,
-        backend="transformers",
-        parse_method: str = 'auto',
-        language: str = 'ch',
-        inline_formula_enable: bool = True,
-        model_path: str | None = None,
-        server_url: str | None = None,
-        **kwargs,
-):
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -630,24 +559,24 @@ def doc_analyze_low_memory(
     hybrid_pipeline_model = None
     try:
         page_count = get_pdfium_document_page_count(pdf_doc)
-        if page_count == 0:
-            close_pdfium_document(pdf_doc)
-            doc_closed = True
-            clean_memory(device)
-            return middle_json, model_list, _vlm_ocr_enable
-        window_size = min(page_count, get_low_memory_window_size(default=64))
-        total_windows = (page_count + window_size - 1) // window_size
+        configured_window_size = get_processing_window_size(default=64)
+        effective_window_size = min(page_count, configured_window_size) if page_count else 0
+        total_windows = (
+            (page_count + effective_window_size - 1) // effective_window_size
+            if effective_window_size
+            else 0
+        )
         logger.info(
-            f'Hybrid low-memory mode enabled. page_count={page_count}, '
-            f'window_size={window_size}, total_windows={total_windows}'
+            f'Hybrid processing-window run. page_count={page_count}, '
+            f'window_size={configured_window_size}, total_windows={total_windows}'
         )
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
         with tqdm(total=page_count, desc="Processing pages") as progress_bar:
-            for window_index, window_start in enumerate(range(0, page_count, window_size)):
-                window_end = min(page_count - 1, window_start + window_size - 1)
+            for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
+                window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
                     pdf_doc,
                     start_page_id=window_start,
@@ -657,7 +586,7 @@ def doc_analyze_low_memory(
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(
-                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
@@ -695,9 +624,9 @@ def doc_analyze_low_memory(
                     _close_images(images_list)
 
         infer_time = round(time.time() - infer_start, 2)
-        if infer_time > 0:
+        if infer_time > 0 and page_count > 0:
             logger.debug(
-                f"low-memory infer finished, cost: {infer_time}, "
+                f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
@@ -728,76 +657,6 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     **kwargs,
 ):
-    # 初始化预测器
-    if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
-    predictor = _maybe_enable_serial_execution(predictor, backend)
-
-    # 加载图像
-    load_images_start = time.time()
-    images_list, pdf_doc = load_images_from_pdf(pdf_bytes, image_type=ImageType.PIL)
-    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    load_images_time = round(time.time() - load_images_start, 2)
-    logger.debug(f"load images cost: {load_images_time}, speed: {round(len(images_pil_list)/load_images_time, 3)} images/s")
-
-    # 获取设备信息
-    device = get_device()
-
-    # 确定OCR配置
-    _ocr_enable = ocr_classify(pdf_bytes, parse_method=parse_method)
-    _vlm_ocr_enable = _should_enable_vlm_ocr(_ocr_enable, language, inline_formula_enable)
-
-    infer_start = time.time()
-    # VLM提取
-    if _vlm_ocr_enable:
-        async with aio_predictor_execution_guard(predictor):
-            model_list = await predictor.aio_batch_two_step_extract(images=images_pil_list)
-        hybrid_pipeline_model = None
-    else:
-        batch_ratio = get_batch_ratio(device)
-        async with aio_predictor_execution_guard(predictor):
-            model_list = await predictor.aio_batch_two_step_extract(
-                images=images_pil_list,
-                not_extract_list=not_extract_list
-            )
-        model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
-            images_pil_list,
-            model_list,
-            language,
-            inline_formula_enable,
-            _ocr_enable,
-            batch_radio=batch_ratio,
-        )
-    infer_time = round(time.time() - infer_start, 2)
-    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(model_list)/infer_time, 3)} page/s")
-
-    # 生成中间JSON
-    middle_json = result_to_middle_json(
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        _ocr_enable,
-        _vlm_ocr_enable,
-        hybrid_pipeline_model,
-    )
-
-    clean_memory(device)
-    return middle_json, model_list, _vlm_ocr_enable
-
-
-async def aio_doc_analyze_low_memory(
-    pdf_bytes,
-    image_writer: DataWriter | None,
-    predictor: MinerUClient | None = None,
-    backend="transformers",
-    parse_method: str = 'auto',
-    language: str = 'ch',
-    inline_formula_enable: bool = True,
-    model_path: str | None = None,
-    server_url: str | None = None,
-    **kwargs,
-):
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -813,24 +672,24 @@ async def aio_doc_analyze_low_memory(
     hybrid_pipeline_model = None
     try:
         page_count = get_pdfium_document_page_count(pdf_doc)
-        if page_count == 0:
-            close_pdfium_document(pdf_doc)
-            doc_closed = True
-            clean_memory(device)
-            return middle_json, model_list, _vlm_ocr_enable
-        window_size = min(page_count, get_low_memory_window_size(default=64))
-        total_windows = (page_count + window_size - 1) // window_size
+        configured_window_size = get_processing_window_size(default=64)
+        effective_window_size = min(page_count, configured_window_size) if page_count else 0
+        total_windows = (
+            (page_count + effective_window_size - 1) // effective_window_size
+            if effective_window_size
+            else 0
+        )
         logger.info(
-            f'Hybrid low-memory mode enabled. page_count={page_count}, '
-            f'window_size={window_size}, total_windows={total_windows}'
+            f'Hybrid processing-window run. page_count={page_count}, '
+            f'window_size={configured_window_size}, total_windows={total_windows}'
         )
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
         with tqdm(total=page_count, desc="Processing pages") as progress_bar:
-            for window_index, window_start in enumerate(range(0, page_count, window_size)):
-                window_end = min(page_count - 1, window_start + window_size - 1)
+            for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
+                window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
                     pdf_doc,
                     start_page_id=window_start,
@@ -840,7 +699,7 @@ async def aio_doc_analyze_low_memory(
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(
-                        f'Hybrid low-memory window {window_index + 1}/{total_windows}: '
+                        f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
                         f'({len(images_pil_list)} pages)'
                     )
@@ -878,9 +737,9 @@ async def aio_doc_analyze_low_memory(
                     _close_images(images_list)
 
         infer_time = round(time.time() - infer_start, 2)
-        if infer_time > 0:
+        if infer_time > 0 and page_count > 0:
             logger.debug(
-                f"low-memory infer finished, cost: {infer_time}, "
+                f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
