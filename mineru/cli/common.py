@@ -173,7 +173,7 @@ def _process_output(
             json.dumps(model_output, ensure_ascii=False, indent=4),
         )
 
-    logger.info(f"local output dir is {local_md_dir}")
+    logger.debug(f"local output dir is {local_md_dir}")
 
 
 def _process_pipeline(

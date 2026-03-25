@@ -64,7 +64,7 @@ DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
 DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS = 5 * 60
 DEFAULT_OUTPUT_ROOT = "./output"
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
-DEFAULT_MAX_CONCURRENT_REQUESTS = 3
+DEFAULT_MAX_CONCURRENT_REQUESTS = 1
 FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
 FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
 FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
@@ -74,6 +74,13 @@ FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 _request_semaphore: Optional[asyncio.Semaphore] = None
 _configured_max_concurrent_requests = 0
 _mps_parse_lock = threading.Lock()
+
+
+def env_flag_enabled(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
 
 
 @dataclass
@@ -170,11 +177,7 @@ async def lifespan(app: FastAPI):
 def create_app():
     # By default, the OpenAPI documentation endpoints (openapi_url, docs_url, redoc_url) are enabled.
     # To disable the FastAPI docs and schema endpoints, set the environment variable MINERU_API_ENABLE_FASTAPI_DOCS=0.
-    enable_docs = str(os.getenv("MINERU_API_ENABLE_FASTAPI_DOCS", "1")).lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    enable_docs = env_flag_enabled("MINERU_API_ENABLE_FASTAPI_DOCS", default=True)
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
@@ -1338,26 +1341,21 @@ def main(ctx, host, port, reload, **kwargs):
     kwargs.update(arg_parse(ctx))
 
     app.state.config = kwargs
-
-    try:
-        mcr = int(
-            kwargs.get(
-                "mineru_api_max_concurrent_requests",
-                DEFAULT_MAX_CONCURRENT_REQUESTS,
-            )
-            or DEFAULT_MAX_CONCURRENT_REQUESTS
-        )
-    except ValueError:
-        mcr = DEFAULT_MAX_CONCURRENT_REQUESTS
-    os.environ["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(mcr)
+    access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
 
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
     print(f"API documentation: http://{host}:{port}/docs")
 
     if reload:
-        uvicorn.run("mineru.cli.fast_api:app", host=host, port=port, reload=True)
+        uvicorn.run(
+            "mineru.cli.fast_api:app",
+            host=host,
+            port=port,
+            reload=True,
+            access_log=access_log,
+        )
     else:
-        uvicorn.run(app, host=host, port=port, reload=False)
+        uvicorn.run(app, host=host, port=port, reload=False, access_log=access_log)
 
 
 if __name__ == "__main__":
