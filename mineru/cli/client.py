@@ -677,11 +677,12 @@ def submit_task_sync(
             for document in planned_task.documents:
                 mime_type = mimetypes.guess_type(document.path.name)[0] or "application/octet-stream"
                 file_handle = stack.enter_context(open(document.path, "rb"))
+                upload_filename = f"{document.stem}{document.path.suffix}"
                 files.append(
                     (
                         "files",
                         (
-                            document.path.name,
+                            upload_filename,
                             file_handle,
                             mime_type,
                         ),
