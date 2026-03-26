@@ -319,6 +319,13 @@ Currently, some models in this project are trained based on YOLO. However, since
 # Citation
 
 ```bibtex
+@article{dong2026minerudiffusion,
+  title={MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding},
+  author={Dong, Hejun and Niu, Junbo and Wang, Bin and Zeng, Weijun and Zhang, Wentao and He, Conghui},
+  journal={arXiv preprint arXiv:2603.22458},
+  year={2026}
+}
+
 @article{niu2025mineru2,
   title={Mineru2. 5: A decoupled vision-language model for efficient high-resolution document parsing},
   author={Niu, Junbo and Liu, Zheng and Gu, Zhuangcheng and Wang, Bin and Ouyang, Linke and Zhao, Zhiyuan and Chu, Tao and He, Tianyao and Wu, Fan and Zhang, Qintong and others},
@@ -353,6 +360,7 @@ Currently, some models in this project are trained based on YOLO. However, since
 
 
 # Links
+- [MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding](https://github.com/opendatalab/MinerU-Diffusion)
 - [Easy Data Preparation with latest LLMs-based Operators and Pipelines](https://github.com/OpenDCAI/DataFlow)
 - [Vis3 (OSS browser based on s3)](https://github.com/opendatalab/Vis3)
 - [LabelU (A Lightweight Multi-modal Data Annotation Tool)](https://github.com/opendatalab/labelU)
