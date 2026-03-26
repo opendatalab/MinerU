@@ -188,14 +188,25 @@ class GradioRequestConcurrencyLimiter:
 
 _gradio_request_concurrency_limiter = GradioRequestConcurrencyLimiter()
 
-STATUS_BOX_ELEM_ID = "convert-status-box"
-STATUS_BOX_CSS = f"""
-#{STATUS_BOX_ELEM_ID} textarea {{
-    min-height: 7.5rem !important;
-    height: 7.5rem !important;
-    max-height: 7.5rem !important;
-}}
+STATUS_BOX_AUTOSCROLL_JS = """
+(value) => {
+    const scrollToBottom = () => {
+        const textarea = document.querySelector(".convert-status-box textarea");
+        if (!textarea) {
+            return;
+        }
+        textarea.scrollTop = textarea.scrollHeight;
+    };
+
+    requestAnimationFrame(() => {
+        scrollToBottom();
+        requestAnimationFrame(scrollToBottom);
+    });
+
+    return [];
+}
 """
+
 STATUS_TIMER_INTERVAL_SECONDS = 0.1
 STATUS_QUEUE_ANIMATION_INTERVAL_SECONDS = 1.0
 STATUS_QUEUE_ANIMATION_MAX_DOTS = 10
@@ -1177,7 +1188,7 @@ def main(ctx,
 
     # suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + docx_suffixes]
-    with gr.Blocks(css=STATUS_BOX_CSS) as demo:
+    with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
             with gr.Column(variant='panel', scale=5):
@@ -1226,7 +1237,8 @@ def main(ctx,
                     lines=4,
                     max_lines=4,
                     interactive=False,
-                    elem_id=STATUS_BOX_ELEM_ID,
+                    autoscroll=True,
+                    elem_classes=["convert-status-box"],
                 )
                 output_file = gr.File(label=i18n("convert_result"), interactive=False)
                 with gr.Blocks():
@@ -1264,6 +1276,13 @@ def main(ctx,
             fn=update_interface,
             inputs=[backend],
             outputs=[client_options, ocr_options, formula_enable, backend],
+            **_private_api_kwargs
+        )
+        status_box.change(
+            fn=None,
+            inputs=[status_box],
+            outputs=[],
+            js=STATUS_BOX_AUTOSCROLL_JS,
             **_private_api_kwargs
         )
         clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_box])
