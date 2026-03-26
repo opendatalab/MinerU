@@ -92,6 +92,7 @@ class LiveTaskStatusState:
     task_index: int
     task_id: str
     status: str
+    queued_ahead: int | None = None
     frame_step: int = 0
 
 
@@ -135,21 +136,41 @@ class LiveTaskStatusRenderer:
         self._rendered_line_count = 0
         self._task_states: dict[str, LiveTaskStatusState] = {}
 
-    def register_task(self, task: PlannedTask, task_id: str) -> None:
+    def register_task(
+        self,
+        task: PlannedTask,
+        task_id: str,
+        queued_ahead: int | None = None,
+    ) -> None:
         with self.sink.lock:
             self._task_states[task_id] = LiveTaskStatusState(
                 task_index=task.index,
                 task_id=task_id,
                 status="pending",
+                queued_ahead=queued_ahead,
             )
             self.render_locked()
 
-    def update_status(self, task_id: str, status: str) -> None:
+    def update_status(
+        self,
+        task_id: str,
+        status_update: _api_client.TaskStatusSnapshot | str,
+    ) -> None:
         with self.sink.lock:
             state = self._task_states.get(task_id)
             if state is None:
                 return
+            if isinstance(status_update, _api_client.TaskStatusSnapshot):
+                status = status_update.status
+                queued_ahead = (
+                    status_update.queued_ahead if status == "pending" else None
+                )
+            else:
+                status = status_update
+                queued_ahead = None
+
             state.status = status
+            state.queued_ahead = queued_ahead
             if status in self.ACTIVE_STATUSES:
                 state.frame_step += 1
             self.render_locked()
@@ -198,9 +219,17 @@ class LiveTaskStatusRenderer:
             key=lambda state: (state.task_index, state.task_id),
         )
         return [
-            f"{self._build_bar(state.frame_step)} status={state.status} | task_id={state.task_id}"
+            self._build_render_line_locked(state)
             for state in states
         ]
+
+    @staticmethod
+    def _build_render_line_locked(state: LiveTaskStatusState) -> str:
+        parts = [f"status={state.status}"]
+        if state.status == "pending" and state.queued_ahead is not None:
+            parts.append(f"ahead={state.queued_ahead}")
+        parts.append(f"task_id={state.task_id}")
+        return f"{LiveTaskStatusRenderer._build_bar(state.frame_step)} {' | '.join(parts)}"
 
     @classmethod
     def _build_bar(cls, frame_step: int) -> str:
@@ -669,10 +698,13 @@ async def wait_for_task_result(
         client=client,
         submit_response=submit_response,
         task_label=format_task_label(planned_task),
-        status_callback=(
+        status_snapshot_callback=(
             None
             if live_renderer is None
-            else lambda status: live_renderer.update_status(submit_response.task_id, status)
+            else lambda snapshot: live_renderer.update_status(
+                submit_response.task_id,
+                snapshot,
+            )
         ),
         timeout_seconds=timeout_seconds,
     )
@@ -768,7 +800,11 @@ async def run_planned_task(
         form_data=form_data,
     )
     if live_renderer is not None:
-        live_renderer.register_task(planned_task, submit_response.task_id)
+        live_renderer.register_task(
+            planned_task,
+            submit_response.task_id,
+            queued_ahead=submit_response.queued_ahead,
+        )
     try:
         await wait_for_task_result(
             client=client,

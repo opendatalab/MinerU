@@ -53,6 +53,7 @@ class SubmitResponse:
     status_url: str
     result_url: str
     file_names: tuple[str, ...] = ()
+    queued_ahead: int | None = None
 
 
 @dataclass(frozen=True)
@@ -403,6 +404,7 @@ def submit_parse_task_sync(
     status_url = payload.get("status_url")
     result_url = payload.get("result_url")
     file_names = payload.get("file_names")
+    queued_ahead = payload.get("queued_ahead")
     if (
         not isinstance(task_id, str)
         or not isinstance(status_url, str)
@@ -413,12 +415,15 @@ def submit_parse_task_sync(
     normalized_file_names: tuple[str, ...] = ()
     if isinstance(file_names, list) and all(isinstance(name, str) for name in file_names):
         normalized_file_names = tuple(file_names)
+    if not isinstance(queued_ahead, int):
+        queued_ahead = None
 
     return SubmitResponse(
         task_id=task_id,
         status_url=status_url,
         result_url=result_url,
         file_names=normalized_file_names,
+        queued_ahead=queued_ahead,
     )
 
 
