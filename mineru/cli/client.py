@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
-import json
 import os
 import sys
 import threading
@@ -185,10 +184,6 @@ class LiveTaskStatusRenderer:
         with self.sink.lock:
             self._task_states.clear()
             self.clear_locked()
-
-    def snapshot_lines(self) -> list[str]:
-        with self.sink.lock:
-            return self._build_render_lines_locked()
 
     def clear_locked(self) -> None:
         if self._rendered_line_count <= 0:
@@ -662,29 +657,6 @@ async def submit_task(
         upload_assets=upload_assets,
         form_data=form_data,
     )
-
-
-def submit_task_sync(
-    base_url: str,
-    planned_task: PlannedTask,
-    form_data: dict[str, str | list[str]],
-) -> SubmitResponse:
-    try:
-        return _api_client.submit_parse_task_sync(
-            base_url=base_url,
-            upload_assets=[
-                _api_client.UploadAsset(
-                    path=document.path,
-                    upload_name=f"{document.stem}{document.path.suffix}",
-                )
-                for document in planned_task.documents
-            ],
-            form_data=form_data,
-        )
-    except click.ClickException as exc:
-        raise click.ClickException(
-            f"Failed to submit {format_task_label(planned_task)}: {exc}"
-        ) from exc
 
 
 async def wait_for_task_result(

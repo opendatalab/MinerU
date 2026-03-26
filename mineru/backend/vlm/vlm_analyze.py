@@ -17,6 +17,7 @@ from .model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
+from mineru.backend.utils import exclude_progress_bar_idle_time
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
 from ...utils.check_sys_env import is_mac_os_version_supported
@@ -321,7 +322,9 @@ def doc_analyze(
         )
 
         infer_start = time.time()
-        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+        progress_bar = None
+        last_append_end_time = None
+        try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
@@ -340,6 +343,14 @@ def doc_analyze(
                     with predictor_execution_guard(predictor):
                         window_results = predictor.batch_two_step_extract(images=images_pil_list)
                     results.extend(window_results)
+                    if progress_bar is None:
+                        progress_bar = tqdm(total=page_count, desc="Processing pages")
+                    else:
+                        exclude_progress_bar_idle_time(
+                            progress_bar,
+                            last_append_end_time,
+                            now=time.time(),
+                        )
                     append_page_blocks_to_middle_json(
                         middle_json,
                         window_results,
@@ -349,8 +360,12 @@ def doc_analyze(
                         page_start_index=window_start,
                         progress_bar=progress_bar,
                     )
+                    last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
             logger.debug(
@@ -398,7 +413,9 @@ async def aio_doc_analyze(
         )
 
         infer_start = time.time()
-        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+        progress_bar = None
+        last_append_end_time = None
+        try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
@@ -417,6 +434,14 @@ async def aio_doc_analyze(
                     async with aio_predictor_execution_guard(predictor):
                         window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
                     results.extend(window_results)
+                    if progress_bar is None:
+                        progress_bar = tqdm(total=page_count, desc="Processing pages")
+                    else:
+                        exclude_progress_bar_idle_time(
+                            progress_bar,
+                            last_append_end_time,
+                            now=time.time(),
+                        )
                     append_page_blocks_to_middle_json(
                         middle_json,
                         window_results,
@@ -426,8 +451,12 @@ async def aio_doc_analyze(
                         page_start_index=window_start,
                         progress_bar=progress_bar,
                     )
+                    last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
             logger.debug(

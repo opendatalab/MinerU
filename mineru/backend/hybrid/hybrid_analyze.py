@@ -16,6 +16,7 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
+from mineru.backend.utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
@@ -574,7 +575,9 @@ def doc_analyze(
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
-        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+        progress_bar = None
+        last_append_end_time = None
+        try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
@@ -609,6 +612,14 @@ def doc_analyze(
                         )
 
                     model_list.extend(window_model_list)
+                    if progress_bar is None:
+                        progress_bar = tqdm(total=page_count, desc="Processing pages")
+                    else:
+                        exclude_progress_bar_idle_time(
+                            progress_bar,
+                            last_append_end_time,
+                            now=time.time(),
+                        )
                     append_page_model_list_to_middle_json(
                         middle_json,
                         window_model_list,
@@ -620,8 +631,12 @@ def doc_analyze(
                         _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
                     )
+                    last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
@@ -687,7 +702,9 @@ async def aio_doc_analyze(
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
 
         infer_start = time.time()
-        with tqdm(total=page_count, desc="Processing pages") as progress_bar:
+        progress_bar = None
+        last_append_end_time = None
+        try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
                 images_list = load_images_from_pdf_doc(
@@ -722,6 +739,14 @@ async def aio_doc_analyze(
                         )
 
                     model_list.extend(window_model_list)
+                    if progress_bar is None:
+                        progress_bar = tqdm(total=page_count, desc="Processing pages")
+                    else:
+                        exclude_progress_bar_idle_time(
+                            progress_bar,
+                            last_append_end_time,
+                            now=time.time(),
+                        )
                     append_page_model_list_to_middle_json(
                         middle_json,
                         window_model_list,
@@ -733,8 +758,12 @@ async def aio_doc_analyze(
                         _vlm_ocr_enable=_vlm_ocr_enable,
                         progress_bar=progress_bar,
                     )
+                    last_append_end_time = time.time()
                 finally:
                     _close_images(images_list)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:

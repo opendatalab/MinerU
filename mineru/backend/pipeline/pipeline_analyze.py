@@ -13,6 +13,7 @@ from .model_json_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
+from ..utils import exclude_progress_bar_idle_time
 from mineru.utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
@@ -186,7 +187,9 @@ def doc_analyze_streaming(
     processed_pages = 0
     infer_start = time.time()
     try:
-        with tqdm(total=total_pages, desc="Processing pages") as progress_bar:
+        progress_bar = None
+        last_append_end_time = None
+        try:
             batch_index = 0
             while processed_pages < total_pages:
                 batch_index += 1
@@ -237,6 +240,14 @@ def doc_analyze_streaming(
                     formula_enable=formula_enable,
                     table_enable=table_enable,
                 )
+                if progress_bar is None:
+                    progress_bar = tqdm(total=total_pages, desc="Processing pages")
+                else:
+                    exclude_progress_bar_idle_time(
+                        progress_bar,
+                        last_append_end_time,
+                        now=time.time(),
+                    )
 
                 result_offset = 0
                 for context, images_list, page_start, take_count in batch_payloads:
@@ -259,7 +270,11 @@ def doc_analyze_streaming(
                     if context['next_page_idx'] >= context['page_count'] and not context['closed']:
                         _finalize_processing_window_context(context, on_doc_ready)
 
+                last_append_end_time = time.time()
                 processed_pages += len(batch_images)
+        finally:
+            if progress_bar is not None:
+                progress_bar.close()
 
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0:

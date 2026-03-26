@@ -287,14 +287,10 @@ def _offset_paragraph_title_levels(levels_by_index):
     if not levels_by_index:
         return levels_by_index
 
-    positive_levels = [level for level in levels_by_index.values() if level > 0]
-    if positive_levels and min(positive_levels) == 1:
-        return {
-            index: level + 1 if level > 0 else level
-            for index, level in levels_by_index.items()
-        }
-
-    return levels_by_index
+    return {
+        index: 2 if level == 1 else level
+        for index, level in levels_by_index.items()
+    }
 
 
 def _request_paragraph_group_levels(title_block_refs, title_aided_config):
