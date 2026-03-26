@@ -345,13 +345,16 @@ class BatchAnalyze:
                     images_mfd_res[image_index], images_formula_list[image_index]
                 ):
                     formula_res["latex"] = formula_with_latex.get("latex", "")
+
+            # 清理显存
+            clean_vram(self.model.device, vram_threshold=8)
+
         else:
             for layout_res in images_layout_res:
                 # 移除所有的"inline_formula"
                 layout_res[:] = [res for res in layout_res if res.get("label") != "inline_formula"]
 
-        # 清理显存
-        clean_vram(self.model.device, vram_threshold=8)
+
 
         ocr_res_list_all_page = []
         table_res_list_all_page = []
@@ -690,6 +693,9 @@ class BatchAnalyze:
                                     _lang,
                                 )
                                 ocr_res_list_dict['layout_res'].extend(ocr_result_list)
+
+            # 清理显存
+            clean_vram(self.model.device, vram_threshold=8)
 
         else:
             # 原始单张处理模式

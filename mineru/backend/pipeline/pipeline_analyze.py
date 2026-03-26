@@ -1,5 +1,4 @@
 import os
-import threading
 import time
 from typing import List, Tuple
 
@@ -8,7 +7,7 @@ from PIL import Image
 from loguru import logger
 from tqdm import tqdm
 
-from .model_init import MineruPipelineModel
+from .model_init import MineruPipelineModel, PIPELINE_MODEL_INIT_LOCK
 from .model_json_to_middle_json import (
     append_batch_results_to_middle_json,
     finalize_middle_json,
@@ -32,7 +31,7 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 class ModelSingleton:
     _instance = None
     _models = {}
-    _lock = threading.RLock()
+    _lock = PIPELINE_MODEL_INIT_LOCK
 
     def __new__(cls, *args, **kwargs):
         with cls._lock:
@@ -299,12 +298,10 @@ def batch_image_analyze(
 
     gpu_memory = get_vram(device)
     if gpu_memory >= 16:
-        batch_ratio = 16
-    elif gpu_memory >= 8:
         batch_ratio = 8
-    elif gpu_memory >= 6:
+    elif gpu_memory >= 8:
         batch_ratio = 4
-    elif gpu_memory >= 4:
+    elif gpu_memory >= 6:
         batch_ratio = 2
     else:
         batch_ratio = 1

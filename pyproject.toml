@@ -49,6 +49,9 @@ dependencies = [
     "lxml>=4.0.0,<7.0.0",
     "pandas>=2.3.3,<3",
     "openpyxl>=3.1.5,<4",
+    "fastapi",
+    "python-multipart",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]
@@ -85,11 +88,6 @@ pipeline = [
     "transformers>=4.57.3,<5.0.0",
     "onnxruntime>1.17.0",
 ]
-api = [
-    "fastapi",
-    "python-multipart",
-    "uvicorn",
-]
 gradio = [
     "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
     "gradio-pdf>=0.0.22",
@@ -97,7 +95,6 @@ gradio = [
 core = [
     "mineru[vlm]",
     "mineru[pipeline]",
-    "mineru[api]",
     "mineru[gradio]",
 ]
 all = [

@@ -17,6 +17,8 @@ from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
+PIPELINE_MODEL_INIT_LOCK = threading.RLock()
+
 MFR_MODEL = os.getenv('MINERU_FORMULA_CH_SUPPORT', 'False')
 if MFR_MODEL.lower() in ['true', '1', 'yes']:
     MFR_MODEL = "pp_formulanet_plus_m"
@@ -113,7 +115,7 @@ def ocr_model_init(det_db_box_thresh=0.3,
 class AtomModelSingleton:
     _instance = None
     _models = {}
-    _lock = threading.RLock()
+    _lock = PIPELINE_MODEL_INIT_LOCK
 
     def __new__(cls, *args, **kwargs):
         with cls._lock:
@@ -260,7 +262,7 @@ class MineruPipelineModel:
 class HybridModelSingleton:
     _instance = None
     _models = {}
-    _lock = threading.RLock()
+    _lock = PIPELINE_MODEL_INIT_LOCK
 
     def __new__(cls, *args, **kwargs):
         with cls._lock:
