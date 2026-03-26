@@ -179,7 +179,6 @@ STATUS_TIMER_INTERVAL_SECONDS = 0.1
 STATUS_QUEUE_ANIMATION_INTERVAL_SECONDS = 1.0
 STATUS_QUEUE_ANIMATION_MAX_DOTS = 10
 
-STATUS_WAITING_TO_START = "Waiting to start"
 STATUS_PREPARING_REQUEST = "Preparing request..."
 STATUS_CHECKING_SERVER = "Checking server status..."
 STATUS_SUBMITTING_TASK = "Submitting task..."
@@ -686,7 +685,7 @@ async def stream_to_markdown(
     url=None,
     api_url=None,
 ):
-    status_state = StatusPanelState(lines=[STATUS_WAITING_TO_START])
+    status_state = StatusPanelState()
     yield status_state.render(), None, "", "", gr.skip()
 
     if file_path is None:
@@ -1019,7 +1018,6 @@ def main(ctx,
             "doc_preview": "Document preview",
             "examples": "Examples:",
             "convert_status": "Conversion Status",
-            "status_waiting_to_start": STATUS_WAITING_TO_START,
             "convert_result": "Convert result",
             "md_rendering": "Markdown rendering",
             "md_text": "Markdown text",
@@ -1052,7 +1050,6 @@ def main(ctx,
             "doc_preview": "文档预览",
             "examples": "示例：",
             "convert_status": "转换状态",
-            "status_waiting_to_start": STATUS_WAITING_TO_START,
             "convert_result": "转换结果",
             "md_rendering": "Markdown 渲染",
             "md_text": "Markdown 文本",
@@ -1193,7 +1190,7 @@ def main(ctx,
             with gr.Column(variant='panel', scale=5):
                 status_box = gr.TextArea(
                     label=i18n("convert_status"),
-                    value=i18n("status_waiting_to_start"),
+                    value="",
                     lines=4,
                     max_lines=4,
                     interactive=False,
@@ -1245,7 +1242,7 @@ def main(ctx,
                 gr.update(visible=True),
                 gr.update(value=None, visible=True),
                 gr.update(value="", visible=False),
-                gr.update(value=STATUS_WAITING_TO_START),
+                gr.update(value=""),
             ),
             inputs=[],
             outputs=[options_group, doc_show, office_html, status_box],
