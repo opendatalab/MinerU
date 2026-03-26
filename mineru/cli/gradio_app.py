@@ -1,11 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
 import base64
+import asyncio
+import httpx
 import os
 import re
 import sys
+import threading
 import time
+import uuid
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import click
@@ -22,55 +27,50 @@ log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
-from mineru.cli.common import prepare_env, read_fn, aio_do_parse, pdf_suffixes, image_suffixes, office_suffixes, docx_suffixes
-from mineru.utils.cli_parser import arg_parse
-from mineru.utils.engine_utils import get_vlm_engine
-from mineru.utils.hash_utils import str_sha256
+from mineru.cli.common import (
+    docx_suffixes,
+    image_suffixes,
+    office_suffixes,
+    pdf_suffixes,
+    read_fn,
+)
+from mineru.cli import api_client as _api_client
+from mineru.cli.output_paths import resolve_parse_dir
+from mineru.cli.visualization import VisualizationJob, run_visualization_job
+
+_gradio_local_api_server = _api_client.ReusableLocalAPIServer()
 
 
-async def parse_pdf(doc_path, output_dir, end_page_id, is_ocr, formula_enable, table_enable, language, backend, url):
-    os.makedirs(output_dir, exist_ok=True)
+class GradioRequestConcurrencyLimiter:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._semaphores: dict[int, asyncio.Semaphore] = {}
 
-    try:
-        file_name = f'{safe_stem(Path(doc_path).stem)}_{time.strftime("%y%m%d_%H%M%S")}'
-        pdf_data = read_fn(doc_path)
+    def _get_semaphore(self, limit: int):
+        if limit <= 0:
+            return None
+        with self._lock:
+            semaphore = self._semaphores.get(limit)
+            if semaphore is None:
+                semaphore = asyncio.Semaphore(limit)
+                self._semaphores[limit] = semaphore
+            return semaphore
 
-        # 检测 office 文件类型
-        file_suffix = Path(doc_path).suffix.lower().lstrip('.')
-        if file_suffix in office_suffixes:
-            # office 文件使用固定的 env_name，parse_method 设为默认值（aio_do_parse 内部会处理）
-            env_name = "office"
-            parse_method = "auto"
-        elif backend.startswith("vlm"):
-            # 根据 backend 确定 parse_method
-            parse_method = "vlm"
-            env_name = parse_method
-        else:
-            parse_method = 'ocr' if is_ocr else 'auto'
-            # 根据 backend 类型准备环境目录
-            if backend.startswith("hybrid"):
-                env_name = f"hybrid_{parse_method}"
-            else:
-                env_name = parse_method
+    @asynccontextmanager
+    async def acquire(self, limit: int):
+        semaphore = self._get_semaphore(limit)
+        if semaphore is None:
+            yield
+            return
 
-        local_image_dir, local_md_dir = prepare_env(output_dir, file_name, env_name)
+        await semaphore.acquire()
+        try:
+            yield
+        finally:
+            semaphore.release()
 
-        await aio_do_parse(
-            output_dir=output_dir,
-            pdf_file_names=[file_name],
-            pdf_bytes_list=[pdf_data],
-            p_lang_list=[language],
-            parse_method=parse_method,
-            end_page_id=end_page_id,
-            formula_enable=formula_enable,
-            table_enable=table_enable,
-            backend=backend,
-            server_url=url,
-        )
-        return local_md_dir, file_name
-    except Exception as e:
-        logger.exception(e)
-        return None
+
+_gradio_request_concurrency_limiter = GradioRequestConcurrencyLimiter()
 
 
 def compress_directory_to_zip(directory_path, output_zip_path):
@@ -148,37 +148,211 @@ def replace_image_with_base64(markdown_text, image_dir_path):
 
 
 async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
-    # 如果language包含()，则提取括号前的内容作为实际语言
+    return await _to_markdown_impl(
+        file_path=file_path,
+        end_pages=end_pages,
+        is_ocr=is_ocr,
+        formula_enable=formula_enable,
+        table_enable=table_enable,
+        language=language,
+        backend=backend,
+        url=url,
+    )
+
+
+def normalize_language(language):
     if '(' in language and ')' in language:
-        language = language.split('(')[0].strip()
+        return language.split('(')[0].strip()
+    return language
 
-    # office 文件不需要转换为 PDF，直接使用原始文件路径
+
+def resolve_parse_method(file_path, is_ocr, backend):
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    is_office = file_suffix in office_suffixes
-    if is_office:
-        parse_file_path = file_path
-    else:
-        parse_file_path = to_pdf(file_path)
+    if file_suffix in office_suffixes:
+        return "auto"
+    if backend.startswith("vlm"):
+        return "auto"
+    return "ocr" if is_ocr else "auto"
 
-    # 获取识别的md文件以及压缩包文件路径
-    local_md_dir, file_name = await parse_pdf(parse_file_path, './output', end_pages - 1, is_ocr, formula_enable, table_enable, language, backend, url)
-    archive_zip_path = os.path.join('./output', str_sha256(local_md_dir) + '.zip')
+
+def create_gradio_run_paths(file_path, output_root="./output"):
+    run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
+    run_root = Path(output_root) / "gradio" / run_id
+    extract_root = run_root / "result"
+    archive_zip_path = run_root / f"{safe_stem(Path(file_path).stem)}.zip"
+    return run_root, extract_root, archive_zip_path
+
+
+def resolve_result_file_name(submit_response, extract_root, file_path):
+    if submit_response.file_names:
+        return submit_response.file_names[0]
+
+    candidate_dirs = sorted(path.name for path in Path(extract_root).iterdir() if path.is_dir())
+    if len(candidate_dirs) == 1:
+        return candidate_dirs[0]
+    return Path(file_path).stem
+
+
+async def resolve_server_health(http_client, api_url):
+    if api_url:
+        return await _api_client.fetch_server_health(
+            http_client,
+            _api_client.normalize_base_url(api_url),
+        )
+
+    local_server, started_now = _gradio_local_api_server.ensure_started()
+    if started_now:
+        logger.info(f"Started local mineru-api at {local_server.base_url}")
+    return await _api_client.wait_for_local_api_ready(http_client, local_server)
+
+
+def resolve_gradio_max_concurrent_requests(api_url, server_health):
+    if api_url is None:
+        return server_health.max_concurrent_requests
+
+    return _api_client.resolve_effective_max_concurrent_requests(
+        local_max=_api_client.read_max_concurrent_requests(
+            default=_api_client.DEFAULT_MAX_CONCURRENT_REQUESTS
+        ),
+        server_max=server_health.max_concurrent_requests,
+    )
+
+
+def maybe_generate_local_preview(extract_root, file_name, file_suffix, backend, parse_method):
+    if file_suffix in office_suffixes:
+        return None
+
+    parse_dir = resolve_parse_dir(
+        extract_root,
+        file_name,
+        backend,
+        parse_method,
+        allow_office_fallback=True,
+    )
+    visualization_job = VisualizationJob(
+        document_stem=file_name,
+        backend=backend,
+        parse_method=parse_method,
+        parse_dir=parse_dir,
+        draw_span=backend.startswith("pipeline"),
+    )
+    result = run_visualization_job(visualization_job)
+    if result.status != "finished":
+        logger.warning(
+            f"Skipping visualization for {visualization_job.document_stem}: {result.message}"
+        )
+    return resolve_preview_pdf_path(parse_dir, file_name)
+
+
+async def _to_markdown_impl(
+    file_path,
+    end_pages=10,
+    is_ocr=False,
+    formula_enable=True,
+    table_enable=True,
+    language="ch",
+    backend="pipeline",
+    url=None,
+    api_url=None,
+):
+    if file_path is None:
+        return "", "", None, None
+
+    normalized_language = normalize_language(language)
+    file_path = str(file_path)
+    file_suffix = Path(file_path).suffix.lower().lstrip('.')
+    parse_method = resolve_parse_method(file_path, is_ocr, backend)
+    run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
+    run_root.mkdir(parents=True, exist_ok=True)
+
+    form_data = _api_client.build_parse_request_form_data(
+        lang_list=[normalized_language],
+        backend=backend,
+        parse_method=parse_method,
+        formula_enable=formula_enable,
+        table_enable=table_enable,
+        server_url=url,
+        start_page_id=0,
+        end_page_id=end_pages - 1,
+        return_md=True,
+        return_middle_json=True,
+        return_model_output=True,
+        return_content_list=True,
+        return_images=True,
+        response_format_zip=True,
+        return_original_file=True,
+    )
+    upload_assets = [
+        _api_client.UploadAsset(
+            path=Path(file_path),
+            upload_name=Path(file_path).name,
+        )
+    ]
+
+    async with httpx.AsyncClient(
+        timeout=_api_client.build_http_timeout(),
+        follow_redirects=True,
+    ) as http_client:
+        server_health = await resolve_server_health(http_client, api_url)
+        effective_max_concurrent_requests = resolve_gradio_max_concurrent_requests(
+            api_url=api_url,
+            server_health=server_health,
+        )
+        async with _gradio_request_concurrency_limiter.acquire(
+            effective_max_concurrent_requests
+        ):
+            submit_response = await _api_client.submit_parse_task(
+                base_url=server_health.base_url,
+                upload_assets=upload_assets,
+                form_data=form_data,
+            )
+            await _api_client.wait_for_task_result(
+                client=http_client,
+                submit_response=submit_response,
+                task_label=Path(file_path).name,
+            )
+            result_zip_path = await _api_client.download_result_zip(
+                client=http_client,
+                submit_response=submit_response,
+                task_label=Path(file_path).name,
+            )
+
+    try:
+        _api_client.safe_extract_zip(result_zip_path, extract_root)
+    finally:
+        result_zip_path.unlink(missing_ok=True)
+
+    file_name = resolve_result_file_name(submit_response, extract_root, file_path)
+    local_md_dir = resolve_parse_dir(
+        extract_root,
+        file_name,
+        backend,
+        parse_method,
+        allow_office_fallback=True,
+    )
+    preview_pdf_path = maybe_generate_local_preview(
+        extract_root=extract_root,
+        file_name=file_name,
+        file_suffix=file_suffix,
+        backend=backend,
+        parse_method=parse_method,
+    )
+
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
         logger.info('Compression successful')
     else:
         logger.error('Compression failed')
-    md_path = os.path.join(local_md_dir, file_name + '.md')
+
+    md_path = Path(local_md_dir) / f"{file_name}.md"
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
     md_content = replace_image_with_base64(txt_content, local_md_dir)
-    # office 文件没有 layout PDF，返回 None；其他格式返回转换后的 PDF 路径
-    if is_office:
-        new_pdf_path = None
-    else:
-        new_pdf_path = resolve_preview_pdf_path(local_md_dir, file_name)
 
-    return md_content, txt_content, archive_zip_path, new_pdf_path
+    if file_suffix in office_suffixes:
+        preview_pdf_path = None
+
+    return md_content, txt_content, str(archive_zip_path), preview_pdf_path
 
 
 def resolve_preview_pdf_path(local_md_dir, file_name):
@@ -377,6 +551,13 @@ def update_doc_show(file_path):
     default=None,
 )
 @click.option(
+    '--api-url',
+    'api_url',
+    type=str,
+    help="MinerU FastAPI base URL. If omitted, gradio starts a reusable local mineru-api service.",
+    default=None,
+)
+@click.option(
     '--latex-delimiters-type',
     'latex_delimiters_type',
     type=click.Choice(['a', 'b', 'all']),
@@ -388,7 +569,7 @@ def main(ctx,
         example_enable,
         http_client_enable,
         api_enable, max_convert_pages,
-        server_name, server_port, latex_delimiters_type, **kwargs
+        server_name, server_port, api_url, latex_delimiters_type, **kwargs
 ):
 
     # 创建 i18n 实例，支持中英文
@@ -504,7 +685,8 @@ def main(ctx,
         return client_options_update, ocr_options_update, formula_label_update, backend_info_update
 
 
-    kwargs.update(arg_parse(ctx))
+    del kwargs
+    _gradio_local_api_server.configure(ctx.args)
 
     if latex_delimiters_type == 'a':
         latex_delimiters = latex_delimiters_type_a
@@ -515,23 +697,28 @@ def main(ctx,
     else:
         raise ValueError(f"Invalid latex delimiters type: {latex_delimiters_type}.")
 
-    vlm_engine = get_vlm_engine("auto", is_async=True)
-    if vlm_engine in ["transformers", "mlx-engine"]:
-        http_client_enable = True
-    else:
-        try:
-            logger.info(f"Start init {vlm_engine}...")
-            from mineru.backend.vlm.vlm_analyze import ModelSingleton
-            model_singleton = ModelSingleton()
-            predictor = model_singleton.get_model(
-                vlm_engine,
-                None,
-                None,
-                **kwargs
-            )
-            logger.info(f"{vlm_engine} init successfully.")
-        except Exception as e:
-            logger.exception(e)
+
+    async def convert_to_markdown(
+        file_path,
+        end_pages=10,
+        is_ocr=False,
+        formula_enable=True,
+        table_enable=True,
+        language="ch",
+        backend="pipeline",
+        url=None,
+    ):
+        return await _to_markdown_impl(
+            file_path=file_path,
+            end_pages=end_pages,
+            is_ocr=is_ocr,
+            formula_enable=formula_enable,
+            table_enable=table_enable,
+            language=language,
+            backend=backend,
+            url=url,
+            api_url=api_url,
+        )
 
     # suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + docx_suffixes]
@@ -598,7 +785,11 @@ def main(ctx,
                         )
 
         # 添加事件处理
-        _private_api_kwargs = {"api_visibility": "private"} if IS_GRADIO_6 else {"api_name": False}
+        _private_api_kwargs = (
+            {"api_visibility": "private", "queue": False}
+            if IS_GRADIO_6
+            else {"api_name": False, "queue": False}
+        )
         backend.change(
             fn=update_interface,
             inputs=[backend],
@@ -636,9 +827,16 @@ def main(ctx,
             outputs=[doc_show],
             **_private_api_kwargs
         )
-        _to_md_api_kwargs = {"api_visibility": "public" if api_enable else "private"} if IS_GRADIO_6 else {"api_name": "to_markdown" if api_enable else False}
+        _to_md_api_kwargs = (
+            {
+                "api_visibility": "public" if api_enable else "private",
+                "queue": False,
+            }
+            if IS_GRADIO_6
+            else {"api_name": "to_markdown" if api_enable else False, "queue": False}
+        )
         change_bu.click(
-            fn=to_markdown,
+            fn=convert_to_markdown,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
             outputs=[md, md_text, output_file, doc_show],
             **_to_md_api_kwargs

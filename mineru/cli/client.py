@@ -1,20 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
-import atexit
 import json
-import mimetypes
 import os
-import socket
-import subprocess
 import sys
-import tempfile
 import threading
-import time
-import zipfile
 from concurrent.futures import Future, ProcessPoolExecutor
-from contextlib import ExitStack
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Awaitable, Callable, Optional, TextIO
 
 import click
@@ -23,7 +15,6 @@ import pypdfium2 as pdfium
 from loguru import logger
 
 from mineru.cli.api_protocol import (
-    API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
     get_max_concurrent_requests as read_max_concurrent_requests,
@@ -36,30 +27,22 @@ from mineru.utils.pdfium_guard import (
     open_pdfium_document,
 )
 
-from ..version import __version__
-from .common import (
+from mineru.version import __version__
+from mineru.cli.common import (
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
     uniquify_task_stems,
 )
-from .output_paths import resolve_parse_dir
-from .visualization import (
+from mineru.cli import api_client as _api_client
+from mineru.cli.output_paths import resolve_parse_dir
+from mineru.cli.visualization import (
     VisualizationJob,
     run_visualization_job,
 )
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
-
-HEALTH_ENDPOINT = "/health"
-TASKS_ENDPOINT = "/tasks"
-TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
-TASK_RESULT_TIMEOUT_SECONDS = 600
-LOCAL_API_STARTUP_TIMEOUT_SECONDS = 30
-LOCAL_API_CLEANUP_RETRIES = 8
-LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
-
 
 @dataclass(frozen=True)
 class InputDocument:
@@ -92,18 +75,9 @@ class VisualizationContext:
     futures: list[Future]
 
 
-@dataclass(frozen=True)
-class ServerHealth:
-    base_url: str
-    max_concurrent_requests: int
-    processing_window_size: int
-
-
-@dataclass(frozen=True)
-class SubmitResponse:
-    task_id: str
-    status_url: str
-    result_url: str
+ServerHealth = _api_client.ServerHealth
+SubmitResponse = _api_client.SubmitResponse
+LocalAPIServer = _api_client.LocalAPIServer
 
 
 @dataclass(frozen=True)
@@ -258,101 +232,14 @@ logger.add(_stderr_sink, level=log_level)
 
 
 def build_http_timeout() -> httpx.Timeout:
-    return httpx.Timeout(connect=10, read=60, write=300, pool=30)
-
-
-class LocalAPIServer:
-    def __init__(self):
-        self.temp_dir = tempfile.TemporaryDirectory(prefix="mineru-api-client-")
-        self.temp_root = Path(self.temp_dir.name)
-        self.output_root = self.temp_root / "output"
-        self.base_url: str | None = None
-        self.process: subprocess.Popen[bytes] | None = None
-        self._atexit_registered = False
-
-    def start(self) -> str:
-        if self.process is not None:
-            raise RuntimeError("Local API server is already running")
-
-        port = find_free_port()
-        self.base_url = f"http://127.0.0.1:{port}"
-        env = os.environ.copy()
-        env["MINERU_API_OUTPUT_ROOT"] = str(self.output_root)
-        env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
-            read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
-        )
-        env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
-        self.output_root.mkdir(parents=True, exist_ok=True)
-
-        self.process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "mineru.cli.fast_api",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
-            cwd=os.getcwd(),
-            env=env,
-        )
-
-        if not self._atexit_registered:
-            atexit.register(self.stop)
-            self._atexit_registered = True
-        return self.base_url
-
-    def stop(self) -> None:
-        process = self.process
-        self.process = None
-        try:
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-        finally:
-            if self._atexit_registered:
-                try:
-                    atexit.unregister(self.stop)
-                except Exception:
-                    pass
-                self._atexit_registered = False
-            self._cleanup_temp_dir()
-
-    def _cleanup_temp_dir(self) -> None:
-        last_error: Exception | None = None
-        for attempt in range(LOCAL_API_CLEANUP_RETRIES):
-            try:
-                self.temp_dir.cleanup()
-                return
-            except FileNotFoundError:
-                return
-            except Exception as exc:
-                last_error = exc
-                if attempt + 1 < LOCAL_API_CLEANUP_RETRIES:
-                    time.sleep(LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS)
-
-        if last_error is not None:
-            logger.warning(
-                "Failed to clean up temporary MinerU API directory {}: {}. "
-                "You can remove it manually after processes release any open handles.",
-                self.temp_root,
-                last_error,
-            )
+    return _api_client.build_http_timeout()
 
 def find_free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        sock.listen(1)
-        return int(sock.getsockname()[1])
+    return _api_client.find_free_port()
 
 
 def normalize_base_url(url: str) -> str:
-    return url.rstrip("/")
+    return _api_client.normalize_base_url(url)
 
 
 def format_task_label(task: PlannedTask) -> str:
@@ -526,97 +413,30 @@ async def wait_for_visualization_jobs(
 
 
 def response_detail(response: httpx.Response) -> str:
-    try:
-        payload = response.json()
-    except Exception:
-        text = response.text.strip()
-        return text or response.reason_phrase
-
-    if isinstance(payload, dict):
-        detail = payload.get("detail")
-        if isinstance(detail, str):
-            return detail
-        error = payload.get("error")
-        if isinstance(error, str):
-            return error
-        message = payload.get("message")
-        if isinstance(message, str):
-            return message
-    return json.dumps(payload, ensure_ascii=False)
+    return _api_client.response_detail(response)
 
 
 def validate_server_health_payload(payload: dict, base_url: str) -> ServerHealth:
-    status = payload.get("status")
-    if status != "healthy":
-        raise click.ClickException(
-            f"MinerU API at {base_url} is not healthy: {json.dumps(payload, ensure_ascii=False)}"
-        )
-
-    protocol_version = payload.get("protocol_version")
-    if protocol_version != API_PROTOCOL_VERSION:
-        raise click.ClickException(
-            f"MinerU API at {base_url} returned protocol_version={protocol_version}, "
-            f"expected {API_PROTOCOL_VERSION}"
-        )
-
-    max_concurrent_requests = payload.get("max_concurrent_requests")
-    processing_window_size = payload.get("processing_window_size")
-    if not isinstance(max_concurrent_requests, int):
-        raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid max_concurrent_requests"
-        )
-    if not isinstance(processing_window_size, int):
-        raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid processing_window_size"
-        )
-
-    return ServerHealth(
-        base_url=base_url,
-        max_concurrent_requests=max_concurrent_requests,
-        processing_window_size=max(1, processing_window_size),
-    )
+    return _api_client.validate_server_health_payload(payload, base_url)
 
 
 async def fetch_server_health(
     client: httpx.AsyncClient,
     base_url: str,
 ) -> ServerHealth:
-    response = await client.get(f"{base_url}{HEALTH_ENDPOINT}")
-    if response.status_code != 200:
-        raise click.ClickException(
-            f"Failed to query MinerU API health from {base_url}: "
-            f"{response.status_code} {response_detail(response)}"
-        )
-    return validate_server_health_payload(response.json(), base_url)
+    return await _api_client.fetch_server_health(client, base_url)
 
 
 async def wait_for_local_api_ready(
     client: httpx.AsyncClient,
     local_server: LocalAPIServer,
-    timeout_seconds: float = LOCAL_API_STARTUP_TIMEOUT_SECONDS,
+    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
 ) -> ServerHealth:
-    assert local_server.base_url is not None
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    last_error: str | None = None
-
-    while asyncio.get_running_loop().time() < deadline:
-        process = local_server.process
-        if process is not None and process.poll() is not None:
-            raise click.ClickException(
-                "Local mineru-api exited before becoming healthy."
-            )
-        try:
-            return await fetch_server_health(client, local_server.base_url)
-        except click.ClickException as exc:
-            last_error = str(exc)
-        except httpx.HTTPError as exc:
-            last_error = str(exc)
-        await asyncio.sleep(TASK_STATUS_POLL_INTERVAL_SECONDS)
-
-    message = "Timed out waiting for local mineru-api to become healthy."
-    if last_error:
-        message = f"{message} {last_error}"
-    raise click.ClickException(message)
+    return await _api_client.wait_for_local_api_ready(
+        client,
+        local_server,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def probe_pdf_effective_pages(
@@ -774,94 +594,68 @@ def build_request_form_data(
     server_url: Optional[str],
     start_page_id: int,
     end_page_id: Optional[int],
-) -> dict[str, str]:
-    data = {
-        "lang_list": lang,
-        "backend": backend,
-        "parse_method": method,
-        "formula_enable": str(formula_enable).lower(),
-        "table_enable": str(table_enable).lower(),
-        "return_md": "true",
-        "return_middle_json": "true",
-        "return_model_output": "true",
-        "return_content_list": "true",
-        "return_images": "true",
-        "response_format_zip": "true",
-        "return_original_file": "true",
-        "start_page_id": str(start_page_id),
-        "end_page_id": str(99999 if end_page_id is None else end_page_id),
-    }
-    if server_url:
-        data["server_url"] = server_url
-    return data
+) -> dict[str, str | list[str]]:
+    return _api_client.build_parse_request_form_data(
+        lang_list=[lang],
+        backend=backend,
+        parse_method=method,
+        formula_enable=formula_enable,
+        table_enable=table_enable,
+        server_url=server_url,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+        return_md=True,
+        return_middle_json=True,
+        return_model_output=True,
+        return_content_list=True,
+        return_images=True,
+        response_format_zip=True,
+        return_original_file=True,
+    )
 
 
 async def submit_task(
     client: httpx.AsyncClient,
     base_url: str,
     planned_task: PlannedTask,
-    form_data: dict[str, str],
+    form_data: dict[str, str | list[str]],
 ) -> SubmitResponse:
-    return await asyncio.to_thread(
-        submit_task_sync,
-        base_url,
-        planned_task,
-        form_data,
+    del client
+    upload_assets = [
+        _api_client.UploadAsset(
+            path=document.path,
+            upload_name=f"{document.stem}{document.path.suffix}",
+        )
+        for document in planned_task.documents
+    ]
+    return await _api_client.submit_parse_task(
+        base_url=base_url,
+        upload_assets=upload_assets,
+        form_data=form_data,
     )
 
 
 def submit_task_sync(
     base_url: str,
     planned_task: PlannedTask,
-    form_data: dict[str, str],
+    form_data: dict[str, str | list[str]],
 ) -> SubmitResponse:
-    with httpx.Client(timeout=build_http_timeout(), follow_redirects=True) as sync_client:
-        with ExitStack() as stack:
-            files = []
-            for document in planned_task.documents:
-                mime_type = mimetypes.guess_type(document.path.name)[0] or "application/octet-stream"
-                file_handle = stack.enter_context(open(document.path, "rb"))
-                upload_filename = f"{document.stem}{document.path.suffix}"
-                files.append(
-                    (
-                        "files",
-                        (
-                            upload_filename,
-                            file_handle,
-                            mime_type,
-                        ),
-                    )
+    try:
+        return _api_client.submit_parse_task_sync(
+            base_url=base_url,
+            upload_assets=[
+                _api_client.UploadAsset(
+                    path=document.path,
+                    upload_name=f"{document.stem}{document.path.suffix}",
                 )
-
-            response = sync_client.post(
-                f"{base_url}{TASKS_ENDPOINT}",
-                data=form_data,
-                files=files,
-            )
-
-    if response.status_code != 202:
-        raise click.ClickException(
-            f"Failed to submit {format_task_label(planned_task)}: "
-            f"{response.status_code} {response_detail(response)}"
+                for document in planned_task.documents
+            ],
+            form_data=form_data,
         )
-
-    payload = response.json()
-    task_id = payload.get("task_id")
-    status_url = payload.get("status_url")
-    result_url = payload.get("result_url")
-    if (
-        not isinstance(task_id, str)
-        or not isinstance(status_url, str)
-        or not isinstance(result_url, str)
-    ):
+    except click.ClickException as exc:
         raise click.ClickException(
-            f"MinerU API returned an invalid task payload for {format_task_label(planned_task)}"
-        )
-    return SubmitResponse(
-        task_id=task_id,
-        status_url=status_url,
-        result_url=result_url,
-    )
+            f"Failed to submit {format_task_label(planned_task)}: {exc}"
+        ) from exc
 
 
 async def wait_for_task_result(
@@ -869,34 +663,18 @@ async def wait_for_task_result(
     submit_response: SubmitResponse,
     planned_task: PlannedTask,
     live_renderer: Optional[LiveTaskStatusRenderer] = None,
-    timeout_seconds: float = TASK_RESULT_TIMEOUT_SECONDS,
+    timeout_seconds: float = _api_client.TASK_RESULT_TIMEOUT_SECONDS,
 ) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    while asyncio.get_running_loop().time() < deadline:
-        response = await client.get(submit_response.status_url)
-        if response.status_code != 200:
-            raise click.ClickException(
-                f"Failed to query task status for {format_task_label(planned_task)}: "
-                f"{response.status_code} {response_detail(response)}"
-            )
-
-        payload = response.json()
-        status = payload.get("status")
-        if status in {"pending", "processing"}:
-            if live_renderer is not None:
-                live_renderer.update_status(submit_response.task_id, status)
-            await asyncio.sleep(TASK_STATUS_POLL_INTERVAL_SECONDS)
-            continue
-        if status == "completed":
-            return
-        raise click.ClickException(
-            f"Task {submit_response.task_id} failed for {format_task_label(planned_task)}: "
-            f"{json.dumps(payload, ensure_ascii=False)}"
-        )
-
-    raise click.ClickException(
-        f"Timed out waiting for result of task {submit_response.task_id} "
-        f"for {format_task_label(planned_task)}"
+    return await _api_client.wait_for_task_result(
+        client=client,
+        submit_response=submit_response,
+        task_label=format_task_label(planned_task),
+        status_callback=(
+            None
+            if live_renderer is None
+            else lambda status: live_renderer.update_status(submit_response.task_id, status)
+        ),
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -905,49 +683,15 @@ async def download_result_zip(
     submit_response: SubmitResponse,
     planned_task: PlannedTask,
 ) -> Path:
-    response = await client.get(submit_response.result_url)
-    if response.status_code != 200:
-        raise click.ClickException(
-            f"Failed to download result ZIP for task {submit_response.task_id}: "
-            f"{response.status_code} {response_detail(response)}"
-        )
-    content_type = response.headers.get("content-type", "")
-    if "application/zip" not in content_type:
-        raise click.ClickException(
-            f"Expected a ZIP result for {format_task_label(planned_task)}, "
-            f"got content-type={content_type or 'unknown'}"
-        )
-
-    zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="mineru_cli_result_")
-    os.close(zip_fd)
-    Path(zip_path).write_bytes(response.content)
-    return Path(zip_path)
+    return await _api_client.download_result_zip(
+        client=client,
+        submit_response=submit_response,
+        task_label=format_task_label(planned_task),
+    )
 
 
 def safe_extract_zip(zip_path: Path, output_dir: Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_root = output_dir.resolve()
-
-    with zipfile.ZipFile(zip_path, "r") as zip_file:
-        for member in zip_file.infolist():
-            member_path = PurePosixPath(member.filename)
-            if member_path.is_absolute() or ".." in member_path.parts:
-                raise click.ClickException(
-                    f"Refusing to extract unsafe ZIP entry: {member.filename}"
-                )
-            target_path = (output_root / Path(*member_path.parts)).resolve()
-            if target_path != output_root and output_root not in target_path.parents:
-                raise click.ClickException(
-                    f"Refusing to extract unsafe ZIP entry: {member.filename}"
-                )
-
-            if member.is_dir():
-                target_path.mkdir(parents=True, exist_ok=True)
-                continue
-
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            with zip_file.open(member, "r") as source, open(target_path, "wb") as handle:
-                handle.write(source.read())
+    _api_client.safe_extract_zip(zip_path, output_dir)
 
 
 def resolve_submit_concurrency(max_concurrent_requests: int, task_count: int) -> int:
@@ -960,13 +704,10 @@ def resolve_effective_max_concurrent_requests(
     local_max: int,
     server_max: int,
 ) -> int:
-    if local_max > 0 and server_max > 0:
-        return min(local_max, server_max)
-    if local_max > 0:
-        return local_max
-    if server_max > 0:
-        return server_max
-    return 0
+    return _api_client.resolve_effective_max_concurrent_requests(
+        local_max=local_max,
+        server_max=server_max,
+    )
 
 
 async def execute_planned_tasks(
