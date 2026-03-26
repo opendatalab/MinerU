@@ -44,7 +44,9 @@ from mineru.cli.common import (
 from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
+    DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
+    get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import get_device, get_processing_window_size
@@ -66,7 +68,6 @@ DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
 DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS = 5 * 60
 DEFAULT_OUTPUT_ROOT = "./output"
 ALLOWED_PARSE_METHODS = {"auto", "txt", "ocr"}
-DEFAULT_MAX_CONCURRENT_REQUESTS = 3
 FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
 FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
 FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
@@ -189,12 +190,9 @@ def create_app():
     )
 
     global _request_semaphore, _configured_max_concurrent_requests
-    try:
-        max_concurrent_requests = int(
-            os.getenv("MINERU_API_MAX_CONCURRENT_REQUESTS", f"{DEFAULT_MAX_CONCURRENT_REQUESTS}")
-        )
-    except ValueError:
-        max_concurrent_requests = DEFAULT_MAX_CONCURRENT_REQUESTS
+    max_concurrent_requests = read_max_concurrent_requests(
+        default=DEFAULT_MAX_CONCURRENT_REQUESTS
+    )
 
     _configured_max_concurrent_requests = max_concurrent_requests
     app.state.max_concurrent_requests = max_concurrent_requests

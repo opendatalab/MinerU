@@ -139,6 +139,20 @@ def get_processing_window_size(default: int = 64) -> int:
     return max(1, window_size)
 
 
+def get_max_concurrent_requests(default: int = 3) -> int:
+    value = os.getenv('MINERU_API_MAX_CONCURRENT_REQUESTS')
+    if value is None:
+        return default
+    try:
+        max_concurrent_requests = int(value)
+    except ValueError:
+        logger.warning(
+            f"Invalid MINERU_API_MAX_CONCURRENT_REQUESTS value: {value}, use default {default}"
+        )
+        return default
+    return max(0, max_concurrent_requests)
+
+
 def get_latex_delimiter_config():
     config = read_config()
     if config is None:

@@ -24,7 +24,9 @@ from loguru import logger
 
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
+    DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
+    get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.utils.pdf_page_id import get_end_page_id
@@ -57,7 +59,6 @@ TASK_RESULT_TIMEOUT_SECONDS = 600
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = 30
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
-LOCAL_API_MAX_CONCURRENT_REQUESTS = 3
 
 
 @dataclass(frozen=True)
@@ -278,7 +279,7 @@ class LocalAPIServer:
         env = os.environ.copy()
         env["MINERU_API_OUTPUT_ROOT"] = str(self.output_root)
         env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
-            LOCAL_API_MAX_CONCURRENT_REQUESTS
+            read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
         )
         env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
         self.output_root.mkdir(parents=True, exist_ok=True)
@@ -955,6 +956,19 @@ def resolve_submit_concurrency(max_concurrent_requests: int, task_count: int) ->
     return max(1, min(max_concurrent_requests, task_count))
 
 
+def resolve_effective_max_concurrent_requests(
+    local_max: int,
+    server_max: int,
+) -> int:
+    if local_max > 0 and server_max > 0:
+        return min(local_max, server_max)
+    if local_max > 0:
+        return local_max
+    if server_max > 0:
+        return server_max
+    return 0
+
+
 async def execute_planned_tasks(
     planned_tasks: list[PlannedTask],
     concurrency: int,
@@ -1100,10 +1114,21 @@ async def run_orchestrated_cli(
                 base_url = local_server.start()
                 logger.info(f"Started local mineru-api at {base_url}")
                 server_health = await wait_for_local_api_ready(http_client, local_server)
+                effective_max_concurrent_requests = (
+                    server_health.max_concurrent_requests
+                )
             else:
                 server_health = await fetch_server_health(
                     http_client,
                     normalize_base_url(api_url),
+                )
+                effective_max_concurrent_requests = (
+                    resolve_effective_max_concurrent_requests(
+                        read_max_concurrent_requests(
+                            default=DEFAULT_MAX_CONCURRENT_REQUESTS
+                        ),
+                        server_health.max_concurrent_requests,
+                    )
                 )
                 live_renderer = create_live_task_status_renderer(api_url)
 
@@ -1116,7 +1141,7 @@ async def run_orchestrated_cli(
             )
             progress = build_task_execution_progress(planned_tasks)
             concurrency = resolve_submit_concurrency(
-                server_health.max_concurrent_requests,
+                effective_max_concurrent_requests,
                 len(planned_tasks),
             )
             form_data = build_request_form_data(
