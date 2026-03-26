@@ -137,12 +137,17 @@ class AsyncParseTask:
     end_page_id: int
     upload_names: list[str]
     uploads: list[str]
+    submit_order: int = 0
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
 
-    def to_status_payload(self, request: Request) -> dict[str, Any]:
-        return {
+    def to_status_payload(
+        self,
+        request: Request,
+        queued_ahead: int | None = None,
+    ) -> dict[str, Any]:
+        payload = {
             "task_id": self.task_id,
             "status": self.status,
             "backend": self.backend,
@@ -158,6 +163,9 @@ class AsyncParseTask:
                 request.url_for("get_async_task_result", task_id=self.task_id)
             ),
         }
+        if queued_ahead is not None:
+            payload["queued_ahead"] = queued_ahead
+        return payload
 
 
 class TaskWaitAbortedError(RuntimeError):
@@ -588,8 +596,12 @@ def build_result_response(
     )
 
 
-def build_task_submission_response(task: AsyncParseTask, request: Request) -> JSONResponse:
-    payload = task.to_status_payload(request)
+def build_task_submission_response(
+    task: AsyncParseTask,
+    request: Request,
+    task_manager: "AsyncTaskManager",
+) -> JSONResponse:
+    payload = task_manager.build_status_payload(task, request)
     payload["message"] = "Task submitted successfully"
     return JSONResponse(status_code=202, content=payload)
 
@@ -946,6 +958,7 @@ class AsyncTaskManager:
         self.task_retention_seconds = get_task_retention_seconds()
         self.task_cleanup_interval_seconds = get_task_cleanup_interval_seconds()
         self.manager_wakeup = asyncio.Event()
+        self._next_submit_order = 1
 
     async def start(self) -> None:
         self.is_shutting_down = False
@@ -985,12 +998,41 @@ class AsyncTaskManager:
         self.active_tasks.clear()
 
     async def submit(self, task: AsyncParseTask) -> None:
+        task.submit_order = self._next_submit_order
+        self._next_submit_order += 1
         self.tasks[task.task_id] = task
         self.task_events[task.task_id] = asyncio.Event()
         await self.queue.put(task.task_id)
 
     def get(self, task_id: str) -> Optional[AsyncParseTask]:
         return self.tasks.get(task_id)
+
+    def get_queued_ahead(self, task_id: str) -> int | None:
+        task = self.tasks.get(task_id)
+        if task is None:
+            return None
+        if task.status != TASK_PENDING:
+            return 0
+
+        return sum(
+            1
+            for other_task in self.tasks.values()
+            if (
+                other_task.task_id != task_id
+                and other_task.status == TASK_PENDING
+                and 0 < other_task.submit_order < task.submit_order
+            )
+        )
+
+    def build_status_payload(
+        self,
+        task: AsyncParseTask,
+        request: Request,
+    ) -> dict[str, Any]:
+        return task.to_status_payload(
+            request,
+            queued_ahead=self.get_queued_ahead(task.task_id),
+        )
 
     async def wait_for_terminal_state(self, task_id: str) -> AsyncParseTask:
         task = self.tasks.get(task_id)
@@ -1263,8 +1305,9 @@ async def submit_parse_task(
     http_request: Request,
     request_options: ParseRequestOptions = Depends(parse_request_form),
 ):
+    task_manager = get_task_manager()
     task = await create_async_parse_task(request_options)
-    return build_task_submission_response(task, http_request)
+    return build_task_submission_response(task, http_request, task_manager)
 
 
 @app.get(path="/tasks/{task_id}", name="get_async_task_status")
@@ -1273,7 +1316,7 @@ async def get_async_task_status(task_id: str, request: Request):
     task = task_manager.get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    return task.to_status_payload(request)
+    return task_manager.build_status_payload(task, request)
 
 
 @app.get(path="/tasks/{task_id}/result", name="get_async_task_result")

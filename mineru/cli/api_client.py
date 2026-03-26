@@ -55,6 +55,12 @@ class SubmitResponse:
     file_names: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class TaskStatusSnapshot:
+    status: str
+    queued_ahead: int | None = None
+
+
 class LocalAPIServer:
     def __init__(self, extra_cli_args: Sequence[str] = ()):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="mineru-api-client-")
@@ -422,6 +428,7 @@ async def wait_for_task_result(
     task_label: str,
     *,
     status_callback: Optional[Callable[[str], None]] = None,
+    status_snapshot_callback: Optional[Callable[[TaskStatusSnapshot], None]] = None,
     timeout_seconds: float = TASK_RESULT_TIMEOUT_SECONDS,
 ) -> None:
     deadline = asyncio.get_running_loop().time() + timeout_seconds
@@ -436,6 +443,16 @@ async def wait_for_task_result(
         payload = response.json()
         status = payload.get("status")
         if status in {"pending", "processing"}:
+            queued_ahead = payload.get("queued_ahead")
+            if not isinstance(queued_ahead, int):
+                queued_ahead = None
+            if status_snapshot_callback is not None:
+                status_snapshot_callback(
+                    TaskStatusSnapshot(
+                        status=status,
+                        queued_ahead=queued_ahead,
+                    )
+                )
             if status_callback is not None:
                 status_callback(status)
             await asyncio.sleep(TASK_STATUS_POLL_INTERVAL_SECONDS)

@@ -176,6 +176,8 @@ STATUS_BOX_CSS = f"""
 }}
 """
 STATUS_TIMER_INTERVAL_SECONDS = 0.1
+STATUS_QUEUE_ANIMATION_INTERVAL_SECONDS = 1.0
+STATUS_QUEUE_ANIMATION_MAX_DOTS = 10
 
 STATUS_WAITING_TO_START = "Waiting to start"
 STATUS_PREPARING_REQUEST = "Preparing request..."
@@ -194,21 +196,24 @@ class StatusPanelState:
     lines: list[str] = field(default_factory=list)
     processing_index: int | None = None
     processing_started_at: float | None = None
-    local_queue_index: int | None = None
+    queue_index: int | None = None
+    queue_started_at: float | None = None
+    queue_base_message: str | None = None
 
     def append(self, message: str) -> bool:
         if not message:
             return False
 
+        if self.is_queue_message(message):
+            self.finalize_processing()
+            return self.update_queue(message)
+
         if message == STATUS_PROCESSING_ON_SERVER:
-            self.finalize_local_queue()
+            self.finalize_queue()
             return self.start_processing()
 
         self.finalize_processing()
-        if message.startswith(STATUS_QUEUED_LOCALLY_PREFIX):
-            return self.update_local_queue(message)
-
-        self.finalize_local_queue()
+        self.finalize_queue()
         if not self.lines or self.lines[-1] != message:
             self.lines.append(message)
             return True
@@ -216,14 +221,14 @@ class StatusPanelState:
 
     def start_processing(self) -> bool:
         if self.processing_started_at is not None:
-            return self.tick()
+            return self.tick_processing()
 
         self.processing_started_at = time.monotonic()
         self.processing_index = len(self.lines)
         self.lines.append(format_processing_status(0.0))
         return True
 
-    def tick(self) -> bool:
+    def tick_processing(self) -> bool:
         if self.processing_started_at is None or self.processing_index is None:
             return False
 
@@ -239,32 +244,93 @@ class StatusPanelState:
         if self.processing_started_at is None or self.processing_index is None:
             return False
 
-        self.tick()
+        self.tick_processing()
         self.processing_started_at = None
         self.processing_index = None
         return True
 
-    def update_local_queue(self, message: str) -> bool:
-        if self.local_queue_index is None:
-            self.local_queue_index = len(self.lines)
-            self.lines.append(message)
+    def update_queue(self, message: str) -> bool:
+        if (
+            self.queue_index is None
+            or self.queue_started_at is None
+            or self.queue_base_message is None
+        ):
+            self.queue_started_at = time.monotonic()
+            self.queue_index = len(self.lines)
+            self.queue_base_message = message
+            self.lines.append(format_queue_status(message, 0.0))
             return True
 
-        if self.lines[self.local_queue_index] != message:
-            self.lines[self.local_queue_index] = message
+        self.queue_base_message = message
+        updated = format_queue_status(
+            message,
+            max(0.0, time.monotonic() - self.queue_started_at),
+        )
+        if self.lines[self.queue_index] != updated:
+            self.lines[self.queue_index] = updated
             return True
         return False
 
-    def finalize_local_queue(self) -> bool:
-        if self.local_queue_index is None:
+    def tick_queue(self) -> bool:
+        if (
+            self.queue_index is None
+            or self.queue_started_at is None
+            or self.queue_base_message is None
+        ):
             return False
 
-        self.local_queue_index = None
+        updated = format_queue_status(
+            self.queue_base_message,
+            max(0.0, time.monotonic() - self.queue_started_at),
+        )
+        if self.lines[self.queue_index] != updated:
+            self.lines[self.queue_index] = updated
+            return True
+        return False
+
+    def finalize_queue(self) -> bool:
+        if (
+            self.queue_index is None
+            or self.queue_started_at is None
+            or self.queue_base_message is None
+        ):
+            return False
+
+        self.tick_queue()
+        self.queue_index = None
+        self.queue_started_at = None
+        self.queue_base_message = None
         return True
+
+    def tick(self) -> bool:
+        if self.is_processing:
+            return self.tick_processing()
+        if self.is_queueing:
+            return self.tick_queue()
+        return False
 
     @property
     def is_processing(self) -> bool:
         return self.processing_started_at is not None
+
+    @property
+    def is_queueing(self) -> bool:
+        return self.queue_started_at is not None
+
+    @property
+    def animation_interval_seconds(self) -> float | None:
+        if self.is_processing:
+            return STATUS_TIMER_INTERVAL_SECONDS
+        if self.is_queueing:
+            return STATUS_QUEUE_ANIMATION_INTERVAL_SECONDS
+        return None
+
+    @staticmethod
+    def is_queue_message(message: str) -> bool:
+        return (
+            message.startswith(STATUS_QUEUED_LOCALLY_PREFIX)
+            or message.startswith(STATUS_QUEUED_ON_SERVER)
+        )
 
     def render(self) -> str:
         return "\n".join(self.lines)
@@ -278,12 +344,30 @@ def format_processing_status(elapsed_seconds: float) -> str:
     return f"{STATUS_PROCESSING_ON_SERVER} ({elapsed_seconds:.1f}s)"
 
 
+def format_queue_status(base_message: str, elapsed_seconds: float) -> str:
+    dots = "." * (
+        (int(max(0.0, elapsed_seconds)) % STATUS_QUEUE_ANIMATION_MAX_DOTS) + 1
+    )
+    return f"{base_message}{dots}"
+
+
 def format_concurrency_wait_message(snapshot: GradioConcurrencyWaitSnapshot) -> str:
     return f"{STATUS_QUEUED_LOCALLY_PREFIX} {snapshot.ahead} request(s) ahead"
 
 
-def format_remote_status_message(status: str) -> str:
+def format_remote_status_message(
+    status_snapshot: _api_client.TaskStatusSnapshot | str,
+) -> str:
+    if isinstance(status_snapshot, _api_client.TaskStatusSnapshot):
+        status = status_snapshot.status
+        queued_ahead = status_snapshot.queued_ahead
+    else:
+        status = status_snapshot
+        queued_ahead = None
+
     if status == "pending":
+        if queued_ahead is not None:
+            return f"{STATUS_QUEUED_ON_SERVER}: {queued_ahead} request(s) ahead"
         return STATUS_QUEUED_ON_SERVER
     if status == "processing":
         return STATUS_PROCESSING_ON_SERVER
@@ -527,20 +611,22 @@ async def _run_to_markdown_job(
             )
             emit_status(f"Task submitted：task_id={submit_response.task_id}")
 
-            last_task_status = None
+            last_task_snapshot = None
 
-            def handle_task_status(status: str) -> None:
-                nonlocal last_task_status
-                if status == last_task_status:
+            def handle_task_status(
+                status_snapshot: _api_client.TaskStatusSnapshot,
+            ) -> None:
+                nonlocal last_task_snapshot
+                if status_snapshot == last_task_snapshot:
                     return
-                last_task_status = status
-                emit_status(format_remote_status_message(status))
+                last_task_snapshot = status_snapshot
+                emit_status(format_remote_status_message(status_snapshot))
 
             await _api_client.wait_for_task_result(
                 client=http_client,
                 submit_response=submit_response,
                 task_label=Path(file_path).name,
-                status_callback=handle_task_status,
+                status_snapshot_callback=handle_task_status,
             )
             emit_status(STATUS_DOWNLOADING_RESULT)
             result_zip_path = await _api_client.download_result_zip(
@@ -631,14 +717,16 @@ async def stream_to_markdown(
         while True:
             if job_task.done() and status_queue.empty():
                 status_state.finalize_processing()
+                status_state.finalize_queue()
                 break
 
             queue_get_task = asyncio.create_task(status_queue.get())
             wait_tasks: set[asyncio.Task] = {job_task, queue_get_task}
             timer_task = None
-            if status_state.is_processing:
+            animation_interval = status_state.animation_interval_seconds
+            if animation_interval is not None:
                 timer_task = asyncio.create_task(
-                    asyncio.sleep(STATUS_TIMER_INTERVAL_SECONDS)
+                    asyncio.sleep(animation_interval)
                 )
                 wait_tasks.add(timer_task)
 
