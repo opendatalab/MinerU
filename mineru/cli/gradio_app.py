@@ -73,6 +73,26 @@ class GradioRequestConcurrencyLimiter:
                 self._states[limit] = state
             return state
 
+    def _build_wait_snapshot(
+        self,
+        state: _LimiterState,
+        limit: int,
+        wait_token: object,
+    ) -> GradioConcurrencyWaitSnapshot | None:
+        if wait_token not in state.waiters:
+            return None
+
+        return GradioConcurrencyWaitSnapshot(
+            limit=limit,
+            active=state.active,
+            waiting=len(state.waiters),
+            ahead=state.waiters.index(wait_token),
+        )
+
+    def _remove_waiter(self, state: _LimiterState, wait_token: object) -> None:
+        if wait_token in state.waiters:
+            state.waiters.remove(wait_token)
+
     @asynccontextmanager
     async def acquire(
         self,
@@ -89,31 +109,53 @@ class GradioRequestConcurrencyLimiter:
         snapshot = None
         with self._lock:
             if state.active >= limit or state.waiters:
-                ahead = len(state.waiters)
                 state.waiters.append(wait_token)
                 should_wait = True
-                snapshot = GradioConcurrencyWaitSnapshot(
-                    limit=limit,
-                    active=state.active,
-                    waiting=len(state.waiters),
-                    ahead=ahead,
-                )
+                snapshot = self._build_wait_snapshot(state, limit, wait_token)
 
+        acquire_task = None
+        last_wait_ahead = None
         if should_wait and on_wait is not None and snapshot is not None:
             on_wait(snapshot)
+            last_wait_ahead = snapshot.ahead
 
         try:
-            await state.semaphore.acquire()
+            if should_wait:
+                acquire_task = asyncio.create_task(state.semaphore.acquire())
+                while True:
+                    done, _ = await asyncio.wait(
+                        {acquire_task},
+                        timeout=STATUS_TIMER_INTERVAL_SECONDS,
+                    )
+                    if acquire_task in done:
+                        acquire_task.result()
+                        break
+
+                    if on_wait is None:
+                        continue
+
+                    with self._lock:
+                        snapshot = self._build_wait_snapshot(state, limit, wait_token)
+
+                    if snapshot is None or snapshot.ahead == last_wait_ahead:
+                        continue
+
+                    on_wait(snapshot)
+                    last_wait_ahead = snapshot.ahead
+            else:
+                await state.semaphore.acquire()
         except Exception:
+            if acquire_task is not None:
+                acquire_task.cancel()
+                await asyncio.gather(acquire_task, return_exceptions=True)
             if should_wait:
                 with self._lock:
-                    if wait_token in state.waiters:
-                        state.waiters.remove(wait_token)
+                    self._remove_waiter(state, wait_token)
             raise
 
         with self._lock:
-            if should_wait and wait_token in state.waiters:
-                state.waiters.remove(wait_token)
+            if should_wait:
+                self._remove_waiter(state, wait_token)
             state.active += 1
         try:
             yield
@@ -144,6 +186,7 @@ STATUS_PROCESSING_OUTPUT = "Preparing outputs..."
 STATUS_COMPLETED = "Completed"
 STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
+STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
 
 @dataclass
@@ -151,15 +194,21 @@ class StatusPanelState:
     lines: list[str] = field(default_factory=list)
     processing_index: int | None = None
     processing_started_at: float | None = None
+    local_queue_index: int | None = None
 
     def append(self, message: str) -> bool:
         if not message:
             return False
 
         if message == STATUS_PROCESSING_ON_SERVER:
+            self.finalize_local_queue()
             return self.start_processing()
 
         self.finalize_processing()
+        if message.startswith(STATUS_QUEUED_LOCALLY_PREFIX):
+            return self.update_local_queue(message)
+
+        self.finalize_local_queue()
         if not self.lines or self.lines[-1] != message:
             self.lines.append(message)
             return True
@@ -195,6 +244,24 @@ class StatusPanelState:
         self.processing_index = None
         return True
 
+    def update_local_queue(self, message: str) -> bool:
+        if self.local_queue_index is None:
+            self.local_queue_index = len(self.lines)
+            self.lines.append(message)
+            return True
+
+        if self.lines[self.local_queue_index] != message:
+            self.lines[self.local_queue_index] = message
+            return True
+        return False
+
+    def finalize_local_queue(self) -> bool:
+        if self.local_queue_index is None:
+            return False
+
+        self.local_queue_index = None
+        return True
+
     @property
     def is_processing(self) -> bool:
         return self.processing_started_at is not None
@@ -212,16 +279,7 @@ def format_processing_status(elapsed_seconds: float) -> str:
 
 
 def format_concurrency_wait_message(snapshot: GradioConcurrencyWaitSnapshot) -> str:
-    return (
-        f"Queued locally: {snapshot.ahead} request(s) ahead, "
-        f"{snapshot.active}/{snapshot.limit} slots in use"
-    )
-
-
-def format_server_ready_message(server_health) -> str:
-    if server_health.max_concurrent_requests > 0:
-        return f"Server ready: max concurrency {server_health.max_concurrent_requests}"
-    return "Server ready: concurrency unlimited"
+    return f"{STATUS_QUEUED_LOCALLY_PREFIX} {snapshot.ahead} request(s) ahead"
 
 
 def format_remote_status_message(status: str) -> str:
@@ -310,19 +368,6 @@ def replace_image_with_base64(markdown_text, image_dir_path):
     return result
 
 
-async def to_markdown(file_path, end_pages=10, is_ocr=False, formula_enable=True, table_enable=True, language="ch", backend="pipeline", url=None):
-    return await _run_to_markdown_job(
-        file_path=file_path,
-        end_pages=end_pages,
-        is_ocr=is_ocr,
-        formula_enable=formula_enable,
-        table_enable=table_enable,
-        language=language,
-        backend=backend,
-        url=url,
-    )
-
-
 def normalize_language(language):
     if '(' in language and ')' in language:
         return language.split('(')[0].strip()
@@ -407,30 +452,6 @@ def maybe_generate_local_preview(extract_root, file_name, file_suffix, backend, 
     return resolve_preview_pdf_path(parse_dir, file_name)
 
 
-async def _to_markdown_impl(
-    file_path,
-    end_pages=10,
-    is_ocr=False,
-    formula_enable=True,
-    table_enable=True,
-    language="ch",
-    backend="pipeline",
-    url=None,
-    api_url=None,
-):
-    return await _run_to_markdown_job(
-        file_path=file_path,
-        end_pages=end_pages,
-        is_ocr=is_ocr,
-        formula_enable=formula_enable,
-        table_enable=table_enable,
-        language=language,
-        backend=backend,
-        url=url,
-        api_url=api_url,
-    )
-
-
 async def _run_to_markdown_job(
     file_path,
     end_pages=10,
@@ -488,7 +509,6 @@ async def _run_to_markdown_job(
         emit_status(STATUS_PREPARING_REQUEST)
         emit_status(STATUS_CHECKING_SERVER)
         server_health = await resolve_server_health(http_client, api_url)
-        emit_status(format_server_ready_message(server_health))
         effective_max_concurrent_requests = resolve_gradio_max_concurrent_requests(
             api_url=api_url,
             server_health=server_health,
