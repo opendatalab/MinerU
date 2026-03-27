@@ -117,6 +117,7 @@ mineru-lmdeploy-server = "mineru.cli.vlm_server:lmdeploy_server"
 mineru-openai-server = "mineru.cli.vlm_server:openai_server"
 mineru-models-download = "mineru.cli.models_download:download_models"
 mineru-api = "mineru.cli.fast_api:main"
+mineru-router = "mineru.cli.router:main"
 mineru-gradio = "mineru.cli.gradio_app:main"
 
 [tool.setuptools.dynamic]
