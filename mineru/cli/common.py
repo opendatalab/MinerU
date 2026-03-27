@@ -34,29 +34,70 @@ xlsx_suffixes = ["xlsx"]
 office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+MAX_TASK_STEM_BYTES = 200
+
+
+def utf8_byte_length(value: str) -> int:
+    return len(value.encode("utf-8"))
+
+
+def truncate_to_utf8_bytes(value: str, max_bytes: int) -> str:
+    if max_bytes <= 0:
+        return ""
+
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+
+    truncated = encoded[:max_bytes]
+    while truncated:
+        try:
+            return truncated.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            truncated = truncated[:exc.start]
+    return ""
+
+
+def normalize_task_stem(stem: str, max_bytes: int = MAX_TASK_STEM_BYTES) -> str:
+    return truncate_to_utf8_bytes(stem, max_bytes)
+
+
+def build_task_stem_candidate(
+    stem: str,
+    suffix: str = "",
+    max_bytes: int = MAX_TASK_STEM_BYTES,
+) -> str:
+    if utf8_byte_length(f"{stem}{suffix}") <= max_bytes:
+        return f"{stem}{suffix}"
+    suffix_bytes = utf8_byte_length(suffix)
+    if suffix_bytes >= max_bytes:
+        return truncate_to_utf8_bytes(suffix, max_bytes)
+    return f"{truncate_to_utf8_bytes(stem, max_bytes - suffix_bytes)}{suffix}"
 
 
 def uniquify_task_stems(
     stems: Sequence[str],
 ) -> tuple[list[str], list[tuple[str, str]]]:
     """Assign task-local unique stems while preserving input order."""
-    raw_keys = {stem.casefold() for stem in stems}
+    normalized_inputs = [normalize_task_stem(stem) for stem in stems]
+    raw_keys = {stem.casefold() for stem in normalized_inputs}
     occurrence_counts: dict[str, int] = {}
     assigned_keys: set[str] = set()
     unique_stems: list[str] = []
     renamed: list[tuple[str, str]] = []
 
-    for stem in stems:
-        stem_key = stem.casefold()
+    for stem, normalized_stem in zip(stems, normalized_inputs):
+        stem_base = normalized_stem or stem
+        stem_key = stem_base.casefold()
         seen_count = occurrence_counts.get(stem_key, 0)
         occurrence_counts[stem_key] = seen_count + 1
 
         if seen_count == 0 and stem_key not in assigned_keys:
-            effective_stem = stem
+            effective_stem = stem_base
         else:
             suffix = seen_count + 1
             while True:
-                candidate = f"{stem}_{suffix}"
+                candidate = build_task_stem_candidate(stem_base, f"_{suffix}")
                 candidate_key = candidate.casefold()
                 if candidate_key not in raw_keys and candidate_key not in assigned_keys:
                     effective_stem = candidate

@@ -32,6 +32,7 @@ logger.add(sys.stderr, level=log_level)  # 添加新handler
 from mineru.cli.common import (
     docx_suffixes,
     image_suffixes,
+    normalize_task_stem,
     office_suffixes,
     pdf_suffixes,
     read_fn,
@@ -506,6 +507,11 @@ def create_gradio_run_paths(file_path, output_root="./output"):
     return run_root, extract_root, archive_zip_path
 
 
+def build_gradio_upload_name(file_path):
+    path = Path(file_path)
+    return f"{normalize_task_stem(path.stem)}{path.suffix}"
+
+
 def resolve_result_file_name(submit_response, extract_root, file_path):
     if submit_response.file_names:
         return submit_response.file_names[0]
@@ -513,7 +519,7 @@ def resolve_result_file_name(submit_response, extract_root, file_path):
     candidate_dirs = sorted(path.name for path in Path(extract_root).iterdir() if path.is_dir())
     if len(candidate_dirs) == 1:
         return candidate_dirs[0]
-    return Path(file_path).stem
+    return normalize_task_stem(Path(file_path).stem)
 
 
 async def resolve_server_health(http_client, api_url):
@@ -613,7 +619,7 @@ async def _run_to_markdown_job(
     upload_assets = [
         _api_client.UploadAsset(
             path=Path(file_path),
-            upload_name=Path(file_path).name,
+            upload_name=build_gradio_upload_name(file_path),
         )
     ]
 

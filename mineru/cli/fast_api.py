@@ -37,6 +37,7 @@ from mineru.cli.common import (
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
+    normalize_task_stem,
     read_fn,
     uniquify_task_stems,
 )
@@ -748,7 +749,10 @@ async def save_upload_files(upload_dir: str, files: list[UploadFile]) -> list[St
 
     for upload in files:
         original_name = upload.filename or f"upload-{uuid.uuid4()}"
-        filename = Path(original_name).name
+        sanitized_name = Path(original_name).name
+        sanitized_path = Path(sanitized_name)
+        normalized_stem = normalize_task_stem(sanitized_path.stem)
+        filename = f"{normalized_stem}{sanitized_path.suffix}"
         destination = build_upload_destination(upload_dir, filename)
         try:
             with open(destination, "wb") as handle:
@@ -769,7 +773,7 @@ async def save_upload_files(upload_dir: str, files: list[UploadFile]) -> list[St
             uploads.append(
                 StoredUpload(
                     original_name=original_name,
-                    stem=Path(filename).stem,
+                    stem=normalized_stem,
                     path=str(destination),
                 )
             )
