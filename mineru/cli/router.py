@@ -82,6 +82,19 @@ def get_int_env(name: str, default: int, minimum: int = 0) -> int:
     return value
 
 
+def _parse_json_object_response(
+    response: httpx.Response,
+    payload_name: str,
+) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise ValueError(f"{payload_name} is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{payload_name} must be a JSON object")
+    return payload
+
+
 def get_task_retention_seconds() -> int:
     return get_int_env(
         "MINERU_API_TASK_RETENTION_SECONDS",
@@ -574,13 +587,15 @@ class WorkerPool:
                 await self._restart_local_server(server)
             return
 
-        payload = response.json()
         try:
+            payload = _parse_json_object_response(response, "health payload")
             self._update_server_from_health_payload(server, payload)
         except (TypeError, ValueError) as exc:
             server.healthy = False
             server.last_error = f"Invalid health payload: {exc}"
             server.consecutive_health_failures += 1
+            if server.local_server is not None and server.consecutive_health_failures >= 2:
+                await self._restart_local_server(server)
             return
 
     async def _restart_local_server(self, server: WorkerState) -> None:
@@ -592,9 +607,13 @@ class WorkerPool:
             server.base_url = normalize_base_url(local_server.base_url or "")
             response = await self.client.get(f"{server.base_url}{HEALTH_ENDPOINT}")
             if response.status_code == 200:
-                payload = response.json()
                 server.last_checked_at = utc_now_iso()
+                payload = _parse_json_object_response(response, "health payload")
                 self._update_server_from_health_payload(server, payload)
+        except (TypeError, ValueError) as exc:
+            server.healthy = False
+            server.last_error = f"Invalid health payload: {exc}"
+            server.last_checked_at = utc_now_iso()
         except Exception as exc:
             server.healthy = False
             server.last_error = str(exc)
@@ -875,15 +894,17 @@ async def stage_multipart_request(request: Request) -> MultipartPayload:
     return MultipartPayload(temp_dir=temp_dir, fields=fields, uploads=uploads)
 
 
-def parse_submit_response(payload: dict[str, Any]) -> dict[str, Any]:
+def parse_submit_response(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("MinerU upstream returned an invalid submit payload")
     task_id = payload.get("task_id")
     status = payload.get("status")
     backend = payload.get("backend")
     created_at = payload.get("created_at")
     if not isinstance(task_id, str) or not isinstance(status, str) or not isinstance(backend, str):
-        raise RuntimeError("MinerU upstream returned an invalid submit payload")
+        raise ValueError("MinerU upstream returned an invalid submit payload")
     if created_at is not None and not isinstance(created_at, str):
-        raise RuntimeError("MinerU upstream returned an invalid submit payload")
+        raise ValueError("MinerU upstream returned an invalid submit payload")
     return {
         "task_id": task_id,
         "status": status,
@@ -934,7 +955,11 @@ def submit_payload_to_upstream_sync(
             raise UpstreamSubmissionUnavailable(str(exc)) from exc
 
     if response.status_code == 202:
-        return parse_submit_response(response.json())
+        try:
+            submit_response = _parse_json_object_response(response, "submit payload")
+            return parse_submit_response(submit_response)
+        except ValueError as exc:
+            raise UpstreamSubmissionUnavailable(f"Invalid submit payload: {exc}") from exc
     if response.status_code in HTTP_RETRYABLE_STATUS_CODES:
         raise UpstreamSubmissionUnavailable(
             f"{response.status_code} {response_detail(response)}"
@@ -1021,7 +1046,18 @@ async def fetch_router_task_status(
             raise HTTPException(status_code=404, detail="Task not found")
         return updated
 
-    updated = await registry.update_from_upstream_payload(task.task_id, response.json())
+    try:
+        status_payload = _parse_json_object_response(response, "task status payload")
+    except ValueError as exc:
+        updated = await registry.increment_upstream_error(
+            task.task_id,
+            f"Invalid task status payload: {exc}",
+        )
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return updated
+
+    updated = await registry.update_from_upstream_payload(task.task_id, status_payload)
     if updated is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return updated
