@@ -41,6 +41,7 @@ from mineru.utils.pdfium_guard import (
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
+LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
 
@@ -303,7 +304,10 @@ def _process_ocr_and_formulas(
         # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
         np_images = mask_image_regions(np_images, model_list)
         # 使用layout模型提供行内公式检测框
-        images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(np_images, batch_size=1)
+        images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(
+            np_images,
+            batch_size=min(8, batch_radio * LAYOUT_BASE_BATCH_SIZE),
+        )
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
