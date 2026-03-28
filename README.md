@@ -163,7 +163,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -190,8 +190,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr>
     <tr>
       <th>RAM</th>
-      <td colspan="3" style="text-align:center;">Min 8GB, Recommended 16GB or more</td>
-      <td colspan="2" style="text-align:center;">Min 8GB</td>
+      <td colspan="3" style="text-align:center;">Min 16GB, Recommended 32GB or more</td>
+      <td colspan="2" style="text-align:center;">Min 16GB</td>
     </tr>
     <tr>
       <th>Disk Space</th>

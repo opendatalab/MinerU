@@ -162,7 +162,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -189,8 +189,8 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
       <th>内存要求</th>
-      <td colspan="3" style="text-align:center;">最低8GB以上,推荐16GB以上</td>
-      <td colspan="2" style="text-align:center;">最低8GB</td>
+      <td colspan="3" style="text-align:center;">最低16GB以上,推荐32GB以上</td>
+      <td colspan="2" style="text-align:center;">最低16GB</td>
     </tr>
     <tr>
       <th>磁盘空间要求</th>
