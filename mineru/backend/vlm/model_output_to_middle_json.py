@@ -4,6 +4,7 @@ import time
 import cv2
 import numpy as np
 from loguru import logger
+from tqdm import tqdm
 
 from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
@@ -12,6 +13,7 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdf_image_tools import get_crop_img
+from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
 
@@ -36,7 +38,8 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     # page_pil_img = image_dict["img_pil"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
-    width, height = map(int, page.get_size())
+    with pdfium_guard():
+        width, height = map(int, page.get_size())
 
     magic_model = MagicModel(page_blocks, width, height)
     image_blocks = magic_model.get_image_blocks()
@@ -99,25 +102,52 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     return page_info
 
 
-def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
-    middle_json = {"pdf_info": [], "_backend":"vlm", "_version_name": __version__}
-    for index, page_blocks in enumerate(model_output_blocks_list):
-        page = pdf_doc[index]
-        image_dict = images_list[index]
-        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, index)
-        middle_json["pdf_info"].append(page_info)
+def init_middle_json():
+    return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
 
-    """表格跨页合并"""
+
+def append_page_blocks_to_middle_json(
+    middle_json,
+    model_output_blocks_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    page_start_index=0,
+    progress_bar=None,
+):
+    for offset, (page_blocks, image_dict) in enumerate(zip(model_output_blocks_list, images_list)):
+        page_index = page_start_index + offset
+        with pdfium_guard():
+            page = pdf_doc[page_index]
+        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
+        middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+
+def finalize_middle_json(pdf_info_list):
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
-        cross_page_table_merge(middle_json["pdf_info"])
+        cross_page_table_merge(pdf_info_list)
 
-    """llm优化标题分级"""
     if heading_level_import_success:
         llm_aided_title_start_time = time.time()
-        llm_aided_title(middle_json["pdf_info"], title_aided_config)
+        llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
-    # 关闭pdf文档
-    pdf_doc.close()
+
+def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
+    middle_json = init_middle_json()
+    with tqdm(total=len(model_output_blocks_list), desc="Processing pages") as progress_bar:
+        append_page_blocks_to_middle_json(
+            middle_json,
+            model_output_blocks_list,
+            images_list,
+            pdf_doc,
+            image_writer,
+            progress_bar=progress_bar,
+        )
+
+    finalize_middle_json(middle_json["pdf_info"])
+    close_pdfium_document(pdf_doc)
     return middle_json

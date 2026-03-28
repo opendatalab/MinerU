@@ -45,42 +45,29 @@
 
 # 更新记录
 
-- 2026/02/06 2.7.6 发布
-  - 新增国产算力平台昆仑芯、太初元碁的适配支持，目前已由官方和厂商适配并支持的国产算力平台包括:
-    - [昇腾 Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
-    - [平头哥 T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
-    - [沐曦 METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
-    - [海光 Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
-    - [燧原 Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
-    - [摩尔线程 MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
-    - [天数智芯 IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
-    - [寒武纪 Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
-    - [昆仑芯 Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
-    - [太初元碁 Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)
-    - [壁仞 Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
-  - MinerU 持续兼容国产硬件平台，支持主流芯片架构。以安全可靠的技术，助力科研、政企用户迈向文档数字化新高度！
+- 2026/03/29 3.0.0 发布
 
-- 2026/01/30 2.7.4 发布
-  - 新增国产算力平台天数智芯、寒武纪的适配支持。
-
-- 2026/01/23 2.7.2 发布
-  - 新增国产算力平台海光、燧原、摩尔线程的适配支持
-  - 跨页表合并优化，提升合并成功率与合并效果
-
-- 2026/01/06 2.7.1 发布
-  - fix bug: #4300
-  - 更新pdfminer.six的依赖版本以解决 [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
-  - 支持输入图像的exif方向自动校正，提升OCR识别效果  #4283
-
-- 2025/12/30 2.7.0 发布
-  - 简化安装流程，现在不再需要单独安装`vlm`加速引擎依赖包，安装时使用`uv pip install mineru[all]`即可安装所有可选后端的依赖包。
-  - 增加全新后端`hybrid`，该后端结合了`pipeline`和`vlm`后端的优势，在vlm的基础上，融入了pipeline的部分能力，在高精度的基础上增加了额外的扩展性：
-    - 从文本pdf中直接抽取文本，在文本pdf场景原生支持多语言识别，并极大减少解析幻觉；
-    - 通过指定ocr语言，在扫描pdf场景下支持109种语言的文本识别；
-    - 独立的行内公式识别开关，在不需要行内公式识别的场景下可单独关闭，提升解析结果视觉效果。
-  - 简化`vlm/hybrid`后端的引擎选择逻辑，用户只需指定后端为`*-auto-engine`，系统会根据当前环境自动选择合适的引擎进行推理加速，提升易用性.
-  - 默认解析后端从`pipeline`切换至`hybrid-auto-engine`，提升新用户开箱即用的结果一致性，避免出现解析结果认知差异。
-  - gradio应用增加i18n适配，支持中英文两种语言切换。
+  本次版本更新围绕**解析能力、系统架构与工程可用性**进行了系统升级。主要更新内容包括：
+  
+  - `DOCX` 原生解析
+    - 正式支持 `DOCX` 原生解析，在无幻觉前提下实现高精度解析。
+    - 相较于“先将 `DOCX` 转为 `PDF` 再解析”的传统流程，端到端速度提升数十倍以上，更适合对精度与吞吐均有要求的场景。
+  - `pipeline` 后端升级
+    - `pipeline` 后端在 OmniDocBench (v1.5) 上取得 `86.2` 分，精度超过上一代主流 VLM `MinerU2.0-2505-0.9B`。
+    - 新增表格内图片/公式解析、印章文字识别、竖排文本支持、行间公式序号识别等能力，持续提升复杂文档场景下的解析效果。
+    - 在保持高精度的同时，资源占用极低，并继续支持纯 CPU 环境推理。
+  - `API / CLI / Router` 编排升级
+    - `mineru` 现作为基于 `mineru-api` 的编排客户端运行；在未传入 `--api-url` 时，会自动拉起本地临时服务。
+    - `mineru-api` 新增异步任务接口 `POST /tasks`，支持任务提交、状态查询与结果获取；同时保留同步解析接口 `POST /file_parse`，以兼容老版本插件。
+    - 新增 `mineru-router`，适用于多服务、多 GPU 的统一入口部署与任务路由；其接口与 `mineru-api` 完全兼容，并支持任务自动负载均衡。
+  - 部署与使用体验优化
+    - 解决了 `torch >= 2.8` 的兼容问题，基础镜像升级为 `vllm0.11.2 + torch2.9.0`，统一了不同 Compute Capability 的安装路径。
+    - 通过滑动窗口优化解析链路，显著降低长文档场景下的内存峰值占用，上万页文档解析不再需要手动拆分。
+    - `pipeline` 的 batch 推理支持流式落盘，已完成的解析结果可及时写出，进一步提升长任务处理体验。
+    - 完成线程安全优化，全面支持多线程并发推理；配合 `mineru-router`，可一键实现多卡部署，轻松构建高并发、高吞吐解析系统。
+    - 完全移除了两个 AGPLv3 模型（`doclayoutyolo` 和 `mfd_yolov8`）以及一个 CC-BY-NC-SA 4.0 模型（`layoutreader`）的使用。  
+  
+  本次更新不仅是若干功能点的补强，更是 MinerU 在系统能力上的一次关键跃迁。我们重点解决了长文档解析过程中的内存峰值占用问题，通过滑动窗口、流式落盘等链路优化，让超长文档解析从“需要手动拆分、谨慎处理”走向“稳定可跑、规模可扩展”。同时，我们完成了线程安全优化，全面支持多线程并发推理，进一步提升了单机资源利用率与高并发场景下的运行稳定性。在此基础上，基于 mineru-router 与全新的 API / CLI 编排体系，MinerU 已具备一键多卡部署、多服务统一接入、任务自动负载均衡的能力，显著降低了大规模部署难度。至此，MinerU 正在从单一的数据生产工具，进一步演进为面向高并发、高吞吐场景的大规模文档解析基座，为企业级文档数据处理提供更稳定、更高效、更易扩展的基础设施能力。
 
 > 📝 查看完整的 [更新日志](https://opendatalab.github.io/MinerU/zh/reference/changelog/) 了解更多历史版本信息
 
@@ -88,14 +75,15 @@
 
 ## 项目简介
 
-MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
+MinerU 是一款文档解析工具，可将 `PDF`、图片和 `DOCX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
-相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关PDF**。
+相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
+- 支持 `PDF`、图片与 `DOCX` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -106,6 +94,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
+- 内置命令行、FastAPI、Gradio WebUI，支持本地编排和多服务部署
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
 - 兼容Windows、Linux和Mac平台
 
@@ -162,7 +151,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -182,15 +171,15 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
     </tr>
     <tr>
       <th>显存最低要求</th>
-      <td style="text-align:center;">6GB</td>
-      <td style="text-align:center;">10GB</td>
+      <td style="text-align:center;">4GB</td>
       <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">3GB</td>
+      <td style="text-align:center;">8GB</td>
+      <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
       <th>内存要求</th>
       <td colspan="3" style="text-align:center;">最低16GB以上,推荐32GB以上</td>
-      <td colspan="2" style="text-align:center;">最低8GB</td>
+      <td colspan="2" style="text-align:center;">最低16GB</td>
     </tr>
     <tr>
       <th>磁盘空间要求</th>
@@ -259,7 +248,7 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-您可以通过命令行、API、WebUI等多种方式使用MinerU进行PDF解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
+当前 `mineru` 支持本地 `PDF / 图片 / DOCX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
 # TODO
 
@@ -301,19 +290,14 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 [LICENSE.md](LICENSE.md)
 
-本项目目前部分模型基于YOLO训练，但因其遵循AGPL协议，可能对某些使用场景构成限制。未来版本迭代中，我们计划探索并替换为许可条款更为宽松的模型，以提升用户友好度及灵活性。
+本仓库源码采用 AGPLv3 许可。
 
 # Acknowledgments
 
-- [PDF-Extract-Kit](https://github.com/opendatalab/PDF-Extract-Kit)
-- [DocLayout-YOLO](https://github.com/opendatalab/DocLayout-YOLO)
 - [UniMERNet](https://github.com/opendatalab/UniMERNet)
-- [RapidTable](https://github.com/RapidAI/RapidTable)
 - [TableStructureRec](https://github.com/RapidAI/TableStructureRec)
 - [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
 - [PaddleOCR2Pytorch](https://github.com/frotms/PaddleOCR2Pytorch)
-- [layoutreader](https://github.com/ppaanngggg/layoutreader)
-- [xy-cut](https://github.com/Sanster/xy-cut)
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - [pdftext](https://github.com/datalab-to/pdftext)

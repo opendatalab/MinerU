@@ -1,24 +1,26 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import io
 import json
 import os
-import copy
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Sequence
 
 from loguru import logger
-import pypdfium2 as pdfium
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox, draw_line_sort_bbox
+from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
 from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.backend.office.docx_analyze import office_docx_analyze
+from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
 
+os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
     import torch
     torch.backends.cudnn.enabled = False
@@ -26,18 +28,110 @@ if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
 
 pdf_suffixes = ["pdf"]
 image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
+docx_suffixes = ["docx"]
+pptx_suffixes = ["pptx"]
+xlsx_suffixes = ["xlsx"]
+office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# Maximum UTF-8 byte length allowed for task stems used in filenames.
+# 200 bytes is chosen to stay well below common filesystem limits (e.g. 255 bytes)
+# and to prevent generating excessively long or incompatible filenames.
+MAX_TASK_STEM_BYTES = 200
 
-def read_fn(path):
+
+def utf8_byte_length(value: str) -> int:
+    return len(value.encode("utf-8"))
+
+
+def truncate_to_utf8_bytes(value: str, max_bytes: int) -> str:
+    if max_bytes <= 0:
+        return ""
+
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+
+    truncated = encoded[:max_bytes]
+    while truncated:
+        try:
+            return truncated.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            truncated = truncated[:exc.start]
+    return ""
+
+
+def normalize_task_stem(stem: str, max_bytes: int = MAX_TASK_STEM_BYTES) -> str:
+    return truncate_to_utf8_bytes(stem, max_bytes)
+
+
+def normalize_upload_filename(upload_name: str) -> str:
+    sanitized_name = Path(upload_name).name
+    sanitized_path = Path(sanitized_name)
+    normalized_stem = normalize_task_stem(sanitized_path.stem)
+    return f"{normalized_stem}{sanitized_path.suffix}"
+
+
+def build_task_stem_candidate(
+    stem: str,
+    suffix: str = "",
+    max_bytes: int = MAX_TASK_STEM_BYTES,
+) -> str:
+    if utf8_byte_length(f"{stem}{suffix}") <= max_bytes:
+        return f"{stem}{suffix}"
+    suffix_bytes = utf8_byte_length(suffix)
+    if suffix_bytes >= max_bytes:
+        return truncate_to_utf8_bytes(suffix, max_bytes)
+    return f"{truncate_to_utf8_bytes(stem, max_bytes - suffix_bytes)}{suffix}"
+
+
+def uniquify_task_stems(
+    stems: Sequence[str],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Assign task-local unique stems while preserving input order."""
+    normalized_inputs = [normalize_task_stem(stem) for stem in stems]
+    raw_keys = {stem.casefold() for stem in normalized_inputs}
+    occurrence_counts: dict[str, int] = {}
+    assigned_keys: set[str] = set()
+    unique_stems: list[str] = []
+    renamed: list[tuple[str, str]] = []
+
+    for stem, normalized_stem in zip(stems, normalized_inputs):
+        stem_base = normalized_stem or stem
+        stem_key = stem_base.casefold()
+        seen_count = occurrence_counts.get(stem_key, 0)
+        occurrence_counts[stem_key] = seen_count + 1
+
+        if seen_count == 0 and stem_key not in assigned_keys:
+            effective_stem = stem_base
+        else:
+            suffix = seen_count + 1
+            while True:
+                candidate = build_task_stem_candidate(stem_base, f"_{suffix}")
+                candidate_key = candidate.casefold()
+                if candidate_key not in raw_keys and candidate_key not in assigned_keys:
+                    effective_stem = candidate
+                    break
+                suffix += 1
+
+        assigned_keys.add(effective_stem.casefold())
+        unique_stems.append(effective_stem)
+        if effective_stem != stem:
+            renamed.append((stem, effective_stem))
+
+    return unique_stems, renamed
+
+
+def read_fn(path, file_suffix: str | None = None):
     if not isinstance(path, Path):
         path = Path(path)
     with open(str(path), "rb") as input_file:
         file_bytes = input_file.read()
-        file_suffix = guess_suffix_by_bytes(file_bytes, path)
+        if file_suffix is None:
+            file_suffix = guess_suffix_by_bytes(file_bytes, path)
         if file_suffix in image_suffixes:
             return images_bytes_to_pdf_bytes(file_bytes)
-        elif file_suffix in pdf_suffixes:
+        elif file_suffix in pdf_suffixes + office_suffixes:
             return file_bytes
         else:
             raise Exception(f"Unknown file suffix: {file_suffix}")
@@ -51,42 +145,29 @@ def prepare_env(output_dir, pdf_file_name, parse_method):
     return local_image_dir, local_md_dir
 
 
-def convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id=0, end_page_id=None):
-    pdf = pdfium.PdfDocument(pdf_bytes)
-    output_pdf = pdfium.PdfDocument.new()
+def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
     try:
-        end_page_id = get_end_page_id(end_page_id, len(pdf))
-
-        # 逐页导入,失败则跳过
-        output_index = 0
-        for page_index in range(start_page_id, end_page_id + 1):
-            try:
-                output_pdf.import_pages(pdf, pages=[page_index])
-                output_index += 1
-            except Exception as page_error:
-                output_pdf.del_page(output_index)
-                logger.warning(f"Failed to import page {page_index}: {page_error}, skipping this page.")
-                continue
-
-        # 将新PDF保存到内存缓冲区
-        output_buffer = io.BytesIO()
-        output_pdf.save(output_buffer)
-
-        # 获取字节数据
-        output_bytes = output_buffer.getvalue()
-    except Exception as e:
-        logger.warning(f"Error in converting PDF bytes: {e}, Using original PDF bytes.")
-        output_bytes = pdf_bytes
-    pdf.close()
-    output_pdf.close()
-    return output_bytes
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+        )
+        if rebuilt_pdf_bytes:
+            return rebuilt_pdf_bytes
+        logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
+    except Exception as fallback_error:
+        logger.warning(
+            f"Error in converting PDF bytes with pdfium: {fallback_error}, "
+            "using original PDF bytes."
+        )
+    return pdf_bytes
 
 
 def _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id):
     """准备处理PDF字节数据"""
     result = []
     for pdf_bytes in pdf_bytes_list:
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes, start_page_id, end_page_id)
+        new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id, end_page_id)
         result.append(new_pdf_bytes)
     return result
 
@@ -108,30 +189,45 @@ def _process_output(
         f_make_md_mode,
         middle_json,
         model_output=None,
-        is_pipeline=True
+        process_mode="vlm",
 ):
-    f_draw_line_sort_bbox = False
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+    if process_mode == "pipeline":
+        make_func = pipeline_union_make
+    elif process_mode == "vlm":
+        make_func = vlm_union_make
+    elif process_mode in office_suffixes:
+        make_func = office_union_make
+    else:
+        raise Exception(f"Unknown process_mode: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
-        draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+        try:
+            draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
+        except Exception as exc:
+            logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
 
     if f_draw_span_bbox:
-        draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+        try:
+            draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
+        except Exception as exc:
+            logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
-        md_writer.write(
-            f"{pdf_file_name}_origin.pdf",
-            pdf_bytes,
-        )
-
-    if f_draw_line_sort_bbox:
-        draw_line_sort_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_line_sort.pdf")
+        if process_mode in ["pipeline", "vlm"]:
+            md_writer.write(
+                f"{pdf_file_name}_origin.pdf",
+                pdf_bytes,
+            )
+        elif process_mode in office_suffixes:
+            md_writer.write(
+                f"{pdf_file_name}_origin.{process_mode}",
+                pdf_bytes,
+            )
 
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        make_func = pipeline_union_make if is_pipeline else vlm_union_make
         md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}.md",
@@ -139,18 +235,18 @@ def _process_output(
         )
 
     if f_dump_content_list:
-        make_func = pipeline_union_make if is_pipeline else vlm_union_make
+
         content_list = make_func(pdf_info, MakeMode.CONTENT_LIST, image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_content_list.json",
             json.dumps(content_list, ensure_ascii=False, indent=4),
         )
-        if not is_pipeline:
-            content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
-            md_writer.write_string(
-                f"{pdf_file_name}_content_list_v2.json",
-                json.dumps(content_list_v2, ensure_ascii=False, indent=4),
-            )
+
+        content_list_v2 = make_func(pdf_info, MakeMode.CONTENT_LIST_V2, image_dir)
+        md_writer.write_string(
+            f"{pdf_file_name}_content_list_v2.json",
+            json.dumps(content_list_v2, ensure_ascii=False, indent=4),
+        )
 
 
     if f_dump_middle_json:
@@ -165,7 +261,7 @@ def _process_output(
             json.dumps(model_output, ensure_ascii=False, indent=4),
         )
 
-    logger.info(f"local output dir is {local_md_dir}")
+    logger.debug(f"local output dir is {local_md_dir}")
 
 
 def _process_pipeline(
@@ -186,41 +282,59 @@ def _process_pipeline(
         f_make_md_mode,
 ):
     """处理pipeline后端逻辑"""
-    from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
-    from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
 
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list, p_lang_list, parse_method=parse_method,
-            formula_enable=p_formula_enable, table_enable=p_table_enable
-        )
-    )
-
-    for idx, model_list in enumerate(infer_results):
-        model_json = copy.deepcopy(model_list)
+    image_writer_list = []
+    md_writer_list = []
+    local_output_info = []
+    for idx, pdf_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[idx]
         local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
         image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+        image_writer_list.append(image_writer)
+        md_writer_list.append(md_writer)
+        local_output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
-        images_list = all_image_lists[idx]
-        pdf_doc = all_pdf_docs[idx]
-        _lang = lang_list[idx]
-        _ocr_enable = ocr_enabled_list[idx]
+    output_futures = []
 
-        middle_json = pipeline_result_to_middle_json(
-            model_list, images_list, pdf_doc, image_writer,
-            _lang, _ocr_enable, p_formula_enable
+    def run_output_task(doc_index, middle_json, model_list):
+        pdf_file_name, local_image_dir, local_md_dir = local_output_info[doc_index]
+        md_writer = md_writer_list[doc_index]
+        pdf_bytes = pdf_bytes_list[doc_index]
+        logger.debug(f"Pipeline output start: doc{doc_index}")
+        try:
+            _process_output(
+                middle_json["pdf_info"], pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, model_list, process_mode="pipeline"
+            )
+            logger.debug(f"Pipeline output complete: doc{doc_index}")
+        except Exception:
+            logger.exception(f"Pipeline output failed: doc{doc_index}")
+            raise
+
+    with ThreadPoolExecutor(max_workers=1) as output_executor:
+        def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+            logger.debug(
+                f"Pipeline doc ready: doc{doc_index} pages={len(middle_json['pdf_info'])} output_submitted=1"
+            )
+            future = output_executor.submit(run_output_task, doc_index, middle_json, model_list)
+            output_futures.append(future)
+
+        pipeline_doc_analyze_streaming(
+            pdf_bytes_list,
+            image_writer_list,
+            p_lang_list,
+            on_doc_ready,
+            parse_method=parse_method,
+            formula_enable=p_formula_enable,
+            table_enable=p_table_enable,
         )
 
-        pdf_info = middle_json["pdf_info"]
-        pdf_bytes = pdf_bytes_list[idx]
-
-        _process_output(
-            pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
-            md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
-            f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, model_json, is_pipeline=True
-        )
+        for future in output_futures:
+            future.result()
+    return
 
 
 async def _async_process_vlm(
@@ -260,7 +374,7 @@ async def _async_process_vlm(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -301,7 +415,7 @@ def _process_vlm(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -354,7 +468,7 @@ def _process_hybrid(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
 
 
@@ -407,8 +521,54 @@ async def _async_process_hybrid(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, is_pipeline=False
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
         )
+
+
+def _process_office_doc(
+        output_dir,
+        pdf_file_names: list[str],
+        pdf_bytes_list: list[bytes],
+        f_dump_md=True,
+        f_dump_middle_json=True,
+        f_dump_model_output=True,
+        f_dump_orig_file=True,
+        f_dump_content_list=True,
+        f_make_md_mode=MakeMode.MM_MD,
+):
+    need_remove_index = []
+    for i, file_bytes in enumerate(pdf_bytes_list):
+        pdf_file_name = pdf_file_names[i]
+        file_suffix = guess_suffix_by_bytes(file_bytes)
+        if file_suffix in docx_suffixes:
+
+            need_remove_index.append(i)
+
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"office")
+            image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
+            middle_json, infer_result = office_docx_analyze(
+                file_bytes,
+                image_writer=image_writer,
+            )
+
+            f_draw_layout_bbox = False
+            f_draw_span_bbox = False
+            pdf_info = middle_json["pdf_info"]
+
+            _process_output(
+                pdf_info, file_bytes, pdf_file_name, local_md_dir, local_image_dir,
+                md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_file,
+                f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
+                f_make_md_mode, middle_json, infer_result, process_mode="docx"
+            )
+        elif file_suffix in pptx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, PPTX files are not supported: {pdf_file_name}")
+        elif file_suffix in xlsx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, XLSX files are not supported: {pdf_file_name}")
+
+    return need_remove_index
 
 
 def do_parse(
@@ -433,6 +593,25 @@ def do_parse(
         end_page_id=None,
         **kwargs,
 ):
+    need_remove_index = _process_office_doc(
+        output_dir,
+        pdf_file_names=pdf_file_names,
+        pdf_bytes_list=pdf_bytes_list,
+        f_dump_md=f_dump_md,
+        f_dump_middle_json=f_dump_middle_json,
+        f_dump_model_output=f_dump_model_output,
+        f_dump_orig_file=f_dump_orig_pdf,
+        f_dump_content_list=f_dump_content_list,
+        f_make_md_mode=f_make_md_mode,
+    )
+    for index in sorted(need_remove_index, reverse=True):
+        del pdf_bytes_list[index]
+        del pdf_file_names[index]
+        del p_lang_list[index]
+    if not pdf_bytes_list:
+        logger.warning("No valid PDF or image files to process.")
+        return
+
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 
@@ -505,6 +684,25 @@ async def aio_do_parse(
         end_page_id=None,
         **kwargs,
 ):
+    need_remove_index = _process_office_doc(
+        output_dir,
+        pdf_file_names=pdf_file_names,
+        pdf_bytes_list=pdf_bytes_list,
+        f_dump_md=f_dump_md,
+        f_dump_middle_json=f_dump_middle_json,
+        f_dump_model_output=f_dump_model_output,
+        f_dump_orig_file=f_dump_orig_pdf,
+        f_dump_content_list=f_dump_content_list,
+        f_make_md_mode=f_make_md_mode,
+    )
+    for index in sorted(need_remove_index, reverse=True):
+        del pdf_bytes_list[index]
+        del pdf_file_names[index]
+        del p_lang_list[index]
+    if not pdf_bytes_list:
+        logger.warning("No valid PDF or image files to process.")
+        return
+
     # 预处理PDF字节数据
     pdf_bytes_list = _prepare_pdf_bytes(pdf_bytes_list, start_page_id, end_page_id)
 

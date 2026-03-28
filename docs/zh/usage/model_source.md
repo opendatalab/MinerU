@@ -43,6 +43,7 @@ mineru-models-download
 >- 模型下载到本地后，您可以自由移动模型文件夹到其他位置，同时需要在 `mineru.json` 中更新模型路径。
 >- 如您将模型文件夹部署到其他服务器上，请确保将 `mineru.json`文件一同移动到新设备的用户目录中并正确配置模型路径。
 >- 如您需要更新模型文件，可以再次运行 `mineru-models-download` 命令，模型更新暂不支持自定义路径，如您没有移动本地模型文件夹，模型文件会增量更新；如您移动了模型文件夹，模型文件会重新下载到默认位置并更新`mineru.json`。
+>- `mineru-models-download` 必须使用远端模型源执行真实下载；如果当前终端已设置 `MINERU_MODEL_SOURCE=local`，该命令会仅在本次执行中临时忽略该值，并改用您选择的 `huggingface` 或 `modelscope` 下载模型。
 
 ### 2. 使用本地模型进行解析
 

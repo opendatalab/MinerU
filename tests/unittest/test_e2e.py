@@ -1,5 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import copy
 import json
 import os
 from pathlib import Path
@@ -7,21 +6,18 @@ from loguru import logger
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
 from mineru.cli.common import (
-    convert_pdf_bytes_to_bytes_by_pypdfium2,
+    convert_pdf_bytes_to_bytes,
     prepare_env,
     read_fn,
 )
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+from mineru.backend.pipeline.pipeline_analyze import (
+    doc_analyze_streaming as pipeline_doc_analyze_streaming,
+)
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
     union_make as pipeline_union_make,
 )
-from mineru.backend.pipeline.model_json_to_middle_json import (
-    result_to_middle_json as pipeline_result_to_middle_json,
-)
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 
 
 def test_pipeline_with_two_config():
@@ -48,24 +44,13 @@ def test_pipeline_with_two_config():
         pdf_bytes_list.append(pdf_bytes)
         p_lang_list.append("en")
     for idx, pdf_bytes in enumerate(pdf_bytes_list):
-        new_pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
+        new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes)
         pdf_bytes_list[idx] = new_pdf_bytes
 
-    # 获取 pipline 分析结果, 分别测试 txt 和 ocr 两种解析方法的结果
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list,
-            p_lang_list,
-            parse_method="txt",
-        )
-    )
-    write_infer_result(
-        infer_results,
-        all_image_lists,
-        all_pdf_docs,
-        lang_list,
-        ocr_enabled_list,
+    run_pipeline_parse(
         pdf_file_names,
+        pdf_bytes_list,
+        p_lang_list,
         output_dir,
         parse_method="txt",
     )
@@ -73,20 +58,10 @@ def test_pipeline_with_two_config():
         Path(__file__).parent / "output" / "test" / "txt" / "test_content_list.json"
     ).as_posix()
     assert_content(res_json_path, parse_method="txt")
-    infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = (
-        pipeline_doc_analyze(
-            pdf_bytes_list,
-            p_lang_list,
-            parse_method="ocr",
-        )
-    )
-    write_infer_result(
-        infer_results,
-        all_image_lists,
-        all_pdf_docs,
-        lang_list,
-        ocr_enabled_list,
+    run_pipeline_parse(
         pdf_file_names,
+        pdf_bytes_list,
+        p_lang_list,
         output_dir,
         parse_method="ocr",
     )
@@ -96,137 +71,74 @@ def test_pipeline_with_two_config():
     assert_content(res_json_path, parse_method="ocr")
 
 
-# def test_vlm_transformers_with_default_config():
-#     __dir__ = os.path.dirname(os.path.abspath(__file__))
-#     pdf_files_dir = os.path.join(__dir__, "pdfs")
-#     output_dir = os.path.join(__dir__, "output")
-#     pdf_suffixes = [".pdf"]
-#     image_suffixes = [".png", ".jpeg", ".jpg"]
-#
-#     doc_path_list = []
-#     for doc_path in Path(pdf_files_dir).glob("*"):
-#         if doc_path.suffix in pdf_suffixes + image_suffixes:
-#             doc_path_list.append(doc_path)
-#
-#     # os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-#
-#     pdf_file_names = []
-#     pdf_bytes_list = []
-#     p_lang_list = []
-#     for path in doc_path_list:
-#         file_name = str(Path(path).stem)
-#         pdf_bytes = read_fn(path)
-#         pdf_file_names.append(file_name)
-#         pdf_bytes_list.append(pdf_bytes)
-#         p_lang_list.append("en")
-#
-#     for idx, pdf_bytes in enumerate(pdf_bytes_list):
-#         pdf_file_name = pdf_file_names[idx]
-#         pdf_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(pdf_bytes)
-#         local_image_dir, local_md_dir = prepare_env(
-#             output_dir, pdf_file_name, parse_method="vlm"
-#         )
-#         image_writer, md_writer = FileBasedDataWriter(
-#             local_image_dir
-#         ), FileBasedDataWriter(local_md_dir)
-#         middle_json, infer_result = vlm_doc_analyze(
-#             pdf_bytes, image_writer=image_writer, backend="transformers"
-#         )
-#
-#         pdf_info = middle_json["pdf_info"]
-#
-#         image_dir = str(os.path.basename(local_image_dir))
-#
-#         md_content_str = vlm_union_make(pdf_info, MakeMode.MM_MD, image_dir)
-#         md_writer.write_string(
-#             f"{pdf_file_name}.md",
-#             md_content_str,
-#         )
-#
-#         content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-#         md_writer.write_string(
-#             f"{pdf_file_name}_content_list.json",
-#             json.dumps(content_list, ensure_ascii=False, indent=4),
-#         )
-#
-#         md_writer.write_string(
-#             f"{pdf_file_name}_middle.json",
-#             json.dumps(middle_json, ensure_ascii=False, indent=4),
-#         )
-#
-#         md_writer.write_string(
-#             f"{pdf_file_name}_model.json",
-#             json.dumps(infer_result, ensure_ascii=False, indent=4),
-#         )
-#
-#         logger.info(f"local output dir is {local_md_dir}")
-#         res_json_path = (
-#             Path(__file__).parent / "output" / "test" / "vlm" / "test_content_list.json"
-#         ).as_posix()
-#         assert_content(res_json_path, parse_method="vlm")
-
-
-def write_infer_result(
-    infer_results,
-    all_image_lists,
-    all_pdf_docs,
-    lang_list,
-    ocr_enabled_list,
+def run_pipeline_parse(
     pdf_file_names,
+    pdf_bytes_list,
+    p_lang_list,
     output_dir,
     parse_method,
 ):
-    for idx, model_list in enumerate(infer_results):
-        model_json = copy.deepcopy(model_list)
-        pdf_file_name = pdf_file_names[idx]
-        local_image_dir, local_md_dir = prepare_env(
-            output_dir, pdf_file_name, parse_method
-        )
-        image_writer, md_writer = FileBasedDataWriter(
-            local_image_dir
-        ), FileBasedDataWriter(local_md_dir)
+    image_writer_list = []
+    output_info = []
+    for pdf_file_name in pdf_file_names:
+        local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, parse_method)
+        image_writer_list.append(FileBasedDataWriter(local_image_dir))
+        output_info.append((pdf_file_name, local_image_dir, local_md_dir))
 
-        images_list = all_image_lists[idx]
-        pdf_doc = all_pdf_docs[idx]
-        _lang = lang_list[idx]
-        _ocr_enable = ocr_enabled_list[idx]
-        middle_json = pipeline_result_to_middle_json(
+    def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+        del ocr_enable
+        pdf_file_name, local_image_dir, local_md_dir = output_info[doc_index]
+        write_infer_result(
+            pdf_file_name,
+            local_image_dir,
+            local_md_dir,
+            middle_json,
             model_list,
-            images_list,
-            pdf_doc,
-            image_writer,
-            _lang,
-            _ocr_enable,
-            True,
         )
 
-        pdf_info = middle_json["pdf_info"]
+    pipeline_doc_analyze_streaming(
+        pdf_bytes_list,
+        image_writer_list,
+        p_lang_list,
+        on_doc_ready,
+        parse_method=parse_method,
+    )
 
-        image_dir = str(os.path.basename(local_image_dir))
-        # 写入 md 文件
-        md_content_str = pipeline_union_make(pdf_info, MakeMode.MM_MD, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}.md",
-            md_content_str,
-        )
 
-        content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=4),
-        )
+def write_infer_result(
+    pdf_file_name,
+    local_image_dir,
+    local_md_dir,
+    middle_json,
+    model_list,
+):
+    md_writer = FileBasedDataWriter(local_md_dir)
+    pdf_info = middle_json["pdf_info"]
+    image_dir = str(os.path.basename(local_image_dir))
 
-        md_writer.write_string(
-            f"{pdf_file_name}_middle.json",
-            json.dumps(middle_json, ensure_ascii=False, indent=4),
-        )
+    md_content_str = pipeline_union_make(pdf_info, MakeMode.MM_MD, image_dir)
+    md_writer.write_string(
+        f"{pdf_file_name}.md",
+        md_content_str,
+    )
 
-        md_writer.write_string(
-            f"{pdf_file_name}_model.json",
-            json.dumps(model_json, ensure_ascii=False, indent=4),
-        )
+    content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, image_dir)
+    md_writer.write_string(
+        f"{pdf_file_name}_content_list.json",
+        json.dumps(content_list, ensure_ascii=False, indent=4),
+    )
 
-        logger.info(f"local output dir is {local_md_dir}")
+    md_writer.write_string(
+        f"{pdf_file_name}_middle.json",
+        json.dumps(middle_json, ensure_ascii=False, indent=4),
+    )
+
+    md_writer.write_string(
+        f"{pdf_file_name}_model.json",
+        json.dumps(model_list, ensure_ascii=False, indent=4),
+    )
+
+    logger.info(f"local output dir is {local_md_dir}")
 
 
 def validate_html(html_content):
