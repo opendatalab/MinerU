@@ -62,6 +62,13 @@ def normalize_task_stem(stem: str, max_bytes: int = MAX_TASK_STEM_BYTES) -> str:
     return truncate_to_utf8_bytes(stem, max_bytes)
 
 
+def normalize_upload_filename(upload_name: str) -> str:
+    sanitized_name = Path(upload_name).name
+    sanitized_path = Path(sanitized_name)
+    normalized_stem = normalize_task_stem(sanitized_path.stem)
+    return f"{normalized_stem}{sanitized_path.suffix}"
+
+
 def build_task_stem_candidate(
     stem: str,
     suffix: str = "",

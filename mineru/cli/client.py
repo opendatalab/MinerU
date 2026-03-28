@@ -16,6 +16,8 @@ from loguru import logger
 from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
+)
+from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
@@ -700,7 +702,7 @@ def safe_extract_zip(zip_path: Path, output_dir: Path) -> None:
 
 def resolve_submit_concurrency(max_concurrent_requests: int, task_count: int) -> int:
     if max_concurrent_requests <= 0:
-        return max(1, task_count)
+        raise ValueError("max_concurrent_requests must be a positive integer")
     return max(1, min(max_concurrent_requests, task_count))
 
 

@@ -22,6 +22,8 @@ from loguru import logger
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
+)
+from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
 
@@ -206,13 +208,11 @@ def resolve_effective_max_concurrent_requests(
     local_max: int,
     server_max: int,
 ) -> int:
-    if local_max > 0 and server_max > 0:
-        return min(local_max, server_max)
-    if local_max > 0:
-        return local_max
-    if server_max > 0:
-        return server_max
-    return 0
+    if local_max <= 0 or server_max <= 0:
+        raise ValueError(
+            "local_max and server_max must both be positive integers"
+        )
+    return min(local_max, server_max)
 
 
 def response_detail(response: httpx.Response) -> str:
@@ -251,9 +251,9 @@ def validate_server_health_payload(payload: dict, base_url: str) -> ServerHealth
 
     max_concurrent_requests = payload.get("max_concurrent_requests")
     processing_window_size = payload.get("processing_window_size")
-    if not isinstance(max_concurrent_requests, int):
+    if not isinstance(max_concurrent_requests, int) or max_concurrent_requests <= 0:
         raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid max_concurrent_requests"
+            f"MinerU API at {base_url} did not return a valid positive max_concurrent_requests"
         )
     if not isinstance(processing_window_size, int):
         raise click.ClickException(

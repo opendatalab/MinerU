@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from contextlib import asynccontextmanager, suppress
+from contextlib import ExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +35,7 @@ from mineru.cli.api_client import (
     response_detail,
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
+from mineru.cli.common import normalize_upload_filename
 from mineru.version import __version__
 
 TASK_PENDING = "pending"
@@ -154,6 +155,14 @@ def resolve_connect_host(host: str) -> str:
 
 
 def detect_visible_cuda_devices() -> list[str]:
+    configured_visible_devices = os.getenv("CUDA_VISIBLE_DEVICES")
+    if configured_visible_devices is not None:
+        return [
+            item.strip()
+            for item in configured_visible_devices.split(",")
+            if item.strip()
+        ]
+
     try:
         import torch  # type: ignore
     except ImportError:
@@ -488,6 +497,41 @@ class WorkerPool:
         for server in self.servers:
             await self._refresh_server(server)
 
+    def _update_server_from_health_payload(
+        self,
+        server: WorkerState,
+        payload: dict[str, Any],
+    ) -> None:
+        protocol_version = payload.get("protocol_version")
+        if protocol_version != API_PROTOCOL_VERSION:
+            raise ValueError(
+                f"Unsupported protocol_version={protocol_version}, expected {API_PROTOCOL_VERSION}"
+            )
+
+        server.queued_tasks = int(payload.get("queued_tasks", 0))
+        server.processing_tasks = int(payload.get("processing_tasks", 0))
+        server.completed_tasks = int(payload.get("completed_tasks", 0))
+        server.failed_tasks = int(payload.get("failed_tasks", 0))
+        server.max_concurrent_requests = int(payload.get("max_concurrent_requests", 0))
+        if server.max_concurrent_requests <= 0:
+            raise ValueError("max_concurrent_requests must be a positive integer")
+        server.processing_window_size = max(
+            MIN_HEALTHY_PROCESSING_WINDOW_SIZE,
+            int(
+                payload.get(
+                    "processing_window_size",
+                    MIN_HEALTHY_PROCESSING_WINDOW_SIZE,
+                )
+            ),
+        )
+        server.healthy = payload.get("status") == "healthy"
+        server.last_error = (
+            None if server.healthy else json.dumps(payload, ensure_ascii=False)
+        )
+        server.consecutive_health_failures = (
+            0 if server.healthy else server.consecutive_health_failures + 1
+        )
+
     async def _refresh_server(self, server: WorkerState) -> None:
         if server.local_server is not None:
             if not server.local_server.is_running():
@@ -531,34 +575,13 @@ class WorkerPool:
             return
 
         payload = response.json()
-        protocol_version = payload.get("protocol_version")
-        if protocol_version != API_PROTOCOL_VERSION:
-            server.healthy = False
-            server.last_error = (
-                f"Unsupported protocol_version={protocol_version}, expected {API_PROTOCOL_VERSION}"
-            )
-            server.consecutive_health_failures += 1
-            return
-
         try:
-            server.queued_tasks = int(payload.get("queued_tasks", 0))
-            server.processing_tasks = int(payload.get("processing_tasks", 0))
-            server.completed_tasks = int(payload.get("completed_tasks", 0))
-            server.failed_tasks = int(payload.get("failed_tasks", 0))
-            server.max_concurrent_requests = max(0, int(payload.get("max_concurrent_requests", 0)))
-            server.processing_window_size = max(
-                MIN_HEALTHY_PROCESSING_WINDOW_SIZE,
-                int(payload.get("processing_window_size", MIN_HEALTHY_PROCESSING_WINDOW_SIZE)),
-            )
+            self._update_server_from_health_payload(server, payload)
         except (TypeError, ValueError) as exc:
             server.healthy = False
             server.last_error = f"Invalid health payload: {exc}"
             server.consecutive_health_failures += 1
             return
-
-        server.healthy = payload.get("status") == "healthy"
-        server.last_error = None if server.healthy else json.dumps(payload, ensure_ascii=False)
-        server.consecutive_health_failures = 0 if server.healthy else server.consecutive_health_failures + 1
 
     async def _restart_local_server(self, server: WorkerState) -> None:
         local_server = server.local_server
@@ -570,10 +593,8 @@ class WorkerPool:
             response = await self.client.get(f"{server.base_url}{HEALTH_ENDPOINT}")
             if response.status_code == 200:
                 payload = response.json()
-                server.healthy = payload.get("status") == "healthy"
-                server.last_error = None if server.healthy else json.dumps(payload, ensure_ascii=False)
                 server.last_checked_at = utc_now_iso()
-                server.consecutive_health_failures = 0 if server.healthy else 1
+                self._update_server_from_health_payload(server, payload)
         except Exception as exc:
             server.healthy = False
             server.last_error = str(exc)
@@ -828,7 +849,7 @@ async def stage_multipart_request(request: Request) -> MultipartPayload:
         for key, value in form.multi_items():
             if isinstance(value, StarletteUploadFile):
                 original_name = value.filename or f"upload-{uuid.uuid4()}"
-                filename = Path(original_name).name
+                filename = normalize_upload_filename(original_name)
                 destination = build_upload_destination(temp_dir, filename)
                 with open(destination, "wb") as handle:
                     while True:
@@ -880,7 +901,10 @@ def submit_payload_to_upstream_sync(
     base_url: str,
     payload: MultipartPayload,
 ) -> dict[str, Any]:
-    with httpx.Client(timeout=build_http_timeout(), follow_redirects=True) as client:
+    with ExitStack() as stack, httpx.Client(
+        timeout=build_http_timeout(),
+        follow_redirects=True,
+    ) as client:
         multipart = [
             (
                 field_name,
@@ -890,15 +914,15 @@ def submit_payload_to_upstream_sync(
         ]
         multipart.extend(
             [
-            (
-                upload.field_name,
                 (
-                    upload.upload_name,
-                    Path(upload.path).read_bytes(),
-                    upload.content_type,
-                ),
-            )
-            for upload in payload.uploads
+                    upload.field_name,
+                    (
+                        upload.upload_name,
+                        stack.enter_context(open(upload.path, "rb")),
+                        upload.content_type,
+                    ),
+                )
+                for upload in payload.uploads
             ]
         )
         try:
