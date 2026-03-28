@@ -6,7 +6,7 @@ from mineru.utils.ocr_utils import _is_overlaps_y_exceeds_threshold, _is_overlap
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
 
-def fill_spans_in_blocks(blocks, spans, radio):
+def fill_spans_in_blocks(blocks, spans, ratio):
     """将allspans中的span按位置关系，放入blocks中."""
     block_with_spans = []
     for block in blocks:
@@ -23,11 +23,11 @@ def fill_spans_in_blocks(blocks, spans, radio):
             block_dict['group_id'] = block[-1]
         block_spans = []
         for span in spans:
-            temp_radio = radio
+            temp_ratio = ratio
             span_bbox = span['bbox']
             if span['type'] in [ContentType.IMAGE, ContentType.TABLE]:
-                temp_radio = 0.9
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > temp_radio and span_block_type_compatible(span['type'], block_type):
+                temp_ratio = 0.9
+            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > temp_ratio and span_block_type_compatible(span['type'], block_type):
                 block_spans.append(span)
 
         block_dict['spans'] = block_spans

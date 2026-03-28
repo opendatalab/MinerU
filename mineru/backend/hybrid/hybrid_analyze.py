@@ -63,7 +63,7 @@ def ocr_det(
     model_list,
     mfd_res,
     _ocr_enable,
-    batch_radio: int = 1,
+    batch_ratio: int = 1,
 ):
     def _set_temp_pixel_bbox(res, pixel_bbox):
         res["_normalized_bbox"] = list(res["bbox"])
@@ -173,7 +173,7 @@ def ocr_det(
                 batch_images.append(padded_img)
 
             # 批处理检测
-            det_batch_size = min(len(batch_images), batch_radio*OCR_DET_BASE_BATCH_SIZE)
+            det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
             batch_results = hybrid_pipeline_model.ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
 
             # 处理批处理结果
@@ -282,7 +282,7 @@ def _process_ocr_and_formulas(
     language,
     inline_formula_enable,
     _ocr_enable,
-    batch_radio: int = 1,
+    batch_ratio: int = 1,
 ):
     """处理OCR和公式识别"""
 
@@ -306,14 +306,14 @@ def _process_ocr_and_formulas(
         # 使用layout模型提供行内公式检测框
         images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(
             np_images,
-            batch_size=min(8, batch_radio * LAYOUT_BASE_BATCH_SIZE),
+            batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
         )
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
             images_mfd_res,
             np_images,
-            batch_size=batch_radio * MFR_BASE_BATCH_SIZE,
+            batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
             interline_enable=True,
         )
     else:
@@ -336,7 +336,7 @@ def _process_ocr_and_formulas(
         model_list,
         mfd_res,
         _ocr_enable,
-        batch_radio=batch_radio,
+        batch_ratio=batch_ratio,
     )
 
     # 如果需要ocr则做ocr_rec
@@ -612,7 +612,7 @@ def doc_analyze(
                             language,
                             inline_formula_enable,
                             _ocr_enable,
-                            batch_radio=batch_ratio,
+                            batch_ratio=batch_ratio,
                         )
 
                     model_list.extend(window_model_list)
@@ -739,7 +739,7 @@ async def aio_doc_analyze(
                             language,
                             inline_formula_enable,
                             _ocr_enable,
-                            batch_radio=batch_ratio,
+                            batch_ratio=batch_ratio,
                         )
 
                     model_list.extend(window_model_list)
