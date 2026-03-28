@@ -2,12 +2,6 @@
 
 ## Pass-through of inference engine parameters
 
-### vllm Acceleration Parameter Optimization
-> [!TIP]
-> If you can already use vllm normally for accelerated VLM model inference but still want to further improve inference speed, you can try the following parameters:
-> 
-> - If you have multiple graphics cards, you can use vllm's multi-card parallel mode to increase throughput: `--data-parallel-size 2`
-
 ### Parameter Passing Instructions
 > [!TIP]
 > - All officially supported vllm/lmdeploy parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`
@@ -23,7 +17,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - This specification method is effective for all command line calls, including `mineru`, `mineru-openai-server`, `mineru-gradio`, and `mineru-api`, and applies to both `pipeline` and `vlm` backends.
+> - This method works for all command-line invocations, including `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, and `mineru-router`, and it applies to both the `pipeline` and `vlm` backends.
 
 ### Common Device Configuration Examples
 > [!TIP]
@@ -40,15 +34,23 @@
 > [!TIP]
 > Here are some possible usage scenarios:
 > 
-> - If you have multiple graphics cards and need to specify cards 0 and 1, using multi-card parallelism to start `openai-server`, you can use the following command:
+> - If you have multiple GPUs and need to start two `openai-server` services on GPU 0 and GPU 1, each listening on a different port, you can use the following commands:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1 mineru-openai-server --engine vllm --port 30000 --data-parallel-size 2
+>   # In terminal 1
+>   CUDA_VISIBLE_DEVICES=0 mineru-openai-server --engine vllm --port 30000
+>   # In terminal 2
+>   CUDA_VISIBLE_DEVICES=1 mineru-openai-server --engine vllm --port 30001
 >   ```
->       
-> - If you have multiple graphics cards and need to start two `fastapi` services on cards 0 and 1, listening on different ports respectively, you can use the following commands:
+> 
+> - If you have multiple GPUs and need to start two `fastapi` services on GPU 0 and GPU 1, each listening on a different port, you can use the following commands:
 >   ```bash
 >   # In terminal 1
 >   CUDA_VISIBLE_DEVICES=0 mineru-api --host 127.0.0.1 --port 8000
 >   # In terminal 2
 >   CUDA_VISIBLE_DEVICES=1 mineru-api --host 127.0.0.1 --port 8001
+>   ```
+> 
+> - If you have multiple GPUs and want to use `router` to launch and manage `fastapi` services across four GPUs, you can use the following command:
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-router --host 127.0.0.1 --port 8002
 >   ```

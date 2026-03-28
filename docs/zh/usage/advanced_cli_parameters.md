@@ -2,12 +2,6 @@
 
 ## 推理引擎参数透传
 
-### vllm 加速参数优化
-> [!TIP]
-> 如果您已经可以正常使用vllm对vlm模型进行加速推理，但仍然希望进一步提升推理速度，可以尝试以下参数：
-> 
-> - 如果您有超过多张显卡，可以使用vllm的多卡并行模式来增加吞吐量：`--data-parallel-size 2`
-
 ### 参数传递说明
 > [!TIP]
 > - 所有vllm/lmdeploy官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`
@@ -23,7 +17,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - 这种指定方式对所有的命令行调用都有效，包括 `mineru`、`mineru-openai-server`、`mineru-gradio` 和 `mineru-api`，且对`pipeline`、`vlm`后端均适用。
+> - 这种指定方式对所有的命令行调用都有效，包括 `mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`和`mineru-router`，且对`pipeline`、`vlm`后端均适用。
 
 ### 常见设备配置示例
 > [!TIP]
@@ -41,9 +35,12 @@
 > [!TIP]
 > 以下是一些可能的使用场景：
 > 
-> - 如果您有多张显卡，需要指定卡0和卡1，并使用多卡并行来启动`openai-server`，可以使用以下命令： 
+> - 如果您有多张显卡，需要在卡0和卡1上启动两个`openai-server`服务，并分别监听不同的端口，可以使用以下命令： 
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1 mineru-openai-server --engine vllm --port 30000 --data-parallel-size 2
+>   # 在终端1中
+>   CUDA_VISIBLE_DEVICES=0 mineru-openai-server --engine vllm --port 30000
+>   # 在终端2中
+>   CUDA_VISIBLE_DEVICES=1 mineru-openai-server --engine vllm --port 30001
 >   ```
 >   
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令： 
@@ -52,4 +49,9 @@
 >   CUDA_VISIBLE_DEVICES=0 mineru-api --host 127.0.0.1 --port 8000
 >   # 在终端2中
 >   CUDA_VISIBLE_DEVICES=1 mineru-api --host 127.0.0.1 --port 8001
+>   ```
+>   
+> - 如果您有多张显卡，需要通过`router`在其中4张卡上启动`fastapi`服务并统一管理，可以使用以下命令： 
+>   ```bash
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-router --host 127.0.0.1 --port 8002
 >   ```
