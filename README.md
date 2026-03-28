@@ -294,7 +294,7 @@ You can use MinerU for PDF parsing through various methods such as command line,
 
 [LICENSE.md](LICENSE.md)
 
-The source code in this repository is licensed under Apache License 2.0.
+The source code in this repository is licensed under AGPLv3.
 
 # Acknowledgments
 
