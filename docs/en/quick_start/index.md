@@ -70,15 +70,15 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr>
     <tr>
       <th>Min VRAM</th>
-      <td style="text-align:center;">6GB</td>
-      <td style="text-align:center;">10GB</td>
+      <td style="text-align:center;">4GB</td>
       <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">3GB</td>
+      <td style="text-align:center;">8GB</td>
+      <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
       <th>RAM</th>
       <td colspan="3" style="text-align:center;">Min 16GB+, Recommended 32GB+</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">16GB</td>
     </tr>
     <tr>
       <th>Disk Space</th>
