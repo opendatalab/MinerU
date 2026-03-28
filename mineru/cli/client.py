@@ -841,6 +841,7 @@ async def run_orchestrated_cli(
     end_page_id: Optional[int],
     formula_enable: bool,
     table_enable: bool,
+    extra_cli_args: tuple[str, ...] = (),
 ) -> None:
     if start_page_id < 0:
         raise click.ClickException("--start must be greater than or equal to 0")
@@ -861,7 +862,7 @@ async def run_orchestrated_cli(
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as http_client:
         try:
             if api_url is None:
-                local_server = LocalAPIServer()
+                local_server = LocalAPIServer(extra_cli_args=extra_cli_args)
                 base_url = local_server.start()
                 logger.info(f"Started local mineru-api at {base_url}")
                 server_health = await wait_for_local_api_ready(http_client, local_server)
@@ -943,7 +944,8 @@ async def run_orchestrated_cli(
                         _stderr_sink.set_renderer(None)
 
 
-@click.command()
+@click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.pass_context
 @click.version_option(__version__, "--version", "-v", help="display the version and exit")
 @click.option(
     "-p",
@@ -1080,6 +1082,7 @@ async def run_orchestrated_cli(
     help="Enable table parsing. Default is True. ",
 )
 def main(
+    ctx: click.Context,
     input_path: Path,
     output_dir: Path,
     api_url: Optional[str],
@@ -1105,6 +1108,7 @@ def main(
             end_page_id=end_page_id,
             formula_enable=formula_enable,
             table_enable=table_enable,
+            extra_cli_args=tuple(ctx.args),
         )
     )
 

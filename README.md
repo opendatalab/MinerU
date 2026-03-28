@@ -45,57 +45,45 @@
 
 # Changelog
 
-- 2026/02/06 2.7.6 Release
-  - Added support for the domestic computing platforms Kunlunxin and Tecorigin; currently, the domestic computing platforms that have been adapted and supported by the official team and vendors include:
-    - [Ascend](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Ascend) 
-    - [T-Head](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/THead) 
-    - [METAX](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/METAX) 
-    - [Hygon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Hygon/)
-    - [Enflame](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Enflame/)
-    - [MooreThreads](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/MooreThreads/)
-    - [IluvatarCorex](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/IluvatarCorex/)
-    - [Cambricon](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Cambricon/)
-    - [Kunlunxin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Kunlunxin/)
-    - [Tecorigin](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Tecorigin/)  
-    - [Biren](https://opendatalab.github.io/MinerU/zh/usage/acceleration_cards/Biren/)
-  - MinerU continues to support domestic hardware platforms and mainstream chip architectures. With secure and reliable technology, it helps research, government, and enterprise users reach new heights in document digitization!
+- 2026/03/29 3.0.0 Released
 
-- 2026/01/30 2.7.4 Release
-  - Added support for domestic computing platforms IluvatarCorex and Cambricon.
-
-- 2026/01/23 2.7.2 Release
-  - Added support for domestic computing platforms Hygon, Enflame, and Moore Threads.
-  - Cross-page table merging optimization, improving merge success rate and merge quality.
-
-- 2026/01/06 2.7.1 Release
-  - fix bug: #4300
-  - Updated pdfminer.six dependency version to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
-  - Support automatic correction of input image exif orientation to improve OCR recognition accuracy  #4283
-
-- 2025/12/30 2.7.0 Release
-  - Simplified installation process. No need to separately install `vlm` acceleration engine dependencies. Using `uv pip install mineru[all]` during installation will install all optional backend dependencies.
-  - Added new `hybrid` backend, which combines the advantages of `pipeline` and `vlm` backends. Built on vlm, it integrates some capabilities of pipeline, adding extra extensibility on top of high accuracy:
-    - Directly extracts text from text PDFs, natively supports multi-language recognition in text PDF scenarios, and greatly reduces parsing hallucinations;
-    - Supports text recognition in 109 languages for scanned PDF scenarios by specifying OCR language;
-    - Independent inline formula recognition switch, which can be disabled separately when inline formula recognition is not needed, improving the visual effect of parsing results.
-  - Simplified engine selection logic for `vlm/hybrid` backends. Users only need to specify the backend as `*-auto-engine`, and the system will automatically select the appropriate engine for inference acceleration based on the current environment, improving usability.
-  - Switched default parsing backend from `pipeline` to `hybrid-auto-engine`, improving out-of-the-box result consistency for new users and avoiding cognitive differences in parsing results.
-  - Added i18n support to gradio application, supporting switching between Chinese and English languages.
+  This release delivers a systematic upgrade centered on **parsing capability, system architecture, and engineering usability**. The main updates include:
   
+  - Native `DOCX` parsing
+    - Official support for native `DOCX` parsing, delivering high-precision results without hallucinations.
+    - Compared with the traditional workflow of first converting `DOCX` to `PDF` and then parsing it, end-to-end speed is improved by tens of times, making it better suited for scenarios with high requirements for both accuracy and throughput.
+  - `pipeline` backend upgrade
+    - The `pipeline` backend achieves a score of `86.2` on OmniDocBench (v1.5), surpassing the accuracy of the previous-generation mainstream VLM `MinerU2.0-2505-0.9B`.
+    - Added support for parsing images/formulas inside tables, seal text recognition, vertical text support, and interline formula numbering recognition, continuously improving parsing quality for complex document scenarios.
+    - While maintaining high accuracy, it keeps resource usage extremely low and continues to support inference in pure CPU environments.
+  - `API / CLI / Router` orchestration upgrade
+    - `mineru` now runs as an orchestration client based on `mineru-api`; when `--api-url` is not provided, it will automatically start a local temporary service.
+    - `mineru-api` adds a new asynchronous task endpoint `POST /tasks`, supporting task submission, status querying, and result retrieval; meanwhile, it retains the synchronous parsing endpoint `POST /file_parse` for compatibility with legacy plugins.
+    - Added `mineru-router`, designed for unified entry deployment and task routing across multiple services and multiple GPUs; its interfaces are fully compatible with `mineru-api` and support automatic task load balancing.
+  - Deployment and usability improvements
+    - Resolved compatibility issues with `torch >= 2.8`; the base image has been upgraded to `vllm0.11.2 + torch2.9.0`, unifying installation paths across different Compute Capabilities.
+    - Optimized the parsing pipeline with a sliding-window mechanism, significantly reducing peak memory usage in long-document scenarios, so documents with tens of thousands of pages no longer need to be split manually.
+    - Batch inference in `pipeline` now supports streaming writes to disk, allowing completed parsing results to be written out in time and further improving the experience for long-running tasks.
+    - Completed thread-safety optimization and now fully supports multi-threaded concurrent inference; together with `mineru-router`, this enables one-click multi-GPU deployment and makes it easy to build high-concurrency, high-throughput parsing systems.
+    - Completely removed the use of two AGPLv3 models (`doclayoutyolo` and `mfd_yolov8`) and one CC-BY-NC-SA 4.0 model (`layoutreader`).  
+  
+  This update is not just a set of feature enhancements, but a key leap forward in MinerU's overall system capabilities. We specifically addressed the peak memory usage issue in long-document parsing. Through optimizations such as sliding windows and streaming writes to disk, ultra-long document parsing has moved from “requiring manual splitting and careful handling” to being “stable, scalable, and ready for production workloads.” At the same time, we completed thread-safety optimization and fully enabled multi-threaded concurrent inference, further improving single-machine resource utilization and runtime stability under high-concurrency workloads. On top of this, with `mineru-router` and the new `API / CLI` orchestration framework, MinerU now supports one-click multi-GPU deployment, unified access across multiple services, and automatic task load balancing, significantly reducing the difficulty of large-scale deployment. As a result, MinerU is evolving from a standalone data production tool into a large-scale document parsing foundation for high-concurrency and high-throughput scenarios, providing enterprise-grade document data processing with infrastructure that is more stable, more efficient, and easier to scale.
+
 > 📝 View the complete [Changelog](https://opendatalab.github.io/MinerU/reference/changelog/) for more historical version information
 
 # MinerU
 
 ## Project Introduction
 
-MinerU is a tool that converts PDFs into machine-readable formats (e.g., markdown, JSON), allowing for easy extraction into any format.
+MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
-Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant PDF**.
+Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
 https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Key Features
 
+- Support `PDF`, image, and `DOCX` inputs.
 - Remove headers, footers, footnotes, page numbers, etc., to ensure semantic coherence.
 - Output text in human-readable order, suitable for single-column, multi-column, and complex layouts.
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
@@ -106,6 +94,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - OCR supports detection and recognition of 109 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
+- Built-in CLI, FastAPI, Gradio WebUI, for local orchestration and multi-service deployment.
 - Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
 - Compatible with Windows, Linux, and Mac platforms.
 
@@ -163,7 +152,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -190,8 +179,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr>
     <tr>
       <th>RAM</th>
-      <td colspan="3" style="text-align:center;">Min 8GB, Recommended 16GB or more</td>
-      <td colspan="2" style="text-align:center;">Min 8GB</td>
+      <td colspan="3" style="text-align:center;">Min 16GB, Recommended 32GB or more</td>
+      <td colspan="2" style="text-align:center;">Min 16GB</td>
     </tr>
     <tr>
       <th>Disk Space</th>
@@ -252,7 +241,7 @@ If your device does not meet the GPU acceleration requirements, you can specify 
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+`mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
 # TODO
 
@@ -294,7 +283,7 @@ You can use MinerU for PDF parsing through various methods such as command line,
 
 [LICENSE.md](LICENSE.md)
 
-The source code in this repository is licensed under Apache License 2.0.
+The source code in this repository is licensed under AGPLv3.
 
 # Acknowledgments
 

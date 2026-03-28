@@ -15,7 +15,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]>=2.7.0' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
+RUN python3 -m pip install -U 'mineru[core]>=3.0.0' -i https://mirrors.aliyun.com/pypi/simple --break-system-packages && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file

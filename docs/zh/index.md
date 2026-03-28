@@ -40,15 +40,15 @@
 
 ## 项目简介
 
-MinerU是一款将PDF转化为机器可读格式的工具（如markdown、json），可以很方便地抽取为任意格式。
+MinerU 是一款文档解析工具，可将 `PDF`、图片和 `DOCX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
-相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关PDF**。
+相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
 ![type:video](https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c)
 
-
 ## 主要功能
 
+- 支持 `PDF`、图片与 `DOCX` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -59,6 +59,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 - OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
+- 内置命令行、FastAPI、Gradio WebUI，支持本地编排和多服务部署
 - 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
 - 兼容Windows、Linux和Mac平台
 

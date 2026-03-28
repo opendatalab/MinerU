@@ -14,10 +14,7 @@ RUN apt-get update && \
 
 # Install mineru latest
 RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install "mineru[api,gradio]>=2.7.6" \
-                            "matplotlib>=3.10,<4" \
-                            "ultralytics>=8.3.48,<9" \
-                            "doclayout_yolo==0.0.4" \
+    python3 -m pip install "mineru[gradio]>=3.0.0" \
                             "ftfy>=6.3.1,<7" \
                             "shapely>=2.0.7,<3" \
                             "pyclipper>=1.3.0,<2" \

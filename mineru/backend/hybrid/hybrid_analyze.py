@@ -478,7 +478,7 @@ def get_batch_ratio(device):
     ------------------|------------------------
     <= 6   GB         | 8
     <= 4   GB         | 4
-    <= 2.5 GB         | 2
+    <= 3   GB         | 2
     <= 2   GB         | 1
     例如：
     export MINERU_HYBRID_BATCH_RATIO=4

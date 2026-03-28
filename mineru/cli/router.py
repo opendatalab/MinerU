@@ -32,6 +32,7 @@ from mineru.cli.api_client import (
     build_http_timeout,
     find_free_port,
     normalize_base_url,
+    strip_local_api_network_args,
     response_detail,
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
@@ -309,8 +310,9 @@ class ManagedLocalServer:
         output_root = Path(self.temp_dir.name) / "output"
         output_root.mkdir(parents=True, exist_ok=True)
 
-        port = find_free_port()
-        self.base_url = f"http://{self.connect_host}:{port}"
+        resolved_port = find_free_port()
+        remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
+        self.base_url = f"http://{self.connect_host}:{resolved_port}"
         env = os.environ.copy()
         env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
         env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
@@ -324,8 +326,8 @@ class ManagedLocalServer:
             "--host",
             self.worker_host,
             "--port",
-            str(port),
-            *self.extra_cli_args,
+            str(resolved_port),
+            *remaining_cli_args,
         ]
         self.process = subprocess.Popen(command, cwd=os.getcwd(), env=env)
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mineru"
 dynamic = ["version"]
-license = { text = "Apache-2.0" }
+license = { text = "AGPL-3.0" }
 description = "A practical tool for converting PDF to Markdown"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
