@@ -50,7 +50,7 @@
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -70,15 +70,15 @@
     </tr>
     <tr>
       <th>显存最低要求</th>
-      <td style="text-align:center;">6GB</td>
-      <td style="text-align:center;">10GB</td>
+      <td style="text-align:center;">4GB</td>
       <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">3GB</td>
+      <td style="text-align:center;">8GB</td>
+      <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
       <th>内存要求</th>
       <td colspan="3" style="text-align:center;">最低16GB以上,推荐32GB以上</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">16GB</td>
     </tr>
     <tr>
       <th>磁盘空间要求</th>
