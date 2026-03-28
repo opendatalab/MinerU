@@ -35,8 +35,10 @@ from mineru.cli.common import (
     aio_do_parse,
     do_parse,
     image_suffixes,
+    normalize_upload_filename,
     office_suffixes,
     pdf_suffixes,
+    normalize_task_stem,
     read_fn,
     uniquify_task_stems,
 )
@@ -45,10 +47,13 @@ from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
-    get_max_concurrent_requests as read_max_concurrent_requests,
 )
 from mineru.utils.cli_parser import arg_parse
-from mineru.utils.config_reader import get_device, get_processing_window_size
+from mineru.utils.config_reader import (
+    get_device,
+    get_max_concurrent_requests as read_max_concurrent_requests,
+    get_processing_window_size,
+)
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.version import __version__
 
@@ -203,11 +208,8 @@ def create_app():
 
     _configured_max_concurrent_requests = max_concurrent_requests
     app.state.max_concurrent_requests = max_concurrent_requests
-    if max_concurrent_requests > 0:
-        _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
-        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
-    else:
-        _request_semaphore = None
+    _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+    logger.info(f"Request concurrency limited to {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     return app
@@ -748,7 +750,8 @@ async def save_upload_files(upload_dir: str, files: list[UploadFile]) -> list[St
 
     for upload in files:
         original_name = upload.filename or f"upload-{uuid.uuid4()}"
-        filename = Path(original_name).name
+        filename = normalize_upload_filename(original_name)
+        normalized_stem = normalize_task_stem(Path(filename).stem)
         destination = build_upload_destination(upload_dir, filename)
         try:
             with open(destination, "wb") as handle:
@@ -769,7 +772,7 @@ async def save_upload_files(upload_dir: str, files: list[UploadFile]) -> list[St
             uploads.append(
                 StoredUpload(
                     original_name=original_name,
-                    stem=Path(filename).stem,
+                    stem=normalized_stem,
                     path=str(destination),
                 )
             )

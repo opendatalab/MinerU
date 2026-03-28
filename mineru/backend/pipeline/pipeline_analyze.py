@@ -312,7 +312,9 @@ def batch_image_analyze(
             ) from e
 
     gpu_memory = get_vram(device)
-    if gpu_memory >= 16:
+    if gpu_memory >= 32:
+        batch_ratio = 16
+    elif gpu_memory >= 16:
         batch_ratio = 8
     elif gpu_memory >= 8:
         batch_ratio = 4

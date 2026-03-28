@@ -140,17 +140,26 @@ def get_processing_window_size(default: int = 64) -> int:
 
 
 def get_max_concurrent_requests(default: int = 3) -> int:
+    if default <= 0:
+        raise ValueError(
+            f"default max_concurrent_requests must be a positive integer, got {default}"
+        )
     value = os.getenv('MINERU_API_MAX_CONCURRENT_REQUESTS')
     if value is None:
         return default
     try:
         max_concurrent_requests = int(value)
-    except ValueError:
-        logger.warning(
-            f"Invalid MINERU_API_MAX_CONCURRENT_REQUESTS value: {value}, use default {default}"
+    except ValueError as exc:
+        raise ValueError(
+            "Invalid MINERU_API_MAX_CONCURRENT_REQUESTS value: "
+            f"{value}. Expected a positive integer."
+        ) from exc
+    if max_concurrent_requests <= 0:
+        raise ValueError(
+            "Invalid MINERU_API_MAX_CONCURRENT_REQUESTS value: "
+            f"{value}. Expected a positive integer."
         )
-        return default
-    return max(0, max_concurrent_requests)
+    return max_concurrent_requests
 
 
 def get_latex_delimiter_config():

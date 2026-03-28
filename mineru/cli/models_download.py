@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 import os
 import sys
@@ -7,6 +8,9 @@ from loguru import logger
 
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+
+MODEL_SOURCE_ENV_VAR = 'MINERU_MODEL_SOURCE'
+REMOTE_MODEL_SOURCES = ('huggingface', 'modelscope')
 
 
 def download_json(url):
@@ -85,12 +89,43 @@ def download_vlm_models():
     configure_model(download_finish_path, "vlm")
 
 
+def get_effective_download_model_source(requested_model_source):
+    """获取本次下载命令实际使用的模型源。"""
+    current_model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
+    if current_model_source == 'local':
+        logger.warning(
+            f"{MODEL_SOURCE_ENV_VAR}=local means using pre-downloaded local models. "
+            f"`mineru-models-download` will temporarily use '{requested_model_source}' "
+            f"to perform a real download."
+        )
+        return requested_model_source
+
+    if current_model_source is None:
+        return requested_model_source
+
+    return current_model_source
+
+
+@contextmanager
+def temporary_model_source(model_source):
+    """在命令执行期间临时设置模型源，并在结束后恢复。"""
+    original_model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
+    os.environ[MODEL_SOURCE_ENV_VAR] = model_source
+    try:
+        yield
+    finally:
+        if original_model_source is None:
+            os.environ.pop(MODEL_SOURCE_ENV_VAR, None)
+        else:
+            os.environ[MODEL_SOURCE_ENV_VAR] = original_model_source
+
+
 @click.command()
 @click.option(
     '-s',
     '--source',
     'model_source',
-    type=click.Choice(['huggingface', 'modelscope']),
+    type=click.Choice(REMOTE_MODEL_SOURCES),
     help="""
         The source of the model repository. 
         """,
@@ -115,12 +150,11 @@ def download_models(model_source, model_type):
     if model_source is None:
         model_source = click.prompt(
             "Please select the model download source: ",
-            type=click.Choice(['huggingface', 'modelscope']),
+            type=click.Choice(REMOTE_MODEL_SOURCES),
             default='huggingface'
         )
 
-    if os.getenv('MINERU_MODEL_SOURCE', None) is None:
-        os.environ['MINERU_MODEL_SOURCE'] = model_source
+    effective_model_source = get_effective_download_model_source(model_source)
 
     # 如果未显式指定则交互式输入模型类型
     if model_type is None:
@@ -130,19 +164,20 @@ def download_models(model_source, model_type):
             default='all'
         )
 
-    logger.info(f"Downloading {model_type} model from {os.getenv('MINERU_MODEL_SOURCE', None)}...")
+    logger.info(f"Downloading {model_type} model from {effective_model_source}...")
 
     try:
-        if model_type == 'pipeline':
-            download_pipeline_models()
-        elif model_type == 'vlm':
-            download_vlm_models()
-        elif model_type == 'all':
-            download_pipeline_models()
-            download_vlm_models()
-        else:
-            click.echo(f"Unsupported model type: {model_type}", err=True)
-            sys.exit(1)
+        with temporary_model_source(effective_model_source):
+            if model_type == 'pipeline':
+                download_pipeline_models()
+            elif model_type == 'vlm':
+                download_vlm_models()
+            elif model_type == 'all':
+                download_pipeline_models()
+                download_vlm_models()
+            else:
+                click.echo(f"Unsupported model type: {model_type}", err=True)
+                sys.exit(1)
 
     except Exception as e:
         logger.exception(f"An error occurred while downloading models: {str(e)}")
