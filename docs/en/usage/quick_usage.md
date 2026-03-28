@@ -106,7 +106,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   > ```
 
 > [!NOTE]
-> All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`.
+> All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`.
 > We have compiled some commonly used parameters and usage methods for `vllm/lmdeploy`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
 ## Extending MinerU Functionality with Configuration Files
