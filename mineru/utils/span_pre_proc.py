@@ -8,103 +8,10 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio, calculate_iou, \
-    get_minbox_if_overlap_by_ratio
+from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdf_text_tool import get_page
-
-
-def remove_outside_spans(spans, all_bboxes, all_discarded_blocks):
-    def get_block_bboxes(blocks, block_type_list):
-        return [block[0:4] for block in blocks if block[7] in block_type_list]
-
-    image_bboxes = get_block_bboxes(all_bboxes, [BlockType.IMAGE_BODY])
-    table_bboxes = get_block_bboxes(all_bboxes, [BlockType.TABLE_BODY])
-    other_block_type = []
-    for block_type in BlockType.__dict__.values():
-        if not isinstance(block_type, str):
-            continue
-        if block_type not in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY]:
-            other_block_type.append(block_type)
-    other_block_bboxes = get_block_bboxes(all_bboxes, other_block_type)
-    discarded_block_bboxes = get_block_bboxes(all_discarded_blocks, [BlockType.DISCARDED])
-
-    new_spans = []
-
-    for span in spans:
-        span_bbox = span['bbox']
-        span_type = span['type']
-
-        if any(calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.4 for block_bbox in
-               discarded_block_bboxes):
-            new_spans.append(span)
-            continue
-
-        if span_type == ContentType.IMAGE:
-            if any(calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.5 for block_bbox in
-                   image_bboxes):
-                new_spans.append(span)
-        elif span_type == ContentType.TABLE:
-            if any(calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.5 for block_bbox in
-                   table_bboxes):
-                new_spans.append(span)
-        else:
-            if any(calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > 0.5 for block_bbox in
-                   other_block_bboxes):
-                new_spans.append(span)
-
-    return new_spans
-
-
-def remove_overlaps_low_confidence_spans(spans):
-    dropped_spans = []
-    #  删除重叠spans中置信度低的的那些
-    for span1 in spans:
-        for span2 in spans:
-            if span1 != span2:
-                # span1 或 span2 任何一个都不应该在 dropped_spans 中
-                if span1 in dropped_spans or span2 in dropped_spans:
-                    continue
-                else:
-                    if calculate_iou(span1['bbox'], span2['bbox']) > 0.9:
-                        if span1['score'] < span2['score']:
-                            span_need_remove = span1
-                        else:
-                            span_need_remove = span2
-                        if (
-                            span_need_remove is not None
-                            and span_need_remove not in dropped_spans
-                        ):
-                            dropped_spans.append(span_need_remove)
-
-    if len(dropped_spans) > 0:
-        for span_need_remove in dropped_spans:
-            spans.remove(span_need_remove)
-
-    return spans, dropped_spans
-
-
-def remove_overlaps_min_spans(spans):
-    dropped_spans = []
-    #  删除重叠spans中较小的那些
-    for span1 in spans:
-        for span2 in spans:
-            if span1 != span2:
-                # span1 或 span2 任何一个都不应该在 dropped_spans 中
-                if span1 in dropped_spans or span2 in dropped_spans:
-                    continue
-                else:
-                    overlap_box = get_minbox_if_overlap_by_ratio(span1['bbox'], span2['bbox'], 0.65)
-                    if overlap_box is not None:
-                        span_need_remove = next((span for span in spans if span['bbox'] == overlap_box), None)
-                        if span_need_remove is not None and span_need_remove not in dropped_spans:
-                            dropped_spans.append(span_need_remove)
-    if len(dropped_spans) > 0:
-        for span_need_remove in dropped_spans:
-            spans.remove(span_need_remove)
-
-    return spans, dropped_spans
 
 
 def __replace_ligatures(text: str):
