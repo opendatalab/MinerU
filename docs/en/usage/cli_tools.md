@@ -23,6 +23,9 @@ Options:
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
   --help                          Show help information
 ```
+> [!TIP]
+> `mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs.
+
 ```bash
 mineru-api --help
 Usage: mineru-api [OPTIONS]
@@ -50,11 +53,27 @@ Options:
                                   from PDF to Markdown.
   --server-name TEXT              Set the server name for the Gradio app.
   --server-port INTEGER           Set the server port for the Gradio app.
+  --api-url TEXT                  MinerU FastAPI base URL. If omitted, gradio
+                                  starts a reusable local mineru-api service.
   --latex-delimiters-type [a|b|all]
                                   Set the type of LaTeX delimiters to use in
                                   Markdown rendering: 'a' for type '$', 'b' for
                                   type '()[]', 'all' for both types.
   --help                          Show this message and exit.
+```
+```bash
+mineru-router --help
+Usage: mineru-router [OPTIONS]
+
+Options:
+  --host TEXT             Server host (default: 127.0.0.1)
+  --port INTEGER          Server port (default: 8002)
+  --reload                Enable auto-reload (development mode)
+  --upstream-url TEXT     Existing MinerU FastAPI base URL; repeat to add more
+  --local-gpus TEXT       Local GPU workers to launch: auto, none, or CSV such
+                          as 0,1,2
+  --worker-host TEXT      Host for router-managed workers (default: 127.0.0.1)
+  --help                  Show this message and exit.
 ```
 
 ## Environment Variables Description
@@ -99,6 +118,30 @@ Here are the environment variables and their descriptions:
     * Default is `4`; you can set a different value via an environment variable to adjust the number of threads for image rendering.
     * Only effective on Linux and macOS systems.
 
+- `MINERU_PROCESSING_WINDOW_SIZE`:
+    * Used to control the processing window size, which affects memory use and throughput on large-document workloads.
+    * Default is `64`; set it to another positive integer when needed.
+
+- `MINERU_API_MAX_CONCURRENT_REQUESTS`:
+    * Used to control the maximum concurrent requests handled by `mineru-api` or router-managed workers.
+    * Default is `3`, and it must be a positive integer.
+
+- `MINERU_API_ENABLE_FASTAPI_DOCS`:
+    * Used to control whether FastAPI documentation endpoints such as `/docs`, `/openapi.json`, and `/redoc` are enabled.
+    * Default is `true`.
+
+- `MINERU_API_OUTPUT_ROOT`:
+    * Used to configure the root output directory for `mineru-api`.
+    * Default is `./output` under the current working directory.
+
+- `MINERU_API_TASK_RETENTION_SECONDS`:
+    * Used to set how long completed or failed tasks are retained, in seconds.
+    * Default is `86400` seconds (24 hours).
+
+- `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS`:
+    * Used to set the cleanup polling interval for expired tasks, in seconds.
+    * Default is `300` seconds (5 minutes).
+
 - `MINERU_INTRA_OP_NUM_THREADS`:
     * Used to set the intra_op thread count for ONNX models, affects the computation speed of individual operators
     * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.
@@ -113,9 +156,9 @@ Here are the environment variables and their descriptions:
     * Single Client VRAM Size | MINERU_HYBRID_BATCH_RATIO
       ------------------------|--------------------------
       <= 6   GB               | 8
-      <= 4.5 GB               | 4
+      <= 4   GB               | 4
       <= 3   GB               | 2
-      <= 2.5 GB               | 1
+      <= 2   GB               | 1
 
 - `MINERU_HYBRID_FORCE_PIPELINE_ENABLE`:
     * Used to force the text extraction part in `hybrid-*` backends to be processed using small models.
