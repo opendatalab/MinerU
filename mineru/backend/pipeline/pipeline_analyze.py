@@ -160,6 +160,7 @@ def doc_analyze_streaming(
         doc_contexts.append(
             {
                 'doc_index': doc_index,
+                'pdf_bytes': pdf_bytes,
                 'pdf_doc': pdf_doc,
                 'page_count': page_count,
                 'next_page_idx': 0,
@@ -211,6 +212,7 @@ def doc_analyze_streaming(
                         start_page_id=page_start,
                         end_page_id=page_end,
                         image_type=ImageType.PIL,
+                        pdf_bytes=context['pdf_bytes'],
                     )
                     images_with_extra_info = [
                         (image_dict['img_pil'], context['ocr_enable'], context['lang'])

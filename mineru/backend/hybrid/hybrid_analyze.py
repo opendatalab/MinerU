@@ -589,6 +589,7 @@ def doc_analyze(
                     start_page_id=window_start,
                     end_page_id=window_end,
                     image_type=ImageType.PIL,
+                    pdf_bytes=pdf_bytes,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
@@ -716,6 +717,7 @@ async def aio_doc_analyze(
                     start_page_id=window_start,
                     end_page_id=window_end,
                     image_type=ImageType.PIL,
+                    pdf_bytes=pdf_bytes,
                 )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
