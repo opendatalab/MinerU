@@ -78,8 +78,9 @@ class LocalAPIServer:
         if self.process is not None:
             raise RuntimeError("Local API server is already running")
 
-        port = find_free_port()
-        self.base_url = f"http://127.0.0.1:{port}"
+        resolved_port = find_free_port()
+        remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
+        self.base_url = f"http://127.0.0.1:{resolved_port}"
         env = os.environ.copy()
         env["MINERU_API_OUTPUT_ROOT"] = str(self.output_root)
         env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
@@ -95,8 +96,8 @@ class LocalAPIServer:
             "--host",
             "127.0.0.1",
             "--port",
-            str(port),
-            *self.extra_cli_args,
+            str(resolved_port),
+            *remaining_cli_args,
         ]
         self.process = subprocess.Popen(
             command,
@@ -198,6 +199,42 @@ def find_free_port() -> int:
         sock.bind(("127.0.0.1", 0))
         sock.listen(1)
         return int(sock.getsockname()[1])
+
+
+def strip_local_api_network_args(extra_cli_args: Sequence[str]) -> tuple[str, ...]:
+    remaining_args: list[str] = []
+    i = 0
+
+    while i < len(extra_cli_args):
+        arg = extra_cli_args[i]
+        if arg == "--host":
+            next_index = i + 1
+            if next_index < len(extra_cli_args) and not extra_cli_args[next_index].startswith("--"):
+                i += 2
+            else:
+                i += 1
+            continue
+
+        if arg == "--port":
+            next_index = i + 1
+            if next_index < len(extra_cli_args) and not extra_cli_args[next_index].startswith("--"):
+                i += 2
+            else:
+                i += 1
+            continue
+
+        if arg.startswith("--host="):
+            i += 1
+            continue
+
+        if arg.startswith("--port="):
+            i += 1
+            continue
+
+        remaining_args.append(arg)
+        i += 1
+
+    return tuple(remaining_args)
 
 
 def normalize_base_url(url: str) -> str:
