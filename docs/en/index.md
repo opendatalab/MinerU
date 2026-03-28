@@ -41,15 +41,15 @@
 
 ## Project Introduction
 
-MinerU is a tool that converts PDFs into machine-readable formats (e.g., markdown, JSON), allowing for easy extraction into any format.
+MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
-Compared to well-known commercial products domestically and internationally, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [GitHub Issues](https://github.com/opendatalab/MinerU/issues) and **attach the relevant PDF**.
+Compared to well-known commercial products domestically and internationally, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [GitHub Issues](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
 ![type:video](https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c)
 
-
 ## Key Features
 
+- Support `PDF`, image, and `DOCX` inputs
 - Remove headers, footers, footnotes, page numbers and other elements to ensure semantic coherence
 - Output text in human reading order, suitable for single-column, multi-column and complex layouts
 - Retain the original document structure, including titles, paragraphs, lists, etc.
@@ -60,6 +60,7 @@ Compared to well-known commercial products domestically and internationally, Min
 - OCR supports detection and recognition of 109 languages
 - Support multiple output formats, such as multimodal and NLP Markdown, reading-order-sorted JSON, and information-rich intermediate formats
 - Support multiple visualization results, including layout visualization, span visualization, etc., for efficient confirmation of output effects and quality inspection
+- Built-in CLI, FastAPI, Gradio WebUI, for local orchestration and multi-service deployment
 - Support pure CPU environment operation, and support GPU(CUDA)/NPU(CANN)/MPS acceleration
 - Compatible with Windows, Linux and Mac platforms
 
