@@ -34,6 +34,9 @@ xlsx_suffixes = ["xlsx"]
 office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# Maximum UTF-8 byte length allowed for task stems used in filenames.
+# 200 bytes is chosen to stay well below common filesystem limits (e.g. 255 bytes)
+# and to prevent generating excessively long or incompatible filenames.
 MAX_TASK_STEM_BYTES = 200
 
 

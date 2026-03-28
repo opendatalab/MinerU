@@ -46,10 +46,6 @@ def _get_int_bbox(item):
     return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
 
 
-def _set_bbox(item, bbox):
-    item["bbox"] = [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])]
-
-
 def crop_img(input_res, input_img, crop_paste_x=0, crop_paste_y=0):
     crop_xmin, crop_ymin, crop_xmax, crop_ymax = _get_int_bbox(input_res)
 

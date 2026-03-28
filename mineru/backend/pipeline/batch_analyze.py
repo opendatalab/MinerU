@@ -319,8 +319,11 @@ class BatchAnalyze:
 
         # pp-doclayout_v2
         images_layout_res += self.model.layout_model.batch_predict(
-            pil_images, LAYOUT_BASE_BATCH_SIZE
+            pil_images,
+            batch_size=min(8, self.batch_ratio * LAYOUT_BASE_BATCH_SIZE)
         )
+        # 清理显存
+        clean_vram(self.model.device, vram_threshold=8)
 
         if self.formula_enable:
             images_mfd_res = []
