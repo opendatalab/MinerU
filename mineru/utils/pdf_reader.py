@@ -4,12 +4,8 @@ from io import BytesIO
 
 from loguru import logger
 from PIL import Image
-from pypdfium2 import PdfBitmap, PdfDocument, PdfPage
-from mineru.utils.pdfium_guard import (
-    close_pdfium_document,
-    open_pdfium_document,
-    pdfium_guard,
-)
+from pypdfium2 import PdfBitmap, PdfPage
+from mineru.utils.pdfium_guard import pdfium_guard
 
 
 def page_to_image(
@@ -34,8 +30,6 @@ def page_to_image(
     return image, scale
 
 
-
-
 def image_to_bytes(
     image: Image.Image,
     # image_format: str = "PNG",  # 也可以用 "JPEG"
@@ -53,64 +47,3 @@ def image_to_b64str(
 ) -> str:
     image_bytes = image_to_bytes(image, image_format)
     return f"data:image/{image_format.lower()};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
-
-
-def base64_to_pil_image(
-    base64_str: str,
-) -> Image.Image:
-    """Convert base64 string to PIL Image."""
-    image_bytes = base64.b64decode(base64_str)
-    with BytesIO(image_bytes) as image_buffer:
-        return Image.open(image_buffer).convert("RGB")
-
-
-def pdf_to_images(
-    pdf: str | bytes | PdfDocument,
-    dpi: int = 200,
-    max_width_or_height: int = 3500,
-    start_page_id: int = 0,
-    end_page_id: int | None = None,
-) -> list[Image.Image]:
-    doc = pdf if isinstance(pdf, PdfDocument) else open_pdfium_document(PdfDocument, pdf)
-    try:
-        with pdfium_guard():
-            page_num = len(doc)
-
-            end_page_id = end_page_id if end_page_id is not None and end_page_id >= 0 else page_num - 1
-            if end_page_id > page_num - 1:
-                logger.warning("end_page_id is out of range, use images length")
-                end_page_id = page_num - 1
-
-            images = []
-            for i in range(start_page_id, end_page_id + 1):
-                image, _ = page_to_image(doc[i], dpi, max_width_or_height)
-                images.append(image)
-            return images
-    finally:
-        close_pdfium_document(doc)
-
-
-def pdf_to_images_bytes(
-    pdf: str | bytes | PdfDocument,
-    dpi: int = 200,
-    max_width_or_height: int = 3500,
-    start_page_id: int = 0,
-    end_page_id: int | None = None,
-    # image_format: str = "PNG",  # 也可以用 "JPEG"
-    image_format: str = "JPEG",
-) -> list[bytes]:
-    images = pdf_to_images(pdf, dpi, max_width_or_height, start_page_id, end_page_id)
-    return [image_to_bytes(image, image_format) for image in images]
-
-
-def pdf_to_images_b64strs(
-    pdf: str | bytes | PdfDocument,
-    dpi: int = 200,
-    max_width_or_height: int = 3500,
-    start_page_id: int = 0,
-    end_page_id: int | None = None,
-    # image_format: str = "PNG",  # 也可以用 "JPEG"
-    image_format: str = "JPEG",
-) -> list[str]:
-    images = pdf_to_images(pdf, dpi, max_width_or_height, start_page_id, end_page_id)
-    return [image_to_b64str(image, image_format) for image in images]

@@ -185,61 +185,6 @@ def _load_images_from_pdf_bytes_range(
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def load_images_from_pdf(
-    pdf_bytes: bytes,
-    dpi=DEFAULT_PDF_IMAGE_DPI,
-    start_page_id=0,
-    end_page_id=None,
-    image_type=ImageType.PIL,
-    timeout=None,
-    threads=None,
-):
-    """带超时控制的 PDF 转图片函数,支持多进程加速
-
-    Args:
-        pdf_bytes (bytes): PDF 文件的 bytes
-        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
-        start_page_id (int, optional): 起始页码. Defaults to 0.
-        end_page_id (int | None, optional): 结束页码. Defaults to None.
-        image_type (ImageType, optional): 图片类型. Defaults to ImageType.PIL.
-        timeout (int | None, optional): 超时时间(秒)。如果为 None，则从环境变量 MINERU_PDF_RENDER_TIMEOUT 读取，若未设置则默认为 300 秒。
-        threads (int): 进程数, 如果为 None，则从环境变量 MINERU_PDF_RENDER_THREADS 读取，若未设置则默认为 4.
-
-    Raises:
-        TimeoutError: 当转换超时时抛出
-    """
-    pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-    try:
-        normalized_end_page_id = get_end_page_id(
-            end_page_id,
-            get_pdfium_document_page_count(pdf_doc),
-        )
-        if is_windows_environment():
-            # Windows 环境下不使用多进程
-            images_list = load_images_from_pdf_core(
-                pdf_bytes,
-                dpi,
-                start_page_id,
-                normalized_end_page_id,
-                image_type,
-            )
-            return images_list, pdf_doc
-
-        images_list = _load_images_from_pdf_bytes_range(
-            pdf_bytes,
-            dpi=dpi,
-            start_page_id=start_page_id,
-            end_page_id=normalized_end_page_id,
-            image_type=image_type,
-            timeout=timeout,
-            threads=threads,
-        )
-        return images_list, pdf_doc
-    except Exception:
-        close_pdfium_document(pdf_doc)
-        raise
-
-
 def _terminate_executor_processes(executor):
     """强制终止 ProcessPoolExecutor 中的所有子进程"""
     if hasattr(executor, '_processes'):
