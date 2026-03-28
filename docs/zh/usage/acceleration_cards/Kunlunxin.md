@@ -106,10 +106,6 @@ docker run -u root --name mineru_docker \
       <td colspan="2">openai-server服务（mineru-openai-server）</td>
       <td>🟢</td>
     </tr>
-    <tr>
-      <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🔴</td>
-    </tr>
   </tbody>
 </table>
 

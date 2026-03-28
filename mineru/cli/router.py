@@ -1135,30 +1135,69 @@ async def proxy_router_task_result(
     )
 
 
-async def fetch_materialized_router_task_result(
+async def build_sync_router_task_result_response(
     request: Request,
     task: RouterTaskRecord,
-) -> tuple[str, bytes, dict[str, str]]:
+) -> Response:
     client: httpx.AsyncClient = request.app.state.http_client
     result_url = f"{task.upstream_base_url}{TASKS_ENDPOINT}/{task.upstream_task_id}/result"
     try:
-        response = await client.get(result_url)
+        upstream_response = await client.send(
+            client.build_request("GET", result_url),
+            stream=True,
+        )
     except httpx.HTTPError as exc:
         await request.app.state.router_task_registry.increment_upstream_error(task.task_id, str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    if response.status_code != 200:
+    if upstream_response.status_code != 200:
+        body = await upstream_response.aread()
+        await upstream_response.aclose()
+        detail = body.decode("utf-8", errors="replace").strip() or upstream_response.reason_phrase
         await request.app.state.router_task_registry.increment_upstream_error(
             task.task_id,
-            f"{response.status_code} {response_detail(response)}",
+            f"{upstream_response.status_code} {detail}",
         )
-        raise HTTPException(status_code=response.status_code, detail=response_detail(response))
+        raise HTTPException(status_code=upstream_response.status_code, detail=detail)
+
+    sync_headers = build_sync_task_headers(task, request)
+    content_type = upstream_response.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            await upstream_response.aread()
+            payload_data = _parse_json_object_response(
+                upstream_response,
+                "task result payload",
+            )
+        except ValueError as exc:
+            detail = f"Invalid task result payload: {exc}"
+            await request.app.state.router_task_registry.increment_upstream_error(
+                task.task_id,
+                detail,
+            )
+            raise HTTPException(status_code=502, detail=detail) from exc
+        finally:
+            await upstream_response.aclose()
+
+        merged_payload = {
+            **task.to_status_payload(request),
+            "backend": payload_data.get("backend", task.backend),
+            "version": payload_data.get("version", __version__),
+            "results": payload_data.get("results", {}),
+        }
+        return JSONResponse(status_code=200, content=merged_payload, headers=sync_headers)
 
     headers: dict[str, str] = {}
-    content_disposition = response.headers.get("content-disposition")
+    content_disposition = upstream_response.headers.get("content-disposition")
     if content_disposition:
         headers["content-disposition"] = content_disposition
-    return response.headers.get("content-type", ""), response.content, headers
+    return StreamingResponse(
+        upstream_response.aiter_bytes(),
+        status_code=200,
+        media_type=content_type or "application/octet-stream",
+        headers={**headers, **sync_headers},
+        background=BackgroundTask(upstream_response.aclose),
+    )
 
 
 def build_sync_task_headers(task: RouterTaskRecord, request: Request) -> dict[str, str]:
@@ -1271,26 +1310,7 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
                 },
             )
 
-        content_type, body, result_headers = await fetch_materialized_router_task_result(
-            request,
-            router_task,
-        )
-        sync_headers = build_sync_task_headers(router_task, request)
-        if "application/json" in content_type:
-            payload_data = json.loads(body.decode("utf-8"))
-            merged_payload = {
-                **router_task.to_status_payload(request),
-                "backend": payload_data.get("backend", router_task.backend),
-                "version": payload_data.get("version", __version__),
-                "results": payload_data.get("results", {}),
-            }
-            return JSONResponse(status_code=200, content=merged_payload, headers=sync_headers)
-        return Response(
-            content=body,
-            status_code=200,
-            media_type=content_type or "application/octet-stream",
-            headers={**result_headers, **sync_headers},
-        )
+        return await build_sync_router_task_result_response(request, router_task)
 
     @app.get(path="/health")
     async def health_check(request: Request):
