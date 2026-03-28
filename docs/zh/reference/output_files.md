@@ -388,7 +388,7 @@
 ]
 ```
 
-### 通用内容列表 V2 (content_list_v2.json)
+### 通用内容列表 V2 (content_list_v2.json)(开发中，格式可能调整)
 
 **文件命名格式**：`{原文件名}_content_list_v2.json`
 

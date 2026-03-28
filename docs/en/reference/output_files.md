@@ -388,7 +388,7 @@ Text levels are distinguished through the `text_level` field:
 ]
 ```
 
-### Common Content List V2 (content_list_v2.json)
+### Common Content List V2 (content_list_v2.json)(development version, subject to change)
 
 **File naming format**: `{original_filename}_content_list_v2.json`
 
