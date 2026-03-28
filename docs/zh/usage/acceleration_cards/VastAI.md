@@ -204,14 +204,6 @@
       <td colspan="2">openai-server服务（mineru-openai-server）</td>
       <td>🟢</td>
     </tr>
-    <tr>
-      <td colspan="2">Tensor并行 (--tensor-parallel-size)</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td colspan="2">数据并行 (--data-parallel-size)</td>
-      <td>🔴</td>
-    </tr>
   </tbody>
 </table>
 
