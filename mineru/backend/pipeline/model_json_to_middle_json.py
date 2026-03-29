@@ -203,6 +203,15 @@ def _extract_text_from_block(block):
     return "".join(text_parts).strip()
 
 
+def _iter_block_spans(block):
+    for line in block.get("lines", []):
+        for span in line.get("spans", []):
+            yield span
+
+    for sub_block in block.get("blocks", []):
+        yield from _iter_block_spans(sub_block)
+
+
 def _normalize_formula_tag_content(tag_content):
     tag_content = full_to_half(tag_content.strip())
     if tag_content.startswith("("):
@@ -261,22 +270,18 @@ def _optimize_formula_number_blocks(pdf_info_list):
 def _apply_post_ocr(pdf_info_list, lang=None):
     need_ocr_list = []
     img_crop_list = []
-    text_block_list = []
 
     for page_info in pdf_info_list:
-        for block in page_info['preproc_blocks']:
-            if 'blocks' in block:
-                for sub_block in block['blocks']:
-                    if sub_block.get("type", "").endswith('caption') or sub_block.get("type", "").endswith('footnote'):
-                        text_block_list.append(sub_block)
-            elif block["type"] not in [BlockType.INTERLINE_EQUATION, BlockType.SEAL]:
-                text_block_list.append(block)
-        for block in page_info['discarded_blocks']:
-            text_block_list.append(block)
+        for block in page_info.get('preproc_blocks', []):
+            for span in _iter_block_spans(block):
+                if 'np_img' in span:
+                    need_ocr_list.append(span)
+                    # Keep post-OCR rec aligned with the main OCR pipeline for vertical tall crops.
+                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
+                    span.pop('np_img')
 
-    for block in text_block_list:
-        for line in block['lines']:
-            for span in line['spans']:
+        for block in page_info.get('discarded_blocks', []):
+            for span in _iter_block_spans(block):
                 if 'np_img' in span:
                     need_ocr_list.append(span)
                     # Keep post-OCR rec aligned with the main OCR pipeline for vertical tall crops.
