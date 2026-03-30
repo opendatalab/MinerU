@@ -1,4 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import importlib
+import importlib.util
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -38,6 +40,37 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # 200 bytes is chosen to stay well below common filesystem limits (e.g. 255 bytes)
 # and to prevent generating excessively long or incompatible filenames.
 MAX_TASK_STEM_BYTES = 200
+
+
+class HybridDependencyError(RuntimeError):
+    pass
+
+
+def build_hybrid_dependency_error_message(backend: str) -> str:
+    return (
+        f"`{backend}` requires local pipeline dependencies (`mineru[pipeline]`, "
+        "including `torch`). Install `mineru[pipeline]` or `mineru[core]`. "
+        "If you need a lightweight remote client without local `torch`, "
+        "use `vlm-http-client` instead."
+    )
+
+
+def ensure_backend_dependencies(backend: str) -> None:
+    if not backend.startswith("hybrid-"):
+        return
+    if importlib.util.find_spec("torch") is None:
+        raise HybridDependencyError(build_hybrid_dependency_error_message(backend))
+
+
+def _load_hybrid_analyze_entrypoint(entrypoint_name: str, backend: str):
+    ensure_backend_dependencies(backend)
+    try:
+        hybrid_analyze = importlib.import_module("mineru.backend.hybrid.hybrid_analyze")
+    except (ImportError, ModuleNotFoundError) as exc:
+        raise HybridDependencyError(
+            build_hybrid_dependency_error_message(backend)
+        ) from exc
+    return getattr(hybrid_analyze, entrypoint_name)
 
 
 def utf8_byte_length(value: str) -> int:
@@ -438,7 +471,10 @@ def _process_hybrid(
         server_url=None,
         **kwargs,
 ):
-    from mineru.backend.hybrid.hybrid_analyze import doc_analyze as hybrid_doc_analyze
+    hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
+        "doc_analyze",
+        f"hybrid-{backend}",
+    )
     """同步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
@@ -491,7 +527,10 @@ async def _async_process_hybrid(
         server_url=None,
         **kwargs,
 ):
-    from mineru.backend.hybrid.hybrid_analyze import aio_doc_analyze as aio_hybrid_doc_analyze
+    aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
+        "aio_doc_analyze",
+        f"hybrid-{backend}",
+    )
     """异步处理hybrid后端逻辑"""
     if not backend.endswith("client"):
         server_url = None
@@ -642,6 +681,7 @@ def do_parse(
                 server_url, **kwargs,
             )
         elif backend.startswith("hybrid-"):
+            ensure_backend_dependencies(backend)
             backend = backend[7:]
 
             if backend == "vllm-async-engine":
@@ -734,6 +774,7 @@ async def aio_do_parse(
                 server_url, **kwargs,
             )
         elif backend.startswith("hybrid-"):
+            ensure_backend_dependencies(backend)
             backend = backend[7:]
 
             if backend == "vllm-engine":
