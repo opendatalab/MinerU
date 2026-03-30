@@ -51,7 +51,6 @@ from mineru.cli.api_protocol import (
 )
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import (
-    get_device,
     get_max_concurrent_requests as read_max_concurrent_requests,
     get_processing_window_size,
 )
@@ -80,8 +79,7 @@ FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
-_configured_max_concurrent_requests = 0
-_mps_parse_lock = threading.Lock()
+_configured_max_concurrent_requests = 1
 
 
 def env_flag_enabled(name: str, default: bool = False) -> bool:
@@ -883,30 +881,10 @@ async def run_parse_job(
     )
 
     if request_options.backend == "pipeline":
-        async with serialize_parse_job_if_needed(request_options.backend):
-            await asyncio.to_thread(do_parse, **parse_kwargs)
+        await asyncio.to_thread(do_parse, **parse_kwargs)
     else:
-        async with serialize_parse_job_if_needed(request_options.backend):
-            await aio_do_parse(**parse_kwargs)
+        await aio_do_parse(**parse_kwargs)
     return response_file_names
-
-
-def should_serialize_parse_job(backend: str) -> bool:
-    if get_device() != "mps":
-        return False
-    return backend == "pipeline" or backend.startswith(("vlm-", "hybrid-"))
-
-
-@asynccontextmanager
-async def serialize_parse_job_if_needed(backend: str):
-    if not should_serialize_parse_job(backend):
-        yield
-        return
-    await asyncio.to_thread(_mps_parse_lock.acquire)
-    try:
-        yield
-    finally:
-        _mps_parse_lock.release()
 
 
 def create_task_output_dir(task_id: str) -> str:
