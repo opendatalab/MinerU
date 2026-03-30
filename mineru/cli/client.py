@@ -1011,7 +1011,7 @@ async def run_orchestrated_cli(
       vlm-auto-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-http-client: High accuracy via remote computing power but requires local pipeline dependencies (`mineru[pipeline]`, including `torch`).
+      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
     Without method specified, hybrid-auto-engine will be used by default.""",
 )
 @click.option(
