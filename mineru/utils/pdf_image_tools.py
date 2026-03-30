@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import multiprocessing
 import os
 import signal
 import time
@@ -113,6 +114,23 @@ def _get_render_process_plan(
     )
 
 
+def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
+    if is_windows_environment():
+        return ProcessPoolExecutor(max_workers=max_workers)
+
+    start_method = multiprocessing.get_start_method()
+    if start_method == "fork":
+        logger.debug(
+            "PDF image rendering switches multiprocessing start method from fork to spawn"
+        )
+        return ProcessPoolExecutor(
+            max_workers=max_workers,
+            mp_context=multiprocessing.get_context("spawn"),
+        )
+
+    return ProcessPoolExecutor(max_workers=max_workers)
+
+
 def _load_images_from_pdf_bytes_range(
     pdf_bytes: bytes,
     dpi=DEFAULT_PDF_IMAGE_DPI,
@@ -141,7 +159,7 @@ def _load_images_from_pdf_bytes_range(
         f"{start_page_id + 1}-{end_page_id + 1}: {page_ranges}"
     )
 
-    executor = ProcessPoolExecutor(max_workers=actual_threads)
+    executor = _create_pdf_render_executor(max_workers=actual_threads)
     try:
         futures = []
         future_to_range = {}
