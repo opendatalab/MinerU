@@ -7,24 +7,19 @@ MinerU使用 `HuggingFace` 和 `ModelScope` 作为模型仓库，用户可以根
 
 ## 模型源的切换方法
 
-### 通过命令行参数切换
-目前仅`mineru`命令行工具支持通过命令行参数切换模型源，其他命令行工具如`mineru-api`、`mineru-gradio`等暂不支持。
-```bash
-mineru -p <input_path> -o <output_path> --source modelscope
-```
-
 ### 通过环境变量切换
-在任何情况下可以通过设置环境变量来切换模型源，这适用于所有命令行工具和API调用。
+MinerU 通过 `MINERU_MODEL_SOURCE` 环境变量配置模型源，这适用于所有命令行工具和 API 调用。
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
+mineru -p <input_path> -o <output_path>
 ```
-或
+或在代码中设置：
 ```python
 import os
 os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
 ```
 >[!TIP]
-> 通过环境变量设置的模型源会在当前终端会话中生效，直到终端关闭或环境变量被修改。且优先级高于命令行参数，如同时设置了命令行参数和环境变量，命令行参数将被忽略。
+> MinerU 已不再提供用于切换模型源的命令行参数。通过环境变量设置的模型源会在当前终端会话中生效，直到终端关闭或环境变量被修改。
 
 
 ## 使用本地模型
@@ -47,10 +42,7 @@ mineru-models-download
 
 ### 2. 使用本地模型进行解析
 
-```bash
-mineru -p <input_path> -o <output_path> --source local
-```
-或通过环境变量启用：
+通过环境变量启用本地模型：
 ```bash
 export MINERU_MODEL_SOURCE=local
 mineru -p <input_path> -o <output_path>
