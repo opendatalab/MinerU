@@ -50,6 +50,7 @@ from mineru.cli.api_protocol import (
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
     get_processing_window_size,
@@ -228,9 +229,13 @@ def create_app():
     )
 
     global _request_semaphore, _configured_max_concurrent_requests
-    max_concurrent_requests = read_max_concurrent_requests(
-        default=DEFAULT_MAX_CONCURRENT_REQUESTS
-    )
+
+    if is_mac_environment():
+        max_concurrent_requests = 1
+    else:
+        max_concurrent_requests = read_max_concurrent_requests(
+            default=DEFAULT_MAX_CONCURRENT_REQUESTS
+        )
 
     _configured_max_concurrent_requests = max_concurrent_requests
     app.state.max_concurrent_requests = max_concurrent_requests
