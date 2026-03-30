@@ -536,6 +536,33 @@ async def resolve_server_health(http_client, api_url):
     return await _api_client.wait_for_local_api_ready(http_client, local_server)
 
 
+async def ensure_local_api_ready_for_gradio_startup():
+    local_server, started_now = _gradio_local_api_server.ensure_started()
+    if started_now:
+        logger.info(f"Started local mineru-api at {local_server.base_url}")
+
+    async with httpx.AsyncClient(
+        timeout=_api_client.build_http_timeout(),
+        follow_redirects=True,
+    ) as http_client:
+        return await _api_client.wait_for_local_api_ready(http_client, local_server)
+
+
+def maybe_prepare_local_api_for_gradio_startup(
+    *,
+    api_url: str | None,
+    enable_vlm_preload: bool,
+):
+    if api_url is not None or not enable_vlm_preload:
+        return None
+
+    try:
+        return asyncio.run(ensure_local_api_ready_for_gradio_startup())
+    except Exception:
+        _gradio_local_api_server.stop()
+        raise
+
+
 def resolve_gradio_max_concurrent_requests(api_url, server_health):
     if api_url is None:
         return server_health.max_concurrent_requests
@@ -1363,6 +1390,10 @@ def main(ctx,
         _launch_kwargs = {"footer_links": footer_links}
     else:
         _launch_kwargs = {"show_api": api_enable}
+    maybe_prepare_local_api_for_gradio_startup(
+        api_url=api_url,
+        enable_vlm_preload=enable_vlm_preload,
+    )
     demo.launch(
         server_name=server_name,
         server_port=server_port,
