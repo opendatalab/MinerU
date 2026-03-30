@@ -489,7 +489,17 @@ async def wait_for_task_result(
 ) -> None:
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while asyncio.get_running_loop().time() < deadline:
-        response = await client.get(submit_response.status_url)
+        try:
+            response = await client.get(submit_response.status_url)
+        except httpx.ReadTimeout:
+            logger.warning(
+                "Timed out while polling task status for {} (task_id={}). "
+                "This can happen during cold start; retrying until the task deadline.",
+                task_label,
+                submit_response.task_id,
+            )
+            await asyncio.sleep(TASK_STATUS_POLL_INTERVAL_SECONDS)
+            continue
         if response.status_code != 200:
             raise click.ClickException(
                 f"Failed to query task status for {task_label}: "
