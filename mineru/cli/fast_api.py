@@ -49,6 +49,10 @@ from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
+from mineru.cli.vlm_preload import (
+    maybe_preload_vlm_model,
+    split_service_and_model_config,
+)
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
@@ -205,16 +209,11 @@ class TaskWaitAbortedError(RuntimeError):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task_manager = AsyncTaskManager(app)
-    await task_manager.start()
-    app.state.task_manager = task_manager
+    await startup_app_state(app)
     try:
         yield
     finally:
-        current_task_manager = getattr(app.state, "task_manager", None)
-        if current_task_manager is not None:
-            await current_task_manager.shutdown()
-        app.state.task_manager = None
+        await shutdown_app_state(app)
 
 
 def create_app():
@@ -244,10 +243,47 @@ def create_app():
         logger.info(f"Request concurrency limited to {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    default_service_config, default_model_config = split_service_and_model_config(
+        {
+            "enable_vlm_preload": env_flag_enabled(
+                "MINERU_API_ENABLE_VLM_PRELOAD",
+                default=False,
+            )
+        }
+    )
+    app.state.service_config = default_service_config
+    app.state.config = default_model_config
+    app.state.task_manager = None
     return app
 
 
 app = create_app()
+
+
+async def startup_app_state(app: FastAPI) -> "AsyncTaskManager":
+    task_manager = AsyncTaskManager(app)
+    await task_manager.start()
+    try:
+        service_config = getattr(app.state, "service_config", {})
+        model_config = getattr(app.state, "config", {})
+        maybe_preload_vlm_model(
+            bool(service_config.get("enable_vlm_preload", False)),
+            model_kwargs=model_config,
+        )
+    except Exception:
+        await task_manager.shutdown()
+        app.state.task_manager = None
+        raise
+
+    app.state.task_manager = task_manager
+    return task_manager
+
+
+async def shutdown_app_state(app: FastAPI) -> None:
+    current_task_manager = getattr(app.state, "task_manager", None)
+    if current_task_manager is not None:
+        await current_task_manager.shutdown()
+    app.state.task_manager = None
 
 
 def utc_now_iso() -> str:
@@ -1416,10 +1452,24 @@ async def health_check():
 @click.option("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
 @click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
 @click.option("--reload", is_flag=True, help="Enable auto-reload (development mode)")
-def main(ctx, host, port, reload, **kwargs):
-    kwargs.update(arg_parse(ctx))
+@click.option(
+    "--enable-vlm-preload",
+    "enable_vlm_preload",
+    type=bool,
+    default=False,
+    help="Preload the local VLM model during mineru-api startup.",
+)
+def main(ctx, host, port, reload, enable_vlm_preload, **kwargs):
+    del kwargs
+    raw_config = arg_parse(ctx)
+    raw_config["enable_vlm_preload"] = enable_vlm_preload
+    service_config, model_config = split_service_and_model_config(raw_config)
 
-    app.state.config = kwargs
+    app.state.service_config = service_config
+    app.state.config = model_config
+    os.environ["MINERU_API_ENABLE_VLM_PRELOAD"] = (
+        "1" if service_config["enable_vlm_preload"] else "0"
+    )
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
 
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")

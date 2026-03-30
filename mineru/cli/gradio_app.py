@@ -39,6 +39,7 @@ from mineru.cli.common import (
 )
 from mineru.cli import api_client as _api_client
 from mineru.cli.output_paths import resolve_parse_dir
+from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli.visualization import VisualizationJob, run_visualization_job
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
@@ -1027,6 +1028,13 @@ def update_doc_show(file_path):
     default=None,
 )
 @click.option(
+    '--enable-vlm-preload',
+    'enable_vlm_preload',
+    type=bool,
+    help="Preload the local VLM model when gradio starts a local mineru-api service.",
+    default=False,
+)
+@click.option(
     '--latex-delimiters-type',
     'latex_delimiters_type',
     type=click.Choice(['a', 'b', 'all']),
@@ -1038,7 +1046,7 @@ def main(ctx,
         example_enable,
         http_client_enable,
         api_enable, max_convert_pages,
-        server_name, server_port, api_url, latex_delimiters_type, **kwargs
+        server_name, server_port, api_url, enable_vlm_preload, latex_delimiters_type, **kwargs
 ):
 
     # 创建 i18n 实例，支持中英文
@@ -1157,7 +1165,13 @@ def main(ctx,
 
 
     del kwargs
-    _gradio_local_api_server.configure(ctx.args)
+    _gradio_local_api_server.configure(
+        resolve_gradio_local_api_cli_args(
+            ctx.args,
+            api_url=api_url,
+            enable_vlm_preload=enable_vlm_preload,
+        )
+    )
 
     if latex_delimiters_type == 'a':
         latex_delimiters = latex_delimiters_type_a
