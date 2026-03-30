@@ -1,7 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import atexit
 import multiprocessing
 import os
 import signal
+import threading
 import time
 from io import BytesIO
 
@@ -26,12 +28,16 @@ from mineru.utils.pdfium_guard import (
 )
 
 from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
+from concurrent.futures.process import BrokenProcessPool
 
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
 MAX_PDF_RENDER_PROCESSES = 4
 MIN_PAGES_PER_RENDER_PROCESS = 30
+
+_pdf_render_executor: ProcessPoolExecutor | None = None
+_pdf_render_executor_lock = threading.Lock()
 
 
 def pdf_page_to_image(
@@ -114,6 +120,16 @@ def _get_render_process_plan(
     )
 
 
+def _get_pdf_render_pool_capacity(cpu_count=None) -> int:
+    available_cpus = max(1, cpu_count if cpu_count is not None else (os.cpu_count() or 1))
+    configured_threads = max(1, get_load_images_threads())
+    return min(
+        available_cpus,
+        configured_threads,
+        MAX_PDF_RENDER_PROCESSES,
+    )
+
+
 def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
     if is_windows_environment():
         return ProcessPoolExecutor(max_workers=max_workers)
@@ -129,6 +145,52 @@ def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
         )
 
     return ProcessPoolExecutor(max_workers=max_workers)
+
+
+def _get_pdf_render_executor() -> ProcessPoolExecutor:
+    global _pdf_render_executor
+
+    with _pdf_render_executor_lock:
+        if _pdf_render_executor is None:
+            max_workers = _get_pdf_render_pool_capacity()
+            _pdf_render_executor = _create_pdf_render_executor(max_workers=max_workers)
+            logger.debug(
+                f"Created persistent PDF render executor with max_workers={max_workers}"
+            )
+        return _pdf_render_executor
+
+
+def _recycle_pdf_render_executor(
+    executor: ProcessPoolExecutor | None,
+    *,
+    terminate_processes: bool,
+) -> None:
+    global _pdf_render_executor
+
+    if executor is None:
+        return
+
+    with _pdf_render_executor_lock:
+        if _pdf_render_executor is executor:
+            _pdf_render_executor = None
+
+    if terminate_processes:
+        _terminate_executor_processes(executor)
+    executor.shutdown(wait=False, cancel_futures=True)
+
+
+def shutdown_pdf_render_executor() -> None:
+    global _pdf_render_executor
+
+    with _pdf_render_executor_lock:
+        executor = _pdf_render_executor
+        _pdf_render_executor = None
+
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(shutdown_pdf_render_executor)
 
 
 def _load_images_from_pdf_bytes_range(
@@ -159,7 +221,8 @@ def _load_images_from_pdf_bytes_range(
         f"{start_page_id + 1}-{end_page_id + 1}: {page_ranges}"
     )
 
-    executor = _create_pdf_render_executor(max_workers=actual_threads)
+    executor = _get_pdf_render_executor()
+    recycle_executor = False
     try:
         futures = []
         future_to_range = {}
@@ -177,7 +240,7 @@ def _load_images_from_pdf_bytes_range(
 
         _, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
         if not_done:
-            _terminate_executor_processes(executor)
+            recycle_executor = True
             raise TimeoutError(
                 f"PDF image rendering timeout after {timeout}s "
                 f"for pages {start_page_id + 1}-{end_page_id + 1}"
@@ -195,12 +258,16 @@ def _load_images_from_pdf_bytes_range(
             images_list.extend(imgs)
 
         return images_list
-    except Exception as exc:
-        if not isinstance(exc, TimeoutError):
-            _terminate_executor_processes(executor)
+    except BrokenProcessPool:
+        recycle_executor = True
         raise
     finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+        if recycle_executor:
+            logger.warning("Recycling persistent PDF render executor after render failure")
+            _recycle_pdf_render_executor(
+                executor,
+                terminate_processes=True,
+            )
 
 
 def _terminate_executor_processes(executor):
