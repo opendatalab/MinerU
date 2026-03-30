@@ -48,6 +48,7 @@ mineru -p <input_path> -o <output_path>
   >任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
   >默认任务完成或失败后保留 24 小时，随后自动清理任务状态和输出目录；清理后访问任务状态或结果会返回 `404`。
   >可通过环境变量 `MINERU_API_TASK_RETENTION_SECONDS` 和 `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` 调整保留时长与清理轮询间隔。
+  >可通过 `--enable-vlm-preload true` 在服务启动阶段预热本地 VLM 模型，避免首次 VLM 或 hybrid 请求时再初始化。
   >
   >异步任务提交示例：
   >```bash
@@ -82,6 +83,7 @@ mineru -p <input_path> -o <output_path>
   > 
   >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
   >- 未传 `--api-url` 时，Gradio 会自动拉起可复用的本地 `mineru-api`；传入 `--api-url` 时则会复用已有本地或远端服务。
+  >- `--enable-vlm-preload true` 会让 Gradio 在 WebUI 启动阶段主动拉起本地 `mineru-api` 并等待 VLM 预加载完成；传入 `--api-url` 时会被忽略。
   >- WebUI 当前支持上传 `PDF`、图片与 `DOCX` 文件。
 
 - 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
@@ -92,6 +94,7 @@ mineru -p <input_path> -o <output_path>
   >
   >- `mineru-router` 对外暴露与 `mineru-api` 一致的 `/health`、`/tasks`、`/file_parse`、`/tasks/{task_id}`、`/tasks/{task_id}/result` 接口。
   >- 可重复使用 `--upstream-url` 聚合多个已有 `mineru-api` 服务，也可通过 `--local-gpus` 自动拉起本地 worker。
+  >- `--enable-vlm-preload true` 仅作用于 router 托管的本地 worker，不会影响通过 `--upstream-url` 接入的远端服务。
   >- 适用于多服务、多 GPU 和统一入口部署场景。
 
 - 使用`http-client/server`方式调用：
