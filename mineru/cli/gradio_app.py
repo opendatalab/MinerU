@@ -39,6 +39,7 @@ from mineru.cli.common import (
 )
 from mineru.cli import api_client as _api_client
 from mineru.cli.output_paths import resolve_parse_dir
+from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli.visualization import VisualizationJob, run_visualization_job
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
@@ -535,6 +536,39 @@ async def resolve_server_health(http_client, api_url):
     return await _api_client.wait_for_local_api_ready(http_client, local_server)
 
 
+async def ensure_local_api_ready_for_gradio_startup(
+    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
+):
+    local_server, started_now = _gradio_local_api_server.ensure_started()
+    if started_now:
+        logger.info(f"Started local mineru-api at {local_server.base_url}")
+
+    async with httpx.AsyncClient(
+        timeout=_api_client.build_http_timeout(),
+        follow_redirects=True,
+    ) as http_client:
+        return await _api_client.wait_for_local_api_ready(
+            http_client,
+            local_server,
+            timeout_seconds=timeout_seconds,
+        )
+
+
+def maybe_prepare_local_api_for_gradio_startup(
+    *,
+    api_url: str | None,
+    enable_vlm_preload: bool,
+):
+    if api_url is not None or not enable_vlm_preload:
+        return None
+
+    try:
+        return asyncio.run(ensure_local_api_ready_for_gradio_startup())
+    except Exception:
+        _gradio_local_api_server.stop()
+        raise
+
+
 def resolve_gradio_max_concurrent_requests(api_url, server_health):
     if api_url is None:
         return server_health.max_concurrent_requests
@@ -1027,6 +1061,13 @@ def update_doc_show(file_path):
     default=None,
 )
 @click.option(
+    '--enable-vlm-preload',
+    'enable_vlm_preload',
+    type=bool,
+    help="Preload the local VLM model when gradio starts a local mineru-api service.",
+    default=False,
+)
+@click.option(
     '--latex-delimiters-type',
     'latex_delimiters_type',
     type=click.Choice(['a', 'b', 'all']),
@@ -1038,7 +1079,7 @@ def main(ctx,
         example_enable,
         http_client_enable,
         api_enable, max_convert_pages,
-        server_name, server_port, api_url, latex_delimiters_type, **kwargs
+        server_name, server_port, api_url, enable_vlm_preload, latex_delimiters_type, **kwargs
 ):
 
     # 创建 i18n 实例，支持中英文
@@ -1157,7 +1198,13 @@ def main(ctx,
 
 
     del kwargs
-    _gradio_local_api_server.configure(ctx.args)
+    _gradio_local_api_server.configure(
+        resolve_gradio_local_api_cli_args(
+            ctx.args,
+            api_url=api_url,
+            enable_vlm_preload=enable_vlm_preload,
+        )
+    )
 
     if latex_delimiters_type == 'a':
         latex_delimiters = latex_delimiters_type_a
@@ -1349,6 +1396,10 @@ def main(ctx,
         _launch_kwargs = {"footer_links": footer_links}
     else:
         _launch_kwargs = {"show_api": api_enable}
+    maybe_prepare_local_api_for_gradio_startup(
+        api_url=api_url,
+        enable_vlm_preload=enable_vlm_preload,
+    )
     demo.launch(
         server_name=server_name,
         server_port=server_port,

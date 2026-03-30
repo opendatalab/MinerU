@@ -34,6 +34,8 @@ Options:
   --host TEXT     Server host (default: 127.0.0.1)
   --port INTEGER  Server port (default: 8000)
   --reload        Enable auto-reload (development mode)
+  --enable-vlm-preload BOOLEAN
+                  Preload the local VLM model during mineru-api startup.
   --help          Show this message and exit.
 ```
 ```bash
@@ -55,6 +57,8 @@ Options:
   --server-port INTEGER           Set the server port for the Gradio app.
   --api-url TEXT                  MinerU FastAPI base URL. If omitted, gradio
                                   starts a reusable local mineru-api service.
+  --enable-vlm-preload BOOLEAN    Preload the local VLM model when gradio
+                                  starts a local mineru-api service.
   --latex-delimiters-type [a|b|all]
                                   Set the type of LaTeX delimiters to use in
                                   Markdown rendering: 'a' for type '$', 'b' for
@@ -73,6 +77,9 @@ Options:
   --local-gpus TEXT       Local GPU workers to launch: auto, none, or CSV such
                           as 0,1,2
   --worker-host TEXT      Host for router-managed workers (default: 127.0.0.1)
+  --enable-vlm-preload BOOLEAN
+                          Preload the local VLM model in router-managed
+                          mineru-api workers.
   --help                  Show this message and exit.
 ```
 
@@ -133,6 +140,11 @@ Here are the environment variables and their descriptions:
 - `MINERU_API_OUTPUT_ROOT`:
     * Used to configure the root output directory for `mineru-api`.
     * Default is `./output` under the current working directory.
+
+- `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`:
+    * Used to control how long CLI tools wait for a locally started `mineru-api` to become healthy.
+    * Default is `300` seconds.
+    * Applies to temporary local API startup in `mineru`, preload startup in `mineru-gradio`, and router-managed local workers.
 
 - `MINERU_API_TASK_RETENTION_SECONDS`:
     * Used to set how long completed or failed tasks are retained, in seconds.

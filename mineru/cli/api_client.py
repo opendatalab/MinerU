@@ -31,10 +31,46 @@ HEALTH_ENDPOINT = "/health"
 TASKS_ENDPOINT = "/tasks"
 TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
 TASK_RESULT_TIMEOUT_SECONDS = 3600
-LOCAL_API_STARTUP_TIMEOUT_SECONDS = 30
 LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
+
+
+def get_float_env(name: str, default: float, minimum: float = 0.0) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        resolved = float(value)
+    except ValueError:
+        logger.warning(
+            "Invalid {} value: {}. Expected a number, using default {}.",
+            name,
+            value,
+            default,
+        )
+        return default
+    if resolved < minimum:
+        logger.warning(
+            "Invalid {} value: {}. Expected a number >= {}, using default {}.",
+            name,
+            value,
+            minimum,
+            default,
+        )
+        return default
+    return resolved
+
+
+def get_local_api_startup_timeout_seconds(default: float = 300.0) -> float:
+    return get_float_env(
+        "MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS",
+        default,
+        minimum=1.0,
+    )
+
+
+LOCAL_API_STARTUP_TIMEOUT_SECONDS = get_local_api_startup_timeout_seconds()
 
 
 @dataclass(frozen=True)

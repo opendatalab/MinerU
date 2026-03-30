@@ -48,6 +48,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >Tasks are tracked only in-process for a single `mineru-api` instance. Task status is not preserved across service restarts, `--reload`, or multi-process deployments.
   >Completed or failed tasks are retained for 24 hours by default, then their task state and output directory are cleaned automatically. After cleanup, task status and result endpoints return `404`.
   >Use `MINERU_API_TASK_RETENTION_SECONDS` and `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` to adjust retention and cleanup polling intervals.
+  >Use `--enable-vlm-preload true` to warm up the local VLM model during service startup instead of waiting for the first VLM or hybrid request.
   >
   >Asynchronous task submission example:
   >```bash
@@ -82,6 +83,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >
   >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
   >- Without `--api-url`, Gradio starts a reusable local `mineru-api`; with `--api-url`, it reuses an existing local or remote service.
+  >- `--enable-vlm-preload true` makes Gradio start its local `mineru-api` during WebUI startup and wait for VLM preload to finish. It is ignored when `--api-url` points to an existing service.
   >- The WebUI currently accepts `PDF`, image, and `DOCX` uploads.
 
 - Use `mineru-router` for multi-service / multi-GPU orchestration:
@@ -92,6 +94,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >
   >- `mineru-router` exposes the same `/health`, `/tasks`, `/file_parse`, `/tasks/{task_id}`, and `/tasks/{task_id}/result` interface set as `mineru-api`.
   >- Repeat `--upstream-url` to aggregate multiple existing `mineru-api` services, or use `--local-gpus` to launch local workers automatically.
+  >- `--enable-vlm-preload true` only applies to router-managed local workers. It does not preload remote services passed through `--upstream-url`.
   >- It is intended for advanced multi-service, multi-GPU, and unified-entry deployments.
 
 - Using `http-client/server` method:

@@ -37,6 +37,7 @@ from mineru.cli.api_client import (
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
 from mineru.cli.common import normalize_upload_filename
+from mineru.cli.vlm_preload import build_local_api_cli_args
 from mineru.version import __version__
 
 TASK_PENDING = "pending"
@@ -210,6 +211,7 @@ class RouterSettings:
     upstream_urls: tuple[str, ...] = ()
     local_gpus: str = LOCAL_GPU_AUTO
     worker_host: str = "127.0.0.1"
+    enable_vlm_preload: bool = False
     worker_extra_args: tuple[str, ...] = ()
     task_retention_seconds: int = DEFAULT_TASK_RETENTION_SECONDS
     task_cleanup_interval_seconds: int = DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS
@@ -221,6 +223,10 @@ class RouterSettings:
             upstream_urls=parse_json_env("MINERU_ROUTER_UPSTREAM_URLS_JSON"),
             local_gpus=os.getenv("MINERU_ROUTER_LOCAL_GPUS", LOCAL_GPU_AUTO),
             worker_host=os.getenv("MINERU_ROUTER_WORKER_HOST", "127.0.0.1"),
+            enable_vlm_preload=env_flag_enabled(
+                "MINERU_ROUTER_ENABLE_VLM_PRELOAD",
+                default=False,
+            ),
             worker_extra_args=parse_json_env("MINERU_ROUTER_WORKER_ARGS_JSON"),
             task_retention_seconds=get_task_retention_seconds(),
             task_cleanup_interval_seconds=get_task_cleanup_interval_seconds(),
@@ -290,6 +296,7 @@ class ManagedLocalServer:
     server_id: str
     worker_host: str
     gpu: str | None
+    enable_vlm_preload: bool
     extra_cli_args: tuple[str, ...]
     connect_host: str = field(init=False)
     base_url: str | None = None
@@ -312,6 +319,10 @@ class ManagedLocalServer:
 
         resolved_port = find_free_port()
         remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
+        worker_cli_args = build_local_api_cli_args(
+            remaining_cli_args,
+            enable_vlm_preload=self.enable_vlm_preload,
+        )
         self.base_url = f"http://{self.connect_host}:{resolved_port}"
         env = os.environ.copy()
         env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
@@ -327,7 +338,7 @@ class ManagedLocalServer:
             self.worker_host,
             "--port",
             str(resolved_port),
-            *remaining_cli_args,
+            *worker_cli_args,
         ]
         self.process = subprocess.Popen(command, cwd=os.getcwd(), env=env)
 
@@ -463,6 +474,7 @@ class WorkerPool:
                 server_id=server_id,
                 worker_host=self.settings.worker_host,
                 gpu=gpu,
+                enable_vlm_preload=self.settings.enable_vlm_preload,
                 extra_cli_args=self.settings.worker_extra_args,
             )
             self._servers[server_id] = WorkerState(
@@ -832,6 +844,63 @@ class RouterTaskRegistry:
         if completed_at.tzinfo is None:
             completed_at = completed_at.replace(tzinfo=timezone.utc)
         return (now - completed_at).total_seconds() >= self.task_retention_seconds
+
+
+def warn_if_router_preload_ignored(settings: RouterSettings) -> None:
+    if settings.enable_vlm_preload and not parse_local_gpus(settings.local_gpus):
+        logger.warning(
+            "Ignoring --enable-vlm-preload because mineru-router is not launching any local mineru-api workers."
+        )
+
+
+async def startup_router_state(app: FastAPI, settings: RouterSettings) -> None:
+    http_client = httpx.AsyncClient(
+        timeout=build_http_timeout(),
+        follow_redirects=True,
+    )
+    worker_pool = WorkerPool(settings, http_client)
+    registry = RouterTaskRegistry(
+        task_retention_seconds=settings.task_retention_seconds,
+        cleanup_interval_seconds=settings.task_cleanup_interval_seconds,
+    )
+
+    try:
+        await registry.start()
+        await worker_pool.start()
+        healthy, payload = worker_pool.health_payload()
+        if not healthy:
+            raise RuntimeError(
+                payload.get(
+                    "error",
+                    "No healthy upstream MinerU API servers are available",
+                )
+            )
+    except Exception:
+        await registry.shutdown()
+        await worker_pool.shutdown()
+        await http_client.aclose()
+        raise
+
+    app.state.http_client = http_client
+    app.state.worker_pool = worker_pool
+    app.state.router_task_registry = registry
+
+
+async def shutdown_router_state(app: FastAPI) -> None:
+    registry = getattr(app.state, "router_task_registry", None)
+    worker_pool = getattr(app.state, "worker_pool", None)
+    http_client = getattr(app.state, "http_client", None)
+
+    if registry is not None:
+        await registry.shutdown()
+    if worker_pool is not None:
+        await worker_pool.shutdown()
+    if http_client is not None:
+        await http_client.aclose()
+
+    app.state.router_task_registry = None
+    app.state.worker_pool = None
+    app.state.http_client = None
 
 
 class UpstreamSubmissionUnavailable(RuntimeError):
@@ -1216,26 +1285,11 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        http_client = httpx.AsyncClient(
-            timeout=build_http_timeout(),
-            follow_redirects=True,
-        )
-        worker_pool = WorkerPool(resolved_settings, http_client)
-        registry = RouterTaskRegistry(
-            task_retention_seconds=resolved_settings.task_retention_seconds,
-            cleanup_interval_seconds=resolved_settings.task_cleanup_interval_seconds,
-        )
-        await registry.start()
-        await worker_pool.start()
-        app.state.http_client = http_client
-        app.state.worker_pool = worker_pool
-        app.state.router_task_registry = registry
+        await startup_router_state(app, resolved_settings)
         try:
             yield
         finally:
-            await registry.shutdown()
-            await worker_pool.shutdown()
-            await http_client.aclose()
+            await shutdown_router_state(app)
 
     app = FastAPI(
         openapi_url="/openapi.json" if enable_docs else None,
@@ -1349,6 +1403,13 @@ app = create_app()
     default="127.0.0.1",
     help="Host for router-managed mineru-api workers (default: 127.0.0.1).",
 )
+@click.option(
+    "--enable-vlm-preload",
+    "enable_vlm_preload",
+    type=bool,
+    default=False,
+    help="Preload the local VLM model in router-managed mineru-api workers.",
+)
 def main(
     ctx: click.Context,
     host: str,
@@ -1357,18 +1418,24 @@ def main(
     upstream_urls: tuple[str, ...],
     local_gpus: str,
     worker_host: str,
+    enable_vlm_preload: bool,
 ):
     settings = RouterSettings(
         upstream_urls=tuple(upstream_urls),
         local_gpus=local_gpus,
         worker_host=worker_host,
+        enable_vlm_preload=enable_vlm_preload,
         worker_extra_args=tuple(ctx.args),
         task_retention_seconds=get_task_retention_seconds(),
         task_cleanup_interval_seconds=get_task_cleanup_interval_seconds(),
     )
+    warn_if_router_preload_ignored(settings)
     os.environ["MINERU_ROUTER_UPSTREAM_URLS_JSON"] = json.dumps(list(settings.upstream_urls))
     os.environ["MINERU_ROUTER_LOCAL_GPUS"] = settings.local_gpus
     os.environ["MINERU_ROUTER_WORKER_HOST"] = settings.worker_host
+    os.environ["MINERU_ROUTER_ENABLE_VLM_PRELOAD"] = (
+        "1" if settings.enable_vlm_preload else "0"
+    )
     os.environ["MINERU_ROUTER_WORKER_ARGS_JSON"] = json.dumps(list(settings.worker_extra_args))
 
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
