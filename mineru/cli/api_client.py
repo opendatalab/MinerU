@@ -32,6 +32,7 @@ TASKS_ENDPOINT = "/tasks"
 TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
 TASK_RESULT_TIMEOUT_SECONDS = 3600
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = 30
+LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
 
@@ -87,6 +88,7 @@ class LocalAPIServer:
             read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
         )
         env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
+        env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
         self.output_root.mkdir(parents=True, exist_ok=True)
 
         command = [
@@ -103,6 +105,7 @@ class LocalAPIServer:
             command,
             cwd=os.getcwd(),
             env=env,
+            stdin=subprocess.PIPE,
         )
 
         if not self._atexit_registered:
@@ -115,12 +118,23 @@ class LocalAPIServer:
         self.process = None
         try:
             if process is not None and process.poll() is None:
-                process.terminate()
+                if process.stdin is not None and not process.stdin.closed:
+                    process.stdin.close()
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
                 except subprocess.TimeoutExpired:
+                    logger.debug(
+                        "Local mineru-api did not stop after stdin EOF within {}s. Falling back to SIGTERM.",
+                        LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                    )
+                    process.terminate()
+                    try:
+                        process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
+                        return
+                    except subprocess.TimeoutExpired:
+                        pass
                     process.kill()
-                    process.wait(timeout=5)
+                    process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
         finally:
             if self._atexit_registered:
                 try:

@@ -1,5 +1,6 @@
 import asyncio
 import mimetypes
+import multiprocessing
 import os
 import shutil
 import sys
@@ -88,6 +89,33 @@ def env_flag_enabled(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.lower() in ("1", "true", "yes", "on")
+
+
+def is_main_multiprocessing_process() -> bool:
+    try:
+        return multiprocessing.current_process().name == "MainProcess"
+    except Exception:
+        return True
+
+
+def install_stdin_shutdown_watcher(server: uvicorn.Server) -> None:
+    if not env_flag_enabled("MINERU_API_SHUTDOWN_ON_STDIN_EOF"):
+        return
+
+    def _watch_stdin_for_eof() -> None:
+        stdin_stream = getattr(sys.stdin, "buffer", sys.stdin)
+        try:
+            stdin_stream.read()
+        except Exception:
+            return
+        server.should_exit = True
+
+    watcher = threading.Thread(
+        target=_watch_stdin_for_eof,
+        name="mineru-api-stdin-shutdown",
+        daemon=True,
+    )
+    watcher.start()
 
 
 @dataclass
@@ -209,7 +237,8 @@ def create_app():
     _configured_max_concurrent_requests = max_concurrent_requests
     app.state.max_concurrent_requests = max_concurrent_requests
     _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
-    logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+    if is_main_multiprocessing_process():
+        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     return app
@@ -1422,7 +1451,16 @@ def main(ctx, host, port, reload, **kwargs):
             access_log=access_log,
         )
     else:
-        uvicorn.run(app, host=host, port=port, reload=False, access_log=access_log)
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            reload=False,
+            access_log=access_log,
+        )
+        server = uvicorn.Server(config)
+        install_stdin_shutdown_watcher(server)
+        server.run()
 
 
 if __name__ == "__main__":
