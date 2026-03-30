@@ -30,6 +30,8 @@ from mineru.utils.pdfium_guard import (
 
 from mineru.version import __version__
 from mineru.cli.common import (
+    HybridDependencyError,
+    ensure_backend_dependencies,
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
@@ -847,6 +849,11 @@ async def run_orchestrated_cli(
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
         raise click.ClickException("--end must be greater than or equal to 0")
+    if api_url is None:
+        try:
+            ensure_backend_dependencies(backend)
+        except HybridDependencyError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     output_dir.mkdir(parents=True, exist_ok=True)
     documents = collect_input_documents(
@@ -1004,7 +1011,7 @@ async def run_orchestrated_cli(
       vlm-auto-engine: High accuracy via local computing power.
       vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
       hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
+      hybrid-http-client: High accuracy via remote computing power but requires local pipeline dependencies (`mineru[pipeline]`, including `torch`).
     Without method specified, hybrid-auto-engine will be used by default.""",
 )
 @click.option(
