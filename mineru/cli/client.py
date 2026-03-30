@@ -30,6 +30,8 @@ from mineru.utils.pdfium_guard import (
 
 from mineru.version import __version__
 from mineru.cli.common import (
+    HybridDependencyError,
+    ensure_backend_dependencies,
     image_suffixes,
     office_suffixes,
     pdf_suffixes,
@@ -847,6 +849,11 @@ async def run_orchestrated_cli(
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
         raise click.ClickException("--end must be greater than or equal to 0")
+    if api_url is None:
+        try:
+            ensure_backend_dependencies(backend)
+        except HybridDependencyError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     output_dir.mkdir(parents=True, exist_ok=True)
     documents = collect_input_documents(

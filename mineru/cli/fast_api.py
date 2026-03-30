@@ -1,5 +1,6 @@
 import asyncio
 import mimetypes
+import multiprocessing
 import os
 import shutil
 import sys
@@ -49,8 +50,8 @@ from mineru.cli.api_protocol import (
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
 from mineru.utils.cli_parser import arg_parse
+from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
-    get_device,
     get_max_concurrent_requests as read_max_concurrent_requests,
     get_processing_window_size,
 )
@@ -79,8 +80,7 @@ FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
-_configured_max_concurrent_requests = 0
-_mps_parse_lock = threading.Lock()
+_configured_max_concurrent_requests = 1
 
 
 def env_flag_enabled(name: str, default: bool = False) -> bool:
@@ -88,6 +88,33 @@ def env_flag_enabled(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.lower() in ("1", "true", "yes", "on")
+
+
+def is_main_multiprocessing_process() -> bool:
+    try:
+        return multiprocessing.current_process().name == "MainProcess"
+    except Exception:
+        return True
+
+
+def install_stdin_shutdown_watcher(server: uvicorn.Server) -> None:
+    if not env_flag_enabled("MINERU_API_SHUTDOWN_ON_STDIN_EOF"):
+        return
+
+    def _watch_stdin_for_eof() -> None:
+        stdin_stream = getattr(sys.stdin, "buffer", sys.stdin)
+        try:
+            stdin_stream.read()
+        except Exception:
+            return
+        server.should_exit = True
+
+    watcher = threading.Thread(
+        target=_watch_stdin_for_eof,
+        name="mineru-api-stdin-shutdown",
+        daemon=True,
+    )
+    watcher.start()
 
 
 @dataclass
@@ -202,14 +229,19 @@ def create_app():
     )
 
     global _request_semaphore, _configured_max_concurrent_requests
-    max_concurrent_requests = read_max_concurrent_requests(
-        default=DEFAULT_MAX_CONCURRENT_REQUESTS
-    )
+
+    if is_mac_environment():
+        max_concurrent_requests = 1
+    else:
+        max_concurrent_requests = read_max_concurrent_requests(
+            default=DEFAULT_MAX_CONCURRENT_REQUESTS
+        )
 
     _configured_max_concurrent_requests = max_concurrent_requests
     app.state.max_concurrent_requests = max_concurrent_requests
     _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
-    logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+    if is_main_multiprocessing_process():
+        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     return app
@@ -854,30 +886,10 @@ async def run_parse_job(
     )
 
     if request_options.backend == "pipeline":
-        async with serialize_parse_job_if_needed(request_options.backend):
-            await asyncio.to_thread(do_parse, **parse_kwargs)
+        await asyncio.to_thread(do_parse, **parse_kwargs)
     else:
-        async with serialize_parse_job_if_needed(request_options.backend):
-            await aio_do_parse(**parse_kwargs)
+        await aio_do_parse(**parse_kwargs)
     return response_file_names
-
-
-def should_serialize_parse_job(backend: str) -> bool:
-    if get_device() != "mps":
-        return False
-    return backend == "pipeline" or backend.startswith(("vlm-", "hybrid-"))
-
-
-@asynccontextmanager
-async def serialize_parse_job_if_needed(backend: str):
-    if not should_serialize_parse_job(backend):
-        yield
-        return
-    await asyncio.to_thread(_mps_parse_lock.acquire)
-    try:
-        yield
-    finally:
-        _mps_parse_lock.release()
 
 
 def create_task_output_dir(task_id: str) -> str:
@@ -1422,7 +1434,16 @@ def main(ctx, host, port, reload, **kwargs):
             access_log=access_log,
         )
     else:
-        uvicorn.run(app, host=host, port=port, reload=False, access_log=access_log)
+        config = uvicorn.Config(
+            app,
+            host=host,
+            port=port,
+            reload=False,
+            access_log=access_log,
+        )
+        server = uvicorn.Server(config)
+        install_stdin_shutdown_watcher(server)
+        server.run()
 
 
 if __name__ == "__main__":
