@@ -142,7 +142,6 @@ def _load_images_from_pdf_bytes_range(
     )
 
     executor = ProcessPoolExecutor(max_workers=actual_threads)
-    cancel_futures = False
     try:
         futures = []
         future_to_range = {}
@@ -160,7 +159,6 @@ def _load_images_from_pdf_bytes_range(
 
         _, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
         if not_done:
-            cancel_futures = True
             _terminate_executor_processes(executor)
             raise TimeoutError(
                 f"PDF image rendering timeout after {timeout}s "
@@ -180,14 +178,11 @@ def _load_images_from_pdf_bytes_range(
 
         return images_list
     except Exception as exc:
-        cancel_futures = True
         if not isinstance(exc, TimeoutError):
             _terminate_executor_processes(executor)
         raise
     finally:
-        # Block until worker processes are fully reaped so multiprocessing
-        # can unregister its semaphores before interpreter shutdown.
-        executor.shutdown(wait=True, cancel_futures=cancel_futures)
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _terminate_executor_processes(executor):
