@@ -536,7 +536,9 @@ async def resolve_server_health(http_client, api_url):
     return await _api_client.wait_for_local_api_ready(http_client, local_server)
 
 
-async def ensure_local_api_ready_for_gradio_startup():
+async def ensure_local_api_ready_for_gradio_startup(
+    timeout_seconds: float = _api_client.LOCAL_API_STARTUP_TIMEOUT_SECONDS,
+):
     local_server, started_now = _gradio_local_api_server.ensure_started()
     if started_now:
         logger.info(f"Started local mineru-api at {local_server.base_url}")
@@ -545,7 +547,11 @@ async def ensure_local_api_ready_for_gradio_startup():
         timeout=_api_client.build_http_timeout(),
         follow_redirects=True,
     ) as http_client:
-        return await _api_client.wait_for_local_api_ready(http_client, local_server)
+        return await _api_client.wait_for_local_api_ready(
+            http_client,
+            local_server,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 def maybe_prepare_local_api_for_gradio_startup(
