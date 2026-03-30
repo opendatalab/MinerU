@@ -25,7 +25,7 @@ MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `v
 ```bash
 docker run --gpus all \
   --shm-size 32g \
-  -p 30000:30000 -p 7860:7860 -p 8000:8000 \
+  -p 30000:30000 -p 7860:7860 -p 8000:8000 -p 8002:8002 \
   --ipc=host \
   -it mineru:latest \
   /bin/bash
@@ -70,6 +70,17 @@ connect to `openai-server` via `vlm-http-client` backend
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
+
+---
+
+### Start MinerU Router service
+  ```bash
+  docker compose -f compose.yaml --profile router up -d
+  ```
+  >[!TIP]
+  >
+  >- The default configuration runs in `--local-gpus auto` mode, automatically starting local workers in the container and exposing the unified entry at `http://<server_ip>:8002/docs`.
+  >- If you want to aggregate existing `mineru-api` services instead of starting local workers, refer to the commented example under the `mineru-router` service in `compose.yaml` and switch to `--upstream-url`.
 
 ---
 
