@@ -959,23 +959,6 @@ class LightConvBNAct(TheseusLayer):
         return x
 
 
-class PaddingSameAsPaddleMaxPool2d(torch.nn.Module):
-    def __init__(self, kernel_size, stride=1):
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.pool = torch.nn.MaxPool2d(kernel_size, stride, padding=0, ceil_mode=True)
-
-    def forward(self, x):
-        _, _, h, w = x.shape
-        pad_h_total = max(0, (math.ceil(h / self.stride) - 1) * self.stride + self.kernel_size - h)
-        pad_w_total = max(0, (math.ceil(w / self.stride) - 1) * self.stride + self.kernel_size - w)
-        pad_h = pad_h_total // 2
-        pad_w = pad_w_total // 2
-        x = torch.nn.functional.pad(x, [pad_w, pad_w_total - pad_w, pad_h, pad_h_total - pad_h])
-        return self.pool(x)
-
-
 class StemBlock(TheseusLayer):
     """
     StemBlock for PP-HGNetV2.
@@ -1011,7 +994,6 @@ class StemBlock(TheseusLayer):
             out_channels=mid_channels // 2,
             kernel_size=2,
             stride=1,
-            padding="same",
             use_lab=use_lab,
             lr_mult=lr_mult,
         )
@@ -1020,7 +1002,6 @@ class StemBlock(TheseusLayer):
             out_channels=mid_channels,
             kernel_size=2,
             stride=1,
-            padding="same",
             use_lab=use_lab,
             lr_mult=lr_mult,
         )
@@ -1040,20 +1021,20 @@ class StemBlock(TheseusLayer):
             use_lab=use_lab,
             lr_mult=lr_mult,
         )
-        self.pool = PaddingSameAsPaddleMaxPool2d(
-            kernel_size=2, stride=1,
-        )
+        self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=1, ceil_mode=True)
 
     def forward(self, x):
-        x = self.stem1(x)
-        x2 = self.stem2a(x)
-        x2 = self.stem2b(x2)
-        x1 = self.pool(x)
-        x = torch.cat([x1, x2], 1)
-        x = self.stem3(x)
-        x = self.stem4(x)
+        embedding = self.stem1(x)
+        embedding = F.pad(embedding, (0, 1, 0, 1))
+        emb_stem_2a = self.stem2a(embedding)
+        emb_stem_2a = F.pad(emb_stem_2a, (0, 1, 0, 1))
+        emb_stem_2a = self.stem2b(emb_stem_2a)
+        pooled_emb = self.pool(embedding)
+        embedding = torch.cat([pooled_emb, emb_stem_2a], 1)
+        embedding = self.stem3(embedding)
+        embedding = self.stem4(embedding)
 
-        return x
+        return embedding
 
 
 class HGV2_Block(TheseusLayer):
