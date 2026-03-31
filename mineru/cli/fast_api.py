@@ -614,6 +614,7 @@ def build_result_response(
     return_images: bool,
     response_format_zip: bool,
     return_original_file: bool,
+    zip_filename: str = "results.zip",
 ) -> Response:
     if response_format_zip:
         zip_path = create_result_zip(
@@ -632,7 +633,7 @@ def build_result_response(
         return FileResponse(
             path=zip_path,
             media_type="application/zip",
-            filename="results.zip",
+            filename=zip_filename,
             status_code=status_code,
         )
 
@@ -688,6 +689,7 @@ def build_sync_file_parse_response(
             return_images=task.return_images,
             response_format_zip=task.response_format_zip,
             return_original_file=task.return_original_file,
+            zip_filename=f"{task.task_id}.zip",
         )
         response.headers[FILE_PARSE_TASK_ID_HEADER] = task.task_id
         response.headers[FILE_PARSE_TASK_STATUS_HEADER] = task.status
@@ -1438,6 +1440,7 @@ async def get_async_task_result(
         return_images=task.return_images,
         response_format_zip=task.response_format_zip,
         return_original_file=task.return_original_file,
+        zip_filename=f"{task.task_id}.zip",
     )
 
 
