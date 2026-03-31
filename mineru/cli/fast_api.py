@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 import click
 import uvicorn
@@ -718,14 +718,17 @@ def build_sync_file_parse_response(
 
 
 async def parse_request_form(
-    files: list[UploadFile] = File(
-        ...,
-        description="Upload pdf or image files for parsing",
-        json_schema_extra=SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA,
-    ),
-    lang_list: list[str] = Form(
-        ["ch"],
-        description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
+    files: Annotated[
+        list[UploadFile],
+        File(
+            description="Upload pdf or image files for parsing",
+            json_schema_extra=SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA,
+        ),
+    ],
+    lang_list: Annotated[
+        list[str],
+        Form(
+            description="""(Adapted only for pipeline and hybrid backend)Input the languages in the pdf to improve OCR accuracy.Options:
 - ch: Chinese, English, Chinese Traditional.
 - ch_lite: Chinese, English, Chinese Traditional, Japanese.
 - ch_server: Chinese, English, Chinese Traditional, Japanese.
@@ -744,59 +747,84 @@ async def parse_request_form(
 - cyrillic: Russian, Belarusian, Ukrainian, Serbian (Cyrillic), Bulgarian, Mongolian, Abkhazian, Adyghe, Kabardian, Avar, Dargin, Ingush, Chechen, Lak, Lezgin, Tabasaran, Kazakh, Kyrgyz, Tajik, Macedonian, Tatar, Chuvash, Bashkir, Malian, Moldovan, Udmurt, Komi, Ossetian, Buryat, Kalmyk, Tuvan, Sakha, Karakalpak, English.
 - devanagari: Hindi, Marathi, Nepali, Bihari, Maithili, Angika, Bhojpuri, Magahi, Santali, Newari, Konkani, Sanskrit, Haryanvi, English.
 """,
-    ),
-    backend: str = Form(
-        "hybrid-auto-engine",
-        description="""The backend for parsing:
+        ),
+    ] = ["ch"],
+    backend: Annotated[
+        str,
+        Form(
+            description="""The backend for parsing:
 - pipeline: More general, supports multiple languages, hallucination-free.
 - vlm-auto-engine: High accuracy via local computing power, supports Chinese and English documents only.
 - vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers), supports Chinese and English documents only.
 - hybrid-auto-engine: Next-generation high accuracy solution via local computing power, supports multiple languages.
 - hybrid-http-client: High accuracy via remote computing power but requires a little local computing power(client suitable for openai-compatible servers), supports multiple languages.""",
-    ),
-    parse_method: str = Form(
-        "auto",
-        description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
+        ),
+    ] = "hybrid-auto-engine",
+    parse_method: Annotated[
+        str,
+        Form(
+            description="""(Adapted only for pipeline and hybrid backend)The method for parsing PDF:
 - auto: Automatically determine the method based on the file type
 - txt: Use text extraction method
 - ocr: Use OCR method for image-based PDFs
 """,
-    ),
-    formula_enable: bool = Form(True, description="Enable formula parsing."),
-    table_enable: bool = Form(True, description="Enable table parsing."),
-    server_url: Optional[str] = Form(
-        None,
-        description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000",
-    ),
-    return_md: bool = Form(True, description="Return markdown content in response"),
-    return_middle_json: bool = Form(
-        False, description="Return middle JSON in response"
-    ),
-    return_model_output: bool = Form(
-        False, description="Return model output JSON in response"
-    ),
-    return_content_list: bool = Form(
-        False, description="Return content list JSON in response"
-    ),
-    return_images: bool = Form(
-        False, description="Return extracted images in response"
-    ),
-    response_format_zip: bool = Form(
-        False, description="Return results as a ZIP file instead of JSON"
-    ),
-    return_original_file: bool = Form(
-        False,
-        description=(
-            "Include the processed original input file in the ZIP result; "
-            "ignored unless response_format_zip=true"
         ),
-    ),
-    start_page_id: int = Form(
-        0, description="The starting page for PDF parsing, beginning from 0"
-    ),
-    end_page_id: int = Form(
-        99999, description="The ending page for PDF parsing, beginning from 0"
-    ),
+    ] = "auto",
+    formula_enable: Annotated[
+        bool,
+        Form(description="Enable formula parsing."),
+    ] = True,
+    table_enable: Annotated[
+        bool,
+        Form(description="Enable table parsing."),
+    ] = True,
+    server_url: Annotated[
+        Optional[str],
+        Form(
+            description="(Adapted only for <vlm/hybrid>-http-client backend)openai compatible server url, e.g., http://127.0.0.1:30000",
+        ),
+    ] = None,
+    return_md: Annotated[
+        bool,
+        Form(description="Return markdown content in response"),
+    ] = True,
+    return_middle_json: Annotated[
+        bool,
+        Form(description="Return middle JSON in response"),
+    ] = False,
+    return_model_output: Annotated[
+        bool,
+        Form(description="Return model output JSON in response"),
+    ] = False,
+    return_content_list: Annotated[
+        bool,
+        Form(description="Return content list JSON in response"),
+    ] = False,
+    return_images: Annotated[
+        bool,
+        Form(description="Return extracted images in response"),
+    ] = False,
+    response_format_zip: Annotated[
+        bool,
+        Form(description="Return results as a ZIP file instead of JSON"),
+    ] = False,
+    return_original_file: Annotated[
+        bool,
+        Form(
+            description=(
+                "Include the processed original input file in the ZIP result; "
+                "ignored unless response_format_zip=true"
+            ),
+        ),
+    ] = False,
+    start_page_id: Annotated[
+        int,
+        Form(description="The starting page for PDF parsing, beginning from 0"),
+    ] = 0,
+    end_page_id: Annotated[
+        int,
+        Form(description="The ending page for PDF parsing, beginning from 0"),
+    ] = 99999,
 ) -> ParseRequestOptions:
     effective_return_original_file = return_original_file and response_format_zip
     return ParseRequestOptions(
@@ -1302,7 +1330,9 @@ def get_task_manager() -> AsyncTaskManager:
 async def parse_pdf(
     http_request: Request,
     background_tasks: BackgroundTasks,
-    request_options: ParseRequestOptions = Depends(parse_request_form),
+    request_options: Annotated[
+        ParseRequestOptions, Depends(parse_request_form)
+    ],
 ):
     task = await create_async_parse_task(request_options)
     request_options = None
@@ -1347,7 +1377,9 @@ async def parse_pdf(
 )
 async def submit_parse_task(
     http_request: Request,
-    request_options: ParseRequestOptions = Depends(parse_request_form),
+    request_options: Annotated[
+        ParseRequestOptions, Depends(parse_request_form)
+    ],
 ):
     task_manager = get_task_manager()
     task = await create_async_parse_task(request_options)
