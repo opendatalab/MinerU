@@ -102,7 +102,7 @@ all = [
     "mineru[core]",
     "mineru[mlx] ; sys_platform == 'darwin'",
     "mineru[vllm] ; sys_platform == 'linux'",
-    "mineru[lmdeploy] ; sys_platform == 'windows'",
+    "mineru[lmdeploy] ; sys_platform == 'win32'",
 ]
 
 [project.urls]
