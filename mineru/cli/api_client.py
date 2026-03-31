@@ -110,6 +110,10 @@ class LocalAPIServer:
         self.process: subprocess.Popen[bytes] | None = None
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
+        # On Windows, the temporary FastAPI child process can stall during parsing
+        # startup when launched with stdin=PIPE and an EOF-based shutdown watcher.
+        # Use explicit process termination there instead of stdin-driven shutdown.
+        self._use_stdin_shutdown_watcher = os.name != "nt"
 
     def start(self) -> str:
         if self.process is not None:
@@ -124,7 +128,12 @@ class LocalAPIServer:
             read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
         )
         env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
-        env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
+        if self._use_stdin_shutdown_watcher:
+            env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
+            stdin_target = subprocess.PIPE
+        else:
+            env.pop("MINERU_API_SHUTDOWN_ON_STDIN_EOF", None)
+            stdin_target = subprocess.DEVNULL
         self.output_root.mkdir(parents=True, exist_ok=True)
 
         command = [
@@ -141,7 +150,7 @@ class LocalAPIServer:
             command,
             cwd=os.getcwd(),
             env=env,
-            stdin=subprocess.PIPE,
+            stdin=stdin_target,
         )
 
         if not self._atexit_registered:
@@ -154,23 +163,30 @@ class LocalAPIServer:
         self.process = None
         try:
             if process is not None and process.poll() is None:
-                if process.stdin is not None and not process.stdin.closed:
-                    process.stdin.close()
-                try:
-                    process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
-                except subprocess.TimeoutExpired:
-                    logger.debug(
-                        "Local mineru-api did not stop after stdin EOF within {}s. Falling back to SIGTERM.",
-                        LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                    )
-                    process.terminate()
+                if self._use_stdin_shutdown_watcher:
+                    if process.stdin is not None and not process.stdin.closed:
+                        process.stdin.close()
                     try:
                         process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
                         return
                     except subprocess.TimeoutExpired:
-                        pass
-                    process.kill()
+                        logger.debug(
+                            "Local mineru-api did not stop after stdin EOF within {}s. Falling back to SIGTERM.",
+                            LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                        )
+                else:
+                    logger.debug(
+                        "Stopping local mineru-api with process termination on Windows."
+                    )
+
+                process.terminate()
+                try:
                     process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+                process.kill()
+                process.wait(timeout=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS)
         finally:
             if self._atexit_registered:
                 try:
