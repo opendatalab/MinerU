@@ -81,6 +81,11 @@ FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
 FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
 FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
 FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
+SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA = {
+    # Swagger UI 5 currently fails to render a usable multi-file picker when
+    # FastAPI emits OpenAPI 3.1 byte arrays with contentMediaType.
+    "items": {"type": "string", "format": "binary"}
+}
 
 # 并发控制器
 _request_semaphore: Optional[asyncio.Semaphore] = None
@@ -714,7 +719,9 @@ def build_sync_file_parse_response(
 
 async def parse_request_form(
     files: list[UploadFile] = File(
-        ..., description="Upload pdf or image files for parsing"
+        ...,
+        description="Upload pdf or image files for parsing",
+        json_schema_extra=SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA,
     ),
     lang_list: list[str] = Form(
         ["ch"],
