@@ -43,12 +43,12 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >- API outputs are controlled by the server and written to `./output` by default
   >- Uploads currently support `PDF`, image, and `DOCX` files
   >
-  >`POST /tasks` returns immediately with a `task_id`. `POST /file_parse` uses the same task manager internally, waits for the task to finish, and then returns the final result synchronously.
-  >When a task is waiting in the queue, both the submission response and task-status response may include `queued_ahead` to indicate how many tasks are ahead of it.
-  >Tasks are tracked only in-process for a single `mineru-api` instance. Task status is not preserved across service restarts, `--reload`, or multi-process deployments.
-  >Completed or failed tasks are retained for 24 hours by default, then their task state and output directory are cleaned automatically. After cleanup, task status and result endpoints return `404`.
-  >Use `MINERU_API_TASK_RETENTION_SECONDS` and `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` to adjust retention and cleanup polling intervals.
-  >Use `--enable-vlm-preload true` to warm up the local VLM model during service startup instead of waiting for the first VLM or hybrid request.
+  >- `POST /tasks` returns immediately with a `task_id`. `POST /file_parse` uses the same task manager internally, waits for the task to finish, and then returns the final result synchronously.
+  >- When a task is waiting in the queue, both the submission response and task-status response may include `queued_ahead` to indicate how many tasks are ahead of it.
+  >- Tasks are tracked only in-process for a single `mineru-api` instance. Task status is not preserved across service restarts, `--reload`, or multi-process deployments.
+  >- Completed or failed tasks are retained for 24 hours by default, then their task state and output directory are cleaned automatically. After cleanup, task status and result endpoints return `404`.
+  >- Use `MINERU_API_TASK_RETENTION_SECONDS` and `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` to adjust retention and cleanup polling intervals.
+  >- Use `--enable-vlm-preload true` to warm up the local VLM model during service startup instead of waiting for the first VLM or hybrid request.
   >
   >Asynchronous task submission example:
   >```bash
