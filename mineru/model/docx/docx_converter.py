@@ -1980,7 +1980,7 @@ class DocxConverter:
             self.pre_ilevel = ilevel
 
         # 情况 4: 同级列表项（相同缩进）
-        elif self.pre_num_id == numid or self.pre_ilevel == ilevel:
+        elif self.pre_num_id == numid and self.pre_ilevel == ilevel:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
@@ -1990,6 +1990,14 @@ class DocxConverter:
                 "content": content_text,
             }
             list_block["content"].append(list_item)
+
+        else:
+            logger.warning(
+                "Unexpected DOCX list state in _add_list_item: "
+                f"pre_num_id={self.pre_num_id}, numid={numid}, "
+                f"pre_ilevel={self.pre_ilevel}, ilevel={ilevel}, "
+                f"stack_depth={len(self.list_block_stack)}. "
+            )
 
     def _detect_heading_list_numids(self) -> set:
         """
