@@ -26,6 +26,7 @@ OFFICE_STYLE_RENDER_MODE_ENV = 'MINERU_OFFICE_STYLE_RENDER_MODE'
 OFFICE_STYLE_RENDER_MODE_HTML = 'html'
 OFFICE_STYLE_RENDER_MODE_MARKDOWN = 'markdown'
 OFFICE_MARKDOWN_WRAPPER_STYLES = {'bold', 'italic', 'strikethrough'}
+UNDERSCORE_THEMATIC_BREAK_RE = re.compile(r'^[ \t]{0,3}(?:_[ \t]*){3,}$')
 
 
 def _apply_markdown_style(content: str, style: list) -> str:
@@ -159,6 +160,21 @@ def _build_media_path(img_buket_path: str, image_path: str) -> str:
     return f"{img_buket_path}/{image_path}"
 
 
+def _escape_underscore_thematic_break(content: str) -> str:
+    """Escape standalone underscore runs that Markdown would parse as a thematic break."""
+    if not content:
+        return content
+
+    if not UNDERSCORE_THEMATIC_BREAK_RE.fullmatch(content.strip()):
+        return content
+
+    first_underscore = content.find('_')
+    if first_underscore == -1:
+        return content
+
+    return content[:first_underscore] + r'\_' + content[first_underscore + 1:]
+
+
 def get_title_level(para_block):
     title_level = para_block.get('level', 2)
     return title_level
@@ -268,11 +284,12 @@ def _join_rendered_parts(parts: list[dict]) -> str:
 
 
 def _append_text_part(parts: list[dict], original_content: str, span_style: list):
-    content_stripped = original_content.strip()
+    escaped_content = _escape_underscore_thematic_break(original_content)
+    content_stripped = escaped_content.strip()
     if content_stripped:
         styled = _apply_configured_style(content_stripped, span_style)
-        leading = original_content[:len(original_content) - len(original_content.lstrip())]
-        trailing = original_content[len(original_content.rstrip()):]
+        leading = escaped_content[:len(escaped_content) - len(escaped_content.lstrip())]
+        trailing = escaped_content[len(escaped_content.rstrip()):]
         parts.append(
             _make_rendered_part(
                 ContentType.TEXT,
@@ -683,7 +700,8 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         if para_text.strip() == '':
             continue
         else:
-            page_markdown.append(para_text.strip())
+            # page_markdown.append(para_text.strip())
+            page_markdown.append(para_text)
 
     return page_markdown
 
