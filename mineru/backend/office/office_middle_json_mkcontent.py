@@ -683,7 +683,8 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
         if para_text.strip() == '':
             continue
         else:
-            page_markdown.append(para_text.strip())
+            # page_markdown.append(para_text.strip())
+            page_markdown.append(para_text)
 
     return page_markdown
 
