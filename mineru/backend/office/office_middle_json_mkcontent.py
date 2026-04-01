@@ -701,7 +701,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
             continue
         else:
             # page_markdown.append(para_text.strip())
-            page_markdown.append(para_text)
+            page_markdown.append(para_text.strip('\r\n'))
 
     return page_markdown
 
