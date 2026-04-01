@@ -1980,7 +1980,7 @@ class DocxConverter:
             self.pre_ilevel = ilevel
 
         # 情况 4: 同级列表项（相同缩进）
-        elif self.pre_num_id == numid or self.pre_ilevel == ilevel:
+        elif self.pre_num_id == numid and self.pre_ilevel == ilevel:
             # 获取栈顶的列表块
             list_block = self.list_block_stack[-1]
 
