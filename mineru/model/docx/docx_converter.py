@@ -1991,6 +1991,14 @@ class DocxConverter:
             }
             list_block["content"].append(list_item)
 
+        else:
+            logger.warning(
+                "Unexpected DOCX list state in _add_list_item: "
+                f"pre_num_id={self.pre_num_id}, numid={numid}, "
+                f"pre_ilevel={self.pre_ilevel}, ilevel={ilevel}, "
+                f"stack_depth={len(self.list_block_stack)}. "
+            )
+
     def _detect_heading_list_numids(self) -> set:
         """
         预扫描文档，检测用作章节标题的列表numId。
