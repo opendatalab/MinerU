@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<etc:cellImages xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                xmlns:etc="http://www.wps.cn/officeDocument/2017/etCustomData">
+    <etc:cellImage>
+        <xdr:pic>
+            <xdr:nvPicPr>
+                <xdr:cNvPr id="2" name="ID_EEE2D862C4E9461295D42240896EFDB1" descr="截图 2026-01-14 15-36-42"/>
+                <xdr:cNvPicPr/>
+            </xdr:nvPicPr>
+            <xdr:blipFill>
+                <a:blip r:embed="rId1"/>
+                <a:stretch>
+                    <a:fillRect/>
+                </a:stretch>
+            </xdr:blipFill>
+            <xdr:spPr>
+                <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="10058400" cy="5272405"/>
+                </a:xfrm>
+                <a:prstGeom prst="rect">
+                    <a:avLst/>
+                </a:prstGeom>
+            </xdr:spPr>
+        </xdr:pic>
+    </etc:cellImage>
+    <etc:cellImage>
+        <xdr:pic>
+            <xdr:nvPicPr>
+                <xdr:cNvPr id="4" name="ID_D0725FD5BF544D4B9C79E66BEBA01A89" descr="20250807-172515"/>
+                <xdr:cNvPicPr/>
+            </xdr:nvPicPr>
+            <xdr:blipFill>
+                <a:blip r:embed="rId2"/>
+                <a:stretch>
+                    <a:fillRect/>
+                </a:stretch>
+            </xdr:blipFill>
+            <xdr:spPr>
+                <a:xfrm>
+                    <a:off x="0" y="0"/>
+                    <a:ext cx="7265670" cy="10058400"/>
+                </a:xfrm>
+                <a:prstGeom prst="rect">
+                    <a:avLst/>
+                </a:prstGeom>
+            </xdr:spPr>
+        </xdr:pic>
+    </etc:cellImage>
+</etc:cellImages>

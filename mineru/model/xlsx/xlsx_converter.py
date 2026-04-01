@@ -1,5 +1,9 @@
 import collections
 import html
+import posixpath
+import zipfile
+import re
+import xml.etree.ElementTree as ET
 from typing import BinaryIO, Annotated, cast
 
 
@@ -14,6 +18,7 @@ from pydantic.dataclasses import dataclass
 from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.enum_class import BlockType
 from mineru.utils.pdf_reader import image_to_b64str
+from mineru.model.docx.tools.math.omml import oMath2Latex
 
 
 @dataclass
@@ -58,6 +63,8 @@ class ExcelCell(BaseModel):
     text: str
     row_span: int
     col_span: int
+    styles: dict = Field(default_factory=dict)
+    media: list[str] = Field(default_factory=list)
 
 
 class ExcelTable(BaseModel):
@@ -83,16 +90,35 @@ class XlsxConverter:
         gap_tolerance: int = 0,
     ):
         self.workbook = None
+        self.zf = None
         self.treat_singleton_as_text = treat_singleton_as_text
         self.gap_tolerance = gap_tolerance
         self.pages = []
         self.cur_page = []
         self.pages.append(self.cur_page)
+        self.image_map = {}
+        self.cell_image_map: dict[tuple[int, int], list[str]] = collections.defaultdict(
+            list
+        )
+        self._cell_image_id_to_embed: dict[str, str] = {}
+        self._cell_image_embed_to_target: dict[str, str] = {}
 
     def convert(
         self,
         file_stream: BinaryIO,
     ):
+        if hasattr(file_stream, "seek"):
+            file_stream.seek(0)
+
+        try:
+            self.zf = zipfile.ZipFile(file_stream)
+        except Exception as e:
+            logger.warning(f"Failed to open zip file: {e}")
+            self.zf = None
+
+        if hasattr(file_stream, "seek"):
+            file_stream.seek(0)
+
         self.workbook = load_workbook(filename=file_stream, data_only=True)
         if self.workbook is not None:
             # 遍历工作簿中的所有工作表
@@ -105,17 +131,121 @@ class XlsxConverter:
         else:
             logger.error("工作簿未初始化。")
 
+        if self.zf:
+            self.zf.close()
+            self.zf = None
+
     def _convert_sheet(self, sheet):
         if isinstance(sheet, Worksheet):
-            self._find_tables_in_sheet(sheet)  # 提取表格
-            self._find_images_in_sheet(sheet)  # 提取图片
+            # Pre-calc maps
+            self.math_map = self._map_math_formulas_to_cells(sheet)
 
-    def _find_tables_in_sheet(self, sheet: Worksheet):
+            used_cells = self._find_tables_in_sheet(sheet)  # 提取表格
+            self._find_images_in_sheet(sheet, used_cells)  # 提取图片
+
+    def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
+        """Parse drawings to find math formulas and map them to cells."""
+        math_map = collections.defaultdict(list)
+        if not self.zf:
+            return math_map
+
+        # Find drawing relation
+        drawing_rel = None
+        if hasattr(sheet, "_rels"):
+            for rel in sheet._rels:
+                if rel.Type.endswith("/relationships/drawing"):
+                    drawing_rel = rel
+                    break
+
+        if not drawing_rel:
+            return math_map
+
+        # Resolve path
+        # Assuming relative path from worksheets/sheetX.xml to drawings/drawingY.xml
+        # Usually target is like "../drawings/drawing1.xml"
+        target = drawing_rel.Target
+        if target.startswith("../"):
+            path = target.replace("../", "xl/")  # simplistic resolution
+        elif target.startswith("/"):
+            path = target[1:]
+        else:
+            path = f"xl/worksheets/{target}"  # unlikely but default relative
+
+        # Check if file exists in zip
+        if path not in self.zf.namelist():
+            # Try generic match if simplistic resolution failed
+            # drawing1.xml -> xl/drawings/drawing1.xml
+            basename = target.split("/")[-1]
+            path = f"xl/drawings/{basename}"
+            if path not in self.zf.namelist():
+                return math_map
+
+        try:
+            with self.zf.open(path) as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+
+            # Namespaces
+            ns = {
+                "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+                "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+                "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+            }
+
+            # Iterate TwoCellAnchor and OneCellAnchor
+            for anchor_tag in ["twoCellAnchor", "oneCellAnchor"]:
+                for anchor in root.findall(f".//xdr:{anchor_tag}", ns):
+                    # Get position
+                    from_node = anchor.find("xdr:from", ns)
+                    if from_node is None:
+                        continue
+                    col_node = from_node.find("xdr:col", ns)
+                    row_node = from_node.find("xdr:row", ns)
+                    if col_node is None or row_node is None:
+                        continue
+
+                    r = int(row_node.text)
+                    c = int(col_node.text)
+
+                    # Look for math content
+                    # Usually in graphicalFrame -> graphic -> graphicData -> oMathPara
+                    # But simpler to search descendant m:oMath
+                    maths = anchor.findall(".//m:oMath", ns)
+                    for math in maths:
+                        # # Simple text extraction
+                        # text = "".join(math.itertext())
+                        # if text.strip():
+                        #     # Wrap in latex block indicator if needed, or just plain text
+                        #     # User asked for formula, assuming latex-like visual or text is acceptable
+                        #     # Adding simple latex-like wrapper
+                        #     math_map[(r, c)].append(f"${text}$")
+                        latex = str(oMath2Latex(math)).strip()
+                        if latex:
+                            math_map[(r, c)].append(latex)
+
+        except Exception as e:
+            logger.warning(f"Error parsing math formulas: {e}")
+
+        return math_map
+
+    def _get_anchor_pos(self, anchor):
+        """Helper to get (row, col) from anchor."""
+        if hasattr(anchor, "_from"):
+            return anchor._from.row, anchor._from.col
+        return None, None
+
+    def _find_tables_in_sheet(self, sheet: Worksheet) -> set[tuple[int, int]]:
+        used_cells = set()
         if self.workbook is not None:
             content_layer = self._get_sheet_content_layer(sheet)  # 检测工作表的可见性
             tables = self._find_data_tables(sheet)  # 检测工作表中的所有数据表格
 
             for excel_table in tables:
+                # Record used cells
+                anchor_c, anchor_r = excel_table.anchor
+                for cell in excel_table.data:
+                    used_cells.add((anchor_r + cell.row, anchor_c + cell.col))
+
                 # 若只有一个单元格且启用了单元格文本选项，则作为文本添加
                 if self.treat_singleton_as_text and len(excel_table.data) == 1:
                     self.cur_page.append(
@@ -134,7 +264,7 @@ class XlsxConverter:
                         }
                     )
 
-        return
+        return used_cells
 
     def excel_table_to_html(self, excel_table) -> str:
         """
@@ -147,7 +277,7 @@ class XlsxConverter:
         covered_cells = set()
 
         # 开始构建 HTML
-        lines = ['<table>']  # 可以根据需要添加样式类或属性
+        lines = ["<table>"]  # 可以根据需要添加样式类或属性
 
         for r in range(excel_table.num_rows):
             lines.append("  <tr>")
@@ -178,9 +308,26 @@ class XlsxConverter:
                     # 拼接属性字符串
                     attr_str = " " + " ".join(attrs) if attrs else ""
 
+                    # 生成样式字符串
+                    style_parts = []
+                    for k, v in cell.styles.items():
+                        style_parts.append(f"{k}: {v}")
+                    if style_parts:
+                        attr_str += f' style="{"; ".join(style_parts)}"'
+
                     # 生成 HTML 单元格，注意对文本进行 HTML 转义
-                    cell_content = html.escape(cell.text) if cell.text else ""
-                    lines.append(f"    <{tag}{attr_str}>{cell_content}</{tag}>")
+                    text_content = html.escape(cell.text) if cell.text else ""
+
+                    # 添加媒体内容 (Images, Math)
+                    media_content = ""
+                    if cell.media:
+                        media_content = "<br>".join(cell.media)
+                        if text_content:
+                            text_content += "<br>" + media_content
+                        else:
+                            text_content = media_content
+
+                    lines.append(f"    <{tag}{attr_str}>{text_content}</{tag}>")
                 else:
                     # 如果既没被覆盖，又没有数据对象（理论上 _find_table_bounds 逻辑应避免此情况），生成空单元格
                     lines.append("    <td></td>")
@@ -190,11 +337,21 @@ class XlsxConverter:
         lines.append("</table>")
         return "\n".join(lines)
 
-    def _find_images_in_sheet(self, sheet: Worksheet):
+    def _find_images_in_sheet(
+        self, sheet: Worksheet, used_cells: set[tuple[int, int]] = None
+    ):
         if self.workbook is not None:
             content_layer = self._get_sheet_content_layer(sheet)
+
             # 遍历工作表中的所有嵌入图片
             for item in sheet._images:  # type: ignore[attr-defined]
+
+                # Check if image is already used in a table
+                if used_cells:
+                    r, c = self._get_anchor_pos(item.anchor)
+                    if r is not None and c is not None and (r, c) in used_cells:
+                        continue
+
                 try:
                     image: XlsImage = cast(XlsImage, item)
                     pil_image = Image.open(image.ref)  # type: ignore[arg-type]
@@ -448,6 +605,9 @@ class XlsxConverter:
                 cell = sheet.cell(row=ri + 1, column=rj + 1)
                 cell_text = str(cell.value) if cell.value is not None else ""
 
+                if "DISPIMG" in cell_text:
+                    self._get_cell_image(ri, rj, cell_text)
+
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
                 col_span = 1
@@ -464,6 +624,8 @@ class XlsxConverter:
                         text=cell_text,
                         row_span=row_span,
                         col_span=col_span,
+                        styles=self._extract_cell_style(cell),
+                        media=self._get_cell_media(ri, rj),
                     )
                 )
 
@@ -478,6 +640,181 @@ class XlsxConverter:
             ),
             table_cells,
         )
+
+    def _get_cell_image(self, r, c, text):
+        match = re.search(r'"([^"]+)"', text)
+        if match:
+            image_id = match.group(1)
+
+        else:
+            logger.error(f"无法从单元格文本中提取图片 ID，文本内容：{text}")
+            return None
+
+        id_to_embed, embed_to_target = self._load_cell_image_mappings()
+        if not id_to_embed:
+            return None
+
+        embed_id = id_to_embed.get(image_id)
+        if not embed_id:
+            logger.warning(f"在 cellimages.xml 中未找到 name={image_id} 的 cellImage")
+            return None
+
+        target = embed_to_target.get(embed_id)
+        if not target:
+            logger.warning(
+                f"在 cellimages.xml.rels 中未找到 Id={embed_id} 的 Target 映射"
+            )
+            return None
+
+        zip_target_path = posixpath.normpath(posixpath.join("xl", target))
+        if self.zf is None or zip_target_path not in self.zf.namelist():
+            logger.warning(
+                f"图片目标文件不存在，image_id={image_id}, embed_id={embed_id}, target={zip_target_path}"
+            )
+            return None
+
+        try:
+            with self.zf.open(zip_target_path) as image_file:
+                pil_image = Image.open(image_file)
+                pil_image.load()
+
+                if pil_image.mode != "RGB":
+                    img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                else:
+                    img_base64 = image_to_b64str(pil_image, image_format="JPEG")
+                self.cell_image_map[(r, c)].append(f'<img src="{img_base64}" />')
+        except Exception as e:
+            logger.warning(
+                f"读取单元格图片失败，image_id={image_id}, target={zip_target_path}, error={e}"
+            )
+            return None
+
+        return zip_target_path
+
+    def _load_cell_image_mappings(self) -> tuple[dict[str, str], dict[str, str]]:
+        if self._cell_image_id_to_embed and self._cell_image_embed_to_target:
+            return self._cell_image_id_to_embed, self._cell_image_embed_to_target
+
+        if self.zf is None:
+            return {}, {}
+
+        cellimages_path = "xl/cellimages.xml"
+        rels_path = "xl/_rels/cellimages.xml.rels"
+        if (
+            cellimages_path not in self.zf.namelist()
+            or rels_path not in self.zf.namelist()
+        ):
+            return {}, {}
+
+        try:
+            with self.zf.open(cellimages_path) as f:
+                root = ET.parse(f).getroot()
+
+            ns = {
+                "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
+                "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+                "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                "etc": "http://www.wps.cn/officeDocument/2017/etCustomData",
+            }
+
+            for cell_image in root.findall(".//etc:cellImage", ns):
+                c_nv_pr = cell_image.find(".//xdr:cNvPr", ns)
+                blip = cell_image.find(".//a:blip", ns)
+                if c_nv_pr is None or blip is None:
+                    continue
+
+                image_name = c_nv_pr.attrib.get("name")
+                embed_id = blip.attrib.get(f'{{{ns["r"]}}}embed')
+                if image_name and embed_id:
+                    self._cell_image_id_to_embed[image_name] = embed_id
+
+            with self.zf.open(rels_path) as f:
+                rel_root = ET.parse(f).getroot()
+
+            rel_ns = {
+                "pr": "http://schemas.openxmlformats.org/package/2006/relationships"
+            }
+            for rel in rel_root.findall("pr:Relationship", rel_ns):
+                rel_id = rel.attrib.get("Id")
+                target = rel.attrib.get("Target")
+                if rel_id and target:
+                    self._cell_image_embed_to_target[rel_id] = target
+
+        except Exception as e:
+            logger.warning(f"解析 cellimages 映射失败: {e}")
+            return {}, {}
+
+        return self._cell_image_id_to_embed, self._cell_image_embed_to_target
+
+
+
+    def _extract_cell_style(self, cell):
+        """Extract styles from an openpyxl cell."""
+        style = {}
+        if cell.font:
+            if cell.font.b:
+                style["font-weight"] = "bold"
+            if cell.font.i:
+                style["font-style"] = "italic"
+            if cell.font.u:
+                style["text-decoration"] = "underline"
+            if cell.font.strike:
+                style["text-decoration"] = "line-through"
+            if (
+                cell.font.color
+                and hasattr(cell.font.color, "rgb")
+                and cell.font.color.rgb
+            ):
+                # Color might be ARGB "FF000000"
+                color = cell.font.color.rgb
+                if isinstance(color, str) and len(color) == 8:
+                    style["color"] = "#" + color[2:]
+                elif isinstance(color, str):
+                    style["color"] = "#" + color
+
+        if cell.alignment:
+            if cell.alignment.horizontal:
+                style["text-align"] = cell.alignment.horizontal
+            if cell.alignment.vertical:
+                style["vertical-align"] = cell.alignment.vertical
+
+        if cell.fill and cell.fill.patternType == "solid" and cell.fill.fgColor:
+            # handle bg color
+            color = cell.fill.fgColor.rgb
+            if (
+                hasattr(cell.fill.fgColor, "type")
+                and cell.fill.fgColor.type == "rgb"
+                and color
+            ):
+                if isinstance(color, str) and len(color) == 8:
+                    style["background-color"] = "#" + color[2:]
+        return style
+
+    def _get_cell_media(self, r, c) -> list[str]:
+        """Get media content (images, math) for a given cell (0-based row/col)."""
+        media = []
+        if (r, c) in self.cell_image_map:
+            media.extend(self.cell_image_map[(r, c)])
+
+        # Images
+        if hasattr(self, "image_map") and (r, c) in self.image_map:
+            for img in self.image_map[(r, c)]:
+                # Convert image to base64 html tag
+                try:
+                    pil_image = Image.open(img.ref)
+                    if pil_image.mode != "RGB":
+                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
+                    else:
+                        img_base64 = image_to_b64str(pil_image, image_format="JPEG")
+                    media.append(f'<img src="{img_base64}" />')
+                except Exception as e:
+                    logger.warning(f"Failed to render cell image: {e}")
+
+        # Math
+        if hasattr(self, "math_map") and (r, c) in self.math_map:
+            media.extend(self.math_map[(r, c)])
+
+        return media
 
     @staticmethod
     def _get_sheet_content_layer(sheet: Worksheet):

@@ -13,4 +13,4 @@ def convert_binary(file_binary: BinaryIO):
     return converter.pages
 
 if __name__ == "__main__":
-    print(convert_path("test_xlsx/xlsx_08_one_cell_anchor.xlsx"))
+    print(convert_path("test_xlsx/xlsx_01.xlsx"))

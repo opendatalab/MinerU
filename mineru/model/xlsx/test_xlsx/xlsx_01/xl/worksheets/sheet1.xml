@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+           xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+           xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+           xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+           xmlns:etc="http://www.wps.cn/officeDocument/2017/etCustomData">
+    <sheetPr/>
+    <dimension ref="A1:C9"/>
+    <sheetViews>
+        <sheetView tabSelected="1" workbookViewId="0">
+            <selection activeCell="E24" sqref="E24"/>
+        </sheetView>
+    </sheetViews>
+    <sheetFormatPr defaultColWidth="11" defaultRowHeight="14.25" outlineLevelCol="2"/>
+    <cols>
+        <col min="1" max="2" width="11.1111111111111"/>
+    </cols>
+    <sheetData>
+        <row r="1" spans="1:3">
+            <c r="A1" s="2" t="s">
+                <v>0</v>
+            </c>
+            <c r="B1" s="3" t="s">
+                <v>1</v>
+            </c>
+            <c r="C1" s="4" t="s">
+                <v>2</v>
+            </c>
+        </row>
+        <row r="2" spans="1:3">
+            <c r="A2">
+                <v>1</v>
+            </c>
+            <c r="B2">
+                <v>5</v>
+            </c>
+            <c r="C2">
+                <v>9</v>
+            </c>
+        </row>
+        <row r="3" spans="1:3">
+            <c r="A3">
+                <v>2</v>
+            </c>
+            <c r="B3">
+                <v>4</v>
+            </c>
+            <c r="C3">
+                <v>6</v>
+            </c>
+        </row>
+        <row r="4" spans="1:3">
+            <c r="A4">
+                <v>3</v>
+            </c>
+            <c r="B4">
+                <v>3</v>
+            </c>
+            <c r="C4">
+                <v>3</v>
+            </c>
+        </row>
+        <row r="5" spans="1:3">
+            <c r="A5">
+                <v>4</v>
+            </c>
+            <c r="B5">
+                <v>2</v>
+            </c>
+            <c r="C5">
+                <v>0</v>
+            </c>
+        </row>
+        <row r="6" spans="1:3">
+            <c r="A6">
+                <v>5</v>
+            </c>
+            <c r="B6">
+                <v>1</v>
+            </c>
+            <c r="C6">
+                <v>-3</v>
+            </c>
+        </row>
+        <row r="7" spans="1:3">
+            <c r="A7">
+                <v>6</v>
+            </c>
+            <c r="B7">
+                <v>0</v>
+            </c>
+            <c r="C7">
+                <v>-6</v>
+            </c>
+        </row>
+        <row r="8" ht="39.3" spans="1:2">
+            <c r="A8">
+                <f>SUM(A2:A7)</f>
+                <v>21</v>
+            </c>
+            <c r="B8" t="str">
+                <f>_xlfn.DISPIMG(&quot;ID_EEE2D862C4E9461295D42240896EFDB1&quot;,1)</f>
+                <v>=DISPIMG(&quot;ID_EEE2D862C4E9461295D42240896EFDB1&quot;,1)</v>
+            </c>
+        </row>
+        <row r="9" ht="75" spans="1:1">
+            <c r="A9" t="str">
+                <f>_xlfn.DISPIMG(&quot;ID_D0725FD5BF544D4B9C79E66BEBA01A89&quot;,1)</f>
+                <v>=DISPIMG(&quot;ID_D0725FD5BF544D4B9C79E66BEBA01A89&quot;,1)</v>
+            </c>
+        </row>
+    </sheetData>
+    <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+    <headerFooter/>
+    <drawing r:id="rId1"/>
+</worksheet>
