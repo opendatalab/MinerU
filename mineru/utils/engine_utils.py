@@ -1,4 +1,6 @@
 #  Copyright (c) Opendatalab. All rights reserved.
+import os
+
 from loguru import logger
 
 from mineru.utils.check_sys_env import is_mac_os_version_supported, is_windows_environment, is_mac_environment, \

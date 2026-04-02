@@ -1,6 +1,42 @@
 # Changelog
 
-This document records the update history of MinerU project for version 2.6.7 and earlier. For the latest version updates, please check the project [README](https://github.com/opendatalab/MinerU/blob/master/README.md).
+This document records the release history of MinerU, including major capability changes, compatibility updates, and notable fixes.
+
+---
+
+## 2.7 Series Versions
+
+### 2.7.6 (2026/02/06)
+
+- Added support for the Kunlunxin and Tecorigin domestic computing platforms.
+- Officially or vendor-adapted domestic platforms now include Ascend, T-Head, METAX, Hygon, Enflame, Moore Threads, IluvatarCorex, Cambricon, Kunlunxin, Tecorigin, and Biren.
+- MinerU continues to support domestic hardware platforms and mainstream chip architectures for document digitization workloads.
+
+### 2.7.4 (2026/01/30)
+
+- Added support for the IluvatarCorex and Cambricon domestic computing platforms.
+
+### 2.7.2 (2026/01/23)
+
+- Added support for the Hygon, Enflame, and Moore Threads domestic computing platforms.
+- Improved cross-page table merging success rate and merge quality.
+
+### 2.7.1 (2026/01/06)
+
+- Bug fix: #4300
+- Updated the `pdfminer.six` dependency to resolve [CVE-2025-64512](https://github.com/advisories/GHSA-wf5f-4jwr-ppcp)
+- Added automatic EXIF orientation correction for input images to improve OCR accuracy. #4283
+
+### 2.7.0 (2025/12/30)
+
+- Simplified installation. `uv pip install mineru[all]` now installs dependencies for all optional backends without requiring separate VLM engine installation.
+- Added the new `hybrid` backend, which combines the strengths of `pipeline` and `vlm`:
+  - Direct text extraction from text PDFs with native multilingual support and much lower hallucination risk;
+  - OCR in 109 languages for scanned PDFs when the OCR language is specified;
+  - An independent inline-formula toggle for improved rendering when inline formulas are not needed.
+- Simplified engine selection for `vlm/hybrid` backends. Users only need to choose `*-auto-engine` and MinerU selects an appropriate local inference engine automatically.
+- Switched the default backend from `pipeline` to `hybrid-auto-engine` for better out-of-the-box consistency.
+- Added i18n support to the Gradio application, enabling Chinese/English switching.
 
 ---
 

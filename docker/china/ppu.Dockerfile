@@ -17,7 +17,7 @@ RUN apt-get update && \
 
 # Install mineru latest
 RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install 'mineru[core]>=2.6.5' \
+    python3 -m pip install 'mineru[core]>=3.0.0' \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \

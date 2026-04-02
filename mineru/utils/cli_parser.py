@@ -1,38 +1,55 @@
+from collections.abc import Sequence
+
 import click
 
 
-def arg_parse(ctx: 'click.Context') -> dict:
-    # 解析额外参数
+def _coerce_cli_value(raw_value: str) -> bool | float | int | str:
+    lowered = raw_value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        pass
+
+    try:
+        return float(raw_value)
+    except ValueError:
+        return raw_value
+
+
+def parse_unknown_args(args: Sequence[str]) -> dict:
+    """Parse unknown click args into keyword arguments."""
     extra_kwargs = {}
     i = 0
-    while i < len(ctx.args):
-        arg = ctx.args[i]
-        if arg.startswith('--'):
-            param_name = arg[2:].replace('-', '_')  # 转换参数名格式
+    while i < len(args):
+        arg = args[i]
+        if not arg.startswith("--"):
             i += 1
-            if i < len(ctx.args) and not ctx.args[i].startswith('--'):
-                # 参数有值
-                try:
-                    # 尝试转换为适当的类型
-                    if ctx.args[i].lower() == 'true':
-                        extra_kwargs[param_name] = True
-                    elif ctx.args[i].lower() == 'false':
-                        extra_kwargs[param_name] = False
-                    elif '.' in ctx.args[i]:
-                        try:
-                            extra_kwargs[param_name] = float(ctx.args[i])
-                        except ValueError:
-                            extra_kwargs[param_name] = ctx.args[i]
-                    else:
-                        try:
-                            extra_kwargs[param_name] = int(ctx.args[i])
-                        except ValueError:
-                            extra_kwargs[param_name] = ctx.args[i]
-                except:
-                    extra_kwargs[param_name] = ctx.args[i]
-            else:
-                # 布尔型标志参数
-                extra_kwargs[param_name] = True
-                i -= 1
+            continue
+
+        raw_option = arg[2:]
+        if "=" in raw_option:
+            param_name, raw_value = raw_option.split("=", 1)
+            extra_kwargs[param_name.replace("-", "_")] = _coerce_cli_value(raw_value)
+            i += 1
+            continue
+
+        param_name = raw_option.replace("-", "_")
+        next_index = i + 1
+        if next_index < len(args) and not args[next_index].startswith("--"):
+            extra_kwargs[param_name] = _coerce_cli_value(args[next_index])
+            i += 2
+            continue
+
+        extra_kwargs[param_name] = True
         i += 1
+
     return extra_kwargs
+
+
+def arg_parse(ctx: "click.Context") -> dict:
+    return parse_unknown_args(ctx.args)

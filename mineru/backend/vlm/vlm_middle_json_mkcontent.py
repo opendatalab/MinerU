@@ -260,9 +260,11 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
         para_content = {'type': BlockType.CODE, 'sub_type': para_block["sub_type"], BlockType.CODE_CAPTION: []}
         for block in para_block['blocks']:
             if block['type'] == BlockType.CODE_BODY:
-                para_content[BlockType.CODE_BODY] = merge_para_with_text(block)
-                if para_block["sub_type"] == BlockType.CODE:
-                    para_content["guess_lang"] = para_block["guess_lang"]
+                code_text = merge_para_with_text(block)
+                if para_block['sub_type'] == BlockType.CODE:
+                    guess_lang = para_block.get("guess_lang", "txt")
+                    code_text = f"```{guess_lang}\n{code_text}\n```"
+                para_content[BlockType.CODE_BODY] = code_text
             if block['type'] == BlockType.CODE_CAPTION:
                 para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
 

@@ -261,7 +261,7 @@ class UnetTableModel:
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
         self.ocr_engine = ocr_engine
 
-    def predict(self, input_img, ocr_result, wireless_html_code):
+    def predict(self, input_img, ocr_result, wireless_html_code, return_metadata: bool = False):
         if isinstance(input_img, Image.Image):
             np_img = np.asarray(input_img)
         elif isinstance(input_img, np.ndarray):
@@ -280,6 +280,11 @@ class UnetTableModel:
 
         try:
             wired_table_results = self.wired_table_model(np_img, ocr_result)
+            wired_structure_results = (
+                self.wired_table_model(np_img, need_ocr=False)
+                if return_metadata
+                else None
+            )
 
             # viser = VisTable()
             # save_html_path = f"outputs/output.html"
@@ -332,6 +337,7 @@ class UnetTableModel:
                     switch_flag = True
 
             # 判断是否使用无线表格模型的结果
+            selected_model = "wired"
             if (
                 switch_flag
                 or (0 <= gap_of_len <= 5 and wired_len <= round(wireless_len * 0.75))  # 两者相差不大但有线模型结果较少
@@ -340,10 +346,28 @@ class UnetTableModel:
             ):
                 # logger.debug("fall back to wireless table model")
                 html_code = wireless_html_code
+                selected_model = "wireless"
             else:
                 html_code = wired_html_code
+
+            if return_metadata:
+                return {
+                    "html": html_code,
+                    "selected_model": selected_model,
+                    "wired_cell_bboxes": None if wired_structure_results is None else wired_structure_results.cell_bboxes,
+                    "wired_logic_points": None if wired_structure_results is None else wired_structure_results.logic_points,
+                    "wired_html": wired_html_code,
+                }
 
             return html_code
         except Exception as e:
             logger.warning(e)
+            if return_metadata:
+                return {
+                    "html": wireless_html_code,
+                    "selected_model": "wireless",
+                    "wired_cell_bboxes": None,
+                    "wired_logic_points": None,
+                    "wired_html": "",
+                }
             return wireless_html_code

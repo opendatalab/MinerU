@@ -50,7 +50,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">82+</td>
+      <td style="text-align:center;">86+</td>
       <td colspan="4" style="text-align:center;">90+</td>
     </tr>
     <tr>
@@ -70,15 +70,15 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr>
     <tr>
       <th>Min VRAM</th>
-      <td style="text-align:center;">6GB</td>
-      <td style="text-align:center;">10GB</td>
+      <td style="text-align:center;">4GB</td>
       <td style="text-align:center;">8GB</td>
-      <td style="text-align:center;">3GB</td>
+      <td style="text-align:center;">8GB</td>
+      <td style="text-align:center;">2GB</td>
     </tr>
     <tr>
       <th>RAM</th>
       <td colspan="3" style="text-align:center;">Min 16GB+, Recommended 32GB+</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
+      <td colspan="2" style="text-align:center;">16GB</td>
     </tr>
     <tr>
       <th>Disk Space</th>
@@ -138,4 +138,6 @@ If your device does not meet the GPU acceleration requirements, you can specify 
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-You can use MinerU for PDF parsing through various methods such as command line, API, and WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
+`mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs.
+
+You can use MinerU for document parsing through the CLI, API, WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

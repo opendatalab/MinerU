@@ -9,10 +9,6 @@ wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Docke
 docker build -t mineru:latest -f Dockerfile .
 ```
 
-> [!TIP]
-> The [Dockerfile](https://github.com/opendatalab/MinerU/blob/master/docker/global/Dockerfile) uses `vllm/vllm-openai:v0.10.1.1` as the base image by default. This version of vLLM v1 engine has limited support for GPU models. 
-> This version supports a limited range of GPU models and may only function on Ampere, Ada Lovelace, and Hopper architectures. If you cannot use vLLM for accelerated inference on Volta, Turing, or Blackwell GPUs, you can resolve this issue by changing the base image to `vllm/vllm-openai:v0.11.0`.
-
 ## Docker Description
 
 MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `vllm` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `vllm` to accelerate VLM model inference.
@@ -21,7 +17,7 @@ MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `v
 > Requirements for using `vllm` to accelerate VLM model inference:
 > 
 > - Device must have Volta architecture or later graphics cards with 8GB+ available VRAM.
-> - The host machine's graphics driver should support CUDA 12.8 or higher; You can check the driver version using the `nvidia-smi` command.
+> - The host machine's graphics driver should support CUDA 12.9.1 or higher; You can check the driver version using the `nvidia-smi` command.
 > - Docker container must have access to the host machine's graphics devices.
 
 ## Start Docker Container
@@ -29,7 +25,7 @@ MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `v
 ```bash
 docker run --gpus all \
   --shm-size 32g \
-  -p 30000:30000 -p 7860:7860 -p 8000:8000 \
+  -p 30000:30000 -p 7860:7860 -p 8000:8000 -p 8002:8002 \
   --ipc=host \
   -it mineru:latest \
   /bin/bash
@@ -74,6 +70,17 @@ connect to `openai-server` via `vlm-http-client` backend
   ```
   >[!TIP]
   >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
+
+---
+
+### Start MinerU Router service
+  ```bash
+  docker compose -f compose.yaml --profile router up -d
+  ```
+  >[!TIP]
+  >
+  >- The default configuration runs in `--local-gpus auto` mode, automatically starting local workers in the container and exposing the unified entry at `http://<server_ip>:8002/docs`.
+  >- If you want to aggregate existing `mineru-api` services instead of starting local workers, refer to the commented example under the `mineru-router` service in `compose.yaml` and switch to `--upstream-url`.
 
 ---
 

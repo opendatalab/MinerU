@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 from html import escape
 
 from loguru import logger
@@ -24,6 +25,8 @@ inline_right_delimiter = delimiters['inline']['right']
 OFFICE_STYLE_RENDER_MODE_ENV = 'MINERU_OFFICE_STYLE_RENDER_MODE'
 OFFICE_STYLE_RENDER_MODE_HTML = 'html'
 OFFICE_STYLE_RENDER_MODE_MARKDOWN = 'markdown'
+OFFICE_MARKDOWN_WRAPPER_STYLES = {'bold', 'italic', 'strikethrough'}
+UNDERSCORE_THEMATIC_BREAK_RE = re.compile(r'^[ \t]{0,3}(?:_[ \t]*){3,}$')
 
 
 def _apply_markdown_style(content: str, style: list) -> str:
@@ -143,19 +146,222 @@ def _replace_eq_tags_in_table_html(html: str) -> str:
     )
 
 
+def _format_embedded_html(html: str, img_buket_path: str) -> str:
+    """Apply image-path prefixing and equation replacement for HTML-like content."""
+    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
+
+
+def _build_media_path(img_buket_path: str, image_path: str) -> str:
+    """Build a display path while keeping empty image references empty."""
+    if not image_path:
+        return ''
+    if not img_buket_path:
+        return image_path
+    return f"{img_buket_path}/{image_path}"
+
+
+def _escape_underscore_thematic_break(content: str) -> str:
+    """Escape standalone underscore runs that Markdown would parse as a thematic break."""
+    if not content:
+        return content
+
+    if not UNDERSCORE_THEMATIC_BREAK_RE.fullmatch(content.strip()):
+        return content
+
+    first_underscore = content.find('_')
+    if first_underscore == -1:
+        return content
+
+    return content[:first_underscore] + r'\_' + content[first_underscore + 1:]
+
+
 def get_title_level(para_block):
     title_level = para_block.get('level', 2)
     return title_level
 
 
+def _make_rendered_part(
+    span_type,
+    rendered_content: str,
+    raw_content: str = '',
+    style: list | None = None,
+    has_markdown_wrapper: bool = False,
+):
+    return {
+        'span_type': span_type,
+        'rendered_content': rendered_content,
+        'raw_content': raw_content,
+        'style': style or [],
+        'has_markdown_wrapper': has_markdown_wrapper,
+    }
+
+
+def _has_markdown_wrapper(style: list) -> bool:
+    if _get_office_style_render_mode() != OFFICE_STYLE_RENDER_MODE_MARKDOWN:
+        return False
+    if not style or 'underline' in style:
+        return False
+    return any(name in OFFICE_MARKDOWN_WRAPPER_STYLES for name in style)
+
+
+def _get_first_non_whitespace_char(text: str):
+    for ch in text:
+        if not ch.isspace():
+            return ch
+    return None
+
+
+def _get_last_non_whitespace_char(text: str):
+    for ch in reversed(text):
+        if not ch.isspace():
+            return ch
+    return None
+
+
+def _is_punctuation_or_symbol(ch: str) -> bool:
+    return unicodedata.category(ch).startswith(('P', 'S'))
+
+
+def _is_boundary_text_char(ch: str) -> bool:
+    if ch.isspace():
+        return False
+    return not _is_punctuation_or_symbol(ch)
+
+
+def _needs_markdown_it_boundary_space(prev_part: dict, next_part: dict) -> bool:
+    if _get_office_style_render_mode() != OFFICE_STYLE_RENDER_MODE_MARKDOWN:
+        return False
+    if not prev_part.get('has_markdown_wrapper', False):
+        return False
+    if next_part.get('span_type') in {
+        ContentType.HYPERLINK,
+        ContentType.INLINE_EQUATION,
+        ContentType.INTERLINE_EQUATION,
+    }:
+        return False
+
+    prev_raw = prev_part.get('raw_content', '')
+    next_raw = next_part.get('raw_content', '')
+    if not prev_raw.strip() or not next_raw.strip():
+        return False
+    if prev_raw[-1].isspace() or next_raw[0].isspace():
+        return False
+
+    prev_char = _get_last_non_whitespace_char(prev_raw)
+    next_char = _get_first_non_whitespace_char(next_raw)
+    if prev_char is None or next_char is None:
+        return False
+    if not _is_punctuation_or_symbol(prev_char):
+        return False
+    if not _is_boundary_text_char(next_char):
+        return False
+    return True
+
+
+def _join_rendered_parts(parts: list[dict]) -> str:
+    para_text = ''
+    prev_part = None
+
+    for i, part in enumerate(parts):
+        span_type = part['span_type']
+        content = part['rendered_content']
+        is_last = i == len(parts) - 1
+
+        if span_type == ContentType.INLINE_EQUATION:
+            if para_text and not para_text.endswith(' '):
+                para_text += ' '
+            para_text += content
+            if not is_last:
+                para_text += ' '
+        else:
+            if prev_part is not None and _needs_markdown_it_boundary_space(prev_part, part):
+                para_text += ' '
+            para_text += content
+
+        prev_part = part
+
+    return para_text
+
+
+def _append_text_part(parts: list[dict], original_content: str, span_style: list):
+    escaped_content = _escape_underscore_thematic_break(original_content)
+    content_stripped = escaped_content.strip()
+    if content_stripped:
+        styled = _apply_configured_style(content_stripped, span_style)
+        leading = escaped_content[:len(escaped_content) - len(escaped_content.lstrip())]
+        trailing = escaped_content[len(escaped_content.rstrip()):]
+        parts.append(
+            _make_rendered_part(
+                ContentType.TEXT,
+                leading + styled + trailing,
+                raw_content=original_content,
+                style=span_style,
+                has_markdown_wrapper=_has_markdown_wrapper(span_style),
+            )
+        )
+    elif original_content:
+        visible_styles = {'underline', 'strikethrough'}
+        if span_style and any(s in visible_styles for s in span_style):
+            rendered_content = original_content.replace(" ", "&nbsp;")
+            rendered_content = _apply_configured_style(rendered_content, span_style)
+        else:
+            rendered_content = original_content
+        parts.append(
+            _make_rendered_part(
+                ContentType.TEXT,
+                rendered_content,
+                raw_content=original_content,
+                style=span_style,
+            )
+        )
+
+
+def _append_hyperlink_part(
+    parts: list[dict],
+    original_content: str,
+    span_style: list,
+    url: str = '',
+    plain_text_only: bool = False,
+):
+    link_text = original_content.strip()
+    if not link_text:
+        return
+
+    styled_text = _apply_configured_style(link_text, span_style)
+    if plain_text_only:
+        leading = original_content[:len(original_content) - len(original_content.lstrip())]
+        trailing = original_content[len(original_content.rstrip()):]
+        rendered_content = leading + styled_text + trailing
+        has_markdown_wrapper = _has_markdown_wrapper(span_style)
+    else:
+        rendered_content = _render_link(styled_text, url)
+        has_markdown_wrapper = False
+
+    parts.append(
+        _make_rendered_part(
+            ContentType.HYPERLINK,
+            rendered_content,
+            raw_content=original_content,
+            style=span_style,
+            has_markdown_wrapper=has_markdown_wrapper,
+        )
+    )
+
+
 def merge_para_with_text(para_block):
-    # First pass: collect all non-empty (span_type, content) parts
+    # First pass: collect rendered parts with raw boundary metadata.
     parts = []
     if para_block['type'] == BlockType.TITLE:
         if para_block.get('is_numbered_style', False):
             section_number = para_block.get('section_number', '')
             if section_number:
-                parts.append((ContentType.TEXT, f"{section_number} "))
+                parts.append(
+                    _make_rendered_part(
+                        ContentType.TEXT,
+                        f"{section_number} ",
+                        raw_content=f"{section_number} ",
+                    )
+                )
 
     for line in para_block['lines']:
         for span in line['spans']:
@@ -163,57 +369,38 @@ def merge_para_with_text(para_block):
             span_style = span.get('style', [])
 
             if span_type == ContentType.TEXT:
-                original_content = span['content']
-                content_stripped = original_content.strip()
-                if content_stripped:
-                    styled = _apply_configured_style(content_stripped, span_style)
-                    leading = original_content[:len(original_content) - len(original_content.lstrip())]
-                    trailing = original_content[len(original_content.rstrip()):]
-                    parts.append((span_type, leading + styled + trailing))
-                elif original_content:
-                    # Whitespace-only span: apply visible styles if present,
-                    # otherwise preserve as spacing between styled parts
-                    _visible = {'underline', 'strikethrough'}
-                    if span_style and any(s in _visible for s in span_style):
-                        # 将original_content替换为&nbsp;
-                        original_content = original_content.replace(" ", "&nbsp;")
-                        styled = _apply_configured_style(original_content, span_style)
-                        parts.append((span_type, styled))
-                    else:
-                        parts.append((span_type, original_content))
+                _append_text_part(parts, span['content'], span_style)
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
                 content = content.strip()
                 if content:
-                    parts.append((span_type, content))
+                    parts.append(
+                        _make_rendered_part(
+                            span_type,
+                            content,
+                            raw_content=span['content'],
+                        )
+                    )
             elif span_type == ContentType.INTERLINE_EQUATION:
                 content = f"\n{display_left_delimiter}\n{span['content']}\n{display_right_delimiter}\n"
                 content = content.strip()
                 if content:
-                    parts.append((span_type, content))
+                    parts.append(
+                        _make_rendered_part(
+                            span_type,
+                            content,
+                            raw_content=span['content'],
+                        )
+                    )
             elif span_type == ContentType.HYPERLINK:
-                link_text = span['content'].strip()
-                if link_text:
-                    link_text = _apply_configured_style(link_text, span_style)
-                    content = _render_link(link_text, span.get('url', ''))
-                    parts.append((span_type, content))
+                _append_hyperlink_part(
+                    parts,
+                    span['content'],
+                    span_style,
+                    url=span.get('url', ''),
+                )
 
-    # Second pass: join parts, keeping one space on each side of inline equations
-    para_text = ''
-    for i, (span_type, content) in enumerate(parts):
-        is_last = i == len(parts) - 1
-        if span_type == ContentType.INLINE_EQUATION:
-            # Ensure one space before the equation (if there is preceding text)
-            if para_text and not para_text.endswith(' '):
-                para_text += ' '
-            para_text += content
-            # Ensure one space after the equation, unless it is the last part
-            if not is_last:
-                para_text += ' '
-        else:
-            para_text += content
-
-    return para_text
+    return _join_rendered_parts(parts)
 
 
 def _flatten_list_items(list_block):
@@ -402,37 +589,29 @@ def _flatten_index_items(index_block):
                 if item_text:
                     item_text = _apply_configured_style(item_text, uniform_style)
             else:
-                raw_parts = []
+                rendered_parts = []
                 for content, span_type, span_style in stripped_span_items:
                     if not content:
                         continue
                     if span_type == ContentType.INLINE_EQUATION:
-                        # Wrap inline equations with configured delimiters
-                        raw_parts.append(
-                            f'{inline_left_delimiter}{content}{inline_right_delimiter}'
+                        rendered_parts.append(
+                            _make_rendered_part(
+                                span_type,
+                                f'{inline_left_delimiter}{content}{inline_right_delimiter}',
+                                raw_content=content,
+                            )
                         )
                     elif span_type == ContentType.HYPERLINK:
-                        # TOC hyperlinks use document-internal bookmark refs; output
-                        # only the styled display text without the URL.
-                        link_text = content.strip()
-                        if link_text:
-                            link_text = _apply_configured_style(link_text, span_style)
-                        leading = content[:len(content) - len(content.lstrip())]
-                        trailing = content[len(content.rstrip()):]
-                        raw_parts.append(leading + link_text + trailing)
+                        _append_hyperlink_part(
+                            rendered_parts,
+                            content,
+                            span_style,
+                            plain_text_only=True,
+                        )
                     else:
-                        # TEXT span: apply markdown style while preserving
-                        # surrounding whitespace (e.g. leading space after section #).
-                        stripped = content.strip()
-                        if stripped:
-                            styled = _apply_configured_style(stripped, span_style)
-                            leading = content[:len(content) - len(content.lstrip())]
-                            trailing = content[len(content.rstrip()):]
-                            raw_parts.append(leading + styled + trailing)
-                        elif content:
-                            raw_parts.append(content)
+                        _append_text_part(rendered_parts, content, span_style)
 
-                item_text = ''.join(raw_parts).strip()
+                item_text = _join_rendered_parts(rendered_parts).strip()
             if not item_text:
                 continue
 
@@ -500,14 +679,29 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
-                                    para_text += f"\n{_replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))}\n"
+                                    para_text += f"\n{_format_embedded_html(span['html'], img_buket_path)}\n"
                 for block in para_block['blocks']:  # 2nd.拼table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
+                        para_text += '  \n' + merge_para_with_text(block)
+        elif para_type == BlockType.CHART:
+            if make_mode == MakeMode.NLP_MD:
+                continue
+            elif make_mode == MakeMode.MM_MD:
+                image_path, chart_content = get_body_data(para_block)
+                if chart_content:
+                    para_text += f"\n{_format_embedded_html(chart_content, img_buket_path)}\n"
+                elif image_path:
+                    para_text += f"![]({_build_media_path(img_buket_path, image_path)})"
+                else:
+                    continue
+                for block in para_block['blocks']:
+                    if block['type'] == BlockType.CHART_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
         if para_text.strip() == '':
             continue
         else:
-            page_markdown.append(para_text.strip())
+            # page_markdown.append(para_text.strip())
+            page_markdown.append(para_text.strip('\r\n'))
 
     return page_markdown
 
@@ -568,9 +762,32 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = _replace_eq_tags_in_table_html(_prefix_table_img_src(span['html'], img_buket_path))
+                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(span['html'], img_buket_path)
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
+    elif para_type == BlockType.CHART:
+        para_content = {
+            'type': ContentType.CHART,
+            'img_path': '',
+            'content': '',
+            BlockType.CHART_CAPTION: [],
+        }
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CHART_BODY:
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if span['type'] == ContentType.CHART:
+                            para_content['img_path'] = _build_media_path(
+                                img_buket_path,
+                                span.get('image_path', ''),
+                            )
+                            if span.get('content', ''):
+                                para_content['content'] = _format_embedded_html(
+                                    span['content'],
+                                    img_buket_path,
+                                )
+            if block['type'] == BlockType.CHART_CAPTION:
+                para_content[BlockType.CHART_CAPTION].append(merge_para_with_text(block))
 
     para_content['page_idx'] = page_idx
     anchor = para_block.get("anchor")
@@ -673,9 +890,25 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
             'type': ContentTypeV2.TABLE,
             'content': {
                 'table_caption': table_caption,
-                'html': _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path)),
+                'html': _format_embedded_html(html, img_buket_path),
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
+            }
+        }
+    elif para_type == BlockType.CHART:
+        chart_caption = []
+        image_path, chart_content = get_body_data(para_block)
+        for block in para_block['blocks']:
+            if block['type'] == BlockType.CHART_CAPTION:
+                chart_caption.extend(merge_para_with_text_v2(block))
+        para_content = {
+            'type': ContentTypeV2.CHART,
+            'content': {
+                'image_source': {
+                    'path': _build_media_path(img_buket_path, image_path),
+                },
+                'content': _format_embedded_html(chart_content, img_buket_path),
+                'chart_caption': chart_caption,
             }
         }
     elif para_type == BlockType.LIST:
@@ -707,10 +940,11 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
 
 def get_body_data(para_block):
     """
-    Extract image_path and html from para_block
+    Extract image_path and body content from para_block
     Returns:
         - For IMAGE/INTERLINE_EQUATION: (image_path, '')
         - For TABLE: (image_path, html)
+        - For CHART: (image_path, content)
         - Default: ('', '')
     """
 
@@ -720,6 +954,8 @@ def get_body_data(para_block):
                 span_type = span.get('type')
                 if span_type == ContentType.TABLE:
                     return span.get('image_path', ''), span.get('html', '')
+                elif span_type == ContentType.CHART:
+                    return span.get('image_path', ''), span.get('content', '')
                 elif span_type == ContentType.IMAGE:
                     return span.get('image_path', ''), ''
                 elif span_type == ContentType.INTERLINE_EQUATION:
@@ -732,9 +968,11 @@ def get_body_data(para_block):
     if 'blocks' in para_block:
         for block in para_block['blocks']:
             block_type = block.get('type')
-            if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CODE_BODY]:
+            if block_type in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY, BlockType.CODE_BODY]:
                 result = get_data_from_spans(block.get('lines', []))
                 if result != ('', ''):
+                    return result
+                if block_type == BlockType.CHART_BODY:
                     return result
         return '', ''
 
