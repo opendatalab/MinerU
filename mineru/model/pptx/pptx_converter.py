@@ -25,6 +25,7 @@ class PptxConverter:
         self.pages = []
         self.cur_page = []
         self.list_block_stack: list = []  # 列表块堆栈
+        self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
         self,
