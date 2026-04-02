@@ -97,11 +97,8 @@ class XlsxConverter:
         self.cur_page = []
         self.pages.append(self.cur_page)
         self.image_map = {}
-        self.cell_image_map: dict[tuple[int, int], list[str]] = collections.defaultdict(
-            list
-        )
-        self._cell_image_id_to_embed: dict[str, str] = {}
-        self._cell_image_embed_to_target: dict[str, str] = {}
+        self.cell_image_map = {}
+        self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
         self,
@@ -318,16 +315,19 @@ class XlsxConverter:
                     # 生成 HTML 单元格，注意对文本进行 HTML 转义
                     text_content = html.escape(cell.text) if cell.text else ""
 
-                    # 添加媒体内容 (Images, Math)
-                    media_content = ""
+                    # 添加媒体内容 (Images)
                     if cell.media:
                         media_content = "<br>".join(cell.media)
                         if text_content:
                             text_content += "<br>" + media_content
                         else:
                             text_content = media_content
+                    # 添加公式
+                    if (r, c) in self.math_map:
+                        for formula in self.math_map[(r, c)]:
+                            text_content += self.equation_bookends.format(EQ=formula)
 
-                    lines.append(f"    <{tag}{attr_str}>{text_content}</{tag}>")
+                    lines.append(f"    <{tag}{attr_str}><p>{text_content}</p></{tag}>")
                 else:
                     # 如果既没被覆盖，又没有数据对象（理论上 _find_table_bounds 逻辑应避免此情况），生成空单元格
                     lines.append("    <td></td>")
@@ -604,9 +604,10 @@ class XlsxConverter:
 
                 cell = sheet.cell(row=ri + 1, column=rj + 1)
                 cell_text = str(cell.value) if cell.value is not None else ""
-
+                media_content = ""
                 if "DISPIMG" in cell_text:
-                    self._get_cell_image(ri, rj, cell_text)
+                    media_content = self._get_cell_image(cell_text)
+                    cell_text = ""
 
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
@@ -625,7 +626,7 @@ class XlsxConverter:
                         row_span=row_span,
                         col_span=col_span,
                         styles=self._extract_cell_style(cell),
-                        media=self._get_cell_media(ri, rj),
+                        media=[media_content] if media_content else [],
                     )
                 )
 
@@ -641,37 +642,23 @@ class XlsxConverter:
             table_cells,
         )
 
-    def _get_cell_image(self, r, c, text):
+    def _get_cell_image(self, text) -> str:
         match = re.search(r'"([^"]+)"', text)
         if match:
             image_id = match.group(1)
 
         else:
             logger.error(f"无法从单元格文本中提取图片 ID，文本内容：{text}")
-            return None
+            return ""
 
-        id_to_embed, embed_to_target = self._load_cell_image_mappings()
-        if not id_to_embed:
-            return None
+        cell_image_map = self._load_cell_image_mappings()
 
-        embed_id = id_to_embed.get(image_id)
-        if not embed_id:
-            logger.warning(f"在 cellimages.xml 中未找到 name={image_id} 的 cellImage")
-            return None
-
-        target = embed_to_target.get(embed_id)
-        if not target:
-            logger.warning(
-                f"在 cellimages.xml.rels 中未找到 Id={embed_id} 的 Target 映射"
-            )
-            return None
-
-        zip_target_path = posixpath.normpath(posixpath.join("xl", target))
+        zip_target_path = posixpath.normpath(posixpath.join("xl", cell_image_map.get(image_id, "")))
         if self.zf is None or zip_target_path not in self.zf.namelist():
             logger.warning(
-                f"图片目标文件不存在，image_id={image_id}, embed_id={embed_id}, target={zip_target_path}"
+                f"图片目标文件不存在，image_id={image_id}, target={zip_target_path}"
             )
-            return None
+            return ""
 
         try:
             with self.zf.open(zip_target_path) as image_file:
@@ -682,29 +669,27 @@ class XlsxConverter:
                     img_base64 = image_to_b64str(pil_image, image_format="PNG")
                 else:
                     img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                self.cell_image_map[(r, c)].append(f'<img src="{img_base64}" />')
+                return rf'<img src="{img_base64}" />'
         except Exception as e:
             logger.warning(
                 f"读取单元格图片失败，image_id={image_id}, target={zip_target_path}, error={e}"
             )
-            return None
+            return ""
 
-        return zip_target_path
-
-    def _load_cell_image_mappings(self) -> tuple[dict[str, str], dict[str, str]]:
-        if self._cell_image_id_to_embed and self._cell_image_embed_to_target:
-            return self._cell_image_id_to_embed, self._cell_image_embed_to_target
+    def _load_cell_image_mappings(self):
+        if self.cell_image_map :
+            return self.cell_image_map
 
         if self.zf is None:
-            return {}, {}
-
+            return {}
+        cell_image_embed_to_name = {}
         cellimages_path = "xl/cellimages.xml"
         rels_path = "xl/_rels/cellimages.xml.rels"
         if (
             cellimages_path not in self.zf.namelist()
             or rels_path not in self.zf.namelist()
         ):
-            return {}, {}
+            return {}
 
         try:
             with self.zf.open(cellimages_path) as f:
@@ -726,7 +711,7 @@ class XlsxConverter:
                 image_name = c_nv_pr.attrib.get("name")
                 embed_id = blip.attrib.get(f'{{{ns["r"]}}}embed')
                 if image_name and embed_id:
-                    self._cell_image_id_to_embed[image_name] = embed_id
+                    cell_image_embed_to_name[embed_id] = image_name
 
             with self.zf.open(rels_path) as f:
                 rel_root = ET.parse(f).getroot()
@@ -738,15 +723,13 @@ class XlsxConverter:
                 rel_id = rel.attrib.get("Id")
                 target = rel.attrib.get("Target")
                 if rel_id and target:
-                    self._cell_image_embed_to_target[rel_id] = target
+                    self.cell_image_map[cell_image_embed_to_name[rel_id]] = target
 
         except Exception as e:
             logger.warning(f"解析 cellimages 映射失败: {e}")
-            return {}, {}
+            return {}
 
-        return self._cell_image_id_to_embed, self._cell_image_embed_to_target
-
-
+        return self.cell_image_map
 
     def _extract_cell_style(self, cell):
         """Extract styles from an openpyxl cell."""
@@ -789,32 +772,6 @@ class XlsxConverter:
                 if isinstance(color, str) and len(color) == 8:
                     style["background-color"] = "#" + color[2:]
         return style
-
-    def _get_cell_media(self, r, c) -> list[str]:
-        """Get media content (images, math) for a given cell (0-based row/col)."""
-        media = []
-        if (r, c) in self.cell_image_map:
-            media.extend(self.cell_image_map[(r, c)])
-
-        # Images
-        if hasattr(self, "image_map") and (r, c) in self.image_map:
-            for img in self.image_map[(r, c)]:
-                # Convert image to base64 html tag
-                try:
-                    pil_image = Image.open(img.ref)
-                    if pil_image.mode != "RGB":
-                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                    else:
-                        img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                    media.append(f'<img src="{img_base64}" />')
-                except Exception as e:
-                    logger.warning(f"Failed to render cell image: {e}")
-
-        # Math
-        if hasattr(self, "math_map") and (r, c) in self.math_map:
-            media.extend(self.math_map[(r, c)])
-
-        return media
 
     @staticmethod
     def _get_sheet_content_layer(sheet: Worksheet):
