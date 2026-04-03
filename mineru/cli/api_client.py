@@ -140,40 +140,45 @@ def stop_managed_process(
     if process is None:
         return
 
-    parent_exited = process.poll() is not None
+    was_running_at_entry = process.poll() is None
+    exited_via_stdin_eof = False
+    tree_signaled = False
 
-    if not parent_exited and use_stdin_shutdown_watcher:
+    if not was_running_at_entry:
+        return
+
+    if use_stdin_shutdown_watcher:
         if process.stdin is not None and not process.stdin.closed:
             process.stdin.close()
         try:
             process.wait(timeout=shutdown_timeout_seconds)
-            parent_exited = True
+            exited_via_stdin_eof = True
         except subprocess.TimeoutExpired:
             logger.debug(
                 "Managed MinerU process did not stop after stdin EOF within {}s. Falling back to process-tree termination.",
                 shutdown_timeout_seconds,
             )
 
-    if not parent_exited:
+    if process.poll() is None:
         _signal_process_tree(process, force=False)
+        tree_signaled = True
         try:
             process.wait(timeout=shutdown_timeout_seconds)
-            parent_exited = True
         except subprocess.TimeoutExpired:
             pass
 
-    if not parent_exited:
+    if process.poll() is None:
         _signal_process_tree(process, force=True)
+        tree_signaled = True
         try:
             process.wait(timeout=shutdown_timeout_seconds)
-            parent_exited = True
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Managed MinerU process {} did not exit after forceful stop.",
                 process.pid,
             )
 
-    if parent_exited:
+    if exited_via_stdin_eof and not tree_signaled:
         cleanup_process_tree_descendants(process)
 
 
