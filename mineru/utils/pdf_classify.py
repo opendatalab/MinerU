@@ -37,6 +37,17 @@ _ALLOWED_CONTROL_CODES = {9, 10, 13}
 _PRIVATE_USE_AREA_START = 0xE000
 _PRIVATE_USE_AREA_END = 0xF8FF
 
+
+def _is_disallowed_control_unicode(unicode_code: int) -> bool:
+    return (
+        (
+            0 <= unicode_code < 32
+            or 127 <= unicode_code <= 159
+        )
+        and unicode_code not in _ALLOWED_CONTROL_CODES
+    )
+
+
 def classify(pdf_bytes):
     """
     Classify a PDF as text-based or OCR-based.
@@ -252,7 +263,7 @@ def get_text_quality_signal_pdfium(pdf_doc, page_indices):
                 null_char_count += 1
             elif unicode_code == 0xFFFD:
                 replacement_char_count += 1
-            elif unicode_code < 32 and unicode_code not in _ALLOWED_CONTROL_CODES:
+            elif _is_disallowed_control_unicode(unicode_code):
                 control_char_count += 1
             elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
                 private_use_char_count += 1
