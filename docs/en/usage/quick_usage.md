@@ -74,6 +74,8 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >```
   >
   >HTTP asynchronous call code example: [Python version](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+  >
+  >MinIO round-trip example: upload a local file to MinIO, read it back for parsing, and generate Markdown from the parsed output: [Python version](https://github.com/opendatalab/MinerU/blob/master/demo/minio_markdown_demo.py)
 
 - Start Gradio WebUI visual frontend:
   ```bash
