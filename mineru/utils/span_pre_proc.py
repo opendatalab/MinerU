@@ -13,6 +13,8 @@ from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdf_text_tool import get_page
 
+MAX_NATIVE_TEXT_CHARS_PER_PAGE = 65535
+
 
 def __replace_ligatures(text: str):
     ligatures = {
@@ -29,6 +31,21 @@ def __replace_unicode(text: str):
 
 """pdf_text dict方案 char级别"""
 def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded_blocks):
+    page_char_count = None
+    try:
+        page_char_count = pdf_page.get_textpage().count_chars()
+    except Exception as exc:
+        logger.debug(f"Failed to get page char count before txt extraction: {exc}")
+
+    if page_char_count is not None and page_char_count > MAX_NATIVE_TEXT_CHARS_PER_PAGE:
+        logger.info(
+            "Fallback to post-OCR in txt_spans_extract due to high char count: "
+            f"count_chars={page_char_count}"
+        )
+        need_ocr_spans = [
+            span for span in spans if span.get('type') == ContentType.TEXT
+        ]
+        return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
     page_dict = get_page(pdf_page)
 
@@ -99,21 +116,26 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded
 
     need_ocr_spans = fill_char_in_spans(new_spans, page_all_chars, median_span_height)
 
-    """对未填充的span进行ocr"""
-    if len(need_ocr_spans) > 0:
+    return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
-        for span in need_ocr_spans:
-            # 对span的bbox截图再ocr
-            span_pil_img = get_crop_img(span['bbox'], pil_img, scale)
-            span_img = cv2.cvtColor(np.array(span_pil_img), cv2.COLOR_RGB2BGR)
-            # 计算span的对比度，低于0.20的span不进行ocr
-            if calculate_contrast(span_img, img_mode='bgr') <= 0.17:
+
+def _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale):
+    if len(need_ocr_spans) == 0:
+        return spans
+
+    for span in need_ocr_spans:
+        # 对span的bbox截图再ocr
+        span_pil_img = get_crop_img(span['bbox'], pil_img, scale)
+        span_img = cv2.cvtColor(np.array(span_pil_img), cv2.COLOR_RGB2BGR)
+        # 计算span的对比度，低于0.20的span不进行ocr
+        if calculate_contrast(span_img, img_mode='bgr') <= 0.17:
+            if span in spans:
                 spans.remove(span)
-                continue
+            continue
 
-            span['content'] = ''
-            span['score'] = 1.0
-            span['np_img'] = span_img
+        span['content'] = ''
+        span['score'] = 1.0
+        span['np_img'] = span_img
 
     return spans
 
