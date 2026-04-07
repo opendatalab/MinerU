@@ -127,7 +127,7 @@ def _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale):
         # 对span的bbox截图再ocr
         span_pil_img = get_crop_img(span['bbox'], pil_img, scale)
         span_img = cv2.cvtColor(np.array(span_pil_img), cv2.COLOR_RGB2BGR)
-        # 计算span的对比度，低于0.20的span不进行ocr
+        # 计算span的对比度，低于0.17的span不进行ocr
         if calculate_contrast(span_img, img_mode='bgr') <= 0.17:
             if span in spans:
                 spans.remove(span)
