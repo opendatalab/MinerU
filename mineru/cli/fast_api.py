@@ -53,6 +53,7 @@ from mineru.cli.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
+from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
 from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
@@ -60,6 +61,7 @@ from mineru.utils.config_reader import (
     get_processing_window_size,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.pdf_image_tools import shutdown_pdf_render_executor
 from mineru.version import __version__
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
@@ -289,6 +291,19 @@ async def shutdown_app_state(app: FastAPI) -> None:
     if current_task_manager is not None:
         await current_task_manager.shutdown()
     app.state.task_manager = None
+    shutdown_runtime_resources()
+
+
+def shutdown_runtime_resources() -> None:
+    try:
+        shutdown_cached_models()
+    except Exception as exc:
+        logger.warning(f"Failed to shutdown cached VLM models: {exc}")
+
+    try:
+        shutdown_pdf_render_executor()
+    except Exception as exc:
+        logger.warning(f"Failed to shutdown PDF render executor: {exc}")
 
 
 def utc_now_iso() -> str:

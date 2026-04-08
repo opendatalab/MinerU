@@ -87,9 +87,10 @@ Options:
 
 > [!NOTE]
 > Starting from this version, `mineru` is an orchestration client built on top of `mineru-api`:
-> - Without `--api-url`, the CLI launches a temporary local `mineru-api`
-> - With `--api-url`, the CLI connects to that FastAPI service directly
-> - `--url` is no longer the MinerU API address; it is the OpenAI-compatible backend URL used by server-side `vlm/hybrid-http-client`
+> 
+>- Without `--api-url`, the CLI launches a temporary local `mineru-api`
+>- With `--api-url`, the CLI connects to that FastAPI service directly
+>- `--url` is no longer the MinerU API address; it is the OpenAI-compatible backend URL used by server-side `vlm/hybrid-http-client`
 
 Some parameters of MinerU command line tools have equivalent environment variable configurations. Generally, environment variable configurations have higher priority than command line parameters and take effect across all command line tools.
 Here are the environment variables and their descriptions:
