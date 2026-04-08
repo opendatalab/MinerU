@@ -29,9 +29,11 @@ from mineru.cli.api_client import (
     LOCAL_API_STARTUP_TIMEOUT_SECONDS,
     TASK_RESULT_TIMEOUT_SECONDS,
     TASK_STATUS_POLL_INTERVAL_SECONDS,
+    build_managed_process_popen_kwargs,
     build_http_timeout,
     find_free_port,
     normalize_base_url,
+    stop_managed_process,
     strip_local_api_network_args,
     response_detail,
 )
@@ -340,7 +342,12 @@ class ManagedLocalServer:
             str(resolved_port),
             *worker_cli_args,
         ]
-        self.process = subprocess.Popen(command, cwd=os.getcwd(), env=env)
+        self.process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            env=env,
+            **build_managed_process_popen_kwargs(),
+        )
 
         try:
             await self.wait_until_ready(client)
@@ -381,13 +388,12 @@ class ManagedLocalServer:
         process = self.process
         self.process = None
         try:
-            if process is not None and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+            if process is not None:
+                stop_managed_process(
+                    process,
+                    shutdown_timeout_seconds=5,
+                    use_stdin_shutdown_watcher=False,
+                )
         finally:
             temp_dir = self.temp_dir
             self.temp_dir = None

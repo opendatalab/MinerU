@@ -43,6 +43,38 @@
 
 </div>
 
+<details>
+<summary>MinerU — 专为 LLM · RAG · Agent 场景构建的高精度文档解析引擎 </summary>
+将 PDF · Word · PPT · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
+MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 <br>
+
+**🔍 核心解析能力**
+- 公式 → LaTeX · 表格 → HTML，精准还原复杂版面
+- 支持扫描件、手写体、多栏布局、跨页表格合并
+- 输出符合人类阅读顺序，自动去除页眉页脚
+- VLM + OCR 双引擎，支持 109 种语言识别
+
+**🔌 接入方式**
+
+| 场景 | 方案 |
+|------|------|
+| AI 编程工具 | MCP Server — Cursor · Claude Desktop · Windsurf |
+| RAG 框架 | LangChain · LlamaIndex · RAGFlow · RAG-Anything · Flowise · Dify · FastGPT |
+| 开发集成 | Python / Go / TypeScript SDK · CLI · REST API · Docker |
+| 零代码 | mineru.net 在线版 · Gradio WebUI · 桌面客户端 |
+
+**🖥️ 部署生态（支持私有化 · 完全离线）**
+
+| 推理后端         | 适用场景                        |
+|--------------|-----------------------------|
+| pipeline     | 快速稳定，无幻觉，CPU / GPU 均可运行     |
+| vlm-engine   | 高精度，支持 vLLM / LMdeploy / mlx 生态 |
+| hybrid-engine| 高精度，原生文本提取，低幻觉              |
+
+国产算力：昇腾 · 寒武纪 · 燧原 · 沐曦 · 摩尔线程 · 昆仑芯 · 天数智芯 · 瀚博 · 太初元碁 · 海光 · 平头哥
+
+</details>
+
 # 更新记录
 
 - 2026/03/29 3.0.0 发布

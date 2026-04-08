@@ -187,6 +187,7 @@ def shutdown_pdf_render_executor() -> None:
         _pdf_render_executor = None
 
     if executor is not None:
+        _terminate_executor_processes(executor)
         executor.shutdown(wait=False, cancel_futures=True)
 
 

@@ -32,10 +32,22 @@ CID_RATIO_THRESHOLD = 0.05
 TEXT_QUALITY_MIN_CHARS = 300
 TEXT_QUALITY_BAD_THRESHOLD = 0.03
 TEXT_QUALITY_GOOD_THRESHOLD = 0.005
+MAX_PAGE_ASPECT_RATIO = 10.0
 
 _ALLOWED_CONTROL_CODES = {9, 10, 13}
 _PRIVATE_USE_AREA_START = 0xE000
 _PRIVATE_USE_AREA_END = 0xF8FF
+
+
+def _is_disallowed_control_unicode(unicode_code: int) -> bool:
+    return (
+        (
+            0 <= unicode_code < 32
+            or 127 <= unicode_code <= 159
+        )
+        and unicode_code not in _ALLOWED_CONTROL_CODES
+    )
+
 
 def classify(pdf_bytes):
     """
@@ -88,6 +100,17 @@ def classify_hybrid(pdf_bytes):
 
             page_indices = get_sample_page_indices(page_count, MAX_SAMPLE_PAGES)
             if not page_indices:
+                return "ocr"
+
+            extreme_page_index, extreme_ratio = get_extreme_aspect_ratio_page_pdfium(
+                pdf,
+                page_indices,
+            )
+            if extreme_page_index is not None:
+                logger.info(
+                    "Classify PDF as OCR due to extreme sampled-page aspect ratio: "
+                    f"page={extreme_page_index + 1}, ratio={extreme_ratio:.2f}"
+                )
                 return "ocr"
 
             if (
@@ -203,6 +226,24 @@ def get_sample_page_indices(page_count: int, max_pages: int = MAX_SAMPLE_PAGES):
     return sorted(indices)
 
 
+def get_extreme_aspect_ratio_page_pdfium(
+    pdf_doc,
+    page_indices,
+    max_page_aspect_ratio: float = MAX_PAGE_ASPECT_RATIO,
+):
+    for page_index in page_indices:
+        page = pdf_doc[page_index]
+        page_width, page_height = page.get_size()
+        if page_width <= 0 or page_height <= 0:
+            continue
+
+        aspect_ratio = max(page_width / page_height, page_height / page_width)
+        if aspect_ratio > max_page_aspect_ratio:
+            return page_index, aspect_ratio
+
+    return None, None
+
+
 def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
     total_chars = 0
     cleaned_total_chars = 0
@@ -252,7 +293,7 @@ def get_text_quality_signal_pdfium(pdf_doc, page_indices):
                 null_char_count += 1
             elif unicode_code == 0xFFFD:
                 replacement_char_count += 1
-            elif unicode_code < 32 and unicode_code not in _ALLOWED_CONTROL_CODES:
+            elif _is_disallowed_control_unicode(unicode_code):
                 control_char_count += 1
             elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
                 private_use_char_count += 1

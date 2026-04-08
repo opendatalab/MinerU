@@ -81,9 +81,10 @@ Options:
 
 > [!NOTE]
 > 从当前版本开始，`mineru` 是基于 `mineru-api` 的编排客户端：
-> - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
-> - 传入 `--api-url` 时，CLI 会直连该 FastAPI 服务
-> - `--url` 不再表示 MinerU API 地址，而是服务端 `vlm/hybrid-http-client` 所需的 OpenAI 兼容地址
+> 
+>- 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
+>- 传入 `--api-url` 时，CLI 会直连该 FastAPI 服务
+>- `--url` 不再表示 MinerU API 地址，而是服务端 `vlm/hybrid-http-client` 所需的 OpenAI 兼容地址
 
 MinerU命令行工具的某些参数存在相同功能的环境变量配置，通常环境变量配置的优先级高于命令行参数，且在所有命令行工具中都生效。
 以下是常用的环境变量及其说明： 

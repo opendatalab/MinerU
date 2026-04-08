@@ -43,6 +43,39 @@
 
 </div>
 
+
+<details>
+<summary>MinerU — High-accuracy document parsing engine for LLM · RAG · Agent workflows</summary>
+Converts PDF · Word · PPT · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
+MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI chip support
+
+**🔍 Core Parsing Capabilities**
+
+- Formulas → LaTeX · Tables → HTML, accurate layout reconstruction
+- Supports scanned docs, handwriting, multi-column layouts, cross-page table merging
+- Output follows human reading order with automatic header/footer removal
+- VLM + OCR dual engine, 109-language OCR recognition
+
+**🔌 Integration**
+
+| Use Case | Solution |
+|----------|----------|
+| AI Coding Tools | MCP Server — Cursor · Claude Desktop · Windsurf |
+| RAG Frameworks | LangChain · LlamaIndex · RAGFlow · RAG-Anything · Flowise · Dify · FastGPT |
+| Development | Python / Go / TypeScript SDK · CLI · REST API · Docker |
+| No-Code | mineru.net online · Gradio WebUI · Desktop client |
+
+**🖥️ Deployment (Private · Fully Offline)**
+
+| Inference Backend | Best For |
+|------------------|---------|
+| pipeline         | Fast & stable, no hallucination, runs on CPU or GPU |
+| vlm-engine       | High accuracy, supports vLLM / LMDeploy / mlx ecosystem |
+| hybrid-engine    | High accuracy, native text extraction, low hallucination |
+
+Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · Kunlunxin · Iluvatar · Hygon · Biren · T-Head
+</details>
+
 # Changelog
 
 - 2026/03/29 3.0.0 Released
