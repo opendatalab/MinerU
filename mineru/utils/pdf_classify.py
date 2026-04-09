@@ -1,108 +1,372 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import os
 import re
 from io import BytesIO
+
 import numpy as np
 import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_c
 from loguru import logger
-from pdfminer.high_level import extract_text
-from pdfminer.pdfparser import PDFParser
-from pdfminer.pdfdocument import PDFDocument
-from pdfminer.pdfpage import PDFPage
-from pdfminer.pdfinterp import PDFResourceManager
-from pdfminer.pdfinterp import PDFPageInterpreter
-from pdfminer.layout import LAParams, LTImage, LTFigure
+from pypdf import PdfReader
 from pdfminer.converter import PDFPageAggregator
+from pdfminer.high_level import extract_text
+from pdfminer.layout import LAParams, LTFigure, LTImage
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
+from mineru.utils.pdfium_guard import (
+    close_pdfium_document,
+    open_pdfium_document,
+    pdfium_guard,
+)
+
+PDF_CLASSIFY_STRATEGY_ENV = "MINERU_PDF_CLASSIFY_STRATEGY"
+PDF_CLASSIFY_STRATEGY_HYBRID = "hybrid"
+PDF_CLASSIFY_STRATEGY_LEGACY = "legacy"
+
+MAX_SAMPLE_PAGES = 10
+CHARS_THRESHOLD = 50
+HIGH_IMAGE_COVERAGE_THRESHOLD = 0.8
+CID_RATIO_THRESHOLD = 0.05
+TEXT_QUALITY_MIN_CHARS = 300
+TEXT_QUALITY_BAD_THRESHOLD = 0.03
+TEXT_QUALITY_GOOD_THRESHOLD = 0.005
+MAX_PAGE_ASPECT_RATIO = 10.0
+
+_ALLOWED_CONTROL_CODES = {9, 10, 13}
+_PRIVATE_USE_AREA_START = 0xE000
+_PRIVATE_USE_AREA_END = 0xF8FF
+
+
+def _is_disallowed_control_unicode(unicode_code: int) -> bool:
+    return (
+        (
+            0 <= unicode_code < 32
+            or 127 <= unicode_code <= 159
+        )
+        and unicode_code not in _ALLOWED_CONTROL_CODES
+    )
 
 
 def classify(pdf_bytes):
     """
-    判断PDF文件是可以直接提取文本还是需要OCR
-
-    Args:
-        pdf_bytes: PDF文件的字节数据
+    Classify a PDF as text-based or OCR-based.
 
     Returns:
-        str: 'txt' 表示可以直接提取文本，'ocr' 表示需要OCR
+        "txt" if the PDF can be parsed as text, otherwise "ocr".
     """
 
-    # 从字节数据加载PDF
-    sample_pdf_bytes = extract_pages(pdf_bytes)
-    pdf = pdfium.PdfDocument(sample_pdf_bytes)
+    strategy = get_pdf_classify_strategy()
+    if strategy == PDF_CLASSIFY_STRATEGY_LEGACY:
+        return classify_legacy(pdf_bytes)
+    return classify_hybrid(pdf_bytes)
+
+
+def get_pdf_classify_strategy() -> str:
+    strategy = os.getenv(
+        PDF_CLASSIFY_STRATEGY_ENV, PDF_CLASSIFY_STRATEGY_HYBRID
+    ).strip().lower()
+    if strategy not in {
+        PDF_CLASSIFY_STRATEGY_HYBRID,
+        PDF_CLASSIFY_STRATEGY_LEGACY,
+    }:
+        logger.warning(
+            f"Invalid {PDF_CLASSIFY_STRATEGY_ENV} value: {strategy}, "
+            f"fall back to {PDF_CLASSIFY_STRATEGY_HYBRID}"
+        )
+        return PDF_CLASSIFY_STRATEGY_HYBRID
+    return strategy
+
+
+def classify_hybrid(pdf_bytes):
+    """
+    Fast PDF classification path.
+
+    The hybrid path uses pdfium + pypdf as the main path and falls back to
+    pdfminer only for gray-zone samples.
+    """
+
+    pdf = None
+    page_indices = []
+    should_run_pdfminer_fallback = False
+
     try:
-        # 获取PDF页数
-        page_count = len(pdf)
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            page_count = len(pdf)
+            if page_count == 0:
+                return "ocr"
 
-        # 如果PDF页数为0，直接返回OCR
-        if page_count == 0:
-            return 'ocr'
+            page_indices = get_sample_page_indices(page_count, MAX_SAMPLE_PAGES)
+            if not page_indices:
+                return "ocr"
 
-        # 检查的页面数（最多检查10页）
-        pages_to_check = min(page_count, 10)
+            extreme_page_index, extreme_ratio = get_extreme_aspect_ratio_page_pdfium(
+                pdf,
+                page_indices,
+            )
+            if extreme_page_index is not None:
+                logger.info(
+                    "Classify PDF as OCR due to extreme sampled-page aspect ratio: "
+                    f"page={extreme_page_index + 1}, ratio={extreme_ratio:.2f}"
+                )
+                return "ocr"
 
-        # 设置阈值：如果每页平均少于50个有效字符，认为需要OCR
-        chars_threshold = 50
+            if (
+                get_avg_cleaned_chars_per_page_pdfium(pdf, page_indices)
+                < CHARS_THRESHOLD
+            ):
+                return "ocr"
 
-        # 检查平均字符数和无效字符
-        if (get_avg_cleaned_chars_per_page(pdf, pages_to_check) < chars_threshold) or detect_invalid_chars(sample_pdf_bytes):
-            return 'ocr'
+            if detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+                return "ocr"
 
-        # 检查图像覆盖率
-        if get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check) >= 0.8:
-            return 'ocr'
+            text_quality_signal = get_text_quality_signal_pdfium(pdf, page_indices)
+            total_chars = text_quality_signal["total_chars"]
+            abnormal_ratio = text_quality_signal["abnormal_ratio"]
 
-        return 'txt'
+            if total_chars >= TEXT_QUALITY_MIN_CHARS:
+                if abnormal_ratio >= TEXT_QUALITY_BAD_THRESHOLD:
+                    return "ocr"
+                should_run_pdfminer_fallback = abnormal_ratio > TEXT_QUALITY_GOOD_THRESHOLD
+            else:
+                should_run_pdfminer_fallback = True
+
+            if (
+                get_high_image_coverage_ratio_pdfium(pdf, page_indices)
+                >= HIGH_IMAGE_COVERAGE_THRESHOLD
+            ):
+                return "ocr"
 
     except Exception as e:
-        logger.error(f"判断PDF类型时出错: {e}")
-        # 出错时默认使用OCR
-        return 'ocr'
+        logger.error(f"Failed to classify PDF with hybrid strategy: {e}")
+        return "ocr"
 
     finally:
-        # 无论执行哪个路径，都确保PDF被关闭
-        pdf.close()
+        close_pdfium_document(pdf)
+
+    if should_run_pdfminer_fallback:
+        sample_pdf_bytes = extract_selected_pages(pdf_bytes, page_indices)
+        if not sample_pdf_bytes:
+            return "ocr"
+        if detect_invalid_chars_pdfminer_fallback(sample_pdf_bytes):
+            return "ocr"
+
+    return "txt"
+
+
+def classify_legacy(pdf_bytes):
+    """
+    Legacy classification path kept for rollback and A/B comparison.
+    """
+
+    sample_pdf_bytes = extract_pages(pdf_bytes)
+    if not sample_pdf_bytes:
+        return "ocr"
+    pdf = None
+    try:
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, sample_pdf_bytes)
+            page_count = len(pdf)
+            if page_count == 0:
+                return "ocr"
+
+            pages_to_check = min(page_count, MAX_SAMPLE_PAGES)
+
+            if (
+                get_avg_cleaned_chars_per_page(pdf, pages_to_check) < CHARS_THRESHOLD
+            ) or detect_invalid_chars(sample_pdf_bytes):
+                return "ocr"
+
+            if (
+                get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check)
+                >= HIGH_IMAGE_COVERAGE_THRESHOLD
+            ):
+                return "ocr"
+
+            return "txt"
+
+    except Exception as e:
+        logger.warning(f"Failed to classify PDF with legacy strategy: {e}")
+        return "ocr"
+
+    finally:
+        close_pdfium_document(pdf)
+
+
+def get_sample_page_indices(page_count: int, max_pages: int = MAX_SAMPLE_PAGES):
+    if page_count <= 0 or max_pages <= 0:
+        return []
+
+    sample_count = min(page_count, max_pages)
+    if sample_count == page_count:
+        return list(range(page_count))
+    if sample_count == 1:
+        return [0]
+
+    indices = []
+    seen = set()
+    for i in range(sample_count):
+        page_index = round(i * (page_count - 1) / (sample_count - 1))
+        page_index = max(0, min(page_count - 1, page_index))
+        if page_index not in seen:
+            indices.append(page_index)
+            seen.add(page_index)
+
+    if len(indices) < sample_count:
+        for page_index in range(page_count):
+            if page_index in seen:
+                continue
+            indices.append(page_index)
+            seen.add(page_index)
+            if len(indices) == sample_count:
+                break
+
+    return sorted(indices)
+
+
+def get_extreme_aspect_ratio_page_pdfium(
+    pdf_doc,
+    page_indices,
+    max_page_aspect_ratio: float = MAX_PAGE_ASPECT_RATIO,
+):
+    for page_index in page_indices:
+        page = pdf_doc[page_index]
+        page_width, page_height = page.get_size()
+        if page_width <= 0 or page_height <= 0:
+            continue
+
+        aspect_ratio = max(page_width / page_height, page_height / page_width)
+        if aspect_ratio > max_page_aspect_ratio:
+            return page_index, aspect_ratio
+
+    return None, None
 
 
 def get_avg_cleaned_chars_per_page(pdf_doc, pages_to_check):
-    # 总字符数
     total_chars = 0
-    # 清理后的总字符数
     cleaned_total_chars = 0
 
-    # 检查前几页的文本
     for i in range(pages_to_check):
         page = pdf_doc[i]
         text_page = page.get_textpage()
         text = text_page.get_text_bounded()
         total_chars += len(text)
-
-        # 清理提取的文本，移除空白字符
-        cleaned_text = re.sub(r'\s+', '', text)
+        cleaned_text = re.sub(r"\s+", "", text)
         cleaned_total_chars += len(cleaned_text)
 
-    # 计算平均每页字符数
     avg_cleaned_chars_per_page = cleaned_total_chars / pages_to_check
-
-    # logger.debug(f"PDF分析: 平均每页清理后{avg_cleaned_chars_per_page:.1f}字符")
-
     return avg_cleaned_chars_per_page
 
 
+def get_avg_cleaned_chars_per_page_pdfium(pdf_doc, page_indices):
+    cleaned_total_chars = 0
+
+    for page_index in page_indices:
+        page = pdf_doc[page_index]
+        text_page = page.get_textpage()
+        text = text_page.get_text_bounded()
+        cleaned_total_chars += len(re.sub(r"\s+", "", text))
+
+    if not page_indices:
+        return 0.0
+    return cleaned_total_chars / len(page_indices)
+
+
+def get_text_quality_signal_pdfium(pdf_doc, page_indices):
+    total_chars = 0
+    null_char_count = 0
+    replacement_char_count = 0
+    control_char_count = 0
+    private_use_char_count = 0
+
+    for page_index in page_indices:
+        page = pdf_doc[page_index]
+        text_page = page.get_textpage()
+        char_count = text_page.count_chars()
+        total_chars += char_count
+
+        for char_index in range(char_count):
+            unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
+            if unicode_code == 0:
+                null_char_count += 1
+            elif unicode_code == 0xFFFD:
+                replacement_char_count += 1
+            elif _is_disallowed_control_unicode(unicode_code):
+                control_char_count += 1
+            elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
+                private_use_char_count += 1
+
+    abnormal_chars = (
+        null_char_count
+        + replacement_char_count
+        + control_char_count
+        + private_use_char_count
+    )
+
+    abnormal_ratio = 0.0
+    if total_chars > 0:
+        abnormal_ratio = abnormal_chars / total_chars
+
+    return {
+        "total_chars": total_chars,
+        "abnormal_ratio": abnormal_ratio,
+        "null_char_count": null_char_count,
+        "replacement_char_count": replacement_char_count,
+        "control_char_count": control_char_count,
+        "private_use_char_count": private_use_char_count,
+    }
+
+
+def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+    reader = PdfReader(BytesIO(pdf_bytes))
+
+    for page_index in page_indices:
+        page = reader.pages[page_index]
+        resources = _resolve_pdf_object(page.get("/Resources"))
+        if not resources:
+            continue
+
+        fonts = _resolve_pdf_object(resources.get("/Font"))
+        if not fonts:
+            continue
+
+        for _, font_ref in fonts.items():
+            font = _resolve_pdf_object(font_ref)
+            if not font:
+                continue
+
+            subtype = str(font.get("/Subtype"))
+            encoding = str(font.get("/Encoding"))
+            has_descendant_fonts = "/DescendantFonts" in font
+            has_to_unicode = "/ToUnicode" in font
+
+            if (
+                subtype == "/Type0"
+                and encoding in ("/Identity-H", "/Identity-V")
+                and has_descendant_fonts
+                and not has_to_unicode
+            ):
+                return True
+
+    return False
+
+
+def _resolve_pdf_object(obj):
+    if hasattr(obj, "get_object"):
+        return obj.get_object()
+    return obj
+
+
 def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
-    # 创建内存文件对象
     pdf_stream = BytesIO(sample_pdf_bytes)
-
-    # 创建PDF解析器
     parser = PDFParser(pdf_stream)
-
-    # 创建PDF文档对象
     document = PDFDocument(parser)
 
-    # 检查文档是否允许文本提取
     if not document.is_extractable:
-        # logger.warning("PDF不允许内容提取")
-        return 1.0  # 默认为高覆盖率，因为无法提取内容
+        return 1.0
 
-    # 创建资源管理器和参数对象
     rsrcmgr = PDFResourceManager()
     laparams = LAParams(
         line_overlap=0.5,
@@ -113,122 +377,156 @@ def get_high_image_coverage_ratio(sample_pdf_bytes, pages_to_check):
         detect_vertical=False,
         all_texts=False,
     )
-
-    # 创建聚合器
     device = PDFPageAggregator(rsrcmgr, laparams=laparams)
-
-    # 创建解释器
     interpreter = PDFPageInterpreter(rsrcmgr, device)
 
-    # 记录高图像覆盖率的页面数量
     high_image_coverage_pages = 0
     page_count = 0
 
-    # 遍历页面
     for page in PDFPage.create_pages(document):
-        # 控制检查的页数
         if page_count >= pages_to_check:
             break
 
-        # 处理页面
         interpreter.process_page(page)
         layout = device.get_result()
 
-        # 页面尺寸
         page_width = layout.width
         page_height = layout.height
         page_area = page_width * page_height
 
-        # 计算图像覆盖的总面积
         image_area = 0
-
-        # 遍历页面元素
         for element in layout:
-            # 检查是否为图像或图形元素
             if isinstance(element, (LTImage, LTFigure)):
-                # 计算图像边界框面积
                 img_width = element.width
                 img_height = element.height
-                img_area = img_width * img_height
-                image_area += img_area
+                image_area += img_width * img_height
 
-        # 计算覆盖率
         coverage_ratio = min(image_area / page_area, 1.0) if page_area > 0 else 0
-        # logger.debug(f"PDF分析: 页面 {page_count + 1} 图像覆盖率: {coverage_ratio:.2f}")
-
-        # 判断是否为高覆盖率
-        if coverage_ratio >= 0.8:  # 使用80%作为高覆盖率的阈值
+        if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
             high_image_coverage_pages += 1
 
         page_count += 1
 
-    # 关闭资源
     pdf_stream.close()
 
-    # 如果没有处理任何页面，返回0
     if page_count == 0:
         return 0.0
 
-    # 计算高图像覆盖率的页面比例
-    high_coverage_ratio = high_image_coverage_pages / page_count
-    # logger.debug(f"PDF分析: 高图像覆盖页面比例: {high_coverage_ratio:.2f}")
+    return high_image_coverage_pages / page_count
 
-    return high_coverage_ratio
+
+def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
+    high_image_coverage_pages = 0
+
+    for page_index in page_indices:
+        page = pdf_doc[page_index]
+        page_bbox = page.get_bbox()
+        page_area = abs(
+            (page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1])
+        )
+        image_area = 0.0
+
+        for page_object in page.get_objects(
+            filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
+        ):
+            left, bottom, right, top = page_object.get_pos()
+            image_area += max(0.0, right - left) * max(0.0, top - bottom)
+
+        coverage_ratio = min(image_area / page_area, 1.0) if page_area > 0 else 0.0
+        if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
+            high_image_coverage_pages += 1
+
+    if not page_indices:
+        return 0.0
+    return high_image_coverage_pages / len(page_indices)
 
 
 def extract_pages(src_pdf_bytes: bytes) -> bytes:
     """
-    从PDF字节数据中随机提取最多10页，返回新的PDF字节数据
-
-    Args:
-        src_pdf_bytes: PDF文件的字节数据
-
-    Returns:
-        bytes: 提取页面后的PDF字节数据
+    Extract up to 10 random pages and return them as a new PDF.
     """
 
-    # 从字节数据加载PDF
-    pdf = pdfium.PdfDocument(src_pdf_bytes)
-
-    # 获取PDF页数
-    total_page = len(pdf)
-    if total_page == 0:
-        # 如果PDF没有页面，直接返回空文档
-        logger.warning("PDF is empty, return empty document")
-        return b''
-
-    # 选择最多10页
-    select_page_cnt = min(10, total_page)
-
-    # 从总页数中随机选择页面
-    page_indices = np.random.choice(total_page, select_page_cnt, replace=False).tolist()
-
-    # 创建一个新的PDF文档
-    sample_docs = pdfium.PdfDocument.new()
-
+    pdf = None
+    sample_docs = None
     try:
-        # 将选择的页面导入新文档
-        sample_docs.import_pages(pdf, page_indices)
-        pdf.close()
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, src_pdf_bytes)
+            total_page = len(pdf)
+            if total_page == 0:
+                logger.warning("PDF is empty, return empty document")
+                return b""
 
-        # 将新PDF保存到内存缓冲区
-        output_buffer = BytesIO()
-        sample_docs.save(output_buffer)
+            if total_page <= MAX_SAMPLE_PAGES:
+                return src_pdf_bytes
 
-        # 获取字节数据
-        return output_buffer.getvalue()
+            select_page_cnt = min(MAX_SAMPLE_PAGES, total_page)
+            page_indices = np.random.choice(
+                total_page, select_page_cnt, replace=False
+            ).tolist()
+
+            sample_docs = open_pdfium_document(pdfium.PdfDocument.new)
+            sample_docs.import_pages(pdf, page_indices)
+
+            output_buffer = BytesIO()
+            sample_docs.save(output_buffer)
+            return output_buffer.getvalue()
     except Exception as e:
-        pdf.close()
         logger.exception(e)
-        return b''  # 出错时返回空字节
+        return src_pdf_bytes
+    finally:
+        close_pdfium_document(pdf)
+        close_pdfium_document(sample_docs)
+
+
+def extract_selected_pages(src_pdf_bytes: bytes, page_indices) -> bytes:
+    """
+    Extract specific pages and return them as a new PDF.
+    """
+
+    selected_page_indices = sorted(set(page_indices))
+    if not selected_page_indices:
+        return b""
+
+    pdf = None
+    sample_docs = None
+    try:
+        with pdfium_guard():
+            pdf = open_pdfium_document(pdfium.PdfDocument, src_pdf_bytes)
+            total_page = len(pdf)
+            if total_page == 0:
+                logger.warning("PDF is empty, return empty document")
+                return b""
+
+            selected_page_indices = [
+                page_index
+                for page_index in selected_page_indices
+                if 0 <= page_index < total_page
+            ]
+            if not selected_page_indices:
+                return b""
+
+            if selected_page_indices == list(range(total_page)):
+                return src_pdf_bytes
+
+            sample_docs = open_pdfium_document(pdfium.PdfDocument.new)
+            sample_docs.import_pages(pdf, selected_page_indices)
+
+            output_buffer = BytesIO()
+            sample_docs.save(output_buffer)
+            return output_buffer.getvalue()
+    except Exception as e:
+        logger.exception(e)
+        return src_pdf_bytes
+    finally:
+        close_pdfium_document(pdf)
+        close_pdfium_document(sample_docs)
 
 
 def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:
-    """"
-    检测PDF中是否包含非法字符
     """
-    '''pdfminer比较慢,需要先随机抽取10页左右的sample'''
-    # sample_pdf_bytes = extract_pages(src_pdf_bytes)
+    Detect whether a PDF contains invalid CID-style extracted text.
+    """
+
     sample_pdf_file_like_object = BytesIO(sample_pdf_bytes)
     laparams = LAParams(
         line_overlap=0.5,
@@ -241,26 +539,25 @@ def detect_invalid_chars(sample_pdf_bytes: bytes) -> bool:
     )
     text = extract_text(pdf_file=sample_pdf_file_like_object, laparams=laparams)
     text = text.replace("\n", "")
-    # logger.info(text)
-    '''乱码文本用pdfminer提取出来的文本特征是(cid:xxx)'''
-    cid_pattern = re.compile(r'\(cid:\d+\)')
+
+    cid_pattern = re.compile(r"\(cid:\d+\)")
     matches = cid_pattern.findall(text)
     cid_count = len(matches)
     cid_len = sum(len(match) for match in matches)
     text_len = len(text)
     if text_len == 0:
-        cid_chars_radio = 0
+        cid_chars_ratio = 0
     else:
-        cid_chars_radio = cid_count/(cid_count + text_len - cid_len)
-    # logger.debug(f"cid_count: {cid_count}, text_len: {text_len}, cid_chars_radio: {cid_chars_radio}")
-    '''当一篇文章存在5%以上的文本是乱码时,认为该文档为乱码文档'''
-    if cid_chars_radio > 0.05:
-        return True  # 乱码文档
-    else:
-        return False   # 正常文档
+        cid_chars_ratio = cid_count / (cid_count + text_len - cid_len)
+
+    return cid_chars_ratio > CID_RATIO_THRESHOLD
 
 
-if __name__ == '__main__':
-    with open('/Users/myhloli/pdf/luanma2x10.pdf', 'rb') as f:
+def detect_invalid_chars_pdfminer_fallback(sample_pdf_bytes: bytes) -> bool:
+    return detect_invalid_chars(sample_pdf_bytes)
+
+
+if __name__ == "__main__":
+    with open("/Users/myhloli/pdf/luanma2x10.pdf", "rb") as f:
         p_bytes = f.read()
-        logger.info(f"PDF分类结果: {classify(p_bytes)}")
+        logger.info(f"PDF classify result: {classify(p_bytes)}")

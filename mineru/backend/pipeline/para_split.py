@@ -25,7 +25,7 @@ def __process_blocks(blocks):
         current_block = blocks[i]
 
         # 如果当前块是 text 类型
-        if current_block['type'] == 'text':
+        if current_block['type'] in [BlockType.TEXT, BlockType.INDEX, BlockType.VERTICAL_TEXT]:
             current_block['bbox_fs'] = copy.deepcopy(current_block['bbox'])
             if 'lines' in current_block and len(current_block['lines']) > 0:
                 current_block['bbox_fs'] = [
@@ -40,7 +40,12 @@ def __process_blocks(blocks):
         if i + 1 < len(blocks):
             next_block = blocks[i + 1]
             # 如果下一个块不是 text 类型且是 title 或 interline_equation 类型
-            if next_block['type'] in ['title', 'interline_equation']:
+            if next_block['type'] in [
+                BlockType.ABSTRACT,
+                BlockType.INTERLINE_EQUATION,
+                BlockType.DOC_TITLE,
+                BlockType.PARAGRAPH_TITLE,
+            ]:
                 result.append(current_group)
                 current_group = []
 
@@ -52,6 +57,12 @@ def __process_blocks(blocks):
 
 
 def __is_list_or_index_block(block):
+    if block['type'] == BlockType.VERTICAL_TEXT:
+        return BlockType.VERTICAL_TEXT
+    if block['type'] == BlockType.INDEX:
+        for line in block['lines']:
+            line[ListLineTag.IS_LIST_START_LINE] = True
+        return BlockType.INDEX
     # 一个block如果是list block 应该同时满足以下特征
     # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.block内有多个line 右侧不顶格（狗牙状）
     # 1.block内有多个line 2.block 内有多个line左侧顶格写 3.多个line以endflag结尾
@@ -78,10 +89,10 @@ def __is_list_or_index_block(block):
         last_line = block['lines'][-1]
 
         if page_weight == 0:
-            block_weight_radio = 0
+            block_weight_ratio = 0
         else:
-            block_weight_radio = block_weight / page_weight
-        # logger.info(f"block_weight_radio: {block_weight_radio}")
+            block_weight_ratio = block_weight / page_weight
+        # logger.info(f"block_weight_ratio: {block_weight_ratio}")
 
         # 如果首行左边不顶格而右边顶格,末行左边顶格而右边不顶格 （第一行可能可以右边不顶格）
         if (
@@ -134,7 +145,7 @@ def __is_list_or_index_block(block):
                 else:
                     # 右侧不顶格情况下是否有一段距离，拍脑袋用0.3block宽度做阈值
                     # block宽的阈值可以小些，block窄的阈值要大
-                    if block_weight_radio >= 0.5:
+                    if block_weight_ratio >= 0.5:
                         closed_area = 0.26 * block_weight
                     else:
                         closed_area = 0.36 * block_weight
@@ -192,7 +203,7 @@ def __is_list_or_index_block(block):
             left_close_num >= 2
             and (right_not_close_num >= 2 or line_end_flag or left_not_close_num >= 2)
             and not multiple_para_flag
-            # and block_weight_radio > 0.27
+            # and block_weight_ratio > 0.27
         ):
             # 处理一种特殊的没有缩进的list，所有行都贴左边，通过右边的空隙判断是否是item尾
             if left_close_num / len(block['lines']) > 0.8:
@@ -251,7 +262,7 @@ def __is_list_or_index_block(block):
 
 
 def __merge_2_text_blocks(block1, block2):
-    if len(block1['lines']) > 0:
+    if len(block1['lines']) > 0 and len(block2['lines']) > 0:
         first_line = block1['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
         block1_weight = block1['bbox'][2] - block1['bbox'][0]
@@ -277,6 +288,47 @@ def __merge_2_text_blocks(block1, block2):
                             # 下一个block的第一个字符是数字
                             and not span_start_with_num
                             # 下一个block的第一个字符是大写字母
+                            and not span_start_with_big_char
+                            # 下一个块的y0要比上一个块的y1小
+                            and block1['bbox'][1] < block2['bbox'][3]
+                            # 两个块任意一个块需要大于1行
+                            and (len(block1['lines']) > 1 or len(block2['lines']) > 1)
+                        ):
+                            if block1['page_num'] != block2['page_num']:
+                                for line in block1['lines']:
+                                    for span in line['spans']:
+                                        span[SplitFlag.CROSS_PAGE] = True
+                            block2['lines'].extend(block1['lines'])
+                            block1['lines'] = []
+                            block1[SplitFlag.LINES_DELETED] = True
+
+    return block1, block2
+
+
+def __merge_2_vertical_text_blocks(block1, block2):
+    if len(block1['lines']) > 0 and len(block2['lines']) > 0:
+        first_line = block1['lines'][0]
+        line_width = first_line['bbox'][2] - first_line['bbox'][0]
+        block1_height = block1['bbox'][3] - block1['bbox'][1]
+        block2_height = block2['bbox'][3] - block2['bbox'][1]
+        min_block_height = min(block1_height, block2_height)
+        if line_width > 0 and abs(block1['bbox_fs'][1] - first_line['bbox'][1]) < line_width / 2:
+            last_line = block2['lines'][-1]
+            if len(last_line['spans']) > 0:
+                last_span = last_line['spans'][-1]
+                line_width = last_line['bbox'][2] - last_line['bbox'][0]
+                if line_width > 0 and len(first_line['spans']) > 0:
+                    first_span = first_line['spans'][0]
+                    first_content = first_span.get('content', '')
+                    last_content = last_span.get('content', '')
+                    if len(first_content) > 0:
+                        span_start_with_num = first_content[0].isdigit()
+                        span_start_with_big_char = first_content[0].isupper()
+                        if (
+                            abs(block2['bbox_fs'][3] - last_line['bbox'][3]) < line_width
+                            and not last_content.endswith(LINE_STOP_FLAG)
+                            and abs(block1_height - block2_height) < min_block_height
+                            and not span_start_with_num
                             and not span_start_with_big_char
                         ):
                             if block1['page_num'] != block2['page_num']:
@@ -306,6 +358,8 @@ def __is_list_group(text_blocks_group):
     # list group的特征是一个group内的所有block都满足以下条件
     # 1.每个block都不超过3行 2. 每个block 的左边界都比较接近(逻辑简单点先不加这个规则)
     for block in text_blocks_group:
+        if block['type'] == BlockType.VERTICAL_TEXT:
+            return False
         if len(block['lines']) > 3:
             return False
     return True
@@ -334,8 +388,13 @@ def __para_merge_page(blocks):
                     prev_block = text_blocks_group[i - 1]
 
                     if (
-                        current_block['type'] == 'text'
-                        and prev_block['type'] == 'text'
+                        current_block['type'] == BlockType.VERTICAL_TEXT
+                        and prev_block['type'] == BlockType.VERTICAL_TEXT
+                    ):
+                        __merge_2_vertical_text_blocks(current_block, prev_block)
+                    elif (
+                        current_block['type'] == BlockType.TEXT
+                        and prev_block['type'] == BlockType.TEXT
                         and not is_list_group
                     ):
                         __merge_2_text_blocks(current_block, prev_block)
@@ -367,6 +426,8 @@ def para_split(page_info_list):
         for block in all_blocks:
             if 'page_num' in block:
                 if block['page_num'] == page_info['page_idx']:
+                    if block['type'] == BlockType.VERTICAL_TEXT:
+                        block['type'] = BlockType.TEXT
                     page_info['para_blocks'].append(block)
                     # 从block中删除不需要的page_num和page_size字段
                     del block['page_num']

@@ -3,13 +3,19 @@ from enum import Enum
 class BlockType:
     IMAGE = 'image'
     TABLE = 'table'
+    CHART = 'chart'
     IMAGE_BODY = 'image_body'
     TABLE_BODY = 'table_body'
+    CHART_BODY = 'chart_body'
     CAPTION = 'caption'  # generic caption type (e.g., for Word documents)
     IMAGE_CAPTION = 'image_caption'
     TABLE_CAPTION = 'table_caption'
+    CHART_CAPTION = 'chart_caption'
+    ALGORITHM_CAPTION = 'algorithm_caption'
+    FOOTNOTE = 'footnote'  # pp_layout中的vision_footnote
     IMAGE_FOOTNOTE = 'image_footnote'
     TABLE_FOOTNOTE = 'table_footnote'
+    CHART_FOOTNOTE = 'chart_footnote'
     TEXT = 'text'
     TITLE = 'title'
     INTERLINE_EQUATION = 'interline_equation'
@@ -22,6 +28,7 @@ class BlockType:
     CODE = "code"
     CODE_BODY = "code_body"
     CODE_CAPTION = "code_caption"
+    CODE_FOOTNOTE = "code_footnote"
     ALGORITHM = "algorithm"
     REF_TEXT = "ref_text"
     PHONETIC = "phonetic"
@@ -31,16 +38,26 @@ class BlockType:
     ASIDE_TEXT = "aside_text"
     PAGE_FOOTNOTE = "page_footnote"
 
+    # Added in pp_doclayout_v2
+    ABSTRACT = "abstract"
+    DOC_TITLE = "doc_title"
+    PARAGRAPH_TITLE = "paragraph_title"
+    VERTICAL_TEXT = "vertical_text"
+    SEAL = "seal"
+    HEADER_IMAGE = "header_image"
+    FOOTER_IMAGE = "footer_image"
+    FORMULA_NUMBER = "formula_number"
 
 class ContentType:
     IMAGE = 'image'
     TABLE = 'table'
+    CHART = 'chart'
     TEXT = 'text'
     INTERLINE_EQUATION = 'interline_equation'
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
-    CODE = 'code'
     HYPERLINK = 'hyperlink'
+    SEAL = 'seal'
 
 
 class ContentTypeV2:
@@ -48,7 +65,9 @@ class ContentTypeV2:
     ALGORITHM = "algorithm"
     EQUATION_INTERLINE = 'equation_interline'
     IMAGE = 'image'
+    SEAL = 'seal'
     TABLE = 'table'
+    CHART = 'chart'
     TABLE_SIMPLE = 'simple_table'
     TABLE_COMPLEX = 'complex_table'
     LIST = 'list'
@@ -69,24 +88,6 @@ class ContentTypeV2:
     PAGE_FOOTNOTE = "page_footnote"
 
 
-class CategoryId:
-    Title = 0
-    Text = 1
-    Abandon = 2
-    ImageBody = 3
-    ImageCaption = 4
-    TableBody = 5
-    TableCaption = 6
-    TableFootnote = 7
-    InterlineEquation_Layout = 8
-    InterlineEquationNumber_Layout = 9
-    InlineEquation = 13
-    InterlineEquation_YOLO = 14
-    OcrText = 15
-    LowScoreText = 16
-    ImageFootnote = 101
-
-
 class MakeMode:
     MM_MD = 'mm_markdown'
     NLP_MD = 'nlp_markdown'
@@ -99,12 +100,10 @@ class ModelPath:
     vlm_root_modelscope = "OpenDataLab/MinerU2.5-2509-1.2B"
     pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
     pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
-    doclayout_yolo = "models/Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt"
-    yolo_v8_mfd = "models/MFD/YOLO/yolo_v8_ft.pt"
+    pp_doclayout_v2 = "models/Layout/PP-DocLayoutV2"
     unimernet_small = "models/MFR/unimernet_hf_small_2503"
     pp_formulanet_plus_m = "models/MFR/pp_formulanet_plus_m"
     pytorch_paddle = "models/OCR/paddleocr_torch"
-    layout_reader = "models/ReadingOrder/layout_reader"
     slanet_plus = "models/TabRec/SlanetPlus/slanet-plus.onnx"
     unet_structure = "models/TabRec/UnetStructure/unet.onnx"
     paddle_table_cls = "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx"

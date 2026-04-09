@@ -1,74 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
-from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.enum_class import ContentType
 from mineru.utils.ocr_utils import _is_overlaps_y_exceeds_threshold, _is_overlaps_x_exceeds_threshold
 
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
-
-def fill_spans_in_blocks(blocks, spans, radio):
-    """将allspans中的span按位置关系，放入blocks中."""
-    block_with_spans = []
-    for block in blocks:
-        block_type = block[7]
-        block_bbox = block[0:4]
-        block_dict = {
-            'type': block_type,
-            'bbox': block_bbox,
-        }
-        if block_type in [
-            BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE,
-            BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE
-        ]:
-            block_dict['group_id'] = block[-1]
-        block_spans = []
-        for span in spans:
-            temp_radio = radio
-            span_bbox = span['bbox']
-            if span['type'] in [ContentType.IMAGE, ContentType.TABLE]:
-                temp_radio = 0.9
-            if calculate_overlap_area_in_bbox1_area_ratio(span_bbox, block_bbox) > temp_radio and span_block_type_compatible(span['type'], block_type):
-                block_spans.append(span)
-
-        block_dict['spans'] = block_spans
-        block_with_spans.append(block_dict)
-
-        # 从spans删除已经放入block_spans中的span
-        if len(block_spans) > 0:
-            for span in block_spans:
-                spans.remove(span)
-
-    return block_with_spans, spans
-
-
-def span_block_type_compatible(span_type, block_type):
-    if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
-        return block_type in [
-            BlockType.TEXT,
-            BlockType.TITLE,
-            BlockType.IMAGE_CAPTION,
-            BlockType.IMAGE_FOOTNOTE,
-            BlockType.TABLE_CAPTION,
-            BlockType.TABLE_FOOTNOTE,
-            BlockType.DISCARDED
-        ]
-    elif span_type == ContentType.INTERLINE_EQUATION:
-        return block_type in [BlockType.INTERLINE_EQUATION, BlockType.TEXT]
-    elif span_type == ContentType.IMAGE:
-        return block_type in [BlockType.IMAGE_BODY]
-    elif span_type == ContentType.TABLE:
-        return block_type in [BlockType.TABLE_BODY]
-    else:
-        return False
-
-
-def fix_discarded_block(discarded_block_with_spans):
-    fix_discarded_blocks = []
-    for block in discarded_block_with_spans:
-        block = fix_text_block(block)
-        fix_discarded_blocks.append(block)
-    return fix_discarded_blocks
-
 
 def fix_text_block(block):
     # 文本block中的公式span都应该转换成行内type
@@ -216,29 +151,3 @@ def vertical_line_sort_spans_from_top_to_bottom(vertical_lines):
             'spans': line,
         })
     return line_objects
-
-
-def fix_block_spans(block_with_spans):
-    fix_blocks = []
-    for block in block_with_spans:
-        block_type = block['type']
-
-        if block_type in [BlockType.TEXT, BlockType.TITLE,
-                          BlockType.IMAGE_CAPTION, BlockType.IMAGE_CAPTION,
-                          BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE
-                          ]:
-            block = fix_text_block(block)
-        elif block_type in [BlockType.INTERLINE_EQUATION, BlockType.IMAGE_BODY, BlockType.TABLE_BODY]:
-            block = fix_interline_block(block)
-        else:
-            continue
-        fix_blocks.append(block)
-    return fix_blocks
-
-
-def fix_interline_block(block):
-    block_lines = merge_spans_to_line(block['spans'])
-    sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
-    block['lines'] = sort_block_lines
-    del block['spans']
-    return block

@@ -125,11 +125,6 @@ docker run --privileged=true \
       <td>🟢</td>
       <td>🟢</td>
     </tr>
-    <tr>
-      <td colspan="2">数据并行 (--data-parallel-size/--dp)</td>
-      <td>🔴</td>
-      <td>🔴</td>
-    </tr>
   </tbody>
 </table>
 
