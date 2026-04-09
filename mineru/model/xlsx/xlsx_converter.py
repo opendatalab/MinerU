@@ -312,13 +312,6 @@ class XlsxConverter:
                     # 拼接属性字符串
                     attr_str = " " + " ".join(attrs) if attrs else ""
 
-                    # 生成样式字符串
-                    style_parts = []
-                    for k, v in cell.styles.items():
-                        style_parts.append(f"{k}: {v}")
-                    if style_parts:
-                        attr_str += f' style="{"; ".join(style_parts)}"'
-
                     # 生成 HTML 单元格，富文本片段避免二次转义
                     text_content = ""
                     if cell.text:
@@ -336,7 +329,11 @@ class XlsxConverter:
                         for formula in self.math_map[(r, c)]:
                             text_content += self.equation_bookends.format(EQ=formula)
 
-                    lines.append(f"    <{tag}{attr_str}><p>{text_content}</p></{tag}>")
+                    inner_html = self._render_cell_inner_html(
+                        text_content,
+                        cell.text_is_html,
+                    )
+                    lines.append(f"    <{tag}{attr_str}>{inner_html}</{tag}>")
                 else:
                     # 如果既没被覆盖，又没有数据对象（理论上 _find_table_bounds 逻辑应避免此情况），生成空单元格
                     lines.append("    <td></td>")
@@ -786,33 +783,47 @@ class XlsxConverter:
 
         return html.escape(href, quote=True)
 
-    def _inline_font_to_style(self, inline_font) -> str:
-        if inline_font is None:
-            return ""
+    @staticmethod
+    def _apply_inline_font_tags(text_html: str, inline_font) -> str:
+        if not text_html or inline_font is None:
+            return text_html
 
-        style_parts = []
-        if getattr(inline_font, "b", False):
-            style_parts.append("font-weight: bold")
-        if getattr(inline_font, "i", False):
-            style_parts.append("font-style: italic")
+        wrapped = text_html
+        vert_align = getattr(inline_font, "vertAlign", None)
+        if vert_align == "superscript":
+            wrapped = f"<sup>{wrapped}</sup>"
+        elif vert_align == "subscript":
+            wrapped = f"<sub>{wrapped}</sub>"
 
-        text_decorations = []
-        if getattr(inline_font, "u", None):
-            text_decorations.append("underline")
         if getattr(inline_font, "strike", False):
-            text_decorations.append("line-through")
-        if text_decorations:
-            style_parts.append(f"text-decoration: {' '.join(text_decorations)}")
+            wrapped = f"<s>{wrapped}</s>"
+        if getattr(inline_font, "u", None):
+            wrapped = f"<u>{wrapped}</u>"
+        if getattr(inline_font, "i", False):
+            wrapped = f"<em>{wrapped}</em>"
+        if getattr(inline_font, "b", False):
+            wrapped = f"<strong>{wrapped}</strong>"
 
-        color = getattr(inline_font, "color", None)
-        color_value = getattr(color, "rgb", None) if color else None
-        if isinstance(color_value, str):
-            if len(color_value) == 8:
-                style_parts.append(f"color: #{color_value[2:]}")
-            elif len(color_value) == 6:
-                style_parts.append(f"color: #{color_value}")
+        return wrapped
 
-        return "; ".join(style_parts)
+    @staticmethod
+    def _contains_block_level_html(content: str) -> bool:
+        return bool(
+            re.search(
+                r"<\s*(p|ul|ol|li|div|table|blockquote|pre|h[1-6])\b",
+                content,
+                re.IGNORECASE,
+            )
+        )
+
+    def _render_cell_inner_html(self, content: str, is_html: bool) -> str:
+        if not content:
+            return "<p></p>"
+
+        if is_html and self._contains_block_level_html(content):
+            return content
+
+        return f"<p>{content}</p>"
 
     def _cell_value_to_html(self, cell) -> tuple[str, bool]:
         if cell.value is None:
@@ -829,11 +840,12 @@ class XlsxConverter:
                     part_text = self._escape_text_with_line_breaks(
                         str(getattr(part, "text", ""))
                     )
-                    style_str = self._inline_font_to_style(getattr(part, "font", None))
-                    if style_str:
-                        html_parts.append(f'<span style="{style_str}">{part_text}</span>')
-                    else:
-                        html_parts.append(part_text)
+                    html_parts.append(
+                        self._apply_inline_font_tags(
+                            part_text,
+                            getattr(part, "font", None),
+                        )
+                    )
                 else:
                     html_parts.append(self._escape_text_with_line_breaks(str(part)))
 
