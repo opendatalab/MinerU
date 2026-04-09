@@ -208,6 +208,18 @@ inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
 CJK_LANGS = {'zh', 'ja', 'ko'}
+REFERENCE_HEADING_PATTERN = re.compile(r"^##\s+References\s*$", re.IGNORECASE)
+REF_START_PATTERN = re.compile(r"^(\d+)\.\s+(.*\S)\s*$")
+TAG_PATTERN = re.compile(r"\\tag\{(\d+)\}")
+CITATION_PATTERN = re.compile(r"\[(\d+(?:\s*[–-]\s*\d+)?(?:\s*,\s*\d+(?:\s*[–-]\s*\d+)?)*)\]")
+EQ_PREFIX_PATTERN = re.compile(r"(?:Eq\.|Eqs\.|Equation|Equations)")
+PAREN_NUMBER_PATTERN = re.compile(r"\((\d+)\)")
+SINGLE_EQ_REF_PATTERN = re.compile(r"\b(Eq\.|Equation)\s*\((\d+)\)")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]\n]+\]\([^)]+\)")
+FIGURE_CAPTION_PATTERN = re.compile(r"^Fig\.\s+(\d+)([A-Za-z]?)\b")
+FIGURE_REF_PATTERN = re.compile(r"\b(Fig\.|Figure)\s+(\d+)([A-Za-z]?)\b")
+TABLE_CAPTION_PATTERN = re.compile(r"^Table\s+(\d+)([A-Za-z]?)\b")
+TABLE_REF_PATTERN = re.compile(r"\b(Table)\s+(\d+)([A-Za-z]?)\b")
 
 
 def _prefix_table_img_src(html, img_buket_path):
@@ -240,6 +252,244 @@ def _replace_eq_tags_in_table_html(html):
 def _format_embedded_html(html, img_buket_path):
     """Normalize embedded table HTML for markdown/content outputs."""
     return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
+
+
+def _render_citation_body(body, available_refs, unresolved_refs):
+    parts = [part.strip() for part in body.split(",")]
+    rendered_parts = []
+    for part in parts:
+        range_match = re.fullmatch(r"(\d+)\s*([–-])\s*(\d+)", part)
+        if range_match:
+            start = int(range_match.group(1))
+            dash = range_match.group(2)
+            end = int(range_match.group(3))
+            left = f"[{start}](#ref-{start})" if start in available_refs else str(start)
+            right = f"[{end}](#ref-{end})" if end in available_refs else str(end)
+            if start not in available_refs:
+                unresolved_refs.add(start)
+            if end not in available_refs:
+                unresolved_refs.add(end)
+            rendered_parts.append(f"{left}{dash}{right}")
+            continue
+        if part.isdigit():
+            number = int(part)
+            if number in available_refs:
+                rendered_parts.append(f"[{number}](#ref-{number})")
+            else:
+                unresolved_refs.add(number)
+                rendered_parts.append(part)
+            continue
+        rendered_parts.append(part)
+    return "[" + ", ".join(rendered_parts) + "]"
+
+
+def _link_citations(text, available_refs, unresolved_refs):
+    protected_links = []
+
+    def protect(match):
+        protected_links.append(match.group(0))
+        return f"__LINK_PLACEHOLDER_{len(protected_links) - 1}__"
+
+    protected_text = MARKDOWN_LINK_PATTERN.sub(protect, text)
+    linked_text = CITATION_PATTERN.sub(
+        lambda match: _render_citation_body(match.group(1), available_refs, unresolved_refs),
+        protected_text,
+    )
+    for index, value in enumerate(protected_links):
+        linked_text = linked_text.replace(f"__LINK_PLACEHOLDER_{index}__", value)
+    return linked_text
+
+
+def _link_equation_references(text, available_eqs, unresolved_eqs):
+    if not EQ_PREFIX_PATTERN.search(text) or "](#eq-" in text:
+        return text
+
+    def link_single_ref(match):
+        prefix = match.group(1)
+        number = int(match.group(2))
+        if number not in available_eqs:
+            unresolved_eqs.add(number)
+            return match.group(0)
+        return f"[{prefix} ({number})](#eq-{number})"
+
+    protected_links = []
+
+    def protect(match):
+        protected_links.append(match.group(0))
+        return f"__EQ_LINK_PLACEHOLDER_{len(protected_links) - 1}__"
+
+    text = SINGLE_EQ_REF_PATTERN.sub(link_single_ref, text)
+    protected_text = MARKDOWN_LINK_PATTERN.sub(protect, text)
+
+    def repl(match):
+        number = int(match.group(1))
+        if number not in available_eqs:
+            unresolved_eqs.add(number)
+            return match.group(0)
+        return f"([{number}](#eq-{number}))"
+
+    linked_text = PAREN_NUMBER_PATTERN.sub(repl, protected_text)
+    for index, value in enumerate(protected_links):
+        linked_text = linked_text.replace(f"__EQ_LINK_PLACEHOLDER_{index}__", value)
+    return linked_text
+
+
+def _link_figure_references(text, available_figures, unresolved_figures):
+    if "](#fig-" in text:
+        return text
+
+    def repl(match):
+        prefix = match.group(1)
+        ident = f"{match.group(2)}{match.group(3)}"
+        target = ident
+        if target not in available_figures and match.group(3):
+            parent_ident = match.group(2)
+            if parent_ident in available_figures:
+                target = parent_ident
+        if target not in available_figures:
+            unresolved_figures.add(ident)
+            return match.group(0)
+        return f"[{prefix} {ident}](#fig-{target})"
+
+    return FIGURE_REF_PATTERN.sub(repl, text)
+
+
+def _link_table_references(text, available_tables, unresolved_tables):
+    if "](#table-" in text:
+        return text
+
+    def repl(match):
+        prefix = match.group(1)
+        ident = f"{match.group(2)}{match.group(3)}"
+        if ident not in available_tables:
+            unresolved_tables.add(ident)
+            return match.group(0)
+        return f"[{prefix} {ident}](#table-{ident})"
+
+    return TABLE_REF_PATTERN.sub(repl, text)
+
+
+def _enhance_markdown_navigation(markdown_text):
+    if not markdown_text.strip():
+        return markdown_text
+
+    lines = markdown_text.splitlines()
+    available_refs = set()
+    available_eqs = set()
+    available_figures = set()
+    available_tables = set()
+    in_math_block = False
+    in_reference_section = False
+
+    for line in lines:
+        stripped = line.strip()
+        if REFERENCE_HEADING_PATTERN.match(stripped):
+            in_reference_section = True
+            continue
+        if stripped.startswith("## ") and not REFERENCE_HEADING_PATTERN.match(stripped):
+            in_reference_section = False
+        if stripped == "$$":
+            in_math_block = not in_math_block
+            continue
+        if in_math_block:
+            available_eqs.update(int(match.group(1)) for match in TAG_PATTERN.finditer(line))
+        if in_reference_section:
+            ref_match = REF_START_PATTERN.match(stripped)
+            if ref_match:
+                available_refs.add(int(ref_match.group(1)))
+        fig_match = FIGURE_CAPTION_PATTERN.match(stripped)
+        if fig_match:
+            available_figures.add(f"{fig_match.group(1)}{fig_match.group(2)}")
+        table_match = TABLE_CAPTION_PATTERN.match(stripped)
+        if table_match:
+            available_tables.add(f"{table_match.group(1)}{table_match.group(2)}")
+
+    unresolved_refs = set()
+    unresolved_eqs = set()
+    unresolved_figures = set()
+    unresolved_tables = set()
+    processed_lines = []
+    in_reference_section = False
+    previous_line_was_reference = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        is_heading = REFERENCE_HEADING_PATTERN.match(stripped) or stripped.startswith("## ")
+        is_reference_line = in_reference_section and REF_START_PATTERN.match(stripped) is not None
+        is_figure_caption = FIGURE_CAPTION_PATTERN.match(stripped) is not None
+        is_table_caption = TABLE_CAPTION_PATTERN.match(stripped) is not None
+
+        if stripped == "$$":
+            math_block_lines = [line]
+            index += 1
+            while index < len(lines):
+                math_block_lines.append(lines[index])
+                if lines[index].strip() == "$$":
+                    break
+                index += 1
+            math_block_text = "\n".join(math_block_lines)
+            for match in TAG_PATTERN.finditer(math_block_text):
+                processed_lines.append(f'<a id="eq-{int(match.group(1))}"></a>')
+            processed_lines.extend(math_block_lines)
+            previous_line_was_reference = False
+            index += 1
+            continue
+
+        if REFERENCE_HEADING_PATTERN.match(stripped):
+            in_reference_section = True
+            processed_lines.append(line)
+            previous_line_was_reference = False
+            index += 1
+            continue
+
+        if is_heading and not REFERENCE_HEADING_PATTERN.match(stripped):
+            in_reference_section = False
+
+        if in_reference_section and stripped == "":
+            if previous_line_was_reference:
+                index += 1
+                continue
+            processed_lines.append(line)
+            index += 1
+            continue
+
+        if is_reference_line:
+            ref_number = int(REF_START_PATTERN.match(stripped).group(1))
+            if processed_lines and processed_lines[-1].strip() == "":
+                if previous_line_was_reference:
+                    processed_lines.pop()
+            processed_lines.append(f'<a id="ref-{ref_number}"></a>{stripped}')
+            previous_line_was_reference = True
+            index += 1
+            continue
+
+        previous_line_was_reference = False
+
+        if is_figure_caption:
+            figure_match = FIGURE_CAPTION_PATTERN.match(stripped)
+            figure_id = f"{figure_match.group(1)}{figure_match.group(2)}"
+            processed_lines.append(f'<a id="fig-{figure_id}"></a>')
+            processed_lines.append(line)
+            index += 1
+            continue
+
+        if is_table_caption:
+            table_match = TABLE_CAPTION_PATTERN.match(stripped)
+            table_id = f"{table_match.group(1)}{table_match.group(2)}"
+            processed_lines.append(f'<a id="table-{table_id}"></a>')
+            processed_lines.append(line)
+            index += 1
+            continue
+
+        linked = _link_equation_references(line, available_eqs, unresolved_eqs)
+        linked = _link_figure_references(linked, available_figures, unresolved_figures)
+        linked = _link_table_references(linked, available_tables, unresolved_tables)
+        linked = _link_citations(linked, available_refs, unresolved_refs)
+        processed_lines.append(linked)
+        index += 1
+
+    return "\n".join(processed_lines)
 
 
 def merge_para_with_text(para_block):
@@ -998,7 +1248,8 @@ def union_make(pdf_info_dict: list,
             output_content.append(page_contents)
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
-        return '\n\n'.join(output_content)
+        markdown_text = '\n\n'.join(output_content)
+        return _enhance_markdown_navigation(markdown_text)
     elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     else:
