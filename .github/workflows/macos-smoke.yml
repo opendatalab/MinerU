@@ -1,0 +1,43 @@
+name: macos-smoke
+
+on:
+  pull_request:
+    paths-ignore:
+      - "**.md"
+  push:
+    branches:
+      - "master"
+      - "dev"
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  macos-install-smoke:
+    if: github.repository == 'opendatalab/MinerU'
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python 3.12 virtual environment
+        run: |
+          uv --version
+          uv venv --python 3.12
+
+      - name: Install MinerU core dependencies
+        run: |
+          source .venv/bin/activate
+          uv pip install .[core]
+
+      - name: Run macOS smoke checks
+        run: |
+          source .venv/bin/activate
+          mineru --version
+          mineru-models-download --help
+          mineru-api --help
+          mineru-gradio --help

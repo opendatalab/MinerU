@@ -119,6 +119,24 @@ uv pip install -e .[all]
 > `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
 > If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
+> [!TIP]
+> On Apple Silicon, `uv` is the recommended installation path.
+> After installation, verify the local CLI entrypoints before running your first parse job:
+> ```bash
+> mineru --version
+> mineru-models-download --help
+> mineru-api --help
+> mineru-gradio --help
+> ```
+> If you are in a region where `huggingface` is unstable or inaccessible, switch the model source before your first real parse run:
+> ```bash
+> export MINERU_MODEL_SOURCE=modelscope
+> ```
+> The first successful parse may trigger model downloads. This is expected behavior, not an installation failure. If you want the most predictable first run on macOS, start with the `pipeline` backend:
+> ```bash
+> mineru -p <input_path> -o <output_path> -b pipeline
+> ```
+
 ---
  
 #### Deploy MinerU using Docker
@@ -133,6 +151,7 @@ If your device meets the GPU acceleration requirements in the table above, you c
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
+
 If your device does not meet the GPU acceleration requirements, you can specify the backend as `pipeline` to run in a pure CPU environment:
 ```bash
 mineru -p <input_path> -o <output_path> -b pipeline

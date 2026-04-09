@@ -124,6 +124,24 @@ uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
 > `mineru[all]`包含所有核心功能，兼容Windows / Linux / macOS系统，适合绝大多数用户。
 > 如果您需要指定vlm模型的推理框架，或是仅准备在边缘设备安装轻量版client端，可以参考文档[扩展模块安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/extension_modules/)。
 
+> [!TIP]
+> 在 Apple Silicon 上，推荐优先使用 `uv` 进行安装。
+> 安装完成后，建议先验证本地 CLI 入口是否可用，再开始首次解析：
+> ```bash
+> mineru --version
+> mineru-models-download --help
+> mineru-api --help
+> mineru-gradio --help
+> ```
+> 如果您所在网络环境访问 `huggingface` 不稳定，建议在首次真正解析前先切换模型源：
+> ```bash
+> export MINERU_MODEL_SOURCE=modelscope
+> ```
+> 首次成功解析时触发模型下载属于预期行为，并不代表安装失败。如果您希望在 macOS 上先走一条更稳妥的路径，建议从 `pipeline` 后端开始：
+> ```bash
+> mineru -p <input_path> -o <output_path> -b pipeline
+> ```
+
 ---
  
 #### 使用docker部署Mineru
