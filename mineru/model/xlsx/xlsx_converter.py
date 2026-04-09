@@ -4,10 +4,12 @@ import posixpath
 import zipfile
 import re
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 from typing import BinaryIO, Annotated, cast
 
 
 from openpyxl import load_workbook
+from openpyxl.cell.rich_text import CellRichText
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.drawing.image import Image as XlsImage
 from PIL import Image
@@ -65,6 +67,7 @@ class ExcelCell(BaseModel):
     col_span: int
     styles: dict = Field(default_factory=dict)
     media: list[str] = Field(default_factory=list)
+    text_is_html: bool = False
 
 
 class ExcelTable(BaseModel):
@@ -116,7 +119,11 @@ class XlsxConverter:
         if hasattr(file_stream, "seek"):
             file_stream.seek(0)
 
-        self.workbook = load_workbook(filename=file_stream, data_only=True)
+        self.workbook = load_workbook(
+            filename=file_stream,
+            data_only=True,
+            rich_text=True,
+        )
         if self.workbook is not None:
             # 遍历工作簿中的所有工作表
             for idx, name in enumerate(self.workbook.sheetnames):
@@ -312,8 +319,10 @@ class XlsxConverter:
                     if style_parts:
                         attr_str += f' style="{"; ".join(style_parts)}"'
 
-                    # 生成 HTML 单元格，注意对文本进行 HTML 转义
-                    text_content = html.escape(cell.text) if cell.text else ""
+                    # 生成 HTML 单元格，富文本片段避免二次转义
+                    text_content = ""
+                    if cell.text:
+                        text_content = cell.text if cell.text_is_html else html.escape(cell.text)
 
                     # 添加媒体内容 (Images)
                     if cell.media:
@@ -603,11 +612,14 @@ class XlsxConverter:
                     continue
 
                 cell = sheet.cell(row=ri + 1, column=rj + 1)
-                cell_text = str(cell.value) if cell.value is not None else ""
+                raw_cell_text = str(cell.value) if cell.value is not None else ""
+                cell_text = ""
+                text_is_html = False
                 media_content = ""
-                if "DISPIMG" in cell_text:
-                    media_content = self._get_cell_image(cell_text)
-                    cell_text = ""
+                if "DISPIMG" in raw_cell_text:
+                    media_content = self._get_cell_image(raw_cell_text)
+                else:
+                    cell_text, text_is_html = self._cell_value_to_html(cell)
 
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
@@ -627,6 +639,7 @@ class XlsxConverter:
                         col_span=col_span,
                         styles=self._extract_cell_style(cell),
                         media=[media_content] if media_content else [],
+                        text_is_html=text_is_html,
                     )
                 )
 
@@ -730,6 +743,111 @@ class XlsxConverter:
             return {}
 
         return self.cell_image_map
+
+    @staticmethod
+    def _escape_text_with_line_breaks(text: str) -> str:
+        return (
+            html.escape(text)
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\n", "<br>")
+        )
+
+    @staticmethod
+    def _get_cell_hyperlink_target(cell) -> str:
+        hyperlink = getattr(cell, "hyperlink", None)
+        if not hyperlink:
+            return ""
+
+        target = getattr(hyperlink, "target", None)
+        if target:
+            return str(target)
+
+        location = getattr(hyperlink, "location", None)
+        if location:
+            return f"#{location}"
+
+        return ""
+
+    @staticmethod
+    def _sanitize_hyperlink_target(target: str) -> str:
+        href = target.strip()
+        if not href:
+            return ""
+
+        if href.lower().startswith(("javascript:", "data:", "vbscript:")):
+            return ""
+
+        parsed = urlparse(href)
+        allowed_schemes = {"http", "https", "mailto", "ftp"}
+        scheme = parsed.scheme.lower() if parsed.scheme else ""
+        if scheme and scheme not in allowed_schemes:
+            return ""
+
+        return html.escape(href, quote=True)
+
+    def _inline_font_to_style(self, inline_font) -> str:
+        if inline_font is None:
+            return ""
+
+        style_parts = []
+        if getattr(inline_font, "b", False):
+            style_parts.append("font-weight: bold")
+        if getattr(inline_font, "i", False):
+            style_parts.append("font-style: italic")
+
+        text_decorations = []
+        if getattr(inline_font, "u", None):
+            text_decorations.append("underline")
+        if getattr(inline_font, "strike", False):
+            text_decorations.append("line-through")
+        if text_decorations:
+            style_parts.append(f"text-decoration: {' '.join(text_decorations)}")
+
+        color = getattr(inline_font, "color", None)
+        color_value = getattr(color, "rgb", None) if color else None
+        if isinstance(color_value, str):
+            if len(color_value) == 8:
+                style_parts.append(f"color: #{color_value[2:]}")
+            elif len(color_value) == 6:
+                style_parts.append(f"color: #{color_value}")
+
+        return "; ".join(style_parts)
+
+    def _cell_value_to_html(self, cell) -> tuple[str, bool]:
+        if cell.value is None:
+            return "", False
+
+        link_target = self._sanitize_hyperlink_target(
+            self._get_cell_hyperlink_target(cell)
+        )
+
+        if isinstance(cell.value, CellRichText):
+            html_parts = []
+            for part in cell.value:
+                if hasattr(part, "text"):
+                    part_text = self._escape_text_with_line_breaks(
+                        str(getattr(part, "text", ""))
+                    )
+                    style_str = self._inline_font_to_style(getattr(part, "font", None))
+                    if style_str:
+                        html_parts.append(f'<span style="{style_str}">{part_text}</span>')
+                    else:
+                        html_parts.append(part_text)
+                else:
+                    html_parts.append(self._escape_text_with_line_breaks(str(part)))
+
+            rich_text_html = "".join(html_parts)
+            if link_target and rich_text_html:
+                rich_text_html = f'<a href="{link_target}">{rich_text_html}</a>'
+            return rich_text_html, True
+
+        plain_text = str(cell.value)
+        if link_target and plain_text:
+            escaped_text = self._escape_text_with_line_breaks(plain_text)
+            return f'<a href="{link_target}">{escaped_text}</a>', True
+
+        return plain_text, False
 
     def _extract_cell_style(self, cell):
         """Extract styles from an openpyxl cell."""
