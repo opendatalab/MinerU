@@ -1,4 +1,6 @@
+import base64
 import os
+import re
 import time
 
 import cv2
@@ -10,8 +12,8 @@ from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType
-from mineru.utils.hash_utils import bytes_md5
+from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.hash_utils import bytes_md5, str_sha256
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
@@ -29,6 +31,65 @@ if llm_aided_config:
         except Exception as e:
             logger.warning("The heading level feature cannot be used. If you need to use the heading level feature, "
                             "please execute `pip install mineru[core]` to install the required packages.")
+
+
+def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
+    """Persist a data-URI image via image_writer and return a relative path."""
+    m = re.match(r'data:image/(\w+);base64,(.+)', b64_data_uri, re.DOTALL)
+    if not m:
+        logger.warning(f"Unrecognized image_base64 format in page {page_index}, skipping.")
+        return None
+
+    fmt = m.group(1)
+    ext = "jpg" if fmt == "jpeg" else fmt
+    try:
+        img_bytes = base64.b64decode(m.group(2))
+    except Exception as e:
+        logger.warning(f"Failed to decode image_base64 on page {page_index}: {e}")
+        return None
+
+    img_path = f"{str_sha256(b64_data_uri)}.{ext}"
+    image_writer.write(img_path, img_bytes)
+    return img_path
+
+
+def _replace_inline_base64_img_src(markup: str, image_writer, page_index: int) -> str:
+    """Replace inline base64 image sources in table HTML with local relative paths."""
+    if not markup or "base64," not in markup:
+        return markup
+
+    def _replace_src(match, _writer=image_writer, _idx=page_index):
+        img_path = _save_base64_image(match.group(1), _writer, _idx)
+        if img_path:
+            return f'src="{img_path}"'
+        return match.group(0)
+
+    return re.sub(
+        r'src="(data:image/[^"]+)"',
+        _replace_src,
+        markup,
+    )
+
+
+def _replace_inline_table_images(table_blocks: list[dict], image_writer, page_index: int) -> None:
+    """Persist inline base64 images embedded inside table HTML."""
+    if not image_writer:
+        return
+
+    for block in table_blocks:
+        for sub_block in block.get("blocks", []):
+            if sub_block.get("type") != BlockType.TABLE_BODY:
+                continue
+
+            for line in sub_block.get("lines", []):
+                for span in line.get("spans", []):
+                    if span.get("type") != ContentType.TABLE:
+                        continue
+                    span["html"] = _replace_inline_base64_img_src(
+                        span.get("html", ""),
+                        image_writer,
+                        page_index,
+                    )
 
 
 def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index) -> dict:
@@ -82,6 +143,8 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     for span in all_spans:
         if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
+
+    _replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_blocks = []
     page_blocks.extend([

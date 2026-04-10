@@ -1,4 +1,6 @@
 import os
+import re
+from html import unescape
 
 from loguru import logger
 
@@ -20,6 +22,38 @@ display_left_delimiter = delimiters['display']['left']
 display_right_delimiter = delimiters['display']['right']
 inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
+
+
+def _prefix_table_img_src(html, img_buket_path):
+    """Prefix non-data image sources in table HTML with img_buket_path."""
+    if not html or not img_buket_path:
+        return html
+
+    return re.sub(
+        r'src="(?!data:)([^"]+)"',
+        lambda match: f'src="{img_buket_path}/{match.group(1)}"',
+        html,
+    )
+
+
+def _replace_eq_tags_in_table_html(html):
+    """Replace <eq>...</eq> tags in table HTML with inline math delimiters."""
+    if not html:
+        return html
+
+    return re.sub(
+        r'<eq>(.*?)</eq>',
+        lambda match: (
+            f" {inline_left_delimiter}{unescape(match.group(1))}{inline_right_delimiter} "
+        ),
+        html,
+        flags=re.DOTALL,
+    )
+
+
+def _format_embedded_html(html, img_buket_path):
+    """Normalize embedded table HTML for markdown/content outputs."""
+    return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
 
 
 def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
@@ -153,7 +187,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
                                     # if processed by table model
                                     if table_enable:
                                         if span.get('html', ''):
-                                            para_text += f"\n{span['html']}\n"
+                                            para_text += f"\n{_format_embedded_html(span['html'], img_buket_path)}\n"
                                         elif span.get('image_path', ''):
                                             para_text += f"![]({img_buket_path}/{span['image_path']})"
                                     else:
@@ -247,7 +281,10 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
                         if span['type'] == ContentType.TABLE:
 
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = _format_embedded_html(
+                                    span['html'],
+                                    img_buket_path,
+                                )
 
                             if span.get('image_path', ''):
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
@@ -373,16 +410,17 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
         table_caption = []
         table_footnote = []
         image_path, html = get_body_data(para_block)
+        table_html = _format_embedded_html(html, img_buket_path)
         image_source = {
             'path': f"{img_buket_path}/{image_path}",
         }
-        if html.count("<table") > 1:
+        if table_html.count("<table") > 1:
             table_nest_level = 2
         else:
             table_nest_level = 1
         if (
-                "colspan" in html or
-                "rowspan" in html or
+                "colspan" in table_html or
+                "rowspan" in table_html or
                 table_nest_level > 1
         ):
             table_type = ContentTypeV2.TABLE_COMPLEX
@@ -400,7 +438,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
                 'image_source': image_source,
                 'table_caption': table_caption,
                 'table_footnote': table_footnote,
-                'html': html,
+                'html': table_html,
                 'table_type': table_type,
                 'table_nest_level': table_nest_level,
             }
