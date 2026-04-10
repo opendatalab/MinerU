@@ -471,7 +471,7 @@ class PptxConverter:
             # 段落不是列表项，关闭当前 shape 的列表上下文
             self.list_block_stack.clear()
 
-            p_text = self._build_paragraph_plain_text(paragraph)
+            p_text = self._build_paragraph_rich_text(paragraph, shape)
             if len(p_text.strip()) == 0:
                 continue
 

@@ -276,6 +276,7 @@ class XlsxConverter:
         """
         # 1. 创建坐标到单元格的映射，方便快速查找
         cell_map = {(c.row, c.col): c for c in excel_table.data}
+        table_anchor = excel_table.anchor
 
         # 2. 用于记录已被合并单元格占据的位置，避免重复生成 td
         covered_cells = set()
@@ -325,7 +326,7 @@ class XlsxConverter:
                         else:
                             text_content = media_content
                     # 添加公式
-                    if (r, c) in self.math_map:
+                    if (table_anchor[0] + r, table_anchor[1] + c) in self.math_map:
                         for formula in self.math_map[(r, c)]:
                             text_content += self.equation_bookends.format(EQ=formula)
 
