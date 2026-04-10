@@ -23,6 +23,13 @@ not_extract_list = [item.value for item in NotExtractType] + [
 ]
 
 
+def _copy_raw_text_block_metadata(raw_block_type, block_info, block):
+    if raw_block_type != BlockType.TEXT:
+        return
+    if "merge_prev" in block_info:
+        block["merge_prev"] = block_info["merge_prev"]
+
+
 class MagicModel:
     def __init__(
         self,
@@ -272,6 +279,7 @@ class MagicModel:
                 }
                 if block_sub_type:
                     block["sub_type"] = block_sub_type
+                _copy_raw_text_block_metadata(raw_block_type, block_info, block)
             else:
                 block_spans = []
                 for span in page_text_inline_formula_spans:
@@ -296,6 +304,7 @@ class MagicModel:
                     "index": index,
                 }
                 block = fix_text_block(block)
+                _copy_raw_text_block_metadata(raw_block_type, block_info, block)
 
             blocks.append(block)
 

@@ -16,6 +16,13 @@ from mineru.utils.visual_magic_model_utils import (
 )
 
 
+def _copy_raw_text_block_metadata(raw_block_type, block_info, block):
+    if raw_block_type != BlockType.TEXT:
+        return
+    if "merge_prev" in block_info:
+        block["merge_prev"] = block_info["merge_prev"]
+
+
 class MagicModel:
     def __init__(self, page_blocks: list, width, height):
         self.page_blocks = page_blocks
@@ -214,6 +221,7 @@ class MagicModel:
             }
             if block_sub_type:
                 block["sub_type"] = block_sub_type
+            _copy_raw_text_block_metadata(raw_block_type, block_info, block)
 
             blocks.append(block)
 
