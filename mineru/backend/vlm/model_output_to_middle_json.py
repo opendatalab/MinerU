@@ -7,6 +7,11 @@ from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.html_image_utils import replace_inline_table_images
+from mineru.backend.para_block_utils import (
+    build_para_blocks_from_preproc,
+    cleanup_internal_para_block_metadata,
+    merge_para_text_blocks,
+)
 from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
@@ -101,7 +106,12 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_info = {"para_blocks": page_blocks, "discarded_blocks": discarded_blocks, "page_size": [width, height], "page_idx": page_index}
+    page_info = {
+        "preproc_blocks": page_blocks,
+        "discarded_blocks": discarded_blocks,
+        "page_size": [width, height],
+        "page_idx": page_index,
+    }
     return page_info
 
 
@@ -129,6 +139,9 @@ def append_page_blocks_to_middle_json(
 
 
 def finalize_middle_json(pdf_info_list):
+    build_para_blocks_from_preproc(pdf_info_list)
+    merge_para_text_blocks(pdf_info_list, allow_cross_page=False)
+
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
         cross_page_table_merge(pdf_info_list)
@@ -137,6 +150,8 @@ def finalize_middle_json(pdf_info_list):
         llm_aided_title_start_time = time.time()
         llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+
+    cleanup_internal_para_block_metadata(pdf_info_list)
 
 
 def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
