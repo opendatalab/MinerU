@@ -135,6 +135,7 @@ def regroup_visual_blocks(blocks):
         body_block = dict(main_block)
         body_block["type"] = mapping["body"]
         body_block.pop("sub_images", None)
+        body_block.pop("sub_type", None)
 
         captions = []
         for caption in sorted(
@@ -160,6 +161,8 @@ def regroup_visual_blocks(blocks):
             "blocks": [body_block, *captions, *footnotes],
             "index": body_block["index"],
         }
+        if visual_type in [BlockType.IMAGE, BlockType.CHART] and main_block.get("sub_type"):
+            two_layer_block["sub_type"] = main_block["sub_type"]
         if visual_type == BlockType.IMAGE and main_block.get("sub_images"):
             two_layer_block["sub_images"] = main_block["sub_images"]
         two_layer_block["blocks"].sort(key=lambda x: x["index"])

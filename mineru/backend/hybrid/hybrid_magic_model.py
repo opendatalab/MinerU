@@ -87,8 +87,14 @@ class MagicModel:
             try:
                 block_bbox = self.cal_real_bbox(block_info["bbox"])
                 block_type = block_info["type"]
+                raw_block_type = block_type
                 block_content = block_info.get("content")
                 block_angle = block_info.get("angle", 0)
+                block_sub_type = (
+                    block_info.get("sub_type")
+                    if raw_block_type in ["image", "chart"]
+                    else None
+                )
             except Exception as e:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
                 logger.warning(f"Invalid block format: {block_info}, error: {e}")
@@ -150,7 +156,7 @@ class MagicModel:
                 }
                 if span_type == ContentType.TABLE:
                     span["html"] = block_content
-                elif span_type == ContentType.CHART and block_content:
+                elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span["content"] = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
                 span = {
@@ -264,6 +270,8 @@ class MagicModel:
                     "lines": [line],
                     "index": index,
                 }
+                if block_sub_type:
+                    block["sub_type"] = block_sub_type
             else:
                 block_spans = []
                 for span in page_text_inline_formula_spans:
