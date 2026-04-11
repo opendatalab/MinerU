@@ -3,6 +3,7 @@ import sys
 
 from loguru import logger
 
+from lmdeploy.cli.entrypoint import main as lmdeploy_main
 from mineru.backend.vlm.utils import set_lmdeploy_backend
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
@@ -85,8 +86,8 @@ def main():
     # 启动 lmdeploy 服务器
     print(f"start lmdeploy server: {sys.argv}")
 
-    # 使用os.system调用启动lmdeploy服务器
-    os.system("lmdeploy " + " ".join(sys.argv[1:]))
+    # 直接调用lmdeploy的Python API，避免shell注入
+    lmdeploy_main()
 
 
 if __name__ == "__main__":
