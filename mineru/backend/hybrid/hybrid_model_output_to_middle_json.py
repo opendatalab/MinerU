@@ -3,12 +3,15 @@
 import os
 import time
 
-import cv2
 import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.html_image_utils import replace_inline_table_images
+from mineru.backend.ocr_det_utils import (
+    detect_ocr_boxes_from_padded_crop,
+    get_ch_lite_ocr_det_model,
+)
 from mineru.backend.para_block_utils import (
     annotate_hybrid_cross_page_merge_prev,
     build_para_blocks_from_preproc,
@@ -24,18 +27,15 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
-from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
-
-heading_level_import_success = False
+from mineru.utils.llm_aided import llm_aided_title
+title_aided_enable = False
 llm_aided_config = get_llm_aided_config()
 if llm_aided_config:
     title_aided_config = llm_aided_config.get('title_aided', {})
-    if title_aided_config.get('enable', False):
-        from mineru.utils.llm_aided import llm_aided_title
-        heading_level_import_success = True
+    title_aided_enable = title_aided_config.get('enable', False)
 
 
 def blocks_to_page_info(
@@ -75,25 +75,16 @@ def blocks_to_page_info(
     list_blocks = magic_model.get_list_blocks()
 
     # 如果有标题优化需求，计算标题的平均行高
-    if heading_level_import_success:
+    if title_aided_enable:
         if _vlm_ocr_enable:  # vlm_ocr导致没有line信息，需要重新det获取平均行高
-            from mineru.backend.pipeline.model_init import AtomModelSingleton
-            atom_model_manager = AtomModelSingleton()
-            ocr_model = atom_model_manager.get_atom_model(
-                atom_model_name='ocr',
-                ocr_show_log=False,
-                det_db_box_thresh=0.3,
-                lang='ch_lite'
-            )
+            ocr_model = get_ch_lite_ocr_det_model()
             for title_block in title_blocks:
-                title_pil_img = get_crop_img(title_block['bbox'], page_pil_img, scale)
-                title_np_img = np.array(title_pil_img)
-                # 给title_pil_img添加上下左右各50像素白边padding
-                title_np_img = cv2.copyMakeBorder(
-                    title_np_img, 50, 50, 50, 50, cv2.BORDER_CONSTANT, value=[255, 255, 255]
+                ocr_det_res, _ = detect_ocr_boxes_from_padded_crop(
+                    title_block.get('bbox'),
+                    page_pil_img,
+                    scale,
+                    ocr_model=ocr_model,
                 )
-                title_img = cv2.cvtColor(title_np_img, cv2.COLOR_RGB2BGR)
-                ocr_det_res = ocr_model.ocr(title_img, rec=False)[0]
                 if len(ocr_det_res) > 0:
                     # 计算所有res的平均高度
                     avg_height = np.mean([box[2][1] - box[0][1] for box in ocr_det_res])
@@ -257,7 +248,7 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
-    if heading_level_import_success:
+    if title_aided_enable:
         llm_aided_title_start_time = time.time()
         llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
@@ -274,14 +265,7 @@ def _detect_edge_text_line_hints(page_blocks, page_pil_img, scale):
     edge_blocks["first"] = text_blocks[0]
     edge_blocks["last"] = text_blocks[-1]
 
-    from mineru.backend.pipeline.model_init import AtomModelSingleton
-    atom_model_manager = AtomModelSingleton()
-    ocr_model = atom_model_manager.get_atom_model(
-        atom_model_name='ocr',
-        ocr_show_log=False,
-        det_db_box_thresh=0.3,
-        lang='ch_lite'
-    )
+    ocr_model = get_ch_lite_ocr_det_model()
 
     edge_line_hints = {}
     for edge_name, block in edge_blocks.items():
@@ -300,21 +284,20 @@ def _detect_block_line_bboxes(block, page_pil_img, scale, ocr_model):
     if not block_bbox:
         return []
 
-    block_pil_img = get_crop_img(block_bbox, page_pil_img, scale)
-    block_np_img = np.array(block_pil_img)
-    if block_np_img.size == 0:
-        return []
-
-    block_img = cv2.cvtColor(block_np_img, cv2.COLOR_RGB2BGR)
-    ocr_det_res = ocr_model.ocr(block_img, rec=False)[0]
+    ocr_det_res, padding = detect_ocr_boxes_from_padded_crop(
+        block_bbox,
+        page_pil_img,
+        scale,
+        ocr_model=ocr_model,
+    )
     if not ocr_det_res:
         return []
 
     block_x0, block_y0 = block_bbox[0], block_bbox[1]
     line_bboxes = []
     for box in ocr_det_res:
-        x_coords = [point[0] for point in box]
-        y_coords = [point[1] for point in box]
+        x_coords = [point[0] - padding for point in box]
+        y_coords = [point[1] - padding for point in box]
         line_bboxes.append([
             block_x0 + min(x_coords) / scale,
             block_y0 + min(y_coords) / scale,
