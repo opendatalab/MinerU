@@ -94,6 +94,65 @@ class MinioMarkdownDemoTestCase(unittest.TestCase):
                     ("config-ak", "config-sk", "http://config-minio:9000"),
                 )
 
+    def test_extract_object_key_from_http_url(self):
+        object_key = minio_markdown_demo.extract_object_key_from_http_url(
+            "http://127.0.0.1:9000/mineru-bucket/output/task-123/demo/ocr/images/page%201.png",
+            endpoint="http://127.0.0.1:9000",
+            bucket_name="mineru-bucket",
+            prefix="output",
+        )
+
+        self.assertEqual(object_key, "task-123/demo/ocr/images/page 1.png")
+
+    def test_enrich_markdown_with_image_explanations_downloads_once_and_inserts_once_per_occurrence(self):
+        image_url = (
+            "http://127.0.0.1:9000/mineru-bucket/output/"
+            "task-123/demo/ocr/images/page-1.png"
+        )
+        markdown_text = "\n".join(
+            [
+                "图 1 展示了整体流程。",
+                f"![]({image_url})",
+                "后文继续说明。",
+                f"![]({image_url})",
+            ]
+        )
+        fake_reader = mock.Mock()
+        fake_reader.read.return_value = b"fake-image-bytes"
+        vlm_config = {
+            "api_key": "EMPTY",
+            "base_url": "http://127.0.0.1:30000/v1",
+            "model": "qwen2.5-vl",
+            "prompt": "请解释图片",
+            "timeout": 30,
+            "max_tokens": 128,
+        }
+
+        with mock.patch.object(minio_markdown_demo, "OpenAI", return_value=object()):
+            with mock.patch.object(
+                minio_markdown_demo,
+                "request_image_explanation_from_vlm",
+                return_value="这是一张流程图，描述了解析与回填链路。",
+            ) as request_mock:
+                enriched = minio_markdown_demo.enrich_markdown_with_image_explanations(
+                    markdown_text,
+                    output_reader=fake_reader,
+                    endpoint="http://127.0.0.1:9000",
+                    bucket_name="mineru-bucket",
+                    output_prefix="output",
+                    language="ch",
+                    vlm_config=vlm_config,
+                )
+
+        self.assertEqual(
+            fake_reader.read.call_args_list,
+            [mock.call("task-123/demo/ocr/images/page-1.png")],
+        )
+        self.assertEqual(request_mock.call_count, 1)
+        self.assertEqual(enriched.count("> 图片解释：这是一张流程图，描述了解析与回填链路。"), 2)
+        self.assertIn("图 1 展示了整体流程。", request_mock.call_args.kwargs["prompt"])
+        self.assertIn("后文继续说明。", request_mock.call_args.kwargs["prompt"])
+
 
 if __name__ == "__main__":
     unittest.main()
