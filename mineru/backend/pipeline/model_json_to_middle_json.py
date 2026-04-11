@@ -6,9 +6,9 @@ import time
 from loguru import logger
 from tqdm import tqdm
 
-from mineru.backend.html_image_utils import replace_inline_table_images
+from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils import cross_page_table_merge
-from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
+from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half

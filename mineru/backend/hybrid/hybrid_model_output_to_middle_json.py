@@ -7,12 +7,12 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
-from mineru.backend.html_image_utils import replace_inline_table_images
-from mineru.backend.ocr_det_utils import (
+from mineru.backend.utils.html_image_utils import replace_inline_table_images
+from mineru.backend.utils.ocr_det_utils import (
     detect_ocr_boxes_from_padded_crop,
     get_ch_lite_ocr_det_model,
 )
-from mineru.backend.para_block_utils import (
+from mineru.backend.utils.para_block_utils import (
     annotate_hybrid_cross_page_merge_prev,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
