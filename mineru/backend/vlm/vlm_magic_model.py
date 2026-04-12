@@ -69,6 +69,9 @@ class MagicModel:
             elif block_type in ["image"]:
                 block_type = BlockType.IMAGE_BODY
                 span_type = ContentType.IMAGE
+            elif block_type in ["chart"]:
+                block_type = BlockType.CHART_BODY
+                span_type = ContentType.CHART
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
                 span_type = ContentType.TABLE
@@ -85,7 +88,7 @@ class MagicModel:
             #  code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为algorithm
             switch_code_to_algorithm = False
 
-            if span_type in ["image", "table"]:
+            if span_type in ["image", "table", "chart"]:
                 span = {
                     "bbox": block_bbox,
                     "type": span_type,
@@ -186,6 +189,7 @@ class MagicModel:
 
         self.image_blocks = []
         self.table_blocks = []
+        self.chart_blocks = []
         self.interline_equation_blocks = []
         self.text_blocks = []
         self.title_blocks = []
@@ -199,6 +203,8 @@ class MagicModel:
                 self.image_blocks.append(block)
             elif block["type"] in [BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]:
                 self.table_blocks.append(block)
+            elif block["type"] in [BlockType.CHART_BODY, BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]:
+                self.chart_blocks.append(block)
             elif block["type"] in [BlockType.CODE_BODY, BlockType.CODE_CAPTION]:
                 self.code_blocks.append(block)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
@@ -221,6 +227,7 @@ class MagicModel:
         self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(self.list_blocks, self.text_blocks, self.ref_text_blocks)
         self.image_blocks, not_include_image_blocks = fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
         self.table_blocks, not_include_table_blocks = fix_two_layer_blocks(self.table_blocks, BlockType.TABLE)
+        self.chart_blocks, not_include_chart_blocks = fix_two_layer_blocks(self.chart_blocks, BlockType.CHART)
         self.code_blocks, not_include_code_blocks = fix_two_layer_blocks(self.code_blocks, BlockType.CODE)
         for code_block in self.code_blocks:
             for block in code_block['blocks']:
@@ -235,7 +242,7 @@ class MagicModel:
                         code_block["sub_type"] = "code"
                         code_block["guess_lang"] = "txt"
 
-        for block in not_include_image_blocks + not_include_table_blocks + not_include_code_blocks:
+        for block in not_include_image_blocks + not_include_table_blocks + not_include_chart_blocks + not_include_code_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
@@ -248,6 +255,9 @@ class MagicModel:
 
     def get_table_blocks(self):
         return self.table_blocks
+
+    def get_chart_blocks(self):
+        return self.chart_blocks
 
     def get_code_blocks(self):
         return self.code_blocks
@@ -373,14 +383,14 @@ def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
     return ret
 
 
-def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "code"]):
+def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "chart", "code"]):
     need_fix_blocks = get_type_blocks(blocks, fix_type)
     fixed_blocks = []
     not_include_blocks = []
     processed_indices = set()
 
     # 特殊处理表格类型，确保标题在表格前，注脚在表格后
-    if fix_type in ["table", "image"]:
+    if fix_type in ["table", "image", "chart"]:
         # 收集所有不合适的caption和footnote
         misplaced_captions = []  # 存储(caption, 原始block索引)
         misplaced_footnotes = []  # 存储(footnote, 原始block索引)
