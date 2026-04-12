@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from ..common import Activation
+
 from ..backbones.det_mobilenet_v3 import ConvBNLayer
+from ..common import Activation
+
 
 class Head(nn.Module):
     def __init__(self, in_channels, **kwargs):

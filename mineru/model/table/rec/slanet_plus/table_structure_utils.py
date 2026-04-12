@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import platform
 import traceback
 from enum import Enum
 from pathlib import Path
@@ -20,15 +19,13 @@ from typing import Any, Dict, List, Tuple, Union
 
 import cv2
 import numpy as np
+from loguru import logger
 from onnxruntime import (
     GraphOptimizationLevel,
     InferenceSession,
     SessionOptions,
     get_available_providers,
-    get_device,
 )
-
-from loguru import logger
 
 
 class EP(Enum):

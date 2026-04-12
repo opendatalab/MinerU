@@ -5,6 +5,8 @@ import os
 import signal
 import threading
 import time
+from concurrent.futures import ALL_COMPLETED, ProcessPoolExecutor, wait
+from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 
 import numpy as np
@@ -13,23 +15,19 @@ from loguru import logger
 from PIL import Image, ImageOps
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.bbox_utils import normalize_to_int_bbox
-from mineru.utils.os_env_config import get_load_images_timeout, get_load_images_threads
-from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
+from mineru.utils.os_env_config import get_load_images_threads, get_load_images_timeout
 from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
     pdfium_guard,
 )
-
-from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
-from concurrent.futures.process import BrokenProcessPool
-
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144

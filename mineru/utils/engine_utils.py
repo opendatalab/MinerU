@@ -1,10 +1,13 @@
 #  Copyright (c) Opendatalab. All rights reserved.
-import os
 
 from loguru import logger
 
-from mineru.utils.check_sys_env import is_mac_os_version_supported, is_windows_environment, is_mac_environment, \
-    is_linux_environment
+from mineru.utils.check_sys_env import (
+    is_linux_environment,
+    is_mac_environment,
+    is_mac_os_version_supported,
+    is_windows_environment,
+)
 
 
 def get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
@@ -38,7 +41,7 @@ def get_vlm_engine(inference_engine: str, is_async: bool = False) -> str:
 def _select_windows_engine() -> str:
     """Windows 平台引擎选择"""
     try:
-        import lmdeploy
+        import lmdeploy  # noqa: F401
         return 'lmdeploy'
     except ImportError:
         return 'transformers'
@@ -47,11 +50,11 @@ def _select_windows_engine() -> str:
 def _select_linux_engine(is_async: bool) -> str:
     """Linux 平台引擎选择"""
     try:
-        import vllm
+        import vllm  # noqa: F401
         return 'vllm-async' if is_async else 'vllm'
     except ImportError:
         try:
-            import lmdeploy
+            import lmdeploy  # noqa: F401
             return 'lmdeploy'
         except ImportError:
             return 'transformers'
@@ -60,7 +63,7 @@ def _select_linux_engine(is_async: bool) -> str:
 def _select_mac_engine() -> str:
     """macOS 平台引擎选择"""
     try:
-        from mlx_vlm import load as mlx_load
+        from mlx_vlm import load as mlx_load  # noqa: F401
         if is_mac_os_version_supported():
             return 'mlx'
         else:

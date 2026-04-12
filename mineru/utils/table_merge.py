@@ -9,7 +9,6 @@ from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
 
-
 CONTINUATION_END_MARKERS = [
     "(续)",
     "(续表)",

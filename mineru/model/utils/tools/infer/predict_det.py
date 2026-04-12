@@ -1,12 +1,13 @@
 import sys
+import time
 
 import numpy as np
-import time
 import torch
+
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
 from ...pytorchocr.data import create_operators, transform
 from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextDetector(BaseOCRV20):

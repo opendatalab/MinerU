@@ -3,7 +3,7 @@ import traceback
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
-from typing import List, Union, Dict, Any, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import loguru
@@ -15,7 +15,6 @@ from onnxruntime import (
     get_available_providers,
 )
 from PIL import Image, UnidentifiedImageError
-
 
 root_dir = Path(__file__).resolve().parent
 InputType = Union[str, np.ndarray, bytes, Path]

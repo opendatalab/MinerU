@@ -18,8 +18,8 @@ if __name__ == "__main__":
     # provide a more robust command-line interface and resolve the demo
     # document path relative to the project root instead of depending on
     # the current working directory.
-    from pathlib import Path
     import argparse
+    from pathlib import Path
 
     # climb up until we find pyproject.toml or reach a reasonable depth
     def find_project_root(start: Path) -> Path:

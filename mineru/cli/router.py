@@ -29,13 +29,13 @@ from mineru.cli.api_client import (
     LOCAL_API_STARTUP_TIMEOUT_SECONDS,
     TASK_RESULT_TIMEOUT_SECONDS,
     TASK_STATUS_POLL_INTERVAL_SECONDS,
-    build_managed_process_popen_kwargs,
     build_http_timeout,
+    build_managed_process_popen_kwargs,
     find_free_port,
     normalize_base_url,
+    response_detail,
     stop_managed_process,
     strip_local_api_network_args,
-    response_detail,
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
 from mineru.cli.common import normalize_upload_filename

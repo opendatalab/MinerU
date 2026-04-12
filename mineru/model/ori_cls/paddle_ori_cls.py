@@ -1,13 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
-
-from PIL import Image
 from collections import defaultdict
-from typing import List, Dict
-from tqdm import tqdm
+from typing import Dict, List
+
 import cv2
 import numpy as np
 import onnxruntime
+from PIL import Image
+from tqdm import tqdm
 
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path

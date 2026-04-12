@@ -4,15 +4,21 @@ from typing import Optional
 
 import torch
 from ftfy import fix_text
-from loguru import logger
-
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, PretrainedConfig, PreTrainedModel
-from transformers import VisionEncoderDecoderConfig, VisionEncoderDecoderModel
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PretrainedConfig,
+    PreTrainedModel,
+    VisionEncoderDecoderConfig,
+    VisionEncoderDecoderModel,
+)
 from transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder import logger as base_model_logger
 
-from .unimer_swin import UnimerSwinConfig, UnimerSwinModel, UnimerSwinImageProcessor
-from .unimer_mbart import UnimerMBartConfig, UnimerMBartForCausalLM
 from ...utils import latex_rm_whitespace
+from .unimer_mbart import UnimerMBartConfig, UnimerMBartForCausalLM
+from .unimer_swin import UnimerSwinConfig, UnimerSwinImageProcessor, UnimerSwinModel
 
 AutoConfig.register(UnimerSwinConfig.model_type, UnimerSwinConfig)
 AutoConfig.register(UnimerMBartConfig.model_type, UnimerMBartConfig)

@@ -1,10 +1,9 @@
 import threading
-from io import BytesIO
 from contextlib import contextmanager
+from io import BytesIO
 from typing import Any, Callable, Sequence, TypeVar
 
 from mineru.utils.pdf_page_id import get_end_page_id
-
 
 _pdfium_lock = threading.RLock()
 

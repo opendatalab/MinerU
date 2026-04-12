@@ -1,10 +1,11 @@
+import gc
 import math
 import os
 import time
-import gc
-from PIL import Image
-from loguru import logger
+
 import numpy as np
+from loguru import logger
+from PIL import Image
 
 try:
     import torch

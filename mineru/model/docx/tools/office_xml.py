@@ -1,7 +1,7 @@
 import xml.dom.minidom
 
-from mammoth.docx.xmlparser import XmlText, XmlElement
 from mammoth.docx.office_xml import _collapse_alternate_content, _namespaces
+from mammoth.docx.xmlparser import XmlElement, XmlText
 
 
 def parse_xml_str(xml_str, namespace_mapping=None):

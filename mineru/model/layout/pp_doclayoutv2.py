@@ -8,13 +8,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
+import torch
+import torchvision.transforms.v2.functional as tvF
 from PIL import Image, ImageDraw, ImageFont
 from torch import nn
-from tqdm import tqdm
-import torchvision.transforms.v2.functional as tvF
 from torchvision.transforms import InterpolationMode
-
-import torch
+from tqdm import tqdm
 from transformers import AutoConfig
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig

@@ -2,39 +2,43 @@
 import asyncio
 import atexit
 import gc
-import os
-import time
 import json
+import os
 import threading
+import time
 from contextlib import asynccontextmanager, contextmanager
 
 import pypdfium2 as pdfium
 from loguru import logger
+from mineru_vl_utils import MinerUClient
+from packaging import version
 from tqdm import tqdm
 
-from .utils import enable_custom_logits_processors, set_default_gpu_memory_utilization, set_default_batch_size, \
-    set_lmdeploy_backend, mod_kwargs_by_device_type
-from .model_output_to_middle_json import (
-    append_page_blocks_to_middle_json,
-    finalize_middle_json,
-    init_middle_json,
-)
 from mineru.backend.utils import exclude_progress_bar_idle_time
-from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
+
+from ...data.data_reader_writer import DataWriter
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
-
 from ...utils.enum_class import ImageType
+from ...utils.models_download_utils import auto_download_and_get_model_root_path
 from ...utils.pdfium_guard import (
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
 )
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
-
-from mineru_vl_utils import MinerUClient
-from packaging import version
+from .model_output_to_middle_json import (
+    append_page_blocks_to_middle_json,
+    finalize_middle_json,
+    init_middle_json,
+)
+from .utils import (
+    enable_custom_logits_processors,
+    mod_kwargs_by_device_type,
+    set_default_batch_size,
+    set_default_gpu_memory_utilization,
+    set_lmdeploy_backend,
+)
 
 
 class ModelSingleton:
@@ -142,9 +146,9 @@ class ModelSingleton:
                         vllm_llm = vllm.LLM(**kwargs)
                     elif backend == "vllm-async-engine":
                         try:
+                            from vllm.config import CompilationConfig
                             from vllm.engine.arg_utils import AsyncEngineArgs
                             from vllm.v1.engine.async_llm import AsyncLLM
-                            from vllm.config import CompilationConfig
                         except ImportError:
                             raise ImportError("Please install vllm to use the vllm-async-engine backend.")
 

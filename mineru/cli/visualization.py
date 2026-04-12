@@ -4,7 +4,6 @@ from pathlib import Path
 
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 
-
 VISUALIZATION_FINISHED = "finished"
 VISUALIZATION_SKIPPED = "skipped"
 

@@ -1,10 +1,10 @@
-from PIL import Image, ImageOps
-from transformers.image_processing_utils import BaseImageProcessor
-import numpy as np
-import cv2
 import albumentations as alb
+import cv2
+import numpy as np
 from albumentations.pytorch import ToTensorV2
+from PIL import Image, ImageOps
 from torchvision.transforms.functional import resize
+from transformers.image_processing_utils import BaseImageProcessor
 
 
 # TODO: dereference cv2 if possible

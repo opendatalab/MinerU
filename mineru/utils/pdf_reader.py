@@ -5,6 +5,7 @@ from io import BytesIO
 from loguru import logger
 from PIL import Image
 from pypdfium2 import PdfBitmap, PdfPage
+
 from mineru.utils.pdfium_guard import pdfium_guard
 
 

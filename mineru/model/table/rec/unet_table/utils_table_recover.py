@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 

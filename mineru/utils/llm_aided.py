@@ -8,7 +8,6 @@ from openai import OpenAI
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.enum_class import BlockType
 
-
 TITLE_BLOCK_TYPES = {
     BlockType.TITLE,
     BlockType.DOC_TITLE,

@@ -1,18 +1,20 @@
 import json
-import numpy as np
-import cv2
 import math
 import re
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+import cv2
+import numpy as np
 from PIL import Image, ImageOps
-from typing import List, Optional, Tuple, Union, Dict, Any
-
-from loguru import logger
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.utils import fix_latex_left_right, fix_latex_environments, remove_up_commands, \
-    remove_unsupported_commands
+from mineru.model.mfr.utils import (
+    fix_latex_environments,
+    fix_latex_left_right,
+    remove_unsupported_commands,
+    remove_up_commands,
+)
 
 
 class UniMERNetImgDecode(object):

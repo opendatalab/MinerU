@@ -3,28 +3,28 @@ import time
 from typing import List, Tuple
 
 import pypdfium2 as pdfium
-from PIL import Image
 from loguru import logger
+from PIL import Image
 from tqdm import tqdm
 
-from .model_init import MineruPipelineModel, PIPELINE_MODEL_INIT_LOCK
-from .model_json_to_middle_json import (
-    append_batch_results_to_middle_json,
-    finalize_middle_json,
-    init_middle_json,
-)
-from ..utils import exclude_progress_bar_idle_time
 from mineru.utils.config_reader import get_device, get_processing_window_size
+
 from ...utils.enum_class import ImageType
+from ...utils.model_utils import clean_memory, get_vram
 from ...utils.pdf_classify import classify
 from ...utils.pdf_image_tools import load_images_from_pdf_doc
-from ...utils.model_utils import get_vram, clean_memory
 from ...utils.pdfium_guard import (
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
 )
-
+from ..utils import exclude_progress_bar_idle_time
+from .model_init import PIPELINE_MODEL_INIT_LOCK, MineruPipelineModel
+from .model_json_to_middle_json import (
+    append_batch_results_to_middle_json,
+    finalize_middle_json,
+    init_middle_json,
+)
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
 os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新

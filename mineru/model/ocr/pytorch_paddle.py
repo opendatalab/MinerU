@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import argparse
 import copy
 import json
 import os
@@ -11,21 +12,19 @@ import yaml
 from loguru import logger
 
 from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
+from mineru.model.utils.tools.infer import pytorchocr_utility as utility
+from mineru.model.utils.tools.infer.predict_system import TextSystem
 from mineru.utils.config_reader import get_device
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 from mineru.utils.ocr_utils import (
     check_img,
+    get_rotate_crop_image_for_text_rec,
+    merge_det_boxes,
     preprocess_image,
     sorted_boxes,
-    merge_det_boxes,
     update_det_boxes,
-    get_rotate_crop_image_for_text_rec,
 )
-from mineru.model.utils.tools.infer.predict_system import TextSystem
-from mineru.model.utils.tools.infer import pytorchocr_utility as utility
-import argparse
-
 
 latin_lang = [
         "af",

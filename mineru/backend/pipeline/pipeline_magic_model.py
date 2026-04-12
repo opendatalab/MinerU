@@ -6,10 +6,14 @@ from mineru.utils.boxbase import (
     calculate_overlap_area_2_minbox_area_ratio,
     calculate_overlap_area_in_bbox1_area_ratio,
 )
-from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
-from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
-    merge_spans_to_line, line_sort_spans_by_left_to_right
+from mineru.utils.span_block_fix import (
+    line_sort_spans_by_left_to_right,
+    merge_spans_to_line,
+    merge_spans_to_vertical_line,
+    vertical_line_sort_spans_from_top_to_bottom,
+)
 from mineru.utils.span_pre_proc import txt_spans_extract
 
 

@@ -3,8 +3,8 @@ import time
 from io import BytesIO
 
 from loguru import logger
-from mineru.backend.office.model_output_to_middle_json import result_to_middle_json
 
+from mineru.backend.office.model_output_to_middle_json import result_to_middle_json
 from mineru.model.docx.main import convert_binary
 
 
@@ -33,8 +33,8 @@ if __name__ == '__main__':
     # works no matter what the current working directory is when the
     # module is executed.  Allow the user to override the path via a
     # command-line argument for even greater flexibility.
-    from pathlib import Path
     import argparse
+    from pathlib import Path
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
     default_docx = script_root / "demo" / "docx" / "demo1.docx"

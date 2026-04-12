@@ -1,7 +1,7 @@
-import os
 import copy
-import time
 import html
+import os
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
@@ -11,10 +11,11 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
-from .matcher import TableMatch
-from .table_structure import TableStructurer
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+
+from .matcher import TableMatch
+from .table_structure import TableStructurer
 
 
 @dataclass

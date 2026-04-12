@@ -1,12 +1,12 @@
 from io import BytesIO
-from typing import Final, BinaryIO, Optional
+from typing import BinaryIO, Optional
 
+from loguru import logger
 from lxml import etree
+from PIL import Image, UnidentifiedImageError, WmfImagePlugin
 from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
-from loguru import logger
-from PIL import Image, UnidentifiedImageError, WmfImagePlugin
 
 from mineru.utils.enum_class import BlockType
 from mineru.utils.pdf_reader import image_to_b64str

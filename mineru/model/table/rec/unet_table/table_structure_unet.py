@@ -1,23 +1,24 @@
 import copy
 import math
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
 from skimage import measure
 
 from mineru.utils.os_env_config import get_op_num_threads
+
 from .utils import OrtInferSession, resize_img
 from .utils_table_line_rec import (
-    get_table_line,
-    final_adjust_lines,
-    min_area_rect_box,
-    draw_lines,
     adjust_lines,
+    draw_lines,
+    final_adjust_lines,
+    get_table_line,
+    min_area_rect_box,
 )
-from.utils_table_recover import (
-    sorted_ocr_boxes,
+from .utils_table_recover import (
     box_4_2_poly_to_box_4_1,
+    sorted_ocr_boxes,
 )
 
 

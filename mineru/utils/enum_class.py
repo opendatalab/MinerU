@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class BlockType:
     IMAGE = 'image'
     TABLE = 'table'

@@ -8,20 +8,20 @@ import time
 from loguru import logger
 from tqdm import tqdm
 
-from mineru.backend.utils import cross_page_table_merge
-from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
+from mineru.backend.pipeline.pipeline_magic_model import MagicModel
+from mineru.backend.utils import cross_page_table_merge
 from mineru.utils.char_utils import full_to_half
+from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.hash_utils import bytes_md5, str_sha256
 from mineru.utils.llm_aided import llm_aided_title
 from mineru.utils.model_utils import clean_memory
-from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
-from mineru.version import __version__
-from mineru.utils.hash_utils import bytes_md5, str_sha256
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
+from mineru.version import __version__
 
 
 def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):

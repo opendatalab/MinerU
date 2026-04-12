@@ -13,27 +13,24 @@
 # limitations under the License.
 
 import math
-import re
-import numpy as np
-import inspect
+from dataclasses import dataclass
+from typing import Any, Dict
+
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Union, List, Dict, Any
-from dataclasses import dataclass, fields, is_dataclass
-
-from sympy import totient
 
 from mineru.utils.config_reader import get_device
+
 from .rec_unimernet_head import (
-    MBartForCausalLM,
-    MBartDecoder,
-    MBartConfig,
-    ModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
-    Seq2SeqLMOutput,
     CausalLMOutputWithCrossAttentions,
-    LogitsProcessorList,
     ForcedEOSTokenLogitsProcessor,
+    LogitsProcessorList,
+    MBartConfig,
+    MBartDecoder,
+    MBartForCausalLM,
+    ModelOutput,
+    Seq2SeqLMOutput,
     UniMERNetHead,
 )
 

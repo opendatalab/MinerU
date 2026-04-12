@@ -1,9 +1,7 @@
 import re
 from typing import Literal
 
-from loguru import logger
-
-from mineru.utils.enum_class import ContentType, BlockType
+from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.magic_model_utils import tie_up_category_by_index
 
 

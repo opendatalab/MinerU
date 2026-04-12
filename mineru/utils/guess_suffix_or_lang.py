@@ -3,7 +3,6 @@ from pathlib import Path
 from loguru import logger
 from magika import Magika
 
-
 DEFAULT_LANG = "txt"
 PDF_SIG_BYTES = b'%PDF'
 magika = Magika()

@@ -1,8 +1,7 @@
 import copy
-from loguru import logger
-from mineru.utils.enum_class import ContentType, BlockType, SplitFlag
-from mineru.utils.language import detect_lang
 
+from mineru.utils.enum_class import BlockType, ContentType, SplitFlag
+from mineru.utils.language import detect_lang
 
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；')
 LIST_END_FLAG = ('.', '。', ';', '；')

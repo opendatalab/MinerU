@@ -1,8 +1,5 @@
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import copy
 
@@ -10,11 +7,19 @@ __all__ = ['build_post_process']
 
 
 def build_post_process(config, global_config=None):
-    from .db_postprocess import DBPostProcess
-    from .rec_postprocess import CTCLabelDecode, AttnLabelDecode, SRNLabelDecode, TableLabelDecode, \
-        NRTRLabelDecode, SARLabelDecode, ViTSTRLabelDecode, RFLLabelDecode
     from .cls_postprocess import ClsPostProcess
-    from .rec_postprocess import CANLabelDecode
+    from .db_postprocess import DBPostProcess
+    from .rec_postprocess import (
+        AttnLabelDecode,
+        CANLabelDecode,
+        CTCLabelDecode,
+        NRTRLabelDecode,
+        RFLLabelDecode,
+        SARLabelDecode,
+        SRNLabelDecode,
+        TableLabelDecode,
+        ViTSTRLabelDecode,
+    )
 
     support_dict = [
         'DBPostProcess', 'CTCLabelDecode',

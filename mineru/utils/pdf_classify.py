@@ -7,7 +7,6 @@ import numpy as np
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 from loguru import logger
-from pypdf import PdfReader
 from pdfminer.converter import PDFPageAggregator
 from pdfminer.high_level import extract_text
 from pdfminer.layout import LAParams, LTFigure, LTImage
@@ -15,6 +14,8 @@ from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdfparser import PDFParser
+from pypdf import PdfReader
+
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
     open_pdfium_document,

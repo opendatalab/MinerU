@@ -1,12 +1,14 @@
-import cv2
 import copy
-import numpy as np
 import math
 import time
+
+import cv2
+import numpy as np
 import torch
+
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
 from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextClassifier(BaseOCRV20):

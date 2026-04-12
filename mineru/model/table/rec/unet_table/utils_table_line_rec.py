@@ -2,10 +2,10 @@ import math
 
 import cv2
 import numpy as np
-from scipy.spatial import distance as dist
-from skimage import measure
-from skimage import __version__ as skimage_version
 from packaging import version
+from scipy.spatial import distance as dist
+from skimage import __version__ as skimage_version
+from skimage import measure
 
 
 def transform_preds(coords, center, scale, output_size, rot=0):

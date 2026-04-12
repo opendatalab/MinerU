@@ -4,11 +4,11 @@ import threading
 import torch
 from loguru import logger
 
-from .model_list import AtomicModel
-from ...model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-from ...model.mfr.unimernet.Unimernet import UnimernetModel
-from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from mineru.model.ocr.pytorch_paddle import PytorchPaddleOCR
+
+from ...model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+from ...model.mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
+from ...model.mfr.unimernet.Unimernet import UnimernetModel
 from ...model.ori_cls.paddle_ori_cls import PaddleOrientationClsModel
 from ...model.table.cls.paddle_table_cls import PaddleTableClsModel
 from ...model.table.rec.slanet_plus.main import PaddleTableModel
@@ -16,6 +16,7 @@ from ...model.table.rec.unet_table.main import UnetTableModel
 from ...utils.config_reader import get_device
 from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from .model_list import AtomicModel
 
 PIPELINE_MODEL_INIT_LOCK = threading.RLock()
 

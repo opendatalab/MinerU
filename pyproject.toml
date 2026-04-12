@@ -167,3 +167,16 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "E402", "E731", "E722", "E741", "E712", "E711", "E701", "F841", "F403", "F405"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.uv]
+# Install with: uv sync --extra all

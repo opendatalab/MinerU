@@ -3,28 +3,28 @@ import logging
 import os
 import time
 import traceback
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional, Union
 
-from typing import List, Optional, Union, Dict, Any
-import numpy as np
 import cv2
-from PIL import Image
-from loguru import logger
+import numpy as np
 from bs4 import BeautifulSoup
-
-from mineru.utils.span_pre_proc import calculate_contrast
-from .table_structure_unet import TSRUnet
+from loguru import logger
+from PIL import Image
 
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from mineru.utils.span_pre_proc import calculate_contrast
+
 from .table_recover import TableRecover
-from .utils import InputType, LoadImage, VisTable
+from .table_structure_unet import TSRUnet
+from .utils import InputType, LoadImage
 from .utils_table_recover import (
+    box_4_2_poly_to_box_4_1,
+    gather_ocr_list_by_row,
     match_ocr_cell,
     plot_html_table,
-    box_4_2_poly_to_box_4_1,
     sorted_ocr_boxes,
-    gather_ocr_list_by_row,
 )
 
 

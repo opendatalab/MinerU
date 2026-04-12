@@ -1,10 +1,9 @@
-import cv2
 import copy
+
+import cv2
 import numpy as np
 
-from . import predict_rec
-from . import  predict_det
-from . import  predict_cls
+from . import predict_cls, predict_det, predict_rec
 
 
 class TextSystem(object):

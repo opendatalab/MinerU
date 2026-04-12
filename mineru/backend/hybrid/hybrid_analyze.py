@@ -16,20 +16,26 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import HybridModelSingleton
+from mineru.backend.utils import exclude_progress_bar_idle_time
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
+    _maybe_enable_serial_execution,
     aio_predictor_execution_guard,
     predictor_execution_guard,
-    _maybe_enable_serial_execution,
 )
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.config_reader import get_device, get_processing_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
-from mineru.utils.model_utils import crop_img, get_vram, clean_memory
-from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
-    update_det_boxes, OcrConfidence
+from mineru.utils.model_utils import clean_memory, crop_img, get_vram
+from mineru.utils.ocr_utils import (
+    OcrConfidence,
+    get_adjusted_mfdetrec_res,
+    get_ocr_result_list,
+    merge_det_boxes,
+    sorted_boxes,
+    update_det_boxes,
+)
 from mineru.utils.pdf_classify import classify
 from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
 from mineru.utils.pdfium_guard import (
@@ -161,7 +167,7 @@ def ocr_det(
             resolution_groups[group_key].append(crop_info)
 
         # 对每个分辨率组进行批处理
-        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc=f"OCR-det"):
+        for (target_h, target_w), group_crops in tqdm(resolution_groups.items(), desc="OCR-det"):
             # 对所有图像进行padding到统一尺寸
             batch_images = []
             for crop_info in group_crops:

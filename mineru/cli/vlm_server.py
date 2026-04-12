@@ -1,6 +1,6 @@
-import click
 import sys
 
+import click
 from loguru import logger
 
 
@@ -44,14 +44,14 @@ def openai_server(ctx, inference_engine):
 
     if inference_engine == 'vllm':
         try:
-            import vllm
+            import vllm  # noqa: F401
         except ImportError:
             logger.error("vLLM is not installed. Please install vLLM or choose LMDeploy as the inference engine.")
             sys.exit(1)
         vllm_server()
     elif inference_engine == 'lmdeploy':
         try:
-            import lmdeploy
+            import lmdeploy  # noqa: F401
         except ImportError:
             logger.error("LMDeploy is not installed. Please install LMDeploy or choose vLLM as the inference engine.")
             sys.exit(1)

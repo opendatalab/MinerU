@@ -1,29 +1,31 @@
 import base64
 import html
+from collections import defaultdict
 
 import cv2
+import numpy as np
 from loguru import logger
 from tqdm import tqdm
-from collections import defaultdict
-import numpy as np
 
-from .model_init import AtomModelSingleton
-from .model_list import AtomicModel
+from ...utils.bbox_utils import normalize_to_int_bbox
 from ...utils.config_reader import (
     get_formula_enable,
     get_ocr_det_mask_inline_formula_enable,
     get_table_enable,
 )
-from ...utils.bbox_utils import normalize_to_int_bbox
-from ...utils.model_utils import crop_img, get_res_list_from_layout_res, clean_vram
-from ...utils.ocr_utils import merge_det_boxes, update_det_boxes, sorted_boxes
+from ...utils.model_utils import clean_vram, crop_img, get_res_list_from_layout_res
 from ...utils.ocr_utils import (
+    OcrConfidence,
     get_adjusted_mfdetrec_res,
     get_ocr_result_list,
-    OcrConfidence,
     get_rotate_crop_image_for_text_rec,
+    merge_det_boxes,
+    sorted_boxes,
+    update_det_boxes,
 )
 from ...utils.pdf_image_tools import get_crop_np_img
+from .model_init import AtomModelSingleton
+from .model_list import AtomicModel
 
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16

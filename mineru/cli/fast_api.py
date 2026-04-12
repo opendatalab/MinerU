@@ -8,6 +8,7 @@ import tempfile
 import threading
 import uuid
 import zipfile
+from base64 import b64encode
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -30,34 +31,34 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from loguru import logger
 
-from base64 import b64encode
-
-from mineru.cli.common import (
-    aio_do_parse,
-    do_parse,
-    image_suffixes,
-    normalize_upload_filename,
-    office_suffixes,
-    pdf_suffixes,
-    normalize_task_stem,
-    read_fn,
-    uniquify_task_stems,
-)
-from mineru.cli.output_paths import resolve_parse_dir
+from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
 )
+from mineru.cli.common import (
+    aio_do_parse,
+    do_parse,
+    image_suffixes,
+    normalize_task_stem,
+    normalize_upload_filename,
+    office_suffixes,
+    pdf_suffixes,
+    read_fn,
+    uniquify_task_stems,
+)
+from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.vlm_preload import (
     maybe_preload_vlm_model,
     split_service_and_model_config,
 )
-from mineru.backend.vlm.vlm_analyze import shutdown_cached_models
-from mineru.utils.cli_parser import arg_parse
 from mineru.utils.check_sys_env import is_mac_environment
+from mineru.utils.cli_parser import arg_parse
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
+)
+from mineru.utils.config_reader import (
     get_processing_window_size,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path

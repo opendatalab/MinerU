@@ -2,9 +2,17 @@
 import json
 import os
 from pathlib import Path
-from loguru import logger
+
 from bs4 import BeautifulSoup
 from fuzzywuzzy import fuzz
+from loguru import logger
+
+from mineru.backend.pipeline.pipeline_analyze import (
+    doc_analyze_streaming as pipeline_doc_analyze_streaming,
+)
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
+    union_make as pipeline_union_make,
+)
 from mineru.cli.common import (
     convert_pdf_bytes_to_bytes,
     prepare_env,
@@ -12,12 +20,6 @@ from mineru.cli.common import (
 )
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.enum_class import MakeMode
-from mineru.backend.pipeline.pipeline_analyze import (
-    doc_analyze_streaming as pipeline_doc_analyze_streaming,
-)
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
-    union_make as pipeline_union_make,
-)
 
 
 def test_pipeline_with_two_config():

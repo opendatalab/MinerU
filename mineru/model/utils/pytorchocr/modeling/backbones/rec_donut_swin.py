@@ -1,6 +1,6 @@
 import collections.abc
-from collections import OrderedDict
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 

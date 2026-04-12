@@ -1,10 +1,11 @@
-import math
+from typing import Callable, Dict, List, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 from .rec_donut_swin import DonutSwinModelOutput
-from typing import List, Dict, Union, Callable
 
 
 class IdentityBasedConv1x1(nn.Conv2d):
@@ -475,7 +476,7 @@ class TheseusLayer(nn.Module):
         # init the output of net
         if return_patterns or return_stages:
             if return_patterns and return_stages:
-                msg = f"The 'return_patterns' would be ignored when 'return_stages' is set."
+                msg = "The 'return_patterns' would be ignored when 'return_stages' is set."
 
                 return_stages = None
 

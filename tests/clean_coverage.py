@@ -4,6 +4,7 @@ clean coverage
 import os
 import shutil
 
+
 def delete_file(path):
     """delete file."""
     if not os.path.exists(path):

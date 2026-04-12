@@ -1,5 +1,5 @@
-from .multi_bucket_s3 import MultiBucketS3DataReader, MultiBucketS3DataWriter
 from ..utils.schemas import S3Config
+from .multi_bucket_s3 import MultiBucketS3DataReader, MultiBucketS3DataWriter
 
 
 class S3DataReader(MultiBucketS3DataReader):

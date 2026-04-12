@@ -1,11 +1,14 @@
 import os
 import sys
 
-from mineru.backend.vlm.utils import set_default_gpu_memory_utilization, enable_custom_logits_processors, \
-    mod_kwargs_by_device_type
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-
 from vllm.entrypoints.cli.main import main as vllm_main
+
+from mineru.backend.vlm.utils import (
+    enable_custom_logits_processors,
+    mod_kwargs_by_device_type,
+    set_default_gpu_memory_utilization,
+)
+from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 def main():

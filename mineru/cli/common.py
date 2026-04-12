@@ -9,17 +9,17 @@ from typing import Sequence
 
 from loguru import logger
 
+from mineru.backend.office.docx_analyze import office_docx_analyze
+from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
+from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
 from mineru.data.data_reader_writer import FileBasedDataWriter
 from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
 from mineru.utils.engine_utils import get_vlm_engine
 from mineru.utils.enum_class import MakeMode
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
-from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
-from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
-from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
-from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
@@ -583,7 +583,7 @@ def _process_office_doc(
 
             need_remove_index.append(i)
 
-            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"office")
+            local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, "office")
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
             middle_json, infer_result = office_docx_analyze(
                 file_bytes,

@@ -1,7 +1,8 @@
-from contextlib import contextmanager
 import json
 import os
 import sys
+from contextlib import contextmanager
+
 import click
 import requests
 from loguru import logger

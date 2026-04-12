@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from mineru.backend.utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
-from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
+from mineru.utils.config_reader import get_llm_aided_config, get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
@@ -16,15 +16,14 @@ from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
-
 heading_level_import_success = False
 llm_aided_config = get_llm_aided_config()
 if llm_aided_config:
     title_aided_config = llm_aided_config.get('title_aided', {})
     if title_aided_config.get('enable', False):
         try:
-            from mineru.utils.llm_aided import llm_aided_title
             from mineru.backend.pipeline.model_init import AtomModelSingleton
+            from mineru.utils.llm_aided import llm_aided_title
             heading_level_import_success = True
         except Exception as e:
             logger.warning("The heading level feature cannot be used. If you need to use the heading level feature, "

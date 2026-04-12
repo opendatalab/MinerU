@@ -5,7 +5,7 @@ from typing import Literal
 from loguru import logger
 
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
-from mineru.utils.enum_class import ContentType, BlockType, NotExtractType
+from mineru.utils.enum_class import BlockType, ContentType, NotExtractType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.magic_model_utils import reduct_overlap, tie_up_category_by_index
 from mineru.utils.span_block_fix import fix_text_block

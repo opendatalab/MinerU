@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 OFFICE_PARSE_DIR_NAME = "office"
 VLM_PARSE_DIR_NAME = "vlm"
 

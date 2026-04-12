@@ -1,9 +1,11 @@
 import os
+
 from huggingface_hub import snapshot_download as hf_snapshot_download
 from modelscope import snapshot_download as ms_snapshot_download
 
 from mineru.utils.config_reader import get_local_models_dir
 from mineru.utils.enum_class import ModelPath
+
 
 def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipeline') -> str:
     """

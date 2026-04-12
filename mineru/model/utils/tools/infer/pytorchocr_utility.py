@@ -1,10 +1,10 @@
-import os
-import math
-from pathlib import Path
-import numpy as np
-import cv2
 import argparse
+import math
+import os
+from pathlib import Path
 
+import cv2
+import numpy as np
 
 root_dir = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CFG_PATH = root_dir / "pytorchocr" / "utils" / "resources" / "arch_config.yaml"

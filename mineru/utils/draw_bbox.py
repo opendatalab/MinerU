@@ -2,7 +2,7 @@ import json
 from io import BytesIO
 
 from loguru import logger
-from pypdf import PdfReader, PdfWriter, PageObject
+from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from .enum_class import BlockType, ContentType, SplitFlag

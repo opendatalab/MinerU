@@ -6,7 +6,7 @@ from html import escape
 from loguru import logger
 
 from mineru.utils.config_reader import get_latex_delimiter_config
-from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
+from mineru.utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 
 latex_delimiters_config = get_latex_delimiter_config()
 

@@ -13,9 +13,23 @@ import httpx
 import pypdfium2 as pdfium
 from loguru import logger
 
+from mineru.cli import api_client as _api_client
 from mineru.cli.api_protocol import (
     DEFAULT_MAX_CONCURRENT_REQUESTS,
     DEFAULT_PROCESSING_WINDOW_SIZE,
+)
+from mineru.cli.common import (
+    HybridDependencyError,
+    ensure_backend_dependencies,
+    image_suffixes,
+    office_suffixes,
+    pdf_suffixes,
+    uniquify_task_stems,
+)
+from mineru.cli.output_paths import resolve_parse_dir
+from mineru.cli.visualization import (
+    VisualizationJob,
+    run_visualization_job,
 )
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
@@ -27,22 +41,7 @@ from mineru.utils.pdfium_guard import (
     get_pdfium_document_page_count,
     open_pdfium_document,
 )
-
 from mineru.version import __version__
-from mineru.cli.common import (
-    HybridDependencyError,
-    ensure_backend_dependencies,
-    image_suffixes,
-    office_suffixes,
-    pdf_suffixes,
-    uniquify_task_stems,
-)
-from mineru.cli import api_client as _api_client
-from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.visualization import (
-    VisualizationJob,
-    run_visualization_job,
-)
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()

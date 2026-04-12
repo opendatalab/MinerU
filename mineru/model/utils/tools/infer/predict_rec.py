@@ -1,15 +1,16 @@
-from PIL import Image
-import cv2
-import numpy as np
 import math
 import time
+
+import cv2
+import numpy as np
 import torch
+from PIL import Image
 from tqdm import tqdm
 
 from ...pytorchocr.base_ocr_v20 import BaseOCRV20
-from . import pytorchocr_utility as utility
-from ...pytorchocr.postprocess import build_post_process
 from ...pytorchocr.modeling.backbones.rec_hgnet import ConvBNAct
+from ...pytorchocr.postprocess import build_post_process
+from . import pytorchocr_utility as utility
 
 
 class TextRecognizer(BaseOCRV20):

@@ -3,8 +3,8 @@ import os
 from loguru import logger
 
 from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
-from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
-from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
+from mineru.utils.config_reader import get_formula_enable, get_latex_delimiter_config, get_table_enable
+from mineru.utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from mineru.utils.language import detect_lang
 
 latex_delimiters_config = get_latex_delimiter_config()

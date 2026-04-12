@@ -1,6 +1,9 @@
 import os
+
 import torch
+
 from .modeling.architectures.base_model import BaseModel
+
 
 class BaseOCRV20:
     def __init__(self, config, **kwargs):

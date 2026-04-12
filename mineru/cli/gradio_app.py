@@ -1,8 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-import base64
 import asyncio
-import httpx
+import base64
 import os
 import re
 import sys
@@ -17,6 +16,7 @@ from typing import Callable
 
 import click
 import gradio as gr
+import httpx
 from gradio_pdf import PDF
 from loguru import logger
 
@@ -29,6 +29,7 @@ log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
+from mineru.cli import api_client as _api_client
 from mineru.cli.common import (
     docx_suffixes,
     image_suffixes,
@@ -37,10 +38,9 @@ from mineru.cli.common import (
     pdf_suffixes,
     read_fn,
 )
-from mineru.cli import api_client as _api_client
 from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli.visualization import VisualizationJob, run_visualization_job
+from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
 
 _gradio_local_api_server = _api_client.ReusableLocalAPIServer()
 

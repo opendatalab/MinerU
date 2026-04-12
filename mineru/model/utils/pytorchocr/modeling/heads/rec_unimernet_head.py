@@ -1,17 +1,15 @@
 import copy
-import math
-import re
-import numpy as np
 import inspect
+import math
 import warnings
 from collections import OrderedDict
-from typing import Optional, Tuple, Union, List, Dict, Any
 from dataclasses import dataclass, fields, is_dataclass
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from torch import Tensor
 import torch.nn.functional as F
+from torch import Tensor
 from torch.nn import CrossEntropyLoss
 
 from mineru.utils.config_reader import get_device

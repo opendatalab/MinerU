@@ -24,7 +24,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-
+from transformers import GenerationMixin, PreTrainedModel
 from transformers.activations import ACT2FN
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_attention_mask,
@@ -41,7 +41,6 @@ from transformers.modeling_outputs import (
     Seq2SeqQuestionAnsweringModelOutput,
     Seq2SeqSequenceClassifierOutput,
 )
-from transformers import GenerationMixin, PreTrainedModel
 from transformers.utils import (
     add_code_sample_docstrings,
     add_end_docstrings,
@@ -52,8 +51,8 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from .configuration_unimer_mbart import UnimerMBartConfig
 
+from .configuration_unimer_mbart import UnimerMBartConfig
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func

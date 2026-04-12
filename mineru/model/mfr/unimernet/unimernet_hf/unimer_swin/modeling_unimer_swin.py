@@ -25,7 +25,6 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
-
 from transformers.activations import ACT2FN
 from transformers.modeling_utils import PreTrainedModel
 from transformers.pytorch_utils import find_pruneable_heads_and_indices, meshgrid, prune_linear_layer
@@ -37,8 +36,8 @@ from transformers.utils import (
     logging,
     torch_int,
 )
-from .configuration_unimer_swin import UnimerSwinConfig
 
+from .configuration_unimer_swin import UnimerSwinConfig
 
 logger = logging.get_logger(__name__)
 

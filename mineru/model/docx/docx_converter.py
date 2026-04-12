@@ -2,28 +2,29 @@ import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Optional, Union, Any, Final, Iterator
+from typing import Any, BinaryIO, Final, Iterator, Optional, Union
 
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
-from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.oxml.xmlchemy import BaseOxmlElement
-from docx.text.paragraph import Paragraph
 from docx.text.hyperlink import Hyperlink
+from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+from loguru import logger
 from lxml import etree
-from pydantic import AnyUrl
 from mammoth.conversion import convert_document_element_to_html
 from mammoth.docx import body_xml
+from PIL import Image, ImageDraw, ImageFont
+from pydantic import AnyUrl
 
-from mineru.model.docx.tools.office_xml import read_str
 from mineru.model.docx.tools.math.omml import oMath2Latex
+from mineru.model.docx.tools.office_xml import read_str
 from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.docx_formatting import Formatting, Script
-from mineru.utils.enum_class import BlockType, ContentType
+from mineru.utils.enum_class import BlockType
 from mineru.utils.pdf_reader import image_to_b64str
+
 
 class DocxConverter:
     _BLIP_NAMESPACES: Final = {
@@ -942,8 +943,9 @@ class DocxConverter:
             str: 修正后的 HTML 字符串
         """
         try:
-            from bs4 import BeautifulSoup
             from collections import Counter
+
+            from bs4 import BeautifulSoup
 
             soup = BeautifulSoup(html, 'html.parser')
             tables = soup.find_all('table')

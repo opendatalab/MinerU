@@ -3,7 +3,7 @@ import os
 from loguru import logger
 from packaging import version
 
-from mineru.utils.check_sys_env import is_windows_environment, is_linux_environment
+from mineru.utils.check_sys_env import is_linux_environment, is_windows_environment
 from mineru.utils.config_reader import get_device
 from mineru.utils.model_utils import get_vram
 
