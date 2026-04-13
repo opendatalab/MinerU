@@ -1,15 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import base64
 import copy
 import os
-import re
 import time
 
 from loguru import logger
 from tqdm import tqdm
 
+from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils import cross_page_table_merge
-from mineru.utils.config_reader import get_device, get_llm_aided_config, get_formula_enable
+from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half
@@ -20,70 +19,8 @@ from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
-from mineru.utils.hash_utils import bytes_md5, str_sha256
+from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
-
-
-def _save_base64_image(b64_data_uri: str, image_writer, page_index: int):
-    """Persist a data-URI image via image_writer and return a relative path."""
-    m = re.match(r'data:image/(\w+);base64,(.+)', b64_data_uri, re.DOTALL)
-    if not m:
-        logger.warning(f"Unrecognized image_base64 format in page {page_index}, skipping.")
-        return None
-
-    fmt = m.group(1)
-    ext = "jpg" if fmt == "jpeg" else fmt
-    try:
-        img_bytes = base64.b64decode(m.group(2))
-    except Exception as e:
-        logger.warning(f"Failed to decode image_base64 on page {page_index}: {e}")
-        return None
-
-    img_path = f"{str_sha256(b64_data_uri)}.{ext}"
-    image_writer.write(img_path, img_bytes)
-    return img_path
-
-
-def _replace_inline_base64_img_src(markup: str, image_writer, page_index: int) -> str:
-    """Replace inline base64 img src attributes with local relative paths."""
-    if not markup or "base64," not in markup:
-        return markup
-
-    def _replace_src(match, _writer=image_writer, _idx=page_index):
-        img_path = _save_base64_image(match.group(1), _writer, _idx)
-        if img_path:
-            return f'src="{img_path}"'
-        return match.group(0)
-
-    return re.sub(
-        r'src="(data:image/[^"]+)"',
-        _replace_src,
-        markup,
-    )
-
-
-def _replace_inline_table_images(preproc_blocks: list[dict], image_writer, page_index: int) -> None:
-    """Persist inline base64 images embedded inside table HTML."""
-    if not image_writer:
-        return
-
-    for block in preproc_blocks:
-        if block.get("type") != BlockType.TABLE:
-            continue
-
-        for sub_block in block.get("blocks", []):
-            if sub_block.get("type") != BlockType.TABLE_BODY:
-                continue
-
-            for line in sub_block.get("lines", []):
-                for span in line.get("spans", []):
-                    if span.get("type") != ContentType.TABLE:
-                        continue
-                    span["html"] = _replace_inline_base64_img_src(
-                        span.get("html", ""),
-                        image_writer,
-                        page_index,
-                    )
 
 
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
@@ -119,7 +56,7 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     """构造page_info"""
-    _replace_inline_table_images(preproc_blocks, image_writer, page_index)
+    replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
     page_info = make_page_info_dict(preproc_blocks, page_index, page_w, page_h, discarded_blocks)
 

@@ -106,11 +106,8 @@ class ModelSingleton:
                     mlx_supported = is_mac_os_version_supported()
                     if not mlx_supported:
                         raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
-                    try:
-                        from mlx_vlm import load as mlx_load
-                    except ImportError:
-                        raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
-                    model, processor = mlx_load(model_path)
+                    from mineru_vl_utils.mlx_compat import load_mlx_model
+                    model, processor = load_mlx_model(model_path)
                 else:
                     if os.getenv('OMP_NUM_THREADS') is None:
                         os.environ["OMP_NUM_THREADS"] = "1"
@@ -233,6 +230,8 @@ class ModelSingleton:
                     server_headers=server_headers,
                     max_retries=max_retries,
                     retry_backoff_factor=retry_backoff_factor,
+                    enable_table_formula_eq_wrap=True,
+                    image_analysis=True,
                 )
                 predictor._mineru_runtime_handles = {
                     "backend": backend,
