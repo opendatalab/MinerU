@@ -97,6 +97,9 @@ class MagicModel:
                 }
                 if span_type == ContentType.TABLE:
                     span["html"] = block_content
+                # 如果开启了image_analysis，那么block_content则不为空，保存模型解析的结果内容
+                if span_type in [ContentType.IMAGE, ContentType.CHART] and block_content:
+                    span["content"] = block_content
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
                     "bbox": block_bbox,
