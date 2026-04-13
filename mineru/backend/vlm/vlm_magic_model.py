@@ -55,6 +55,8 @@ class MagicModel:
                 "image_footnote",
                 "table_caption",
                 "table_footnote",
+                "chart_caption",
+                "chart_footnote",
                 "code_caption",
                 "ref_text",
                 "phonetic",
