@@ -21,7 +21,7 @@ from mineru.backend.utils.para_block_utils import (
     merge_para_text_blocks,
 )
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
-from mineru.backend.utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType

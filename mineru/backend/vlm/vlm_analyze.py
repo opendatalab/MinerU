@@ -19,7 +19,7 @@ from .model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils import exclude_progress_bar_idle_time
+from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
 from ...utils.check_sys_env import is_mac_os_version_supported

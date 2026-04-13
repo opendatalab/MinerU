@@ -11,7 +11,7 @@ from mineru.backend.utils.para_block_utils import (
     cleanup_internal_para_block_metadata,
     merge_para_text_blocks,
 )
-from mineru.backend.utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table

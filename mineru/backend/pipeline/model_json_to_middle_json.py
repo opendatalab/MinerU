@@ -7,7 +7,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.utils.config_reader import get_device, get_llm_aided_config
 from mineru.backend.pipeline.model_init import AtomModelSingleton
 from mineru.backend.pipeline.para_split import para_split
