@@ -55,8 +55,6 @@ class MagicModel:
                 "image_footnote",
                 "table_caption",
                 "table_footnote",
-                "chart_caption",
-                "chart_footnote",
                 "code_caption",
                 "ref_text",
                 "phonetic",
@@ -98,7 +96,7 @@ class MagicModel:
                 if span_type == ContentType.TABLE:
                     span["html"] = block_content
                 # 如果开启了image_analysis，那么block_content则不为空，保存模型解析的结果内容
-                if span_type in [ContentType.IMAGE, ContentType.CHART] and block_content:
+                if span_type in ["image", "chart"] and block_content:
                     span["content"] = block_content
             elif span_type in [ContentType.INTERLINE_EQUATION]:
                 span = {
@@ -203,31 +201,34 @@ class MagicModel:
         self.ref_text_blocks = []
         self.phonetic_blocks = []
         self.list_blocks = []
-        for block in blocks:
-            if block["type"] in [BlockType.IMAGE_BODY, BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]:
-                self.image_blocks.append(block)
-            elif block["type"] in [BlockType.TABLE_BODY, BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]:
-                self.table_blocks.append(block)
-            elif block["type"] in [BlockType.CHART_BODY, BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]:
-                self.chart_blocks.append(block)
-            elif block["type"] in [BlockType.CODE_BODY, BlockType.CODE_CAPTION]:
-                self.code_blocks.append(block)
-            elif block["type"] == BlockType.INTERLINE_EQUATION:
-                self.interline_equation_blocks.append(block)
-            elif block["type"] == BlockType.TEXT:
-                self.text_blocks.append(block)
-            elif block["type"] == BlockType.TITLE:
-                self.title_blocks.append(block)
-            elif block["type"] in [BlockType.REF_TEXT]:
-                self.ref_text_blocks.append(block)
-            elif block["type"] in [BlockType.PHONETIC]:
-                self.phonetic_blocks.append(block)
-            elif block["type"] in [BlockType.HEADER, BlockType.FOOTER, BlockType.PAGE_NUMBER, BlockType.ASIDE_TEXT, BlockType.PAGE_FOOTNOTE]:
-                self.discarded_blocks.append(block)
-            elif block["type"] == BlockType.LIST:
-                self.list_blocks.append(block)
-            else:
-                continue
+        for i, block in enumerate(blocks):
+            match block["type"]:
+                case BlockType.IMAGE_CAPTION:
+                    next_type = blocks[i + 1]["type"] if i + 1 < len(blocks) else None
+                    if next_type == BlockType.CHART_BODY:
+                        block["type"] = BlockType.CHART_CAPTION
+                        self.chart_blocks.append(block)
+                    else:
+                        self.image_blocks.append(block)
+                case BlockType.IMAGE_FOOTNOTE:
+                    prev_type = blocks[i - 1]["type"] if i > 0 else None
+                    if prev_type == BlockType.CHART_BODY:
+                        block["type"] = BlockType.CHART_FOOTNOTE
+                        self.chart_blocks.append(block)
+                    else:
+                        self.image_blocks.append(block)
+                case BlockType.TABLE_BODY | BlockType.TABLE_CAPTION | BlockType.TABLE_FOOTNOTE:
+                    self.table_blocks.append(block)
+                case BlockType.CHART_BODY | BlockType.CHART_CAPTION | BlockType.CHART_FOOTNOTE:
+                    self.chart_blocks.append(block)
+                case BlockType.CODE_BODY | BlockType.CODE_CAPTION:
+                    self.code_blocks.append(block)
+                case BlockType.HEADER | BlockType.FOOTER | BlockType.PAGE_NUMBER | BlockType.ASIDE_TEXT | BlockType.PAGE_FOOTNOTE:
+                    self.discarded_blocks.append(block)
+                case BlockType.INTERLINE_EQUATION:
+                    self.interline_equation_blocks.append(block)
+                case BlockType.TEXT:
+                    self.text_blocks.append(block)
 
         self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(self.list_blocks, self.text_blocks, self.ref_text_blocks)
         self.image_blocks, not_include_image_blocks = fix_two_layer_blocks(self.image_blocks, BlockType.IMAGE)
@@ -372,7 +373,7 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     )
 
 
-def get_type_blocks(blocks, block_type: Literal["image", "table", "code"]):
+def get_type_blocks(blocks, block_type: Literal["image", "table", "chart", "code"]):
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
     with_footnotes = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_footnote")
     ret = []
