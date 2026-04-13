@@ -8,6 +8,7 @@ from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_lin
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 from mineru.utils.language import detect_lang
+from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -238,6 +239,7 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                 span['content'] = full_to_half_exclude_marks(span['content'])
                 block_text += span['content']
     block_lang = detect_lang(block_text)
+    escape_markdown_text = para_block.get('type') != BlockType.CODE_BODY
 
     para_text = ''
     for i, line in enumerate(para_block['lines']):
@@ -246,6 +248,8 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
             content = ''
             if span_type == ContentType.TEXT:
                 content = span['content']
+                if escape_markdown_text:
+                    content = escape_conservative_markdown_text(content)
             elif span_type == ContentType.INLINE_EQUATION:
                 content = f"{inline_left_delimiter}{span['content']}{inline_right_delimiter}"
             elif span_type == ContentType.INTERLINE_EQUATION:

@@ -8,6 +8,7 @@ from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from mineru.utils.language import detect_lang
+from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
 
 
 def make_blocks_to_markdown(paras_of_layout,
@@ -1017,8 +1018,4 @@ def escape_special_markdown_char(content):
     """
     转义正文里对markdown语法有特殊意义的字符
     """
-    special_chars = ["*", "`", "~", "$"]
-    for char in special_chars:
-        content = content.replace(char, "\\" + char)
-
-    return content
+    return escape_conservative_markdown_text(content)
