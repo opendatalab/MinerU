@@ -47,6 +47,7 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     magic_model = MagicModel(page_blocks, width, height)
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
+    chart_blocks = magic_model.get_chart_blocks()
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
     code_blocks = magic_model.get_code_blocks()
@@ -73,9 +74,9 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
     all_spans = magic_model.get_all_spans()
-    # 对image/table/interline_equation的span截图
+    # 对image/table/chart/interline_equation的span截图
     for span in all_spans:
-        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
+        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     replace_inline_table_images(table_blocks, image_writer, page_index)
@@ -84,6 +85,7 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     page_blocks.extend([
         *image_blocks,
         *table_blocks,
+        *chart_blocks,
         *code_blocks,
         *ref_text_blocks,
         *phonetic_blocks,
