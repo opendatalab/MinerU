@@ -76,15 +76,13 @@ def _build_visual_details_block(content, span_type, summary_override=''):
 
     if span_type == ContentType.CHART:
         summary = summary_override or "chart content"
-        details_body = content
     else:
         summary = summary_override or "image content"
-        details_body = f"<pre>{escape(content)}</pre>"
 
     return (
         "<details>\n"
         f"<summary>{summary}</summary>\n\n"
-        f"{details_body}\n"
+        f"{content}\n"
         "</details>"
     )
 
