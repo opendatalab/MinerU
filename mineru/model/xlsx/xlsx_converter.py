@@ -102,6 +102,8 @@ class XlsxConverter:
         self.cur_page = []
         self.image_map = {}
         self.cell_image_map = {}
+        self.sheet_images = []
+        self.table_image_map = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
@@ -110,6 +112,9 @@ class XlsxConverter:
     ):
         self.pages = []
         self.cur_page = []
+        self.sheet_images = []
+        self.table_image_map = {}
+        self.cell_image_map = {}
 
         if hasattr(file_stream, "seek"):
             file_stream.seek(0)
@@ -159,9 +164,62 @@ class XlsxConverter:
         if isinstance(sheet, Worksheet):
             # Pre-calc maps
             self.math_map = self._map_math_formulas_to_cells(sheet)
+            self.sheet_images = self._collect_sheet_images(sheet)
+            self.table_image_map = collections.defaultdict(list)
+            for image_info in self.sheet_images:
+                anchor = image_info["anchor"]
+                if anchor[0] is None or anchor[1] is None:
+                    continue
+                self.table_image_map[anchor].append(
+                    f'<img src="{image_info["base64"]}" />'
+                )
 
             used_cells = self._find_tables_in_sheet(sheet)  # 提取表格
-            self._find_images_in_sheet(sheet, used_cells)  # 提取图片
+            self._find_images_in_sheet(used_cells)  # 提取图片
+
+    @staticmethod
+    def _serialize_sheet_image(image: XlsImage) -> str:
+        pil_image = Image.open(image.ref)  # type: ignore[arg-type]
+        if pil_image.format in ("WMF", "EMF"):
+            if is_windows_environment():
+                try:
+                    pil_image.load()
+                    return image_to_b64str(pil_image, image_format="PNG")
+                except OSError as e:
+                    logger.warning(
+                        f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead."
+                    )
+            else:
+                logger.warning(
+                    f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}"
+                )
+
+            placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
+            return image_to_b64str(placeholder, image_format="JPEG")
+
+        if pil_image.mode != "RGB":
+            return image_to_b64str(pil_image, image_format="PNG")
+
+        return image_to_b64str(pil_image, image_format="JPEG")
+
+    def _collect_sheet_images(self, sheet: Worksheet) -> list[dict]:
+        images = []
+        if self.workbook is None:
+            return images
+
+        for item in getattr(sheet, "_images", []):  # type: ignore[attr-defined]
+            try:
+                image: XlsImage = cast(XlsImage, item)
+                images.append(
+                    {
+                        "anchor": self._get_anchor_pos(item.anchor),
+                        "base64": self._serialize_sheet_image(image),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"无法从 Excel 工作表中提取图片，错误信息：{e}")
+
+        return images
 
     def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
         """Parse drawings to find math formulas and map them to cells."""
@@ -267,7 +325,11 @@ class XlsxConverter:
                     used_cells.add((anchor_r + cell.row, anchor_c + cell.col))
 
                 # 若只有一个单元格且启用了单元格文本选项，则作为文本添加
-                if self.treat_singleton_as_text and len(excel_table.data) == 1:
+                if (
+                    self.treat_singleton_as_text
+                    and len(excel_table.data) == 1
+                    and self._can_render_singleton_as_text(excel_table)
+                ):
                     self.cur_page.append(
                         {
                             "type": BlockType.TEXT,
@@ -285,6 +347,23 @@ class XlsxConverter:
                     )
 
         return used_cells
+
+    def _get_cell_math_formulas(
+        self, table_anchor: tuple[int, int], row: int, col: int
+    ) -> list[str]:
+        abs_row = table_anchor[1] + row
+        abs_col = table_anchor[0] + col
+        return list(self.math_map.get((abs_row, abs_col), []))
+
+    def _can_render_singleton_as_text(self, excel_table: ExcelTable) -> bool:
+        cell = excel_table.data[0]
+        return (
+            cell.row_span == 1
+            and cell.col_span == 1
+            and not cell.media
+            and not cell.text_is_html
+            and not self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+        )
 
     def excel_table_to_html(self, excel_table) -> str:
         """
@@ -342,9 +421,12 @@ class XlsxConverter:
                         else:
                             text_content = media_content
                     # 添加公式
-                    if (table_anchor[0] + r, table_anchor[1] + c) in self.math_map:
-                        for formula in self.math_map[(r, c)]:
-                            text_content += self.equation_bookends.format(EQ=formula)
+                    for formula in self._get_cell_math_formulas(
+                        table_anchor,
+                        r,
+                        c,
+                    ):
+                        text_content += self.equation_bookends.format(EQ=formula)
 
                     inner_html = self._render_cell_inner_html(
                         text_content,
@@ -360,71 +442,24 @@ class XlsxConverter:
         lines.append("</table>")
         return "\n".join(lines)
 
-    def _find_images_in_sheet(
-        self, sheet: Worksheet, used_cells: set[tuple[int, int]] = None
-    ):
+    def _find_images_in_sheet(self, used_cells: set[tuple[int, int]] = None):
         if self.workbook is not None:
-            content_layer = self._get_sheet_content_layer(sheet)
+            for image_info in self.sheet_images:
+                r, c = image_info["anchor"]
+                if (
+                    used_cells
+                    and r is not None
+                    and c is not None
+                    and (r, c) in used_cells
+                ):
+                    continue
 
-            # 遍历工作表中的所有嵌入图片
-            for item in sheet._images:  # type: ignore[attr-defined]
-
-                # Check if image is already used in a table
-                if used_cells:
-                    r, c = self._get_anchor_pos(item.anchor)
-                    if r is not None and c is not None and (r, c) in used_cells:
-                        continue
-
-                try:
-                    image: XlsImage = cast(XlsImage, item)
-                    pil_image = Image.open(image.ref)  # type: ignore[arg-type]
-                    if pil_image.format in ("WMF", "EMF"):
-                        if is_windows_environment():
-                            # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
-                            # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
-                            try:
-                                pil_image.load()
-                                img_base64 = image_to_b64str(
-                                    pil_image, image_format="PNG"
-                                )
-                            except OSError as e:
-                                logger.warning(
-                                    f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead."
-                                )
-                                # 如果渲染失败，创建与原图同样大小的浅灰色占位图
-                                placeholder = Image.new(
-                                    "RGB", pil_image.size, (240, 240, 240)
-                                )
-                                img_base64 = image_to_b64str(
-                                    placeholder, image_format="JPEG"
-                                )
-                        else:
-                            logger.warning(
-                                f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}"
-                            )
-                            # 创建与原图同样大小的浅灰色占位图
-                            placeholder = Image.new(
-                                "RGB", pil_image.size, (240, 240, 240)
-                            )
-                            img_base64 = image_to_b64str(
-                                placeholder, image_format="JPEG"
-                            )
-                    else:
-                        # 处理常规图片
-                        if pil_image.mode != "RGB":
-                            # RGBA, P, L 等模式保留原貌并存为 PNG (PNG支持透明度)
-                            img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                        else:
-                            # 纯 RGB 图片存为 JPEG 以减小体积
-                            img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                    image_block = {
+                self.cur_page.append(
+                    {
                         "type": BlockType.IMAGE,
-                        "content": img_base64,
+                        "content": image_info["base64"],
                     }
-                    self.cur_page.append(image_block)
-
-                except Exception as e:
-                    logger.error(f"无法从 Excel 工作表中提取图片，错误信息：{e}")
+                )
 
         return
 
@@ -629,11 +664,14 @@ class XlsxConverter:
                 raw_cell_text = str(cell.value) if cell.value is not None else ""
                 cell_text = ""
                 text_is_html = False
-                media_content = ""
+                media_content = []
                 if "DISPIMG" in raw_cell_text:
-                    media_content = self._get_cell_image(raw_cell_text)
+                    cell_image = self._get_cell_image(raw_cell_text)
+                    if cell_image:
+                        media_content.append(cell_image)
                 else:
                     cell_text, text_is_html = self._cell_value_to_html(cell)
+                media_content.extend(self.table_image_map.get((ri, rj), []))
 
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
@@ -652,7 +690,7 @@ class XlsxConverter:
                         row_span=row_span,
                         col_span=col_span,
                         styles=self._extract_cell_style(cell),
-                        media=[media_content] if media_content else [],
+                        media=media_content,
                         text_is_html=text_is_html,
                     )
                 )
@@ -704,7 +742,7 @@ class XlsxConverter:
             return ""
 
     def _load_cell_image_mappings(self):
-        if self.cell_image_map :
+        if self.cell_image_map:
             return self.cell_image_map
 
         if self.zf is None:
@@ -750,7 +788,13 @@ class XlsxConverter:
                 rel_id = rel.attrib.get("Id")
                 target = rel.attrib.get("Target")
                 if rel_id and target:
-                    self.cell_image_map[cell_image_embed_to_name[rel_id]] = target
+                    image_name = cell_image_embed_to_name.get(rel_id)
+                    if not image_name:
+                        logger.warning(
+                            f"跳过缺少 cellImage 名称映射的关系: {rel_id}"
+                        )
+                        continue
+                    self.cell_image_map[image_name] = target
 
         except Exception as e:
             logger.warning(f"解析 cellimages 映射失败: {e}")

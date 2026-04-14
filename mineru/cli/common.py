@@ -254,7 +254,7 @@ def _process_output(
                 f"{pdf_file_name}_origin.pdf",
                 pdf_bytes,
             )
-        elif process_mode in [office_suffixes]:
+        elif process_mode in office_suffixes:
             md_writer.write(
                 f"{pdf_file_name}_origin.{process_mode}",
                 pdf_bytes,
@@ -595,7 +595,7 @@ def _process_office_doc(
             elif file_suffix in xlsx_suffixes:
                 office_analyze = office_xlsx_analyze
             else:
-                raise e
+                raise ValueError(f"Unsupported office suffix: {file_suffix}")
 
             middle_json, infer_result = office_analyze(
                 file_bytes,

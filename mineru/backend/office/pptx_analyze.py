@@ -29,7 +29,7 @@ def office_pptx_analyze(file_bytes, image_writer=None):
 
 
 if __name__ == "__main__":
-    # Resolve a default docx file relative to this script so the example
+    # Resolve a default pptx file relative to this script so the example
     # works no matter what the current working directory is when the
     # module is executed.  Allow the user to override the path via a
     # command-line argument for even greater flexibility.
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     import argparse
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
-    default_pptx = script_root / "demo" / "pptx" / "powerpoint_sample.pptx"
+    default_pptx = script_root / "demo" / "office_docs" / "pptx_01.pptx"
 
     parser = argparse.ArgumentParser(
         description="Quick demo runner for office_pptx_analyze"
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "pptx",
         nargs="?",
         default=str(default_pptx),
-        help="path to docx file (defaults to demo/docx/demo1.docx relative to project root)",
+        help="path to pptx file (defaults to demo/office_docs/pptx_01.pptx relative to project root)",
     )
     parser.add_argument(
         "--output-images",

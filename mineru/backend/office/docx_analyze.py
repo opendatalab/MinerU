@@ -37,7 +37,7 @@ if __name__ == '__main__':
     import argparse
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
-    default_docx = script_root / "demo" / "docx" / "demo1.docx"
+    default_docx = script_root / "demo" / "office_docs" / "docx_01.docx"
 
     parser = argparse.ArgumentParser(
         description="Quick demo runner for office_docx_analyze"
@@ -46,7 +46,7 @@ if __name__ == '__main__':
         "docx",
         nargs="?",
         default=str(default_docx),
-        help="path to docx file (defaults to demo/docx/demo1.docx relative to project root)"
+        help="path to docx file (defaults to demo/office_docs/docx_01.docx relative to project root)"
     )
     parser.add_argument(
         "--output-images",
