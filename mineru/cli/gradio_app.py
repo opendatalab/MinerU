@@ -1240,7 +1240,6 @@ def main(ctx,
             yield update
 
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
-    # suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + docx_suffixes]
     with gr.Blocks() as demo:
         gr.HTML(header)
         with gr.Row():
