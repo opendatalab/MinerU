@@ -38,7 +38,6 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     """将blocks转换为页面信息"""
 
     scale = image_dict["scale"]
-    # page_pil_img = image_dict["img_pil"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     with pdfium_guard():
