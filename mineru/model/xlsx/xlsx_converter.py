@@ -23,6 +23,10 @@ from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 
 
+class SplitConfig:
+    singleton_table_ratio: float = 0.3 # 单个单元格表格占总表格数的比例，如果高于这个比例，则说明gap_tolerance过小
+    blank_cell_ratio: float = 0.7  # 单个表格中，空白单元格占总单元格的比例，如果高于这个比例，则说明gap_tolerance过大
+
 @dataclass
 class DataRegion:
     """表示工作表中非空单元格的边界矩形区域。"""
@@ -90,12 +94,10 @@ class XlsxConverter:
     def __init__(
         self,
         treat_singleton_as_text: bool = True,
-        gap_tolerance: int = 0,
     ):
         self.workbook = None
         self.zf = None
         self.treat_singleton_as_text = treat_singleton_as_text
-        self.gap_tolerance = gap_tolerance
         self.pages = []
         self.cur_page = []
         self.pages.append(self.cur_page)
@@ -422,33 +424,107 @@ class XlsxConverter:
             表示所有数据表格的 ExcelTable 对象列表。
         """
         bounds: DataRegion = self._find_true_data_bounds(sheet)  # 获取真实数据边界
-        tables: list[ExcelTable] = []  # 存储已发现的表格
-        visited: set[tuple[int, int]] = set()  # 记录已访问的单元格
+        gap_tolerance = 1  # 定义默认间隔容忍度，允许在该范围内连接相邻单元格
+        best_tables: list[ExcelTable] = []
+        best_penalty = float("inf")
+        best_gap_tolerance = gap_tolerance
 
-        # 仅在真实数据边界范围内进行扫描
-        for ri, row in enumerate(
-            sheet.iter_rows(
-                min_row=bounds.min_row,
-                max_row=bounds.max_row,
-                min_col=bounds.min_col,
-                max_col=bounds.max_col,
-                values_only=False,
-            ),
-            start=bounds.min_row - 1,  # 转换为0-based索引
-        ):
-            for rj, cell in enumerate(row, start=bounds.min_col - 1):
-                # 跳过空单元格或已访问的单元格
-                if cell.value is None or (ri, rj) in visited:
-                    continue
+        # 多次进行分割尝试，逐步调整 gap_tolerance 以优化表格检测质量
+        for _ in range(3):
+            tables: list[ExcelTable] = []
+            visited: set[tuple[int, int]] = set()
 
-                # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
-                table_bounds, visited_cells = self._find_table_bounds(
-                    sheet, ri, rj, bounds.max_row, bounds.max_col
+            # 仅在真实数据边界范围内进行扫描
+            for ri, row in enumerate(
+                sheet.iter_rows(
+                    min_row=bounds.min_row,
+                    max_row=bounds.max_row,
+                    min_col=bounds.min_col,
+                    max_col=bounds.max_col,
+                    values_only=False,
+                ),
+                start=bounds.min_row - 1,  # 转换为0-based索引
+            ):
+                for rj, cell in enumerate(row, start=bounds.min_col - 1):
+                    # 跳过空单元格或已访问的单元格
+                    if cell.value is None or (ri, rj) in visited:
+                        continue
+
+                    # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
+                    table_bounds, visited_cells = self._find_table_bounds(
+                        sheet,
+                        ri,
+                        rj,
+                        bounds.max_row,
+                        bounds.max_col,
+                        gap_tolerance=gap_tolerance,
+                    )
+                    visited.update(visited_cells)  # 将已访问单元格加入全局记录
+                    tables.append(table_bounds)
+
+            if self._is_table_split_qualified(tables):
+                return tables
+
+            # 计算当前方案偏离阈值的程度，作为兜底选择依据
+            singleton_ratio = (
+                sum(1 for t in tables if len(t.data) == 1) / len(tables)
+                if tables
+                else 0.0
+            )
+            max_blank_ratio = 0.0
+            for table in tables:
+                total_cells = max(len(table.data), 1)
+                blank_cells = sum(
+                    1
+                    for cell in table.data
+                    if not cell.text.strip()
+                    and not any(media.strip() for media in cell.media)
                 )
-                visited.update(visited_cells)  # 将已访问单元格加入全局记录
-                tables.append(table_bounds)
+                max_blank_ratio = max(max_blank_ratio, blank_cells / total_cells)
 
-        return tables
+            singleton_over = max(
+                0.0, singleton_ratio - SplitConfig.singleton_table_ratio
+            )
+            blank_over = max(0.0, max_blank_ratio - SplitConfig.blank_cell_ratio)
+            penalty = singleton_over + blank_over
+
+            if penalty < best_penalty:
+                best_penalty = penalty
+                best_tables = tables
+                best_gap_tolerance = gap_tolerance
+
+            if singleton_ratio >= SplitConfig.singleton_table_ratio:
+                gap_tolerance += 1
+            elif max_blank_ratio >= SplitConfig.blank_cell_ratio:
+                gap_tolerance -= 1
+            else:
+                break
+
+        logger.info(f"最佳 gap_tolerance={best_gap_tolerance}")
+        return best_tables
+
+    def _is_table_split_qualified(self, tables: list[ExcelTable]) -> bool:
+        """根据 SplitConfig 判断当前表格切分结果是否可接受。"""
+        if not tables:
+            return True
+
+        singleton_count = sum(1 for table in tables if len(table.data) == 1)
+        singleton_ratio = singleton_count / len(tables)
+        if singleton_ratio > SplitConfig.singleton_table_ratio:
+            return False
+
+        for table in tables:
+            total_cells = max(len(table.data), 1)
+            blank_cells = sum(
+                1
+                for cell in table.data
+                if not cell.text.strip()
+                and not any(media.strip() for media in cell.media)
+            )
+            if (blank_cells / total_cells) > SplitConfig.blank_cell_ratio:
+                return False
+
+        return True
 
     def _find_true_data_bounds(self, sheet: Worksheet) -> DataRegion:
         """查找工作表中真实的数据边界（最小/最大行列）。
@@ -499,6 +575,7 @@ class XlsxConverter:
         start_col: int,
         max_row: int,
         max_col: int,
+        gap_tolerance: int = 1,
     ) -> tuple[ExcelTable, set[tuple[int, int]]]:
         """使用洪水填充（BFS）策略确定表格边界。
 
@@ -576,7 +653,7 @@ class XlsxConverter:
 
             for dr, dc in directions:
                 # 在容忍距离范围内逐步检查邻居（优先检查最近的）
-                for step in range(1, self.gap_tolerance + 2):
+                for step in range(1, gap_tolerance + 2):
                     nr, nc = curr_r + (dr * step), curr_c + (dc * step)
 
                     if (nr, nc) in table_cells:
