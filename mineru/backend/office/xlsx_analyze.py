@@ -29,7 +29,7 @@ def office_xlsx_analyze(file_bytes, image_writer=None):
 
 
 if __name__ == "__main__":
-    # Resolve a default docx file relative to this script so the example
+    # Resolve a default xlsx file relative to this script so the example
     # works no matter what the current working directory is when the
     # module is executed.  Allow the user to override the path via a
     # command-line argument for even greater flexibility.
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     import argparse
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
-    default_xlsx = script_root / "demo" / "xlsx" / "xlsx_01.xlsx"
+    default_xlsx = script_root / "demo" / "office_docs" / "xlsx_01.xlsx"
 
     parser = argparse.ArgumentParser(
         description="Quick demo runner for office_xlsx_analyze"
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "xlsx",
         nargs="?",
         default=str(default_xlsx),
-        help="path to docx file (defaults to demo/docx/demo1.docx relative to project root)",
+        help="path to xlsx file (defaults to demo/office_docs/xlsx_01.xlsx relative to project root)",
     )
     parser.add_argument(
         "--output-images",

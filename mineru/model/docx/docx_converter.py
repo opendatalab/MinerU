@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
 
 import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -20,9 +20,12 @@ from mammoth.docx import body_xml
 
 from mineru.model.docx.tools.office_xml import read_str
 from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.docx_formatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
 from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
@@ -129,94 +132,6 @@ class DocxConverter:
         # 移除行首尾无关的空白
         html = re.sub(r'\n\s*', '', html)
         return html
-
-    @staticmethod
-    def _load_placeholder_font(font_size: int) -> ImageFont.ImageFont:
-        """
-        加载占位图提示文案字体，优先使用可缩放字体，失败时回退到默认字体。
-
-        Args:
-            font_size: 期望字号
-
-        Returns:
-            ImageFont.ImageFont: 可用于绘制文本的字体对象
-        """
-        for font_name in (
-            "DejaVuSans.ttf",
-            "Arial.ttf",
-            "LiberationSans-Regular.ttf",
-        ):
-            try:
-                return ImageFont.truetype(font_name, font_size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
-
-    def _create_text_placeholder(
-        self, size: tuple[int, int], lines: list[str]
-    ) -> Image.Image:
-        """
-        生成带提示文案的浅灰色占位图。
-
-        Args:
-            size: 占位图尺寸
-            lines: 需要绘制的多行提示文本
-
-        Returns:
-            Image.Image: 生成后的占位图
-        """
-        width = max(int(size[0]), 1)
-        height = max(int(size[1]), 1)
-        placeholder = Image.new("RGB", (width, height), (240, 240, 240))
-        draw = ImageDraw.Draw(placeholder)
-
-        border_width = max(1, min(width, height) // 80)
-        draw.rectangle(
-            (0, 0, width - 1, height - 1),
-            outline=(190, 190, 190),
-            width=border_width,
-        )
-
-        max_text_width = max(width - 16, 1)
-        max_text_height = max(height - 16, 1)
-        fallback_text = "WMF/EMF"
-        text = "\n".join(line for line in lines if line)
-        if not text:
-            text = fallback_text
-
-        font = None
-        spacing = 4
-        bbox = None
-        for font_size in range(max(min(width, height) // 7, 10), 7, -1):
-            font = self._load_placeholder_font(font_size)
-            spacing = max(2, font_size // 4)
-            bbox = draw.multiline_textbbox(
-                (0, 0), text, font=font, spacing=spacing, align="center"
-            )
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            if text_width <= max_text_width and text_height <= max_text_height:
-                break
-        else:
-            text = fallback_text
-            font = self._load_placeholder_font(max(min(width, height) // 5, 10))
-            spacing = 2
-            bbox = draw.multiline_textbbox(
-                (0, 0), text, font=font, spacing=spacing, align="center"
-            )
-
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        origin = ((width - text_width) / 2, (height - text_height) / 2)
-        draw.multiline_text(
-            origin,
-            text,
-            fill=(90, 90, 90),
-            font=font,
-            spacing=spacing,
-            align="center",
-        )
-        return placeholder
 
     @staticmethod
     def _escape_hyperlink_url(url: str) -> str:
@@ -1260,34 +1175,8 @@ class DocxConverter:
             else:
                 image_bytes = BytesIO(image_data)
                 pil_image = Image.open(image_bytes)
-                if pil_image.format in ("WMF", "EMF"):
-                    if is_windows_environment():
-                        # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
-                        # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
-                        try:
-                            pil_image.load()
-                            img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                        except OSError as e:
-                            logger.warning(f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
-                            placeholder = self._create_text_placeholder(
-                                pil_image.size,
-                                [
-                                    f"{pil_image.format} placeholder",
-                                    "Windows rendering failed",
-                                ],
-                            )
-                            img_base64 = image_to_b64str(placeholder, image_format="JPEG")
-                    else:
-                        logger.warning(f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}")
-                        placeholder = self._create_text_placeholder(
-                            pil_image.size,
-                            [
-                                f"{pil_image.format} placeholder",
-                                "Use Windows to parse",
-                                "the original image",
-                            ],
-                        )
-                        img_base64 = image_to_b64str(placeholder, image_format="JPEG")
+                if is_vector_image(pil_image):
+                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
                 else:
                     # 处理常规图片
                     if pil_image.mode != "RGB":
