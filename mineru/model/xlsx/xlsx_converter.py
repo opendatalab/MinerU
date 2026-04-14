@@ -91,14 +91,15 @@ class XlsxConverter:
         self,
         treat_singleton_as_text: bool = True,
         gap_tolerance: int = 0,
+        include_hidden_sheets: bool = False,
     ):
         self.workbook = None
         self.zf = None
         self.treat_singleton_as_text = treat_singleton_as_text
         self.gap_tolerance = gap_tolerance
+        self.include_hidden_sheets = include_hidden_sheets
         self.pages = []
         self.cur_page = []
-        self.pages.append(self.cur_page)
         self.image_map = {}
         self.cell_image_map = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
@@ -107,6 +108,9 @@ class XlsxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        self.pages = []
+        self.cur_page = []
+
         if hasattr(file_stream, "seek"):
             file_stream.seek(0)
 
@@ -125,12 +129,11 @@ class XlsxConverter:
             rich_text=True,
         )
         if self.workbook is not None:
-            # 遍历工作簿中的所有工作表
-            for idx, name in enumerate(self.workbook.sheetnames):
-                logger.info(f"正在处理第 {idx + 1} 个工作表：{name}")
-                sheet = self.workbook[name]
-                self._convert_sheet(sheet)
+            # 遍历需要参与转换的工作表，避免为隐藏表或尾部空页生成无效页面。
+            for idx, sheet in enumerate(self._iter_sheets_to_convert(), start=1):
+                logger.debug(f"正在处理第 {idx} 个工作表：{sheet.title}")
                 self.cur_page = []
+                self._convert_sheet(sheet)
                 self.pages.append(self.cur_page)
         else:
             logger.error("工作簿未初始化。")
@@ -138,6 +141,19 @@ class XlsxConverter:
         if self.zf:
             self.zf.close()
             self.zf = None
+
+    def _iter_sheets_to_convert(self):
+        if self.workbook is None:
+            return
+
+        for sheet in self.workbook.worksheets:
+            if (
+                not self.include_hidden_sheets
+                and sheet.sheet_state != Worksheet.SHEETSTATE_VISIBLE
+            ):
+                logger.debug(f"跳过隐藏工作表：{sheet.title}")
+                continue
+            yield sheet
 
     def _convert_sheet(self, sheet):
         if isinstance(sheet, Worksheet):
