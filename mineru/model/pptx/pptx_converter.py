@@ -6,9 +6,13 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 from loguru import logger
-from PIL import Image, UnidentifiedImageError, WmfImagePlugin
+from PIL import Image, UnidentifiedImageError
 
 from mineru.utils.enum_class import BlockType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
 from mineru.utils.pdf_reader import image_to_b64str
 
 
@@ -179,13 +183,10 @@ class PptxConverter:
             # 获取图像字节数据
             image = shape.image
             image_bytes = image.blob
-            im_dpi, _ = image.dpi
             pil_image = Image.open(BytesIO(image_bytes))
 
-            if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
-                logger.warning(f"Skipping WMF image, size: {pil_image.size}")
-                placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
-                img_base64 = image_to_b64str(placeholder)
+            if is_vector_image(pil_image):
+                img_base64 = serialize_vector_image_with_placeholder(pil_image)
             else:
                 if pil_image.mode != "RGB":
                     pil_image = pil_image.convert("RGB")

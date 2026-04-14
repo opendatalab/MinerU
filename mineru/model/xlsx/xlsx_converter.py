@@ -17,8 +17,11 @@ from loguru import logger
 from pydantic import PositiveInt, Field, BaseModel, NonNegativeInt
 from pydantic.dataclasses import dataclass
 
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.enum_class import BlockType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
 from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 
@@ -180,22 +183,8 @@ class XlsxConverter:
     @staticmethod
     def _serialize_sheet_image(image: XlsImage) -> str:
         pil_image = Image.open(image.ref)  # type: ignore[arg-type]
-        if pil_image.format in ("WMF", "EMF"):
-            if is_windows_environment():
-                try:
-                    pil_image.load()
-                    return image_to_b64str(pil_image, image_format="PNG")
-                except OSError as e:
-                    logger.warning(
-                        f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead."
-                    )
-            else:
-                logger.warning(
-                    f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}"
-                )
-
-            placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
-            return image_to_b64str(placeholder, image_format="JPEG")
+        if is_vector_image(pil_image):
+            return serialize_vector_image_with_placeholder(pil_image)
 
         if pil_image.mode != "RGB":
             return image_to_b64str(pil_image, image_format="PNG")
@@ -728,6 +717,10 @@ class XlsxConverter:
         try:
             with self.zf.open(zip_target_path) as image_file:
                 pil_image = Image.open(image_file)
+                if is_vector_image(pil_image):
+                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
+                    return rf'<img src="{img_base64}" />'
+
                 pil_image.load()
 
                 if pil_image.mode != "RGB":
