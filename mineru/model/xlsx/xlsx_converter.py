@@ -127,7 +127,7 @@ class XlsxConverter:
         if self.workbook is not None:
             # 遍历工作簿中的所有工作表
             for idx, name in enumerate(self.workbook.sheetnames):
-                logger.info(f"正在处理第 {idx + 1} 个工作表：{name}")
+                logger.debug(f"正在处理第 {idx + 1} 个工作表：{name}")
                 sheet = self.workbook[name]
                 self._convert_sheet(sheet)
                 self.cur_page = []
