@@ -316,7 +316,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 [LICENSE.md](LICENSE.md)
 
-The source code in this repository is licensed under AGPLv3.
+The source code in this repository is licensed under Apache-2.0.
 
 # Acknowledgments
 

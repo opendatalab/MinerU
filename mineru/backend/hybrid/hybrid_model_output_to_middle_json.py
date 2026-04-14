@@ -3,35 +3,39 @@
 import os
 import time
 
-import cv2
 import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
+from mineru.backend.utils.html_image_utils import replace_inline_table_images
+from mineru.backend.utils.ocr_det_utils import (
+    detect_ocr_boxes_from_padded_crop,
+    get_ch_lite_ocr_det_model,
+)
+from mineru.backend.utils.para_block_utils import (
+    annotate_hybrid_cross_page_merge_prev,
+    build_para_blocks_from_preproc,
+    cleanup_internal_para_block_metadata,
+    edge_text_line_hints_key,
+    iter_block_spans,
+    merge_para_text_blocks,
+)
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
-from mineru.backend.utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
-from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
-
-heading_level_import_success = False
+from mineru.utils.llm_aided import llm_aided_title
+title_aided_enable = False
 llm_aided_config = get_llm_aided_config()
 if llm_aided_config:
     title_aided_config = llm_aided_config.get('title_aided', {})
-    if title_aided_config.get('enable', False):
-        try:
-            from mineru.utils.llm_aided import llm_aided_title
-            from mineru.backend.pipeline.model_init import AtomModelSingleton
-            heading_level_import_success = True
-        except Exception as e:
-            logger.warning("The heading level feature cannot be used. If you need to use the heading level feature, "
-                            "please execute `pip install mineru[core]` to install the required packages.")
+    title_aided_enable = title_aided_config.get('enable', False)
 
 
 def blocks_to_page_info(
@@ -63,6 +67,7 @@ def blocks_to_page_info(
     )
     image_blocks = magic_model.get_image_blocks()
     table_blocks = magic_model.get_table_blocks()
+    chart_blocks = magic_model.get_chart_blocks()
     title_blocks = magic_model.get_title_blocks()
     discarded_blocks = magic_model.get_discarded_blocks()
     code_blocks = magic_model.get_code_blocks()
@@ -71,24 +76,16 @@ def blocks_to_page_info(
     list_blocks = magic_model.get_list_blocks()
 
     # 如果有标题优化需求，计算标题的平均行高
-    if heading_level_import_success:
+    if title_aided_enable:
         if _vlm_ocr_enable:  # vlm_ocr导致没有line信息，需要重新det获取平均行高
-            atom_model_manager = AtomModelSingleton()
-            ocr_model = atom_model_manager.get_atom_model(
-                atom_model_name='ocr',
-                ocr_show_log=False,
-                det_db_box_thresh=0.3,
-                lang='ch_lite'
-            )
+            ocr_model = get_ch_lite_ocr_det_model()
             for title_block in title_blocks:
-                title_pil_img = get_crop_img(title_block['bbox'], page_pil_img, scale)
-                title_np_img = np.array(title_pil_img)
-                # 给title_pil_img添加上下左右各50像素白边padding
-                title_np_img = cv2.copyMakeBorder(
-                    title_np_img, 50, 50, 50, 50, cv2.BORDER_CONSTANT, value=[255, 255, 255]
+                ocr_det_res, _ = detect_ocr_boxes_from_padded_crop(
+                    title_block.get('bbox'),
+                    page_pil_img,
+                    scale,
+                    ocr_model=ocr_model,
                 )
-                title_img = cv2.cvtColor(title_np_img, cv2.COLOR_RGB2BGR)
-                ocr_det_res = ocr_model.ocr(title_img, rec=False)[0]
                 if len(ocr_det_res) > 0:
                     # 计算所有res的平均高度
                     avg_height = np.mean([box[2][1] - box[0][1] for box in ocr_det_res])
@@ -107,15 +104,18 @@ def blocks_to_page_info(
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
     all_spans = magic_model.get_all_spans()
-    # 对image/table/interline_equation的span截图
+    # 对image/table/chart/interline_equation的span截图
     for span in all_spans:
-        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.INTERLINE_EQUATION]:
+        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
+
+    replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_blocks = []
     page_blocks.extend([
         *image_blocks,
         *table_blocks,
+        *chart_blocks,
         *code_blocks,
         *ref_text_blocks,
         *phonetic_blocks,
@@ -127,31 +127,31 @@ def blocks_to_page_info(
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_info = {"para_blocks": page_blocks, "discarded_blocks": discarded_blocks, "page_size": [width, height], "page_idx": page_index}
+    page_info = {
+        "preproc_blocks": page_blocks,
+        "discarded_blocks": discarded_blocks,
+        "page_size": [width, height],
+        "page_idx": page_index,
+    }
+    if _vlm_ocr_enable:
+        edge_text_line_hints = _detect_edge_text_line_hints(page_blocks, page_pil_img, scale)
+        if edge_text_line_hints:
+            page_info[edge_text_line_hints_key()] = edge_text_line_hints
     return page_info
-
-
-def _iter_block_spans(block):
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
-            yield span
-
-    for sub_block in block.get("blocks", []):
-        yield from _iter_block_spans(sub_block)
 
 
 def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
     need_ocr_list = []
     img_crop_list = []
     for page_info in pdf_info_list:
-        for block in page_info.get('para_blocks', []):
-            for span in _iter_block_spans(block):
+        for block in page_info.get('preproc_blocks', []):
+            for span in iter_block_spans(block):
                 if 'np_img' in span:
                     need_ocr_list.append(span)
                     img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
                     span.pop('np_img')
         for block in page_info.get('discarded_blocks', []):
-            for span in _iter_block_spans(block):
+            for span in iter_block_spans(block):
                 if 'np_img' in span:
                     need_ocr_list.append(span)
                     img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
@@ -239,14 +239,76 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
     if not (_vlm_ocr_enable or _ocr_enable):
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
+    build_para_blocks_from_preproc(pdf_info_list)
+    annotate_hybrid_cross_page_merge_prev(
+        pdf_info_list,
+        prefer_edge_line_hints=_vlm_ocr_enable,
+    )
+    merge_para_text_blocks(pdf_info_list, allow_cross_page=True)
+
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
-    if heading_level_import_success:
+    if title_aided_enable:
         llm_aided_title_start_time = time.time()
         llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+
+    cleanup_internal_para_block_metadata(pdf_info_list)
+
+
+def _detect_edge_text_line_hints(page_blocks, page_pil_img, scale):
+    text_blocks = [block for block in page_blocks if block.get("type") == "text"]
+    if not text_blocks:
+        return {}
+
+    edge_blocks = {}
+    edge_blocks["first"] = text_blocks[0]
+    edge_blocks["last"] = text_blocks[-1]
+
+    ocr_model = get_ch_lite_ocr_det_model()
+
+    edge_line_hints = {}
+    for edge_name, block in edge_blocks.items():
+        line_bboxes = _detect_block_line_bboxes(block, page_pil_img, scale, ocr_model)
+        if line_bboxes:
+            edge_line_hints[edge_name] = {
+                "index": block.get("index"),
+                "lines": [{"bbox": bbox, "spans": []} for bbox in line_bboxes],
+            }
+
+    return edge_line_hints
+
+
+def _detect_block_line_bboxes(block, page_pil_img, scale, ocr_model):
+    block_bbox = block.get("bbox")
+    if not block_bbox:
+        return []
+
+    ocr_det_res, padding = detect_ocr_boxes_from_padded_crop(
+        block_bbox,
+        page_pil_img,
+        scale,
+        ocr_model=ocr_model,
+    )
+    if not ocr_det_res:
+        return []
+
+    block_x0, block_y0 = block_bbox[0], block_bbox[1]
+    line_bboxes = []
+    for box in ocr_det_res:
+        x_coords = [point[0] - padding for point in box]
+        y_coords = [point[1] - padding for point in box]
+        line_bboxes.append([
+            block_x0 + min(x_coords) / scale,
+            block_y0 + min(y_coords) / scale,
+            block_x0 + max(x_coords) / scale,
+            block_y0 + max(y_coords) / scale,
+        ])
+
+    line_bboxes.sort(key=lambda bbox: bbox[1])
+    return line_bboxes
 
 
 def result_to_middle_json(

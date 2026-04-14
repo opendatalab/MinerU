@@ -13,7 +13,7 @@ from .model_json_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
-from ..utils import exclude_progress_bar_idle_time
+from ..utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.utils.config_reader import get_device, get_processing_window_size
 from ...utils.enum_class import ImageType
 from ...utils.pdf_classify import classify
