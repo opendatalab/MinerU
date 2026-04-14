@@ -336,6 +336,13 @@ The source code in this repository is licensed under AGPLv3.
 # Citation
 
 ```bibtex
+@article{wang2026mineru2,
+  title={MinerU2. 5-Pro: Pushing the Limits of Data-Centric Document Parsing at Scale},
+  author={Wang, Bin and He, Tianyao and Ouyang, Linke and Wu, Fan and Zhao, Zhiyuan and Chu, Tao and Qu, Yuan and Jin, Zhenjiang and Zeng, Weijun and Miao, Ziyang and others},
+  journal={arXiv preprint arXiv:2604.04771},
+  year={2026}
+}
+
 @article{dong2026minerudiffusion,
   title={MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding},
   author={Dong, Hejun and Niu, Junbo and Wang, Bin and Zeng, Weijun and Zhang, Wentao and He, Conghui},

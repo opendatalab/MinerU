@@ -342,6 +342,20 @@ mineru -p <input_path> -o <output_path> -b pipeline
 # Citation
 
 ```bibtex
+@article{wang2026mineru2,
+  title={MinerU2. 5-Pro: Pushing the Limits of Data-Centric Document Parsing at Scale},
+  author={Wang, Bin and He, Tianyao and Ouyang, Linke and Wu, Fan and Zhao, Zhiyuan and Chu, Tao and Qu, Yuan and Jin, Zhenjiang and Zeng, Weijun and Miao, Ziyang and others},
+  journal={arXiv preprint arXiv:2604.04771},
+  year={2026}
+}
+
+@article{dong2026minerudiffusion,
+  title={MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding},
+  author={Dong, Hejun and Niu, Junbo and Wang, Bin and Zeng, Weijun and Zhang, Wentao and He, Conghui},
+  journal={arXiv preprint arXiv:2603.22458},
+  year={2026}
+}
+
 @article{niu2025mineru2,
   title={Mineru2. 5: A decoupled vision-language model for efficient high-resolution document parsing},
   author={Niu, Junbo and Liu, Zheng and Gu, Zhuangcheng and Wang, Bin and Ouyang, Linke and Zhao, Zhiyuan and Chu, Tao and He, Tianyao and Wu, Fan and Zhang, Qintong and others},
