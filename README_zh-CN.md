@@ -322,7 +322,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 [LICENSE.md](LICENSE.md)
 
-本仓库源码采用 AGPLv3 许可。
+本仓库源码采用 Apache-2.0 许可。
 
 # Acknowledgments
 
