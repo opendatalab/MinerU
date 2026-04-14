@@ -93,6 +93,11 @@ class DocxConverter:
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
+        self._numbering_root: Optional[BaseOxmlElement] = None
+        self._numbering_root_loaded: bool = False
+        self._numbering_level_cache: dict[
+            tuple[int, int], Optional[BaseOxmlElement]
+        ] = {}
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -552,6 +557,9 @@ class DocxConverter:
         self.chart_list = []
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
+        self._numbering_root = None
+        self._numbering_root_loaded = False
+        self._numbering_level_cache = {}
 
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
@@ -1697,30 +1705,88 @@ class DocxConverter:
 
         label = paragraph.style.style_id
         name = paragraph.style.name
-        base_style_label = None
-        base_style_name = None
-        if base_style := getattr(paragraph.style, "base_style", None):
-            base_style_label = base_style.style_id
-            base_style_name = base_style.name
 
         if label is None:
             return "Normal", None
 
-        if ":" in label:
-            parts = label.split(":")
-            if len(parts) == 2:
-                return parts[0], self._str_to_int(parts[1], None)
+        for style in self._iter_style_chain(paragraph.style):
+            style_label = getattr(style, "style_id", None)
+            style_name = getattr(style, "name", None)
 
-        if "heading" in label.lower():
-            return self._get_heading_and_level(label)
-        if "heading" in name.lower():
-            return self._get_heading_and_level(name)
-        if base_style_label and "heading" in base_style_label.lower():
-            return self._get_heading_and_level(base_style_label)
-        if base_style_name and "heading" in base_style_name.lower():
-            return self._get_heading_and_level(base_style_name)
+            if style_label and ":" in style_label:
+                parts = style_label.split(":")
+                if len(parts) == 2:
+                    return parts[0], self._str_to_int(parts[1], None)
+
+            for candidate in (style_label, style_name):
+                if candidate and "heading" in candidate.lower():
+                    return self._get_heading_and_level(candidate)
+
+        outline_level = self._get_effective_outline_level(paragraph)
+        if outline_level is not None:
+            return "Heading", outline_level + 1
 
         return name, None
+
+    def _iter_style_chain(self, style: Any) -> Iterator[Any]:
+        """Yield a style and its base-style chain once each."""
+        seen: set[int] = set()
+        current = style
+        while current is not None:
+            current_id = id(current)
+            if current_id in seen:
+                break
+            seen.add(current_id)
+            yield current
+            current = getattr(current, "base_style", None)
+
+    def _get_paragraph_property_child(
+        self, xml_element: Optional[BaseOxmlElement], child_tag: str
+    ) -> Optional[BaseOxmlElement]:
+        """Read a direct child from w:pPr without matching nested descendants."""
+        if xml_element is None:
+            return None
+
+        namespaces = getattr(xml_element, "nsmap", None) or DocxConverter._BLIP_NAMESPACES
+        pPr = xml_element.find("w:pPr", namespaces=namespaces)
+        if pPr is None:
+            return None
+        return pPr.find(child_tag, namespaces=namespaces)
+
+    def _get_effective_numPr(
+        self, paragraph: Paragraph
+    ) -> Optional[BaseOxmlElement]:
+        """Resolve paragraph numbering from direct properties, then style inheritance."""
+        numPr = self._get_paragraph_property_child(paragraph._element, "w:numPr")
+        if numPr is not None:
+            return numPr
+
+        for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+            style_element = getattr(style, "element", None)
+            numPr = self._get_paragraph_property_child(style_element, "w:numPr")
+            if numPr is not None:
+                return numPr
+
+        return None
+
+    def _get_effective_outline_level(self, paragraph: Paragraph) -> Optional[int]:
+        """Resolve outline level from paragraph properties or inherited styles."""
+        outline_lvl = self._get_paragraph_property_child(
+            paragraph._element, "w:outlineLvl"
+        )
+        if outline_lvl is None:
+            for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+                style_element = getattr(style, "element", None)
+                outline_lvl = self._get_paragraph_property_child(
+                    style_element, "w:outlineLvl"
+                )
+                if outline_lvl is not None:
+                    break
+
+        if outline_lvl is None:
+            return None
+
+        return self._str_to_int(outline_lvl.get(self.XML_KEY), None)
 
     def _get_numId_and_ilvl(
         self, paragraph: Paragraph
@@ -1734,21 +1800,76 @@ class DocxConverter:
         Returns:
             tuple[Optional[int], Optional[int]]: (numId, ilvl) 元组
         """
-        # 访问段落的XML元素
-        numPr = paragraph._element.find(
-            ".//w:numPr", namespaces=paragraph._element.nsmap
-        )
+        numPr = self._get_effective_numPr(paragraph)
 
         if numPr is not None:
             # 获取 numId 元素并提取值
-            numId_elem = numPr.find("w:numId", namespaces=paragraph._element.nsmap)
-            ilvl_elem = numPr.find("w:ilvl", namespaces=paragraph._element.nsmap)
+            namespaces = getattr(numPr, "nsmap", None) or DocxConverter._BLIP_NAMESPACES
+            numId_elem = numPr.find("w:numId", namespaces=namespaces)
+            ilvl_elem = numPr.find("w:ilvl", namespaces=namespaces)
             numId = numId_elem.get(self.XML_KEY) if numId_elem is not None else None
             ilvl = ilvl_elem.get(self.XML_KEY) if ilvl_elem is not None else None
 
             return self._str_to_int(numId, None), self._str_to_int(ilvl, None)
 
         return None, None  # 如果段落不是列表的一部分
+
+    def _get_numbering_root(self) -> Optional[BaseOxmlElement]:
+        """Load and cache word/numbering.xml once per conversion."""
+        if self._numbering_root_loaded:
+            return self._numbering_root
+
+        self._numbering_root_loaded = True
+
+        if not hasattr(self.docx_obj, "part") or not hasattr(self.docx_obj.part, "package"):
+            return None
+
+        for part in self.docx_obj.part.package.parts:
+            if "numbering" in part.partname:
+                self._numbering_root = part.element
+                break
+
+        return self._numbering_root
+
+    def _get_numbering_level_definition(
+        self, numId: int, ilvl: int
+    ) -> Optional[BaseOxmlElement]:
+        """Resolve and cache the numbering level definition for a numId/ilvl pair."""
+        cache_key = (numId, ilvl)
+        if cache_key in self._numbering_level_cache:
+            return self._numbering_level_cache[cache_key]
+
+        numbering_root = self._get_numbering_root()
+        namespaces = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        }
+        lvl_element: Optional[BaseOxmlElement] = None
+
+        if numbering_root is not None:
+            num_xpath = f".//w:num[@w:numId='{numId}']"
+            num_element = numbering_root.find(num_xpath, namespaces=namespaces)
+
+            if num_element is not None:
+                abstract_num_id_elem = num_element.find(
+                    ".//w:abstractNumId", namespaces=namespaces
+                )
+                if abstract_num_id_elem is not None:
+                    abstract_num_id = abstract_num_id_elem.get(self.XML_KEY)
+                    if abstract_num_id is not None:
+                        abstract_num_xpath = (
+                            f".//w:abstractNum[@w:abstractNumId='{abstract_num_id}']"
+                        )
+                        abstract_num_element = numbering_root.find(
+                            abstract_num_xpath, namespaces=namespaces
+                        )
+                        if abstract_num_element is not None:
+                            lvl_xpath = f".//w:lvl[@w:ilvl='{ilvl}']"
+                            lvl_element = abstract_num_element.find(
+                                lvl_xpath, namespaces=namespaces
+                            )
+
+        self._numbering_level_cache[cache_key] = lvl_element
+        return lvl_element
 
     def _is_numbered_list(self, numId: int, ilvl: int) -> bool:
         """
@@ -1762,65 +1883,12 @@ class DocxConverter:
             bool: 如果是编号列表返回 True，否则返回 False
         """
         try:
-            # 访问文档的编号部分
-            if not hasattr(self.docx_obj, "part") or not hasattr(
-                self.docx_obj.part, "package"
-            ):
+            lvl_element = self._get_numbering_level_definition(numId, ilvl)
+            if lvl_element is None:
                 return False
-
-            numbering_part = None
-            # 查找编号部分
-            for part in self.docx_obj.part.package.parts:
-                if "numbering" in part.partname:
-                    numbering_part = part
-                    break
-
-            if numbering_part is None:
-                return False
-
-            # 解析编号 XML
-            numbering_root = numbering_part.element
             namespaces = {
                 "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             }
-
-            # 查找具有给定 numId 的编号定义
-            num_xpath = f".//w:num[@w:numId='{numId}']"
-            num_element = numbering_root.find(num_xpath, namespaces=namespaces)
-
-            if num_element is None:
-                return False
-
-            # 从 num 元素获取 abstractNumId
-            abstract_num_id_elem = num_element.find(
-                ".//w:abstractNumId", namespaces=namespaces
-            )
-            if abstract_num_id_elem is None:
-                return False
-
-            abstract_num_id = abstract_num_id_elem.get(
-                "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"
-            )
-            if abstract_num_id is None:
-                return False
-
-            # 查找抽象编号定义
-            abstract_num_xpath = (
-                f".//w:abstractNum[@w:abstractNumId='{abstract_num_id}']"
-            )
-            abstract_num_element = numbering_root.find(
-                abstract_num_xpath, namespaces=namespaces
-            )
-
-            if abstract_num_element is None:
-                return False
-
-            # 查找给定 ilvl 的层级定义
-            lvl_xpath = f".//w:lvl[@w:ilvl='{ilvl}']"
-            lvl_element = abstract_num_element.find(lvl_xpath, namespaces=namespaces)
-
-            if lvl_element is None:
-                return False
 
             # 获取 numFmt 元素
             num_fmt_element = lvl_element.find(".//w:numFmt", namespaces=namespaces)
