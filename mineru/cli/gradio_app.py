@@ -1085,7 +1085,7 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please select a file to upload (PDF, DOCX, or image)",
+            "upload_file": "Please select a file to upload (PDF, image, DOCX, PPTX, or XLSX)",
             "max_pages": "Max convert pages",
             "backend": "Backend",
             "server_url": "Server URL",
@@ -1117,7 +1117,7 @@ def main(ctx,
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请选择要上传的文件（PDF、DOCX 或图片）",
+            "upload_file": "请选择要上传的文件（PDF、图片、DOCX、PPTX 或 XLSX）",
             "max_pages": "最大转换页数",
             "backend": "解析后端",
             "server_url": "服务器地址",
