@@ -21,6 +21,9 @@ IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
     PP_PLACEHOLDER.DATE,
     PP_PLACEHOLDER.FOOTER,
 }
+MIN_PICTURE_DIMENSION_RATIO: Final = 0.1
+MIN_PICTURE_AREA_RATIO: Final = 0.01
+BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO: Final = 0.1
 
 
 class PptxConverter:
@@ -54,44 +57,202 @@ class PptxConverter:
             self.pages.pop()
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
+        slide_width = int(pptx_obj.slide_width)
+        slide_height = int(pptx_obj.slide_height)
+
         # 遍历每一张幻灯片
         for _, slide in enumerate(pptx_obj.slides):
+            linear_shapes = self._flatten_slide_shapes(slide.shapes)
 
-            def handle_shapes(shape):
-                handle_groups(shape)
+            # 遍历幻灯片中的每一个形状
+            for shape_index, shape in enumerate(linear_shapes):
                 if shape.has_table:
                     # 处理表格
                     self._handle_tables(shape)
-                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                    # 处理图片
-                    if hasattr(shape, "image"):
-                        self._handle_pictures(shape)
+                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE and hasattr(shape, "image"):
+                    later_shapes = linear_shapes[shape_index + 1 :]
+                    if self._should_skip_picture(
+                        shape,
+                        later_shapes,
+                        slide_width,
+                        slide_height,
+                    ):
+                        continue
+                    self._handle_pictures(shape)
                 # 如果形状没有任何文本，则继续处理下一个形状
                 if not hasattr(shape, "text"):
-                    return
+                    continue
                 if shape.text is None:
-                    return
+                    continue
                 if len(shape.text.strip()) == 0:
-                    return
+                    continue
                 if not shape.has_text_frame:
                     logger.warning("Warning: shape has text but not text_frame")
-                    return
+                    continue
                 # 处理其他文本元素，包括列表(项目符号列表、编号列表等)
                 self._handle_text_elements(shape)
-                return
-
-            def handle_groups(shape):
-                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                    for groupedshape in shape.shapes:
-                        handle_shapes(groupedshape)
-
-            # 遍历幻灯片中的每一个形状
-            for shape in slide.shapes:
-                handle_shapes(shape)
 
             self._handle_slide_notes(slide)
             self.cur_page = []
             self.pages.append(self.cur_page)
+
+    def _flatten_slide_shapes(self, shapes) -> list:
+        linear_shapes = []
+        for shape in shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                linear_shapes.extend(self._flatten_slide_shapes(shape.shapes))
+            else:
+                linear_shapes.append(shape)
+        return linear_shapes
+
+    @staticmethod
+    def _shape_bbox(shape) -> Optional[tuple[float, float, float, float]]:
+        try:
+            left = float(shape.left)
+            top = float(shape.top)
+            width = float(shape.width)
+            height = float(shape.height)
+        except Exception:
+            return None
+
+        if width <= 0 or height <= 0:
+            return None
+
+        return (left, top, left + width, top + height)
+
+    @staticmethod
+    def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
+        return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+
+    @staticmethod
+    def _bbox_intersection(
+        bbox1: tuple[float, float, float, float],
+        bbox2: tuple[float, float, float, float],
+    ) -> Optional[tuple[float, float, float, float]]:
+        x0 = max(bbox1[0], bbox2[0])
+        y0 = max(bbox1[1], bbox2[1])
+        x1 = min(bbox1[2], bbox2[2])
+        y1 = min(bbox1[3], bbox2[3])
+
+        if x1 <= x0 or y1 <= y0:
+            return None
+
+        return (x0, y0, x1, y1)
+
+    @classmethod
+    def _rectangles_union_area(cls, bboxes: list[tuple[float, float, float, float]]) -> float:
+        if not bboxes:
+            return 0.0
+
+        xs = sorted({bbox[0] for bbox in bboxes} | {bbox[2] for bbox in bboxes})
+        total_area = 0.0
+
+        for idx in range(len(xs) - 1):
+            x_left = xs[idx]
+            x_right = xs[idx + 1]
+            if x_right <= x_left:
+                continue
+
+            y_intervals = []
+            for bbox in bboxes:
+                if bbox[0] < x_right and bbox[2] > x_left:
+                    y_intervals.append((bbox[1], bbox[3]))
+
+            if not y_intervals:
+                continue
+
+            y_intervals.sort()
+            merged_height = 0.0
+            current_y0, current_y1 = y_intervals[0]
+
+            for y0, y1 in y_intervals[1:]:
+                if y0 <= current_y1:
+                    current_y1 = max(current_y1, y1)
+                    continue
+
+                merged_height += max(0.0, current_y1 - current_y0)
+                current_y0, current_y1 = y0, y1
+
+            merged_height += max(0.0, current_y1 - current_y0)
+            total_area += (x_right - x_left) * merged_height
+
+        return total_area
+
+    @staticmethod
+    def _is_nonempty_text_shape(shape) -> bool:
+        if not getattr(shape, "has_text_frame", False):
+            return False
+
+        text = getattr(shape, "text", None)
+        if text is None:
+            return False
+
+        return len(text.strip()) > 0
+
+    def _is_small_picture(self, shape, slide_width: int, slide_height: int) -> bool:
+        try:
+            picture_width = float(shape.width)
+            picture_height = float(shape.height)
+        except Exception:
+            return False
+
+        if picture_width <= 0 or picture_height <= 0:
+            return False
+
+        slide_area = float(slide_width) * float(slide_height)
+        if slide_area <= 0:
+            return False
+
+        if picture_width < MIN_PICTURE_DIMENSION_RATIO * float(slide_width):
+            return True
+        if picture_height < MIN_PICTURE_DIMENSION_RATIO * float(slide_height):
+            return True
+
+        picture_area_ratio = (picture_width * picture_height) / slide_area
+        return picture_area_ratio < MIN_PICTURE_AREA_RATIO
+
+    def _is_background_picture(self, shape, later_shapes: list) -> bool:
+        picture_bbox = self._shape_bbox(shape)
+        if picture_bbox is None:
+            return False
+
+        picture_area = self._bbox_area(picture_bbox)
+        if picture_area <= 0:
+            return False
+
+        overlap_bboxes = []
+        for later_shape in later_shapes:
+            if not self._is_nonempty_text_shape(later_shape):
+                continue
+
+            later_bbox = self._shape_bbox(later_shape)
+            if later_bbox is None:
+                continue
+
+            overlap_bbox = self._bbox_intersection(picture_bbox, later_bbox)
+            if overlap_bbox is not None:
+                overlap_bboxes.append(overlap_bbox)
+
+        if not overlap_bboxes:
+            return False
+
+        covered_area = self._rectangles_union_area(overlap_bboxes)
+        return (
+            covered_area / picture_area
+            >= BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO
+        )
+
+    def _should_skip_picture(
+        self,
+        shape,
+        later_shapes: list,
+        slide_width: int,
+        slide_height: int,
+    ) -> bool:
+        return self._is_small_picture(shape, slide_width, slide_height) or self._is_background_picture(
+            shape,
+            later_shapes,
+        )
 
     def _handle_slide_notes(self, slide) -> None:
         if not slide.has_notes_slide:
