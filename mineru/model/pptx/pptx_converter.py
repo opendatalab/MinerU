@@ -1,6 +1,7 @@
 import base64
+from dataclasses import dataclass
 from io import BytesIO
-from typing import Final, BinaryIO, Optional
+from typing import Any, Final, BinaryIO, Optional
 
 from lxml import etree
 from pptx import Presentation, presentation
@@ -31,6 +32,41 @@ PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
 DRAWINGML_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 RELATIONSHIP_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 SVG_BLIP_NS: Final = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+
+
+@dataclass(frozen=True)
+class _SlideTransform:
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    translate_x: float = 0.0
+    translate_y: float = 0.0
+
+    def apply_bbox(
+        self,
+        bbox: Optional[tuple[float, float, float, float]],
+    ) -> Optional[tuple[float, float, float, float]]:
+        if bbox is None:
+            return None
+
+        left = self.scale_x * bbox[0] + self.translate_x
+        top = self.scale_y * bbox[1] + self.translate_y
+        right = self.scale_x * bbox[2] + self.translate_x
+        bottom = self.scale_y * bbox[3] + self.translate_y
+        return (left, top, right, bottom)
+
+    def compose(self, inner: "_SlideTransform") -> "_SlideTransform":
+        return _SlideTransform(
+            scale_x=self.scale_x * inner.scale_x,
+            scale_y=self.scale_y * inner.scale_y,
+            translate_x=self.scale_x * inner.translate_x + self.translate_x,
+            translate_y=self.scale_y * inner.translate_y + self.translate_y,
+        )
+
+
+@dataclass(frozen=True)
+class _FlattenedShape:
+    shape: Any
+    bbox: Optional[tuple[float, float, float, float]]
 
 
 class PptxConverter:
@@ -74,9 +110,9 @@ class PptxConverter:
             tail_blocks = []
 
             # 遍历幻灯片中的每一个形状
-            for shape_index, shape in enumerate(linear_shapes):
+            for shape_index, shape_entry in enumerate(linear_shapes):
                 shape_blocks = self._collect_shape_blocks(
-                    shape,
+                    shape_entry,
                     linear_shapes,
                     shape_index,
                     slide_width,
@@ -85,14 +121,13 @@ class PptxConverter:
                 if not shape_blocks:
                     continue
 
-                shape_bbox = self._shape_bbox(shape)
-                if shape_bbox is None:
+                if shape_entry.bbox is None:
                     tail_blocks.extend(shape_blocks)
                     continue
 
                 sortable_shape_entries.append(
                     {
-                        "bbox": shape_bbox,
+                        "bbox": shape_entry.bbox,
                         "blocks": shape_blocks,
                     }
                 )
@@ -110,23 +145,42 @@ class PptxConverter:
             self.cur_page = []
             self.pages.append(self.cur_page)
 
-    def _flatten_slide_shapes(self, shapes) -> list:
-        linear_shapes = []
+    def _flatten_slide_shapes(
+        self,
+        shapes,
+        slide_transform: Optional[_SlideTransform] = None,
+    ) -> list[_FlattenedShape]:
+        if slide_transform is None:
+            slide_transform = _SlideTransform()
+
+        linear_shapes: list[_FlattenedShape] = []
         for shape in shapes:
             if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                linear_shapes.extend(self._flatten_slide_shapes(shape.shapes))
+                group_transform = self._group_shape_transform(shape)
+                linear_shapes.extend(
+                    self._flatten_slide_shapes(
+                        shape.shapes,
+                        slide_transform.compose(group_transform),
+                    )
+                )
             else:
-                linear_shapes.append(shape)
+                linear_shapes.append(
+                    _FlattenedShape(
+                        shape=shape,
+                        bbox=slide_transform.apply_bbox(self._shape_bbox(shape)),
+                    )
+                )
         return linear_shapes
 
     def _collect_shape_blocks(
         self,
-        shape,
-        linear_shapes: list,
+        shape_entry: _FlattenedShape,
+        linear_shapes: list[_FlattenedShape],
         shape_index: int,
         slide_width: int,
         slide_height: int,
     ) -> list:
+        shape = shape_entry.shape
         shape_blocks = []
         previous_page = self.cur_page
         previous_list_block_stack = self.list_block_stack
@@ -140,7 +194,7 @@ class PptxConverter:
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
                 if not self._should_skip_picture(
-                    shape,
+                    shape_entry,
                     later_shapes,
                     slide_width,
                     slide_height,
@@ -177,6 +231,51 @@ class PptxConverter:
             return None
 
         return (left, top, left + width, top + height)
+
+    @staticmethod
+    def _group_shape_transform(shape) -> _SlideTransform:
+        group_properties = getattr(shape._element, "grpSpPr", None)
+        xfrm = (
+            getattr(group_properties, "xfrm", None)
+            if group_properties is not None
+            else None
+        )
+        if xfrm is None:
+            return _SlideTransform()
+
+        child_offset = getattr(xfrm, "chOff", None)
+        child_extent = getattr(xfrm, "chExt", None)
+        if child_offset is None or child_extent is None:
+            return _SlideTransform()
+
+        try:
+            offset_x = float(xfrm.x)
+            offset_y = float(xfrm.y)
+            extent_x = float(xfrm.cx)
+            extent_y = float(xfrm.cy)
+            child_offset_x = float(child_offset.x)
+            child_offset_y = float(child_offset.y)
+            child_extent_x = float(child_extent.cx)
+            child_extent_y = float(child_extent.cy)
+        except Exception:
+            return _SlideTransform()
+
+        if (
+            extent_x <= 0
+            or extent_y <= 0
+            or child_extent_x <= 0
+            or child_extent_y <= 0
+        ):
+            return _SlideTransform()
+
+        scale_x = extent_x / child_extent_x
+        scale_y = extent_y / child_extent_y
+        return _SlideTransform(
+            scale_x=scale_x,
+            scale_y=scale_y,
+            translate_x=offset_x - child_offset_x * scale_x,
+            translate_y=offset_y - child_offset_y * scale_y,
+        )
 
     @staticmethod
     def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
@@ -247,12 +346,17 @@ class PptxConverter:
 
         return len(text.strip()) > 0
 
-    def _is_small_picture(self, shape, slide_width: int, slide_height: int) -> bool:
-        try:
-            picture_width = float(shape.width)
-            picture_height = float(shape.height)
-        except Exception:
+    def _is_small_picture(
+        self,
+        picture_bbox: Optional[tuple[float, float, float, float]],
+        slide_width: int,
+        slide_height: int,
+    ) -> bool:
+        if picture_bbox is None:
             return False
+
+        picture_width = picture_bbox[2] - picture_bbox[0]
+        picture_height = picture_bbox[3] - picture_bbox[1]
 
         if picture_width <= 0 or picture_height <= 0:
             return False
@@ -269,8 +373,12 @@ class PptxConverter:
         picture_area_ratio = (picture_width * picture_height) / slide_area
         return picture_area_ratio < MIN_PICTURE_AREA_RATIO
 
-    def _is_background_picture(self, shape, later_shapes: list) -> bool:
-        picture_bbox = self._shape_bbox(shape)
+    def _is_background_picture(
+        self,
+        picture_entry: _FlattenedShape,
+        later_shapes: list[_FlattenedShape],
+    ) -> bool:
+        picture_bbox = picture_entry.bbox
         if picture_bbox is None:
             return False
 
@@ -280,10 +388,10 @@ class PptxConverter:
 
         overlap_bboxes = []
         for later_shape in later_shapes:
-            if not self._is_nonempty_text_shape(later_shape):
+            if not self._is_nonempty_text_shape(later_shape.shape):
                 continue
 
-            later_bbox = self._shape_bbox(later_shape)
+            later_bbox = later_shape.bbox
             if later_bbox is None:
                 continue
 
@@ -302,13 +410,17 @@ class PptxConverter:
 
     def _should_skip_picture(
         self,
-        shape,
-        later_shapes: list,
+        picture_entry: _FlattenedShape,
+        later_shapes: list[_FlattenedShape],
         slide_width: int,
         slide_height: int,
     ) -> bool:
-        return self._is_small_picture(shape, slide_width, slide_height) or self._is_background_picture(
-            shape,
+        return self._is_small_picture(
+            picture_entry.bbox,
+            slide_width,
+            slide_height,
+        ) or self._is_background_picture(
+            picture_entry,
             later_shapes,
         )
 
