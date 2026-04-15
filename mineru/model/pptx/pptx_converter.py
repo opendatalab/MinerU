@@ -13,6 +13,7 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
+from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
@@ -24,6 +25,8 @@ IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
 MIN_PICTURE_DIMENSION_RATIO: Final = 0.1
 MIN_PICTURE_AREA_RATIO: Final = 0.01
 BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO: Final = 0.1
+PPTX_XYCUT_BETA: Final = 0.7
+PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
 
 
 class PptxConverter:
@@ -63,34 +66,41 @@ class PptxConverter:
         # 遍历每一张幻灯片
         for _, slide in enumerate(pptx_obj.slides):
             linear_shapes = self._flatten_slide_shapes(slide.shapes)
+            sortable_shape_entries = []
+            tail_blocks = []
 
             # 遍历幻灯片中的每一个形状
             for shape_index, shape in enumerate(linear_shapes):
-                if shape.has_table:
-                    # 处理表格
-                    self._handle_tables(shape)
-                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE and hasattr(shape, "image"):
-                    later_shapes = linear_shapes[shape_index + 1 :]
-                    if self._should_skip_picture(
-                        shape,
-                        later_shapes,
-                        slide_width,
-                        slide_height,
-                    ):
-                        continue
-                    self._handle_pictures(shape)
-                # 如果形状没有任何文本，则继续处理下一个形状
-                if not hasattr(shape, "text"):
+                shape_blocks = self._collect_shape_blocks(
+                    shape,
+                    linear_shapes,
+                    shape_index,
+                    slide_width,
+                    slide_height,
+                )
+                if not shape_blocks:
                     continue
-                if shape.text is None:
+
+                shape_bbox = self._shape_bbox(shape)
+                if shape_bbox is None:
+                    tail_blocks.extend(shape_blocks)
                     continue
-                if len(shape.text.strip()) == 0:
-                    continue
-                if not shape.has_text_frame:
-                    logger.warning("Warning: shape has text but not text_frame")
-                    continue
-                # 处理其他文本元素，包括列表(项目符号列表、编号列表等)
-                self._handle_text_elements(shape)
+
+                sortable_shape_entries.append(
+                    {
+                        "bbox": shape_bbox,
+                        "blocks": shape_blocks,
+                    }
+                )
+
+            sorted_shape_entries = sort_entries(
+                sortable_shape_entries,
+                beta=PPTX_XYCUT_BETA,
+                density_threshold=PPTX_XYCUT_DENSITY_THRESHOLD,
+            )
+            for entry in sorted_shape_entries:
+                self.cur_page.extend(entry["blocks"])
+            self.cur_page.extend(tail_blocks)
 
             self._handle_slide_notes(slide)
             self.cur_page = []
@@ -104,6 +114,50 @@ class PptxConverter:
             else:
                 linear_shapes.append(shape)
         return linear_shapes
+
+    def _collect_shape_blocks(
+        self,
+        shape,
+        linear_shapes: list,
+        shape_index: int,
+        slide_width: int,
+        slide_height: int,
+    ) -> list:
+        shape_blocks = []
+        previous_page = self.cur_page
+        previous_list_block_stack = self.list_block_stack
+        self.cur_page = shape_blocks
+        self.list_block_stack = []
+
+        try:
+            if shape.has_table:
+                self._handle_tables(shape)
+
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE and hasattr(shape, "image"):
+                later_shapes = linear_shapes[shape_index + 1 :]
+                if not self._should_skip_picture(
+                    shape,
+                    later_shapes,
+                    slide_width,
+                    slide_height,
+                ):
+                    self._handle_pictures(shape)
+
+            if not hasattr(shape, "text"):
+                return shape_blocks
+            if shape.text is None:
+                return shape_blocks
+            if len(shape.text.strip()) == 0:
+                return shape_blocks
+            if not shape.has_text_frame:
+                logger.warning("Warning: shape has text but not text_frame")
+                return shape_blocks
+
+            self._handle_text_elements(shape)
+            return shape_blocks
+        finally:
+            self.cur_page = previous_page
+            self.list_block_stack = previous_list_block_stack
 
     @staticmethod
     def _shape_bbox(shape) -> Optional[tuple[float, float, float, float]]:
