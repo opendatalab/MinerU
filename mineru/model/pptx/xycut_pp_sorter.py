@@ -2,6 +2,28 @@ from dataclasses import dataclass
 from typing import Any, Final, Sequence
 
 
+"""
+ * XY-Cut++ algorithm for reading order detection based on arXiv:2504.10258.
+ * <p>
+ * An enhanced XY-Cut implementation that handles:
+ * <ul>
+ *   <li>Cross-layout elements (headers, footers spanning multiple columns)</li>
+ *   <li>Adaptive axis selection based on density ratios</li>
+ *   <li>L-shaped region handling</li>
+ * </ul>
+ * <p>
+ * This is a simplified geometric implementation without semantic type priorities.
+ * <p>
+ * Algorithm overview:
+ * <ol>
+ *   <li>Pre-mask: Identify cross-layout elements (width > beta * maxWidth, overlaps >= 2)</li>
+ *   <li>Compute density ratio to determine split direction preference</li>
+ *   <li>Recursive segmentation with adaptive XY/YX-Cut</li>
+ *   <li>Merge cross-layout elements at appropriate positions</li>
+ * </ol>
+"""
+
+
 DEFAULT_BETA: Final = 2.0
 DEFAULT_DENSITY_THRESHOLD: Final = 0.9
 OVERLAP_THRESHOLD: Final = 0.1
