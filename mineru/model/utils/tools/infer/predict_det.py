@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import sys
 
 import numpy as np

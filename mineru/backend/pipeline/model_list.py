@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 class AtomicModel:
     Layout = "layout"
     MFD = "mfd"

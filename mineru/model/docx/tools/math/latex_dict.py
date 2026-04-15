@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """
 Adapted from https://github.com/xiilei/dwml/blob/master/dwml/latex_dict.py
 On 23/01/2025

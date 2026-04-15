@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import torch.nn.functional as F
 from torch import nn
 

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import re
 
 from loguru import logger

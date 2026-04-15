@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from dataclasses import dataclass
 from typing import Any, Final, Sequence
 

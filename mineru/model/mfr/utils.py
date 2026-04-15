@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import re
 
 LEFT_PATTERN = re.compile(r'(\\left)(\S*)')

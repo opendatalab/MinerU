@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from .multi_bucket_s3 import MultiBucketS3DataReader, MultiBucketS3DataWriter
 from ..utils.schemas import S3Config
 

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from PIL import Image, ImageDraw, ImageFont
 from loguru import logger
 

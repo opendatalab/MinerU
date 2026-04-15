@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from typing import Any, Dict, List, Union, Tuple
 
 import numpy as np

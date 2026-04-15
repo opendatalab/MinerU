@@ -1,4 +1,4 @@
-#  Copyright (c) Opendatalab. All rights reserved.
+# Copyright (c) Opendatalab. All rights reserved.
 
 import os
 import time

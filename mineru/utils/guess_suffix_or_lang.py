@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from pathlib import Path
 
 from loguru import logger

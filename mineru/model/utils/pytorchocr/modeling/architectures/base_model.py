@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from torch import nn
 
 from ..backbones import build_backbone

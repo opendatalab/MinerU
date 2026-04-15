@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import threading
 from io import BytesIO
 from contextlib import contextmanager

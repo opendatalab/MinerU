@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import copy
 from loguru import logger
 from mineru.utils.enum_class import ContentType, BlockType, SplitFlag

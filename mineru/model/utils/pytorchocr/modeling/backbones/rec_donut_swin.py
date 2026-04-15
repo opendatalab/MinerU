@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import collections.abc
 from collections import OrderedDict
 import math
