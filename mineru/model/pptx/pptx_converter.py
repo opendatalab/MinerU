@@ -376,26 +376,55 @@ class PptxConverter:
                 continue
 
         rich_parts = []
+        pending_text = ""
+        pending_style = None
+
+        def flush_pending_text():
+            nonlocal pending_text, pending_style
+            if pending_text == "":
+                pending_style = None
+                return
+
+            rich_parts.append(
+                self._format_text_with_hyperlink(pending_text, None, pending_style)
+            )
+            pending_text = ""
+            pending_style = None
+
         for node in paragraph._element.content_children:
             if isinstance(node, CT_TextLineBreak):
+                flush_pending_text()
                 rich_parts.append(" ")
                 continue
 
             node_text = getattr(node, "text", None)
             if node_text is None:
                 continue
+            if node_text == "":
+                continue
 
             run = run_map.get(id(node))
             if run is None:
+                flush_pending_text()
                 rich_parts.append(node_text)
                 continue
 
             style_str = self._get_style_str_from_run(run)
             hyperlink = self._resolve_hyperlink_from_run(run, shape)
-            rich_parts.append(
-                self._format_text_with_hyperlink(node_text, hyperlink, style_str)
-            )
+            if hyperlink is None:
+                if pending_text and style_str == pending_style:
+                    pending_text += node_text
+                else:
+                    flush_pending_text()
+                    pending_text = node_text
+                    pending_style = style_str
+            else:
+                flush_pending_text()
+                rich_parts.append(
+                    self._format_text_with_hyperlink(node_text, hyperlink, style_str)
+                )
 
+        flush_pending_text()
         return "".join(rich_parts)
 
     def _get_paragraph_list_info(self, shape, paragraph) -> dict:
