@@ -33,6 +33,7 @@ class MagicModel:
                 "chart_caption",
                 "header",
                 "footer",
+                "page_footnote",
             ]:
                 span = parse_text_block_spans(block_content)
 

@@ -13,7 +13,7 @@ MinerU has built-in command line tools that allow users to quickly use MinerU fo
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
->- `<input_path>`: Local `PDF` / image / `DOCX` file or directory
+>- `<input_path>`: Local `PDF` / image / `DOCX` / `PPTX` / `XLSX` file or directory
 >- `<output_path>`: Output directory
 >- Without `--api-url`, the CLI launches a temporary local `mineru-api`
 >- With `--api-url`, the CLI connects to an existing local or remote FastAPI service directly
@@ -41,7 +41,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >- Synchronous parsing endpoint: `POST /file_parse`
   >- Task query endpoints: `GET /tasks/{task_id}`, `GET /tasks/{task_id}/result`
   >- API outputs are controlled by the server and written to `./output` by default
-  >- Uploads currently support `PDF`, image, and `DOCX` files
+  >- Uploads currently support `PDF`, image, `DOCX`, `PPTX`, and `XLSX` files
   >
   >- `POST /tasks` returns immediately with a `task_id`. `POST /file_parse` uses the same task manager internally, waits for the task to finish, and then returns the final result synchronously.
   >- When a task is waiting in the queue, both the submission response and task-status response may include `queued_ahead` to indicate how many tasks are ahead of it.
@@ -84,7 +84,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
   >- Without `--api-url`, Gradio starts a reusable local `mineru-api`; with `--api-url`, it reuses an existing local or remote service.
   >- `--enable-vlm-preload true` makes Gradio start its local `mineru-api` during WebUI startup and wait for VLM preload to finish. It is ignored when `--api-url` points to an existing service.
-  >- The WebUI currently accepts `PDF`, image, and `DOCX` uploads.
+  >- The WebUI currently accepts `PDF`, image, `DOCX`, `PPTX`, and `XLSX` uploads.
 
 - Use `mineru-router` for multi-service / multi-GPU orchestration:
   ```bash

@@ -46,11 +46,12 @@
 
 <details>
 <summary>MinerU — High-accuracy document parsing engine for LLM · RAG · Agent workflows</summary>
-Converts PDF · Word · PPT · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
+Converts PDF · DOCX · PPTX · XLSX · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
 MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI chip support
 
 **🔍 Core Parsing Capabilities**
 
+- Native support for `DOCX`, `PPTX`, and `XLSX` parsing
 - Formulas → LaTeX · Tables → HTML, accurate layout reconstruction
 - Supports scanned docs, handwriting, multi-column layouts, cross-page table merging
 - Output follows human reading order with automatic header/footer removal
@@ -108,7 +109,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 ## Project Introduction
 
-MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
+MinerU is a document parsing tool that converts `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
@@ -116,7 +117,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Key Features
 
-- Support `PDF`, image, and `DOCX` inputs.
+- Support `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs.
 - Remove headers, footers, footnotes, page numbers, etc., to ensure semantic coherence.
 - Output text in human-readable order, suitable for single-column, multi-column, and complex layouts.
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
@@ -274,7 +275,7 @@ If your device does not meet the GPU acceleration requirements, you can specify 
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-`mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+`mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
 # TODO
 

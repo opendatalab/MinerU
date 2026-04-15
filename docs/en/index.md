@@ -41,7 +41,7 @@
 
 ## Project Introduction
 
-MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
+MinerU is a document parsing tool that converts `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products domestically and internationally, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [GitHub Issues](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
@@ -49,7 +49,7 @@ Compared to well-known commercial products domestically and internationally, Min
 
 ## Key Features
 
-- Support `PDF`, image, and `DOCX` inputs
+- Support `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs
 - Remove headers, footers, footnotes, page numbers and other elements to ensure semantic coherence
 - Output text in human reading order, suitable for single-column, multi-column and complex layouts
 - Retain the original document structure, including titles, paragraphs, lists, etc.

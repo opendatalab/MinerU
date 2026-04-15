@@ -738,7 +738,7 @@ async def parse_request_form(
     files: Annotated[
         list[UploadFile],
         File(
-            description="Upload pdf or image files for parsing",
+            description="Upload PDF, image, DOCX, PPTX, or XLSX files for parsing",
             json_schema_extra=SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA,
         ),
     ],

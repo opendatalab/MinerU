@@ -8,7 +8,10 @@ from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_lin
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 from mineru.utils.language import detect_lang
-from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
+from mineru.backend.utils.markdown_utils import (
+    escape_conservative_markdown_text,
+    escape_text_block_markdown_prefix,
+)
 
 latex_delimiters_config = get_latex_delimiter_config()
 
@@ -231,7 +234,12 @@ def _merge_visual_blocks_to_markdown(para_block, img_buket_path='', table_enable
     return para_text
 
 
-def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
+def merge_para_with_text(
+    para_block,
+    formula_enable=True,
+    img_buket_path='',
+    escape_text_block_prefix=True,
+):
     block_text = ''
     for line in para_block['lines']:
         for span in line['spans']:
@@ -300,6 +308,8 @@ def merge_para_with_text(para_block, formula_enable=True, img_buket_path=''):
                                 para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
                             para_text += f'{content} '
+    if escape_text_block_prefix and para_block.get('type') == BlockType.TEXT:
+        para_text = escape_text_block_markdown_prefix(para_text)
     return para_text
 
 
@@ -312,7 +322,12 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
             para_text = merge_para_with_text(para_block, formula_enable=formula_enable, img_buket_path=img_buket_path)
         elif para_type == BlockType.LIST:
             for block in para_block['blocks']:
-                item_text = merge_para_with_text(block, formula_enable=formula_enable, img_buket_path=img_buket_path)
+                item_text = merge_para_with_text(
+                    block,
+                    formula_enable=formula_enable,
+                    img_buket_path=img_buket_path,
+                    escape_text_block_prefix=False,
+                )
                 para_text += f"{item_text}  \n"
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
@@ -385,7 +400,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
             'list_items':[],
         }
         for block in para_block['blocks']:
-            item_text = merge_para_with_text(block)
+            item_text = merge_para_with_text(block, escape_text_block_prefix=False)
             if item_text.strip():
                 para_content['list_items'].append(item_text)
     elif para_type == BlockType.TITLE:

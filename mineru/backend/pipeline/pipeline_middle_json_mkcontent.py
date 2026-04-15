@@ -8,7 +8,10 @@ from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from mineru.utils.language import detect_lang
-from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
+from mineru.backend.utils.markdown_utils import (
+    escape_conservative_markdown_text,
+    escape_text_block_markdown_prefix,
+)
 
 
 def make_blocks_to_markdown(paras_of_layout,
@@ -256,7 +259,10 @@ def merge_para_with_text(para_block):
         guess_lang = para_block.get('guess_lang', 'txt') or 'txt'
         return f"```{guess_lang}\n{code_text}\n```"
 
-    return _merge_para_text(para_block)
+    para_text = _merge_para_text(para_block)
+    if para_block.get('type') == BlockType.TEXT:
+        para_text = escape_text_block_markdown_prefix(para_text)
+    return para_text
 
 
 def _merge_para_text(para_block, escape_markdown=True, list_line_break='  \n'):
