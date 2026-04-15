@@ -916,6 +916,33 @@ class PptxConverter:
             return None
         return paragraph_properties.find("a:defRPr", namespaces=self.namespaces)
 
+    def _find_end_para_rpr(
+        self,
+        paragraph: Optional[etree._Element],
+    ) -> Optional[etree._Element]:
+        if paragraph is None:
+            return None
+        return paragraph.find("a:endParaRPr", namespaces=self.namespaces)
+
+    def _get_font_sources_from_paragraph(
+        self,
+        paragraph: Optional[etree._Element],
+    ) -> list[etree._Element]:
+        if paragraph is None:
+            return []
+
+        sources = []
+        paragraph_properties = paragraph.find("a:pPr", namespaces=self.namespaces)
+        paragraph_def_rpr = self._find_def_rpr(paragraph_properties)
+        if paragraph_def_rpr is not None:
+            sources.append(paragraph_def_rpr)
+
+        end_para_rpr = self._find_end_para_rpr(paragraph)
+        if end_para_rpr is not None:
+            sources.append(end_para_rpr)
+
+        return sources
+
     def _get_font_sources_from_text_body(
         self,
         tx_body: Optional[etree._Element],
@@ -998,7 +1025,7 @@ class PptxConverter:
 
     def _get_paragraph_font_sources(self, shape, paragraph) -> list[etree._Element]:
         level = self._get_paragraph_level(paragraph._element)
-        sources = []
+        sources = self._get_font_sources_from_paragraph(paragraph._element)
 
         tx_body = shape._element.find(".//p:txBody", namespaces=self.namespaces)
         sources.extend(self._get_font_sources_from_text_body(tx_body, level))
