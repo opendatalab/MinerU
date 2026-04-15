@@ -5,7 +5,10 @@ from html import escape
 
 from loguru import logger
 
-from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
+from mineru.backend.utils.markdown_utils import (
+    escape_conservative_markdown_text,
+    escape_text_block_markdown_prefix,
+)
 from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 
@@ -342,7 +345,7 @@ def _append_hyperlink_part(
     )
 
 
-def merge_para_with_text(para_block):
+def merge_para_with_text(para_block, escape_text_block_prefix=True):
     # First pass: collect rendered parts with raw boundary metadata.
     parts = []
     if para_block['type'] == BlockType.TITLE:
@@ -394,7 +397,10 @@ def merge_para_with_text(para_block):
                     url=span.get('url', ''),
                 )
 
-    return _join_rendered_parts(parts)
+    para_text = _join_rendered_parts(parts)
+    if escape_text_block_prefix and para_block.get('type') == BlockType.TEXT:
+        para_text = escape_text_block_markdown_prefix(para_text)
+    return para_text
 
 
 def _flatten_list_items(list_block):
@@ -409,7 +415,7 @@ def _flatten_list_items(list_block):
         if block['type'] in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items(block))
         else:
-            item_text = merge_para_with_text(block)
+            item_text = merge_para_with_text(block, escape_text_block_prefix=False)
             if item_text.strip():
                 if attribute == 'ordered':
                     items.append(f"{indent}{ordered_counter}. {item_text}")
