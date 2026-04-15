@@ -5,6 +5,7 @@ from html import escape
 
 from loguru import logger
 
+from mineru.backend.utils.markdown_utils import escape_conservative_markdown_text
 from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 
@@ -26,7 +27,6 @@ OFFICE_STYLE_RENDER_MODE_ENV = 'MINERU_OFFICE_STYLE_RENDER_MODE'
 OFFICE_STYLE_RENDER_MODE_HTML = 'html'
 OFFICE_STYLE_RENDER_MODE_MARKDOWN = 'markdown'
 OFFICE_MARKDOWN_WRAPPER_STYLES = {'bold', 'italic', 'strikethrough'}
-UNDERSCORE_THEMATIC_BREAK_RE = re.compile(r'^[ \t]{0,3}(?:_[ \t]*){3,}$')
 
 
 def _apply_markdown_style(content: str, style: list) -> str:
@@ -160,19 +160,13 @@ def _build_media_path(img_buket_path: str, image_path: str) -> str:
     return f"{img_buket_path}/{image_path}"
 
 
-def _escape_underscore_thematic_break(content: str) -> str:
-    """Escape standalone underscore runs that Markdown would parse as a thematic break."""
+def _escape_office_markdown_text(content: str) -> str:
+    """Escape plain-text Office content before applying Markdown wrappers."""
     if not content:
         return content
-
-    if not UNDERSCORE_THEMATIC_BREAK_RE.fullmatch(content.strip()):
+    if _get_office_style_render_mode() != OFFICE_STYLE_RENDER_MODE_MARKDOWN:
         return content
-
-    first_underscore = content.find('_')
-    if first_underscore == -1:
-        return content
-
-    return content[:first_underscore] + r'\_' + content[first_underscore + 1:]
+    return escape_conservative_markdown_text(content)
 
 
 def get_title_level(para_block):
@@ -284,7 +278,7 @@ def _join_rendered_parts(parts: list[dict]) -> str:
 
 
 def _append_text_part(parts: list[dict], original_content: str, span_style: list):
-    escaped_content = _escape_underscore_thematic_break(original_content)
+    escaped_content = _escape_office_markdown_text(original_content)
     content_stripped = escaped_content.strip()
     if content_stripped:
         styled = _apply_configured_style(content_stripped, span_style)
@@ -323,7 +317,7 @@ def _append_hyperlink_part(
     url: str = '',
     plain_text_only: bool = False,
 ):
-    link_text = original_content.strip()
+    link_text = _escape_office_markdown_text(original_content.strip())
     if not link_text:
         return
 
@@ -584,7 +578,7 @@ def _flatten_index_items(index_block):
                         )
                     else:
                         # For TOC rendering, hyperlink spans output as plain text.
-                        raw_parts.append(content)
+                        raw_parts.append(_escape_office_markdown_text(content))
                 item_text = ''.join(raw_parts).strip()
                 if item_text:
                     item_text = _apply_configured_style(item_text, uniform_style)
