@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from PIL import Image, ImageOps
 from transformers.image_processing_utils import BaseImageProcessor
 import numpy as np

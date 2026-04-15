@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import collections
 import html
 import posixpath

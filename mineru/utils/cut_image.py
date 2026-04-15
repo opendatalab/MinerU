@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from loguru import logger
 
 from .pdf_image_tools import cut_image

@@ -1,4 +1,6 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import base64
+from collections import Counter
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Final, BinaryIO, Optional
@@ -27,11 +29,14 @@ IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
 MIN_PICTURE_DIMENSION_RATIO: Final = 0.1
 MIN_PICTURE_AREA_RATIO: Final = 0.01
 BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO: Final = 0.1
-PPTX_XYCUT_BETA: Final = 0.7
+# PPTX_XYCUT_BETA: Final = 0.7
+PPTX_XYCUT_BETA: Final = 2.0
 PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
 DRAWINGML_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 RELATIONSHIP_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 SVG_BLIP_NS: Final = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+_EFFECTIVE_FONT_SIZE_KEY: Final = "_effective_font_size_pt"
+_EFFECTIVE_ALL_BOLD_KEY: Final = "_effective_all_bold"
 
 
 @dataclass(frozen=True)
@@ -142,6 +147,8 @@ class PptxConverter:
             self.cur_page.extend(tail_blocks)
 
             self._handle_slide_notes(slide)
+            self._promote_slide_text_blocks_to_titles(self.cur_page)
+            self._cleanup_slide_text_block_metadata(self.cur_page)
             self.cur_page = []
             self.pages.append(self.cur_page)
 
@@ -867,6 +874,253 @@ class PptxConverter:
             return ""
         return content.strip()
 
+    @staticmethod
+    def _parse_font_size_pt_from_rpr(
+        rpr: Optional[etree._Element],
+    ) -> Optional[float]:
+        if rpr is None:
+            return None
+
+        size = rpr.get("sz")
+        if size is None:
+            return None
+
+        try:
+            return round(int(size) / 100, 1)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _parse_bold_from_rpr(
+        rpr: Optional[etree._Element],
+    ) -> Optional[bool]:
+        if rpr is None:
+            return None
+
+        bold = rpr.get("b")
+        if bold is None:
+            return None
+
+        normalized = str(bold).strip().lower()
+        if normalized in {"1", "true", "t", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "off"}:
+            return False
+        return None
+
+    def _find_def_rpr(
+        self,
+        paragraph_properties: Optional[etree._Element],
+    ) -> Optional[etree._Element]:
+        if paragraph_properties is None:
+            return None
+        return paragraph_properties.find("a:defRPr", namespaces=self.namespaces)
+
+    def _find_end_para_rpr(
+        self,
+        paragraph: Optional[etree._Element],
+    ) -> Optional[etree._Element]:
+        if paragraph is None:
+            return None
+        return paragraph.find("a:endParaRPr", namespaces=self.namespaces)
+
+    def _get_font_sources_from_paragraph(
+        self,
+        paragraph: Optional[etree._Element],
+    ) -> list[etree._Element]:
+        if paragraph is None:
+            return []
+
+        sources = []
+        paragraph_properties = paragraph.find("a:pPr", namespaces=self.namespaces)
+        paragraph_def_rpr = self._find_def_rpr(paragraph_properties)
+        if paragraph_def_rpr is not None:
+            sources.append(paragraph_def_rpr)
+
+        end_para_rpr = self._find_end_para_rpr(paragraph)
+        if end_para_rpr is not None:
+            sources.append(end_para_rpr)
+
+        return sources
+
+    def _get_font_sources_from_text_body(
+        self,
+        tx_body: Optional[etree._Element],
+        level: int,
+    ) -> list[etree._Element]:
+        if tx_body is None:
+            return []
+
+        lst_style = tx_body.find("a:lstStyle", namespaces=self.namespaces)
+        if lst_style is None:
+            return []
+
+        sources = []
+        level_properties = self._find_level_properties_in_list_style(
+            lst_style,
+            level,
+        )
+        level_def_rpr = self._find_def_rpr(level_properties)
+        if level_def_rpr is not None:
+            sources.append(level_def_rpr)
+
+        default_properties = lst_style.find("a:defPPr", namespaces=self.namespaces)
+        default_def_rpr = self._find_def_rpr(default_properties)
+        if default_def_rpr is not None:
+            sources.append(default_def_rpr)
+
+        return sources
+
+    def _get_font_sources_from_text_style_bucket(
+        self,
+        style_bucket: Optional[etree._Element],
+        level: int,
+    ) -> list[etree._Element]:
+        if style_bucket is None:
+            return []
+
+        sources = []
+        level_properties = style_bucket.find(
+            f"a:lvl{level + 1}pPr",
+            namespaces=self.namespaces,
+        )
+        level_def_rpr = self._find_def_rpr(level_properties)
+        if level_def_rpr is not None:
+            sources.append(level_def_rpr)
+
+        default_properties = style_bucket.find(
+            "a:defPPr",
+            namespaces=self.namespaces,
+        )
+        default_def_rpr = self._find_def_rpr(default_properties)
+        if default_def_rpr is not None:
+            sources.append(default_def_rpr)
+
+        return sources
+
+    def _resolve_layout_placeholder(self, shape):
+        if not getattr(shape, "is_placeholder", False):
+            return None
+
+        try:
+            idx = shape.placeholder_format.idx
+            layout = shape.part.slide.slide_layout
+            layout_ph = layout.placeholders.get(idx)
+        except Exception:
+            layout_ph = None
+
+        if layout_ph is not None:
+            return layout_ph
+
+        try:
+            placeholder_type = shape.placeholder_format.type
+            layout = shape.part.slide.slide_layout
+            for candidate in layout.placeholders:
+                if candidate.placeholder_format.type == placeholder_type:
+                    return candidate
+        except Exception:
+            return None
+
+        return None
+
+    def _get_paragraph_font_sources(self, shape, paragraph) -> list[etree._Element]:
+        level = self._get_paragraph_level(paragraph._element)
+        sources = self._get_font_sources_from_paragraph(paragraph._element)
+
+        tx_body = shape._element.find(".//p:txBody", namespaces=self.namespaces)
+        sources.extend(self._get_font_sources_from_text_body(tx_body, level))
+
+        if getattr(shape, "is_placeholder", False):
+            layout_placeholder = self._resolve_layout_placeholder(shape)
+            if layout_placeholder is not None:
+                layout_tx_body = layout_placeholder._element.find(
+                    ".//p:txBody",
+                    namespaces=self.namespaces,
+                )
+                sources.extend(
+                    self._get_font_sources_from_text_body(layout_tx_body, level)
+                )
+
+            try:
+                placeholder_type = shape.placeholder_format.type
+                slide_master = shape.part.slide.slide_layout.slide_master
+            except Exception:
+                return sources
+
+            style_bucket = self._get_master_text_style_node(
+                slide_master,
+                placeholder_type,
+            )
+            sources.extend(
+                self._get_font_sources_from_text_style_bucket(
+                    style_bucket,
+                    level,
+                )
+            )
+
+        return sources
+
+    def _resolve_effective_run_font_size_pt(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> Optional[float]:
+        run_rpr = run._r.find("a:rPr", namespaces=self.namespaces)
+        for source in [run_rpr, *paragraph_font_sources]:
+            font_size_pt = self._parse_font_size_pt_from_rpr(source)
+            if font_size_pt is not None:
+                return font_size_pt
+        return None
+
+    def _resolve_effective_run_bold(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> Optional[bool]:
+        run_rpr = run._r.find("a:rPr", namespaces=self.namespaces)
+        for source in [run_rpr, *paragraph_font_sources]:
+            bold = self._parse_bold_from_rpr(source)
+            if bold is not None:
+                return bold
+        return None
+
+    def _build_paragraph_style_profile(self, shape, paragraph) -> dict[str, Optional[float] | bool]:
+        paragraph_font_sources = self._get_paragraph_font_sources(shape, paragraph)
+        effective_font_size_pt = None
+        all_bold = True
+        has_non_whitespace_run = False
+
+        for run in paragraph.runs:
+            run_text = getattr(run, "text", None)
+            if run_text is None or not run_text.strip():
+                continue
+
+            has_non_whitespace_run = True
+
+            run_font_size_pt = self._resolve_effective_run_font_size_pt(
+                run,
+                paragraph_font_sources,
+            )
+            if run_font_size_pt is not None:
+                if effective_font_size_pt is None:
+                    effective_font_size_pt = run_font_size_pt
+                else:
+                    effective_font_size_pt = max(
+                        effective_font_size_pt,
+                        run_font_size_pt,
+                    )
+
+            if (
+                self._resolve_effective_run_bold(run, paragraph_font_sources)
+                is not True
+            ):
+                all_bold = False
+
+        return {
+            "font_size_pt": effective_font_size_pt,
+            "all_bold": has_non_whitespace_run and all_bold,
+        }
+
     def _get_paragraph_list_info(self, shape, paragraph) -> dict:
         """基于段落->文本框->布局->母版继承链解析段落列表属性。"""
         marker_info = self._get_effective_list_marker(shape, paragraph)
@@ -978,6 +1232,143 @@ class PptxConverter:
             }
         )
 
+    @staticmethod
+    def _most_common_size(font_sizes: list[float]) -> Optional[float]:
+        if not font_sizes:
+            return None
+
+        counts = Counter(font_sizes)
+        return min(
+            counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[0]
+
+    def _promote_slide_text_blocks_to_titles(self, slide_blocks: list[dict]) -> None:
+        body_font_size_pt = self._most_common_size(
+            [
+                block[_EFFECTIVE_FONT_SIZE_KEY]
+                for block in slide_blocks
+                if (
+                    block.get("type") == BlockType.TEXT
+                    and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
+                    and not block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
+                )
+            ]
+        )
+
+        self._promote_level2_text_blocks(slide_blocks, body_font_size_pt)
+        self._promote_level3_text_blocks(slide_blocks, body_font_size_pt)
+
+    def _promote_level2_text_blocks(
+        self,
+        slide_blocks: list[dict],
+        body_font_size_pt: Optional[float],
+    ) -> None:
+        bold_text_blocks = [
+            block
+            for block in slide_blocks
+            if (
+                block.get("type") == BlockType.TEXT
+                and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
+                and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
+            )
+        ]
+        if not bold_text_blocks:
+            return
+
+        bold_font_sizes = sorted(
+            {
+                block[_EFFECTIVE_FONT_SIZE_KEY]
+                for block in bold_text_blocks
+            },
+            reverse=True,
+        )
+        level2_font_size_pt = bold_font_sizes[0]
+        level2_candidates = [
+            block
+            for block in bold_text_blocks
+            if block[_EFFECTIVE_FONT_SIZE_KEY] == level2_font_size_pt
+        ]
+
+        if len(level2_candidates) != 1:
+            return
+
+        if (
+            body_font_size_pt is not None
+            and level2_font_size_pt < body_font_size_pt + 4
+        ):
+            return
+
+        if (
+            len(bold_font_sizes) > 1
+            and level2_font_size_pt < bold_font_sizes[1] + 2
+        ):
+            return
+
+        level2_candidates[0]["type"] = BlockType.TITLE
+        level2_candidates[0]["level"] = 2
+
+    def _promote_level3_text_blocks(
+        self,
+        slide_blocks: list[dict],
+        body_font_size_pt: Optional[float],
+    ) -> None:
+        if body_font_size_pt is None:
+            return
+
+        level2_font_sizes = sorted(
+            {
+                block[_EFFECTIVE_FONT_SIZE_KEY]
+                for block in slide_blocks
+                if (
+                    block.get("type") == BlockType.TITLE
+                    and block.get("level") == 2
+                    and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
+                )
+            },
+            reverse=True,
+        )
+        if not level2_font_sizes:
+            return
+
+        level2_font_size_pt = level2_font_sizes[0]
+        level3_font_sizes = sorted(
+            {
+                block[_EFFECTIVE_FONT_SIZE_KEY]
+                for block in slide_blocks
+                if (
+                    block.get("type") == BlockType.TEXT
+                    and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
+                    and block.get(_EFFECTIVE_FONT_SIZE_KEY) is not None
+                    and block[_EFFECTIVE_FONT_SIZE_KEY] < level2_font_size_pt
+                )
+            },
+            reverse=True,
+        )
+        if not level3_font_sizes:
+            return
+
+        level3_font_size_pt = level3_font_sizes[0]
+        if level3_font_size_pt < body_font_size_pt + 2:
+            return
+        if level2_font_size_pt < level3_font_size_pt + 2:
+            return
+
+        for block in slide_blocks:
+            if (
+                block.get("type") == BlockType.TEXT
+                and block.get(_EFFECTIVE_ALL_BOLD_KEY, False)
+                and block.get(_EFFECTIVE_FONT_SIZE_KEY) == level3_font_size_pt
+            ):
+                block["type"] = BlockType.TITLE
+                block["level"] = 3
+
+    @staticmethod
+    def _cleanup_slide_text_block_metadata(slide_blocks: list[dict]) -> None:
+        for block in slide_blocks:
+            block.pop(_EFFECTIVE_FONT_SIZE_KEY, None)
+            block.pop(_EFFECTIVE_ALL_BOLD_KEY, None)
+
     def _handle_text_elements(self, shape):
         self.list_block_stack = []
 
@@ -1007,8 +1398,14 @@ class PptxConverter:
             if not p_text:
                 continue
 
-            # 根据文本类型分配标签(标题/部分标题/段落等)
-            label = BlockType.TEXT
+            style_profile = self._build_paragraph_style_profile(shape, paragraph)
+
+            block = {
+                "type": BlockType.TEXT,
+                "content": p_text,
+                _EFFECTIVE_FONT_SIZE_KEY: style_profile["font_size_pt"],
+                _EFFECTIVE_ALL_BOLD_KEY: style_profile["all_bold"],
+            }
             if shape.is_placeholder:
                 placeholder_type = shape.placeholder_format.type
                 if placeholder_type in [
@@ -1016,14 +1413,10 @@ class PptxConverter:
                     PP_PLACEHOLDER.TITLE,
                     PP_PLACEHOLDER.SUBTITLE,
                 ]:
-                    label = BlockType.TITLE
+                    block["type"] = BlockType.TITLE
+                    block["level"] = 2
 
-            self.cur_page.append(
-                {
-                    "type": label,
-                    "content": p_text,
-                }
-            )
+            self.cur_page.append(block)
 
         # shape 结束后清理列表上下文，避免跨 shape 污染
         self.list_block_stack.clear()
@@ -1125,25 +1518,7 @@ class PptxConverter:
         # 3) 布局占位符列表样式(如果这是一个占位符)
         layout_result = None
         if shape.is_placeholder:
-            idx = shape.placeholder_format.idx
-            layout = shape.part.slide.slide_layout
-            layout_ph = None
-            try:
-                layout_ph = layout.placeholders.get(idx)
-            except Exception:
-                layout_ph = None
-
-            # 某些PPT由不同工具生成时，layout 的 idx 与 slide placeholder 不一致。
-            # 这类场景回退到按 placeholder type 匹配，尽量保持继承链可解析。
-            if layout_ph is None:
-                try:
-                    ph_type = shape.placeholder_format.type
-                    for candidate in layout.placeholders:
-                        if candidate.placeholder_format.type == ph_type:
-                            layout_ph = candidate
-                            break
-                except Exception:
-                    layout_ph = None
+            layout_ph = self._resolve_layout_placeholder(shape)
 
             if layout_ph is not None:
                 layout_tx = layout_ph._element.find(

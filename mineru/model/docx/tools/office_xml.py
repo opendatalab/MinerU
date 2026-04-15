@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import xml.dom.minidom
 
 from mammoth.docx.xmlparser import XmlText, XmlElement

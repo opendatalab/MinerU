@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import copy
 import math
 from typing import Optional, Dict, Any, Tuple

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from contextlib import contextmanager
 import json
 import os

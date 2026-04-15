@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """
 This code is refered from:
 https://github.com/WenmuZhou/DBNet.pytorch/blob/master/post_processing/seg_detector_representer.py

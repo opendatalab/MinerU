@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """
 包含两个MagicModel类中重复使用的方法和逻辑
 """

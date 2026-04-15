@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from collections.abc import Mapping, Sequence
 from typing import Any
 

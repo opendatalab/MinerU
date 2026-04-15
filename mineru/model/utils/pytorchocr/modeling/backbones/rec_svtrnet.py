@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import numpy as np
 import torch
 from torch import nn

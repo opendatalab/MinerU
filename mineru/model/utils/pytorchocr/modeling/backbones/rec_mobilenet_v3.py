@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from torch import nn
 
 from .det_mobilenet_v3 import ConvBNLayer, ResidualUnit, make_divisible
