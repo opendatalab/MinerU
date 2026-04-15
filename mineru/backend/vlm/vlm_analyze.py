@@ -19,7 +19,7 @@ from .model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils import exclude_progress_bar_idle_time
+from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from ...data.data_reader_writer import DataWriter
 from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
 from ...utils.check_sys_env import is_mac_os_version_supported
@@ -106,11 +106,8 @@ class ModelSingleton:
                     mlx_supported = is_mac_os_version_supported()
                     if not mlx_supported:
                         raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
-                    try:
-                        from mlx_vlm import load as mlx_load
-                    except ImportError:
-                        raise ImportError("Please install mlx-vlm to use the mlx-engine backend.")
-                    model, processor = mlx_load(model_path)
+                    from mineru_vl_utils.mlx_compat import load_mlx_model
+                    model, processor = load_mlx_model(model_path)
                 else:
                     if os.getenv('OMP_NUM_THREADS') is None:
                         os.environ["OMP_NUM_THREADS"] = "1"
@@ -233,6 +230,8 @@ class ModelSingleton:
                     server_headers=server_headers,
                     max_retries=max_retries,
                     retry_backoff_factor=retry_backoff_factor,
+                    enable_table_formula_eq_wrap=True,
+                    image_analysis=True,
                 )
                 predictor._mineru_runtime_handles = {
                     "backend": backend,

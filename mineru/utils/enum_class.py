@@ -96,8 +96,8 @@ class MakeMode:
 
 
 class ModelPath:
-    vlm_root_hf = "opendatalab/MinerU2.5-2509-1.2B"
-    vlm_root_modelscope = "OpenDataLab/MinerU2.5-2509-1.2B"
+    vlm_root_hf = "opendatalab/MinerU2.5-Pro-2604-1.2B"
+    vlm_root_modelscope = "OpenDataLab/MinerU2.5-Pro-2604-1.2B"
     pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
     pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
     pp_doclayout_v2 = "models/Layout/PP-DocLayoutV2"

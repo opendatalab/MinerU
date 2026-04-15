@@ -8,6 +8,7 @@ The exact set of generated files depends on the backend and the input document t
 
 - **Visual debugging files**: Help users intuitively understand the document parsing process and results
 - **Structured data files**: Contain detailed parsing data for secondary development
+- In multimodal markdown output, `image` / `chart` blocks render the screenshot first; when `content` exists, a collapsed HTML `<details>` block is appended after the image, using the block `sub_type` as the summary label when available and falling back to `image content` or `chart content`
 
 The following sections provide detailed descriptions of each file's purpose and format.
 
@@ -133,7 +134,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 ##### Block Structure Hierarchy
 
 ```
-Level 1 blocks (table | image)
+Level 1 blocks (table | image | chart)
 └── Level 2 blocks
     └── Lines
         └── Spans
@@ -143,7 +144,7 @@ Level 1 blocks (table | image)
 
 | Field Name | Description |
 |------------|-------------|
-| `type` | Block type: `table` or `image` |
+| `type` | Block type: `table`, `image`, or `chart` |
 | `bbox` | Rectangular box coordinates of the block `[x0, y0, x1, y1]` |
 | `blocks` | List of contained level 2 blocks |
 
@@ -165,6 +166,9 @@ Level 1 blocks (table | image)
 | `table_body` | Table body |
 | `table_caption` | Table caption text |
 | `table_footnote` | Table footnote |
+| `chart_body` | Chart body |
+| `chart_caption` | Chart caption text |
+| `chart_footnote` | Chart footnote |
 | `text` | Text block |
 | `title` | Title block |
 | `index` | Index block |
@@ -179,8 +183,8 @@ Level 1 blocks (table | image)
 
 **Span fields**:
 - `bbox`: Rectangular box coordinates of the span
-- `type`: Span type (`image`, `table`, `text`, `inline_equation`, `interline_equation`)
-- `content` | `img_path`: Text content or image path
+- `type`: Span type (`image`, `table`, `chart`, `text`, `inline_equation`, `interline_equation`)
+- `content` | `image_path`: Text content or image path
 
 ##### Sample Data
 
@@ -322,6 +326,7 @@ Text levels are distinguished through the `text_level` field:
 - All content blocks include a `bbox` field representing the bounding box coordinates of the content block `[x0, y0, x1, y1]`, mapped to a range of 0-1000.
 - `code` entries use `sub_type` to distinguish `code` and `algorithm`, and may include fields such as `code_body`, `code_caption`, and `code_footnote`.
 - `list` entries may use `sub_type` to distinguish ordinary lists from reference-style lists.
+- `image` / `chart` entries may include an optional `sub_type` field to carry the visual subtype through downstream outputs.
 
 ##### Sample Data
 
@@ -408,6 +413,8 @@ Text levels are distinguished through the `text_level` field:
 | `content` | `dict` | Structured payload for the given `type` |
 | `bbox` | `list[int]` | Optional bounding box mapped into the 0-1000 coordinate range |
 | `anchor` | `string` | Optional anchor; some `DOCX` titles or index items may include it |
+
+`image` / `chart` items may also include an optional top-level `sub_type` field for visual subtype propagation.
 
 ##### Common Types
 
@@ -654,6 +661,8 @@ Based on the pipeline format, with these VLM-specific extensions:
     * Fields: `code_body` (string), optional `code_caption` (list of strings)
 - New `list` type with `sub_type` (`text` | `ref_text`):
     * Field: `list_items` (array of strings)
+- `image` / `chart` entries may carry an optional `sub_type` field for visual subtype propagation.
+- `chart` entries may additionally expose `content`, `chart_caption`, and `chart_footnote` alongside `img_path`; `content` preserves the original Markdown table text.
 - All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
 - Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
 - `bbox` still uses the 0–1000 normalized coordinate mapping.

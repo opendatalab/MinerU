@@ -1,15 +1,72 @@
+import base64
+from dataclasses import dataclass
 from io import BytesIO
-from typing import Final, BinaryIO, Optional
+from typing import Any, Final, BinaryIO, Optional
 
 from lxml import etree
 from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 from loguru import logger
-from PIL import Image, UnidentifiedImageError, WmfImagePlugin
+from PIL import Image, UnidentifiedImageError
 
 from mineru.utils.enum_class import BlockType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
+from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
+
+IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
+    PP_PLACEHOLDER.SLIDE_IMAGE,
+    PP_PLACEHOLDER.SLIDE_NUMBER,
+    PP_PLACEHOLDER.DATE,
+    PP_PLACEHOLDER.FOOTER,
+}
+MIN_PICTURE_DIMENSION_RATIO: Final = 0.1
+MIN_PICTURE_AREA_RATIO: Final = 0.01
+BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO: Final = 0.1
+PPTX_XYCUT_BETA: Final = 0.7
+PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
+DRAWINGML_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
+RELATIONSHIP_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+SVG_BLIP_NS: Final = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+
+
+@dataclass(frozen=True)
+class _SlideTransform:
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    translate_x: float = 0.0
+    translate_y: float = 0.0
+
+    def apply_bbox(
+        self,
+        bbox: Optional[tuple[float, float, float, float]],
+    ) -> Optional[tuple[float, float, float, float]]:
+        if bbox is None:
+            return None
+
+        left = self.scale_x * bbox[0] + self.translate_x
+        top = self.scale_y * bbox[1] + self.translate_y
+        right = self.scale_x * bbox[2] + self.translate_x
+        bottom = self.scale_y * bbox[3] + self.translate_y
+        return (left, top, right, bottom)
+
+    def compose(self, inner: "_SlideTransform") -> "_SlideTransform":
+        return _SlideTransform(
+            scale_x=self.scale_x * inner.scale_x,
+            scale_y=self.scale_y * inner.scale_y,
+            translate_x=self.scale_x * inner.translate_x + self.translate_x,
+            translate_y=self.scale_y * inner.translate_y + self.translate_y,
+        )
+
+
+@dataclass(frozen=True)
+class _FlattenedShape:
+    shape: Any
+    bbox: Optional[tuple[float, float, float, float]]
 
 
 class PptxConverter:
@@ -43,43 +100,381 @@ class PptxConverter:
             self.pages.pop()
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
+        slide_width = int(pptx_obj.slide_width)
+        slide_height = int(pptx_obj.slide_height)
+
         # 遍历每一张幻灯片
         for _, slide in enumerate(pptx_obj.slides):
-
-            def handle_shapes(shape):
-                handle_groups(shape)
-                if shape.has_table:
-                    # 处理表格
-                    self._handle_tables(shape)
-                if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                    # 处理图片
-                    if hasattr(shape, "image"):
-                        self._handle_pictures(shape)
-                # 如果形状没有任何文本，则继续处理下一个形状
-                if not hasattr(shape, "text"):
-                    return
-                if shape.text is None:
-                    return
-                if len(shape.text.strip()) == 0:
-                    return
-                if not shape.has_text_frame:
-                    logger.warning("Warning: shape has text but not text_frame")
-                    return
-                # 处理其他文本元素，包括列表(项目符号列表、编号列表等)
-                self._handle_text_elements(shape)
-                return
-
-            def handle_groups(shape):
-                if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-                    for groupedshape in shape.shapes:
-                        handle_shapes(groupedshape)
+            linear_shapes = self._flatten_slide_shapes(slide.shapes)
+            sortable_shape_entries = []
+            tail_blocks = []
 
             # 遍历幻灯片中的每一个形状
-            for shape in slide.shapes:
-                handle_shapes(shape)
+            for shape_index, shape_entry in enumerate(linear_shapes):
+                shape_blocks = self._collect_shape_blocks(
+                    shape_entry,
+                    linear_shapes,
+                    shape_index,
+                    slide_width,
+                    slide_height,
+                )
+                if not shape_blocks:
+                    continue
 
+                if shape_entry.bbox is None:
+                    tail_blocks.extend(shape_blocks)
+                    continue
+
+                sortable_shape_entries.append(
+                    {
+                        "bbox": shape_entry.bbox,
+                        "blocks": shape_blocks,
+                    }
+                )
+
+            sorted_shape_entries = sort_entries(
+                sortable_shape_entries,
+                beta=PPTX_XYCUT_BETA,
+                density_threshold=PPTX_XYCUT_DENSITY_THRESHOLD,
+            )
+            for entry in sorted_shape_entries:
+                self.cur_page.extend(entry["blocks"])
+            self.cur_page.extend(tail_blocks)
+
+            self._handle_slide_notes(slide)
             self.cur_page = []
             self.pages.append(self.cur_page)
+
+    def _flatten_slide_shapes(
+        self,
+        shapes,
+        slide_transform: Optional[_SlideTransform] = None,
+    ) -> list[_FlattenedShape]:
+        if slide_transform is None:
+            slide_transform = _SlideTransform()
+
+        linear_shapes: list[_FlattenedShape] = []
+        for shape in shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                group_transform = self._group_shape_transform(shape)
+                linear_shapes.extend(
+                    self._flatten_slide_shapes(
+                        shape.shapes,
+                        slide_transform.compose(group_transform),
+                    )
+                )
+            else:
+                linear_shapes.append(
+                    _FlattenedShape(
+                        shape=shape,
+                        bbox=slide_transform.apply_bbox(self._shape_bbox(shape)),
+                    )
+                )
+        return linear_shapes
+
+    def _collect_shape_blocks(
+        self,
+        shape_entry: _FlattenedShape,
+        linear_shapes: list[_FlattenedShape],
+        shape_index: int,
+        slide_width: int,
+        slide_height: int,
+    ) -> list:
+        shape = shape_entry.shape
+        shape_blocks = []
+        previous_page = self.cur_page
+        previous_list_block_stack = self.list_block_stack
+        self.cur_page = shape_blocks
+        self.list_block_stack = []
+
+        try:
+            if shape.has_table:
+                self._handle_tables(shape)
+
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                later_shapes = linear_shapes[shape_index + 1 :]
+                if not self._should_skip_picture(
+                    shape_entry,
+                    later_shapes,
+                    slide_width,
+                    slide_height,
+                ):
+                    self._handle_pictures(shape)
+
+            if not hasattr(shape, "text"):
+                return shape_blocks
+            if shape.text is None:
+                return shape_blocks
+            if len(shape.text.strip()) == 0:
+                return shape_blocks
+            if not shape.has_text_frame:
+                logger.warning("Warning: shape has text but not text_frame")
+                return shape_blocks
+
+            self._handle_text_elements(shape)
+            return shape_blocks
+        finally:
+            self.cur_page = previous_page
+            self.list_block_stack = previous_list_block_stack
+
+    @staticmethod
+    def _shape_bbox(shape) -> Optional[tuple[float, float, float, float]]:
+        try:
+            left = float(shape.left)
+            top = float(shape.top)
+            width = float(shape.width)
+            height = float(shape.height)
+        except Exception:
+            return None
+
+        if width <= 0 or height <= 0:
+            return None
+
+        return (left, top, left + width, top + height)
+
+    @staticmethod
+    def _group_shape_transform(shape) -> _SlideTransform:
+        group_properties = getattr(shape._element, "grpSpPr", None)
+        xfrm = (
+            getattr(group_properties, "xfrm", None)
+            if group_properties is not None
+            else None
+        )
+        if xfrm is None:
+            return _SlideTransform()
+
+        child_offset = getattr(xfrm, "chOff", None)
+        child_extent = getattr(xfrm, "chExt", None)
+        if child_offset is None or child_extent is None:
+            return _SlideTransform()
+
+        try:
+            offset_x = float(xfrm.x)
+            offset_y = float(xfrm.y)
+            extent_x = float(xfrm.cx)
+            extent_y = float(xfrm.cy)
+            child_offset_x = float(child_offset.x)
+            child_offset_y = float(child_offset.y)
+            child_extent_x = float(child_extent.cx)
+            child_extent_y = float(child_extent.cy)
+        except Exception:
+            return _SlideTransform()
+
+        if (
+            extent_x <= 0
+            or extent_y <= 0
+            or child_extent_x <= 0
+            or child_extent_y <= 0
+        ):
+            return _SlideTransform()
+
+        scale_x = extent_x / child_extent_x
+        scale_y = extent_y / child_extent_y
+        return _SlideTransform(
+            scale_x=scale_x,
+            scale_y=scale_y,
+            translate_x=offset_x - child_offset_x * scale_x,
+            translate_y=offset_y - child_offset_y * scale_y,
+        )
+
+    @staticmethod
+    def _bbox_area(bbox: tuple[float, float, float, float]) -> float:
+        return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+
+    @staticmethod
+    def _bbox_intersection(
+        bbox1: tuple[float, float, float, float],
+        bbox2: tuple[float, float, float, float],
+    ) -> Optional[tuple[float, float, float, float]]:
+        x0 = max(bbox1[0], bbox2[0])
+        y0 = max(bbox1[1], bbox2[1])
+        x1 = min(bbox1[2], bbox2[2])
+        y1 = min(bbox1[3], bbox2[3])
+
+        if x1 <= x0 or y1 <= y0:
+            return None
+
+        return (x0, y0, x1, y1)
+
+    @classmethod
+    def _rectangles_union_area(cls, bboxes: list[tuple[float, float, float, float]]) -> float:
+        if not bboxes:
+            return 0.0
+
+        xs = sorted({bbox[0] for bbox in bboxes} | {bbox[2] for bbox in bboxes})
+        total_area = 0.0
+
+        for idx in range(len(xs) - 1):
+            x_left = xs[idx]
+            x_right = xs[idx + 1]
+            if x_right <= x_left:
+                continue
+
+            y_intervals = []
+            for bbox in bboxes:
+                if bbox[0] < x_right and bbox[2] > x_left:
+                    y_intervals.append((bbox[1], bbox[3]))
+
+            if not y_intervals:
+                continue
+
+            y_intervals.sort()
+            merged_height = 0.0
+            current_y0, current_y1 = y_intervals[0]
+
+            for y0, y1 in y_intervals[1:]:
+                if y0 <= current_y1:
+                    current_y1 = max(current_y1, y1)
+                    continue
+
+                merged_height += max(0.0, current_y1 - current_y0)
+                current_y0, current_y1 = y0, y1
+
+            merged_height += max(0.0, current_y1 - current_y0)
+            total_area += (x_right - x_left) * merged_height
+
+        return total_area
+
+    @staticmethod
+    def _is_nonempty_text_shape(shape) -> bool:
+        if not getattr(shape, "has_text_frame", False):
+            return False
+
+        text = getattr(shape, "text", None)
+        if text is None:
+            return False
+
+        return len(text.strip()) > 0
+
+    def _is_small_picture(
+        self,
+        picture_bbox: Optional[tuple[float, float, float, float]],
+        slide_width: int,
+        slide_height: int,
+    ) -> bool:
+        if picture_bbox is None:
+            return False
+
+        picture_width = picture_bbox[2] - picture_bbox[0]
+        picture_height = picture_bbox[3] - picture_bbox[1]
+
+        if picture_width <= 0 or picture_height <= 0:
+            return False
+
+        slide_area = float(slide_width) * float(slide_height)
+        if slide_area <= 0:
+            return False
+
+        if picture_width < MIN_PICTURE_DIMENSION_RATIO * float(slide_width):
+            return True
+        if picture_height < MIN_PICTURE_DIMENSION_RATIO * float(slide_height):
+            return True
+
+        picture_area_ratio = (picture_width * picture_height) / slide_area
+        return picture_area_ratio < MIN_PICTURE_AREA_RATIO
+
+    def _is_background_picture(
+        self,
+        picture_entry: _FlattenedShape,
+        later_shapes: list[_FlattenedShape],
+    ) -> bool:
+        picture_bbox = picture_entry.bbox
+        if picture_bbox is None:
+            return False
+
+        picture_area = self._bbox_area(picture_bbox)
+        if picture_area <= 0:
+            return False
+
+        overlap_bboxes = []
+        for later_shape in later_shapes:
+            if not self._is_nonempty_text_shape(later_shape.shape):
+                continue
+
+            later_bbox = later_shape.bbox
+            if later_bbox is None:
+                continue
+
+            overlap_bbox = self._bbox_intersection(picture_bbox, later_bbox)
+            if overlap_bbox is not None:
+                overlap_bboxes.append(overlap_bbox)
+
+        if not overlap_bboxes:
+            return False
+
+        covered_area = self._rectangles_union_area(overlap_bboxes)
+        return (
+            covered_area / picture_area
+            >= BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO
+        )
+
+    def _should_skip_picture(
+        self,
+        picture_entry: _FlattenedShape,
+        later_shapes: list[_FlattenedShape],
+        slide_width: int,
+        slide_height: int,
+    ) -> bool:
+        return self._is_small_picture(
+            picture_entry.bbox,
+            slide_width,
+            slide_height,
+        ) or self._is_background_picture(
+            picture_entry,
+            later_shapes,
+        )
+
+    def _handle_slide_notes(self, slide) -> None:
+        if not slide.has_notes_slide:
+            return
+
+        try:
+            notes_slide = slide.notes_slide
+        except Exception as e:
+            logger.warning(f"Warning: notes slide cannot be loaded: {e}")
+            return
+
+        def handle_notes_shape(shape) -> None:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                for grouped_shape in shape.shapes:
+                    handle_notes_shape(grouped_shape)
+                return
+
+            if self._should_skip_notes_shape(shape):
+                return
+
+            for paragraph in shape.text_frame.paragraphs:
+                note_text = self._normalize_text_block_content(
+                    self._build_paragraph_rich_text(paragraph, shape)
+                )
+                if not note_text:
+                    continue
+                self.cur_page.append(
+                    {
+                        "type": BlockType.PAGE_FOOTNOTE,
+                        "content": note_text,
+                    }
+                )
+
+        for shape in notes_slide.shapes:
+            handle_notes_shape(shape)
+
+    @staticmethod
+    def _should_skip_notes_shape(shape) -> bool:
+        if not getattr(shape, "has_text_frame", False):
+            return True
+
+        text = getattr(shape, "text", None)
+        if text is None or len(text.strip()) == 0:
+            return True
+
+        if not getattr(shape, "is_placeholder", False):
+            return False
+
+        try:
+            return shape.placeholder_format.type in IGNORED_NOTES_PLACEHOLDER_TYPES
+        except Exception:
+            return False
 
     def _handle_tables(self, shape):
         """将PowerPoint表格转换为HTML格式。
@@ -174,18 +569,26 @@ class PptxConverter:
         return None
 
     def _handle_pictures(self, shape):
+        image_data = self._get_shape_image_data(shape)
+        if image_data is None:
+            return
+
+        image_bytes, content_type = image_data
+
+        if content_type == "image/svg+xml":
+            image_block = {
+                "type": BlockType.IMAGE,
+                "content": self._bytes_to_data_uri(image_bytes, content_type),
+            }
+            self.cur_page.append(image_block)
+            return
+
         # 使用PIL打开图像
         try:
-            # 获取图像字节数据
-            image = shape.image
-            image_bytes = image.blob
-            im_dpi, _ = image.dpi
             pil_image = Image.open(BytesIO(image_bytes))
 
-            if isinstance(pil_image, WmfImagePlugin.WmfStubImageFile):
-                logger.warning(f"Skipping WMF image, size: {pil_image.size}")
-                placeholder = Image.new("RGB", pil_image.size, (240, 240, 240))
-                img_base64 = image_to_b64str(placeholder)
+            if is_vector_image(pil_image):
+                img_base64 = serialize_vector_image_with_placeholder(pil_image)
             else:
                 if pil_image.mode != "RGB":
                     pil_image = pil_image.convert("RGB")
@@ -199,6 +602,53 @@ class PptxConverter:
         except (UnidentifiedImageError, OSError) as e:
             logger.warning(f"Warning: image cannot be loaded by Pillow: {e}")
         return
+
+    @staticmethod
+    def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
+        encoded = base64.b64encode(image_bytes).decode("utf-8")
+        return f"data:{content_type};base64,{encoded}"
+
+    @staticmethod
+    def _find_first_embedded_image_rid(shape) -> Optional[str]:
+        svg_blips = shape._element.findall(f".//{{{SVG_BLIP_NS}}}svgBlip")
+        for svg_blip in svg_blips:
+            relationship_id = svg_blip.get(f"{{{RELATIONSHIP_NS}}}embed")
+            if relationship_id:
+                return relationship_id
+
+        blips = shape._element.findall(f".//{{{DRAWINGML_NS}}}blip")
+        for blip in blips:
+            relationship_id = blip.get(f"{{{RELATIONSHIP_NS}}}embed")
+            if relationship_id:
+                return relationship_id
+
+        return None
+
+    def _get_shape_image_data(self, shape) -> Optional[tuple[bytes, Optional[str]]]:
+        relationship_id = None
+        if hasattr(shape, "_element"):
+            relationship_id = self._find_first_embedded_image_rid(shape)
+
+        if relationship_id:
+            try:
+                image_part = shape.part.related_part(relationship_id)
+                image_bytes = image_part.blob
+            except Exception as e:
+                logger.warning(
+                    f"Warning: embedded image relation {relationship_id} cannot be loaded: {e}"
+                )
+            else:
+                return image_bytes, getattr(image_part, "content_type", None)
+
+        try:
+            image = shape.image
+        except ValueError as e:
+            logger.warning(f"Warning: shape image cannot be loaded: {e}")
+            return None
+        except AttributeError:
+            return None
+
+        return image.blob, None
 
     @staticmethod
     def _get_style_str_from_run(run) -> Optional[str]:
@@ -316,28 +766,106 @@ class PptxConverter:
             except Exception:
                 continue
 
-        rich_parts = []
+        segments = []
+
         for node in paragraph._element.content_children:
             if isinstance(node, CT_TextLineBreak):
-                rich_parts.append(" ")
+                segments.append(
+                    {
+                        "text": " ",
+                        "style_str": None,
+                        "hyperlink": None,
+                    }
+                )
                 continue
 
             node_text = getattr(node, "text", None)
             if node_text is None:
                 continue
+            if node_text == "":
+                continue
 
             run = run_map.get(id(node))
             if run is None:
-                rich_parts.append(node_text)
+                segments.append(
+                    {
+                        "text": node_text,
+                        "style_str": None,
+                        "hyperlink": None,
+                    }
+                )
                 continue
 
-            style_str = self._get_style_str_from_run(run)
-            hyperlink = self._resolve_hyperlink_from_run(run, shape)
-            rich_parts.append(
-                self._format_text_with_hyperlink(node_text, hyperlink, style_str)
+            segments.append(
+                {
+                    "text": node_text,
+                    "style_str": self._get_style_str_from_run(run),
+                    "hyperlink": self._resolve_hyperlink_from_run(run, shape),
+                }
             )
 
-        return "".join(rich_parts)
+        segments = self._trim_rich_text_segments(segments)
+        if not segments:
+            return ""
+
+        merged_segments = []
+        for segment in segments:
+            if (
+                merged_segments
+                and merged_segments[-1]["hyperlink"] is None
+                and segment["hyperlink"] is None
+                and merged_segments[-1]["style_str"] == segment["style_str"]
+            ):
+                merged_segments[-1]["text"] += segment["text"]
+            else:
+                merged_segments.append(segment)
+
+        return "".join(
+            self._format_text_with_hyperlink(
+                segment["text"],
+                segment["hyperlink"],
+                segment["style_str"],
+            )
+            for segment in merged_segments
+        )
+
+    @staticmethod
+    def _trim_rich_text_segments(segments: list[dict]) -> list[dict]:
+        trimmed_segments = [dict(segment) for segment in segments if segment.get("text") is not None]
+        if not trimmed_segments:
+            return []
+
+        start_idx = 0
+        while start_idx < len(trimmed_segments):
+            normalized_text = trimmed_segments[start_idx]["text"].lstrip()
+            if normalized_text:
+                trimmed_segments[start_idx]["text"] = normalized_text
+                break
+            start_idx += 1
+
+        if start_idx == len(trimmed_segments):
+            return []
+
+        trimmed_segments = trimmed_segments[start_idx:]
+        end_idx = len(trimmed_segments) - 1
+        while end_idx >= 0:
+            normalized_text = trimmed_segments[end_idx]["text"].rstrip()
+            if normalized_text:
+                trimmed_segments[end_idx]["text"] = normalized_text
+                break
+            end_idx -= 1
+
+        if end_idx < 0:
+            return []
+
+        return trimmed_segments[:end_idx + 1]
+
+    @staticmethod
+    def _normalize_text_block_content(content: str) -> str:
+        """Normalize extracted text-block content without changing internal spacing."""
+        if not content:
+            return ""
+        return content.strip()
 
     def _get_paragraph_list_info(self, shape, paragraph) -> dict:
         """基于段落->文本框->布局->母版继承链解析段落列表属性。"""
@@ -458,8 +986,10 @@ class PptxConverter:
             list_info = self._get_paragraph_list_info(shape, paragraph)
 
             if list_info["is_list"]:
-                rich_text = self._build_paragraph_rich_text(paragraph, shape)
-                if rich_text.strip():
+                rich_text = self._normalize_text_block_content(
+                    self._build_paragraph_rich_text(paragraph, shape)
+                )
+                if rich_text:
                     self._append_list_item(
                         self.list_block_stack,
                         list_info["level"],
@@ -471,8 +1001,10 @@ class PptxConverter:
             # 段落不是列表项，关闭当前 shape 的列表上下文
             self.list_block_stack.clear()
 
-            p_text = self._build_paragraph_rich_text(paragraph, shape)
-            if len(p_text.strip()) == 0:
+            p_text = self._normalize_text_block_content(
+                self._build_paragraph_rich_text(paragraph, shape)
+            )
+            if not p_text:
                 continue
 
             # 根据文本类型分配标签(标题/部分标题/段落等)

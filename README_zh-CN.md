@@ -45,10 +45,11 @@
 
 <details>
 <summary>MinerU — 专为 LLM · RAG · Agent 场景构建的高精度文档解析引擎 </summary>
-将 PDF · Word · PPT · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
+将 PDF · DOCX · PPTX · XLSX · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
 MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 <br>
 
 **🔍 核心解析能力**
+- 原生支持 `DOCX`、`PPTX`、`XLSX` 解析
 - 公式 → LaTeX · 表格 → HTML，精准还原复杂版面
 - 支持扫描件、手写体、多栏布局、跨页表格合并
 - 输出符合人类阅读顺序，自动去除页眉页脚
@@ -107,7 +108,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 ## 项目简介
 
-MinerU 是一款文档解析工具，可将 `PDF`、图片和 `DOCX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
+MinerU 是一款文档解析工具，可将 `PDF`、图片以及 `DOCX`、`PPTX`、`XLSX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
 相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
@@ -115,7 +116,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
-- 支持 `PDF`、图片与 `DOCX` 输入
+- 支持 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -280,7 +281,7 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-当前 `mineru` 支持本地 `PDF / 图片 / DOCX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
+当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
 # TODO
 
@@ -322,7 +323,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 [LICENSE.md](LICENSE.md)
 
-本仓库源码采用 AGPLv3 许可。
+本仓库源码采用 Apache-2.0 许可。
 
 # Acknowledgments
 
@@ -342,6 +343,20 @@ mineru -p <input_path> -o <output_path> -b pipeline
 # Citation
 
 ```bibtex
+@article{wang2026mineru2,
+  title={MinerU2. 5-Pro: Pushing the Limits of Data-Centric Document Parsing at Scale},
+  author={Wang, Bin and He, Tianyao and Ouyang, Linke and Wu, Fan and Zhao, Zhiyuan and Chu, Tao and Qu, Yuan and Jin, Zhenjiang and Zeng, Weijun and Miao, Ziyang and others},
+  journal={arXiv preprint arXiv:2604.04771},
+  year={2026}
+}
+
+@article{dong2026minerudiffusion,
+  title={MinerU-Diffusion: Rethinking Document OCR as Inverse Rendering via Diffusion Decoding},
+  author={Dong, Hejun and Niu, Junbo and Wang, Bin and Zeng, Weijun and Zhang, Wentao and He, Conghui},
+  journal={arXiv preprint arXiv:2603.22458},
+  year={2026}
+}
+
 @article{niu2025mineru2,
   title={Mineru2. 5: A decoupled vision-language model for efficient high-resolution document parsing},
   author={Niu, Junbo and Liu, Zheng and Gu, Zhuangcheng and Wang, Bin and Ouyang, Linke and Zhao, Zhiyuan and Chu, Tao and He, Tianyao and Wu, Fan and Zhang, Qintong and others},

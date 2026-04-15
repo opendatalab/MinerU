@@ -149,6 +149,6 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-当前 `mineru` 支持本地 `PDF / 图片 / DOCX` 文件或目录输入。
+当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入。
 
 您可以通过命令行、API、WebUI 等多种方式使用 MinerU 进行文档解析，具体使用方法请参考[使用指南](../usage/index.md)。

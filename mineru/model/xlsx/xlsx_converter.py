@@ -17,15 +17,14 @@ from loguru import logger
 from pydantic import PositiveInt, Field, BaseModel, NonNegativeInt
 from pydantic.dataclasses import dataclass
 
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.enum_class import BlockType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
 from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 
-
-class SplitConfig:
-    singleton_table_ratio: float = 0.3 # 单个单元格表格占总表格数的比例，如果高于这个比例，则说明gap_tolerance过小
-    blank_cell_ratio: float = 0.7  # 单个表格中，空白单元格占总单元格的比例，如果高于这个比例，则说明gap_tolerance过大
 
 @dataclass
 class DataRegion:
@@ -94,21 +93,32 @@ class XlsxConverter:
     def __init__(
         self,
         treat_singleton_as_text: bool = True,
+        gap_tolerance: int = 0,
+        include_hidden_sheets: bool = False,
     ):
         self.workbook = None
         self.zf = None
         self.treat_singleton_as_text = treat_singleton_as_text
+        self.gap_tolerance = gap_tolerance
+        self.include_hidden_sheets = include_hidden_sheets
         self.pages = []
         self.cur_page = []
-        self.pages.append(self.cur_page)
         self.image_map = {}
         self.cell_image_map = {}
+        self.sheet_images = []
+        self.table_image_map = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
         self,
         file_stream: BinaryIO,
     ):
+        self.pages = []
+        self.cur_page = []
+        self.sheet_images = []
+        self.table_image_map = {}
+        self.cell_image_map = {}
+
         if hasattr(file_stream, "seek"):
             file_stream.seek(0)
 
@@ -127,12 +137,11 @@ class XlsxConverter:
             rich_text=True,
         )
         if self.workbook is not None:
-            # 遍历工作簿中的所有工作表
-            for idx, name in enumerate(self.workbook.sheetnames):
-                logger.info(f"正在处理第 {idx + 1} 个工作表：{name}")
-                sheet = self.workbook[name]
-                self._convert_sheet(sheet)
+            # 遍历需要参与转换的工作表，避免为隐藏表或尾部空页生成无效页面。
+            for idx, sheet in enumerate(self._iter_sheets_to_convert(), start=1):
+                logger.debug(f"正在处理第 {idx} 个工作表：{sheet.title}")
                 self.cur_page = []
+                self._convert_sheet(sheet)
                 self.pages.append(self.cur_page)
         else:
             logger.error("工作簿未初始化。")
@@ -141,13 +150,65 @@ class XlsxConverter:
             self.zf.close()
             self.zf = None
 
+    def _iter_sheets_to_convert(self):
+        if self.workbook is None:
+            return
+
+        for sheet in self.workbook.worksheets:
+            if (
+                not self.include_hidden_sheets
+                and sheet.sheet_state != Worksheet.SHEETSTATE_VISIBLE
+            ):
+                logger.debug(f"跳过隐藏工作表：{sheet.title}")
+                continue
+            yield sheet
+
     def _convert_sheet(self, sheet):
         if isinstance(sheet, Worksheet):
             # Pre-calc maps
             self.math_map = self._map_math_formulas_to_cells(sheet)
+            self.sheet_images = self._collect_sheet_images(sheet)
+            self.table_image_map = collections.defaultdict(list)
+            for image_info in self.sheet_images:
+                anchor = image_info["anchor"]
+                if anchor[0] is None or anchor[1] is None:
+                    continue
+                self.table_image_map[anchor].append(
+                    f'<img src="{image_info["base64"]}" />'
+                )
 
             used_cells = self._find_tables_in_sheet(sheet)  # 提取表格
-            self._find_images_in_sheet(sheet, used_cells)  # 提取图片
+            self._find_images_in_sheet(used_cells)  # 提取图片
+
+    @staticmethod
+    def _serialize_sheet_image(image: XlsImage) -> str:
+        pil_image = Image.open(image.ref)  # type: ignore[arg-type]
+        if is_vector_image(pil_image):
+            return serialize_vector_image_with_placeholder(pil_image)
+
+        if pil_image.mode != "RGB":
+            return image_to_b64str(pil_image, image_format="PNG")
+
+        return image_to_b64str(pil_image, image_format="JPEG")
+
+    def _collect_sheet_images(self, sheet: Worksheet) -> list[dict]:
+        images = []
+        if self.workbook is None:
+            return images
+
+        for item in getattr(sheet, "_images", []):  # type: ignore[attr-defined]
+            try:
+                image: XlsImage = cast(XlsImage, item)
+                images.append(
+                    {
+                        "anchor": self._get_anchor_pos(item.anchor),
+                        "base64": self._serialize_sheet_image(image),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"无法从 Excel 工作表中提取图片，错误信息：{e}")
+
+        return images
 
     def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
         """Parse drawings to find math formulas and map them to cells."""
@@ -253,7 +314,11 @@ class XlsxConverter:
                     used_cells.add((anchor_r + cell.row, anchor_c + cell.col))
 
                 # 若只有一个单元格且启用了单元格文本选项，则作为文本添加
-                if self.treat_singleton_as_text and len(excel_table.data) == 1:
+                if (
+                    self.treat_singleton_as_text
+                    and len(excel_table.data) == 1
+                    and self._can_render_singleton_as_text(excel_table)
+                ):
                     self.cur_page.append(
                         {
                             "type": BlockType.TEXT,
@@ -271,6 +336,23 @@ class XlsxConverter:
                     )
 
         return used_cells
+
+    def _get_cell_math_formulas(
+        self, table_anchor: tuple[int, int], row: int, col: int
+    ) -> list[str]:
+        abs_row = table_anchor[1] + row
+        abs_col = table_anchor[0] + col
+        return list(self.math_map.get((abs_row, abs_col), []))
+
+    def _can_render_singleton_as_text(self, excel_table: ExcelTable) -> bool:
+        cell = excel_table.data[0]
+        return (
+            cell.row_span == 1
+            and cell.col_span == 1
+            and not cell.media
+            and not cell.text_is_html
+            and not self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+        )
 
     def excel_table_to_html(self, excel_table) -> str:
         """
@@ -328,9 +410,12 @@ class XlsxConverter:
                         else:
                             text_content = media_content
                     # 添加公式
-                    if (table_anchor[0] + r, table_anchor[1] + c) in self.math_map:
-                        for formula in self.math_map[(r, c)]:
-                            text_content += self.equation_bookends.format(EQ=formula)
+                    for formula in self._get_cell_math_formulas(
+                        table_anchor,
+                        r,
+                        c,
+                    ):
+                        text_content += self.equation_bookends.format(EQ=formula)
 
                     inner_html = self._render_cell_inner_html(
                         text_content,
@@ -346,71 +431,24 @@ class XlsxConverter:
         lines.append("</table>")
         return "\n".join(lines)
 
-    def _find_images_in_sheet(
-        self, sheet: Worksheet, used_cells: set[tuple[int, int]] = None
-    ):
+    def _find_images_in_sheet(self, used_cells: set[tuple[int, int]] = None):
         if self.workbook is not None:
-            content_layer = self._get_sheet_content_layer(sheet)
+            for image_info in self.sheet_images:
+                r, c = image_info["anchor"]
+                if (
+                    used_cells
+                    and r is not None
+                    and c is not None
+                    and (r, c) in used_cells
+                ):
+                    continue
 
-            # 遍历工作表中的所有嵌入图片
-            for item in sheet._images:  # type: ignore[attr-defined]
-
-                # Check if image is already used in a table
-                if used_cells:
-                    r, c = self._get_anchor_pos(item.anchor)
-                    if r is not None and c is not None and (r, c) in used_cells:
-                        continue
-
-                try:
-                    image: XlsImage = cast(XlsImage, item)
-                    pil_image = Image.open(image.ref)  # type: ignore[arg-type]
-                    if pil_image.format in ("WMF", "EMF"):
-                        if is_windows_environment():
-                            # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
-                            # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
-                            try:
-                                pil_image.load()
-                                img_base64 = image_to_b64str(
-                                    pil_image, image_format="PNG"
-                                )
-                            except OSError as e:
-                                logger.warning(
-                                    f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead."
-                                )
-                                # 如果渲染失败，创建与原图同样大小的浅灰色占位图
-                                placeholder = Image.new(
-                                    "RGB", pil_image.size, (240, 240, 240)
-                                )
-                                img_base64 = image_to_b64str(
-                                    placeholder, image_format="JPEG"
-                                )
-                        else:
-                            logger.warning(
-                                f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}"
-                            )
-                            # 创建与原图同样大小的浅灰色占位图
-                            placeholder = Image.new(
-                                "RGB", pil_image.size, (240, 240, 240)
-                            )
-                            img_base64 = image_to_b64str(
-                                placeholder, image_format="JPEG"
-                            )
-                    else:
-                        # 处理常规图片
-                        if pil_image.mode != "RGB":
-                            # RGBA, P, L 等模式保留原貌并存为 PNG (PNG支持透明度)
-                            img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                        else:
-                            # 纯 RGB 图片存为 JPEG 以减小体积
-                            img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                    image_block = {
+                self.cur_page.append(
+                    {
                         "type": BlockType.IMAGE,
-                        "content": img_base64,
+                        "content": image_info["base64"],
                     }
-                    self.cur_page.append(image_block)
-
-                except Exception as e:
-                    logger.error(f"无法从 Excel 工作表中提取图片，错误信息：{e}")
+                )
 
         return
 
@@ -424,107 +462,33 @@ class XlsxConverter:
             表示所有数据表格的 ExcelTable 对象列表。
         """
         bounds: DataRegion = self._find_true_data_bounds(sheet)  # 获取真实数据边界
-        gap_tolerance = 1  # 定义默认间隔容忍度，允许在该范围内连接相邻单元格
-        best_tables: list[ExcelTable] = []
-        best_penalty = float("inf")
-        best_gap_tolerance = gap_tolerance
+        tables: list[ExcelTable] = []  # 存储已发现的表格
+        visited: set[tuple[int, int]] = set()  # 记录已访问的单元格
 
-        # 多次进行分割尝试，逐步调整 gap_tolerance 以优化表格检测质量
-        for _ in range(3):
-            tables: list[ExcelTable] = []
-            visited: set[tuple[int, int]] = set()
+        # 仅在真实数据边界范围内进行扫描
+        for ri, row in enumerate(
+            sheet.iter_rows(
+                min_row=bounds.min_row,
+                max_row=bounds.max_row,
+                min_col=bounds.min_col,
+                max_col=bounds.max_col,
+                values_only=False,
+            ),
+            start=bounds.min_row - 1,  # 转换为0-based索引
+        ):
+            for rj, cell in enumerate(row, start=bounds.min_col - 1):
+                # 跳过空单元格或已访问的单元格
+                if cell.value is None or (ri, rj) in visited:
+                    continue
 
-            # 仅在真实数据边界范围内进行扫描
-            for ri, row in enumerate(
-                sheet.iter_rows(
-                    min_row=bounds.min_row,
-                    max_row=bounds.max_row,
-                    min_col=bounds.min_col,
-                    max_col=bounds.max_col,
-                    values_only=False,
-                ),
-                start=bounds.min_row - 1,  # 转换为0-based索引
-            ):
-                for rj, cell in enumerate(row, start=bounds.min_col - 1):
-                    # 跳过空单元格或已访问的单元格
-                    if cell.value is None or (ri, rj) in visited:
-                        continue
-
-                    # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
-                    table_bounds, visited_cells = self._find_table_bounds(
-                        sheet,
-                        ri,
-                        rj,
-                        bounds.max_row,
-                        bounds.max_col,
-                        gap_tolerance=gap_tolerance,
-                    )
-                    visited.update(visited_cells)  # 将已访问单元格加入全局记录
-                    tables.append(table_bounds)
-
-            if self._is_table_split_qualified(tables):
-                return tables
-
-            # 计算当前方案偏离阈值的程度，作为兜底选择依据
-            singleton_ratio = (
-                sum(1 for t in tables if len(t.data) == 1) / len(tables)
-                if tables
-                else 0.0
-            )
-            max_blank_ratio = 0.0
-            for table in tables:
-                total_cells = max(len(table.data), 1)
-                blank_cells = sum(
-                    1
-                    for cell in table.data
-                    if not cell.text.strip()
-                    and not any(media.strip() for media in cell.media)
+                # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
+                table_bounds, visited_cells = self._find_table_bounds(
+                    sheet, ri, rj, bounds.max_row, bounds.max_col
                 )
-                max_blank_ratio = max(max_blank_ratio, blank_cells / total_cells)
+                visited.update(visited_cells)  # 将已访问单元格加入全局记录
+                tables.append(table_bounds)
 
-            singleton_over = max(
-                0.0, singleton_ratio - SplitConfig.singleton_table_ratio
-            )
-            blank_over = max(0.0, max_blank_ratio - SplitConfig.blank_cell_ratio)
-            penalty = singleton_over + blank_over
-
-            if penalty < best_penalty:
-                best_penalty = penalty
-                best_tables = tables
-                best_gap_tolerance = gap_tolerance
-
-            if singleton_ratio >= SplitConfig.singleton_table_ratio:
-                gap_tolerance += 1
-            elif max_blank_ratio >= SplitConfig.blank_cell_ratio:
-                gap_tolerance -= 1
-            else:
-                break
-
-        logger.info(f"最佳 gap_tolerance={best_gap_tolerance}")
-        return best_tables
-
-    def _is_table_split_qualified(self, tables: list[ExcelTable]) -> bool:
-        """根据 SplitConfig 判断当前表格切分结果是否可接受。"""
-        if not tables:
-            return True
-
-        singleton_count = sum(1 for table in tables if len(table.data) == 1)
-        singleton_ratio = singleton_count / len(tables)
-        if singleton_ratio > SplitConfig.singleton_table_ratio:
-            return False
-
-        for table in tables:
-            total_cells = max(len(table.data), 1)
-            blank_cells = sum(
-                1
-                for cell in table.data
-                if not cell.text.strip()
-                and not any(media.strip() for media in cell.media)
-            )
-            if (blank_cells / total_cells) > SplitConfig.blank_cell_ratio:
-                return False
-
-        return True
+        return tables
 
     def _find_true_data_bounds(self, sheet: Worksheet) -> DataRegion:
         """查找工作表中真实的数据边界（最小/最大行列）。
@@ -575,7 +539,6 @@ class XlsxConverter:
         start_col: int,
         max_row: int,
         max_col: int,
-        gap_tolerance: int = 1,
     ) -> tuple[ExcelTable, set[tuple[int, int]]]:
         """使用洪水填充（BFS）策略确定表格边界。
 
@@ -653,7 +616,7 @@ class XlsxConverter:
 
             for dr, dc in directions:
                 # 在容忍距离范围内逐步检查邻居（优先检查最近的）
-                for step in range(1, gap_tolerance + 2):
+                for step in range(1, self.gap_tolerance + 2):
                     nr, nc = curr_r + (dr * step), curr_c + (dc * step)
 
                     if (nr, nc) in table_cells:
@@ -690,11 +653,14 @@ class XlsxConverter:
                 raw_cell_text = str(cell.value) if cell.value is not None else ""
                 cell_text = ""
                 text_is_html = False
-                media_content = ""
+                media_content = []
                 if "DISPIMG" in raw_cell_text:
-                    media_content = self._get_cell_image(raw_cell_text)
+                    cell_image = self._get_cell_image(raw_cell_text)
+                    if cell_image:
+                        media_content.append(cell_image)
                 else:
                     cell_text, text_is_html = self._cell_value_to_html(cell)
+                media_content.extend(self.table_image_map.get((ri, rj), []))
 
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
@@ -713,7 +679,7 @@ class XlsxConverter:
                         row_span=row_span,
                         col_span=col_span,
                         styles=self._extract_cell_style(cell),
-                        media=[media_content] if media_content else [],
+                        media=media_content,
                         text_is_html=text_is_html,
                     )
                 )
@@ -751,6 +717,10 @@ class XlsxConverter:
         try:
             with self.zf.open(zip_target_path) as image_file:
                 pil_image = Image.open(image_file)
+                if is_vector_image(pil_image):
+                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
+                    return rf'<img src="{img_base64}" />'
+
                 pil_image.load()
 
                 if pil_image.mode != "RGB":
@@ -765,7 +735,7 @@ class XlsxConverter:
             return ""
 
     def _load_cell_image_mappings(self):
-        if self.cell_image_map :
+        if self.cell_image_map:
             return self.cell_image_map
 
         if self.zf is None:
@@ -811,7 +781,13 @@ class XlsxConverter:
                 rel_id = rel.attrib.get("Id")
                 target = rel.attrib.get("Target")
                 if rel_id and target:
-                    self.cell_image_map[cell_image_embed_to_name[rel_id]] = target
+                    image_name = cell_image_embed_to_name.get(rel_id)
+                    if not image_name:
+                        logger.warning(
+                            f"跳过缺少 cellImage 名称映射的关系: {rel_id}"
+                        )
+                        continue
+                    self.cell_image_map[image_name] = target
 
         except Exception as e:
             logger.warning(f"解析 cellimages 映射失败: {e}")
