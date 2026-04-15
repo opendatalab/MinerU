@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from typing import Final, BinaryIO, Optional
 
@@ -27,6 +28,9 @@ MIN_PICTURE_AREA_RATIO: Final = 0.01
 BACKGROUND_PICTURE_TEXT_COVERAGE_RATIO: Final = 0.1
 PPTX_XYCUT_BETA: Final = 0.7
 PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
+DRAWINGML_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
+RELATIONSHIP_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+SVG_BLIP_NS: Final = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 
 
 class PptxConverter:
@@ -133,7 +137,7 @@ class PptxConverter:
             if shape.has_table:
                 self._handle_tables(shape)
 
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE and hasattr(shape, "image"):
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
                 if not self._should_skip_picture(
                     shape,
@@ -453,11 +457,22 @@ class PptxConverter:
         return None
 
     def _handle_pictures(self, shape):
+        image_data = self._get_shape_image_data(shape)
+        if image_data is None:
+            return
+
+        image_bytes, content_type = image_data
+
+        if content_type == "image/svg+xml":
+            image_block = {
+                "type": BlockType.IMAGE,
+                "content": self._bytes_to_data_uri(image_bytes, content_type),
+            }
+            self.cur_page.append(image_block)
+            return
+
         # 使用PIL打开图像
         try:
-            # 获取图像字节数据
-            image = shape.image
-            image_bytes = image.blob
             pil_image = Image.open(BytesIO(image_bytes))
 
             if is_vector_image(pil_image):
@@ -475,6 +490,53 @@ class PptxConverter:
         except (UnidentifiedImageError, OSError) as e:
             logger.warning(f"Warning: image cannot be loaded by Pillow: {e}")
         return
+
+    @staticmethod
+    def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
+        encoded = base64.b64encode(image_bytes).decode("utf-8")
+        return f"data:{content_type};base64,{encoded}"
+
+    @staticmethod
+    def _find_first_embedded_image_rid(shape) -> Optional[str]:
+        svg_blips = shape._element.findall(f".//{{{SVG_BLIP_NS}}}svgBlip")
+        for svg_blip in svg_blips:
+            relationship_id = svg_blip.get(f"{{{RELATIONSHIP_NS}}}embed")
+            if relationship_id:
+                return relationship_id
+
+        blips = shape._element.findall(f".//{{{DRAWINGML_NS}}}blip")
+        for blip in blips:
+            relationship_id = blip.get(f"{{{RELATIONSHIP_NS}}}embed")
+            if relationship_id:
+                return relationship_id
+
+        return None
+
+    def _get_shape_image_data(self, shape) -> Optional[tuple[bytes, Optional[str]]]:
+        relationship_id = None
+        if hasattr(shape, "_element"):
+            relationship_id = self._find_first_embedded_image_rid(shape)
+
+        if relationship_id:
+            try:
+                image_part = shape.part.related_part(relationship_id)
+                image_bytes = image_part.blob
+            except Exception as e:
+                logger.warning(
+                    f"Warning: embedded image relation {relationship_id} cannot be loaded: {e}"
+                )
+            else:
+                return image_bytes, getattr(image_part, "content_type", None)
+
+        try:
+            image = shape.image
+        except ValueError as e:
+            logger.warning(f"Warning: shape image cannot be loaded: {e}")
+            return None
+        except AttributeError:
+            return None
+
+        return image.blob, None
 
     @staticmethod
     def _get_style_str_from_run(run) -> Optional[str]:

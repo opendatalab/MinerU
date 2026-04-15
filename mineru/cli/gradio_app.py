@@ -448,6 +448,7 @@ def replace_image_with_base64(markdown_text, image_dir_path):
         '.png': 'image/png',
         '.gif': 'image/gif',
         '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
     }
 
     def _path_to_data_uri(relative_path):
