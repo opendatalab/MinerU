@@ -328,8 +328,10 @@ class PptxConverter:
                 return
 
             for paragraph in shape.text_frame.paragraphs:
-                note_text = self._build_paragraph_rich_text(paragraph, shape)
-                if not note_text.strip():
+                note_text = self._normalize_text_block_content(
+                    self._build_paragraph_rich_text(paragraph, shape)
+                )
+                if not note_text:
                     continue
                 self.cur_page.append(
                     {
@@ -590,26 +592,17 @@ class PptxConverter:
             except Exception:
                 continue
 
-        rich_parts = []
-        pending_text = ""
-        pending_style = None
-
-        def flush_pending_text():
-            nonlocal pending_text, pending_style
-            if pending_text == "":
-                pending_style = None
-                return
-
-            rich_parts.append(
-                self._format_text_with_hyperlink(pending_text, None, pending_style)
-            )
-            pending_text = ""
-            pending_style = None
+        segments = []
 
         for node in paragraph._element.content_children:
             if isinstance(node, CT_TextLineBreak):
-                flush_pending_text()
-                rich_parts.append(" ")
+                segments.append(
+                    {
+                        "text": " ",
+                        "style_str": None,
+                        "hyperlink": None,
+                    }
+                )
                 continue
 
             node_text = getattr(node, "text", None)
@@ -620,27 +613,85 @@ class PptxConverter:
 
             run = run_map.get(id(node))
             if run is None:
-                flush_pending_text()
-                rich_parts.append(node_text)
+                segments.append(
+                    {
+                        "text": node_text,
+                        "style_str": None,
+                        "hyperlink": None,
+                    }
+                )
                 continue
 
-            style_str = self._get_style_str_from_run(run)
-            hyperlink = self._resolve_hyperlink_from_run(run, shape)
-            if hyperlink is None:
-                if pending_text and style_str == pending_style:
-                    pending_text += node_text
-                else:
-                    flush_pending_text()
-                    pending_text = node_text
-                    pending_style = style_str
-            else:
-                flush_pending_text()
-                rich_parts.append(
-                    self._format_text_with_hyperlink(node_text, hyperlink, style_str)
-                )
+            segments.append(
+                {
+                    "text": node_text,
+                    "style_str": self._get_style_str_from_run(run),
+                    "hyperlink": self._resolve_hyperlink_from_run(run, shape),
+                }
+            )
 
-        flush_pending_text()
-        return "".join(rich_parts)
+        segments = self._trim_rich_text_segments(segments)
+        if not segments:
+            return ""
+
+        merged_segments = []
+        for segment in segments:
+            if (
+                merged_segments
+                and merged_segments[-1]["hyperlink"] is None
+                and segment["hyperlink"] is None
+                and merged_segments[-1]["style_str"] == segment["style_str"]
+            ):
+                merged_segments[-1]["text"] += segment["text"]
+            else:
+                merged_segments.append(segment)
+
+        return "".join(
+            self._format_text_with_hyperlink(
+                segment["text"],
+                segment["hyperlink"],
+                segment["style_str"],
+            )
+            for segment in merged_segments
+        )
+
+    @staticmethod
+    def _trim_rich_text_segments(segments: list[dict]) -> list[dict]:
+        trimmed_segments = [dict(segment) for segment in segments if segment.get("text") is not None]
+        if not trimmed_segments:
+            return []
+
+        start_idx = 0
+        while start_idx < len(trimmed_segments):
+            normalized_text = trimmed_segments[start_idx]["text"].lstrip()
+            if normalized_text:
+                trimmed_segments[start_idx]["text"] = normalized_text
+                break
+            start_idx += 1
+
+        if start_idx == len(trimmed_segments):
+            return []
+
+        trimmed_segments = trimmed_segments[start_idx:]
+        end_idx = len(trimmed_segments) - 1
+        while end_idx >= 0:
+            normalized_text = trimmed_segments[end_idx]["text"].rstrip()
+            if normalized_text:
+                trimmed_segments[end_idx]["text"] = normalized_text
+                break
+            end_idx -= 1
+
+        if end_idx < 0:
+            return []
+
+        return trimmed_segments[:end_idx + 1]
+
+    @staticmethod
+    def _normalize_text_block_content(content: str) -> str:
+        """Normalize extracted text-block content without changing internal spacing."""
+        if not content:
+            return ""
+        return content.strip()
 
     def _get_paragraph_list_info(self, shape, paragraph) -> dict:
         """基于段落->文本框->布局->母版继承链解析段落列表属性。"""
@@ -761,8 +812,10 @@ class PptxConverter:
             list_info = self._get_paragraph_list_info(shape, paragraph)
 
             if list_info["is_list"]:
-                rich_text = self._build_paragraph_rich_text(paragraph, shape)
-                if rich_text.strip():
+                rich_text = self._normalize_text_block_content(
+                    self._build_paragraph_rich_text(paragraph, shape)
+                )
+                if rich_text:
                     self._append_list_item(
                         self.list_block_stack,
                         list_info["level"],
@@ -774,8 +827,10 @@ class PptxConverter:
             # 段落不是列表项，关闭当前 shape 的列表上下文
             self.list_block_stack.clear()
 
-            p_text = self._build_paragraph_rich_text(paragraph, shape)
-            if len(p_text.strip()) == 0:
+            p_text = self._normalize_text_block_content(
+                self._build_paragraph_rich_text(paragraph, shape)
+            )
+            if not p_text:
                 continue
 
             # 根据文本类型分配标签(标题/部分标题/段落等)
