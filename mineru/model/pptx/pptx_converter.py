@@ -15,6 +15,13 @@ from mineru.backend.utils.office_image import (
 )
 from mineru.utils.pdf_reader import image_to_b64str
 
+IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
+    PP_PLACEHOLDER.SLIDE_IMAGE,
+    PP_PLACEHOLDER.SLIDE_NUMBER,
+    PP_PLACEHOLDER.DATE,
+    PP_PLACEHOLDER.FOOTER,
+}
+
 
 class PptxConverter:
 
@@ -82,8 +89,59 @@ class PptxConverter:
             for shape in slide.shapes:
                 handle_shapes(shape)
 
+            self._handle_slide_notes(slide)
             self.cur_page = []
             self.pages.append(self.cur_page)
+
+    def _handle_slide_notes(self, slide) -> None:
+        if not slide.has_notes_slide:
+            return
+
+        try:
+            notes_slide = slide.notes_slide
+        except Exception as e:
+            logger.warning(f"Warning: notes slide cannot be loaded: {e}")
+            return
+
+        def handle_notes_shape(shape) -> None:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                for grouped_shape in shape.shapes:
+                    handle_notes_shape(grouped_shape)
+                return
+
+            if self._should_skip_notes_shape(shape):
+                return
+
+            for paragraph in shape.text_frame.paragraphs:
+                note_text = self._build_paragraph_rich_text(paragraph, shape)
+                if not note_text.strip():
+                    continue
+                self.cur_page.append(
+                    {
+                        "type": BlockType.PAGE_FOOTNOTE,
+                        "content": note_text,
+                    }
+                )
+
+        for shape in notes_slide.shapes:
+            handle_notes_shape(shape)
+
+    @staticmethod
+    def _should_skip_notes_shape(shape) -> bool:
+        if not getattr(shape, "has_text_frame", False):
+            return True
+
+        text = getattr(shape, "text", None)
+        if text is None or len(text.strip()) == 0:
+            return True
+
+        if not getattr(shape, "is_placeholder", False):
+            return False
+
+        try:
+            return shape.placeholder_format.type in IGNORED_NOTES_PLACEHOLDER_TYPES
+        except Exception:
+            return False
 
     def _handle_tables(self, shape):
         """将PowerPoint表格转换为HTML格式。

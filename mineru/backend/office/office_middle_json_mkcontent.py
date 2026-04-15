@@ -713,6 +713,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
         BlockType.TEXT,
         BlockType.HEADER,
         BlockType.FOOTER,
+        BlockType.PAGE_FOOTNOTE,
     ]:
         para_content = {
             'type': para_type,
@@ -803,11 +804,14 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
     if para_type in [
         BlockType.HEADER,
         BlockType.FOOTER,
+        BlockType.PAGE_FOOTNOTE,
     ]:
         if para_type == BlockType.HEADER:
             content_type = ContentTypeV2.PAGE_HEADER
         elif para_type == BlockType.FOOTER:
             content_type = ContentTypeV2.PAGE_FOOTER
+        elif para_type == BlockType.PAGE_FOOTNOTE:
+            content_type = ContentTypeV2.PAGE_FOOTNOTE
         else:
             raise ValueError(f"Unknown para_type: {para_type}")
         para_content = {
