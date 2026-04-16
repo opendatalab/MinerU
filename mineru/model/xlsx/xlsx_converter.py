@@ -26,6 +26,10 @@ from mineru.backend.utils.office_image import (
 from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 
+AUTO_GAP_TOLERANCE_CANDIDATES = (0, 1, 2)
+AUTO_GAP_TOLERANCE_BIAS = {0: 0.05, 1: 0.00, 2: 0.08}
+AUTO_GAP_TOLERANCE_PREFERENCE = {1: 0, 0: 1, 2: 2}
+
 
 @dataclass
 class DataRegion:
@@ -94,7 +98,7 @@ class XlsxConverter:
     def __init__(
         self,
         treat_singleton_as_text: bool = True,
-        gap_tolerance: int = 0,
+        gap_tolerance: int | None = None,
         include_hidden_sheets: bool = False,
     ):
         self.workbook = None
@@ -355,6 +359,197 @@ class XlsxConverter:
             and not self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
         )
 
+    def _cell_has_semantic_content(
+        self, excel_table: ExcelTable, cell: ExcelCell
+    ) -> bool:
+        return bool(
+            cell.text.strip()
+            or any(media.strip() for media in cell.media)
+            or self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+        )
+
+    def _build_table_content_mask(self, excel_table: ExcelTable) -> list[list[bool]]:
+        mask = [
+            [False for _ in range(excel_table.num_cols)]
+            for _ in range(excel_table.num_rows)
+        ]
+        for cell in excel_table.data:
+            if not self._cell_has_semantic_content(excel_table, cell):
+                continue
+            for row_idx in range(cell.row, min(cell.row + cell.row_span, excel_table.num_rows)):
+                for col_idx in range(
+                    cell.col, min(cell.col + cell.col_span, excel_table.num_cols)
+                ):
+                    mask[row_idx][col_idx] = True
+        return mask
+
+    @staticmethod
+    def _count_max_consecutive_true(flags: list[bool]) -> int:
+        max_count = 0
+        current = 0
+        for flag in flags:
+            if flag:
+                current += 1
+                max_count = max(max_count, current)
+            else:
+                current = 0
+        return max_count
+
+    @staticmethod
+    def _is_real_singleton_table(excel_table: ExcelTable) -> bool:
+        if (
+            excel_table.num_rows != 1
+            or excel_table.num_cols != 1
+            or len(excel_table.data) != 1
+        ):
+            return False
+        cell = excel_table.data[0]
+        return cell.row_span == 1 and cell.col_span == 1
+
+    def _summarize_table_for_gap_selection(
+        self, excel_table: ExcelTable
+    ) -> dict[str, float | int | bool]:
+        table_area = excel_table.num_rows * excel_table.num_cols
+        content_mask = self._build_table_content_mask(excel_table)
+        content_area = sum(sum(1 for flag in row if flag) for row in content_mask)
+        blank_ratio = 1.0 - (content_area / max(table_area, 1))
+
+        interior_blank_rows = [
+            not any(content_mask[row_idx])
+            for row_idx in range(1, max(excel_table.num_rows - 1, 1))
+        ]
+        interior_blank_cols = [
+            not any(content_mask[row_idx][col_idx] for row_idx in range(excel_table.num_rows))
+            for col_idx in range(1, max(excel_table.num_cols - 1, 1))
+        ]
+        if excel_table.num_rows <= 2:
+            interior_blank_rows = []
+        if excel_table.num_cols <= 2:
+            interior_blank_cols = []
+
+        interior_blank_row_count = sum(interior_blank_rows)
+        interior_blank_col_count = sum(interior_blank_cols)
+        max_consecutive_interior_blank_lines = max(
+            self._count_max_consecutive_true(interior_blank_rows),
+            self._count_max_consecutive_true(interior_blank_cols),
+        )
+
+        return {
+            "table_area": table_area,
+            "content_area": content_area,
+            "blank_ratio": blank_ratio,
+            "interior_blank_row_count": interior_blank_row_count,
+            "interior_blank_col_count": interior_blank_col_count,
+            "max_consecutive_interior_blank_lines": max_consecutive_interior_blank_lines,
+            "real_singleton": self._is_real_singleton_table(excel_table),
+        }
+
+    def _summarize_candidate_tables(
+        self, tables: list[ExcelTable]
+    ) -> dict[str, float | int]:
+        table_count = len(tables)
+        real_singleton_count = 0
+        severe_separator_count = 0
+        sparse_large_table_count = 0
+        total_area = 0
+        weighted_blank_numerator = 0.0
+        total_interior_blank_lines = 0
+        total_possible_interior_lines = 0
+        row_cover_count = collections.Counter()
+
+        for table in tables:
+            table_summary = self._summarize_table_for_gap_selection(table)
+            table_area = int(table_summary["table_area"])
+            blank_ratio = float(table_summary["blank_ratio"])
+            interior_blank_row_count = int(table_summary["interior_blank_row_count"])
+            interior_blank_col_count = int(table_summary["interior_blank_col_count"])
+            max_consecutive_interior_blank_lines = int(
+                table_summary["max_consecutive_interior_blank_lines"]
+            )
+
+            total_area += table_area
+            weighted_blank_numerator += table_area * blank_ratio
+            total_interior_blank_lines += (
+                interior_blank_row_count + interior_blank_col_count
+            )
+            total_possible_interior_lines += max(table.num_rows - 2, 0) + max(
+                table.num_cols - 2, 0
+            )
+            for row_idx in range(table.anchor[1], table.anchor[1] + table.num_rows):
+                row_cover_count[row_idx] += 1
+
+            if bool(table_summary["real_singleton"]):
+                real_singleton_count += 1
+            if table_area >= 6 and blank_ratio > 0.35:
+                sparse_large_table_count += 1
+            if max_consecutive_interior_blank_lines >= 2:
+                severe_separator_count += 1
+
+        occupied_row_count = max(len(row_cover_count), 1)
+        row_overlap_excess_ratio = sum(
+            max(0, count - 1) for count in row_cover_count.values()
+        ) / occupied_row_count
+
+        return {
+            "real_singleton_ratio": real_singleton_count / max(table_count, 1),
+            "weighted_blank_ratio": weighted_blank_numerator / max(total_area, 1),
+            "interior_blank_line_ratio": total_interior_blank_lines
+            / max(total_possible_interior_lines, 1),
+            "sparse_large_table_ratio": sparse_large_table_count / max(table_count, 1),
+            "severe_separator_count": severe_separator_count,
+            "row_overlap_excess_ratio": row_overlap_excess_ratio,
+        }
+
+    def _select_best_gap_candidate(
+        self, sheet: Worksheet
+    ) -> tuple[int, float, list[ExcelTable]]:
+        candidates = []
+        for gap_tolerance in AUTO_GAP_TOLERANCE_CANDIDATES:
+            tables = self._find_data_tables_with_gap(sheet, gap_tolerance)
+            summary = self._summarize_candidate_tables(tables)
+            penalty = (
+                6.0 * int(summary["severe_separator_count"])
+                + 2.5 * float(summary["interior_blank_line_ratio"])
+                + 1.5 * float(summary["sparse_large_table_ratio"])
+                + 1.0 * float(summary["real_singleton_ratio"])
+                + 0.5 * float(summary["weighted_blank_ratio"])
+                + 1.0 * float(summary["row_overlap_excess_ratio"])
+                + AUTO_GAP_TOLERANCE_BIAS[gap_tolerance]
+            )
+            candidates.append(
+                {
+                    "gap_tolerance": gap_tolerance,
+                    "penalty": penalty,
+                    "tables": tables,
+                    **summary,
+                }
+            )
+
+        best_candidate = min(
+            candidates,
+            key=lambda candidate: (
+                float(candidate["penalty"]),
+                int(candidate["severe_separator_count"]),
+                float(candidate["interior_blank_line_ratio"]),
+                AUTO_GAP_TOLERANCE_PREFERENCE[int(candidate["gap_tolerance"])],
+            ),
+        )
+        return (
+            int(best_candidate["gap_tolerance"]),
+            float(best_candidate["penalty"]),
+            best_candidate["tables"],
+        )
+
+    def _select_best_tables(self, sheet: Worksheet) -> list[ExcelTable]:
+        gap_tolerance, penalty, tables = self._select_best_gap_candidate(sheet)
+        logger.debug(
+            "Selected gap_tolerance={} for sheet '{}' with penalty={:.4f}",
+            gap_tolerance,
+            sheet.title,
+            penalty,
+        )
+        return tables
+
     def excel_table_to_html(self, excel_table) -> str:
         """
         将 ExcelTable 转换为 HTML 表格字符串，保留合并单元格结构。
@@ -462,6 +657,14 @@ class XlsxConverter:
         返回：
             表示所有数据表格的 ExcelTable 对象列表。
         """
+        if self.gap_tolerance is None:
+            return self._select_best_tables(sheet)
+        return self._find_data_tables_with_gap(sheet, self.gap_tolerance)
+
+    def _find_data_tables_with_gap(
+        self, sheet: Worksheet, gap_tolerance: int
+    ) -> list[ExcelTable]:
+        """在固定 gap_tolerance 下查找工作表中的所有数据表格。"""
         bounds: DataRegion = self._find_true_data_bounds(sheet)  # 获取真实数据边界
         tables: list[ExcelTable] = []  # 存储已发现的表格
         visited: set[tuple[int, int]] = set()  # 记录已访问的单元格
@@ -484,7 +687,12 @@ class XlsxConverter:
 
                 # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
                 table_bounds, visited_cells = self._find_table_bounds(
-                    sheet, ri, rj, bounds.max_row, bounds.max_col
+                    sheet,
+                    ri,
+                    rj,
+                    bounds.max_row,
+                    bounds.max_col,
+                    gap_tolerance,
                 )
                 visited.update(visited_cells)  # 将已访问单元格加入全局记录
                 tables.append(table_bounds)
@@ -540,6 +748,7 @@ class XlsxConverter:
         start_col: int,
         max_row: int,
         max_col: int,
+        gap_tolerance: int,
     ) -> tuple[ExcelTable, set[tuple[int, int]]]:
         """使用洪水填充（BFS）策略确定表格边界。
 
@@ -557,6 +766,7 @@ class XlsxConverter:
             start_col: 洪水填充起始列索引（从0开始）。
             max_row: 工作表中可考虑的最大行索引（从0开始）。
             max_col: 工作表中可考虑的最大列索引（从0开始）。
+            gap_tolerance: 允许跨越空白单元格查找邻居的最大间隔。
 
         返回：
             一个元组，包含：
@@ -617,7 +827,7 @@ class XlsxConverter:
 
             for dr, dc in directions:
                 # 在容忍距离范围内逐步检查邻居（优先检查最近的）
-                for step in range(1, self.gap_tolerance + 2):
+                for step in range(1, gap_tolerance + 2):
                     nr, nc = curr_r + (dr * step), curr_c + (dc * step)
 
                     if (nr, nc) in table_cells:
