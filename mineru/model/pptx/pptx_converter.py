@@ -17,6 +17,7 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
+from mineru.backend.utils.office_chart import html_table_from_excel_bytes
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -197,6 +198,9 @@ class PptxConverter:
         try:
             if shape.has_table:
                 self._handle_tables(shape)
+
+            if getattr(shape, "has_chart", False):
+                self._handle_chart(shape)
 
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
@@ -574,6 +578,29 @@ class PptxConverter:
         )
 
         return None
+
+    def _handle_chart(self, shape) -> None:
+        try:
+            chart_workbook = shape.chart.part.chart_workbook
+            xlsx_part = chart_workbook.xlsx_part
+            if xlsx_part is None:
+                logger.warning("Warning: chart workbook part is missing")
+                return
+
+            chart_html = html_table_from_excel_bytes(xlsx_part.blob)
+        except Exception as e:
+            logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+            return
+
+        if not chart_html:
+            return
+
+        self.cur_page.append(
+            {
+                "type": BlockType.CHART,
+                "content": chart_html,
+            }
+        )
 
     def _handle_pictures(self, shape):
         image_data = self._get_shape_image_data(shape)
