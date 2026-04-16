@@ -84,6 +84,13 @@ FILE_PARSE_TASK_ID_HEADER = "X-MinerU-Task-Id"
 FILE_PARSE_TASK_STATUS_HEADER = "X-MinerU-Task-Status"
 FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
 FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
+MINERU_API_PUBLIC_BIND_EXPOSED_ENV = "MINERU_API_PUBLIC_BIND_EXPOSED"
+MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT_ENV = "MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT"
+PUBLIC_HTTP_CLIENT_DISABLED_DETAIL = (
+    "Publicly exposed API disables *-http-client backends and server_url by "
+    "default. Rebind to 127.0.0.1 or start with "
+    "--allow-public-http-client if you understand the SSRF risk."
+)
 SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA = {
     # Swagger UI 5 currently fails to render a usable multi-file picker when
     # FastAPI emits OpenAPI 3.1 byte arrays with contentMediaType.
@@ -251,6 +258,14 @@ def create_app():
         logger.info(f"Request concurrency limited to {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.state.public_bind_exposed = env_flag_enabled(
+        MINERU_API_PUBLIC_BIND_EXPOSED_ENV,
+        default=False,
+    )
+    app.state.allow_public_http_client = env_flag_enabled(
+        MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT_ENV,
+        default=False,
+    )
     default_service_config, default_model_config = split_service_and_model_config(
         {
             "enable_vlm_preload": env_flag_enabled(
@@ -345,6 +360,54 @@ def get_output_root() -> Path:
     root = Path(os.getenv("MINERU_API_OUTPUT_ROOT", DEFAULT_OUTPUT_ROOT)).expanduser()
     root.mkdir(parents=True, exist_ok=True)
     return root.resolve()
+
+
+def is_public_bind_host(host: str) -> bool:
+    return host in {"0.0.0.0", "::"}
+
+
+def configure_public_http_client_policy(
+    app: FastAPI,
+    *,
+    public_bind_exposed: bool,
+    allow_public_http_client: bool,
+) -> None:
+    app.state.public_bind_exposed = public_bind_exposed
+    app.state.allow_public_http_client = allow_public_http_client
+
+
+def validate_public_http_client_request(
+    *,
+    public_bind_exposed: bool,
+    allow_public_http_client: bool,
+    backend: str,
+    server_url: str | None,
+) -> None:
+    if not public_bind_exposed or allow_public_http_client:
+        return
+    if backend.endswith("-http-client") or bool(server_url and server_url.strip()):
+        raise HTTPException(status_code=400, detail=PUBLIC_HTTP_CLIENT_DISABLED_DETAIL)
+
+
+def warn_if_public_http_client_policy(host: str, allow_public_http_client: bool) -> None:
+    if not is_public_bind_host(host):
+        return
+    if allow_public_http_client:
+        logger.warning(
+            "MinerU API is listening on {} with --allow-public-http-client enabled. "
+            "Requests may supply remote HTTP inference endpoints and turn the service "
+            "into an externally driven outbound request primitive, creating SSRF and "
+            "internal network probing risk.",
+            host,
+        )
+        return
+    logger.warning(
+        "MinerU API is listening on {}. Disabling *-http-client backends and "
+        "server_url by default because these inputs let callers choose remote HTTP "
+        "inference endpoints; when the API is publicly reachable, that creates SSRF "
+        "and internal network probing risk.",
+        host,
+    )
 
 
 def validate_parse_method(parse_method: str) -> str:
@@ -736,6 +799,7 @@ def build_sync_file_parse_response(
 
 
 async def parse_request_form(
+    request: Request,
     files: Annotated[
         list[UploadFile],
         File(
@@ -844,6 +908,16 @@ async def parse_request_form(
         Form(description="The ending page for PDF parsing, beginning from 0"),
     ] = 99999,
 ) -> ParseRequestOptions:
+    validate_public_http_client_request(
+        public_bind_exposed=bool(
+            getattr(request.app.state, "public_bind_exposed", False)
+        ),
+        allow_public_http_client=bool(
+            getattr(request.app.state, "allow_public_http_client", False)
+        ),
+        backend=backend,
+        server_url=server_url,
+    )
     effective_return_original_file = return_original_file and response_format_zip
     return ParseRequestOptions(
         files=files,
@@ -1511,23 +1585,50 @@ async def health_check():
 @click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
 @click.option("--reload", is_flag=True, help="Enable auto-reload (development mode)")
 @click.option(
+    "--allow-public-http-client",
+    is_flag=True,
+    help=(
+        "Allow *-http-client backends and server_url even when binding the API to "
+        "0.0.0.0 or ::."
+    ),
+)
+@click.option(
     "--enable-vlm-preload",
     "enable_vlm_preload",
     type=bool,
     default=False,
     help="Preload the local VLM model during mineru-api startup.",
 )
-def main(ctx, host, port, reload, enable_vlm_preload, **kwargs):
+def main(
+    ctx,
+    host,
+    port,
+    reload,
+    allow_public_http_client,
+    enable_vlm_preload,
+    **kwargs,
+):
     del kwargs
     raw_config = arg_parse(ctx)
     raw_config["enable_vlm_preload"] = enable_vlm_preload
     service_config, model_config = split_service_and_model_config(raw_config)
+    public_bind_exposed = is_public_bind_host(host)
 
     app.state.service_config = service_config
     app.state.config = model_config
+    configure_public_http_client_policy(
+        app,
+        public_bind_exposed=public_bind_exposed,
+        allow_public_http_client=allow_public_http_client,
+    )
     os.environ["MINERU_API_ENABLE_VLM_PRELOAD"] = (
         "1" if service_config["enable_vlm_preload"] else "0"
     )
+    os.environ[MINERU_API_PUBLIC_BIND_EXPOSED_ENV] = "1" if public_bind_exposed else "0"
+    os.environ[MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT_ENV] = (
+        "1" if allow_public_http_client else "0"
+    )
+    warn_if_public_http_client_policy(host, allow_public_http_client)
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
 
     print(f"Start MinerU FastAPI Service: http://{host}:{port}")
