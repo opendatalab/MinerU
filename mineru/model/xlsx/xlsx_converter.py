@@ -27,8 +27,8 @@ from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
 
 AUTO_GAP_TOLERANCE_CANDIDATES = (0, 1, 2)
-AUTO_GAP_TOLERANCE_BIAS = {0: 0.05, 1: 0.00, 2: 0.08}
 AUTO_GAP_TOLERANCE_PREFERENCE = {1: 0, 0: 1, 2: 2}
+AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN = 0.15
 
 
 @dataclass
@@ -514,7 +514,6 @@ class XlsxConverter:
                 + 1.0 * float(summary["real_singleton_ratio"])
                 + 0.5 * float(summary["weighted_blank_ratio"])
                 + 1.0 * float(summary["row_overlap_excess_ratio"])
-                + AUTO_GAP_TOLERANCE_BIAS[gap_tolerance]
             )
             candidates.append(
                 {
@@ -525,13 +524,21 @@ class XlsxConverter:
                 }
             )
 
+        min_penalty = min(float(candidate["penalty"]) for candidate in candidates)
+        near_best_candidates = [
+            candidate
+            for candidate in candidates
+            if float(candidate["penalty"])
+            <= (min_penalty + AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN)
+        ]
+
         best_candidate = min(
-            candidates,
+            near_best_candidates,
             key=lambda candidate: (
-                float(candidate["penalty"]),
                 int(candidate["severe_separator_count"]),
-                float(candidate["interior_blank_line_ratio"]),
                 AUTO_GAP_TOLERANCE_PREFERENCE[int(candidate["gap_tolerance"])],
+                float(candidate["interior_blank_line_ratio"]),
+                float(candidate["penalty"]),
             ),
         )
         return (
