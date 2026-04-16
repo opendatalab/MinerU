@@ -618,6 +618,40 @@ class XlsxConverter:
             or self._get_cell_math_formulas(excel_table.anchor, excel_cell=cell)
         )
 
+    def _get_table_semantic_positions(
+        self, excel_table: ExcelTable
+    ) -> set[tuple[int, int]]:
+        semantic_positions = set()
+        for cell in excel_table.data:
+            if not self._cell_has_semantic_content(excel_table, cell):
+                continue
+            semantic_positions.add(
+                self._resolve_excel_cell_source_position(
+                    excel_table.anchor,
+                    excel_cell=cell,
+                )
+            )
+        return semantic_positions
+
+    def _filter_semantic_subset_tables(
+        self, tables: list[ExcelTable]
+    ) -> list[ExcelTable]:
+        semantic_positions = [
+            self._get_table_semantic_positions(table) for table in tables
+        ]
+        filtered_tables = []
+
+        for table_idx, table in enumerate(tables):
+            if any(
+                semantic_positions[table_idx] < semantic_positions[other_idx]
+                for other_idx in range(len(tables))
+                if other_idx != table_idx
+            ):
+                continue
+            filtered_tables.append(table)
+
+        return filtered_tables
+
     def _build_table_content_mask(self, excel_table: ExcelTable) -> list[list[bool]]:
         mask = [
             [False for _ in range(excel_table.num_cols)]
@@ -755,8 +789,8 @@ class XlsxConverter:
     ) -> tuple[int, float, list[ExcelTable]]:
         candidates = []
         for gap_tolerance in AUTO_GAP_TOLERANCE_CANDIDATES:
-            tables = self._find_data_tables_with_gap(sheet, gap_tolerance)
-            summary = self._summarize_candidate_tables(tables)
+            raw_tables = self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
+            summary = self._summarize_candidate_tables(raw_tables)
             penalty = (
                 6.0 * int(summary["severe_separator_count"])
                 + 2.5 * float(summary["interior_blank_line_ratio"])
@@ -769,7 +803,7 @@ class XlsxConverter:
                 {
                     "gap_tolerance": gap_tolerance,
                     "penalty": penalty,
-                    "tables": tables,
+                    "tables": self._filter_semantic_subset_tables(raw_tables),
                     **summary,
                 }
             )
@@ -918,6 +952,13 @@ class XlsxConverter:
         return self._find_data_tables_with_gap(sheet, self.gap_tolerance)
 
     def _find_data_tables_with_gap(
+        self, sheet: Worksheet, gap_tolerance: int
+    ) -> list[ExcelTable]:
+        return self._filter_semantic_subset_tables(
+            self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
+        )
+
+    def _find_data_tables_with_gap_raw(
         self, sheet: Worksheet, gap_tolerance: int
     ) -> list[ExcelTable]:
         """在固定 gap_tolerance 下查找工作表中的所有数据表格。"""
