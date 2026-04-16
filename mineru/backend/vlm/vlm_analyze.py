@@ -37,6 +37,51 @@ from mineru_vl_utils import MinerUClient
 from packaging import version
 
 
+def _load_transformers_model_and_processor(model_path: str):
+    try:
+        from transformers import (
+            AutoProcessor,
+            Qwen2VLForConditionalGeneration,
+        )
+        from transformers import __version__ as transformers_version
+    except ImportError:
+        raise ImportError("Please install transformers to use the transformers backend.")
+
+    if version.parse(transformers_version) >= version.parse("4.56.0"):
+        dtype_key = "dtype"
+    else:
+        dtype_key = "torch_dtype"
+
+    device = get_device()
+    processor = AutoProcessor.from_pretrained(
+        model_path,
+        use_fast=True,
+    )
+
+    model_load_kwargs = {
+        dtype_key: "auto",  # type: ignore
+    }
+    if device == "xpu":
+        import torch
+        if not hasattr(torch, "xpu") or not torch.xpu.is_available():
+            raise EnvironmentError("MINERU_DEVICE_MODE is set to xpu but torch.xpu is unavailable.")
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_path,
+            low_cpu_mem_usage=False,
+            **model_load_kwargs,
+        )
+        model = model.to(device)
+    else:
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_path,
+            device_map={"": device},
+            **model_load_kwargs,
+        )
+    model.eval()
+    logger.info(f"Loaded transformers VLM on device={device}")
+    return model, processor
+
+
 class ModelSingleton:
     _instance = None
     _models = {}
@@ -77,29 +122,7 @@ class ModelSingleton:
                 if backend not in ["http-client"] and not model_path:
                     model_path = auto_download_and_get_model_root_path("/","vlm")
                 if backend == "transformers":
-                    try:
-                        from transformers import (
-                            AutoProcessor,
-                            Qwen2VLForConditionalGeneration,
-                        )
-                        from transformers import __version__ as transformers_version
-                    except ImportError:
-                        raise ImportError("Please install transformers to use the transformers backend.")
-
-                    if version.parse(transformers_version) >= version.parse("4.56.0"):
-                        dtype_key = "dtype"
-                    else:
-                        dtype_key = "torch_dtype"
-                    device = get_device()
-                    model = Qwen2VLForConditionalGeneration.from_pretrained(
-                        model_path,
-                        device_map={"": device},
-                        **{dtype_key: "auto"},  # type: ignore
-                    )
-                    processor = AutoProcessor.from_pretrained(
-                        model_path,
-                        use_fast=True,
-                    )
+                    model, processor = _load_transformers_model_and_processor(model_path)
                     if batch_size == 0:
                         batch_size = set_default_batch_size()
                 elif backend == "mlx-engine":

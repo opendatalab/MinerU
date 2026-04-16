@@ -47,6 +47,13 @@ def _select_windows_engine() -> str:
 def _select_linux_engine(is_async: bool) -> str:
     """Linux 平台引擎选择"""
     try:
+        from mineru.utils.config_reader import get_device
+        if get_device() == "xpu":
+            logger.info("Intel XPU detected, prefer transformers backend on Linux.")
+            return "transformers"
+    except Exception:
+        pass
+    try:
         import vllm
         return 'vllm-async' if is_async else 'vllm'
     except ImportError:
