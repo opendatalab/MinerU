@@ -11,6 +11,7 @@ from typing import BinaryIO, Annotated, cast
 
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText
+from openpyxl.utils.cell import range_to_tuple
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.drawing.image import Image as XlsImage
 from PIL import Image
@@ -76,6 +77,8 @@ class ExcelCell(BaseModel):
     styles: dict = Field(default_factory=dict)
     media: list[str] = Field(default_factory=list)
     text_is_html: bool = False
+    source_row: int | None = None
+    source_col: int | None = None
 
 
 class ExcelTable(BaseModel):
@@ -182,7 +185,13 @@ class XlsxConverter:
                     f'<img src="{image_info["base64"]}" />'
                 )
 
-            used_cells = self._find_tables_in_sheet(sheet)  # 提取表格
+            used_cells, visual_artifacts = self._find_tables_in_sheet(sheet)
+            visual_artifacts.extend(self._find_charts_in_sheet(sheet))
+            for _, _, block in sorted(
+                visual_artifacts,
+                key=lambda item: (item[0][0], item[0][1], item[1]),
+            ):
+                self.cur_page.append(block)
             self._find_images_in_sheet(used_cells)  # 提取图片
 
     @staticmethod
@@ -306,48 +315,286 @@ class XlsxConverter:
             return anchor._from.row, anchor._from.col
         return None, None
 
-    def _find_tables_in_sheet(self, sheet: Worksheet) -> set[tuple[int, int]]:
+    def _get_block_sort_anchor(
+        self, row: int | None, col: int | None
+    ) -> tuple[int, int]:
+        if row is None or col is None:
+            return (10**9, 10**9)
+        return row, col
+
+    def _build_block_from_excel_table(self, excel_table: ExcelTable) -> dict:
+        if (
+            self.treat_singleton_as_text
+            and len(excel_table.data) == 1
+            and self._can_render_singleton_as_text(excel_table)
+        ):
+            return {
+                "type": BlockType.TEXT,
+                "content": excel_table.data[0].text,
+            }
+
+        return {
+            "type": BlockType.TABLE,
+            "content": self.excel_table_to_html(excel_table),
+        }
+
+    def _find_tables_in_sheet(
+        self, sheet: Worksheet
+    ) -> tuple[set[tuple[int, int]], list[tuple[tuple[int, int], int, dict]]]:
         used_cells = set()
+        visual_artifacts = []
         if self.workbook is not None:
             content_layer = self._get_sheet_content_layer(sheet)  # 检测工作表的可见性
             tables = self._find_data_tables(sheet)  # 检测工作表中的所有数据表格
 
-            for excel_table in tables:
+            for order, excel_table in enumerate(tables):
                 # Record used cells
                 anchor_c, anchor_r = excel_table.anchor
                 for cell in excel_table.data:
-                    used_cells.add((anchor_r + cell.row, anchor_c + cell.col))
-
-                # 若只有一个单元格且启用了单元格文本选项，则作为文本添加
-                if (
-                    self.treat_singleton_as_text
-                    and len(excel_table.data) == 1
-                    and self._can_render_singleton_as_text(excel_table)
-                ):
-                    self.cur_page.append(
-                        {
-                            "type": BlockType.TEXT,
-                            "content": excel_table.data[0].text,
-                        }
+                    source_row, source_col = self._resolve_excel_cell_source_position(
+                        excel_table.anchor,
+                        cell,
                     )
+                    used_cells.add((source_row, source_col))
 
-                else:
-                    table_html_str = self.excel_table_to_html(excel_table)
-                    self.cur_page.append(
-                        {
-                            "type": BlockType.TABLE,
-                            "content": table_html_str,
-                        }
+                visual_artifacts.append(
+                    (
+                        self._get_block_sort_anchor(anchor_r, anchor_c),
+                        order,
+                        self._build_block_from_excel_table(excel_table),
                     )
+                )
 
-        return used_cells
+        return used_cells, visual_artifacts
+
+    def _extract_chart_range_formula(self, value_source) -> str | None:
+        if value_source is None:
+            return None
+
+        for attr_name in ("numRef", "strRef", "multiLvlStrRef"):
+            ref = getattr(value_source, attr_name, None)
+            formula = getattr(ref, "f", None)
+            if formula:
+                return formula
+
+        return None
+
+    def _iter_chart_reference_formulas(self, chart):
+        for series in getattr(chart, "ser", []):
+            for attr_name in ("cat", "val", "xVal", "yVal", "bubbleSize"):
+                formula = self._extract_chart_range_formula(
+                    getattr(series, attr_name, None)
+                )
+                if formula:
+                    yield formula
+
+            tx = getattr(series, "tx", None)
+            tx_formula = getattr(getattr(tx, "strRef", None), "f", None)
+            if tx_formula:
+                yield tx_formula
+
+    def _parse_chart_reference_formula(
+        self, formula: str, sheet_title: str
+    ) -> tuple[list[int], list[int]] | None:
+        try:
+            formula_sheet_name, (
+                min_col,
+                min_row,
+                max_col,
+                max_row,
+            ) = range_to_tuple(formula)
+        except ValueError:
+            logger.debug("Skip unsupported chart reference formula: {}", formula)
+            return None
+
+        if formula_sheet_name != sheet_title:
+            logger.debug(
+                "Skip chart reference formula from different sheet: {} != {}",
+                formula_sheet_name,
+                sheet_title,
+            )
+            return None
+
+        rows = list(range(min_row - 1, max_row))
+        cols = list(range(min_col - 1, max_col))
+        return rows, cols
+
+    def _collect_chart_source_axes(
+        self, sheet: Worksheet, chart
+    ) -> tuple[list[int], list[int]] | None:
+        referenced_rows = set()
+        referenced_cols = set()
+        formulas_found = False
+
+        for formula in self._iter_chart_reference_formulas(chart):
+            formulas_found = True
+            parsed_axes = self._parse_chart_reference_formula(formula, sheet.title)
+            if parsed_axes is None:
+                return None
+
+            rows, cols = parsed_axes
+            referenced_rows.update(rows)
+            referenced_cols.update(cols)
+
+        if not formulas_found or not referenced_rows or not referenced_cols:
+            return None
+
+        return sorted(referenced_rows), sorted(referenced_cols)
+
+    def _build_excel_cell(
+        self,
+        sheet: Worksheet,
+        display_row: int,
+        display_col: int,
+        source_row: int,
+        source_col: int,
+        row_span: int = 1,
+        col_span: int = 1,
+    ) -> ExcelCell:
+        cell = sheet.cell(row=source_row + 1, column=source_col + 1)
+        raw_cell_text = str(cell.value) if cell.value is not None else ""
+        cell_text = ""
+        text_is_html = False
+        media_content = []
+        if "DISPIMG" in raw_cell_text:
+            cell_image = self._get_cell_image(raw_cell_text)
+            if cell_image:
+                media_content.append(cell_image)
+        else:
+            cell_text, text_is_html = self._cell_value_to_html(cell)
+        media_content.extend(self.table_image_map.get((source_row, source_col), []))
+
+        return ExcelCell(
+            row=display_row,
+            col=display_col,
+            text=cell_text,
+            row_span=row_span,
+            col_span=col_span,
+            styles=self._extract_cell_style(cell),
+            media=media_content,
+            text_is_html=text_is_html,
+            source_row=source_row,
+            source_col=source_col,
+        )
+
+    def _build_synthetic_table_from_sheet_selection(
+        self, sheet: Worksheet, rows: list[int], cols: list[int]
+    ) -> ExcelTable:
+        selected_coords = {(row, col) for row in rows for col in cols}
+        hidden_merge_cells = set()
+        merge_spans = {}
+
+        for mr in sheet.merged_cells.ranges:
+            top_left = (mr.min_row - 1, mr.min_col - 1)
+            if top_left not in selected_coords:
+                continue
+
+            selected_rows = [
+                row for row in rows if mr.min_row - 1 <= row <= mr.max_row - 1
+            ]
+            selected_cols = [
+                col for col in cols if mr.min_col - 1 <= col <= mr.max_col - 1
+            ]
+            if not selected_rows or not selected_cols:
+                continue
+
+            merge_spans[top_left] = (len(selected_rows), len(selected_cols))
+            for row in selected_rows:
+                for col in selected_cols:
+                    if (row, col) != top_left:
+                        hidden_merge_cells.add((row, col))
+
+        data = []
+        for display_row, source_row in enumerate(rows):
+            for display_col, source_col in enumerate(cols):
+                if (source_row, source_col) in hidden_merge_cells:
+                    continue
+
+                row_span, col_span = merge_spans.get((source_row, source_col), (1, 1))
+                data.append(
+                    self._build_excel_cell(
+                        sheet,
+                        display_row,
+                        display_col,
+                        source_row,
+                        source_col,
+                        row_span=row_span,
+                        col_span=col_span,
+                    )
+                )
+
+        return ExcelTable(
+            anchor=(cols[0], rows[0]),
+            num_rows=len(rows),
+            num_cols=len(cols),
+            data=data,
+        )
+
+    def _find_charts_in_sheet(
+        self, sheet: Worksheet
+    ) -> list[tuple[tuple[int, int], int, dict]]:
+        chart_artifacts = []
+        for order, chart in enumerate(getattr(sheet, "_charts", [])):
+            axes = self._collect_chart_source_axes(sheet, chart)
+            if axes is None:
+                logger.debug(
+                    "Skip chart on sheet '{}' because chart source ranges are unsupported",
+                    sheet.title,
+                )
+                continue
+
+            rows, cols = axes
+            chart_table = self._build_synthetic_table_from_sheet_selection(
+                sheet,
+                rows,
+                cols,
+            )
+            anchor_row, anchor_col = self._get_anchor_pos(getattr(chart, "anchor", None))
+            chart_artifacts.append(
+                (
+                    self._get_block_sort_anchor(anchor_row, anchor_col),
+                    10_000 + order,
+                    {
+                        "type": BlockType.CHART,
+                        "content": self.excel_table_to_html(chart_table),
+                    },
+                )
+            )
+
+        return chart_artifacts
 
     def _get_cell_math_formulas(
-        self, table_anchor: tuple[int, int], row: int, col: int
+        self,
+        table_anchor: tuple[int, int],
+        row: int | None = None,
+        col: int | None = None,
+        excel_cell: ExcelCell | None = None,
     ) -> list[str]:
-        abs_row = table_anchor[1] + row
-        abs_col = table_anchor[0] + col
+        abs_row, abs_col = self._resolve_excel_cell_source_position(
+            table_anchor,
+            excel_cell,
+            row=row,
+            col=col,
+        )
         return list(self.math_map.get((abs_row, abs_col), []))
+
+    def _resolve_excel_cell_source_position(
+        self,
+        table_anchor: tuple[int, int],
+        excel_cell: ExcelCell | None,
+        row: int | None = None,
+        col: int | None = None,
+    ) -> tuple[int, int]:
+        if excel_cell is not None:
+            if excel_cell.source_row is not None and excel_cell.source_col is not None:
+                return excel_cell.source_row, excel_cell.source_col
+            row = excel_cell.row
+            col = excel_cell.col
+
+        if row is None or col is None:
+            raise ValueError("row and col must be provided when excel_cell is None")
+
+        return table_anchor[1] + row, table_anchor[0] + col
 
     def _can_render_singleton_as_text(self, excel_table: ExcelTable) -> bool:
         cell = excel_table.data[0]
@@ -356,7 +603,10 @@ class XlsxConverter:
             and cell.col_span == 1
             and not cell.media
             and not cell.text_is_html
-            and not self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+            and not self._get_cell_math_formulas(
+                excel_table.anchor,
+                excel_cell=cell,
+            )
         )
 
     def _cell_has_semantic_content(
@@ -365,7 +615,7 @@ class XlsxConverter:
         return bool(
             cell.text.strip()
             or any(media.strip() for media in cell.media)
-            or self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+            or self._get_cell_math_formulas(excel_table.anchor, excel_cell=cell)
         )
 
     def _build_table_content_mask(self, excel_table: ExcelTable) -> list[list[bool]]:
@@ -615,8 +865,7 @@ class XlsxConverter:
                     # 添加公式
                     for formula in self._get_cell_math_formulas(
                         table_anchor,
-                        r,
-                        c,
+                        excel_cell=cell,
                     ):
                         text_content += self.equation_bookends.format(EQ=formula)
 
@@ -867,19 +1116,6 @@ class XlsxConverter:
                 if (ri, rj) in hidden_merge_cells:
                     continue
 
-                cell = sheet.cell(row=ri + 1, column=rj + 1)
-                raw_cell_text = str(cell.value) if cell.value is not None else ""
-                cell_text = ""
-                text_is_html = False
-                media_content = []
-                if "DISPIMG" in raw_cell_text:
-                    cell_image = self._get_cell_image(raw_cell_text)
-                    if cell_image:
-                        media_content.append(cell_image)
-                else:
-                    cell_text, text_is_html = self._cell_value_to_html(cell)
-                media_content.extend(self.table_image_map.get((ri, rj), []))
-
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
                 col_span = 1
@@ -890,15 +1126,14 @@ class XlsxConverter:
                         break
 
                 data.append(
-                    ExcelCell(
-                        row=ri - min_r,  # 相对于表格起始行的偏移
-                        col=rj - min_c,  # 相对于表格起始列的偏移
-                        text=cell_text,
+                    self._build_excel_cell(
+                        sheet,
+                        ri - min_r,  # 相对于表格起始行的偏移
+                        rj - min_c,  # 相对于表格起始列的偏移
+                        ri,
+                        rj,
                         row_span=row_span,
                         col_span=col_span,
-                        styles=self._extract_cell_style(cell),
-                        media=media_content,
-                        text_is_html=text_is_html,
                     )
                 )
 
