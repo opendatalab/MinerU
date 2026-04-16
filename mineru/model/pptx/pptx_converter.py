@@ -810,22 +810,18 @@ class PptxConverter:
         run,
         paragraph_font_sources: list[etree._Element],
     ) -> Optional[str]:
-        """从PPTX run对象提取可序列化的显式字体样式字符串。"""
+        """从PPTX run对象提取可序列化的生效字体样式字符串。"""
         if run is None:
             return None
 
-        run_rpr = self._get_run_rpr(run)
-        if run_rpr is None:
-            return None
-
         styles = []
-        if self._parse_bold_from_rpr(run_rpr) is True:
+        if self._resolve_effective_run_bold(run, paragraph_font_sources):
             styles.append("bold")
-        if self._parse_italic_from_rpr(run_rpr) is True:
+        if self._resolve_effective_run_italic(run, paragraph_font_sources):
             styles.append("italic")
-        if self._parse_underline_from_rpr(run_rpr) is True:
+        if self._resolve_effective_run_underline(run, paragraph_font_sources):
             styles.append("underline")
-        if self._parse_strikethrough_from_rpr(run_rpr) is True:
+        if self._resolve_effective_run_strikethrough(run, paragraph_font_sources):
             styles.append("strikethrough")
 
         return ",".join(styles) if styles else None
@@ -1282,7 +1278,7 @@ class PptxConverter:
         self,
         run,
         paragraph_font_sources: list[etree._Element],
-    ) -> Optional[bool]:
+    ) -> bool:
         return self._resolve_effective_run_bool(
             run,
             paragraph_font_sources,

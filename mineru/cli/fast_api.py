@@ -44,6 +44,13 @@ from mineru.cli.common import (
     read_fn,
     uniquify_task_stems,
 )
+from mineru.cli.public_http_client_policy import (
+    PUBLIC_HTTP_CLIENT_DISABLED_DETAIL,
+    configure_public_http_client_policy,
+    is_public_bind_host,
+    validate_public_http_client_request,
+    warn_if_public_http_client_policy as _warn_if_public_http_client_policy,
+)
 from mineru.cli.output_paths import resolve_parse_dir
 from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
@@ -86,11 +93,6 @@ FILE_PARSE_TASK_STATUS_URL_HEADER = "X-MinerU-Task-Status-Url"
 FILE_PARSE_TASK_RESULT_URL_HEADER = "X-MinerU-Task-Result-Url"
 MINERU_API_PUBLIC_BIND_EXPOSED_ENV = "MINERU_API_PUBLIC_BIND_EXPOSED"
 MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT_ENV = "MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT"
-PUBLIC_HTTP_CLIENT_DISABLED_DETAIL = (
-    "Publicly exposed API disables *-http-client backends and server_url by "
-    "default. Rebind to 127.0.0.1 or start with "
-    "--allow-public-http-client if you understand the SSRF risk."
-)
 SWAGGER_UI_FILE_ARRAY_SCHEMA_EXTRA = {
     # Swagger UI 5 currently fails to render a usable multi-file picker when
     # FastAPI emits OpenAPI 3.1 byte arrays with contentMediaType.
@@ -362,51 +364,11 @@ def get_output_root() -> Path:
     return root.resolve()
 
 
-def is_public_bind_host(host: str) -> bool:
-    return host in {"0.0.0.0", "::"}
-
-
-def configure_public_http_client_policy(
-    app: FastAPI,
-    *,
-    public_bind_exposed: bool,
-    allow_public_http_client: bool,
-) -> None:
-    app.state.public_bind_exposed = public_bind_exposed
-    app.state.allow_public_http_client = allow_public_http_client
-
-
-def validate_public_http_client_request(
-    *,
-    public_bind_exposed: bool,
-    allow_public_http_client: bool,
-    backend: str,
-    server_url: str | None,
-) -> None:
-    if not public_bind_exposed or allow_public_http_client:
-        return
-    if backend.endswith("-http-client") or bool(server_url and server_url.strip()):
-        raise HTTPException(status_code=400, detail=PUBLIC_HTTP_CLIENT_DISABLED_DETAIL)
-
-
 def warn_if_public_http_client_policy(host: str, allow_public_http_client: bool) -> None:
-    if not is_public_bind_host(host):
-        return
-    if allow_public_http_client:
-        logger.warning(
-            "MinerU API is listening on {} with --allow-public-http-client enabled. "
-            "Requests may supply remote HTTP inference endpoints and turn the service "
-            "into an externally driven outbound request primitive, creating SSRF and "
-            "internal network probing risk.",
-            host,
-        )
-        return
-    logger.warning(
-        "MinerU API is listening on {}. Disabling *-http-client backends and "
-        "server_url by default because these inputs let callers choose remote HTTP "
-        "inference endpoints; when the API is publicly reachable, that creates SSRF "
-        "and internal network probing risk.",
-        host,
+    _warn_if_public_http_client_policy(
+        service_name="API",
+        host=host,
+        allow_public_http_client=allow_public_http_client,
     )
 
 

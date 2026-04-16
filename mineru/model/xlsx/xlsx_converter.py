@@ -115,6 +115,7 @@ class XlsxConverter:
         self.cell_image_map = {}
         self.sheet_images = []
         self.table_image_map = {}
+        self.math_map = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
@@ -412,6 +413,16 @@ class XlsxConverter:
                 "Skip chart reference formula from different sheet: {} != {}",
                 formula_sheet_name,
                 sheet_title,
+            )
+            return None
+
+        if not all(
+            isinstance(bound, int)
+            for bound in (min_col, min_row, max_col, max_row)
+        ):
+            logger.debug(
+                "Skip chart reference formula with open-ended bounds: {}",
+                formula,
             )
             return None
 
