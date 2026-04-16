@@ -11,6 +11,7 @@ from typing import BinaryIO, Annotated, cast
 
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText
+from openpyxl.utils.cell import range_to_tuple
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.drawing.image import Image as XlsImage
 from PIL import Image
@@ -25,6 +26,10 @@ from mineru.backend.utils.office_image import (
 )
 from mineru.utils.pdf_reader import image_to_b64str
 from mineru.model.docx.tools.math.omml import oMath2Latex
+
+AUTO_GAP_TOLERANCE_CANDIDATES = (0, 1, 2)
+AUTO_GAP_TOLERANCE_PREFERENCE = {1: 0, 0: 1, 2: 2}
+AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN = 0.15
 
 
 @dataclass
@@ -72,6 +77,8 @@ class ExcelCell(BaseModel):
     styles: dict = Field(default_factory=dict)
     media: list[str] = Field(default_factory=list)
     text_is_html: bool = False
+    source_row: int | None = None
+    source_col: int | None = None
 
 
 class ExcelTable(BaseModel):
@@ -94,7 +101,7 @@ class XlsxConverter:
     def __init__(
         self,
         treat_singleton_as_text: bool = True,
-        gap_tolerance: int = 0,
+        gap_tolerance: int | None = None,
         include_hidden_sheets: bool = False,
     ):
         self.workbook = None
@@ -108,6 +115,7 @@ class XlsxConverter:
         self.cell_image_map = {}
         self.sheet_images = []
         self.table_image_map = {}
+        self.math_map = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
@@ -178,7 +186,13 @@ class XlsxConverter:
                     f'<img src="{image_info["base64"]}" />'
                 )
 
-            used_cells = self._find_tables_in_sheet(sheet)  # 提取表格
+            used_cells, visual_artifacts = self._find_tables_in_sheet(sheet)
+            visual_artifacts.extend(self._find_charts_in_sheet(sheet))
+            for _, _, block in sorted(
+                visual_artifacts,
+                key=lambda item: (item[0][0], item[0][1], item[1]),
+            ):
+                self.cur_page.append(block)
             self._find_images_in_sheet(used_cells)  # 提取图片
 
     @staticmethod
@@ -302,48 +316,296 @@ class XlsxConverter:
             return anchor._from.row, anchor._from.col
         return None, None
 
-    def _find_tables_in_sheet(self, sheet: Worksheet) -> set[tuple[int, int]]:
+    def _get_block_sort_anchor(
+        self, row: int | None, col: int | None
+    ) -> tuple[int, int]:
+        if row is None or col is None:
+            return (10**9, 10**9)
+        return row, col
+
+    def _build_block_from_excel_table(self, excel_table: ExcelTable) -> dict:
+        if (
+            self.treat_singleton_as_text
+            and len(excel_table.data) == 1
+            and self._can_render_singleton_as_text(excel_table)
+        ):
+            return {
+                "type": BlockType.TEXT,
+                "content": excel_table.data[0].text,
+            }
+
+        return {
+            "type": BlockType.TABLE,
+            "content": self.excel_table_to_html(excel_table),
+        }
+
+    def _find_tables_in_sheet(
+        self, sheet: Worksheet
+    ) -> tuple[set[tuple[int, int]], list[tuple[tuple[int, int], int, dict]]]:
         used_cells = set()
+        visual_artifacts = []
         if self.workbook is not None:
             content_layer = self._get_sheet_content_layer(sheet)  # 检测工作表的可见性
             tables = self._find_data_tables(sheet)  # 检测工作表中的所有数据表格
 
-            for excel_table in tables:
+            for order, excel_table in enumerate(tables):
                 # Record used cells
                 anchor_c, anchor_r = excel_table.anchor
                 for cell in excel_table.data:
-                    used_cells.add((anchor_r + cell.row, anchor_c + cell.col))
-
-                # 若只有一个单元格且启用了单元格文本选项，则作为文本添加
-                if (
-                    self.treat_singleton_as_text
-                    and len(excel_table.data) == 1
-                    and self._can_render_singleton_as_text(excel_table)
-                ):
-                    self.cur_page.append(
-                        {
-                            "type": BlockType.TEXT,
-                            "content": excel_table.data[0].text,
-                        }
+                    source_row, source_col = self._resolve_excel_cell_source_position(
+                        excel_table.anchor,
+                        cell,
                     )
+                    used_cells.add((source_row, source_col))
 
-                else:
-                    table_html_str = self.excel_table_to_html(excel_table)
-                    self.cur_page.append(
-                        {
-                            "type": BlockType.TABLE,
-                            "content": table_html_str,
-                        }
+                visual_artifacts.append(
+                    (
+                        self._get_block_sort_anchor(anchor_r, anchor_c),
+                        order,
+                        self._build_block_from_excel_table(excel_table),
                     )
+                )
 
-        return used_cells
+        return used_cells, visual_artifacts
+
+    def _extract_chart_range_formula(self, value_source) -> str | None:
+        if value_source is None:
+            return None
+
+        for attr_name in ("numRef", "strRef", "multiLvlStrRef"):
+            ref = getattr(value_source, attr_name, None)
+            formula = getattr(ref, "f", None)
+            if formula:
+                return formula
+
+        return None
+
+    def _iter_chart_reference_formulas(self, chart):
+        for series in getattr(chart, "ser", []):
+            for attr_name in ("cat", "val", "xVal", "yVal", "bubbleSize"):
+                formula = self._extract_chart_range_formula(
+                    getattr(series, attr_name, None)
+                )
+                if formula:
+                    yield formula
+
+            tx = getattr(series, "tx", None)
+            tx_formula = getattr(getattr(tx, "strRef", None), "f", None)
+            if tx_formula:
+                yield tx_formula
+
+    def _parse_chart_reference_formula(
+        self, formula: str, sheet_title: str
+    ) -> tuple[list[int], list[int]] | None:
+        try:
+            formula_sheet_name, (
+                min_col,
+                min_row,
+                max_col,
+                max_row,
+            ) = range_to_tuple(formula)
+        except ValueError:
+            logger.debug("Skip unsupported chart reference formula: {}", formula)
+            return None
+
+        if formula_sheet_name != sheet_title:
+            logger.debug(
+                "Skip chart reference formula from different sheet: {} != {}",
+                formula_sheet_name,
+                sheet_title,
+            )
+            return None
+
+        if not all(
+            isinstance(bound, int)
+            for bound in (min_col, min_row, max_col, max_row)
+        ):
+            logger.debug(
+                "Skip chart reference formula with open-ended bounds: {}",
+                formula,
+            )
+            return None
+
+        rows = list(range(min_row - 1, max_row))
+        cols = list(range(min_col - 1, max_col))
+        return rows, cols
+
+    def _collect_chart_source_axes(
+        self, sheet: Worksheet, chart
+    ) -> tuple[list[int], list[int]] | None:
+        referenced_rows = set()
+        referenced_cols = set()
+        formulas_found = False
+
+        for formula in self._iter_chart_reference_formulas(chart):
+            formulas_found = True
+            parsed_axes = self._parse_chart_reference_formula(formula, sheet.title)
+            if parsed_axes is None:
+                return None
+
+            rows, cols = parsed_axes
+            referenced_rows.update(rows)
+            referenced_cols.update(cols)
+
+        if not formulas_found or not referenced_rows or not referenced_cols:
+            return None
+
+        return sorted(referenced_rows), sorted(referenced_cols)
+
+    def _build_excel_cell(
+        self,
+        sheet: Worksheet,
+        display_row: int,
+        display_col: int,
+        source_row: int,
+        source_col: int,
+        row_span: int = 1,
+        col_span: int = 1,
+    ) -> ExcelCell:
+        cell = sheet.cell(row=source_row + 1, column=source_col + 1)
+        raw_cell_text = str(cell.value) if cell.value is not None else ""
+        cell_text = ""
+        text_is_html = False
+        media_content = []
+        if "DISPIMG" in raw_cell_text:
+            cell_image = self._get_cell_image(raw_cell_text)
+            if cell_image:
+                media_content.append(cell_image)
+        else:
+            cell_text, text_is_html = self._cell_value_to_html(cell)
+        media_content.extend(self.table_image_map.get((source_row, source_col), []))
+
+        return ExcelCell(
+            row=display_row,
+            col=display_col,
+            text=cell_text,
+            row_span=row_span,
+            col_span=col_span,
+            styles=self._extract_cell_style(cell),
+            media=media_content,
+            text_is_html=text_is_html,
+            source_row=source_row,
+            source_col=source_col,
+        )
+
+    def _build_synthetic_table_from_sheet_selection(
+        self, sheet: Worksheet, rows: list[int], cols: list[int]
+    ) -> ExcelTable:
+        selected_coords = {(row, col) for row in rows for col in cols}
+        hidden_merge_cells = set()
+        merge_spans = {}
+
+        for mr in sheet.merged_cells.ranges:
+            top_left = (mr.min_row - 1, mr.min_col - 1)
+            if top_left not in selected_coords:
+                continue
+
+            selected_rows = [
+                row for row in rows if mr.min_row - 1 <= row <= mr.max_row - 1
+            ]
+            selected_cols = [
+                col for col in cols if mr.min_col - 1 <= col <= mr.max_col - 1
+            ]
+            if not selected_rows or not selected_cols:
+                continue
+
+            merge_spans[top_left] = (len(selected_rows), len(selected_cols))
+            for row in selected_rows:
+                for col in selected_cols:
+                    if (row, col) != top_left:
+                        hidden_merge_cells.add((row, col))
+
+        data = []
+        for display_row, source_row in enumerate(rows):
+            for display_col, source_col in enumerate(cols):
+                if (source_row, source_col) in hidden_merge_cells:
+                    continue
+
+                row_span, col_span = merge_spans.get((source_row, source_col), (1, 1))
+                data.append(
+                    self._build_excel_cell(
+                        sheet,
+                        display_row,
+                        display_col,
+                        source_row,
+                        source_col,
+                        row_span=row_span,
+                        col_span=col_span,
+                    )
+                )
+
+        return ExcelTable(
+            anchor=(cols[0], rows[0]),
+            num_rows=len(rows),
+            num_cols=len(cols),
+            data=data,
+        )
+
+    def _find_charts_in_sheet(
+        self, sheet: Worksheet
+    ) -> list[tuple[tuple[int, int], int, dict]]:
+        chart_artifacts = []
+        for order, chart in enumerate(getattr(sheet, "_charts", [])):
+            axes = self._collect_chart_source_axes(sheet, chart)
+            if axes is None:
+                logger.debug(
+                    "Skip chart on sheet '{}' because chart source ranges are unsupported",
+                    sheet.title,
+                )
+                continue
+
+            rows, cols = axes
+            chart_table = self._build_synthetic_table_from_sheet_selection(
+                sheet,
+                rows,
+                cols,
+            )
+            anchor_row, anchor_col = self._get_anchor_pos(getattr(chart, "anchor", None))
+            chart_artifacts.append(
+                (
+                    self._get_block_sort_anchor(anchor_row, anchor_col),
+                    10_000 + order,
+                    {
+                        "type": BlockType.CHART,
+                        "content": self.excel_table_to_html(chart_table),
+                    },
+                )
+            )
+
+        return chart_artifacts
 
     def _get_cell_math_formulas(
-        self, table_anchor: tuple[int, int], row: int, col: int
+        self,
+        table_anchor: tuple[int, int],
+        row: int | None = None,
+        col: int | None = None,
+        excel_cell: ExcelCell | None = None,
     ) -> list[str]:
-        abs_row = table_anchor[1] + row
-        abs_col = table_anchor[0] + col
+        abs_row, abs_col = self._resolve_excel_cell_source_position(
+            table_anchor,
+            excel_cell,
+            row=row,
+            col=col,
+        )
         return list(self.math_map.get((abs_row, abs_col), []))
+
+    def _resolve_excel_cell_source_position(
+        self,
+        table_anchor: tuple[int, int],
+        excel_cell: ExcelCell | None,
+        row: int | None = None,
+        col: int | None = None,
+    ) -> tuple[int, int]:
+        if excel_cell is not None:
+            if excel_cell.source_row is not None and excel_cell.source_col is not None:
+                return excel_cell.source_row, excel_cell.source_col
+            row = excel_cell.row
+            col = excel_cell.col
+
+        if row is None or col is None:
+            raise ValueError("row and col must be provided when excel_cell is None")
+
+        return table_anchor[1] + row, table_anchor[0] + col
 
     def _can_render_singleton_as_text(self, excel_table: ExcelTable) -> bool:
         cell = excel_table.data[0]
@@ -352,8 +614,243 @@ class XlsxConverter:
             and cell.col_span == 1
             and not cell.media
             and not cell.text_is_html
-            and not self._get_cell_math_formulas(excel_table.anchor, cell.row, cell.col)
+            and not self._get_cell_math_formulas(
+                excel_table.anchor,
+                excel_cell=cell,
+            )
         )
+
+    def _cell_has_semantic_content(
+        self, excel_table: ExcelTable, cell: ExcelCell
+    ) -> bool:
+        return bool(
+            cell.text.strip()
+            or any(media.strip() for media in cell.media)
+            or self._get_cell_math_formulas(excel_table.anchor, excel_cell=cell)
+        )
+
+    def _get_table_semantic_positions(
+        self, excel_table: ExcelTable
+    ) -> set[tuple[int, int]]:
+        semantic_positions = set()
+        for cell in excel_table.data:
+            if not self._cell_has_semantic_content(excel_table, cell):
+                continue
+            semantic_positions.add(
+                self._resolve_excel_cell_source_position(
+                    excel_table.anchor,
+                    excel_cell=cell,
+                )
+            )
+        return semantic_positions
+
+    def _filter_semantic_subset_tables(
+        self, tables: list[ExcelTable]
+    ) -> list[ExcelTable]:
+        semantic_positions = [
+            self._get_table_semantic_positions(table) for table in tables
+        ]
+        filtered_tables = []
+
+        for table_idx, table in enumerate(tables):
+            if any(
+                semantic_positions[table_idx] < semantic_positions[other_idx]
+                for other_idx in range(len(tables))
+                if other_idx != table_idx
+            ):
+                continue
+            filtered_tables.append(table)
+
+        return filtered_tables
+
+    def _build_table_content_mask(self, excel_table: ExcelTable) -> list[list[bool]]:
+        mask = [
+            [False for _ in range(excel_table.num_cols)]
+            for _ in range(excel_table.num_rows)
+        ]
+        for cell in excel_table.data:
+            if not self._cell_has_semantic_content(excel_table, cell):
+                continue
+            for row_idx in range(cell.row, min(cell.row + cell.row_span, excel_table.num_rows)):
+                for col_idx in range(
+                    cell.col, min(cell.col + cell.col_span, excel_table.num_cols)
+                ):
+                    mask[row_idx][col_idx] = True
+        return mask
+
+    @staticmethod
+    def _count_max_consecutive_true(flags: list[bool]) -> int:
+        max_count = 0
+        current = 0
+        for flag in flags:
+            if flag:
+                current += 1
+                max_count = max(max_count, current)
+            else:
+                current = 0
+        return max_count
+
+    @staticmethod
+    def _is_real_singleton_table(excel_table: ExcelTable) -> bool:
+        if (
+            excel_table.num_rows != 1
+            or excel_table.num_cols != 1
+            or len(excel_table.data) != 1
+        ):
+            return False
+        cell = excel_table.data[0]
+        return cell.row_span == 1 and cell.col_span == 1
+
+    def _summarize_table_for_gap_selection(
+        self, excel_table: ExcelTable
+    ) -> dict[str, float | int | bool]:
+        table_area = excel_table.num_rows * excel_table.num_cols
+        content_mask = self._build_table_content_mask(excel_table)
+        content_area = sum(sum(1 for flag in row if flag) for row in content_mask)
+        blank_ratio = 1.0 - (content_area / max(table_area, 1))
+
+        interior_blank_rows = [
+            not any(content_mask[row_idx])
+            for row_idx in range(1, max(excel_table.num_rows - 1, 1))
+        ]
+        interior_blank_cols = [
+            not any(content_mask[row_idx][col_idx] for row_idx in range(excel_table.num_rows))
+            for col_idx in range(1, max(excel_table.num_cols - 1, 1))
+        ]
+        if excel_table.num_rows <= 2:
+            interior_blank_rows = []
+        if excel_table.num_cols <= 2:
+            interior_blank_cols = []
+
+        interior_blank_row_count = sum(interior_blank_rows)
+        interior_blank_col_count = sum(interior_blank_cols)
+        max_consecutive_interior_blank_lines = max(
+            self._count_max_consecutive_true(interior_blank_rows),
+            self._count_max_consecutive_true(interior_blank_cols),
+        )
+
+        return {
+            "table_area": table_area,
+            "content_area": content_area,
+            "blank_ratio": blank_ratio,
+            "interior_blank_row_count": interior_blank_row_count,
+            "interior_blank_col_count": interior_blank_col_count,
+            "max_consecutive_interior_blank_lines": max_consecutive_interior_blank_lines,
+            "real_singleton": self._is_real_singleton_table(excel_table),
+        }
+
+    def _summarize_candidate_tables(
+        self, tables: list[ExcelTable]
+    ) -> dict[str, float | int]:
+        table_count = len(tables)
+        real_singleton_count = 0
+        severe_separator_count = 0
+        sparse_large_table_count = 0
+        total_area = 0
+        weighted_blank_numerator = 0.0
+        total_interior_blank_lines = 0
+        total_possible_interior_lines = 0
+        row_cover_count = collections.Counter()
+
+        for table in tables:
+            table_summary = self._summarize_table_for_gap_selection(table)
+            table_area = int(table_summary["table_area"])
+            blank_ratio = float(table_summary["blank_ratio"])
+            interior_blank_row_count = int(table_summary["interior_blank_row_count"])
+            interior_blank_col_count = int(table_summary["interior_blank_col_count"])
+            max_consecutive_interior_blank_lines = int(
+                table_summary["max_consecutive_interior_blank_lines"]
+            )
+
+            total_area += table_area
+            weighted_blank_numerator += table_area * blank_ratio
+            total_interior_blank_lines += (
+                interior_blank_row_count + interior_blank_col_count
+            )
+            total_possible_interior_lines += max(table.num_rows - 2, 0) + max(
+                table.num_cols - 2, 0
+            )
+            for row_idx in range(table.anchor[1], table.anchor[1] + table.num_rows):
+                row_cover_count[row_idx] += 1
+
+            if bool(table_summary["real_singleton"]):
+                real_singleton_count += 1
+            if table_area >= 6 and blank_ratio > 0.35:
+                sparse_large_table_count += 1
+            if max_consecutive_interior_blank_lines >= 2:
+                severe_separator_count += 1
+
+        occupied_row_count = max(len(row_cover_count), 1)
+        row_overlap_excess_ratio = sum(
+            max(0, count - 1) for count in row_cover_count.values()
+        ) / occupied_row_count
+
+        return {
+            "real_singleton_ratio": real_singleton_count / max(table_count, 1),
+            "weighted_blank_ratio": weighted_blank_numerator / max(total_area, 1),
+            "interior_blank_line_ratio": total_interior_blank_lines
+            / max(total_possible_interior_lines, 1),
+            "sparse_large_table_ratio": sparse_large_table_count / max(table_count, 1),
+            "severe_separator_count": severe_separator_count,
+            "row_overlap_excess_ratio": row_overlap_excess_ratio,
+        }
+
+    def _select_best_gap_candidate(
+        self, sheet: Worksheet
+    ) -> tuple[int, float, list[ExcelTable]]:
+        candidates = []
+        for gap_tolerance in AUTO_GAP_TOLERANCE_CANDIDATES:
+            raw_tables = self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
+            summary = self._summarize_candidate_tables(raw_tables)
+            penalty = (
+                6.0 * int(summary["severe_separator_count"])
+                + 2.5 * float(summary["interior_blank_line_ratio"])
+                + 1.5 * float(summary["sparse_large_table_ratio"])
+                + 1.0 * float(summary["real_singleton_ratio"])
+                + 0.5 * float(summary["weighted_blank_ratio"])
+                + 1.0 * float(summary["row_overlap_excess_ratio"])
+            )
+            candidates.append(
+                {
+                    "gap_tolerance": gap_tolerance,
+                    "penalty": penalty,
+                    "tables": self._filter_semantic_subset_tables(raw_tables),
+                    **summary,
+                }
+            )
+
+        min_penalty = min(float(candidate["penalty"]) for candidate in candidates)
+        near_best_candidates = [
+            candidate
+            for candidate in candidates
+            if float(candidate["penalty"])
+            <= (min_penalty + AUTO_GAP_TOLERANCE_PREFERENCE_MARGIN)
+        ]
+
+        best_candidate = min(
+            near_best_candidates,
+            key=lambda candidate: (
+                int(candidate["severe_separator_count"]),
+                AUTO_GAP_TOLERANCE_PREFERENCE[int(candidate["gap_tolerance"])],
+                float(candidate["interior_blank_line_ratio"]),
+                float(candidate["penalty"]),
+            ),
+        )
+        return (
+            int(best_candidate["gap_tolerance"]),
+            float(best_candidate["penalty"]),
+            best_candidate["tables"],
+        )
+
+    def _select_best_tables(self, sheet: Worksheet) -> list[ExcelTable]:
+        gap_tolerance, penalty, tables = self._select_best_gap_candidate(sheet)
+        logger.debug(
+            "Selected gap_tolerance={} for sheet '{}' with penalty={:.4f}",
+            gap_tolerance,
+            sheet.title,
+            penalty,
+        )
+        return tables
 
     def excel_table_to_html(self, excel_table) -> str:
         """
@@ -413,8 +910,7 @@ class XlsxConverter:
                     # 添加公式
                     for formula in self._get_cell_math_formulas(
                         table_anchor,
-                        r,
-                        c,
+                        excel_cell=cell,
                     ):
                         text_content += self.equation_bookends.format(EQ=formula)
 
@@ -462,6 +958,21 @@ class XlsxConverter:
         返回：
             表示所有数据表格的 ExcelTable 对象列表。
         """
+        if self.gap_tolerance is None:
+            return self._select_best_tables(sheet)
+        return self._find_data_tables_with_gap(sheet, self.gap_tolerance)
+
+    def _find_data_tables_with_gap(
+        self, sheet: Worksheet, gap_tolerance: int
+    ) -> list[ExcelTable]:
+        return self._filter_semantic_subset_tables(
+            self._find_data_tables_with_gap_raw(sheet, gap_tolerance)
+        )
+
+    def _find_data_tables_with_gap_raw(
+        self, sheet: Worksheet, gap_tolerance: int
+    ) -> list[ExcelTable]:
+        """在固定 gap_tolerance 下查找工作表中的所有数据表格。"""
         bounds: DataRegion = self._find_true_data_bounds(sheet)  # 获取真实数据边界
         tables: list[ExcelTable] = []  # 存储已发现的表格
         visited: set[tuple[int, int]] = set()  # 记录已访问的单元格
@@ -484,7 +995,12 @@ class XlsxConverter:
 
                 # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
                 table_bounds, visited_cells = self._find_table_bounds(
-                    sheet, ri, rj, bounds.max_row, bounds.max_col
+                    sheet,
+                    ri,
+                    rj,
+                    bounds.max_row,
+                    bounds.max_col,
+                    gap_tolerance,
                 )
                 visited.update(visited_cells)  # 将已访问单元格加入全局记录
                 tables.append(table_bounds)
@@ -540,6 +1056,7 @@ class XlsxConverter:
         start_col: int,
         max_row: int,
         max_col: int,
+        gap_tolerance: int,
     ) -> tuple[ExcelTable, set[tuple[int, int]]]:
         """使用洪水填充（BFS）策略确定表格边界。
 
@@ -557,6 +1074,7 @@ class XlsxConverter:
             start_col: 洪水填充起始列索引（从0开始）。
             max_row: 工作表中可考虑的最大行索引（从0开始）。
             max_col: 工作表中可考虑的最大列索引（从0开始）。
+            gap_tolerance: 允许跨越空白单元格查找邻居的最大间隔。
 
         返回：
             一个元组，包含：
@@ -617,7 +1135,7 @@ class XlsxConverter:
 
             for dr, dc in directions:
                 # 在容忍距离范围内逐步检查邻居（优先检查最近的）
-                for step in range(1, self.gap_tolerance + 2):
+                for step in range(1, gap_tolerance + 2):
                     nr, nc = curr_r + (dr * step), curr_c + (dc * step)
 
                     if (nr, nc) in table_cells:
@@ -650,19 +1168,6 @@ class XlsxConverter:
                 if (ri, rj) in hidden_merge_cells:
                     continue
 
-                cell = sheet.cell(row=ri + 1, column=rj + 1)
-                raw_cell_text = str(cell.value) if cell.value is not None else ""
-                cell_text = ""
-                text_is_html = False
-                media_content = []
-                if "DISPIMG" in raw_cell_text:
-                    cell_image = self._get_cell_image(raw_cell_text)
-                    if cell_image:
-                        media_content.append(cell_image)
-                else:
-                    cell_text, text_is_html = self._cell_value_to_html(cell)
-                media_content.extend(self.table_image_map.get((ri, rj), []))
-
                 # 计算合并跨度（默认为 1x1）
                 row_span = 1
                 col_span = 1
@@ -673,15 +1178,14 @@ class XlsxConverter:
                         break
 
                 data.append(
-                    ExcelCell(
-                        row=ri - min_r,  # 相对于表格起始行的偏移
-                        col=rj - min_c,  # 相对于表格起始列的偏移
-                        text=cell_text,
+                    self._build_excel_cell(
+                        sheet,
+                        ri - min_r,  # 相对于表格起始行的偏移
+                        rj - min_c,  # 相对于表格起始列的偏移
+                        ri,
+                        rj,
                         row_span=row_span,
                         col_span=col_span,
-                        styles=self._extract_cell_style(cell),
-                        media=media_content,
-                        text_is_html=text_is_html,
                     )
                 )
 

@@ -17,6 +17,8 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
+from mineru.model.docx.tools.math.omml import oMath2Latex
+from mineru.backend.utils.office_chart import html_table_from_excel_bytes
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -35,6 +37,8 @@ PPTX_XYCUT_DENSITY_THRESHOLD: Final = 0.9
 DRAWINGML_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 RELATIONSHIP_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 SVG_BLIP_NS: Final = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+A14_DRAWING_NS: Final = "http://schemas.microsoft.com/office/drawing/2010/main"
+OMML_NS: Final = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 _EFFECTIVE_FONT_SIZE_KEY: Final = "_effective_font_size_pt"
 _EFFECTIVE_ALL_BOLD_KEY: Final = "_effective_all_bold"
 
@@ -80,6 +84,7 @@ class PptxConverter:
         self.namespaces = {
             "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
             "c": "http://schemas.openxmlformats.org/drawingml/2006/chart",
+            "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
             "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
         }
         self.file_stream = None
@@ -197,6 +202,9 @@ class PptxConverter:
         try:
             if shape.has_table:
                 self._handle_tables(shape)
+
+            if getattr(shape, "has_chart", False):
+                self._handle_chart(shape)
 
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
@@ -575,6 +583,29 @@ class PptxConverter:
 
         return None
 
+    def _handle_chart(self, shape) -> None:
+        try:
+            chart_workbook = shape.chart.part.chart_workbook
+            xlsx_part = chart_workbook.xlsx_part
+            if xlsx_part is None:
+                logger.warning("Warning: chart workbook part is missing")
+                return
+
+            chart_html = html_table_from_excel_bytes(xlsx_part.blob)
+        except Exception as e:
+            logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+            return
+
+        if not chart_html:
+            return
+
+        self.cur_page.append(
+            {
+                "type": BlockType.CHART,
+                "content": chart_html,
+            }
+        )
+
     def _handle_pictures(self, shape):
         image_data = self._get_shape_image_data(shape)
         if image_data is None:
@@ -658,27 +689,139 @@ class PptxConverter:
         return image.blob, None
 
     @staticmethod
-    def _get_style_str_from_run(run) -> Optional[str]:
-        """从PPTX run对象提取可序列化的字体样式字符串。"""
+    def _normalize_xml_toggle_attr(value: Optional[str]) -> Optional[bool]:
+        if value is None:
+            return None
+
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true", "t", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "off", "none"}:
+            return False
+        return None
+
+    @classmethod
+    def _parse_toggle_attr_from_rpr(
+        cls,
+        rpr: Optional[etree._Element],
+        attr_name: str,
+    ) -> Optional[bool]:
+        if rpr is None:
+            return None
+        return cls._normalize_xml_toggle_attr(rpr.get(attr_name))
+
+    @classmethod
+    def _parse_underline_from_rpr(
+        cls,
+        rpr: Optional[etree._Element],
+    ) -> Optional[bool]:
+        if rpr is None:
+            return None
+
+        underline = rpr.get("u")
+        if underline is None:
+            return None
+
+        normalized = str(underline).strip().lower()
+        if normalized in {"0", "false", "f", "off", "none"}:
+            return False
+        return True
+
+    @classmethod
+    def _parse_strikethrough_from_rpr(
+        cls,
+        rpr: Optional[etree._Element],
+    ) -> Optional[bool]:
+        if rpr is None:
+            return None
+
+        strike = rpr.get("strike")
+        if strike is None:
+            return None
+
+        normalized = str(strike).strip().lower()
+        if normalized in {"0", "false", "f", "off", "none", "nostrike"}:
+            return False
+        return True
+
+    def _get_run_rpr(
+        self,
+        run,
+    ) -> Optional[etree._Element]:
         if run is None:
             return None
 
+        run_xml = getattr(run, "_r", None)
+        if run_xml is None:
+            return None
+
         try:
-            font = run.font
+            return run_xml.find("a:rPr", namespaces=self.namespaces)
         except Exception:
             return None
 
+    def _resolve_effective_run_bool(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+        parser,
+    ) -> bool:
+        for source in [self._get_run_rpr(run), *paragraph_font_sources]:
+            resolved = parser(source)
+            if resolved is not None:
+                return resolved
+        return False
+
+    def _resolve_effective_run_italic(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> bool:
+        return self._resolve_effective_run_bool(
+            run,
+            paragraph_font_sources,
+            self._parse_italic_from_rpr,
+        )
+
+    def _resolve_effective_run_underline(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> bool:
+        return self._resolve_effective_run_bool(
+            run,
+            paragraph_font_sources,
+            self._parse_underline_from_rpr,
+        )
+
+    def _resolve_effective_run_strikethrough(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> bool:
+        return self._resolve_effective_run_bool(
+            run,
+            paragraph_font_sources,
+            self._parse_strikethrough_from_rpr,
+        )
+
+    def _get_style_str_from_run(
+        self,
+        run,
+        paragraph_font_sources: list[etree._Element],
+    ) -> Optional[str]:
+        """从PPTX run对象提取可序列化的生效字体样式字符串。"""
+        if run is None:
+            return None
+
         styles = []
-        if getattr(font, "bold", None) is True:
+        if self._resolve_effective_run_bold(run, paragraph_font_sources):
             styles.append("bold")
-        if getattr(font, "italic", None) is True:
+        if self._resolve_effective_run_italic(run, paragraph_font_sources):
             styles.append("italic")
-
-        underline = getattr(font, "underline", None)
-        if underline not in (None, False):
+        if self._resolve_effective_run_underline(run, paragraph_font_sources):
             styles.append("underline")
-
-        if getattr(font, "strike", None) is True:
+        if self._resolve_effective_run_strikethrough(run, paragraph_font_sources):
             styles.append("strikethrough")
 
         return ",".join(styles) if styles else None
@@ -764,8 +907,59 @@ class PptxConverter:
 
         return "".join(text_parts)
 
+    @staticmethod
+    def _is_math_content_node(node) -> bool:
+        tag = getattr(node, "tag", None)
+        return tag in {
+            f"{{{A14_DRAWING_NS}}}m",
+            f"{{{OMML_NS}}}oMath",
+            f"{{{OMML_NS}}}oMathPara",
+        }
+
+    @staticmethod
+    def _strip_math_delimiters(math_text: str) -> str:
+        stripped = math_text.strip()
+        if (
+            stripped.startswith("$$")
+            and stripped.endswith("$$")
+            and len(stripped) >= 4
+        ):
+            return stripped[2:-2].strip()
+        if (
+            stripped.startswith("$")
+            and stripped.endswith("$")
+            and len(stripped) >= 2
+        ):
+            return stripped[1:-1].strip()
+        return stripped
+
+    def _convert_math_node_to_latex(self, node) -> Optional[str]:
+        omath = None
+        if getattr(node, "tag", None) == f"{{{OMML_NS}}}oMath":
+            omath = node
+        else:
+            omath = node.find(".//m:oMath", namespaces=self.namespaces)
+
+        if omath is not None:
+            try:
+                latex = str(oMath2Latex(omath)).strip()
+            except Exception as exc:
+                logger.debug(f"Failed to convert PPTX OMML equation to LaTeX: {exc}")
+            else:
+                if latex:
+                    return latex
+
+        fallback_text = getattr(node, "text", None)
+        if isinstance(fallback_text, str):
+            latex = self._strip_math_delimiters(fallback_text)
+            if latex:
+                return latex
+
+        return None
+
     def _build_paragraph_rich_text(self, paragraph, shape) -> str:
         """按 run 维度构建段落富文本，支持样式与超链接标签。"""
+        paragraph_font_sources = self._get_paragraph_font_sources(shape, paragraph)
         run_map = {}
         for run in paragraph.runs:
             try:
@@ -785,6 +979,18 @@ class PptxConverter:
                     }
                 )
                 continue
+
+            if self._is_math_content_node(node):
+                latex = self._convert_math_node_to_latex(node)
+                if latex:
+                    segments.append(
+                        {
+                            "text": self.equation_bookends.format(EQ=latex),
+                            "style_str": None,
+                            "hyperlink": None,
+                        }
+                    )
+                    continue
 
             node_text = getattr(node, "text", None)
             if node_text is None:
@@ -806,7 +1012,10 @@ class PptxConverter:
             segments.append(
                 {
                     "text": node_text,
-                    "style_str": self._get_style_str_from_run(run),
+                    "style_str": self._get_style_str_from_run(
+                        run,
+                        paragraph_font_sources,
+                    ),
                     "hyperlink": self._resolve_hyperlink_from_run(run, shape),
                 }
             )
@@ -894,19 +1103,13 @@ class PptxConverter:
     def _parse_bold_from_rpr(
         rpr: Optional[etree._Element],
     ) -> Optional[bool]:
-        if rpr is None:
-            return None
+        return PptxConverter._parse_toggle_attr_from_rpr(rpr, "b")
 
-        bold = rpr.get("b")
-        if bold is None:
-            return None
-
-        normalized = str(bold).strip().lower()
-        if normalized in {"1", "true", "t", "on"}:
-            return True
-        if normalized in {"0", "false", "f", "off"}:
-            return False
-        return None
+    @staticmethod
+    def _parse_italic_from_rpr(
+        rpr: Optional[etree._Element],
+    ) -> Optional[bool]:
+        return PptxConverter._parse_toggle_attr_from_rpr(rpr, "i")
 
     def _find_def_rpr(
         self,
@@ -1065,8 +1268,7 @@ class PptxConverter:
         run,
         paragraph_font_sources: list[etree._Element],
     ) -> Optional[float]:
-        run_rpr = run._r.find("a:rPr", namespaces=self.namespaces)
-        for source in [run_rpr, *paragraph_font_sources]:
+        for source in [self._get_run_rpr(run), *paragraph_font_sources]:
             font_size_pt = self._parse_font_size_pt_from_rpr(source)
             if font_size_pt is not None:
                 return font_size_pt
@@ -1076,13 +1278,12 @@ class PptxConverter:
         self,
         run,
         paragraph_font_sources: list[etree._Element],
-    ) -> Optional[bool]:
-        run_rpr = run._r.find("a:rPr", namespaces=self.namespaces)
-        for source in [run_rpr, *paragraph_font_sources]:
-            bold = self._parse_bold_from_rpr(source)
-            if bold is not None:
-                return bold
-        return None
+    ) -> bool:
+        return self._resolve_effective_run_bool(
+            run,
+            paragraph_font_sources,
+            self._parse_bold_from_rpr,
+        )
 
     def _build_paragraph_style_profile(self, shape, paragraph) -> dict[str, Optional[float] | bool]:
         paragraph_font_sources = self._get_paragraph_font_sources(shape, paragraph)

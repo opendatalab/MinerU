@@ -9,7 +9,7 @@ def convert_path(file_path: str):
 
 
 def convert_binary(file_binary: BinaryIO):
-    converter = XlsxConverter(gap_tolerance=1)
+    converter = XlsxConverter()
     converter.convert(file_binary)
     return converter.pages
 

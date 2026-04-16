@@ -5,7 +5,6 @@ from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
 
-import pandas as pd
 from PIL import Image
 from loguru import logger
 from docx import Document
@@ -27,6 +26,7 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
+from mineru.backend.utils.office_chart import html_table_from_excel_bytes
 from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
@@ -119,25 +119,6 @@ class DocxConverter:
         # 转义方括号
         text = text.replace("[", "\\[").replace("]", "\\]")
         return text
-
-    @staticmethod
-    def _minify_html(html: str) -> str:
-        """
-        移除HTML中的格式化空白（换行、缩进等）。
-
-        Args:
-            html: 要处理的HTML字符串
-
-        Returns:
-            str: 去除格式化后的HTML
-        """
-        if not html:
-            return html
-        # 移除标签之间的换行符和制表符
-        html = re.sub(r'>\s+<', '><', html)
-        # 移除行首尾无关的空白
-        html = re.sub(r'\n\s*', '', html)
-        return html
 
     @staticmethod
     def _escape_hyperlink_url(url: str) -> str:
@@ -2622,9 +2603,9 @@ class DocxConverter:
                     for path_name, chart_idx in idx_xlsx_map.items():
                         if name.endswith(path_name):
                             content = zf.read(name)
-                            excel_data = pd.read_excel(BytesIO(content))
-                            html = excel_data.to_html(index=False, header=True)
-                            self.chart_list[chart_idx - 1]["content"] = self._minify_html(html)
+                            self.chart_list[chart_idx - 1]["content"] = (
+                                html_table_from_excel_bytes(content)
+                            )
 
     def _handle_textbox_content(
         self,
