@@ -20,6 +20,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/a3cb16570ab3cfeadf9d8f0ac91b4fca/mineru_demo.ipynb)
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
+[![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
