@@ -79,6 +79,22 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
+- 2026/04/17 3.1.0 Released
+
+  This release focuses on **licensing openness, parsing accuracy, and full-format native support**. The main updates include:
+
+  - License upgrade
+    - MinerU has officially moved from `AGPLv3` to the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), a custom license based on `Apache 2.0`.
+    - This change significantly reduces adoption friction for both community users and commercial deployments, making MinerU easier to integrate into real-world workflows.
+  - VLM main model upgrade
+    - The primary VLM model has been upgraded to `MinerU2.5-Pro-2604-1.2B`, bringing overall parsing accuracy to a state-of-the-art level.
+    - The new model now supports image and chart parsing, truncated paragraph merging, cross-page table merging, and image recognition inside tables, further strengthening performance on complex document layouts.
+  - Full-format native parsing support
+    - Native parsing support has now been extended to `PPTX` and `XLSX`.
+    - MinerU now fully supports parsing across images, `PDF`, `DOCX`, `PPTX`, and `XLSX`, providing a more complete multi-format document understanding workflow.
+
+  With the 3.1.0 release, MinerU becomes more open, more accurate, and easier to adopt in production. The new license lowers the barrier for both community and commercial use, `MinerU2.5-Pro-2604-1.2B` improves parsing quality on complex content, and native `PPTX` / `XLSX` support completes end-to-end coverage of mainstream document formats.
+
 - 2026/03/29 3.0.0 Released
 
   This release delivers a systematic upgrade centered on **parsing capability, system architecture, and engineering usability**. The main updates include:
