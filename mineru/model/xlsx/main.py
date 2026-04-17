@@ -3,6 +3,7 @@ from typing import BinaryIO
 
 from mineru.model.xlsx.xlsx_converter import XlsxConverter
 
+
 def convert_path(file_path: str):
     with open(file_path, "rb") as fh:
         return convert_binary(fh)
