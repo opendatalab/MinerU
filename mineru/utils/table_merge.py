@@ -325,6 +325,89 @@ def calculate_visual_columns(row):
     return len(cells)
 
 
+def _scan_row_visual_sources(rows, target_row_index: int) -> tuple[dict[int, tuple[int, int]], int]:
+    """扫描到目标行，记录每个视觉列当前由哪个源单元格占据。"""
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return {}, 0
+
+    # occupied[row_idx][col_idx] = (source_row_idx, source_cell_idx)
+    occupied: dict[int, dict[int, tuple[int, int]]] = {}
+    total_cols = 0
+
+    for r_idx in range(target_row_index + 1):
+        occupied_row = occupied.setdefault(r_idx, {})
+        col_idx = 0
+        cells = rows[r_idx].find_all(["td", "th"])
+        for cell_idx, cell in enumerate(cells):
+            while col_idx in occupied_row:
+                col_idx += 1
+            colspan = int(cell.get("colspan", 1))
+            rowspan = int(cell.get("rowspan", 1))
+            source_marker = (r_idx, cell_idx)
+            for ro in range(rowspan):
+                target_idx = r_idx + ro
+                occ = occupied.setdefault(target_idx, {})
+                for c in range(col_idx, col_idx + colspan):
+                    occ[c] = source_marker
+            col_idx += colspan
+            total_cols = max(total_cols, col_idx)
+
+    return occupied.get(target_row_index, {}), total_cols
+
+
+def build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
+    """构建目标行中每个显式 <td>/<th> 元素到视觉列位置的映射。
+
+    该映射会正确考虑从前序行继承而来的 rowspan 占位。
+    """
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return []
+
+    target_occupied, _ = _scan_row_visual_sources(rows, target_row_index)
+
+    col_idx = 0
+    mapping = []
+    target_cells = rows[target_row_index].find_all(["td", "th"])
+    for cell in target_cells:
+        while col_idx in target_occupied and target_occupied[col_idx][0] < target_row_index:
+            col_idx += 1
+        mapping.append(col_idx)
+        colspan = int(cell.get("colspan", 1))
+        col_idx += colspan
+    return mapping
+
+
+def calculate_row_rendered_segments(rows, target_row_index: int) -> int:
+    """计算目标行渲染后的视觉段数。
+
+    段数按“渲染出来的单元格块”统计：
+    - 当前行显式单元格各算一段，不展开 colspan
+    - 从前序行继承而来的 rowspan 占位也算段
+    - 只有连续列且来自同一个源单元格时才算同一段
+    """
+    target_occupied, total_cols = _scan_row_visual_sources(rows, target_row_index)
+    if total_cols == 0:
+        return 0
+
+    segment_count = 0
+    previous_marker: tuple[int, int] | None = None
+
+    for col_idx in range(total_cols):
+        marker = target_occupied.get(col_idx)
+        if marker is None:
+            previous_marker = None
+            continue
+        if marker != previous_marker:
+            segment_count += 1
+            previous_marker = marker
+
+    return segment_count
+
+
 def detect_table_headers(state1: TableMergeState, state2: TableMergeState, max_header_rows: int = MAX_HEADER_ROWS):
     """检测并比较两个表格的表头，仅扫描前几行."""
     front_rows1 = state1.front_header_info[:max_header_rows]
@@ -477,10 +560,13 @@ def check_rows_match(previous_state: TableMergeState, current_state: TableMergeS
     if first_data_row_metrics is None:
         return False
 
+    previous_rendered_segments = calculate_row_rendered_segments(previous_state.rows, last_row_metrics.row_idx)
+    current_rendered_segments = calculate_row_rendered_segments(current_state.rows, first_data_row_metrics.row_idx)
+
     return (
         last_row_metrics.effective_cols == first_data_row_metrics.effective_cols
         or last_row_metrics.actual_cols == first_data_row_metrics.actual_cols
-        or last_row_metrics.visual_cols == first_data_row_metrics.visual_cols
+        or previous_rendered_segments == current_rendered_segments
     )
 
 
@@ -538,45 +624,6 @@ def adjust_table_rows_colspan(
                 last_cell["colspan"] = str(current_last_span + cols_diff)
 
 
-def _build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
-    """构建目标行中每个 <td>/<th> 元素到视觉列位置的映射。
-
-    通过扫描从第 0 行到目标行的所有行，跟踪 rowspan 占用情况，
-    返回一个列表，其中第 i 个元素表示目标行第 i 个 <td>/<th> 的视觉列位置。
-    """
-    # occupied[row_idx][col_idx] = 起始行索引
-    occupied: dict[int, dict[int, int]] = {}
-
-    for r_idx in range(target_row_index + 1):
-        occupied_row = occupied.setdefault(r_idx, {})
-        col_idx = 0
-        cells = rows[r_idx].find_all(["td", "th"])
-        for cell in cells:
-            while col_idx in occupied_row:
-                col_idx += 1
-            colspan = int(cell.get("colspan", 1))
-            rowspan = int(cell.get("rowspan", 1))
-            for ro in range(rowspan):
-                target_idx = r_idx + ro
-                occ = occupied.setdefault(target_idx, {})
-                for c in range(col_idx, col_idx + colspan):
-                    occ[c] = r_idx
-            col_idx += colspan
-
-    # 构建目标行的映射
-    target_occupied = occupied.get(target_row_index, {})
-    col_idx = 0
-    mapping = []
-    target_cells = rows[target_row_index].find_all(["td", "th"])
-    for cell in target_cells:
-        while col_idx in target_occupied and target_occupied[col_idx] < target_row_index:
-            col_idx += 1
-        mapping.append(col_idx)
-        colspan = int(cell.get("colspan", 1))
-        col_idx += colspan
-    return mapping
-
-
 def _cell_has_semantic_content(cell) -> bool:
     """判断单元格是否仍包含用户可见的语义内容。"""
     if cell.get_text(strip=True):
@@ -597,7 +644,7 @@ def _insert_cell_before_visual_column(rows, target_row_index: int, start_vcol: i
     """将单元格插入到目标行中对应视觉列之前。"""
     target_row = rows[target_row_index]
     target_cells = target_row.find_all(["td", "th"])
-    target_vcol_map = _build_visual_col_mapping(rows, target_row_index)
+    target_vcol_map = build_visual_col_mapping(rows, target_row_index)
 
     for idx, target_start_vcol in enumerate(target_vcol_map):
         if target_start_vcol > start_vcol:
@@ -615,7 +662,7 @@ def _carry_rowspan_structure_to_next_row(rows, row_idx: int) -> None:
 
     current_row = rows[row_idx]
     current_cells = current_row.find_all(["td", "th"])
-    current_vcol_map = _build_visual_col_mapping(rows, row_idx)
+    current_vcol_map = build_visual_col_mapping(rows, row_idx)
     carried_cells = []
 
     for cell, start_vcol in zip(current_cells, current_vcol_map):
@@ -667,8 +714,8 @@ def _apply_cell_merge(
 
     # 构建视觉列到单元格索引的映射
     last_row_idx = len(previous_state.rows) - 1
-    vcol_map1 = _build_visual_col_mapping(previous_state.rows, last_row_idx)
-    vcol_map2 = _build_visual_col_mapping(rows2, header_count)
+    vcol_map1 = build_visual_col_mapping(previous_state.rows, last_row_idx)
+    vcol_map2 = build_visual_col_mapping(rows2, header_count)
 
     # 构建视觉列 -> 单元格索引的反向映射（展开 colspan）
     vcol_to_cell1: dict[int, int] = {}
