@@ -45,7 +45,6 @@ from mineru.cli.common import (
     uniquify_task_stems,
 )
 from mineru.cli.public_http_client_policy import (
-    PUBLIC_HTTP_CLIENT_DISABLED_DETAIL,
     configure_public_http_client_policy,
     is_public_bind_host,
     validate_public_http_client_request,
