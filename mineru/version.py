@@ -1,2 +1,1 @@
-# Copyright (c) Opendatalab. All rights reserved.
-__version__ = "3.0.9"
+__version__ = "3.1.0"
