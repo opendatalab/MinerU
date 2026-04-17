@@ -68,3 +68,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 - [快速上手指南](./quick_start/index.md)
 - [详细使用说明](./usage/index.md)
+
+## 许可证信息
+
+本仓库采用 [MinerU 开源许可证](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) 进行许可，基于 Apache 2.0 并附带额外条款。
