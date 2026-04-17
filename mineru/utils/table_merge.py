@@ -577,6 +577,64 @@ def _build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
     return mapping
 
 
+def _cell_has_semantic_content(cell) -> bool:
+    """判断单元格是否仍包含用户可见的语义内容。"""
+    if cell.get_text(strip=True):
+        return True
+
+    return (
+        cell.find(["img", "svg", "math", "eq", "table", "figure", "object", "embed", "canvas"])
+        is not None
+    )
+
+
+def _row_has_semantic_content(row) -> bool:
+    """判断整行是否仍保留未并回的语义内容。"""
+    return any(_cell_has_semantic_content(cell) for cell in row.find_all(["td", "th"]))
+
+
+def _insert_cell_before_visual_column(rows, target_row_index: int, start_vcol: int, cell) -> None:
+    """将单元格插入到目标行中对应视觉列之前。"""
+    target_row = rows[target_row_index]
+    target_cells = target_row.find_all(["td", "th"])
+    target_vcol_map = _build_visual_col_mapping(rows, target_row_index)
+
+    for idx, target_start_vcol in enumerate(target_vcol_map):
+        if target_start_vcol > start_vcol:
+            target_cells[idx].insert_before(cell)
+            return
+
+    target_row.append(cell)
+
+
+def _carry_rowspan_structure_to_next_row(rows, row_idx: int) -> None:
+    """下沉空白结构占位单元格，避免删除当前行后破坏后续列对齐。"""
+    next_row_idx = row_idx + 1
+    if next_row_idx >= len(rows):
+        return
+
+    current_row = rows[row_idx]
+    current_cells = current_row.find_all(["td", "th"])
+    current_vcol_map = _build_visual_col_mapping(rows, row_idx)
+    carried_cells = []
+
+    for cell, start_vcol in zip(current_cells, current_vcol_map):
+        rowspan = int(cell.get("rowspan", 1))
+        if rowspan <= 1 or _cell_has_semantic_content(cell):
+            continue
+
+        carried_cell = deepcopy(cell)
+        new_rowspan = rowspan - 1
+        if new_rowspan > 1:
+            carried_cell["rowspan"] = str(new_rowspan)
+        else:
+            carried_cell.attrs.pop("rowspan", None)
+        carried_cells.append((start_vcol, carried_cell))
+
+    for start_vcol, carried_cell in sorted(carried_cells, key=lambda item: item[0], reverse=True):
+        _insert_cell_before_visual_column(rows, next_row_idx, start_vcol, carried_cell)
+
+
 def _apply_cell_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
@@ -637,26 +695,21 @@ def _apply_cell_merge(
                         cells1[ci1].append(child.extract())
                     transferred_pairs.add(pair)
 
-    # 判断所有需要合并的列是否都实际完成了转移
-    all_merge = all(v == 1 for v in cell_merge)
-    all_merged_transferred = all(
-        vcol_to_cell1.get(vi) is not None and vcol_to_cell2.get(vi) is not None
-        for vi, v in enumerate(cell_merge) if v == 1
-    )
-    if all_merge and all_merged_transferred:
+    # 只清空确实成功转移过的源单元格
+    cleared_ci2: set[int] = set()
+    for vi, merge_flag in enumerate(cell_merge):
+        if merge_flag == 1:
+            ci1 = vcol_to_cell1.get(vi)
+            ci2 = vcol_to_cell2.get(vi)
+            if ci1 is not None and ci2 is not None and ci2 not in cleared_ci2:
+                cells2[ci2].clear()
+                cleared_ci2.add(ci2)
+
+    if not _row_has_semantic_content(first_data_row):
+        _carry_rowspan_structure_to_next_row(rows2, header_count)
         first_data_row.extract()
         if first_data_row in rows2:
             rows2.remove(first_data_row)
-    else:
-        # 只清空确实成功转移过的源单元格
-        cleared_ci2: set[int] = set()
-        for vi, merge_flag in enumerate(cell_merge):
-            if merge_flag == 1:
-                ci1 = vcol_to_cell1.get(vi)
-                ci2 = vcol_to_cell2.get(vi)
-                if ci1 is not None and ci2 is not None and ci2 not in cleared_ci2:
-                    cells2[ci2].clear()
-                    cleared_ci2.add(ci2)
 
 
 def perform_table_merge(
