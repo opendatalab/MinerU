@@ -166,6 +166,8 @@ def regroup_visual_blocks(blocks):
             two_layer_block["sub_type"] = main_block["sub_type"]
         if visual_type == BlockType.IMAGE and main_block.get("sub_images"):
             two_layer_block["sub_images"] = main_block["sub_images"]
+        if visual_type == BlockType.TABLE and main_block.get("cell_merge"):
+            two_layer_block["cell_merge"] = main_block["cell_merge"]
         two_layer_block["blocks"].sort(key=lambda x: x["index"])
 
         grouped_blocks[visual_type].append(two_layer_block)

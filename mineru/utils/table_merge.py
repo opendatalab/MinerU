@@ -195,6 +195,41 @@ def _refresh_table_state_metrics(state: TableMergeState) -> None:
     state.front_header_info, state.front_first_data_row_metrics = _build_front_cache(state.rows)
 
 
+def build_table_state_from_html(
+    html: str,
+    max_header_rows: int = MAX_HEADER_ROWS,
+) -> TableMergeState | None:
+    """从原始 HTML 构建 TableMergeState，不依赖 MinerU block 结构。
+
+    供外部工具（如 mineru-vl-utils）调用，用于跨页表格结构检测。
+    """
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    tbody = soup.find("tbody") or soup.find("table")
+    rows = soup.find_all("tr")
+    if not rows:
+        return None
+
+    scan = _scan_rows(rows)
+    front_header_info, front_first_data_row_metrics = _build_front_cache(rows, max_header_rows=max_header_rows)
+
+    return TableMergeState(
+        owner_block={},
+        body_span={},
+        soup=soup,
+        tbody=tbody,
+        rows=rows,
+        total_cols=scan.total_cols,
+        front_header_info=front_header_info,
+        front_first_data_row_metrics=front_first_data_row_metrics,
+        last_data_row_metrics=scan.last_nonempty_row_metrics,
+        row_effective_cols=scan.row_effective_cols,
+        tail_occupied=scan.tail_occupied,
+    )
+
+
 def _build_table_state(table_block, max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
     body_span = _find_table_body_span(table_block)
     if body_span is None:
@@ -355,6 +390,31 @@ def _detect_table_headers_visual(
     return header_rows, headers_match, header_texts
 
 
+def can_merge_by_structure(
+    current_state: TableMergeState,
+    previous_state: TableMergeState,
+    current_bbox: tuple[float, float, float, float] | None = None,
+    previous_bbox: tuple[float, float, float, float] | None = None,
+) -> bool:
+    """仅基于表格结构判断是否可合并（不检查 caption/footnote）。
+
+    供外部工具调用，忽略 caption 和 footnote 检查。
+    """
+    if current_bbox is not None and previous_bbox is not None:
+        x0_t1, _, x1_t1, _ = current_bbox
+        x0_t2, _, x1_t2, _ = previous_bbox
+        table1_width = x1_t1 - x0_t1
+        table2_width = x1_t2 - x0_t2
+        if table1_width > 0 and table2_width > 0:
+            if abs(table1_width - table2_width) / min(table1_width, table2_width) >= 0.1:
+                return False
+
+    if previous_state.total_cols == current_state.total_cols:
+        return True
+
+    return check_rows_match(previous_state, current_state)
+
+
 def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeState):
     """判断两个表格是否可以合并."""
     current_table_block = current_state.owner_block
@@ -471,6 +531,49 @@ def adjust_table_rows_colspan(
                 last_cell["colspan"] = str(current_last_span + cols_diff)
 
 
+def _apply_cell_merge(
+    previous_state: TableMergeState,
+    current_state: TableMergeState,
+    header_count: int,
+) -> None:
+    """应用 cell_merge 语义合并。
+
+    当 cell_merge 中的值为 1 时，将下表第一数据行对应单元格的内容
+    追加到上表最后一行对应单元格中。全部为 1 时删除该数据行，
+    混合时清空已合并单元格的内容但保留行。
+    """
+    cell_merge = current_state.owner_block.get("cell_merge")
+    if not cell_merge:
+        return
+
+    rows2 = current_state.rows
+    if header_count >= len(rows2):
+        return
+    if not previous_state.rows:
+        return
+
+    first_data_row = rows2[header_count]
+    last_row = previous_state.rows[-1]
+
+    cells1 = last_row.find_all(["td", "th"])
+    cells2 = first_data_row.find_all(["td", "th"])
+
+    for i, merge_flag in enumerate(cell_merge):
+        if merge_flag == 1 and i < len(cells1) and i < len(cells2):
+            for child in list(cells2[i].children):
+                cells1[i].append(child.extract())
+
+    all_merge = all(v == 1 for v in cell_merge)
+    if all_merge:
+        first_data_row.extract()
+        if first_data_row in rows2:
+            rows2.remove(first_data_row)
+    else:
+        for i, merge_flag in enumerate(cell_merge):
+            if merge_flag == 1 and i < len(cells2):
+                cells2[i].clear()
+
+
 def perform_table_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
@@ -525,6 +628,8 @@ def perform_table_merge(
 
     if previous_adjusted:
         _refresh_table_state_metrics(previous_state)
+
+    _apply_cell_merge(previous_state, current_state, header_count)
 
     appended_rows = rows2[header_count:]
     append_start_idx = len(previous_state.rows)
