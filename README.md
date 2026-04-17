@@ -79,7 +79,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 # Changelog
 
-- 2026/04/17 3.1.0 Released
+- 2026/04/18 3.1.0 Released
 
   This release focuses on **licensing openness, parsing accuracy, and full-format native support**. The main updates include:
 
