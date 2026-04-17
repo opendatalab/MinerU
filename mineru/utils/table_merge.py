@@ -202,6 +202,7 @@ def build_table_state_from_html(
     """从原始 HTML 构建 TableMergeState，不依赖 MinerU block 结构。
 
     供外部工具（如 mineru-vl-utils）调用，用于跨页表格结构检测。
+    返回的 state 仅可用于 can_merge_by_structure()，不可传入 can_merge_tables()。
     """
     if not html:
         return None
@@ -420,6 +421,12 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
     current_table_block = current_state.owner_block
     previous_table_block = previous_state.owner_block
 
+    if "blocks" not in previous_table_block or "blocks" not in current_table_block:
+        raise ValueError(
+            "can_merge_tables() requires owner_block with 'blocks' key. "
+            "For HTML-only states from build_table_state_from_html(), use can_merge_by_structure() instead."
+        )
+
     footnote_count = sum(
         1 for block in previous_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE
     )
@@ -605,29 +612,51 @@ def _apply_cell_merge(
     vcol_map1 = _build_visual_col_mapping(previous_state.rows, last_row_idx)
     vcol_map2 = _build_visual_col_mapping(rows2, header_count)
 
-    # 构建视觉列 -> 单元格索引的反向映射
-    vcol_to_cell1 = {vcol: ci for ci, vcol in enumerate(vcol_map1)}
-    vcol_to_cell2 = {vcol: ci for ci, vcol in enumerate(vcol_map2)}
+    # 构建视觉列 -> 单元格索引的反向映射（展开 colspan）
+    vcol_to_cell1: dict[int, int] = {}
+    for ci, start_vcol in enumerate(vcol_map1):
+        colspan = int(cells1[ci].get("colspan", 1))
+        for c in range(start_vcol, start_vcol + colspan):
+            vcol_to_cell1[c] = ci
+    vcol_to_cell2: dict[int, int] = {}
+    for ci, start_vcol in enumerate(vcol_map2):
+        colspan = int(cells2[ci].get("colspan", 1))
+        for c in range(start_vcol, start_vcol + colspan):
+            vcol_to_cell2[c] = ci
 
+    # 按唯一 (src_cell_idx, dst_cell_idx) 对执行一次转移，避免 colspan 重复处理
+    transferred_pairs: set[tuple[int, int]] = set()
     for vi, merge_flag in enumerate(cell_merge):
         if merge_flag == 1:
             ci1 = vcol_to_cell1.get(vi)
             ci2 = vcol_to_cell2.get(vi)
             if ci1 is not None and ci2 is not None:
-                for child in list(cells2[ci2].children):
-                    cells1[ci1].append(child.extract())
+                pair = (ci1, ci2)
+                if pair not in transferred_pairs:
+                    for child in list(cells2[ci2].children):
+                        cells1[ci1].append(child.extract())
+                    transferred_pairs.add(pair)
 
+    # 判断所有需要合并的列是否都实际完成了转移
     all_merge = all(v == 1 for v in cell_merge)
-    if all_merge:
+    all_merged_transferred = all(
+        vcol_to_cell1.get(vi) is not None and vcol_to_cell2.get(vi) is not None
+        for vi, v in enumerate(cell_merge) if v == 1
+    )
+    if all_merge and all_merged_transferred:
         first_data_row.extract()
         if first_data_row in rows2:
             rows2.remove(first_data_row)
     else:
+        # 只清空确实成功转移过的源单元格
+        cleared_ci2: set[int] = set()
         for vi, merge_flag in enumerate(cell_merge):
             if merge_flag == 1:
+                ci1 = vcol_to_cell1.get(vi)
                 ci2 = vcol_to_cell2.get(vi)
-                if ci2 is not None:
+                if ci1 is not None and ci2 is not None and ci2 not in cleared_ci2:
                     cells2[ci2].clear()
+                    cleared_ci2.add(ci2)
 
 
 def perform_table_merge(
