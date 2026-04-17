@@ -321,9 +321,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 # License Information
 
-[LICENSE.md](LICENSE.md)
-
-本仓库源码采用 Apache-2.0 许可。
+本仓库采用 [MinerU 开源许可证](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) 进行许可，基于 Apache 2.0 并附带额外条款。
 
 # Acknowledgments
 

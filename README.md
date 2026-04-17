@@ -315,9 +315,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 # License Information
 
-[LICENSE.md](LICENSE.md)
-
-The source code in this repository is licensed under Apache-2.0.
+This repository is licensed under the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), based on Apache 2.0 with additional conditions.
 
 # Acknowledgments
 

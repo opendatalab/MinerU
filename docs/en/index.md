@@ -69,3 +69,7 @@ Compared to well-known commercial products domestically and internationally, Min
 
 - [Quick Start Guide](./quick_start/index.md)
 - [Detailed Usage Instructions](./usage/index.md)
+
+## License Information
+
+This repository is licensed under the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), based on Apache 2.0 with additional conditions.

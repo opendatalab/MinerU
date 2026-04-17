@@ -232,6 +232,7 @@ class ModelSingleton:
                     retry_backoff_factor=retry_backoff_factor,
                     enable_table_formula_eq_wrap=True,
                     image_analysis=True,
+                    enable_cross_page_table_merge=True,
                 )
                 predictor._mineru_runtime_handles = {
                     "backend": backend,

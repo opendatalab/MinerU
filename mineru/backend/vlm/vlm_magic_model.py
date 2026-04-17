@@ -222,6 +222,8 @@ class MagicModel:
             }
             if block_sub_type:
                 block["sub_type"] = block_sub_type
+            if raw_block_type == "table" and "cell_merge" in block_info:
+                block["cell_merge"] = block_info["cell_merge"]
             _copy_raw_text_block_metadata(raw_block_type, block_info, block)
 
             blocks.append(block)
