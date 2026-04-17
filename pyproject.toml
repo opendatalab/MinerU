@@ -1,17 +1,30 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mineru"
 dynamic = ["version"]
-license = { text = "Apache-2.0" }
-description = "A practical tool for converting PDF to Markdown"
+license = "LicenseRef-MinerU-Open-Source-License"
+license-files = ["LICENSE.md"]
+description = "A practical document parsing tool for converting PDF, images, DOCX, PPTX, and XLSX into Markdown and JSON"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
-keywords = ["magic-pdf", "mineru", "MinerU", "convert", "pdf", "markdown"]
+keywords = [
+    "mineru",
+    "magic-pdf",
+    "document-parsing",
+    "document-understanding",
+    "pdf",
+    "markdown",
+    "ocr",
+    "vlm",
+    "docx",
+    "pptx",
+    "xlsx",
+    "multimodal",
+]
 classifiers = [
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -40,7 +53,7 @@ dependencies = [
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
-    "mineru-vl-utils>=0.2.3,<1",
+    "mineru-vl-utils>=0.2.5,<1",
     "qwen-vl-utils>=0.0.14,<1",
     "python-docx>=1.2.0,<2",
     'pypptx-with-oxml>=1.0.3,<2',
@@ -110,6 +123,7 @@ homepage = "https://mineru.net/"
 documentation = "https://opendatalab.github.io/MinerU/"
 repository = "https://github.com/opendatalab/MinerU"
 issues = "https://github.com/opendatalab/MinerU/issues"
+License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 
 [project.scripts]
 mineru = "mineru.cli.client:main"
