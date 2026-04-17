@@ -531,6 +531,45 @@ def adjust_table_rows_colspan(
                 last_cell["colspan"] = str(current_last_span + cols_diff)
 
 
+def _build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
+    """构建目标行中每个 <td>/<th> 元素到视觉列位置的映射。
+
+    通过扫描从第 0 行到目标行的所有行，跟踪 rowspan 占用情况，
+    返回一个列表，其中第 i 个元素表示目标行第 i 个 <td>/<th> 的视觉列位置。
+    """
+    # occupied[row_idx][col_idx] = 起始行索引
+    occupied: dict[int, dict[int, int]] = {}
+
+    for r_idx in range(target_row_index + 1):
+        occupied_row = occupied.setdefault(r_idx, {})
+        col_idx = 0
+        cells = rows[r_idx].find_all(["td", "th"])
+        for cell in cells:
+            while col_idx in occupied_row:
+                col_idx += 1
+            colspan = int(cell.get("colspan", 1))
+            rowspan = int(cell.get("rowspan", 1))
+            for ro in range(rowspan):
+                target_idx = r_idx + ro
+                occ = occupied.setdefault(target_idx, {})
+                for c in range(col_idx, col_idx + colspan):
+                    occ[c] = r_idx
+            col_idx += colspan
+
+    # 构建目标行的映射
+    target_occupied = occupied.get(target_row_index, {})
+    col_idx = 0
+    mapping = []
+    target_cells = rows[target_row_index].find_all(["td", "th"])
+    for cell in target_cells:
+        while col_idx in target_occupied and target_occupied[col_idx] < target_row_index:
+            col_idx += 1
+        mapping.append(col_idx)
+        colspan = int(cell.get("colspan", 1))
+        col_idx += colspan
+    return mapping
+
+
 def _apply_cell_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
@@ -541,6 +580,9 @@ def _apply_cell_merge(
     当 cell_merge 中的值为 1 时，将下表第一数据行对应单元格的内容
     追加到上表最后一行对应单元格中。全部为 1 时删除该数据行，
     混合时清空已合并单元格的内容但保留行。
+
+    cell_merge 按视觉列索引对齐，通过构建视觉列映射来正确匹配
+    两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
     """
     cell_merge = current_state.owner_block.get("cell_merge")
     if not cell_merge:
@@ -558,10 +600,22 @@ def _apply_cell_merge(
     cells1 = last_row.find_all(["td", "th"])
     cells2 = first_data_row.find_all(["td", "th"])
 
-    for i, merge_flag in enumerate(cell_merge):
-        if merge_flag == 1 and i < len(cells1) and i < len(cells2):
-            for child in list(cells2[i].children):
-                cells1[i].append(child.extract())
+    # 构建视觉列到单元格索引的映射
+    last_row_idx = len(previous_state.rows) - 1
+    vcol_map1 = _build_visual_col_mapping(previous_state.rows, last_row_idx)
+    vcol_map2 = _build_visual_col_mapping(rows2, header_count)
+
+    # 构建视觉列 -> 单元格索引的反向映射
+    vcol_to_cell1 = {vcol: ci for ci, vcol in enumerate(vcol_map1)}
+    vcol_to_cell2 = {vcol: ci for ci, vcol in enumerate(vcol_map2)}
+
+    for vi, merge_flag in enumerate(cell_merge):
+        if merge_flag == 1:
+            ci1 = vcol_to_cell1.get(vi)
+            ci2 = vcol_to_cell2.get(vi)
+            if ci1 is not None and ci2 is not None:
+                for child in list(cells2[ci2].children):
+                    cells1[ci1].append(child.extract())
 
     all_merge = all(v == 1 for v in cell_merge)
     if all_merge:
@@ -569,9 +623,11 @@ def _apply_cell_merge(
         if first_data_row in rows2:
             rows2.remove(first_data_row)
     else:
-        for i, merge_flag in enumerate(cell_merge):
-            if merge_flag == 1 and i < len(cells2):
-                cells2[i].clear()
+        for vi, merge_flag in enumerate(cell_merge):
+            if merge_flag == 1:
+                ci2 = vcol_to_cell2.get(vi)
+                if ci2 is not None:
+                    cells2[ci2].clear()
 
 
 def perform_table_merge(
