@@ -138,6 +138,6 @@ If your device does not meet the GPU acceleration requirements, you can specify 
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-`mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs.
+`mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.
 
 You can use MinerU for document parsing through the CLI, API, WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

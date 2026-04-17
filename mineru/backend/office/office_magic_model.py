@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import re
 from typing import Literal
 
@@ -33,6 +34,7 @@ class MagicModel:
                 "chart_caption",
                 "header",
                 "footer",
+                "page_footnote",
             ]:
                 span = parse_text_block_spans(block_content)
 

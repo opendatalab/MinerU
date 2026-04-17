@@ -21,6 +21,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/a3cb16570ab3cfeadf9d8f0ac91b4fca/mineru_demo.ipynb)
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
+[![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 <div align="center">
@@ -41,7 +42,7 @@
 
 ## Project Introduction
 
-MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
+MinerU is a document parsing tool that converts `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products domestically and internationally, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [GitHub Issues](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
@@ -49,7 +50,7 @@ Compared to well-known commercial products domestically and internationally, Min
 
 ## Key Features
 
-- Support `PDF`, image, and `DOCX` inputs
+- Support `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs
 - Remove headers, footers, footnotes, page numbers and other elements to ensure semantic coherence
 - Output text in human reading order, suitable for single-column, multi-column and complex layouts
 - Retain the original document structure, including titles, paragraphs, lists, etc.
@@ -69,3 +70,7 @@ Compared to well-known commercial products domestically and internationally, Min
 
 - [Quick Start Guide](./quick_start/index.md)
 - [Detailed Usage Instructions](./usage/index.md)
+
+## License Information
+
+This repository is licensed under the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), based on Apache 2.0 with additional conditions.

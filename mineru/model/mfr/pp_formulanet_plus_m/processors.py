@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import json
 import numpy as np
 import cv2

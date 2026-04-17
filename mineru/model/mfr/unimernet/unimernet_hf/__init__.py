@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from .unimer_swin import UnimerSwinConfig, UnimerSwinModel, UnimerSwinImageProcessor
 from .unimer_mbart import UnimerMBartConfig, UnimerMBartModel, UnimerMBartForCausalLM
 from .modeling_unimernet import UnimernetModel

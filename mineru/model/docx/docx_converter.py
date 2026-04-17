@@ -1,11 +1,11 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import re
 import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
 
-import pandas as pd
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -20,9 +20,13 @@ from mammoth.docx import body_xml
 
 from mineru.model.docx.tools.office_xml import read_str
 from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.docx_formatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
+from mineru.backend.utils.office_image import (
+    is_vector_image,
+    serialize_vector_image_with_placeholder,
+)
+from mineru.backend.utils.office_chart import html_table_from_excel_bytes
 from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
@@ -93,6 +97,11 @@ class DocxConverter:
         self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
+        self._numbering_root: Optional[BaseOxmlElement] = None
+        self._numbering_root_loaded: bool = False
+        self._numbering_level_cache: dict[
+            tuple[int, int], Optional[BaseOxmlElement]
+        ] = {}
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -110,113 +119,6 @@ class DocxConverter:
         # 转义方括号
         text = text.replace("[", "\\[").replace("]", "\\]")
         return text
-
-    @staticmethod
-    def _minify_html(html: str) -> str:
-        """
-        移除HTML中的格式化空白（换行、缩进等）。
-
-        Args:
-            html: 要处理的HTML字符串
-
-        Returns:
-            str: 去除格式化后的HTML
-        """
-        if not html:
-            return html
-        # 移除标签之间的换行符和制表符
-        html = re.sub(r'>\s+<', '><', html)
-        # 移除行首尾无关的空白
-        html = re.sub(r'\n\s*', '', html)
-        return html
-
-    @staticmethod
-    def _load_placeholder_font(font_size: int) -> ImageFont.ImageFont:
-        """
-        加载占位图提示文案字体，优先使用可缩放字体，失败时回退到默认字体。
-
-        Args:
-            font_size: 期望字号
-
-        Returns:
-            ImageFont.ImageFont: 可用于绘制文本的字体对象
-        """
-        for font_name in (
-            "DejaVuSans.ttf",
-            "Arial.ttf",
-            "LiberationSans-Regular.ttf",
-        ):
-            try:
-                return ImageFont.truetype(font_name, font_size)
-            except OSError:
-                continue
-        return ImageFont.load_default()
-
-    def _create_text_placeholder(
-        self, size: tuple[int, int], lines: list[str]
-    ) -> Image.Image:
-        """
-        生成带提示文案的浅灰色占位图。
-
-        Args:
-            size: 占位图尺寸
-            lines: 需要绘制的多行提示文本
-
-        Returns:
-            Image.Image: 生成后的占位图
-        """
-        width = max(int(size[0]), 1)
-        height = max(int(size[1]), 1)
-        placeholder = Image.new("RGB", (width, height), (240, 240, 240))
-        draw = ImageDraw.Draw(placeholder)
-
-        border_width = max(1, min(width, height) // 80)
-        draw.rectangle(
-            (0, 0, width - 1, height - 1),
-            outline=(190, 190, 190),
-            width=border_width,
-        )
-
-        max_text_width = max(width - 16, 1)
-        max_text_height = max(height - 16, 1)
-        fallback_text = "WMF/EMF"
-        text = "\n".join(line for line in lines if line)
-        if not text:
-            text = fallback_text
-
-        font = None
-        spacing = 4
-        bbox = None
-        for font_size in range(max(min(width, height) // 7, 10), 7, -1):
-            font = self._load_placeholder_font(font_size)
-            spacing = max(2, font_size // 4)
-            bbox = draw.multiline_textbbox(
-                (0, 0), text, font=font, spacing=spacing, align="center"
-            )
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            if text_width <= max_text_width and text_height <= max_text_height:
-                break
-        else:
-            text = fallback_text
-            font = self._load_placeholder_font(max(min(width, height) // 5, 10))
-            spacing = 2
-            bbox = draw.multiline_textbbox(
-                (0, 0), text, font=font, spacing=spacing, align="center"
-            )
-
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        origin = ((width - text_width) / 2, (height - text_height) / 2)
-        draw.multiline_text(
-            origin,
-            text,
-            fill=(90, 90, 90),
-            font=font,
-            spacing=spacing,
-            align="center",
-        )
-        return placeholder
 
     @staticmethod
     def _escape_hyperlink_url(url: str) -> str:
@@ -552,6 +454,9 @@ class DocxConverter:
         self.chart_list = []
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
+        self._numbering_root = None
+        self._numbering_root_loaded = False
+        self._numbering_level_cache = {}
 
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
@@ -1260,34 +1165,8 @@ class DocxConverter:
             else:
                 image_bytes = BytesIO(image_data)
                 pil_image = Image.open(image_bytes)
-                if pil_image.format in ("WMF", "EMF"):
-                    if is_windows_environment():
-                        # 在 Windows 上，Pillow 依赖底层的 Image.core.drawwmf 渲染
-                        # 有时需要显式调用 .load() 确保矢量图被光栅化到内存中
-                        try:
-                            pil_image.load()
-                            img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                        except OSError as e:
-                            logger.warning(f"Failed to render {pil_image.format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
-                            placeholder = self._create_text_placeholder(
-                                pil_image.size,
-                                [
-                                    f"{pil_image.format} placeholder",
-                                    "Windows rendering failed",
-                                ],
-                            )
-                            img_base64 = image_to_b64str(placeholder, image_format="JPEG")
-                    else:
-                        logger.warning(f"Skipping {pil_image.format} image on non-Windows environment, size: {pil_image.size}")
-                        placeholder = self._create_text_placeholder(
-                            pil_image.size,
-                            [
-                                f"{pil_image.format} placeholder",
-                                "Use Windows to parse",
-                                "the original image",
-                            ],
-                        )
-                        img_base64 = image_to_b64str(placeholder, image_format="JPEG")
+                if is_vector_image(pil_image):
+                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
                 else:
                     # 处理常规图片
                     if pil_image.mode != "RGB":
@@ -1697,30 +1576,88 @@ class DocxConverter:
 
         label = paragraph.style.style_id
         name = paragraph.style.name
-        base_style_label = None
-        base_style_name = None
-        if base_style := getattr(paragraph.style, "base_style", None):
-            base_style_label = base_style.style_id
-            base_style_name = base_style.name
 
         if label is None:
             return "Normal", None
 
-        if ":" in label:
-            parts = label.split(":")
-            if len(parts) == 2:
-                return parts[0], self._str_to_int(parts[1], None)
+        for style in self._iter_style_chain(paragraph.style):
+            style_label = getattr(style, "style_id", None)
+            style_name = getattr(style, "name", None)
 
-        if "heading" in label.lower():
-            return self._get_heading_and_level(label)
-        if "heading" in name.lower():
-            return self._get_heading_and_level(name)
-        if base_style_label and "heading" in base_style_label.lower():
-            return self._get_heading_and_level(base_style_label)
-        if base_style_name and "heading" in base_style_name.lower():
-            return self._get_heading_and_level(base_style_name)
+            if style_label and ":" in style_label:
+                parts = style_label.split(":")
+                if len(parts) == 2:
+                    return parts[0], self._str_to_int(parts[1], None)
+
+            for candidate in (style_label, style_name):
+                if candidate and "heading" in candidate.lower():
+                    return self._get_heading_and_level(candidate)
+
+        outline_level = self._get_effective_outline_level(paragraph)
+        if outline_level is not None:
+            return "Heading", outline_level + 1
 
         return name, None
+
+    def _iter_style_chain(self, style: Any) -> Iterator[Any]:
+        """Yield a style and its base-style chain once each."""
+        seen: set[int] = set()
+        current = style
+        while current is not None:
+            current_id = id(current)
+            if current_id in seen:
+                break
+            seen.add(current_id)
+            yield current
+            current = getattr(current, "base_style", None)
+
+    def _get_paragraph_property_child(
+        self, xml_element: Optional[BaseOxmlElement], child_tag: str
+    ) -> Optional[BaseOxmlElement]:
+        """Read a direct child from w:pPr without matching nested descendants."""
+        if xml_element is None:
+            return None
+
+        namespaces = getattr(xml_element, "nsmap", None) or DocxConverter._BLIP_NAMESPACES
+        pPr = xml_element.find("w:pPr", namespaces=namespaces)
+        if pPr is None:
+            return None
+        return pPr.find(child_tag, namespaces=namespaces)
+
+    def _get_effective_numPr(
+        self, paragraph: Paragraph
+    ) -> Optional[BaseOxmlElement]:
+        """Resolve paragraph numbering from direct properties, then style inheritance."""
+        numPr = self._get_paragraph_property_child(paragraph._element, "w:numPr")
+        if numPr is not None:
+            return numPr
+
+        for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+            style_element = getattr(style, "element", None)
+            numPr = self._get_paragraph_property_child(style_element, "w:numPr")
+            if numPr is not None:
+                return numPr
+
+        return None
+
+    def _get_effective_outline_level(self, paragraph: Paragraph) -> Optional[int]:
+        """Resolve outline level from paragraph properties or inherited styles."""
+        outline_lvl = self._get_paragraph_property_child(
+            paragraph._element, "w:outlineLvl"
+        )
+        if outline_lvl is None:
+            for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+                style_element = getattr(style, "element", None)
+                outline_lvl = self._get_paragraph_property_child(
+                    style_element, "w:outlineLvl"
+                )
+                if outline_lvl is not None:
+                    break
+
+        if outline_lvl is None:
+            return None
+
+        return self._str_to_int(outline_lvl.get(self.XML_KEY), None)
 
     def _get_numId_and_ilvl(
         self, paragraph: Paragraph
@@ -1734,21 +1671,76 @@ class DocxConverter:
         Returns:
             tuple[Optional[int], Optional[int]]: (numId, ilvl) 元组
         """
-        # 访问段落的XML元素
-        numPr = paragraph._element.find(
-            ".//w:numPr", namespaces=paragraph._element.nsmap
-        )
+        numPr = self._get_effective_numPr(paragraph)
 
         if numPr is not None:
             # 获取 numId 元素并提取值
-            numId_elem = numPr.find("w:numId", namespaces=paragraph._element.nsmap)
-            ilvl_elem = numPr.find("w:ilvl", namespaces=paragraph._element.nsmap)
+            namespaces = getattr(numPr, "nsmap", None) or DocxConverter._BLIP_NAMESPACES
+            numId_elem = numPr.find("w:numId", namespaces=namespaces)
+            ilvl_elem = numPr.find("w:ilvl", namespaces=namespaces)
             numId = numId_elem.get(self.XML_KEY) if numId_elem is not None else None
             ilvl = ilvl_elem.get(self.XML_KEY) if ilvl_elem is not None else None
 
             return self._str_to_int(numId, None), self._str_to_int(ilvl, None)
 
         return None, None  # 如果段落不是列表的一部分
+
+    def _get_numbering_root(self) -> Optional[BaseOxmlElement]:
+        """Load and cache word/numbering.xml once per conversion."""
+        if self._numbering_root_loaded:
+            return self._numbering_root
+
+        self._numbering_root_loaded = True
+
+        if not hasattr(self.docx_obj, "part") or not hasattr(self.docx_obj.part, "package"):
+            return None
+
+        for part in self.docx_obj.part.package.parts:
+            if "numbering" in part.partname:
+                self._numbering_root = part.element
+                break
+
+        return self._numbering_root
+
+    def _get_numbering_level_definition(
+        self, numId: int, ilvl: int
+    ) -> Optional[BaseOxmlElement]:
+        """Resolve and cache the numbering level definition for a numId/ilvl pair."""
+        cache_key = (numId, ilvl)
+        if cache_key in self._numbering_level_cache:
+            return self._numbering_level_cache[cache_key]
+
+        numbering_root = self._get_numbering_root()
+        namespaces = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        }
+        lvl_element: Optional[BaseOxmlElement] = None
+
+        if numbering_root is not None:
+            num_xpath = f".//w:num[@w:numId='{numId}']"
+            num_element = numbering_root.find(num_xpath, namespaces=namespaces)
+
+            if num_element is not None:
+                abstract_num_id_elem = num_element.find(
+                    ".//w:abstractNumId", namespaces=namespaces
+                )
+                if abstract_num_id_elem is not None:
+                    abstract_num_id = abstract_num_id_elem.get(self.XML_KEY)
+                    if abstract_num_id is not None:
+                        abstract_num_xpath = (
+                            f".//w:abstractNum[@w:abstractNumId='{abstract_num_id}']"
+                        )
+                        abstract_num_element = numbering_root.find(
+                            abstract_num_xpath, namespaces=namespaces
+                        )
+                        if abstract_num_element is not None:
+                            lvl_xpath = f".//w:lvl[@w:ilvl='{ilvl}']"
+                            lvl_element = abstract_num_element.find(
+                                lvl_xpath, namespaces=namespaces
+                            )
+
+        self._numbering_level_cache[cache_key] = lvl_element
+        return lvl_element
 
     def _is_numbered_list(self, numId: int, ilvl: int) -> bool:
         """
@@ -1762,65 +1754,12 @@ class DocxConverter:
             bool: 如果是编号列表返回 True，否则返回 False
         """
         try:
-            # 访问文档的编号部分
-            if not hasattr(self.docx_obj, "part") or not hasattr(
-                self.docx_obj.part, "package"
-            ):
+            lvl_element = self._get_numbering_level_definition(numId, ilvl)
+            if lvl_element is None:
                 return False
-
-            numbering_part = None
-            # 查找编号部分
-            for part in self.docx_obj.part.package.parts:
-                if "numbering" in part.partname:
-                    numbering_part = part
-                    break
-
-            if numbering_part is None:
-                return False
-
-            # 解析编号 XML
-            numbering_root = numbering_part.element
             namespaces = {
                 "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
             }
-
-            # 查找具有给定 numId 的编号定义
-            num_xpath = f".//w:num[@w:numId='{numId}']"
-            num_element = numbering_root.find(num_xpath, namespaces=namespaces)
-
-            if num_element is None:
-                return False
-
-            # 从 num 元素获取 abstractNumId
-            abstract_num_id_elem = num_element.find(
-                ".//w:abstractNumId", namespaces=namespaces
-            )
-            if abstract_num_id_elem is None:
-                return False
-
-            abstract_num_id = abstract_num_id_elem.get(
-                "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"
-            )
-            if abstract_num_id is None:
-                return False
-
-            # 查找抽象编号定义
-            abstract_num_xpath = (
-                f".//w:abstractNum[@w:abstractNumId='{abstract_num_id}']"
-            )
-            abstract_num_element = numbering_root.find(
-                abstract_num_xpath, namespaces=namespaces
-            )
-
-            if abstract_num_element is None:
-                return False
-
-            # 查找给定 ilvl 的层级定义
-            lvl_xpath = f".//w:lvl[@w:ilvl='{ilvl}']"
-            lvl_element = abstract_num_element.find(lvl_xpath, namespaces=namespaces)
-
-            if lvl_element is None:
-                return False
 
             # 获取 numFmt 元素
             num_fmt_element = lvl_element.find(".//w:numFmt", namespaces=namespaces)
@@ -2664,9 +2603,9 @@ class DocxConverter:
                     for path_name, chart_idx in idx_xlsx_map.items():
                         if name.endswith(path_name):
                             content = zf.read(name)
-                            excel_data = pd.read_excel(BytesIO(content))
-                            html = excel_data.to_html(index=False, header=True)
-                            self.chart_list[chart_idx - 1]["content"] = self._minify_html(html)
+                            self.chart_list[chart_idx - 1]["content"] = (
+                                html_table_from_excel_bytes(content)
+                            )
 
     def _handle_textbox_content(
         self,

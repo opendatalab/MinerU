@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 
 from .base import IOReader, IOWriter
 from .http import HttpReader, HttpWriter

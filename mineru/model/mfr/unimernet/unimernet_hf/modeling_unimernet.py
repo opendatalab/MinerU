@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import os
 import warnings
 from typing import Optional

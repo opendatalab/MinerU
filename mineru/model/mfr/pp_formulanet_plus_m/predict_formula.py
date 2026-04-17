@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import math
 import os
 from pathlib import Path

@@ -1,4 +1,4 @@
-#  Copyright (c) Opendatalab. All rights reserved.
+# Copyright (c) Opendatalab. All rights reserved.
 import os
 import time
 from collections import defaultdict
@@ -16,7 +16,7 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils import exclude_progress_bar_idle_time
+from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import HybridModelSingleton
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,

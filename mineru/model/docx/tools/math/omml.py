@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """
 Office Math Markup Language (OMML)
 

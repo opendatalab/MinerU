@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import os
 import torch
 from .modeling.architectures.base_model import BaseModel

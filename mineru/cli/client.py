@@ -960,7 +960,7 @@ async def run_orchestrated_cli(
     "input_path",
     type=click.Path(exists=True, path_type=Path),
     required=True,
-    help="local filepath or directory. support pdf, png, jpg, jpeg files",
+    help="local filepath or directory. support pdf, image, docx, pptx, xlsx files",
 )
 @click.option(
     "-o",

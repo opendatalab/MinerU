@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import asyncio
 import json
 import os
@@ -39,6 +40,12 @@ from mineru.cli.api_client import (
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
 from mineru.cli.common import normalize_upload_filename
+from mineru.cli.public_http_client_policy import (
+    configure_public_http_client_policy,
+    is_public_bind_host,
+    validate_public_http_client_request,
+    warn_if_public_http_client_policy as _warn_if_public_http_client_policy,
+)
 from mineru.cli.vlm_preload import build_local_api_cli_args
 from mineru.version import __version__
 
@@ -63,6 +70,8 @@ HTTP_RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 UPSTREAM_FAILURE_THRESHOLD = 3
 WORKER_REFRESH_INTERVAL_SECONDS = 2.0
 MIN_HEALTHY_PROCESSING_WINDOW_SIZE = 1
+MINERU_ROUTER_PUBLIC_BIND_EXPOSED_ENV = "MINERU_ROUTER_PUBLIC_BIND_EXPOSED"
+MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT_ENV = "MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT"
 
 
 def utc_now_iso() -> str:
@@ -117,6 +126,14 @@ def get_task_cleanup_interval_seconds() -> int:
 
 def is_task_terminal(status: str) -> bool:
     return status in TASK_TERMINAL_STATES
+
+
+def warn_if_public_http_client_policy(host: str, allow_public_http_client: bool) -> None:
+    _warn_if_public_http_client_policy(
+        service_name="router",
+        host=host,
+        allow_public_http_client=allow_public_http_client,
+    )
 
 
 def cleanup_path(path: str) -> None:
@@ -1055,6 +1072,16 @@ async def submit_router_task(
     request: Request,
     payload: MultipartPayload,
 ) -> RouterTaskRecord:
+    validate_public_http_client_request(
+        public_bind_exposed=bool(
+            getattr(request.app.state, "public_bind_exposed", False)
+        ),
+        allow_public_http_client=bool(
+            getattr(request.app.state, "allow_public_http_client", False)
+        ),
+        backend=payload.get_field_value("backend") or "",
+        server_url=payload.get_field_value("server_url"),
+    )
     worker_pool: WorkerPool = request.app.state.worker_pool
     registry: RouterTaskRegistry = request.app.state.router_task_registry
     attempted_servers: set[str] = set()
@@ -1304,6 +1331,17 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.router_settings = resolved_settings
+    configure_public_http_client_policy(
+        app,
+        public_bind_exposed=env_flag_enabled(
+            MINERU_ROUTER_PUBLIC_BIND_EXPOSED_ENV,
+            default=False,
+        ),
+        allow_public_http_client=env_flag_enabled(
+            MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT_ENV,
+            default=False,
+        ),
+    )
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     @app.post(path="/tasks", status_code=202)
@@ -1394,6 +1432,14 @@ app = create_app()
 @click.option("--port", default=8002, type=int, help="Server port (default: 8002)")
 @click.option("--reload", is_flag=True, help="Enable auto-reload (development mode)")
 @click.option(
+    "--allow-public-http-client",
+    is_flag=True,
+    help=(
+        "Allow *-http-client backends and server_url even when binding the router "
+        "to 0.0.0.0 or ::."
+    ),
+)
+@click.option(
     "--upstream-url",
     "upstream_urls",
     multiple=True,
@@ -1421,6 +1467,7 @@ def main(
     host: str,
     port: int,
     reload: bool,
+    allow_public_http_client: bool,
     upstream_urls: tuple[str, ...],
     local_gpus: str,
     worker_host: str,
@@ -1435,7 +1482,13 @@ def main(
         task_retention_seconds=get_task_retention_seconds(),
         task_cleanup_interval_seconds=get_task_cleanup_interval_seconds(),
     )
+    public_bind_exposed = is_public_bind_host(host)
     warn_if_router_preload_ignored(settings)
+    configure_public_http_client_policy(
+        app,
+        public_bind_exposed=public_bind_exposed,
+        allow_public_http_client=allow_public_http_client,
+    )
     os.environ["MINERU_ROUTER_UPSTREAM_URLS_JSON"] = json.dumps(list(settings.upstream_urls))
     os.environ["MINERU_ROUTER_LOCAL_GPUS"] = settings.local_gpus
     os.environ["MINERU_ROUTER_WORKER_HOST"] = settings.worker_host
@@ -1443,6 +1496,13 @@ def main(
         "1" if settings.enable_vlm_preload else "0"
     )
     os.environ["MINERU_ROUTER_WORKER_ARGS_JSON"] = json.dumps(list(settings.worker_extra_args))
+    os.environ[MINERU_ROUTER_PUBLIC_BIND_EXPOSED_ENV] = (
+        "1" if public_bind_exposed else "0"
+    )
+    os.environ[MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT_ENV] = (
+        "1" if allow_public_http_client else "0"
+    )
+    warn_if_public_http_client_policy(host, allow_public_http_client)
 
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
     print(f"Start MinerU Router Service: http://{host}:{port}")

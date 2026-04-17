@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 
 from ..utils.exceptions import InvalidConfig, InvalidParams
 from .base import DataReader, DataWriter

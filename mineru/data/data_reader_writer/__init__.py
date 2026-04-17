@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from .base import DataReader, DataWriter
 from .dummy import DummyDataWriter
 from .filebase import FileBasedDataReader, FileBasedDataWriter

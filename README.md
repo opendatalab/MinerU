@@ -20,6 +20,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/a3cb16570ab3cfeadf9d8f0ac91b4fca/mineru_demo.ipynb)
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
+[![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
@@ -46,11 +47,12 @@
 
 <details>
 <summary>MinerU — High-accuracy document parsing engine for LLM · RAG · Agent workflows</summary>
-Converts PDF · Word · PPT · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
+Converts PDF · DOCX · PPTX · XLSX · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
 MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI chip support
 
 **🔍 Core Parsing Capabilities**
 
+- Native support for `DOCX`, `PPTX`, and `XLSX` parsing
 - Formulas → LaTeX · Tables → HTML, accurate layout reconstruction
 - Supports scanned docs, handwriting, multi-column layouts, cross-page table merging
 - Output follows human reading order with automatic header/footer removal
@@ -77,6 +79,22 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 </details>
 
 # Changelog
+
+- 2026/04/18 3.1.0 Released
+
+  This release focuses on **licensing openness, parsing accuracy, and full-format native support**. The main updates include:
+
+  - License upgrade
+    - MinerU has officially moved from `AGPLv3` to the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), a custom license based on `Apache 2.0`.
+    - This change significantly reduces adoption friction for both community users and commercial deployments, making MinerU easier to integrate into real-world workflows.
+  - VLM main model upgrade
+    - The primary VLM model has been upgraded to `MinerU2.5-Pro-2604-1.2B`, bringing overall parsing accuracy to a state-of-the-art level.
+    - The new model now supports image and chart parsing, truncated paragraph merging, cross-page table merging, and image recognition inside tables, further strengthening performance on complex document layouts.
+  - Full-format native parsing support
+    - Native parsing support has now been extended to `PPTX` and `XLSX`.
+    - MinerU now fully supports parsing across images, `PDF`, `DOCX`, `PPTX`, and `XLSX`, providing a more complete multi-format document understanding workflow.
+
+  With the 3.1.0 release, MinerU becomes more open, more accurate, and easier to adopt in production. The new license lowers the barrier for both community and commercial use, `MinerU2.5-Pro-2604-1.2B` improves parsing quality on complex content, and native `PPTX` / `XLSX` support completes end-to-end coverage of mainstream document formats.
 
 - 2026/03/29 3.0.0 Released
 
@@ -108,7 +126,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 ## Project Introduction
 
-MinerU is a document parsing tool that converts `PDF`, image, and `DOCX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
+MinerU is a document parsing tool that converts `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
@@ -116,7 +134,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Key Features
 
-- Support `PDF`, image, and `DOCX` inputs.
+- Support `PDF`, image, `DOCX`, `PPTX`, and `XLSX` inputs.
 - Remove headers, footers, footnotes, page numbers, etc., to ensure semantic coherence.
 - Output text in human-readable order, suitable for single-column, multi-column, and complex layouts.
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
@@ -274,7 +292,7 @@ If your device does not meet the GPU acceleration requirements, you can specify 
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-`mineru` currently supports local `PDF`, image, and `DOCX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+`mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
 # TODO
 
@@ -314,9 +332,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 # License Information
 
-[LICENSE.md](LICENSE.md)
-
-The source code in this repository is licensed under AGPLv3.
+This repository is licensed under the [MinerU Open Source License](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md), based on Apache 2.0 with additional conditions.
 
 # Acknowledgments
 

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import _merge_para_text
 from mineru.utils.boxbase import (

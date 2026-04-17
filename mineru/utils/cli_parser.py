@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from collections.abc import Sequence
 
 import click

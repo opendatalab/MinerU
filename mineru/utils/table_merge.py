@@ -195,6 +195,42 @@ def _refresh_table_state_metrics(state: TableMergeState) -> None:
     state.front_header_info, state.front_first_data_row_metrics = _build_front_cache(state.rows)
 
 
+def build_table_state_from_html(
+    html: str,
+    max_header_rows: int = MAX_HEADER_ROWS,
+) -> TableMergeState | None:
+    """从原始 HTML 构建 TableMergeState，不依赖 MinerU block 结构。
+
+    供外部工具（如 mineru-vl-utils）调用，用于跨页表格结构检测。
+    返回的 state 仅可用于 can_merge_by_structure()，不可传入 can_merge_tables()。
+    """
+    if not html:
+        return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    tbody = soup.find("tbody") or soup.find("table")
+    rows = soup.find_all("tr")
+    if not rows:
+        return None
+
+    scan = _scan_rows(rows)
+    front_header_info, front_first_data_row_metrics = _build_front_cache(rows, max_header_rows=max_header_rows)
+
+    return TableMergeState(
+        owner_block={},
+        body_span={},
+        soup=soup,
+        tbody=tbody,
+        rows=rows,
+        total_cols=scan.total_cols,
+        front_header_info=front_header_info,
+        front_first_data_row_metrics=front_first_data_row_metrics,
+        last_data_row_metrics=scan.last_nonempty_row_metrics,
+        row_effective_cols=scan.row_effective_cols,
+        tail_occupied=scan.tail_occupied,
+    )
+
+
 def _build_table_state(table_block, max_header_rows: int = MAX_HEADER_ROWS) -> TableMergeState | None:
     body_span = _find_table_body_span(table_block)
     if body_span is None:
@@ -289,6 +325,89 @@ def calculate_visual_columns(row):
     return len(cells)
 
 
+def _scan_row_visual_sources(rows, target_row_index: int) -> tuple[dict[int, tuple[int, int]], int]:
+    """扫描到目标行，记录每个视觉列当前由哪个源单元格占据。"""
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return {}, 0
+
+    # occupied[row_idx][col_idx] = (source_row_idx, source_cell_idx)
+    occupied: dict[int, dict[int, tuple[int, int]]] = {}
+    total_cols = 0
+
+    for r_idx in range(target_row_index + 1):
+        occupied_row = occupied.setdefault(r_idx, {})
+        col_idx = 0
+        cells = rows[r_idx].find_all(["td", "th"])
+        for cell_idx, cell in enumerate(cells):
+            while col_idx in occupied_row:
+                col_idx += 1
+            colspan = int(cell.get("colspan", 1))
+            rowspan = int(cell.get("rowspan", 1))
+            source_marker = (r_idx, cell_idx)
+            for ro in range(rowspan):
+                target_idx = r_idx + ro
+                occ = occupied.setdefault(target_idx, {})
+                for c in range(col_idx, col_idx + colspan):
+                    occ[c] = source_marker
+            col_idx += colspan
+            total_cols = max(total_cols, col_idx)
+
+    return occupied.get(target_row_index, {}), total_cols
+
+
+def build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
+    """构建目标行中每个显式 <td>/<th> 元素到视觉列位置的映射。
+
+    该映射会正确考虑从前序行继承而来的 rowspan 占位。
+    """
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return []
+
+    target_occupied, _ = _scan_row_visual_sources(rows, target_row_index)
+
+    col_idx = 0
+    mapping = []
+    target_cells = rows[target_row_index].find_all(["td", "th"])
+    for cell in target_cells:
+        while col_idx in target_occupied and target_occupied[col_idx][0] < target_row_index:
+            col_idx += 1
+        mapping.append(col_idx)
+        colspan = int(cell.get("colspan", 1))
+        col_idx += colspan
+    return mapping
+
+
+def calculate_row_rendered_segments(rows, target_row_index: int) -> int:
+    """计算目标行渲染后的视觉段数。
+
+    段数按“渲染出来的单元格块”统计：
+    - 当前行显式单元格各算一段，不展开 colspan
+    - 从前序行继承而来的 rowspan 占位也算段
+    - 只有连续列且来自同一个源单元格时才算同一段
+    """
+    target_occupied, total_cols = _scan_row_visual_sources(rows, target_row_index)
+    if total_cols == 0:
+        return 0
+
+    segment_count = 0
+    previous_marker: tuple[int, int] | None = None
+
+    for col_idx in range(total_cols):
+        marker = target_occupied.get(col_idx)
+        if marker is None:
+            previous_marker = None
+            continue
+        if marker != previous_marker:
+            segment_count += 1
+            previous_marker = marker
+
+    return segment_count
+
+
 def detect_table_headers(state1: TableMergeState, state2: TableMergeState, max_header_rows: int = MAX_HEADER_ROWS):
     """检测并比较两个表格的表头，仅扫描前几行."""
     front_rows1 = state1.front_header_info[:max_header_rows]
@@ -355,10 +474,41 @@ def _detect_table_headers_visual(
     return header_rows, headers_match, header_texts
 
 
+def can_merge_by_structure(
+    current_state: TableMergeState,
+    previous_state: TableMergeState,
+    current_bbox: tuple[float, float, float, float] | None = None,
+    previous_bbox: tuple[float, float, float, float] | None = None,
+) -> bool:
+    """仅基于表格结构判断是否可合并（不检查 caption/footnote）。
+
+    供外部工具调用，忽略 caption 和 footnote 检查。
+    """
+    if current_bbox is not None and previous_bbox is not None:
+        x0_t1, _, x1_t1, _ = current_bbox
+        x0_t2, _, x1_t2, _ = previous_bbox
+        table1_width = x1_t1 - x0_t1
+        table2_width = x1_t2 - x0_t2
+        if table1_width > 0 and table2_width > 0:
+            if abs(table1_width - table2_width) / min(table1_width, table2_width) >= 0.1:
+                return False
+
+    if previous_state.total_cols == current_state.total_cols:
+        return True
+
+    return check_rows_match(previous_state, current_state)
+
+
 def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeState):
     """判断两个表格是否可以合并."""
     current_table_block = current_state.owner_block
     previous_table_block = previous_state.owner_block
+
+    if "blocks" not in previous_table_block or "blocks" not in current_table_block:
+        raise ValueError(
+            "can_merge_tables() requires owner_block with 'blocks' key. "
+            "For HTML-only states from build_table_state_from_html(), use can_merge_by_structure() instead."
+        )
 
     footnote_count = sum(
         1 for block in previous_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE
@@ -410,10 +560,13 @@ def check_rows_match(previous_state: TableMergeState, current_state: TableMergeS
     if first_data_row_metrics is None:
         return False
 
+    previous_rendered_segments = calculate_row_rendered_segments(previous_state.rows, last_row_metrics.row_idx)
+    current_rendered_segments = calculate_row_rendered_segments(current_state.rows, first_data_row_metrics.row_idx)
+
     return (
         last_row_metrics.effective_cols == first_data_row_metrics.effective_cols
         or last_row_metrics.actual_cols == first_data_row_metrics.actual_cols
-        or last_row_metrics.visual_cols == first_data_row_metrics.visual_cols
+        or previous_rendered_segments == current_rendered_segments
     )
 
 
@@ -471,6 +624,141 @@ def adjust_table_rows_colspan(
                 last_cell["colspan"] = str(current_last_span + cols_diff)
 
 
+def _cell_has_semantic_content(cell) -> bool:
+    """判断单元格是否仍包含用户可见的语义内容。"""
+    if cell.get_text(strip=True):
+        return True
+
+    return (
+        cell.find(["img", "svg", "math", "eq", "table", "figure", "object", "embed", "canvas"])
+        is not None
+    )
+
+
+def _row_has_semantic_content(row) -> bool:
+    """判断整行是否仍保留未并回的语义内容。"""
+    return any(_cell_has_semantic_content(cell) for cell in row.find_all(["td", "th"]))
+
+
+def _insert_cell_before_visual_column(rows, target_row_index: int, start_vcol: int, cell) -> None:
+    """将单元格插入到目标行中对应视觉列之前。"""
+    target_row = rows[target_row_index]
+    target_cells = target_row.find_all(["td", "th"])
+    target_vcol_map = build_visual_col_mapping(rows, target_row_index)
+
+    for idx, target_start_vcol in enumerate(target_vcol_map):
+        if target_start_vcol > start_vcol:
+            target_cells[idx].insert_before(cell)
+            return
+
+    target_row.append(cell)
+
+
+def _carry_rowspan_structure_to_next_row(rows, row_idx: int) -> None:
+    """下沉空白结构占位单元格，避免删除当前行后破坏后续列对齐。"""
+    next_row_idx = row_idx + 1
+    if next_row_idx >= len(rows):
+        return
+
+    current_row = rows[row_idx]
+    current_cells = current_row.find_all(["td", "th"])
+    current_vcol_map = build_visual_col_mapping(rows, row_idx)
+    carried_cells = []
+
+    for cell, start_vcol in zip(current_cells, current_vcol_map):
+        rowspan = int(cell.get("rowspan", 1))
+        if rowspan <= 1 or _cell_has_semantic_content(cell):
+            continue
+
+        carried_cell = deepcopy(cell)
+        new_rowspan = rowspan - 1
+        if new_rowspan > 1:
+            carried_cell["rowspan"] = str(new_rowspan)
+        else:
+            carried_cell.attrs.pop("rowspan", None)
+        carried_cells.append((start_vcol, carried_cell))
+
+    for start_vcol, carried_cell in sorted(carried_cells, key=lambda item: item[0], reverse=True):
+        _insert_cell_before_visual_column(rows, next_row_idx, start_vcol, carried_cell)
+
+
+def _apply_cell_merge(
+    previous_state: TableMergeState,
+    current_state: TableMergeState,
+    header_count: int,
+) -> None:
+    """应用 cell_merge 语义合并。
+
+    当 cell_merge 中的值为 1 时，将下表第一数据行对应单元格的内容
+    追加到上表最后一行对应单元格中。全部为 1 时删除该数据行，
+    混合时清空已合并单元格的内容但保留行。
+
+    cell_merge 按视觉列索引对齐，通过构建视觉列映射来正确匹配
+    两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
+    """
+    cell_merge = current_state.owner_block.get("cell_merge")
+    if not cell_merge:
+        return
+
+    rows2 = current_state.rows
+    if header_count >= len(rows2):
+        return
+    if not previous_state.rows:
+        return
+
+    first_data_row = rows2[header_count]
+    last_row = previous_state.rows[-1]
+
+    cells1 = last_row.find_all(["td", "th"])
+    cells2 = first_data_row.find_all(["td", "th"])
+
+    # 构建视觉列到单元格索引的映射
+    last_row_idx = len(previous_state.rows) - 1
+    vcol_map1 = build_visual_col_mapping(previous_state.rows, last_row_idx)
+    vcol_map2 = build_visual_col_mapping(rows2, header_count)
+
+    # 构建视觉列 -> 单元格索引的反向映射（展开 colspan）
+    vcol_to_cell1: dict[int, int] = {}
+    for ci, start_vcol in enumerate(vcol_map1):
+        colspan = int(cells1[ci].get("colspan", 1))
+        for c in range(start_vcol, start_vcol + colspan):
+            vcol_to_cell1[c] = ci
+    vcol_to_cell2: dict[int, int] = {}
+    for ci, start_vcol in enumerate(vcol_map2):
+        colspan = int(cells2[ci].get("colspan", 1))
+        for c in range(start_vcol, start_vcol + colspan):
+            vcol_to_cell2[c] = ci
+
+    # 按唯一 (src_cell_idx, dst_cell_idx) 对执行一次转移，避免 colspan 重复处理
+    transferred_pairs: set[tuple[int, int]] = set()
+    for vi, merge_flag in enumerate(cell_merge):
+        if merge_flag == 1:
+            ci1 = vcol_to_cell1.get(vi)
+            ci2 = vcol_to_cell2.get(vi)
+            if ci1 is not None and ci2 is not None:
+                pair = (ci1, ci2)
+                if pair not in transferred_pairs:
+                    for child in list(cells2[ci2].children):
+                        cells1[ci1].append(child.extract())
+                    transferred_pairs.add(pair)
+
+    # 只清空确实成功转移过的源单元格
+    cleared_ci2: set[int] = set()
+    for vi, merge_flag in enumerate(cell_merge):
+        if merge_flag == 1:
+            ci1 = vcol_to_cell1.get(vi)
+            ci2 = vcol_to_cell2.get(vi)
+            if ci1 is not None and ci2 is not None and ci2 not in cleared_ci2:
+                cells2[ci2].clear()
+                cleared_ci2.add(ci2)
+
+    if not _row_has_semantic_content(first_data_row):
+        _carry_rowspan_structure_to_next_row(rows2, header_count)
+        first_data_row.extract()
+        if first_data_row in rows2:
+            rows2.remove(first_data_row)
+
+
 def perform_table_merge(
     previous_state: TableMergeState,
     current_state: TableMergeState,
@@ -525,6 +813,8 @@ def perform_table_merge(
 
     if previous_adjusted:
         _refresh_table_state_metrics(previous_state)
+
+    _apply_cell_merge(previous_state, current_state, header_count)
 
     appended_rows = rows2[header_count:]
     append_start_idx = len(previous_state.rows)

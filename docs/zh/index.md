@@ -21,6 +21,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/a3cb16570ab3cfeadf9d8f0ac91b4fca/mineru_demo.ipynb)
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
+[![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 <div align="center">
@@ -40,7 +41,7 @@
 
 ## 项目简介
 
-MinerU 是一款文档解析工具，可将 `PDF`、图片和 `DOCX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
+MinerU 是一款文档解析工具，可将 `PDF`、图片以及 `DOCX`、`PPTX`、`XLSX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
 相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
@@ -48,7 +49,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 ## 主要功能
 
-- 支持 `PDF`、图片与 `DOCX` 输入
+- 支持 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -68,3 +69,7 @@ MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练
 
 - [快速上手指南](./quick_start/index.md)
 - [详细使用说明](./usage/index.md)
+
+## 许可证信息
+
+本仓库采用 [MinerU 开源许可证](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) 进行许可，基于 Apache 2.0 并附带额外条款。

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 
 from abc import ABC, abstractmethod
 

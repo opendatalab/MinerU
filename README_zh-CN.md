@@ -20,6 +20,7 @@
 [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/gist/myhloli/a3cb16570ab3cfeadf9d8f0ac91b4fca/mineru_demo.ipynb)
 [![arXiv](https://img.shields.io/badge/MinerU-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2409.18839)
 [![arXiv](https://img.shields.io/badge/MinerU2.5-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2509.22186)
+[![arXiv](https://img.shields.io/badge/MinerU2.5%20Pro-Technical%20Report-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2604.04771)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opendatalab/MinerU)
 
 
@@ -45,10 +46,11 @@
 
 <details>
 <summary>MinerU — 专为 LLM · RAG · Agent 场景构建的高精度文档解析引擎 </summary>
-将 PDF · Word · PPT · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
+将 PDF · DOCX · PPTX · XLSX · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
 MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 <br>
 
 **🔍 核心解析能力**
+- 原生支持 `DOCX`、`PPTX`、`XLSX` 解析
 - 公式 → LaTeX · 表格 → HTML，精准还原复杂版面
 - 支持扫描件、手写体、多栏布局、跨页表格合并
 - 输出符合人类阅读顺序，自动去除页眉页脚
@@ -76,6 +78,22 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 </details>
 
 # 更新记录
+
+- 2026/04/18 3.1.0 发布
+
+  本次版本更新聚焦于**许可协议开放性、解析精度提升与全格式原生支持**。主要更新内容包括：
+
+  - 许可协议升级
+    - MinerU 已正式从 `AGPLv3` 切换至基于 `Apache 2.0` 的 [MinerU 开源许可证](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md)。
+    - 新的许可方式在兼顾开源协作与商业落地的同时，进一步降低了社区使用和商业化接入门槛，让 MinerU 更容易融入真实业务流程。
+  - VLM 主模型升级
+    - VLM 主模型正式切换为 `MinerU2.5-Pro-2604-1.2B`，整体解析精度提升至业内领先水平。
+    - 新模型现已支持子图切分合并、图像与图表解析、截断段落合并、跨页面表格合并以及表格内图像识别，复杂版面场景下的解析能力进一步增强。
+  - 全格式原生解析支持
+    - 新增 `PPTX` 与 `XLSX` 原生解析能力。
+    - 至此，MinerU 已完整支持图片、`PDF`、`DOCX`、`PPTX`、`XLSX` 全格式解析，为多类型文档统一处理提供了更完整的能力闭环。
+
+  通过 3.1.0 版本，MinerU 在开放性、解析精度和落地能力上进一步提升。新的许可协议降低了社区使用和商业接入门槛，`MinerU2.5-Pro-2604-1.2B` 提升了复杂内容的解析质量，而 `PPTX` 与 `XLSX` 原生解析的补齐，也让 MinerU 完成了主流文档格式的端到端覆盖。
 
 - 2026/03/29 3.0.0 发布
 
@@ -107,7 +125,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 ## 项目简介
 
-MinerU 是一款文档解析工具，可将 `PDF`、图片和 `DOCX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
+MinerU 是一款文档解析工具，可将 `PDF`、图片以及 `DOCX`、`PPTX`、`XLSX` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
 相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
@@ -115,7 +133,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
-- 支持 `PDF`、图片与 `DOCX` 输入
+- 支持 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -280,7 +298,7 @@ mineru -p <input_path> -o <output_path>
 mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
-当前 `mineru` 支持本地 `PDF / 图片 / DOCX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
+当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
 # TODO
 
@@ -320,9 +338,7 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 # License Information
 
-[LICENSE.md](LICENSE.md)
-
-本仓库源码采用 AGPLv3 许可。
+本仓库采用 [MinerU 开源许可证](https://github.com/opendatalab/MinerU/blob/master/LICENSE.md) 进行许可，基于 Apache 2.0 并附带额外条款。
 
 # Acknowledgments
 

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 from typing import BinaryIO
 
 from mineru.model.docx.docx_converter import DocxConverter

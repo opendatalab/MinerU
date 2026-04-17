@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 import cv2
 import copy
 import numpy as np
