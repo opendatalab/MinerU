@@ -41,7 +41,6 @@ from mineru.cli.api_client import (
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
 from mineru.cli.common import normalize_upload_filename
 from mineru.cli.public_http_client_policy import (
-    PUBLIC_HTTP_CLIENT_DISABLED_DETAIL,
     configure_public_http_client_policy,
     is_public_bind_host,
     validate_public_http_client_request,
