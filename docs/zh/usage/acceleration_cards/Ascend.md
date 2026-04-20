@@ -111,50 +111,50 @@ docker run -u root --name mineru_docker --privileged=true \
     <tr>
       <td rowspan="3">命令行工具(mineru)</td>
       <td>pipeline</td>
+      <td>🔴</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-&lt;auto-engine/http-client&gt;</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td>&lt;vlm/hybrid&gt;-http-client</td>
-      <td>🟢</td>
-      <td>🟢</td>
+      <td>hybrid-&lt;auto-engine/http-client&gt;</td>
+      <td>🔴</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td rowspan="3">fastapi服务(mineru-api)</td>
       <td>pipeline</td>
+      <td>🔴</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-&lt;auto-engine/http-client&gt;</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td>&lt;vlm/hybrid&gt;-http-client</td>
-      <td>🟢</td>
-      <td>🟢</td>
+      <td>hybrid-&lt;auto-engine/http-client&gt;</td>
+      <td>🔴</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td rowspan="3">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
+      <td>🔴</td>
+      <td>🔴</td>
+    </tr>
+    <tr>
+      <td>vlm-&lt;auto-engine/http-client&gt;</td>
       <td>🟢</td>
       <td>🟢</td>
     </tr>
     <tr>
-      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
-      <td>🟢</td>
-      <td>🟢</td>
-    </tr>
-    <tr>
-      <td>&lt;vlm/hybrid&gt;-http-client</td>
-      <td>🟢</td>
-      <td>🟢</td>
+      <td>hybrid-&lt;auto-engine/http-client&gt;</td>
+      <td>🔴</td>
+      <td>🔴</td>
     </tr>
     <tr>
       <td colspan="2">openai-server服务（mineru-openai-server）</td>
