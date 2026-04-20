@@ -3,6 +3,7 @@ import asyncio
 import atexit
 import json
 import mimetypes
+import multiprocessing
 import os
 import signal
 import socket
@@ -37,6 +38,11 @@ LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
 PROCESS_TREE_CLEANUP_GRACE_SECONDS = 0.1
+MINERU_LOCAL_API_LAUNCH_MODE_ENV = "MINERU_LOCAL_API_LAUNCH_MODE"
+LOCAL_API_LAUNCH_MODE_SUBPROCESS = "subprocess"
+LOCAL_API_LAUNCH_MODE_SPAWN = "spawn"
+
+ManagedProcess = subprocess.Popen[bytes] | multiprocessing.process.BaseProcess
 
 
 def get_float_env(name: str, default: float, minimum: float = 0.0) -> float:
@@ -74,6 +80,29 @@ def get_local_api_startup_timeout_seconds(default: float = 300.0) -> float:
 
 
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = get_local_api_startup_timeout_seconds()
+
+
+def get_local_api_launch_mode(default: str = LOCAL_API_LAUNCH_MODE_SUBPROCESS) -> str:
+    value = os.getenv(MINERU_LOCAL_API_LAUNCH_MODE_ENV)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {
+        LOCAL_API_LAUNCH_MODE_SUBPROCESS,
+        LOCAL_API_LAUNCH_MODE_SPAWN,
+    }:
+        return normalized
+
+    logger.warning(
+        "Invalid {} value: {}. Expected one of ({}, {}), using default {}.",
+        MINERU_LOCAL_API_LAUNCH_MODE_ENV,
+        value,
+        LOCAL_API_LAUNCH_MODE_SUBPROCESS,
+        LOCAL_API_LAUNCH_MODE_SPAWN,
+        default,
+    )
+    return default
 
 
 def build_managed_process_popen_kwargs() -> dict[str, object]:
@@ -183,6 +212,100 @@ def stop_managed_process(
         cleanup_process_tree_descendants(process)
 
 
+def _managed_process_exit_code(process: ManagedProcess | None) -> int | None:
+    if process is None:
+        return None
+    if isinstance(process, subprocess.Popen):
+        return process.poll()
+    return process.exitcode
+
+
+def _managed_process_is_running(process: ManagedProcess | None) -> bool:
+    return _managed_process_exit_code(process) is None
+
+
+def _stop_spawn_managed_process(
+    process: multiprocessing.process.BaseProcess | None,
+    *,
+    shutdown_timeout_seconds: float,
+) -> None:
+    if process is None or process.exitcode is not None:
+        return
+
+    process.terminate()
+    process.join(timeout=shutdown_timeout_seconds)
+
+    if process.exitcode is not None:
+        return
+
+    process.kill()
+    process.join(timeout=shutdown_timeout_seconds)
+
+    if process.exitcode is None:
+        logger.warning(
+            "Managed MinerU spawn process {} did not exit after forceful stop.",
+            process.pid,
+        )
+
+
+def _build_local_api_server_cli_args(
+    resolved_port: int,
+    extra_cli_args: Sequence[str],
+) -> tuple[str, ...]:
+    remaining_cli_args = strip_local_api_network_args(extra_cli_args)
+    return (
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(resolved_port),
+        *remaining_cli_args,
+    )
+
+
+def _build_local_api_server_env(
+    output_root: Path,
+    *,
+    use_stdin_shutdown_watcher: bool,
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    env = os.environ.copy()
+    env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
+    env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
+        read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
+    )
+    env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
+
+    unset_env_names: list[str] = []
+    if use_stdin_shutdown_watcher:
+        env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
+    else:
+        env.pop("MINERU_API_SHUTDOWN_ON_STDIN_EOF", None)
+        unset_env_names.append("MINERU_API_SHUTDOWN_ON_STDIN_EOF")
+
+    return env, tuple(unset_env_names)
+
+
+def _run_local_api_via_spawn(
+    *,
+    cwd: str,
+    env_overrides: dict[str, str],
+    unset_env_names: Sequence[str],
+    cli_args: Sequence[str],
+) -> None:
+    for name in unset_env_names:
+        os.environ.pop(name, None)
+    os.environ.update(env_overrides)
+    os.chdir(cwd)
+    sys.argv = ["mineru-api", *cli_args]
+
+    from mineru.cli.fast_api import main as fast_api_main
+
+    fast_api_main.main(
+        args=list(cli_args),
+        prog_name="mineru-api",
+        standalone_mode=False,
+    )
+
+
 @dataclass(frozen=True)
 class UploadAsset:
     path: Path
@@ -217,52 +340,66 @@ class LocalAPIServer:
         self.temp_root = Path(self.temp_dir.name)
         self.output_root = self.temp_root / "output"
         self.base_url: str | None = None
-        self.process: subprocess.Popen[bytes] | None = None
+        self.process: ManagedProcess | None = None
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
-        # On Windows, the temporary FastAPI child process can stall during parsing
-        # startup when launched with stdin=PIPE and an EOF-based shutdown watcher.
-        # Use explicit process termination there instead of stdin-driven shutdown.
-        self._use_stdin_shutdown_watcher = os.name != "nt"
+        self._launch_mode = LOCAL_API_LAUNCH_MODE_SUBPROCESS
+        self._use_stdin_shutdown_watcher = False
 
     def start(self) -> str:
         if self.process is not None:
             raise RuntimeError("Local API server is already running")
 
         resolved_port = find_free_port()
-        remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
         self.base_url = f"http://127.0.0.1:{resolved_port}"
-        env = os.environ.copy()
-        env["MINERU_API_OUTPUT_ROOT"] = str(self.output_root)
-        env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
-            read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
+        self._launch_mode = get_local_api_launch_mode()
+        # On Windows, the temporary FastAPI child process can stall during
+        # parsing startup when launched with stdin=PIPE and an EOF-based
+        # shutdown watcher. Spawn mode also uses explicit process termination.
+        self._use_stdin_shutdown_watcher = (
+            self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS and os.name != "nt"
         )
-        env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
-        if self._use_stdin_shutdown_watcher:
-            env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
+        env, unset_env_names = _build_local_api_server_env(
+            self.output_root,
+            use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
+        )
+        if self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS:
             stdin_target = subprocess.PIPE
         else:
-            env.pop("MINERU_API_SHUTDOWN_ON_STDIN_EOF", None)
             stdin_target = subprocess.DEVNULL
         self.output_root.mkdir(parents=True, exist_ok=True)
 
-        command = [
-            sys.executable,
-            "-m",
-            "mineru.cli.fast_api",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(resolved_port),
-            *remaining_cli_args,
-        ]
-        self.process = subprocess.Popen(
-            command,
-            cwd=os.getcwd(),
-            env=env,
-            stdin=stdin_target,
-            **build_managed_process_popen_kwargs(),
+        cli_args = _build_local_api_server_cli_args(
+            resolved_port,
+            self.extra_cli_args,
         )
+        if self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS:
+            command = [
+                sys.executable,
+                "-m",
+                "mineru.cli.fast_api",
+                *cli_args,
+            ]
+            self.process = subprocess.Popen(
+                command,
+                cwd=os.getcwd(),
+                env=env,
+                stdin=stdin_target,
+                **build_managed_process_popen_kwargs(),
+            )
+        else:
+            spawn_context = multiprocessing.get_context("spawn")
+            process = spawn_context.Process(
+                target=_run_local_api_via_spawn,
+                kwargs={
+                    "cwd": os.getcwd(),
+                    "env_overrides": env,
+                    "unset_env_names": unset_env_names,
+                    "cli_args": cli_args,
+                },
+            )
+            process.start()
+            self.process = process
 
         if not self._atexit_registered:
             atexit.register(self.stop)
@@ -274,11 +411,17 @@ class LocalAPIServer:
         self.process = None
         try:
             if process is not None:
-                stop_managed_process(
-                    process,
-                    shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                    use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
-                )
+                if isinstance(process, subprocess.Popen):
+                    stop_managed_process(
+                        process,
+                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                        use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
+                    )
+                else:
+                    _stop_spawn_managed_process(
+                        process,
+                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                    )
         finally:
             if self._atexit_registered:
                 try:
@@ -322,14 +465,14 @@ class ReusableLocalAPIServer:
             server = self._server
             if server is None:
                 return
-            if server.process is not None and server.process.poll() is None:
+            if _managed_process_is_running(server.process):
                 return
             self._server = None
 
     def ensure_started(self) -> tuple[LocalAPIServer, bool]:
         with self._lock:
             server = self._server
-            if server is not None and server.process is not None and server.process.poll() is None:
+            if server is not None and _managed_process_is_running(server.process):
                 return server, False
 
             if server is not None:
@@ -486,7 +629,7 @@ async def wait_for_local_api_ready(
 
     while asyncio.get_running_loop().time() < deadline:
         process = local_server.process
-        if process is not None and process.poll() is not None:
+        if process is not None and _managed_process_exit_code(process) is not None:
             raise click.ClickException(
                 "Local mineru-api exited before becoming healthy."
             )
