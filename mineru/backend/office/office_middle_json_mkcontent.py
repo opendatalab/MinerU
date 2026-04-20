@@ -6,10 +6,6 @@ from html import escape
 
 from loguru import logger
 
-from mineru.backend.utils.markdown_utils import (
-    escape_conservative_markdown_text,
-    escape_text_block_markdown_prefix,
-)
 from mineru.utils.config_reader import get_latex_delimiter_config
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
 
@@ -31,6 +27,7 @@ OFFICE_STYLE_RENDER_MODE_ENV = 'MINERU_OFFICE_STYLE_RENDER_MODE'
 OFFICE_STYLE_RENDER_MODE_HTML = 'html'
 OFFICE_STYLE_RENDER_MODE_MARKDOWN = 'markdown'
 OFFICE_MARKDOWN_WRAPPER_STYLES = {'bold', 'italic', 'strikethrough'}
+UNDERSCORE_THEMATIC_BREAK_RE = re.compile(r'^[ \t]{0,3}(?:_[ \t]*){3,}$')
 
 
 def _apply_markdown_style(content: str, style: list) -> str:
@@ -164,13 +161,19 @@ def _build_media_path(img_buket_path: str, image_path: str) -> str:
     return f"{img_buket_path}/{image_path}"
 
 
-def _escape_office_markdown_text(content: str) -> str:
-    """Escape plain-text Office content before applying Markdown wrappers."""
+def _escape_underscore_thematic_break(content: str) -> str:
+    """Escape standalone underscore runs that Markdown would parse as a thematic break."""
     if not content:
         return content
-    if _get_office_style_render_mode() != OFFICE_STYLE_RENDER_MODE_MARKDOWN:
+
+    if not UNDERSCORE_THEMATIC_BREAK_RE.fullmatch(content.strip()):
         return content
-    return escape_conservative_markdown_text(content)
+
+    first_underscore = content.find('_')
+    if first_underscore == -1:
+        return content
+
+    return content[:first_underscore] + r'\_' + content[first_underscore + 1:]
 
 
 def get_title_level(para_block):
@@ -282,7 +285,7 @@ def _join_rendered_parts(parts: list[dict]) -> str:
 
 
 def _append_text_part(parts: list[dict], original_content: str, span_style: list):
-    escaped_content = _escape_office_markdown_text(original_content)
+    escaped_content = _escape_underscore_thematic_break(original_content)
     content_stripped = escaped_content.strip()
     if content_stripped:
         styled = _apply_configured_style(content_stripped, span_style)
@@ -321,7 +324,7 @@ def _append_hyperlink_part(
     url: str = '',
     plain_text_only: bool = False,
 ):
-    link_text = _escape_office_markdown_text(original_content.strip())
+    link_text = original_content.strip()
     if not link_text:
         return
 
@@ -346,7 +349,7 @@ def _append_hyperlink_part(
     )
 
 
-def merge_para_with_text(para_block, escape_text_block_prefix=True):
+def merge_para_with_text(para_block):
     # First pass: collect rendered parts with raw boundary metadata.
     parts = []
     if para_block['type'] == BlockType.TITLE:
@@ -398,10 +401,7 @@ def merge_para_with_text(para_block, escape_text_block_prefix=True):
                     url=span.get('url', ''),
                 )
 
-    para_text = _join_rendered_parts(parts)
-    if escape_text_block_prefix and para_block.get('type') == BlockType.TEXT:
-        para_text = escape_text_block_markdown_prefix(para_text)
-    return para_text
+    return _join_rendered_parts(parts)
 
 
 def _flatten_list_items(list_block):
@@ -416,7 +416,7 @@ def _flatten_list_items(list_block):
         if block['type'] in [BlockType.LIST, BlockType.INDEX]:
             items.extend(_flatten_list_items(block))
         else:
-            item_text = merge_para_with_text(block, escape_text_block_prefix=False)
+            item_text = merge_para_with_text(block)
             if item_text.strip():
                 if attribute == 'ordered':
                     items.append(f"{indent}{ordered_counter}. {item_text}")
@@ -585,7 +585,7 @@ def _flatten_index_items(index_block):
                         )
                     else:
                         # For TOC rendering, hyperlink spans output as plain text.
-                        raw_parts.append(_escape_office_markdown_text(content))
+                        raw_parts.append(content)
                 item_text = ''.join(raw_parts).strip()
                 if item_text:
                     item_text = _apply_configured_style(item_text, uniform_style)
@@ -657,37 +657,37 @@ def mk_blocks_to_markdown(para_blocks, make_mode, img_buket_path='', page_idx=No
             else:
                 para_text = f'{"#" * title_level} {title_text}'
         elif para_type == BlockType.IMAGE:
-            if make_mode == MakeMode.NLP_MD:
+            if make_mode in [MakeMode.NLP_MD, MakeMode.NLP_MD_PAGES]:
                 continue
-            elif make_mode == MakeMode.MM_MD:
-                for block in para_block['blocks']:  # 1st.拼image_body
+            elif make_mode in [MakeMode.MM_MD, MakeMode.MM_MD_PAGES]:
+                for block in para_block['blocks']:  # 1st.拼 image_body
                     if block['type'] == BlockType.IMAGE_BODY:
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.IMAGE:
                                     if span.get('image_path', ''):
                                         para_text += f"![]({img_buket_path}/{span['image_path']})"
-                for block in para_block['blocks']:  # 2nd.拼image_caption
+                for block in para_block['blocks']:  # 2nd.拼 image_caption
                     if block['type'] == BlockType.IMAGE_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
 
         elif para_type == BlockType.TABLE:
-            if make_mode == MakeMode.NLP_MD:
+            if make_mode in [MakeMode.NLP_MD, MakeMode.NLP_MD_PAGES]:
                 continue
-            elif make_mode == MakeMode.MM_MD:
-                for block in para_block['blocks']:  # 1st.拼table_body
+            elif make_mode in [MakeMode.MM_MD, MakeMode.MM_MD_PAGES]:
+                for block in para_block['blocks']:  # 1st.拼 table_body
                     if block['type'] == BlockType.TABLE_BODY:
                         for line in block['lines']:
                             for span in line['spans']:
                                 if span['type'] == ContentType.TABLE:
                                     para_text += f"\n{_format_embedded_html(span['html'], img_buket_path)}\n"
-                for block in para_block['blocks']:  # 2nd.拼table_caption
+                for block in para_block['blocks']:  # 2nd.拼 table_caption
                     if block['type'] == BlockType.TABLE_CAPTION:
                         para_text += '  \n' + merge_para_with_text(block)
         elif para_type == BlockType.CHART:
-            if make_mode == MakeMode.NLP_MD:
+            if make_mode in [MakeMode.NLP_MD, MakeMode.NLP_MD_PAGES]:
                 continue
-            elif make_mode == MakeMode.MM_MD:
+            elif make_mode in [MakeMode.MM_MD, MakeMode.MM_MD_PAGES]:
                 image_path, chart_content = get_body_data(para_block)
                 if chart_content:
                     para_text += f"\n{_format_embedded_html(chart_content, img_buket_path)}\n"
@@ -714,7 +714,6 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx):
         BlockType.TEXT,
         BlockType.HEADER,
         BlockType.FOOTER,
-        BlockType.PAGE_FOOTNOTE,
     ]:
         para_content = {
             'type': para_type,
@@ -805,14 +804,11 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path):
     if para_type in [
         BlockType.HEADER,
         BlockType.FOOTER,
-        BlockType.PAGE_FOOTNOTE,
     ]:
         if para_type == BlockType.HEADER:
             content_type = ContentTypeV2.PAGE_HEADER
         elif para_type == BlockType.FOOTER:
             content_type = ContentTypeV2.PAGE_FOOTER
-        elif para_type == BlockType.PAGE_FOOTNOTE:
-            content_type = ContentTypeV2.PAGE_FOOTNOTE
         else:
             raise ValueError(f"Unknown para_type: {para_type}")
         para_content = {
@@ -1008,16 +1004,20 @@ def union_make(pdf_info_dict: list,
                ):
 
     output_content = []
+    page_markdowns = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
         paras_of_discarded = page_info.get('discarded_blocks')
         page_idx = page_info.get('page_idx')
-        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
+        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD, MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
             if not paras_of_layout:
+                page_markdowns.append('')
                 continue
             page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, img_buket_path,
                                                    page_idx=page_idx)
+            page_markdown_text = '\n\n'.join(page_markdown)
             output_content.extend(page_markdown)
+            page_markdowns.append(page_markdown_text)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
             if not para_blocks:
@@ -1037,6 +1037,8 @@ def union_make(pdf_info_dict: list,
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
+    elif make_mode in [MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
+        return page_markdowns
     elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     return None

@@ -18,6 +18,8 @@ from mineru.backend.pipeline.pipeline_analyze import (
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
     union_make as pipeline_union_make,
 )
+from mineru.cli.fast_api import build_result_dict, create_result_zip
+from mineru.utils.enum_class import MakeMode
 
 
 def test_pipeline_with_two_config():
@@ -218,3 +220,119 @@ def assert_content(content_path, parse_method="txt"):
                     > 90
                 )
     assert len(type_set) >= 4
+
+
+def test_return_md_pages_flag():
+    __dir__ = os.path.dirname(os.path.abspath(__file__
+))
+    pdf_files_dir = os.path.join(__dir__, "pdfs")
+    output_dir = os.path.join(__dir__, "output")
+    pdf_suffixes = [".pdf"]
+
+    doc_path_list = list(Path(pdf_files_dir).glob("*"))
+    doc_path_list = [p for p in doc_path_list if p.suffix in pdf_suffixes]
+
+    if not doc_path_list:
+        logger.warning("No PDF files found for return_md_pages test")
+        return
+
+    test_pdf = doc_path_list[0]
+    pdf_name = str(test_pdf.stem)
+    pdf_bytes = read_fn(test_pdf)
+
+    new_pdf_bytes = convert_pdf_bytes_to_bytes(pdf_bytes)
+
+    local_image_dir, local_md_dir = prepare_env(output_dir, pdf_name, "txt")
+    image_writer = FileBasedDataWriter(local_image_dir)
+    md_writer = FileBasedDataWriter(local_md_dir)
+
+    def on_doc_ready(doc_index, model_list, middle_json, ocr_enable):
+        del doc_index
+        del ocr_enable
+        pdf_info = middle_json["pdf_info"]
+
+        md_content_str = pipeline_union_make(pdf_info, MakeMode.NLP_MD, "images")
+        md_writer.write_string(
+            f"{pdf_name}.md",
+            md_content_str,
+        )
+
+        page_md_list = pipeline_union_make(pdf_info, MakeMode.NLP_MD_PAGES, "images")
+        for page_idx, page_content in enumerate(page_md_list, start=1):
+            md_writer.write_string(
+                f"{pdf_name}_page_{page_idx}.md",
+                page_content,
+            )
+
+        content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, "images")
+        md_writer.write_string(
+            f"{pdf_name}_content_list.json",
+            json.dumps(content_list, ensure_ascii=False, indent=4),
+        )
+
+        md_writer.write_string(
+            f"{pdf_name}_middle.json",
+            json.dumps(middle_json, ensure_ascii=False, indent=4),
+        )
+
+        md_writer.write_string(
+            f"{pdf_name}_model.json",
+            json.dumps(model_list, ensure_ascii=False, indent=4),
+        )
+
+    pipeline_doc_analyze_streaming(
+        [new_pdf_bytes],
+        [image_writer],
+        ["en"],
+        on_doc_ready,
+        parse_method="txt",
+    )
+
+    pdf_file_names = [pdf_name]
+    result_dict = build_result_dict(
+        output_dir,
+        pdf_file_names,
+        "pipeline",
+        "txt",
+        return_md=False,
+        return_md_pages=True,
+        return_middle_json=False,
+        return_model_output=False,
+        return_content_list=False,
+        return_images=False,
+    )
+
+    assert pdf_name in result_dict, "PDF should be in result dict"
+    assert "md_pages" in result_dict[pdf_name], "md_pages should be in result"
+    assert len(result_dict[pdf_name]["md_pages"]) > 0, "Should have at least one page"
+
+    for page in result_dict[pdf_name]["md_pages"]:
+        assert "filename" in page, "Page should have filename"
+        assert "content" in page, "Page should have content"
+        assert page["filename"].endswith(".md"), "Filename should end with .md"
+        assert isinstance(page["content"], str), "Content should be a string"
+        assert len(page["content"]) > 0, "Page content should not be empty"
+
+    zip_path = create_result_zip(
+        output_dir,
+        pdf_file_names,
+        "pipeline",
+        "txt",
+        return_md=False,
+        return_md_pages=True,
+        return_middle_json=False,
+        return_model_output=False,
+        return_content_list=False,
+        return_images=False,
+        return_original_file=False,
+    )
+
+    assert os.path.exists(zip_path), "ZIP file should be created"
+
+    import zipfile
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        names = zf.namelist()
+        page_md_files = [n for n in names if "_page_" in n and n.endswith(".md")]
+        assert len(page_md_files) > 0, "ZIP should contain page markdown files"
+
+    os.remove(zip_path)

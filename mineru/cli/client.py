@@ -622,6 +622,7 @@ def build_request_form_data(
     server_url: Optional[str],
     start_page_id: int,
     end_page_id: Optional[int],
+    return_md_pages: bool = False,
 ) -> dict[str, str | list[str]]:
     return _api_client.build_parse_request_form_data(
         lang_list=[lang],
@@ -633,6 +634,7 @@ def build_request_form_data(
         start_page_id=start_page_id,
         end_page_id=end_page_id,
         return_md=True,
+        return_md_pages=return_md_pages,
         return_middle_json=True,
         return_model_output=True,
         return_content_list=True,
@@ -843,6 +845,7 @@ async def run_orchestrated_cli(
     end_page_id: Optional[int],
     formula_enable: bool,
     table_enable: bool,
+    return_md_pages: bool = False,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
     if start_page_id < 0:
@@ -912,6 +915,7 @@ async def run_orchestrated_cli(
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
+                return_md_pages=return_md_pages,
             )
             visualization_context = create_visualization_context()
             failures = await execute_planned_tasks(
@@ -960,7 +964,7 @@ async def run_orchestrated_cli(
     "input_path",
     type=click.Path(exists=True, path_type=Path),
     required=True,
-    help="local filepath or directory. support pdf, image, docx, pptx, xlsx files",
+    help="local filepath or directory. support pdf, png, jpg, jpeg files",
 )
 @click.option(
     "-o",
@@ -1088,6 +1092,14 @@ async def run_orchestrated_cli(
     default=True,
     help="Enable table parsing. Default is True. ",
 )
+@click.option(
+    "--return-md-pages",
+    "return_md_pages",
+    type=bool,
+    default=False,
+    is_flag=True,
+    help="Return markdown content split by individual pages. Default is False.",
+)
 def main(
     ctx: click.Context,
     input_path: Path,
@@ -1101,6 +1113,7 @@ def main(
     end_page_id: Optional[int],
     formula_enable: bool,
     table_enable: bool,
+    return_md_pages: bool,
 ) -> None:
     asyncio.run(
         run_orchestrated_cli(
@@ -1115,6 +1128,7 @@ def main(
             end_page_id=end_page_id,
             formula_enable=formula_enable,
             table_enable=table_enable,
+            return_md_pages=return_md_pages,
             extra_cli_args=tuple(ctx.args),
         )
     )

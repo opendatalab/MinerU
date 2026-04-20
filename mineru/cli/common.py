@@ -19,8 +19,6 @@ from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union
 from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
-from mineru.backend.office.pptx_analyze import office_pptx_analyze
-from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
 from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
 
@@ -263,11 +261,18 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}.md",
-            md_content_str,
-        )
+        md_content = make_func(pdf_info, f_make_md_mode, image_dir)
+        if f_make_md_mode in [MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
+            for page_idx, page_md in enumerate(md_content, start=1):
+                md_writer.write_string(
+                    f"{pdf_file_name}_page_{page_idx}.md",
+                    page_md,
+                )
+        else:
+            md_writer.write_string(
+                f"{pdf_file_name}.md",
+                md_content,
+            )
 
     if f_dump_content_list:
 
@@ -581,23 +586,13 @@ def _process_office_doc(
     for i, file_bytes in enumerate(pdf_bytes_list):
         pdf_file_name = pdf_file_names[i]
         file_suffix = guess_suffix_by_bytes(file_bytes)
-        if file_suffix in office_suffixes:
+        if file_suffix in docx_suffixes:
 
             need_remove_index.append(i)
 
             local_image_dir, local_md_dir = prepare_env(output_dir, pdf_file_name, f"office")
             image_writer, md_writer = FileBasedDataWriter(local_image_dir), FileBasedDataWriter(local_md_dir)
-
-            if file_suffix in docx_suffixes:
-                office_analyze = office_docx_analyze
-            elif file_suffix in pptx_suffixes:
-                office_analyze = office_pptx_analyze
-            elif file_suffix in xlsx_suffixes:
-                office_analyze = office_xlsx_analyze
-            else:
-                raise ValueError(f"Unsupported office suffix: {file_suffix}")
-
-            middle_json, infer_result = office_analyze(
+            middle_json, infer_result = office_docx_analyze(
                 file_bytes,
                 image_writer=image_writer,
             )
@@ -610,8 +605,14 @@ def _process_office_doc(
                 pdf_info, file_bytes, pdf_file_name, local_md_dir, local_image_dir,
                 md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_file,
                 f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-                f_make_md_mode, middle_json, infer_result, process_mode=file_suffix
+                f_make_md_mode, middle_json, infer_result, process_mode="docx"
             )
+        elif file_suffix in pptx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, PPTX files are not supported: {pdf_file_name}")
+        elif file_suffix in xlsx_suffixes:
+            need_remove_index.append(i)
+            logger.warning(f"Currently, XLSX files are not supported: {pdf_file_name}")
 
     return need_remove_index
 

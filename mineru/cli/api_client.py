@@ -3,9 +3,7 @@ import asyncio
 import atexit
 import json
 import mimetypes
-import multiprocessing
 import os
-import platform
 import signal
 import socket
 import subprocess
@@ -30,7 +28,6 @@ from mineru.cli.api_protocol import (
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
-from mineru.utils.check_sys_env import is_linux_environment
 
 HEALTH_ENDPOINT = "/health"
 TASKS_ENDPOINT = "/tasks"
@@ -40,13 +37,6 @@ LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
 PROCESS_TREE_CLEANUP_GRACE_SECONDS = 0.1
-MINERU_LOCAL_API_LAUNCH_MODE_ENV = "MINERU_LOCAL_API_LAUNCH_MODE"
-MINERU_LMDEPLOY_DEVICE_ENV = "MINERU_LMDEPLOY_DEVICE"
-LOCAL_API_LAUNCH_MODE_SUBPROCESS = "subprocess"
-LOCAL_API_LAUNCH_MODE_SPAWN = "spawn"
-MINERU_SPAWN_DEVICE_LIST = ["ascend"]
-
-ManagedProcess = subprocess.Popen[bytes] | multiprocessing.process.BaseProcess
 
 
 def get_float_env(name: str, default: float, minimum: float = 0.0) -> float:
@@ -86,42 +76,6 @@ def get_local_api_startup_timeout_seconds(default: float = 300.0) -> float:
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = get_local_api_startup_timeout_seconds()
 
 
-def get_local_api_launch_mode(default: str = LOCAL_API_LAUNCH_MODE_SUBPROCESS) -> str:
-    value = os.getenv(MINERU_LOCAL_API_LAUNCH_MODE_ENV)
-    if value is None:
-        return default
-
-    normalized = value.strip().lower()
-    if normalized in {
-        LOCAL_API_LAUNCH_MODE_SUBPROCESS,
-        LOCAL_API_LAUNCH_MODE_SPAWN,
-    }:
-        return normalized
-
-    logger.warning(
-        "Invalid {} value: {}. Expected one of ({}, {}), using default {}.",
-        MINERU_LOCAL_API_LAUNCH_MODE_ENV,
-        value,
-        LOCAL_API_LAUNCH_MODE_SUBPROCESS,
-        LOCAL_API_LAUNCH_MODE_SPAWN,
-        default,
-    )
-    return default
-
-
-def get_effective_local_api_launch_mode(
-    default: str = LOCAL_API_LAUNCH_MODE_SUBPROCESS,
-) -> str:
-    if os.getenv(MINERU_LOCAL_API_LAUNCH_MODE_ENV) is not None:
-        return get_local_api_launch_mode(default=default)
-
-    device_type = os.getenv(MINERU_LMDEPLOY_DEVICE_ENV, "")
-    if device_type.strip().lower() in MINERU_SPAWN_DEVICE_LIST:
-        return LOCAL_API_LAUNCH_MODE_SPAWN
-
-    return default
-
-
 def build_managed_process_popen_kwargs() -> dict[str, object]:
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -131,12 +85,9 @@ def build_managed_process_popen_kwargs() -> dict[str, object]:
     return {"start_new_session": True}
 
 
-def _signal_process_tree_pid(process_group_id: int, *, force: bool) -> None:
-    if process_group_id <= 0:
-        return
-
+def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> None:
     if os.name == "nt":
-        command = ["taskkill", "/PID", str(process_group_id), "/T"]
+        command = ["taskkill", "/PID", str(process.pid), "/T"]
         if force:
             command.append("/F")
         try:
@@ -149,40 +100,22 @@ def _signal_process_tree_pid(process_group_id: int, *, force: bool) -> None:
         except Exception as exc:
             logger.debug(
                 "Failed to signal managed MinerU process tree {} on Windows: {}",
-                process_group_id,
+                process.pid,
                 exc,
             )
         return
 
     sig = signal.SIGKILL if force else signal.SIGTERM
     try:
-        os.killpg(process_group_id, sig)
+        os.killpg(process.pid, sig)
     except ProcessLookupError:
         return
     except OSError as exc:
         logger.debug(
             "Failed to signal managed MinerU process group {}: {}",
-            process_group_id,
+            process.pid,
             exc,
         )
-
-
-def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> None:
-    _signal_process_tree_pid(process.pid, force=force)
-
-
-def cleanup_process_tree_descendants_by_pid(
-    process_group_id: int | None,
-    *,
-    grace_seconds: float = PROCESS_TREE_CLEANUP_GRACE_SECONDS,
-) -> None:
-    if os.name == "nt" or process_group_id is None:
-        return
-
-    _signal_process_tree_pid(process_group_id, force=False)
-    if grace_seconds > 0:
-        time.sleep(grace_seconds)
-    _signal_process_tree_pid(process_group_id, force=True)
 
 
 def cleanup_process_tree_descendants(
@@ -190,10 +123,13 @@ def cleanup_process_tree_descendants(
     *,
     grace_seconds: float = PROCESS_TREE_CLEANUP_GRACE_SECONDS,
 ) -> None:
-    cleanup_process_tree_descendants_by_pid(
-        process.pid,
-        grace_seconds=grace_seconds,
-    )
+    if os.name == "nt":
+        return
+
+    _signal_process_tree(process, force=False)
+    if grace_seconds > 0:
+        time.sleep(grace_seconds)
+    _signal_process_tree(process, force=True)
 
 
 def stop_managed_process(
@@ -247,165 +183,6 @@ def stop_managed_process(
         cleanup_process_tree_descendants(process)
 
 
-def _managed_process_exit_code(process: ManagedProcess | None) -> int | None:
-    if process is None:
-        return None
-    if isinstance(process, subprocess.Popen):
-        return process.poll()
-    return process.exitcode
-
-
-def _managed_process_pid(process: ManagedProcess | None) -> int | None:
-    if process is None:
-        return None
-    return process.pid
-
-
-def _managed_process_is_running(process: ManagedProcess | None) -> bool:
-    return process is not None and _managed_process_exit_code(process) is None
-
-
-def _validate_local_api_launch_mode_platform(launch_mode: str) -> None:
-    if launch_mode != LOCAL_API_LAUNCH_MODE_SPAWN or is_linux_environment():
-        return
-
-    current_platform = platform.system() or os.name
-    raise click.ClickException(
-        f"{MINERU_LOCAL_API_LAUNCH_MODE_ENV}=spawn is supported only on Linux. "
-        f"Current platform: {current_platform}. Unset "
-        f"{MINERU_LOCAL_API_LAUNCH_MODE_ENV} or set "
-        f"{MINERU_LOCAL_API_LAUNCH_MODE_ENV}={LOCAL_API_LAUNCH_MODE_SUBPROCESS}."
-    )
-
-
-def _stop_spawn_managed_process(
-    process: multiprocessing.process.BaseProcess | None,
-    *,
-    process_group_id: int | None,
-    shutdown_timeout_seconds: float,
-) -> None:
-    if process is None and process_group_id is None:
-        return
-
-    if process_group_id is None:
-        if process is None or process.exitcode is not None:
-            return
-
-        process.terminate()
-        process.join(timeout=shutdown_timeout_seconds)
-
-        if process.exitcode is not None:
-            return
-
-        process.kill()
-        process.join(timeout=shutdown_timeout_seconds)
-
-        if process.exitcode is None:
-            logger.warning(
-                "Managed MinerU spawn process {} did not exit after forceful stop.",
-                process.pid,
-            )
-        return
-
-    if process is not None and process.exitcode is None:
-        process.terminate()
-        process.join(timeout=shutdown_timeout_seconds)
-
-    cleanup_process_tree_descendants_by_pid(process_group_id)
-
-    if process is not None:
-        process.join(timeout=shutdown_timeout_seconds)
-        if process.exitcode is None:
-            logger.warning(
-                "Managed MinerU spawn process {} did not exit after forceful stop.",
-                process.pid,
-            )
-
-
-def _build_local_api_server_cli_args(
-    resolved_port: int,
-    extra_cli_args: Sequence[str],
-) -> tuple[str, ...]:
-    remaining_cli_args = strip_local_api_network_args(extra_cli_args)
-    return (
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(resolved_port),
-        *remaining_cli_args,
-    )
-
-
-def _cli_args_include_flag(cli_args: Sequence[str], flag: str) -> bool:
-    return flag in cli_args or any(arg.startswith(f"{flag}=") for arg in cli_args)
-
-
-def _validate_local_api_launch_mode_cli_args(
-    launch_mode: str,
-    cli_args: Sequence[str],
-) -> None:
-    if (
-        launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN
-        and _cli_args_include_flag(cli_args, "--reload")
-    ):
-        raise click.ClickException(
-            "Local mineru-api spawn launch mode does not support --reload. "
-            "Remove --reload or set MINERU_LOCAL_API_LAUNCH_MODE=subprocess."
-        )
-
-
-def _build_local_api_server_env(
-    output_root: Path,
-    *,
-    use_stdin_shutdown_watcher: bool,
-) -> tuple[dict[str, str], tuple[str, ...]]:
-    env = os.environ.copy()
-    env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
-    env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
-        read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
-    )
-    env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
-
-    unset_env_names: list[str] = []
-    if use_stdin_shutdown_watcher:
-        env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
-    else:
-        env.pop("MINERU_API_SHUTDOWN_ON_STDIN_EOF", None)
-        unset_env_names.append("MINERU_API_SHUTDOWN_ON_STDIN_EOF")
-
-    return env, tuple(unset_env_names)
-
-
-def _run_local_api_via_spawn(
-    *,
-    cwd: str,
-    env_overrides: dict[str, str],
-    unset_env_names: Sequence[str],
-    cli_args: Sequence[str],
-) -> None:
-    for name in unset_env_names:
-        os.environ.pop(name, None)
-    os.environ.update(env_overrides)
-    os.chdir(cwd)
-    sys.argv = ["mineru-api", *cli_args]
-
-    try:
-        os.setsid()
-    except OSError as exc:
-        logger.warning(
-            "Failed to create a dedicated process group for spawned mineru-api: {}",
-            exc,
-        )
-
-    from mineru.cli.fast_api import main as fast_api_main
-
-    fast_api_main.main(
-        args=list(cli_args),
-        prog_name="mineru-api",
-        standalone_mode=False,
-    )
-
-
 @dataclass(frozen=True)
 class UploadAsset:
     path: Path
@@ -440,75 +217,52 @@ class LocalAPIServer:
         self.temp_root = Path(self.temp_dir.name)
         self.output_root = self.temp_root / "output"
         self.base_url: str | None = None
-        self.process: ManagedProcess | None = None
+        self.process: subprocess.Popen[bytes] | None = None
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
-        self._launch_mode = LOCAL_API_LAUNCH_MODE_SUBPROCESS
-        self._spawn_process_group_id: int | None = None
-        self._use_stdin_shutdown_watcher = False
+        # On Windows, the temporary FastAPI child process can stall during parsing
+        # startup when launched with stdin=PIPE and an EOF-based shutdown watcher.
+        # Use explicit process termination there instead of stdin-driven shutdown.
+        self._use_stdin_shutdown_watcher = os.name != "nt"
 
     def start(self) -> str:
         if self.process is not None:
             raise RuntimeError("Local API server is already running")
 
         resolved_port = find_free_port()
+        remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
         self.base_url = f"http://127.0.0.1:{resolved_port}"
-        self._launch_mode = get_effective_local_api_launch_mode()
-        _validate_local_api_launch_mode_platform(self._launch_mode)
-        # On Windows, the temporary FastAPI child process can stall during
-        # parsing startup when launched with stdin=PIPE and an EOF-based
-        # shutdown watcher, so we only enable that path on non-Windows
-        # subprocess launches.
-        self._use_stdin_shutdown_watcher = (
-            self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS and os.name != "nt"
+        env = os.environ.copy()
+        env["MINERU_API_OUTPUT_ROOT"] = str(self.output_root)
+        env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
+            read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
         )
-        env, unset_env_names = _build_local_api_server_env(
-            self.output_root,
-            use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
-        )
-        if self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS:
+        env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
+        if self._use_stdin_shutdown_watcher:
+            env["MINERU_API_SHUTDOWN_ON_STDIN_EOF"] = "1"
             stdin_target = subprocess.PIPE
         else:
+            env.pop("MINERU_API_SHUTDOWN_ON_STDIN_EOF", None)
             stdin_target = subprocess.DEVNULL
         self.output_root.mkdir(parents=True, exist_ok=True)
 
-        cli_args = _build_local_api_server_cli_args(
-            resolved_port,
-            self.extra_cli_args,
+        command = [
+            sys.executable,
+            "-m",
+            "mineru.cli.fast_api",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(resolved_port),
+            *remaining_cli_args,
+        ]
+        self.process = subprocess.Popen(
+            command,
+            cwd=os.getcwd(),
+            env=env,
+            stdin=stdin_target,
+            **build_managed_process_popen_kwargs(),
         )
-        _validate_local_api_launch_mode_cli_args(self._launch_mode, cli_args)
-        if self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS:
-            command = [
-                sys.executable,
-                "-m",
-                "mineru.cli.fast_api",
-                *cli_args,
-            ]
-            self.process = subprocess.Popen(
-                command,
-                cwd=os.getcwd(),
-                env=env,
-                stdin=stdin_target,
-                **build_managed_process_popen_kwargs(),
-            )
-        else:
-            spawn_context = multiprocessing.get_context("spawn")
-            process = spawn_context.Process(
-                target=_run_local_api_via_spawn,
-                kwargs={
-                    "cwd": os.getcwd(),
-                    "env_overrides": env,
-                    "unset_env_names": unset_env_names,
-                    "cli_args": cli_args,
-                },
-            )
-            process.start()
-            self.process = process
-            # `start_new_session=True` makes the managed subprocess pid usable as
-            # the process-group id. The spawn runner establishes the same shape
-            # via `setsid()`, so we retain the initial child pid as the stable
-            # process-group id for later tree cleanup even if the leader exits.
-            self._spawn_process_group_id = _managed_process_pid(process)
 
         if not self._atexit_registered:
             atexit.register(self.stop)
@@ -517,26 +271,13 @@ class LocalAPIServer:
 
     def stop(self) -> None:
         process = self.process
-        spawn_process_group_id = self._spawn_process_group_id
         self.process = None
-        self._spawn_process_group_id = None
         try:
             if process is not None:
-                if isinstance(process, subprocess.Popen):
-                    stop_managed_process(
-                        process,
-                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                        use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
-                    )
-                else:
-                    _stop_spawn_managed_process(
-                        process,
-                        process_group_id=spawn_process_group_id,
-                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                    )
-            elif spawn_process_group_id is not None:
-                cleanup_process_tree_descendants_by_pid(
-                    spawn_process_group_id,
+                stop_managed_process(
+                    process,
+                    shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                    use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
                 )
         finally:
             if self._atexit_registered:
@@ -581,15 +322,14 @@ class ReusableLocalAPIServer:
             server = self._server
             if server is None:
                 return
-            if _managed_process_is_running(server.process):
+            if server.process is not None and server.process.poll() is None:
                 return
-            server.stop()
             self._server = None
 
     def ensure_started(self) -> tuple[LocalAPIServer, bool]:
         with self._lock:
             server = self._server
-            if server is not None and _managed_process_is_running(server.process):
+            if server is not None and server.process is not None and server.process.poll() is None:
                 return server, False
 
             if server is not None:
@@ -746,9 +486,7 @@ async def wait_for_local_api_ready(
 
     while asyncio.get_running_loop().time() < deadline:
         process = local_server.process
-        if process is not None and _managed_process_exit_code(process) is not None:
-            if local_server._launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN:
-                local_server.stop()
+        if process is not None and process.poll() is not None:
             raise click.ClickException(
                 "Local mineru-api exited before becoming healthy."
             )
@@ -777,6 +515,7 @@ def build_parse_request_form_data(
     end_page_id: Optional[int],
     *,
     return_md: bool,
+    return_md_pages: bool,
     return_middle_json: bool,
     return_model_output: bool,
     return_content_list: bool,
@@ -792,6 +531,7 @@ def build_parse_request_form_data(
         "formula_enable": str(formula_enable).lower(),
         "table_enable": str(table_enable).lower(),
         "return_md": str(return_md).lower(),
+        "return_md_pages": str(return_md_pages).lower(),
         "return_middle_json": str(return_middle_json).lower(),
         "return_model_output": str(return_model_output).lower(),
         "return_content_list": str(return_content_list).lower(),
