@@ -114,9 +114,12 @@ def build_managed_process_popen_kwargs() -> dict[str, object]:
     return {"start_new_session": True}
 
 
-def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> None:
+def _signal_process_tree_pid(process_group_leader_pid: int, *, force: bool) -> None:
+    if process_group_leader_pid <= 0:
+        return
+
     if os.name == "nt":
-        command = ["taskkill", "/PID", str(process.pid), "/T"]
+        command = ["taskkill", "/PID", str(process_group_leader_pid), "/T"]
         if force:
             command.append("/F")
         try:
@@ -129,22 +132,40 @@ def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> No
         except Exception as exc:
             logger.debug(
                 "Failed to signal managed MinerU process tree {} on Windows: {}",
-                process.pid,
+                process_group_leader_pid,
                 exc,
             )
         return
 
     sig = signal.SIGKILL if force else signal.SIGTERM
     try:
-        os.killpg(process.pid, sig)
+        os.killpg(process_group_leader_pid, sig)
     except ProcessLookupError:
         return
     except OSError as exc:
         logger.debug(
             "Failed to signal managed MinerU process group {}: {}",
-            process.pid,
+            process_group_leader_pid,
             exc,
         )
+
+
+def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> None:
+    _signal_process_tree_pid(process.pid, force=force)
+
+
+def cleanup_process_tree_descendants_by_pid(
+    process_group_leader_pid: int | None,
+    *,
+    grace_seconds: float = PROCESS_TREE_CLEANUP_GRACE_SECONDS,
+) -> None:
+    if os.name == "nt" or process_group_leader_pid is None:
+        return
+
+    _signal_process_tree_pid(process_group_leader_pid, force=False)
+    if grace_seconds > 0:
+        time.sleep(grace_seconds)
+    _signal_process_tree_pid(process_group_leader_pid, force=True)
 
 
 def cleanup_process_tree_descendants(
@@ -152,13 +173,10 @@ def cleanup_process_tree_descendants(
     *,
     grace_seconds: float = PROCESS_TREE_CLEANUP_GRACE_SECONDS,
 ) -> None:
-    if os.name == "nt":
-        return
-
-    _signal_process_tree(process, force=False)
-    if grace_seconds > 0:
-        time.sleep(grace_seconds)
-    _signal_process_tree(process, force=True)
+    cleanup_process_tree_descendants_by_pid(
+        process.pid,
+        grace_seconds=grace_seconds,
+    )
 
 
 def stop_managed_process(
@@ -220,6 +238,12 @@ def _managed_process_exit_code(process: ManagedProcess | None) -> int | None:
     return process.exitcode
 
 
+def _managed_process_pid(process: ManagedProcess | None) -> int | None:
+    if process is None:
+        return None
+    return process.pid
+
+
 def _managed_process_is_running(process: ManagedProcess | None) -> bool:
     return _managed_process_exit_code(process) is None
 
@@ -227,25 +251,45 @@ def _managed_process_is_running(process: ManagedProcess | None) -> bool:
 def _stop_spawn_managed_process(
     process: multiprocessing.process.BaseProcess | None,
     *,
+    process_group_leader_pid: int | None,
     shutdown_timeout_seconds: float,
 ) -> None:
-    if process is None or process.exitcode is not None:
+    if process is None and process_group_leader_pid is None:
         return
 
-    process.terminate()
-    process.join(timeout=shutdown_timeout_seconds)
+    if os.name == "nt" or process_group_leader_pid is None:
+        if process is None or process.exitcode is not None:
+            return
 
-    if process.exitcode is not None:
+        process.terminate()
+        process.join(timeout=shutdown_timeout_seconds)
+
+        if process.exitcode is not None:
+            return
+
+        process.kill()
+        process.join(timeout=shutdown_timeout_seconds)
+
+        if process.exitcode is None:
+            logger.warning(
+                "Managed MinerU spawn process {} did not exit after forceful stop.",
+                process.pid,
+            )
         return
 
-    process.kill()
-    process.join(timeout=shutdown_timeout_seconds)
+    if process is not None and process.exitcode is None:
+        process.terminate()
+        process.join(timeout=shutdown_timeout_seconds)
 
-    if process.exitcode is None:
-        logger.warning(
-            "Managed MinerU spawn process {} did not exit after forceful stop.",
-            process.pid,
-        )
+    cleanup_process_tree_descendants_by_pid(process_group_leader_pid)
+
+    if process is not None:
+        process.join(timeout=shutdown_timeout_seconds)
+        if process.exitcode is None:
+            logger.warning(
+                "Managed MinerU spawn process {} did not exit after forceful stop.",
+                process.pid,
+            )
 
 
 def _build_local_api_server_cli_args(
@@ -297,6 +341,15 @@ def _run_local_api_via_spawn(
     os.chdir(cwd)
     sys.argv = ["mineru-api", *cli_args]
 
+    if os.name != "nt":
+        try:
+            os.setsid()
+        except OSError as exc:
+            logger.warning(
+                "Failed to create a dedicated process group for spawned mineru-api: {}",
+                exc,
+            )
+
     from mineru.cli.fast_api import main as fast_api_main
 
     fast_api_main.main(
@@ -344,6 +397,7 @@ class LocalAPIServer:
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
         self._launch_mode = LOCAL_API_LAUNCH_MODE_SUBPROCESS
+        self._spawn_process_group_leader_pid: int | None = None
         self._use_stdin_shutdown_watcher = False
 
     def start(self) -> str:
@@ -400,6 +454,7 @@ class LocalAPIServer:
             )
             process.start()
             self.process = process
+            self._spawn_process_group_leader_pid = _managed_process_pid(process)
 
         if not self._atexit_registered:
             atexit.register(self.stop)
@@ -408,7 +463,9 @@ class LocalAPIServer:
 
     def stop(self) -> None:
         process = self.process
+        spawn_process_group_leader_pid = self._spawn_process_group_leader_pid
         self.process = None
+        self._spawn_process_group_leader_pid = None
         try:
             if process is not None:
                 if isinstance(process, subprocess.Popen):
@@ -420,8 +477,13 @@ class LocalAPIServer:
                 else:
                     _stop_spawn_managed_process(
                         process,
+                        process_group_leader_pid=spawn_process_group_leader_pid,
                         shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
                     )
+            elif spawn_process_group_leader_pid is not None:
+                cleanup_process_tree_descendants_by_pid(
+                    spawn_process_group_leader_pid,
+                )
         finally:
             if self._atexit_registered:
                 try:
@@ -467,6 +529,7 @@ class ReusableLocalAPIServer:
                 return
             if _managed_process_is_running(server.process):
                 return
+            server.stop()
             self._server = None
 
     def ensure_started(self) -> tuple[LocalAPIServer, bool]:
@@ -630,6 +693,8 @@ async def wait_for_local_api_ready(
     while asyncio.get_running_loop().time() < deadline:
         process = local_server.process
         if process is not None and _managed_process_exit_code(process) is not None:
+            if local_server._launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN:
+                local_server.stop()
             raise click.ClickException(
                 "Local mineru-api exited before becoming healthy."
             )
