@@ -18,6 +18,12 @@ from mineru.backend.pipeline.pipeline_analyze import (
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (
     union_make as pipeline_union_make,
 )
+from mineru.backend.vlm.vlm_middle_json_mkcontent import (
+    union_make as vlm_union_make,
+)
+from mineru.backend.office.office_middle_json_mkcontent import (
+    union_make as office_union_make,
+)
 
 
 def test_pipeline_with_two_config():
@@ -207,7 +213,7 @@ def assert_content(content_path, parse_method="txt"):
                 target_str_list = ["$$", "lambda", "frac", "bar"]
                 for target_str in target_str_list:
                     assert target_str in content_dict["text"]
-            # 文本校验，文本相似度超过90
+            # 文本校验，文本相似度超过 90
             case "text":
                 type_set.add("text")
                 assert (
@@ -218,3 +224,61 @@ def assert_content(content_path, parse_method="txt"):
                     > 90
                 )
     assert len(type_set) >= 4
+
+
+def test_return_md_pages():
+    """Test return_md_pages feature across all three backends"""
+    __dir__ = os.path.dirname(os.path.abspath(__file__))
+    pdf_file_path = os.path.join(__dir__, "pdfs", "test.pdf")
+    pdf_bytes = read_fn(pdf_file_path)
+    
+    # Test VLM backend with MM_MD_PAGES mode
+    vlm_middle_json = {
+        "pdf_info": [
+            {
+                "page_no": 0,
+                "height": 1122,
+                "width": 850,
+                "model": "MinerU2.5-Pro-2604-1.2B",
+            }
+        ]
+    }
+    vlm_markdowns = vlm_union_make(vlm_middle_json["pdf_info"], MakeMode.MM_MD_PAGES, "images")
+    assert isinstance(vlm_markdowns, list), "VLM backend should return list for MM_MD_PAGES"
+    assert len(vlm_markdowns) > 0, "VLM backend should return non-empty list"
+    logger.info(f"VLM MM_MD_PAGES returned {len(vlm_markdowns)} pages")
+    
+    # Test Office backend with NLP_MD_PAGES mode
+    office_middle_json = {
+        "pdf_info": [
+            {
+                "page_no": 0,
+                "height": 1122,
+                "width": 850,
+                "layout_dets": [],
+            }
+        ]
+    }
+    office_markdowns = office_union_make(office_middle_json["pdf_info"], MakeMode.NLP_MD_PAGES, "images")
+    assert isinstance(office_markdowns, list), "Office backend should return list for NLP_MD_PAGES"
+    logger.info(f"Office NLP_MD_PAGES returned {len(office_markdowns)} pages")
+    
+    # Test Pipeline backend with NLP_MD_PAGES mode
+    pipeline_middle_json = {
+        "pdf_info": [
+            {
+                "page_no": 0,
+                "height": 1122,
+                "width": 850,
+                "layout_dets": [],
+            }
+        ]
+    }
+    pipeline_markdowns = pipeline_union_make(pipeline_middle_json["pdf_info"], MakeMode.NLP_MD_PAGES, "images")
+    assert isinstance(pipeline_markdowns, list), "Pipeline backend should return list for NLP_MD_PAGES"
+    logger.info(f"Pipeline NLP_MD_PAGES returned {len(pipeline_markdowns)} pages")
+    
+    # Verify that MM_MD mode still works (returns string)
+    mm_md = pipeline_union_make(pipeline_middle_json["pdf_info"], MakeMode.MM_MD, "images")
+    assert isinstance(mm_md, str), "MM_MD mode should return string"
+    logger.info("All return_md_pages tests passed")

@@ -344,18 +344,18 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
                 )
 
         elif para_type == BlockType.TABLE:
-            if make_mode == MakeMode.NLP_MD:
+            if make_mode in [MakeMode.NLP_MD, MakeMode.NLP_MD_PAGES]:
                 continue
-            elif make_mode == MakeMode.MM_MD:
+            elif make_mode in [MakeMode.MM_MD, MakeMode.MM_MD_PAGES]:
                 para_text = _merge_visual_blocks_to_markdown(
                     para_block,
                     img_buket_path,
                     table_enable=table_enable,
                 )
         elif para_type == BlockType.CHART:
-            if make_mode == MakeMode.NLP_MD:
+            if make_mode in [MakeMode.NLP_MD, MakeMode.NLP_MD_PAGES]:
                 continue
-            elif make_mode == MakeMode.MM_MD:
+            elif make_mode in [MakeMode.MM_MD, MakeMode.MM_MD_PAGES]:
                 para_text = _merge_visual_blocks_to_markdown(
                     para_block,
                     img_buket_path,
@@ -852,16 +852,20 @@ def union_make(pdf_info_dict: list,
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
 
     output_content = []
+    page_markdowns = []
     for page_info in pdf_info_dict:
         paras_of_layout = page_info.get('para_blocks')
         paras_of_discarded = page_info.get('discarded_blocks')
         page_idx = page_info.get('page_idx')
         page_size = page_info.get('page_size')
-        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
+        if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD, MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
             if not paras_of_layout:
+                page_markdowns.append('')
                 continue
             page_markdown = mk_blocks_to_markdown(paras_of_layout, make_mode, formula_enable, table_enable, img_buket_path)
+            page_markdown_text = '\n\n'.join(page_markdown)
             output_content.extend(page_markdown)
+            page_markdowns.append(page_markdown_text)
         elif make_mode == MakeMode.CONTENT_LIST:
             para_blocks = (paras_of_layout or []) + (paras_of_discarded or [])
             if not para_blocks:
@@ -881,6 +885,8 @@ def union_make(pdf_info_dict: list,
 
     if make_mode in [MakeMode.MM_MD, MakeMode.NLP_MD]:
         return '\n\n'.join(output_content)
+    elif make_mode in [MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
+        return page_markdowns
     elif make_mode in [MakeMode.CONTENT_LIST, MakeMode.CONTENT_LIST_V2]:
         return output_content
     return None

@@ -94,6 +94,8 @@ class MakeMode:
     NLP_MD = 'nlp_markdown'
     CONTENT_LIST = 'content_list'
     CONTENT_LIST_V2 = 'content_list_v2'
+    MM_MD_PAGES = 'mm_markdown_pages'
+    NLP_MD_PAGES = 'nlp_markdown_pages'
 
 
 class ModelPath:
