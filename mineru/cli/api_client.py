@@ -114,12 +114,12 @@ def build_managed_process_popen_kwargs() -> dict[str, object]:
     return {"start_new_session": True}
 
 
-def _signal_process_tree_pid(process_group_leader_pid: int, *, force: bool) -> None:
-    if process_group_leader_pid <= 0:
+def _signal_process_tree_pid(process_group_id: int, *, force: bool) -> None:
+    if process_group_id <= 0:
         return
 
     if os.name == "nt":
-        command = ["taskkill", "/PID", str(process_group_leader_pid), "/T"]
+        command = ["taskkill", "/PID", str(process_group_id), "/T"]
         if force:
             command.append("/F")
         try:
@@ -132,20 +132,20 @@ def _signal_process_tree_pid(process_group_leader_pid: int, *, force: bool) -> N
         except Exception as exc:
             logger.debug(
                 "Failed to signal managed MinerU process tree {} on Windows: {}",
-                process_group_leader_pid,
+                process_group_id,
                 exc,
             )
         return
 
     sig = signal.SIGKILL if force else signal.SIGTERM
     try:
-        os.killpg(process_group_leader_pid, sig)
+        os.killpg(process_group_id, sig)
     except ProcessLookupError:
         return
     except OSError as exc:
         logger.debug(
             "Failed to signal managed MinerU process group {}: {}",
-            process_group_leader_pid,
+            process_group_id,
             exc,
         )
 
@@ -155,17 +155,17 @@ def _signal_process_tree(process: subprocess.Popen[bytes], *, force: bool) -> No
 
 
 def cleanup_process_tree_descendants_by_pid(
-    process_group_leader_pid: int | None,
+    process_group_id: int | None,
     *,
     grace_seconds: float = PROCESS_TREE_CLEANUP_GRACE_SECONDS,
 ) -> None:
-    if os.name == "nt" or process_group_leader_pid is None:
+    if os.name == "nt" or process_group_id is None:
         return
 
-    _signal_process_tree_pid(process_group_leader_pid, force=False)
+    _signal_process_tree_pid(process_group_id, force=False)
     if grace_seconds > 0:
         time.sleep(grace_seconds)
-    _signal_process_tree_pid(process_group_leader_pid, force=True)
+    _signal_process_tree_pid(process_group_id, force=True)
 
 
 def cleanup_process_tree_descendants(
@@ -245,19 +245,49 @@ def _managed_process_pid(process: ManagedProcess | None) -> int | None:
 
 
 def _managed_process_is_running(process: ManagedProcess | None) -> bool:
-    return _managed_process_exit_code(process) is None
+    return process is not None and _managed_process_exit_code(process) is None
 
 
 def _stop_spawn_managed_process(
     process: multiprocessing.process.BaseProcess | None,
     *,
-    process_group_leader_pid: int | None,
+    process_group_id: int | None,
     shutdown_timeout_seconds: float,
 ) -> None:
-    if process is None and process_group_leader_pid is None:
+    if process is None and process_group_id is None:
         return
 
-    if os.name == "nt" or process_group_leader_pid is None:
+    if os.name == "nt":
+        if process is None or process.exitcode is not None:
+            return
+
+        cleanup_target_process_group_id = (
+            process_group_id if process_group_id is not None else process.pid
+        )
+
+        process.terminate()
+        process.join(timeout=shutdown_timeout_seconds)
+
+        if process.exitcode is not None:
+            return
+
+        _signal_process_tree_pid(cleanup_target_process_group_id, force=False)
+        process.join(timeout=shutdown_timeout_seconds)
+
+        if process.exitcode is not None:
+            return
+
+        _signal_process_tree_pid(cleanup_target_process_group_id, force=True)
+        process.join(timeout=shutdown_timeout_seconds)
+
+        if process.exitcode is None:
+            logger.warning(
+                "Managed MinerU spawn process {} did not exit after forceful stop.",
+                process.pid,
+            )
+        return
+
+    if process_group_id is None:
         if process is None or process.exitcode is not None:
             return
 
@@ -281,7 +311,7 @@ def _stop_spawn_managed_process(
         process.terminate()
         process.join(timeout=shutdown_timeout_seconds)
 
-    cleanup_process_tree_descendants_by_pid(process_group_leader_pid)
+    cleanup_process_tree_descendants_by_pid(process_group_id)
 
     if process is not None:
         process.join(timeout=shutdown_timeout_seconds)
@@ -397,7 +427,7 @@ class LocalAPIServer:
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
         self._launch_mode = LOCAL_API_LAUNCH_MODE_SUBPROCESS
-        self._spawn_process_group_leader_pid: int | None = None
+        self._spawn_process_group_id: int | None = None
         self._use_stdin_shutdown_watcher = False
 
     def start(self) -> str:
@@ -454,7 +484,11 @@ class LocalAPIServer:
             )
             process.start()
             self.process = process
-            self._spawn_process_group_leader_pid = _managed_process_pid(process)
+            # `start_new_session=True` makes the managed subprocess pid usable as
+            # the process-group id. The spawn runner establishes the same shape
+            # via `setsid()`, so we retain the initial child pid as the stable
+            # process-group id for later tree cleanup even if the leader exits.
+            self._spawn_process_group_id = _managed_process_pid(process)
 
         if not self._atexit_registered:
             atexit.register(self.stop)
@@ -463,9 +497,9 @@ class LocalAPIServer:
 
     def stop(self) -> None:
         process = self.process
-        spawn_process_group_leader_pid = self._spawn_process_group_leader_pid
+        spawn_process_group_id = self._spawn_process_group_id
         self.process = None
-        self._spawn_process_group_leader_pid = None
+        self._spawn_process_group_id = None
         try:
             if process is not None:
                 if isinstance(process, subprocess.Popen):
@@ -477,12 +511,12 @@ class LocalAPIServer:
                 else:
                     _stop_spawn_managed_process(
                         process,
-                        process_group_leader_pid=spawn_process_group_leader_pid,
+                        process_group_id=spawn_process_group_id,
                         shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
                     )
-            elif spawn_process_group_leader_pid is not None:
+            elif spawn_process_group_id is not None:
                 cleanup_process_tree_descendants_by_pid(
-                    spawn_process_group_leader_pid,
+                    spawn_process_group_id,
                 )
         finally:
             if self._atexit_registered:
