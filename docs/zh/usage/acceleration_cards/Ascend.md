@@ -73,6 +73,7 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
     -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
+    -e MINERU_LOCAL_API_LAUNCH_MODE=spawn \
     -e MINERU_MODEL_SOURCE=local \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:npu-vllm-latest \
@@ -94,6 +95,10 @@ docker run -u root --name mineru_docker --privileged=true \
 
 ## 4. 注意事项
 
+>[!WARNING]
+> - 由于 MinerU 3 及以上版本将 `client` 与 `gradio` 改为通过本地 API 编排；在 `NPU（Ascend）`环境下运行时，必须设置环境变量 `MINERU_LOCAL_API_LAUNCH_MODE=spawn`
+> - 环境变量`MINERU_LOCAL_API_LAUNCH_MODE`自`3.1.1`版本后引入
+
 不同环境下，MinerU对Ascend加速卡的支持情况如下表所示：
 
 <table border="1">
@@ -109,7 +114,39 @@ docker run -u root --name mineru_docker --privileged=true \
   </thead>
   <tbody>
     <tr>
+      <td rowspan="3">命令行工具(mineru)</td>
+      <td>pipeline</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
+      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
+      <td>&lt;vlm/hybrid&gt;-http-client</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
       <td rowspan="3">fastapi服务(mineru-api)</td>
+      <td>pipeline</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
+      <td>&lt;vlm/hybrid&gt;-auto-engine</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
+      <td>&lt;vlm/hybrid&gt;-http-client</td>
+      <td>🟢</td>
+      <td>🟢</td>
+    </tr>
+    <tr>
+      <td rowspan="3">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>
@@ -136,10 +173,6 @@ docker run -u root --name mineru_docker --privileged=true \
 🟢: 支持，运行较稳定，精度与Nvidia GPU基本一致  
 🟡: 支持但较不稳定，在某些场景下可能出现异常，或精度存在一定差异  
 🔴: 不支持，无法运行，或精度存在较大差异
-
->[!NOTE]
-> - 3.0以上版本由于torch-npu对子进程调用的支持不佳，导致直接使用client或gradio拉起临时fast-api的方式使用时会存在长时间卡住的问题
-> - npu环境只能先独立启动fast-api服务（`mineru-api`），再通过在`mineru`或`mineru-gradio`命令中指定`--api-url`参数的方式连接使用
 
 >[!TIP]
 > - NPU加速卡指定可用加速卡的方式与NVIDIA GPU类似，请参考[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha001/maintenref/envvar/envref_07_0028.html)
