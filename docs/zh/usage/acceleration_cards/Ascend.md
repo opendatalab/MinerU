@@ -73,7 +73,6 @@ docker run -u root --name mineru_docker --privileged=true \
     -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver \
     -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
-    -e MINERU_LOCAL_API_LAUNCH_MODE=spawn \
     -e MINERU_MODEL_SOURCE=local \
     -e MINERU_LMDEPLOY_DEVICE=ascend \
     -it mineru:npu-vllm-latest \
@@ -81,7 +80,8 @@ docker run -u root --name mineru_docker --privileged=true \
 ```
 
 >[!TIP]
-> 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用lmdeploy，替换上述命令中的`mineru:npu-vllm-latest`为`mineru:npu-lmdeploy-latest`即可。
+> - 请根据实际情况选择使用`vllm`或`lmdeploy`版本的镜像，如需使用lmdeploy，替换上述命令中的`mineru:npu-vllm-latest`为`mineru:npu-lmdeploy-latest`即可。
+> - 在 Ascend NPU 环境下，请务必保留环境变量`MINERU_LMDEPLOY_DEVICE=ascend`，即使您是使用`vllm`后端，也需要保留该环境变量。
 
 执行该命令后，您将进入到Docker容器的交互式终端，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
 您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
@@ -94,10 +94,6 @@ docker run -u root --name mineru_docker --privileged=true \
 > ```   
 
 ## 4. 注意事项
-
->[!WARNING]
-> - 由于 MinerU 3 及以上版本将 `client` 与 `gradio` 改为通过本地 API 编排；在 `NPU（Ascend）`环境下运行时，必须设置环境变量 `MINERU_LOCAL_API_LAUNCH_MODE=spawn`
-> - 环境变量`MINERU_LOCAL_API_LAUNCH_MODE`自`3.1.1`版本后引入
 
 不同环境下，MinerU对Ascend加速卡的支持情况如下表所示：
 
