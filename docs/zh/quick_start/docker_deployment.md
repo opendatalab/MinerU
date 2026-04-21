@@ -2,6 +2,10 @@
 
 MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并解决一些棘手的环境兼容问题。
 
+> [!WARNING]
+> - Docker 部署仅适用于 Linux，以及支持 WSL2 的 Windows 环境。
+> - 请不要在 macOS 上使用 Docker 部署 MinerU。由于 Docker 环境下无法调用 macOS 上的 MPS 和 MLX 加速能力，Apple Silicon 设备无法通过该方案获得预期加速效果。
+
 ## 使用 Dockerfile 构建镜像
 
 ```bash

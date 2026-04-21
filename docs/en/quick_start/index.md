@@ -123,6 +123,11 @@ uv pip install -e .[all]
  
 #### Deploy MinerU using Docker
 MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
+
+> [!TIP]
+> - Docker deployment is only supported on Linux and Windows with WSL2;
+> - macOS users should use one of the two installation methods above instead of Docker deployment.
+
 You can get the [Docker Deployment Instructions](./docker_deployment.md) in the documentation.
 
 ---
