@@ -320,6 +320,7 @@ class ManagedLocalServer:
     connect_host: str = field(init=False)
     base_url: str | None = None
     process: subprocess.Popen[bytes] | None = None
+    process_group_id: int | None = None
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
     def __post_init__(self) -> None:
@@ -365,6 +366,7 @@ class ManagedLocalServer:
             env=env,
             **build_managed_process_popen_kwargs(),
         )
+        self.process_group_id = self.process.pid
 
         try:
             await self.wait_until_ready(client)
@@ -403,11 +405,14 @@ class ManagedLocalServer:
 
     def stop(self) -> None:
         process = self.process
+        process_group_id = self.process_group_id
         self.process = None
+        self.process_group_id = None
         try:
-            if process is not None:
+            if process is not None or process_group_id is not None:
                 stop_managed_process(
                     process,
+                    process_group_id=process_group_id,
                     shutdown_timeout_seconds=5,
                     use_stdin_shutdown_watcher=False,
                 )
