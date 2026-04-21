@@ -25,13 +25,17 @@ from mineru.backend.vlm.vlm_analyze import (
     _maybe_enable_serial_execution,
 )
 from mineru.data.data_reader_writer import DataWriter
+from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.config_reader import get_device, get_processing_window_size
 from mineru.utils.enum_class import ImageType, NotExtractType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
 from mineru.utils.pdf_classify import classify
-from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
+from mineru.utils.pdf_image_tools import (
+    aio_load_images_from_pdf_bytes_range,
+    load_images_from_pdf_doc,
+)
 from mineru.utils.pdfium_guard import (
     close_pdfium_document,
     get_pdfium_document_page_count,
@@ -712,13 +716,21 @@ async def aio_doc_analyze(
         try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
-                images_list = load_images_from_pdf_doc(
-                    pdf_doc,
-                    start_page_id=window_start,
-                    end_page_id=window_end,
-                    image_type=ImageType.PIL,
-                    pdf_bytes=pdf_bytes,
-                )
+                if pdf_bytes is not None and not is_windows_environment():
+                    images_list = await aio_load_images_from_pdf_bytes_range(
+                        pdf_bytes,
+                        start_page_id=window_start,
+                        end_page_id=window_end,
+                        image_type=ImageType.PIL,
+                    )
+                else:
+                    images_list = load_images_from_pdf_doc(
+                        pdf_doc,
+                        start_page_id=window_start,
+                        end_page_id=window_end,
+                        image_type=ImageType.PIL,
+                        pdf_bytes=pdf_bytes,
+                    )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(

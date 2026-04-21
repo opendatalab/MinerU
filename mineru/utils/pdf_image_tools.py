@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import asyncio
 import atexit
 import multiprocessing
 import os
@@ -269,6 +270,27 @@ def _load_images_from_pdf_bytes_range(
                 executor,
                 terminate_processes=True,
             )
+
+
+async def aio_load_images_from_pdf_bytes_range(
+    pdf_bytes: bytes,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
+    start_page_id=0,
+    end_page_id=0,
+    image_type=ImageType.PIL,
+    timeout=None,
+    threads=None,
+):
+    return await asyncio.to_thread(
+        _load_images_from_pdf_bytes_range,
+        pdf_bytes,
+        dpi=dpi,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+        image_type=image_type,
+        timeout=timeout,
+        threads=threads,
+    )
 
 
 def _terminate_executor_processes(executor):

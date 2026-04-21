@@ -21,7 +21,11 @@ from .model_output_to_middle_json import (
 )
 from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from ...data.data_reader_writer import DataWriter
-from mineru.utils.pdf_image_tools import load_images_from_pdf_doc
+from mineru.utils.pdf_image_tools import (
+    aio_load_images_from_pdf_bytes_range,
+    load_images_from_pdf_doc,
+)
+from ...utils.check_sys_env import is_windows_environment
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device, get_processing_window_size
 
@@ -531,13 +535,21 @@ async def aio_doc_analyze(
         try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
-                images_list = load_images_from_pdf_doc(
-                    pdf_doc,
-                    start_page_id=window_start,
-                    end_page_id=window_end,
-                    image_type=ImageType.PIL,
-                    pdf_bytes=pdf_bytes,
-                )
+                if pdf_bytes is not None and not is_windows_environment():
+                    images_list = await aio_load_images_from_pdf_bytes_range(
+                        pdf_bytes,
+                        start_page_id=window_start,
+                        end_page_id=window_end,
+                        image_type=ImageType.PIL,
+                    )
+                else:
+                    images_list = load_images_from_pdf_doc(
+                        pdf_doc,
+                        start_page_id=window_start,
+                        end_page_id=window_end,
+                        image_type=ImageType.PIL,
+                        pdf_bytes=pdf_bytes,
+                    )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(
