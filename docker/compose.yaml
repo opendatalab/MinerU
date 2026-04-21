@@ -40,6 +40,7 @@ services:
     command:
       --host 0.0.0.0
       --port 8000
+      # --allow-public-http-client  # Disabled by default; enable only if you trust callers to supply remote HTTP endpoints and accept the SSRF risk.
       # parameters for vllm-engine
       # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
@@ -70,6 +71,7 @@ services:
       --host 0.0.0.0
       --port 8002
       --local-gpus auto
+      # --allow-public-http-client  # Disabled by default; enable only if you trust callers to supply remote HTTP endpoints and accept the SSRF risk.
       # To aggregate existing mineru-api services instead of starting local workers:
       # --local-gpus none
       # --upstream-url http://mineru-api:8000
