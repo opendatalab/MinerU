@@ -119,12 +119,12 @@ Here are the environment variables and their descriptions:
 - `MINERU_PDF_RENDER_TIMEOUT`:
     * Used to set the timeout (in seconds) for rendering PDFs to images.
     * Default is `300` seconds; you can set a different value via an environment variable to adjust the rendering timeout.
-    * Only effective on Linux and macOS systems.
+    * Effective on Linux, macOS, and Windows.
 
 - `MINERU_PDF_RENDER_THREADS`:
-    * Used to set the number of threads used when rendering PDFs to images.
-    * Default is `4`; you can set a different value via an environment variable to adjust the number of threads for image rendering.
-    * Only effective on Linux and macOS systems.
+    * Used to set the render worker concurrency used when rendering PDFs to images.
+    * Default is `4`; you can set a different value via an environment variable to adjust render worker concurrency.
+    * Effective on Linux, macOS, and Windows.
 
 - `MINERU_PROCESSING_WINDOW_SIZE`:
     * Used to control the processing window size, which affects memory use and throughput on large-document workloads.
