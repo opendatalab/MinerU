@@ -94,6 +94,8 @@ def html_table_from_excel_bytes(excel_bytes: bytes) -> str:
 def extract_chart_html_from_ooxml(chart_xml: bytes, workbook_bytes: bytes | None) -> str:
     spec = parse_chart_spec_from_ooxml(chart_xml)
     if spec is None or not spec.series:
+        if workbook_bytes:
+            return html_table_from_excel_bytes(workbook_bytes)
         return ""
 
     if workbook_bytes:
