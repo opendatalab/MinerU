@@ -534,21 +534,12 @@ async def aio_doc_analyze(
         try:
             for window_index, window_start in enumerate(range(0, page_count, effective_window_size or 1)):
                 window_end = min(page_count - 1, window_start + effective_window_size - 1)
-                if pdf_bytes is not None:
-                    images_list = await aio_load_images_from_pdf_bytes_range(
-                        pdf_bytes,
-                        start_page_id=window_start,
-                        end_page_id=window_end,
-                        image_type=ImageType.PIL,
-                    )
-                else:
-                    images_list = load_images_from_pdf_doc(
-                        pdf_doc,
-                        start_page_id=window_start,
-                        end_page_id=window_end,
-                        image_type=ImageType.PIL,
-                        pdf_bytes=pdf_bytes,
-                    )
+                images_list = await aio_load_images_from_pdf_bytes_range(
+                    pdf_bytes,
+                    start_page_id=window_start,
+                    end_page_id=window_end,
+                    image_type=ImageType.PIL,
+                )
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(

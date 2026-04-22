@@ -189,7 +189,10 @@ def shutdown_pdf_render_executor() -> None:
         _pdf_render_executor = None
 
     if executor is not None:
-        executor.shutdown(wait=True, cancel_futures=True)
+        _recycle_pdf_render_executor(
+            executor,
+            terminate_processes=True,
+        )
 
 
 atexit.register(shutdown_pdf_render_executor)
