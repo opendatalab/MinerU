@@ -1,5 +1,7 @@
 # 快速入门
 
+文档解析是困难且复杂的任务，尤其是对于复杂版面、扫描件、手写体等场景，解析结果可能不尽如人意。我们建议您先在线体验评估 MinerU 的解析效果和适用性，再根据实际需求选择合适的部署方式。
+如果您有解析效果不佳的**文档**样例，欢迎提交上传到 [issue](https://github.com/opendatalab/MinerU/issues)，我们会持续优化解析能力。
 如果遇到任何安装问题，请先查询 [FAQ](../faq/index.md) 
 
 ## 在线体验
@@ -128,6 +130,11 @@ uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
  
 #### 使用docker部署Mineru
 MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并解决一些棘手的环境兼容问题。
+
+> [!TIP]
+> - Docker 部署仅适用于 Linux，以及支持 WSL2 的 Windows 环境；
+> - macOS 用户请直接参考前面两种方式部署安装，不要使用 Docker 部署。
+
 您可以在文档中获取[Docker部署说明](./docker_deployment.md)。
 
 ---

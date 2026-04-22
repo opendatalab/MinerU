@@ -1,8 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import asyncio
 import atexit
 import multiprocessing
 import os
-import signal
 import threading
 import time
 from io import BytesIO
@@ -35,6 +35,8 @@ DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
 MAX_PDF_RENDER_PROCESSES = 4
 MIN_PAGES_PER_RENDER_PROCESS = 30
+PDF_RENDER_TERMINATE_GRACE_PERIOD_SECONDS = 0.1
+PDF_RENDER_KILL_JOIN_TIMEOUT_SECONDS = 0.1
 
 _pdf_render_executor: ProcessPoolExecutor | None = None
 _pdf_render_executor_lock = threading.Lock()
@@ -187,8 +189,10 @@ def shutdown_pdf_render_executor() -> None:
         _pdf_render_executor = None
 
     if executor is not None:
-        _terminate_executor_processes(executor)
-        executor.shutdown(wait=False, cancel_futures=True)
+        _recycle_pdf_render_executor(
+            executor,
+            terminate_processes=True,
+        )
 
 
 atexit.register(shutdown_pdf_render_executor)
@@ -271,27 +275,70 @@ def _load_images_from_pdf_bytes_range(
             )
 
 
+async def aio_load_images_from_pdf_bytes_range(
+    pdf_bytes: bytes,
+    dpi=DEFAULT_PDF_IMAGE_DPI,
+    start_page_id=0,
+    end_page_id=0,
+    image_type=ImageType.PIL,
+    timeout=None,
+    threads=None,
+):
+    return await asyncio.to_thread(
+        _load_images_from_pdf_bytes_range,
+        pdf_bytes,
+        dpi=dpi,
+        start_page_id=start_page_id,
+        end_page_id=end_page_id,
+        image_type=image_type,
+        timeout=timeout,
+        threads=threads,
+    )
+
+
 def _terminate_executor_processes(executor):
     """强制终止 ProcessPoolExecutor 中的所有子进程"""
-    if hasattr(executor, '_processes'):
-        for pid, process in executor._processes.items():
-            if process.is_alive():
-                try:
-                    # 先发送 SIGTERM 允许优雅退出
-                    os.kill(pid, signal.SIGTERM)
-                except (ProcessLookupError, OSError):
-                    pass
+    processes = list(getattr(executor, "_processes", {}).values())
+    if not processes:
+        return
 
-        # 给子进程一点时间响应 SIGTERM
-        time.sleep(0.1)
+    alive_processes = []
+    for process in processes:
+        if not process.is_alive():
+            continue
+        try:
+            process.terminate()
+        except Exception:
+            pass
+        alive_processes.append(process)
 
-        # 对仍然存活的进程发送 SIGKILL 强制终止
-        for pid, process in executor._processes.items():
-            if process.is_alive():
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except (ProcessLookupError, OSError):
-                    pass
+    deadline = time.monotonic() + PDF_RENDER_TERMINATE_GRACE_PERIOD_SECONDS
+    for process in alive_processes:
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            process.join(timeout=remaining)
+        except Exception:
+            pass
+
+    for process in alive_processes:
+        if not process.is_alive():
+            continue
+        try:
+            kill_process = getattr(process, "kill", None)
+            if callable(kill_process):
+                kill_process()
+            else:
+                process.terminate()
+        except Exception:
+            pass
+
+    for process in alive_processes:
+        if not process.is_alive():
+            continue
+        try:
+            process.join(timeout=PDF_RENDER_KILL_JOIN_TIMEOUT_SECONDS)
+        except Exception:
+            pass
 
 
 def load_images_from_pdf_core(
@@ -333,7 +380,7 @@ def load_images_from_pdf_doc(
     pdf_page_num = get_pdfium_document_page_count(pdf_doc)
     normalized_end_page_id = get_end_page_id(end_page_id, pdf_page_num)
 
-    if pdf_bytes is not None and not is_windows_environment():
+    if pdf_bytes is not None:
         return _load_images_from_pdf_bytes_range(
             pdf_bytes,
             dpi=dpi,

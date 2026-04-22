@@ -199,17 +199,24 @@ def cleanup_process_tree_descendants(
 def stop_managed_process(
     process: subprocess.Popen[bytes] | None,
     *,
+    process_group_id: int | None = None,
     shutdown_timeout_seconds: float,
     use_stdin_shutdown_watcher: bool,
 ) -> None:
-    if process is None:
+    if process is None and process_group_id is None:
         return
 
+    if process is None:
+        cleanup_process_tree_descendants_by_pid(process_group_id)
+        return
+
+    resolved_process_group_id = process_group_id if process_group_id is not None else process.pid
     was_running_at_entry = process.poll() is None
     exited_via_stdin_eof = False
     tree_signaled = False
 
     if not was_running_at_entry:
+        cleanup_process_tree_descendants_by_pid(process_group_id)
         return
 
     if use_stdin_shutdown_watcher:
@@ -225,7 +232,7 @@ def stop_managed_process(
             )
 
     if process.poll() is None:
-        _signal_process_tree(process, force=False)
+        _signal_process_tree_pid(resolved_process_group_id, force=False)
         tree_signaled = True
         try:
             process.wait(timeout=shutdown_timeout_seconds)
@@ -233,7 +240,7 @@ def stop_managed_process(
             pass
 
     if process.poll() is None:
-        _signal_process_tree(process, force=True)
+        _signal_process_tree_pid(resolved_process_group_id, force=True)
         tree_signaled = True
         try:
             process.wait(timeout=shutdown_timeout_seconds)
@@ -244,7 +251,7 @@ def stop_managed_process(
             )
 
     if exited_via_stdin_eof and not tree_signaled:
-        cleanup_process_tree_descendants(process)
+        cleanup_process_tree_descendants_by_pid(resolved_process_group_id)
 
 
 def _managed_process_exit_code(process: ManagedProcess | None) -> int | None:
@@ -444,7 +451,7 @@ class LocalAPIServer:
         self._atexit_registered = False
         self.extra_cli_args = tuple(extra_cli_args)
         self._launch_mode = LOCAL_API_LAUNCH_MODE_SUBPROCESS
-        self._spawn_process_group_id: int | None = None
+        self._managed_process_group_id: int | None = None
         self._use_stdin_shutdown_watcher = False
 
     def start(self) -> str:
@@ -491,6 +498,7 @@ class LocalAPIServer:
                 stdin=stdin_target,
                 **build_managed_process_popen_kwargs(),
             )
+            self._managed_process_group_id = _managed_process_pid(self.process)
         else:
             spawn_context = multiprocessing.get_context("spawn")
             process = spawn_context.Process(
@@ -508,7 +516,7 @@ class LocalAPIServer:
             # the process-group id. The spawn runner establishes the same shape
             # via `setsid()`, so we retain the initial child pid as the stable
             # process-group id for later tree cleanup even if the leader exits.
-            self._spawn_process_group_id = _managed_process_pid(process)
+            self._managed_process_group_id = _managed_process_pid(process)
 
         if not self._atexit_registered:
             atexit.register(self.stop)
@@ -517,26 +525,22 @@ class LocalAPIServer:
 
     def stop(self) -> None:
         process = self.process
-        spawn_process_group_id = self._spawn_process_group_id
+        managed_process_group_id = self._managed_process_group_id
         self.process = None
-        self._spawn_process_group_id = None
+        self._managed_process_group_id = None
         try:
-            if process is not None:
-                if isinstance(process, subprocess.Popen):
-                    stop_managed_process(
-                        process,
-                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                        use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
-                    )
-                else:
-                    _stop_spawn_managed_process(
-                        process,
-                        process_group_id=spawn_process_group_id,
-                        shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
-                    )
-            elif spawn_process_group_id is not None:
-                cleanup_process_tree_descendants_by_pid(
-                    spawn_process_group_id,
+            if self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS:
+                stop_managed_process(
+                    process,
+                    process_group_id=managed_process_group_id,
+                    shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
+                    use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
+                )
+            else:
+                _stop_spawn_managed_process(
+                    process if process is not None else None,
+                    process_group_id=managed_process_group_id,
+                    shutdown_timeout_seconds=LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS,
                 )
         finally:
             if self._atexit_registered:

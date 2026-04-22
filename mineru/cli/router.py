@@ -69,6 +69,7 @@ LOCAL_GPU_NONE = "none"
 HTTP_RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 UPSTREAM_FAILURE_THRESHOLD = 3
 WORKER_REFRESH_INTERVAL_SECONDS = 2.0
+WORKER_HEALTH_FAILURE_RESTART_THRESHOLD = 5
 MIN_HEALTHY_PROCESSING_WINDOW_SIZE = 1
 MINERU_ROUTER_PUBLIC_BIND_EXPOSED_ENV = "MINERU_ROUTER_PUBLIC_BIND_EXPOSED"
 MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT_ENV = "MINERU_ROUTER_ALLOW_PUBLIC_HTTP_CLIENT"
@@ -320,6 +321,7 @@ class ManagedLocalServer:
     connect_host: str = field(init=False)
     base_url: str | None = None
     process: subprocess.Popen[bytes] | None = None
+    process_group_id: int | None = None
     temp_dir: tempfile.TemporaryDirectory[str] | None = None
 
     def __post_init__(self) -> None:
@@ -365,6 +367,7 @@ class ManagedLocalServer:
             env=env,
             **build_managed_process_popen_kwargs(),
         )
+        self.process_group_id = self.process.pid
 
         try:
             await self.wait_until_ready(client)
@@ -403,11 +406,14 @@ class ManagedLocalServer:
 
     def stop(self) -> None:
         process = self.process
+        process_group_id = self.process_group_id
         self.process = None
+        self.process_group_id = None
         try:
-            if process is not None:
+            if process is not None or process_group_id is not None:
                 stop_managed_process(
                     process,
+                    process_group_id=process_group_id,
                     shutdown_timeout_seconds=5,
                     use_stdin_shutdown_watcher=False,
                 )
@@ -611,7 +617,11 @@ class WorkerPool:
             server.last_error = str(exc)
             server.last_checked_at = utc_now_iso()
             server.consecutive_health_failures += 1
-            if server.local_server is not None and server.consecutive_health_failures >= 2:
+            if (
+                server.local_server is not None
+                and server.consecutive_health_failures
+                >= WORKER_HEALTH_FAILURE_RESTART_THRESHOLD
+            ):
                 await self._restart_local_server(server)
             return
 
@@ -620,7 +630,11 @@ class WorkerPool:
             server.healthy = False
             server.last_error = response_detail(response)
             server.consecutive_health_failures += 1
-            if server.local_server is not None and server.consecutive_health_failures >= 2:
+            if (
+                server.local_server is not None
+                and server.consecutive_health_failures
+                >= WORKER_HEALTH_FAILURE_RESTART_THRESHOLD
+            ):
                 await self._restart_local_server(server)
             return
 
@@ -631,7 +645,11 @@ class WorkerPool:
             server.healthy = False
             server.last_error = f"Invalid health payload: {exc}"
             server.consecutive_health_failures += 1
-            if server.local_server is not None and server.consecutive_health_failures >= 2:
+            if (
+                server.local_server is not None
+                and server.consecutive_health_failures
+                >= WORKER_HEALTH_FAILURE_RESTART_THRESHOLD
+            ):
                 await self._restart_local_server(server)
             return
 

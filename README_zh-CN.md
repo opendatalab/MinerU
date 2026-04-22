@@ -145,13 +145,14 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
 - 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
 - 内置命令行、FastAPI、Gradio WebUI，支持本地编排和多服务部署
-- 支持纯CPU环境运行，并支持 GPU(CUDA)/NPU(CANN)/MPS 加速
+- 支持纯CPU环境运行，并支持 GPU/MPS加速，以及十余款国产算力平台的推理加速
 - 兼容Windows、Linux和Mac平台
 
 # 快速开始
 
-如果安装或使用中遇到任何问题，请先查询 <a href="#faq">FAQ</a> </br>
-如果遇到解析效果不及预期，参考 <a href="#known-issues">Known Issues</a></br>
+文档解析是困难且复杂的任务，尤其是对于复杂版面、扫描件、手写体等场景，解析结果可能不尽如人意。我们建议您先使用在线体验评估 MinerU 的解析效果和适用性，再根据实际需求选择合适的部署方式。
+如果您有解析效果不佳的**文档**样例，欢迎提交上传到 [issue](https://github.com/opendatalab/MinerU/issues)，我们会持续优化解析能力。
+如果安装或使用中遇到任何问题，请先查询 <a href="#faq">FAQ</a> 
 
 ## 在线体验
 
@@ -277,6 +278,11 @@ uv pip install -e .[all] -i https://mirrors.aliyun.com/pypi/simple
  
 #### 使用docker部署Mineru
 MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并解决一些棘手的环境兼容问题。
+
+> [!TIP]
+> - Docker 部署仅适用于 Linux，以及支持 WSL2 的 Windows 环境；
+> - macOS 用户请直接参考前面两种方式部署安装，不要使用 Docker 部署。
+
 您可以在文档中获取[Docker部署说明](https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/)。
 
 ---
@@ -300,29 +306,6 @@ mineru -p <input_path> -o <output_path> -b pipeline
 
 当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
-# TODO
-
-- [x] 基于模型的阅读顺序  
-- [x] 正文中目录、列表识别  
-- [x] 表格识别
-- [x] 标题分级
-- [x] 手写文本识别
-- [x] 竖排文本识别
-- [x] 拉丁字母重音符号识别
-- [x] 正文中代码块识别
-- [x] [化学式识别](docs/chemical_knowledge_introduction/introduction.pdf)(https://mineru.net)
-- [ ] 图表内容识别
-
-# Known Issues
-
-- 阅读顺序基于模型对可阅读内容在空间中的分布进行排序，在极端复杂的排版下可能会部分区域乱序
-- 对竖排文字的支持较为有限
-- 目录和列表通过规则进行识别，少部分不常见的列表形式可能无法识别
-- 代码块在layout模型里还没有支持
-- 漫画书、艺术图册、小学教材、习题尚不能很好解析
-- 表格识别在复杂表格上可能会出现行/列识别错误
-- 在小语种PDF上，OCR识别可能会出现字符不准确的情况（如阿拉伯文易混淆字符等）
-- 部分公式可能会无法在markdown中渲染
 
 # FAQ
  

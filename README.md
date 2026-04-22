@@ -146,13 +146,14 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
 - Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
 - Built-in CLI, FastAPI, Gradio WebUI, for local orchestration and multi-service deployment.
-- Supports running in a pure CPU environment, and also supports GPU(CUDA)/NPU(CANN)/MPS acceleration
+- Supports running in a pure CPU environment, and also supports GPU/MPS acceleration
 - Compatible with Windows, Linux, and Mac platforms.
 
 # Quick Start
 
-If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. </br>
-If the parsing results are not as expected, refer to the <a href="#known-issues">Known Issues</a>. </br>
+Document parsing is a difficult and complex task. In scenarios such as complex layouts, scanned pages, and handwritten content, the parsing results may fall short of expectations. We recommend trying the online demo first to evaluate MinerU's parsing quality and suitability before choosing an appropriate deployment method based on your actual needs.
+If you have **document** samples with unsatisfactory parsing results, feel free to share them in an [issue](https://github.com/opendatalab/MinerU/issues). We will continue improving the parsing capabilities.
+If you encounter any installation issues, please first consult the <a href="#faq">FAQ</a>. 
 
 ## Online Experience
 
@@ -276,6 +277,11 @@ uv pip install -e .[all]
  
 #### Deploy MinerU using Docker
 MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
+
+> [!TIP]
+> - Docker deployment is only supported on Linux and Windows environments with WSL2 support;
+> - macOS users should refer to the two installation methods above for installation instead of using Docker deployment.
+
 You can get the [Docker Deployment Instructions](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/) in the documentation.
 
 ---
@@ -293,30 +299,6 @@ mineru -p <input_path> -o <output_path> -b pipeline
 ```
 
 `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
-
-# TODO
-
-- [x] Reading order based on the model  
-- [x] Recognition of `index` and `list` in the main text  
-- [x] Table recognition
-- [x] Heading Classification
-- [x] Handwritten Text Recognition  
-- [x] Vertical Text Recognition  
-- [x] Latin Accent Mark Recognition
-- [x] Code block recognition in the main text
-- [x] [Chemical formula recognition](docs/chemical_knowledge_introduction/introduction.pdf)(mineru.net)
-- [ ] Geometric shape recognition
-
-# Known Issues
-
-- Reading order is determined by the model based on the spatial distribution of readable content, and may be out of order in some areas under extremely complex layouts.
-- Limited support for vertical text.
-- Tables of contents and lists are recognized through rules, and some uncommon list formats may not be recognized.
-- Code blocks are not yet supported in the layout model.
-- Comic books, art albums, primary school textbooks, and exercises cannot be parsed well.
-- Table recognition may result in row/column recognition errors in complex tables.
-- OCR recognition may produce inaccurate characters in PDFs of lesser-known languages (e.g., diacritical marks in Latin script, easily confused characters in Arabic script).
-- Some formulas may not render correctly in Markdown.
 
 # FAQ
 

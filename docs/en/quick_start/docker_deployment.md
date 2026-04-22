@@ -2,6 +2,10 @@
 
 MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
 
+> [!WARNING]
+> - Docker deployment is only supported on Linux and Windows environments with WSL2.
+> - Do not use Docker to deploy MinerU on macOS. Docker on macOS cannot access MPS or MLX acceleration, so Apple Silicon devices will not get the expected acceleration from this workflow.
+
 ## Build Docker Image using Dockerfile
 
 ```bash
