@@ -17,6 +17,7 @@ from openpyxl.utils.datetime import MAC_EPOCH, WINDOWS_EPOCH, from_excel
 _CHART_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _DRAWING_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS: Final = {"c": _CHART_NS, "a": _DRAWING_NS}
+_MAX_CACHE_INDEX_SPAN: Final = 100_000
 _PLOT_TAGS: Final = (
     "areaChart",
     "area3DChart",
@@ -565,7 +566,11 @@ def _extract_cache_points(
     if not points:
         return []
 
-    return [points.get(index, "") for index in range(max(points.keys()) + 1)]
+    max_index = max(points.keys())
+    if max_index + 1 > _MAX_CACHE_INDEX_SPAN:
+        return []
+
+    return [points.get(index, "") for index in range(max_index + 1)]
 
 
 def _extract_multilevel_string_cache(ref_element) -> list[str]:
@@ -587,6 +592,9 @@ def _extract_multilevel_string_cache(ref_element) -> list[str]:
         level_maps.append(values)
 
     if max_index < 0:
+        return []
+
+    if max_index + 1 > _MAX_CACHE_INDEX_SPAN:
         return []
 
     rows = []
