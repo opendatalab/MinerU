@@ -99,15 +99,19 @@ def extract_chart_html_from_ooxml(chart_xml: bytes, workbook_bytes: bytes | None
             return html_table_from_excel_bytes(workbook_bytes)
         return ""
 
+    chart_cache_html = render_chart_html_from_cache(spec)
+
     if workbook_bytes:
         chart_html = render_chart_html_from_workbook(spec, workbook_bytes)
         if chart_html:
             return chart_html
+        if chart_cache_html:
+            return chart_cache_html
         workbook_table_html = html_table_from_excel_bytes(workbook_bytes)
         if workbook_table_html:
             return workbook_table_html
 
-    return render_chart_html_from_cache(spec)
+    return chart_cache_html
 
 
 def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
