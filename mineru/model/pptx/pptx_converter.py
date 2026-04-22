@@ -18,7 +18,7 @@ from mineru.backend.utils.office_image import (
     serialize_vector_image_with_placeholder,
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.backend.utils.office_chart import html_table_from_excel_bytes
+from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -585,15 +585,25 @@ class PptxConverter:
 
     def _handle_chart(self, shape) -> None:
         try:
-            chart_workbook = shape.chart.part.chart_workbook
-            xlsx_part = chart_workbook.xlsx_part
-            if xlsx_part is None:
-                logger.warning("Warning: chart workbook part is missing")
-                return
+            chart_part = shape.chart.part
+            chart_xml = chart_part.blob
+        except Exception as e:
+            logger.warning(f"Warning: chart XML cannot be loaded: {e}")
+            return
 
-            chart_html = html_table_from_excel_bytes(xlsx_part.blob)
+        workbook_bytes = None
+        try:
+            chart_workbook = chart_part.chart_workbook
+            xlsx_part = chart_workbook.xlsx_part
+            if xlsx_part is not None:
+                workbook_bytes = xlsx_part.blob
         except Exception as e:
             logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+
+        try:
+            chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+        except Exception as e:
+            logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
             return
 
         if not chart_html:

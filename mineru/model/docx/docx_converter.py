@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
-import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
@@ -26,7 +25,7 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
-from mineru.backend.utils.office_chart import html_table_from_excel_bytes
+from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
@@ -77,8 +76,6 @@ class DocxConverter:
             ".//a:blip", namespaces=DocxConverter._BLIP_NAMESPACES
         )
 
-        # 存放文档字节数据，用于需要重读 ZIP 的辅助方法
-        self._file_bytes: bytes = b''
         self.docx_obj = None
         self.pages = []
         self.cur_page = []
@@ -94,7 +91,6 @@ class DocxConverter:
         self.pre_index_ilevel: int = -1  # 上一个目录项的缩进等级
         self.heading_list_numids: set = set()  # 用作章节标题的列表numId集合
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
-        self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
         self._numbering_root: Optional[BaseOxmlElement] = None
@@ -451,7 +447,6 @@ class DocxConverter:
         self.index_block_stack = []
         self.pre_index_ilevel = -1
         self.heading_list_numids = set()
-        self.chart_list = []
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
         self._numbering_root = None
@@ -460,8 +455,6 @@ class DocxConverter:
 
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = file_stream.read()
-        # 保存一份字节副本用于后续需要重新打开 ZIP 的方法
-        self._file_bytes = file_bytes
         # 使用完整文档 mammoth 转换预解析所有表格，获得完整上下文（编号/图片/样式等）
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
@@ -472,7 +465,6 @@ class DocxConverter:
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
-        self._add_chart_table()
 
     def _collect_toc_anchor_set(self) -> set[str]:
         """Collect TOC hyperlink anchors from the entire document body."""
@@ -2555,57 +2547,65 @@ class DocxConverter:
         Returns:
 
         """
+        chart_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/chart",
+        }
+        package_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/package",
+        }
+        rel_id_attr = (
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        )
         for element in elements:
             chart = element.find(
                 ".//c:chart", namespaces=DocxConverter._BLIP_NAMESPACES
             )
-            if chart is not None:
-                # 如果找到 chart 元素，构造空的图表块，后续回填 html。
-                chart_block = {
-                    "type": BlockType.CHART,
-                    "content": "",
-                }
-                self.cur_page.append(chart_block)
-                self.chart_list.append(chart_block)
+            if chart is None:
+                continue
 
-    def _add_chart_table(self):
-        idx_xlsx_map = {}
-        rel_pattern = re.compile(r"word/charts/_rels/chart(\d+)\.xml\.rels$")
+            chart_block = {
+                "type": BlockType.CHART,
+                "content": "",
+            }
+            self.cur_page.append(chart_block)
 
-        # 定义命名空间
-        namespaces = {
-            "r": "http://schemas.openxmlformats.org/package/2006/relationships"
-        }
+            rel_id = chart.get(rel_id_attr)
+            if not rel_id:
+                continue
 
-        # first pass: read relationships from rewindable byte buffer
-        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
-            for name in zf.namelist():
-                match = rel_pattern.match(name)
-                if match:
-                    # 读取 .rels 文件内容
-                    rels_content = zf.read(name)
-                    # 解析 XML
-                    rels_root = etree.fromstring(rels_content)
+            try:
+                chart_rel = self.docx_obj.part.rels[rel_id]
+            except KeyError:
+                continue
 
-                    # 查找所有 Relationship 元素
-                    for rel in rels_root.findall(
-                        ".//r:Relationship", namespaces=namespaces
-                    ):
-                        target = rel.get("Target")
-                        if target and target.endswith(".xlsx"):
-                            path = Path(target)
-                            idx_xlsx_map[path.name] = int(match.group(1))
+            if chart_rel.reltype not in chart_rel_types:
+                continue
 
-        # second pass: again open buffer rather than original stream
-        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
-            for name in zf.namelist():
-                if name.startswith("word/embeddings/"):
-                    for path_name, chart_idx in idx_xlsx_map.items():
-                        if name.endswith(path_name):
-                            content = zf.read(name)
-                            self.chart_list[chart_idx - 1]["content"] = (
-                                html_table_from_excel_bytes(content)
-                            )
+            try:
+                chart_part = chart_rel.target_part
+                chart_xml = chart_part.blob
+            except Exception as e:
+                logger.warning(f"Warning: chart XML cannot be loaded: {e}")
+                continue
+
+            workbook_bytes = None
+            try:
+                for rel in chart_part.rels.values():
+                    if rel.reltype in package_rel_types:
+                        workbook_bytes = rel.target_part.blob
+                        break
+            except Exception as e:
+                logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+
+            try:
+                chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+            except Exception as e:
+                logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
+                continue
+            if chart_html:
+                chart_block["content"] = chart_html
 
     def _handle_textbox_content(
         self,
