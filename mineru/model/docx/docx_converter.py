@@ -2547,12 +2547,14 @@ class DocxConverter:
         Returns:
 
         """
-        chart_rel_type = (
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
-        )
-        package_rel_type = (
-            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
-        )
+        chart_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/chart",
+        }
+        package_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/package",
+        }
         rel_id_attr = (
             "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
         )
@@ -2578,7 +2580,7 @@ class DocxConverter:
             except KeyError:
                 continue
 
-            if chart_rel.reltype != chart_rel_type:
+            if chart_rel.reltype not in chart_rel_types:
                 continue
 
             try:
@@ -2591,7 +2593,7 @@ class DocxConverter:
             workbook_bytes = None
             try:
                 for rel in chart_part.rels.values():
-                    if rel.reltype == package_rel_type:
+                    if rel.reltype in package_rel_types:
                         workbook_bytes = rel.target_part.blob
                         break
             except Exception as e:
