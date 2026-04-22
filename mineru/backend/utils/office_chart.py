@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from html import escape
 from io import BytesIO
 from typing import Any, Final
@@ -10,13 +10,12 @@ import pandas as pd
 from lxml import etree
 from openpyxl import load_workbook
 from openpyxl.utils.cell import range_to_tuple
+from openpyxl.utils.datetime import MAC_EPOCH, WINDOWS_EPOCH, from_excel
 
 
 _CHART_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 _DRAWING_NS: Final = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _NS: Final = {"c": _CHART_NS, "a": _DRAWING_NS}
-_EXCEL_EPOCH_1900: Final = datetime(1899, 12, 30)
-_EXCEL_EPOCH_1904: Final = datetime(1904, 1, 1)
 _PLOT_TAGS: Final = (
     "areaChart",
     "area3DChart",
@@ -106,7 +105,14 @@ def extract_chart_html_from_ooxml(chart_xml: bytes, workbook_bytes: bytes | None
 
 def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
     try:
-        root = etree.fromstring(chart_xml)
+        root = etree.fromstring(
+            chart_xml,
+            parser=etree.XMLParser(
+                load_dtd=False,
+                resolve_entities=False,
+                no_network=True,
+            ),
+        )
     except (etree.XMLSyntaxError, TypeError, ValueError):
         return None
 
@@ -264,7 +270,6 @@ def render_chart_html_from_cache(spec: ChartSpec) -> str:
 
 def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
     categories = []
-    data_sheet_name = None
 
     for series in spec.series:
         if not series.cat_formula:
@@ -272,8 +277,7 @@ def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
         read_result = _read_formula_vector(workbook, series.cat_formula)
         if read_result is None:
             return ""
-        sheet_name, values = read_result
-        data_sheet_name = sheet_name
+        _, values = read_result
         categories = values
         break
 
@@ -282,15 +286,10 @@ def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
     for idx, series in enumerate(spec.series, start=1):
         if not series.val_formula:
             return ""
-        read_result = _read_formula_vector(
-            workbook,
-            series.val_formula,
-            expected_sheet=data_sheet_name,
-        )
+        read_result = _read_formula_vector(workbook, series.val_formula)
         if read_result is None:
             return ""
-        sheet_name, values = read_result
-        data_sheet_name = data_sheet_name or sheet_name
+        _, values = read_result
         series_names.append(_resolve_series_name(series, idx, workbook))
         series_values.append(values)
 
@@ -314,141 +313,96 @@ def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
 
 
 def _render_scatter_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
-    x_values, series_names, series_y_values = _read_scatter_axes_from_workbook(
+    x_sequences, series_names, series_y_values = _read_scatter_axes_from_workbook(
         spec,
         workbook,
     )
-    if x_values is None or not series_names:
-        return ""
-
-    row_count = max(
-        len(x_values),
-        max((len(values) for values in series_y_values), default=0),
+    return _render_scatter_like_chart_table(
+        x_sequences,
+        series_names,
+        series_y_values,
+        x_axis_title=spec.x_axis_title,
     )
-    if row_count == 0:
-        return ""
-
-    headers = [spec.x_axis_title or ""] + series_names
-    columns = [_stringify_series_values(x_values)]
-    columns.extend(_stringify_series_values(values) for values in series_y_values)
-    return _render_html_table(headers, columns, row_count)
 
 
 def _render_bubble_chart_from_workbook(spec: ChartSpec, workbook) -> str:
-    x_values, series_names, series_y_values, series_sizes = _read_bubble_axes_from_workbook(
+    x_sequences, series_names, series_y_values, series_sizes = _read_bubble_axes_from_workbook(
         spec,
         workbook,
     )
-    if x_values is None or not series_names:
-        return ""
-
-    row_count = max(
-        len(x_values),
-        max((len(values) for values in series_y_values), default=0),
-        max((len(values) for values in series_sizes), default=0),
+    return _render_bubble_chart_table(
+        x_sequences,
+        series_names,
+        series_y_values,
+        series_sizes,
+        x_axis_title=spec.x_axis_title,
     )
-    if row_count == 0:
-        return ""
-
-    headers = [spec.x_axis_title or ""]
-    columns = [_stringify_series_values(x_values)]
-    for name, y_values, bubble_sizes in zip(series_names, series_y_values, series_sizes):
-        headers.extend((name, f"{name} size"))
-        columns.append(_stringify_series_values(y_values))
-        columns.append(_stringify_series_values(bubble_sizes))
-
-    return _render_html_table(headers, columns, row_count)
 
 
 def _render_scatter_like_chart_from_cache(spec: ChartSpec) -> str:
-    x_values = _get_shared_axis_values(
-        [series.cached_x_values for series in spec.series if series.cached_x_values]
-    )
-    if x_values is None:
-        return ""
-
+    x_sequences = []
     series_names = []
     series_y_values = []
     for idx, series in enumerate(spec.series, start=1):
-        if not series.cached_values:
+        if not series.cached_x_values or not series.cached_values:
             return ""
+        x_sequences.append(series.cached_x_values)
         series_names.append(_resolve_series_name(series, idx))
         series_y_values.append(series.cached_values)
 
-    row_count = max(
-        len(x_values),
-        max((len(values) for values in series_y_values), default=0),
+    return _render_scatter_like_chart_table(
+        x_sequences,
+        series_names,
+        series_y_values,
+        x_axis_title=spec.x_axis_title,
     )
-    if not series_names or row_count == 0:
-        return ""
-
-    headers = [spec.x_axis_title or ""] + series_names
-    columns = [_stringify_series_values(x_values)]
-    columns.extend(_stringify_series_values(values) for values in series_y_values)
-    return _render_html_table(headers, columns, row_count)
 
 
 def _render_bubble_chart_from_cache(spec: ChartSpec) -> str:
-    x_values = _get_shared_axis_values(
-        [series.cached_x_values for series in spec.series if series.cached_x_values]
-    )
-    if x_values is None:
-        return ""
-
-    headers = [spec.x_axis_title or ""]
-    columns = [_stringify_series_values(x_values)]
-    row_count = len(x_values)
-    series_count = 0
+    x_sequences = []
+    series_names = []
+    series_y_values = []
+    series_sizes = []
     for idx, series in enumerate(spec.series, start=1):
-        if not series.cached_values or not series.cached_bubble_sizes:
+        if not series.cached_x_values or not series.cached_values or not series.cached_bubble_sizes:
             return ""
-        name = _resolve_series_name(series, idx)
-        headers.extend((name, f"{name} size"))
-        columns.append(_stringify_series_values(series.cached_values))
-        columns.append(_stringify_series_values(series.cached_bubble_sizes))
-        row_count = max(row_count, len(series.cached_values), len(series.cached_bubble_sizes))
-        series_count += 1
+        x_sequences.append(series.cached_x_values)
+        series_names.append(_resolve_series_name(series, idx))
+        series_y_values.append(series.cached_values)
+        series_sizes.append(series.cached_bubble_sizes)
 
-    if series_count == 0 or row_count == 0:
-        return ""
-
-    return _render_html_table(headers, columns, row_count)
+    return _render_bubble_chart_table(
+        x_sequences,
+        series_names,
+        series_y_values,
+        series_sizes,
+        x_axis_title=spec.x_axis_title,
+    )
 
 
 def _read_scatter_axes_from_workbook(spec: ChartSpec, workbook):
     x_sequences = []
     series_names = []
     series_y_values = []
-    data_sheet_name = None
 
     for idx, series in enumerate(spec.series, start=1):
         if not series.x_formula or not series.y_formula:
             return None, [], []
 
-        x_read = _read_formula_vector(
-            workbook,
-            series.x_formula,
-            expected_sheet=data_sheet_name,
-        )
+        x_read = _read_formula_vector(workbook, series.x_formula)
         if x_read is None:
             return None, [], []
-        sheet_name, x_values = x_read
-        data_sheet_name = data_sheet_name or sheet_name
+        _, x_values = x_read
         x_sequences.append(x_values)
 
-        y_read = _read_formula_vector(
-            workbook,
-            series.y_formula,
-            expected_sheet=data_sheet_name,
-        )
+        y_read = _read_formula_vector(workbook, series.y_formula)
         if y_read is None:
             return None, [], []
         _, y_values = y_read
         series_names.append(_resolve_series_name(series, idx, workbook))
         series_y_values.append(y_values)
 
-    shared_x_values = _get_shared_axis_values(x_sequences)
-    return shared_x_values, series_names, series_y_values
+    return x_sequences, series_names, series_y_values
 
 
 def _read_bubble_axes_from_workbook(spec: ChartSpec, workbook):
@@ -456,33 +410,19 @@ def _read_bubble_axes_from_workbook(spec: ChartSpec, workbook):
     series_names = []
     series_y_values = []
     series_sizes = []
-    data_sheet_name = None
 
     for idx, series in enumerate(spec.series, start=1):
         if not series.x_formula or not series.y_formula or not series.bubble_size_formula:
             return None, [], [], []
 
-        x_read = _read_formula_vector(
-            workbook,
-            series.x_formula,
-            expected_sheet=data_sheet_name,
-        )
+        x_read = _read_formula_vector(workbook, series.x_formula)
         if x_read is None:
             return None, [], [], []
-        sheet_name, x_values = x_read
-        data_sheet_name = data_sheet_name or sheet_name
+        _, x_values = x_read
         x_sequences.append(x_values)
 
-        y_read = _read_formula_vector(
-            workbook,
-            series.y_formula,
-            expected_sheet=data_sheet_name,
-        )
-        bubble_size_read = _read_formula_vector(
-            workbook,
-            series.bubble_size_formula,
-            expected_sheet=data_sheet_name,
-        )
+        y_read = _read_formula_vector(workbook, series.y_formula)
+        bubble_size_read = _read_formula_vector(workbook, series.bubble_size_formula)
         if y_read is None or bubble_size_read is None:
             return None, [], [], []
 
@@ -490,18 +430,15 @@ def _read_bubble_axes_from_workbook(spec: ChartSpec, workbook):
         series_y_values.append(y_read[1])
         series_sizes.append(bubble_size_read[1])
 
-    shared_x_values = _get_shared_axis_values(x_sequences)
-    return shared_x_values, series_names, series_y_values, series_sizes
+    return x_sequences, series_names, series_y_values, series_sizes
 
 
-def _read_formula_vector(workbook, formula: str, expected_sheet: str | None = None):
+def _read_formula_vector(workbook, formula: str):
     parsed = _parse_formula(formula)
     if parsed is None:
         return None
 
     sheet_name, min_col, min_row, max_col, max_row = parsed
-    if expected_sheet is not None and sheet_name != expected_sheet:
-        return None
 
     try:
         worksheet = workbook[sheet_name]
@@ -739,6 +676,101 @@ def _normalize_sequence(sequence: list[Any]) -> list[str]:
     return [_stringify_cell_value(value) for value in sequence]
 
 
+def _render_scatter_like_chart_table(
+    x_sequences: list[list[Any]] | None,
+    series_names: list[str],
+    series_y_values: list[list[Any]],
+    *,
+    x_axis_title: str,
+) -> str:
+    if not x_sequences or not series_names or len(x_sequences) != len(series_names):
+        return ""
+
+    shared_x_values = _get_shared_axis_values(x_sequences)
+    if shared_x_values is not None:
+        row_count = max(
+            len(shared_x_values),
+            max((len(values) for values in series_y_values), default=0),
+        )
+        if row_count == 0:
+            return ""
+
+        headers = [x_axis_title or ""] + series_names
+        columns = [_stringify_series_values(shared_x_values)]
+        columns.extend(_stringify_series_values(values) for values in series_y_values)
+        return _render_html_table(headers, columns, row_count)
+
+    headers = []
+    columns = []
+    row_count = 0
+    for name, x_values, y_values in zip(series_names, x_sequences, series_y_values):
+        headers.extend((f"{name} X", f"{name} Y"))
+        columns.append(_stringify_series_values(x_values))
+        columns.append(_stringify_series_values(y_values))
+        row_count = max(row_count, len(x_values), len(y_values))
+
+    if row_count == 0:
+        return ""
+
+    return _render_html_table(headers, columns, row_count)
+
+
+def _render_bubble_chart_table(
+    x_sequences: list[list[Any]] | None,
+    series_names: list[str],
+    series_y_values: list[list[Any]],
+    series_sizes: list[list[Any]],
+    *,
+    x_axis_title: str,
+) -> str:
+    if (
+        not x_sequences
+        or not series_names
+        or len(x_sequences) != len(series_names)
+        or len(series_y_values) != len(series_names)
+        or len(series_sizes) != len(series_names)
+    ):
+        return ""
+
+    shared_x_values = _get_shared_axis_values(x_sequences)
+    if shared_x_values is not None:
+        row_count = max(
+            len(shared_x_values),
+            max((len(values) for values in series_y_values), default=0),
+            max((len(values) for values in series_sizes), default=0),
+        )
+        if row_count == 0:
+            return ""
+
+        headers = [x_axis_title or ""]
+        columns = [_stringify_series_values(shared_x_values)]
+        for name, y_values, bubble_sizes in zip(series_names, series_y_values, series_sizes):
+            headers.extend((name, f"{name} size"))
+            columns.append(_stringify_series_values(y_values))
+            columns.append(_stringify_series_values(bubble_sizes))
+        return _render_html_table(headers, columns, row_count)
+
+    headers = []
+    columns = []
+    row_count = 0
+    for name, x_values, y_values, bubble_sizes in zip(
+        series_names,
+        x_sequences,
+        series_y_values,
+        series_sizes,
+    ):
+        headers.extend((f"{name} X", f"{name} Y", f"{name} size"))
+        columns.append(_stringify_series_values(x_values))
+        columns.append(_stringify_series_values(y_values))
+        columns.append(_stringify_series_values(bubble_sizes))
+        row_count = max(row_count, len(x_values), len(y_values), len(bubble_sizes))
+
+    if row_count == 0:
+        return ""
+
+    return _render_html_table(headers, columns, row_count)
+
+
 def _stringify_series_values(
     values: list[Any],
     *,
@@ -802,11 +834,16 @@ def _stringify_cell_value(
 
 
 def _excel_serial_to_iso(serial: float, *, date_1904: bool = False) -> str:
-    epoch = _EXCEL_EPOCH_1904 if date_1904 else _EXCEL_EPOCH_1900
-    dt = epoch + timedelta(days=serial)
-    if dt.time() == time():
-        return dt.date().isoformat()
-    return dt.isoformat(sep=" ")
+    excel_value = from_excel(serial, MAC_EPOCH if date_1904 else WINDOWS_EPOCH)
+    if isinstance(excel_value, datetime):
+        if excel_value.time() == time():
+            return excel_value.date().isoformat()
+        return excel_value.isoformat(sep=" ")
+    if isinstance(excel_value, date):
+        return excel_value.isoformat()
+    if isinstance(excel_value, time):
+        return excel_value.isoformat()
+    return str(excel_value)
 
 
 def _render_html_table(headers: list[str], columns: list[list[str]], row_count: int) -> str:
