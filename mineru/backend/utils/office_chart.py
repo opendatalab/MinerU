@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
@@ -120,26 +121,23 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
     if plot_area is None:
         return None
 
-    plot = None
-    chart_type = ""
-    for tag_name in _PLOT_TAGS:
-        plot = plot_area.find(f"c:{tag_name}", namespaces=_NS)
-        if plot is not None:
-            chart_type = tag_name
-            break
-
-    if plot is None:
+    plot_elements = _collect_plot_elements(plot_area)
+    if not plot_elements:
         return None
 
     has_date_axis = plot_area.find("c:dateAx", namespaces=_NS) is not None
-    if chart_type == "scatterChart":
+    plot_kinds = {
+        _plot_kind_from_tag_name(tag_name, has_date_axis)
+        for tag_name, _ in plot_elements
+    }
+    if plot_kinds == {"scatter"}:
         plot_kind = "scatter"
-    elif chart_type == "bubbleChart":
+    elif plot_kinds == {"bubble"}:
         plot_kind = "bubble"
-    elif has_date_axis:
-        plot_kind = "date"
+    elif plot_kinds <= {"category", "date"}:
+        plot_kind = "date" if "date" in plot_kinds else "category"
     else:
-        plot_kind = "category"
+        return None
 
     category_axis_title = ""
     axis = plot_area.find("c:dateAx", namespaces=_NS)
@@ -167,40 +165,45 @@ def parse_chart_spec_from_ooxml(chart_xml: bytes) -> ChartSpec | None:
             value_axis_title = _extract_title_text(axis.find("c:title", namespaces=_NS))
 
     series_specs = []
-    for series_element in plot.findall("c:ser", namespaces=_NS):
-        series_specs.append(
-            SeriesSpec(
-                name_formula=_extract_tx_formula(series_element.find("c:tx", namespaces=_NS)),
-                literal_name=_extract_tx_text(series_element.find("c:tx", namespaces=_NS)),
-                cat_formula=_extract_reference_formula(series_element.find("c:cat", namespaces=_NS)),
-                x_formula=_extract_reference_formula(series_element.find("c:xVal", namespaces=_NS)),
-                val_formula=_extract_reference_formula(series_element.find("c:val", namespaces=_NS)),
-                y_formula=_extract_reference_formula(series_element.find("c:yVal", namespaces=_NS)),
-                bubble_size_formula=_extract_reference_formula(
-                    series_element.find("c:bubbleSize", namespaces=_NS)
-                ),
-                cached_categories=_extract_reference_cache(
-                    series_element.find("c:cat", namespaces=_NS),
-                    date_hint=has_date_axis,
-                    date_1904=_chart_uses_date_1904(root),
-                ),
-                cached_x_values=_extract_reference_cache(
-                    series_element.find("c:xVal", namespaces=_NS)
-                ),
-                cached_values=_extract_reference_cache(
-                    _first_non_none(
-                        series_element.find("c:val", namespaces=_NS),
-                        series_element.find("c:yVal", namespaces=_NS),
-                    )
-                ),
-                cached_bubble_sizes=_extract_reference_cache(
-                    series_element.find("c:bubbleSize", namespaces=_NS)
-                ),
+    for _, plot_element in plot_elements:
+        for series_element in plot_element.findall("c:ser", namespaces=_NS):
+            series_specs.append(
+                SeriesSpec(
+                    name_formula=_extract_tx_formula(series_element.find("c:tx", namespaces=_NS)),
+                    literal_name=_extract_tx_text(series_element.find("c:tx", namespaces=_NS)),
+                    cat_formula=_extract_reference_formula(series_element.find("c:cat", namespaces=_NS)),
+                    x_formula=_extract_reference_formula(series_element.find("c:xVal", namespaces=_NS)),
+                    val_formula=_extract_reference_formula(series_element.find("c:val", namespaces=_NS)),
+                    y_formula=_extract_reference_formula(series_element.find("c:yVal", namespaces=_NS)),
+                    bubble_size_formula=_extract_reference_formula(
+                        series_element.find("c:bubbleSize", namespaces=_NS)
+                    ),
+                    cached_categories=_extract_reference_cache(
+                        series_element.find("c:cat", namespaces=_NS),
+                        date_hint=has_date_axis,
+                        date_1904=_chart_uses_date_1904(root),
+                    ),
+                    cached_x_values=_extract_reference_cache(
+                        series_element.find("c:xVal", namespaces=_NS)
+                    ),
+                    cached_values=_extract_reference_cache(
+                        _first_non_none(
+                            series_element.find("c:val", namespaces=_NS),
+                            series_element.find("c:yVal", namespaces=_NS),
+                        )
+                    ),
+                    cached_bubble_sizes=_extract_reference_cache(
+                        series_element.find("c:bubbleSize", namespaces=_NS)
+                    ),
+                )
             )
-        )
 
     return ChartSpec(
-        chart_type=chart_type,
+        chart_type=(
+            plot_elements[0][0]
+            if len(plot_elements) == 1
+            else "comboChart"
+        ),
         plot_kind=plot_kind,
         title=_extract_title_text(root.find(".//c:chart/c:title", namespaces=_NS)),
         category_axis_title=category_axis_title,
@@ -644,6 +647,25 @@ def _first_non_none(*values):
     return None
 
 
+def _collect_plot_elements(plot_area) -> list[tuple[str, Any]]:
+    plot_elements = []
+    for child in plot_area:
+        tag_name = etree.QName(child).localname
+        if tag_name in _PLOT_TAGS:
+            plot_elements.append((tag_name, child))
+    return plot_elements
+
+
+def _plot_kind_from_tag_name(tag_name: str, has_date_axis: bool) -> str:
+    if tag_name == "scatterChart":
+        return "scatter"
+    if tag_name == "bubbleChart":
+        return "bubble"
+    if has_date_axis:
+        return "date"
+    return "category"
+
+
 def _chart_uses_date_1904(root) -> bool:
     date_1904 = root.find("c:date1904", namespaces=_NS)
     if date_1904 is None:
@@ -801,7 +823,10 @@ def _stringify_cache_value(
             serial = float(value)
         except (TypeError, ValueError):
             return value
-        return _excel_serial_to_iso(serial, date_1904=date_1904)
+        return (
+            _excel_serial_to_iso(serial, date_1904=date_1904)
+            or value
+        )
 
     return value
 
@@ -825,16 +850,21 @@ def _stringify_cell_value(
         return value.isoformat()
 
     if date_hint and isinstance(value, (int, float)):
-        return _excel_serial_to_iso(float(value), date_1904=date_1904)
+        return (
+            _excel_serial_to_iso(float(value), date_1904=date_1904)
+            or _stringify_non_date_value(value)
+        )
 
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-
-    return str(value)
+    return _stringify_non_date_value(value)
 
 
-def _excel_serial_to_iso(serial: float, *, date_1904: bool = False) -> str:
-    excel_value = from_excel(serial, MAC_EPOCH if date_1904 else WINDOWS_EPOCH)
+def _excel_serial_to_iso(serial: float, *, date_1904: bool = False) -> str | None:
+    if not math.isfinite(serial):
+        return None
+    try:
+        excel_value = from_excel(serial, MAC_EPOCH if date_1904 else WINDOWS_EPOCH)
+    except (TypeError, ValueError, OverflowError):
+        return None
     if isinstance(excel_value, datetime):
         if excel_value.time() == time():
             return excel_value.date().isoformat()
@@ -844,6 +874,12 @@ def _excel_serial_to_iso(serial: float, *, date_1904: bool = False) -> str:
     if isinstance(excel_value, time):
         return excel_value.isoformat()
     return str(excel_value)
+
+
+def _stringify_non_date_value(value: Any) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
 
 
 def _render_html_table(headers: list[str], columns: list[list[str]], row_count: int) -> str:
