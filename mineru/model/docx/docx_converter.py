@@ -2599,7 +2599,11 @@ class DocxConverter:
             except Exception as e:
                 logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
 
-            chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+            try:
+                chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+            except Exception as e:
+                logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
+                continue
             if chart_html:
                 chart_block["content"] = chart_html
 

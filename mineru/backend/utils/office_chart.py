@@ -663,6 +663,8 @@ def _first_non_none(*values):
 def _collect_plot_elements(plot_area) -> list[tuple[str, Any]]:
     plot_elements = []
     for child in plot_area:
+        if not isinstance(child.tag, str):
+            continue
         tag_name = etree.QName(child).localname
         if tag_name in _PLOT_TAGS:
             plot_elements.append((tag_name, child))
