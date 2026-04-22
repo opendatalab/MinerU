@@ -2563,6 +2563,12 @@ class DocxConverter:
             if chart is None:
                 continue
 
+            chart_block = {
+                "type": BlockType.CHART,
+                "content": "",
+            }
+            self.cur_page.append(chart_block)
+
             rel_id = chart.get(rel_id_attr)
             if not rel_id:
                 continue
@@ -2592,15 +2598,8 @@ class DocxConverter:
                 logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
 
             chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
-            if not chart_html:
-                continue
-
-            self.cur_page.append(
-                {
-                    "type": BlockType.CHART,
-                    "content": chart_html,
-                }
-            )
+            if chart_html:
+                chart_block["content"] = chart_html
 
     def _handle_textbox_content(
         self,
