@@ -31,7 +31,7 @@ if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
 
 
 pdf_suffixes = ["pdf"]
-image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff", "svg"]
+image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
 docx_suffixes = ["docx"]
 pptx_suffixes = ["pptx"]
 xlsx_suffixes = ["xlsx"]
