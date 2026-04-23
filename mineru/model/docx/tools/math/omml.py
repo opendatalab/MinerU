@@ -52,6 +52,9 @@ SCR_TO_LATEX = {
     "monospace":    "\\mathtt{{{0}}}",         # 等宽字体
 }
 
+LOWER_GROUP_LIMITS = ("\\underbrace{", "\\underbracket{", "\\underparen{")
+UPPER_GROUP_LIMITS = ("\\overbrace{", "\\overbracket{", "\\overparen{")
+
 
 def load(stream):
     tree = ET.parse(stream)
@@ -215,6 +218,34 @@ class oMath2Latex(Tag2Method):
     def latex(self):
         return self._latex
 
+    def _apply_limit_marker(self, base_text, limit_text):
+        if not isinstance(limit_text, str):
+            return None
+
+        latex_template = CHR.get(limit_text)
+        if latex_template and "{0}" in latex_template:
+            return latex_template.format(base_text)
+        return None
+
+    def _format_limit_like(self, base_text, limit_text, *, upper):
+        marker_wrapped = self._apply_limit_marker(base_text, limit_text)
+        if marker_wrapped is not None:
+            return marker_wrapped
+
+        if upper:
+            if isinstance(base_text, str) and base_text.lstrip().startswith(UPPER_GROUP_LIMITS):
+                return f"{base_text}{SUP.format(limit_text)}"
+            return LIM_UPP.format(lim=limit_text, text=base_text)
+
+        latex_s = LIM_FUNC.get(base_text)
+        if latex_s:
+            return latex_s.format(lim=limit_text)
+
+        if isinstance(base_text, str) and base_text.lstrip().startswith(LOWER_GROUP_LIMITS):
+            return f"{base_text}{SUB.format(limit_text)}"
+
+        return f"\\underset{{{limit_text}}}{{{base_text}}}"
+
     def do_acc(self, elm):
         """
         the accent function
@@ -367,18 +398,22 @@ class oMath2Latex(Tag2Method):
         the Lower-Limit object
         """
         t_dict = self.process_children_dict(elm, include=("e", "lim"))
-        latex_s = LIM_FUNC.get(t_dict["e"])
-        if not latex_s:
-            raise RuntimeError("Not support lim {}".format(t_dict["e"]))
-        else:
-            return latex_s.format(lim=t_dict.get("lim"))
+        return self._format_limit_like(
+            t_dict.get("e", ""),
+            t_dict.get("lim", ""),
+            upper=False,
+        )
 
     def do_limupp(self, elm):
         """
         the Upper-Limit object
         """
         t_dict = self.process_children_dict(elm, include=("e", "lim"))
-        return LIM_UPP.format(lim=t_dict.get("lim"), text=t_dict.get("e"))
+        return self._format_limit_like(
+            t_dict.get("e", ""),
+            t_dict.get("lim", ""),
+            upper=True,
+        )
 
     def do_lim(self, elm):
         """

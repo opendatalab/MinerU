@@ -1650,7 +1650,11 @@ class DocxConverter:
                     only_texts.append(subt.text)
                     texts_and_equations.append(subt.text)
             elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
-                latex_equation = str(oMath2Latex(subt)).strip()
+                try:
+                    latex_equation = str(oMath2Latex(subt)).strip()
+                except Exception as e:
+                    logger.debug(f"Failed to convert OMML equation to LaTeX: {e}")
+                    continue
                 if len(latex_equation) > 0:
                     only_equations.append(
                         self.equation_bookends.format(EQ=latex_equation)
