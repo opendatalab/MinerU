@@ -263,11 +263,18 @@ def _process_output(
     image_dir = str(os.path.basename(local_image_dir))
 
     if f_dump_md:
-        md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}.md",
-            md_content_str,
-        )
+        md_content = make_func(pdf_info, f_make_md_mode, image_dir)
+        if f_make_md_mode in [MakeMode.MM_MD_PAGES, MakeMode.NLP_MD_PAGES]:
+            for page_idx, page_md in enumerate(md_content, start=1):
+                md_writer.write_string(
+                    f"{pdf_file_name}_page_{page_idx}.md",
+                    page_md,
+                )
+        else:
+            md_writer.write_string(
+                f"{pdf_file_name}.md",
+                md_content,
+            )
 
     if f_dump_content_list:
 

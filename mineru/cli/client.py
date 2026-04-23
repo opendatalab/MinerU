@@ -633,6 +633,7 @@ def build_request_form_data(
         start_page_id=start_page_id,
         end_page_id=end_page_id,
         return_md=True,
+        return_md_pages=False,
         return_middle_json=True,
         return_model_output=True,
         return_content_list=True,

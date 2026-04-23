@@ -148,6 +148,7 @@ class ParseRequestOptions:
     table_enable: bool
     server_url: Optional[str]
     return_md: bool
+    return_md_pages: bool
     return_middle_json: bool
     return_model_output: bool
     return_content_list: bool
@@ -179,6 +180,7 @@ class AsyncParseTask:
     table_enable: bool
     server_url: Optional[str]
     return_md: bool
+    return_md_pages: bool
     return_middle_json: bool
     return_model_output: bool
     return_content_list: bool
@@ -476,6 +478,7 @@ def build_result_dict(
     backend: str,
     parse_method: str,
     return_md: bool,
+    return_md_pages: bool,
     return_middle_json: bool,
     return_model_output: bool,
     return_content_list: bool,
@@ -497,6 +500,13 @@ def build_result_dict(
 
         if return_md:
             data["md_content"] = get_infer_result(".md", pdf_name, parse_dir)
+        if return_md_pages:
+            md_pages_file = os.path.join(parse_dir, f"{pdf_name}_md_pages.json")
+            if os.path.exists(md_pages_file):
+                with open(md_pages_file, "r", encoding="utf-8") as f:
+                    data["md_pages"] = json.load(f)
+            else:
+                data["md_pages"] = []
         if return_middle_json:
             data["middle_json"] = get_infer_result("_middle.json", pdf_name, parse_dir)
         if return_model_output:
@@ -531,6 +541,7 @@ def create_result_zip(
     backend: str,
     parse_method: str,
     return_md: bool,
+    return_md_pages: bool,
     return_middle_json: bool,
     return_model_output: bool,
     return_content_list: bool,
@@ -560,6 +571,18 @@ def create_result_zip(
                             pdf_name,
                             parse_dir,
                             f"{pdf_name}.md",
+                        ),
+                    )
+
+            if return_md_pages:
+                path = os.path.join(parse_dir, f"{pdf_name}_md_pages.json")
+                if os.path.exists(path):
+                    zf.write(
+                        path,
+                        arcname=build_zip_arcname(
+                            pdf_name,
+                            parse_dir,
+                            f"{pdf_name}_md_pages.json",
                         ),
                     )
 
@@ -649,6 +672,7 @@ def build_result_response(
     backend: str,
     parse_method: str,
     return_md: bool,
+    return_md_pages: bool,
     return_middle_json: bool,
     return_model_output: bool,
     return_content_list: bool,
@@ -664,6 +688,7 @@ def build_result_response(
             backend=backend,
             parse_method=parse_method,
             return_md=return_md,
+            return_md_pages=return_md_pages,
             return_middle_json=return_middle_json,
             return_model_output=return_model_output,
             return_content_list=return_content_list,
@@ -684,6 +709,7 @@ def build_result_response(
         backend=backend,
         parse_method=parse_method,
         return_md=return_md,
+        return_md_pages=return_md_pages,
         return_middle_json=return_middle_json,
         return_model_output=return_model_output,
         return_content_list=return_content_list,
@@ -724,6 +750,7 @@ def build_sync_file_parse_response(
             backend=task.backend,
             parse_method=task.parse_method,
             return_md=task.return_md,
+            return_md_pages=task.return_md_pages,
             return_middle_json=task.return_middle_json,
             return_model_output=task.return_model_output,
             return_content_list=task.return_content_list,
@@ -744,6 +771,7 @@ def build_sync_file_parse_response(
         backend=task.backend,
         parse_method=task.parse_method,
         return_md=task.return_md,
+        return_md_pages=task.return_md_pages,
         return_middle_json=task.return_middle_json,
         return_model_output=task.return_model_output,
         return_content_list=task.return_content_list,
@@ -832,6 +860,10 @@ async def parse_request_form(
         bool,
         Form(description="Return markdown content in response"),
     ] = True,
+    return_md_pages: Annotated[
+        bool,
+        Form(description="Return per-page markdown list in response (JSON array)"),
+    ] = False,
     return_middle_json: Annotated[
         bool,
         Form(description="Return middle JSON in response"),
@@ -890,6 +922,7 @@ async def parse_request_form(
         table_enable=table_enable,
         server_url=server_url,
         return_md=return_md,
+        return_md_pages=return_md_pages,
         return_middle_json=return_middle_json,
         return_model_output=return_model_output,
         return_content_list=return_content_list,
@@ -1014,6 +1047,16 @@ async def run_parse_job(
         await asyncio.to_thread(do_parse, **parse_kwargs)
     else:
         await aio_do_parse(**parse_kwargs)
+    
+    if request_options.return_md_pages and hasattr(request_options, 'pdf_file_names'):
+        for pdf_name in response_file_names:
+            parse_dir = get_parse_dir(output_dir, pdf_name, request_options.backend, request_options.parse_method)
+            md_pages_json_path = os.path.join(parse_dir, f"{pdf_name}_md_pages.json")
+            if os.path.exists(md_pages_json_path):
+                with open(md_pages_json_path, 'r', encoding='utf-8') as f:
+                    page_markdowns = json.load(f)
+                logger.info(f"Wrote {len(page_markdowns)} page markdowns to {md_pages_json_path}")
+    
     return response_file_names
 
 
@@ -1049,6 +1092,7 @@ async def create_async_parse_task(
             table_enable=request_options.table_enable,
             server_url=request_options.server_url,
             return_md=request_options.return_md,
+            return_md_pages=request_options.return_md_pages,
             return_middle_json=request_options.return_middle_json,
             return_model_output=request_options.return_model_output,
             return_content_list=request_options.return_content_list,
@@ -1486,6 +1530,7 @@ async def get_async_task_result(
         backend=task.backend,
         parse_method=task.parse_method,
         return_md=task.return_md,
+        return_md_pages=task.return_md_pages,
         return_middle_json=task.return_middle_json,
         return_model_output=task.return_model_output,
         return_content_list=task.return_content_list,
