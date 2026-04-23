@@ -483,7 +483,10 @@ class DocxConverter:
                         resolved_target = self._resolve_internal_relationship_target(
                             info.filename, relationship.get("Target")
                         )
-                        if resolved_target is None or resolved_target in package_members:
+                        if (
+                            resolved_target is not None
+                            and resolved_target in package_members
+                        ):
                             continue
 
                         root.remove(relationship)
@@ -1241,11 +1244,21 @@ class DocxConverter:
         处理图片。
 
         Args:
-            drawing_blip: 绘图 blip 对象
+            picture_refs: 图片引用元素列表
 
         Returns:
 
         """
+
+        def get_docx_image_rel_id(image: Any) -> Optional[str]:
+            rel_id = image.get(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+            )
+            if not rel_id:
+                rel_id = image.get(
+                    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+                )
+            return rel_id
 
         def get_docx_image(image: Any) -> Optional[bytes]:
             """
@@ -1259,21 +1272,21 @@ class DocxConverter:
                 Optional[bytes]: 图像数据
             """
             image_data: Optional[bytes] = None
-            rId = image.get(
-                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-            )
-            if not rId:
-                rId = image.get(
-                    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-                )
+            rId = get_docx_image_rel_id(image)
             if rId in self.docx_obj.part.rels:
                 # 使用关系 ID 访问图像部分
                 image_part = self.docx_obj.part.rels[rId].target_part
                 image_data = image_part.blob  # 获取二进制图像数据
             return image_data
 
+        seen_rel_ids: set[str] = set()
         # 遍历所有图片引用元素，支持 DrawingML blip 和 VML imagedata。
         for image in picture_refs:
+            rel_id = get_docx_image_rel_id(image)
+            if rel_id and rel_id in seen_rel_ids:
+                continue
+            if rel_id:
+                seen_rel_ids.add(rel_id)
             image_data: Optional[bytes] = get_docx_image(image)
             if image_data is None:
                 logger.warning("Warning: image cannot be found")
