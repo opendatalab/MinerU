@@ -503,7 +503,11 @@ def _parse_formula(formula: str):
         return None
 
     min_col, min_row, max_col, max_row = bounds
-    return sheet_name, min_col, min_row, max_col, max_row
+    return _unescape_formula_sheet_name(sheet_name), min_col, min_row, max_col, max_row
+
+
+def _unescape_formula_sheet_name(sheet_name: str) -> str:
+    return sheet_name.replace("''", "'")
 
 
 def _extract_reference_formula(container) -> str | None:
