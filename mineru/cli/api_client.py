@@ -994,6 +994,9 @@ async def download_result_zip(
             f"Timed out downloading result ZIP for task {submit_response.task_id} "
             f"for {task_label}"
         ) from exc
+    except asyncio.CancelledError:
+        zip_file_path.unlink(missing_ok=True)
+        raise
     except Exception:
         zip_file_path.unlink(missing_ok=True)
         raise

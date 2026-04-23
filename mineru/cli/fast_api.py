@@ -641,6 +641,16 @@ def create_result_zip(
     return zip_path
 
 
+def _cleanup_generated_zip_task(task: asyncio.Task[str]) -> None:
+    try:
+        generated_zip_path = task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        return
+    cleanup_file(generated_zip_path)
+
+
 async def build_result_response(
     background_tasks: BackgroundTasks,
     status_code: int,
@@ -658,19 +668,26 @@ async def build_result_response(
     zip_filename: str = "results.zip",
 ) -> Response:
     if response_format_zip:
-        zip_path = await asyncio.to_thread(
-            create_result_zip,
-            output_dir=output_dir,
-            pdf_file_names=pdf_file_names,
-            backend=backend,
-            parse_method=parse_method,
-            return_md=return_md,
-            return_middle_json=return_middle_json,
-            return_model_output=return_model_output,
-            return_content_list=return_content_list,
-            return_images=return_images,
-            return_original_file=return_original_file,
+        zip_task = asyncio.create_task(
+            asyncio.to_thread(
+                create_result_zip,
+                output_dir=output_dir,
+                pdf_file_names=pdf_file_names,
+                backend=backend,
+                parse_method=parse_method,
+                return_md=return_md,
+                return_middle_json=return_middle_json,
+                return_model_output=return_model_output,
+                return_content_list=return_content_list,
+                return_images=return_images,
+                return_original_file=return_original_file,
+            )
         )
+        try:
+            zip_path = await asyncio.shield(zip_task)
+        except asyncio.CancelledError:
+            zip_task.add_done_callback(_cleanup_generated_zip_task)
+            raise
         background_tasks.add_task(cleanup_file, zip_path)
         return FileResponse(
             path=zip_path,
