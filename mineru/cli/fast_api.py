@@ -641,7 +641,7 @@ def create_result_zip(
     return zip_path
 
 
-def build_result_response(
+async def build_result_response(
     background_tasks: BackgroundTasks,
     status_code: int,
     output_dir: str,
@@ -658,7 +658,8 @@ def build_result_response(
     zip_filename: str = "results.zip",
 ) -> Response:
     if response_format_zip:
-        zip_path = create_result_zip(
+        zip_path = await asyncio.to_thread(
+            create_result_zip,
             output_dir=output_dir,
             pdf_file_names=pdf_file_names,
             backend=backend,
@@ -678,7 +679,8 @@ def build_result_response(
             status_code=status_code,
         )
 
-    result_dict = build_result_dict(
+    result_dict = await asyncio.to_thread(
+        build_result_dict,
         output_dir=output_dir,
         pdf_file_names=pdf_file_names,
         backend=backend,
@@ -709,14 +711,14 @@ def build_task_submission_response(
     return JSONResponse(status_code=202, content=payload)
 
 
-def build_sync_file_parse_response(
+async def build_sync_file_parse_response(
     background_tasks: BackgroundTasks,
     task: AsyncParseTask,
     request: Request,
 ) -> Response:
     task_payload = task.to_status_payload(request)
     if task.response_format_zip:
-        response = build_result_response(
+        response = await build_result_response(
             background_tasks=background_tasks,
             status_code=200,
             output_dir=task.output_dir,
@@ -738,7 +740,8 @@ def build_sync_file_parse_response(
         response.headers[FILE_PARSE_TASK_RESULT_URL_HEADER] = task_payload["result_url"]
         return response
 
-    result_dict = build_result_dict(
+    result_dict = await asyncio.to_thread(
+        build_result_dict,
         output_dir=task.output_dir,
         pdf_file_names=task.file_names,
         backend=task.backend,
@@ -1413,7 +1416,7 @@ async def parse_pdf(
             },
         )
 
-    return build_sync_file_parse_response(
+    return await build_sync_file_parse_response(
         background_tasks=background_tasks,
         task=task,
         request=http_request,
@@ -1478,7 +1481,7 @@ async def get_async_task_result(
             },
         )
 
-    return build_result_response(
+    return await build_result_response(
         background_tasks=background_tasks,
         status_code=200,
         output_dir=task.output_dir,

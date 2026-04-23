@@ -32,6 +32,7 @@ from mineru.cli.api_client import (
     TASK_STATUS_POLL_INTERVAL_SECONDS,
     build_managed_process_popen_kwargs,
     build_http_timeout,
+    build_result_download_timeout,
     find_free_port,
     normalize_base_url,
     stop_managed_process,
@@ -1212,7 +1213,11 @@ async def proxy_router_task_result(
     result_url = f"{task.upstream_base_url}{TASKS_ENDPOINT}/{task.upstream_task_id}/result"
     try:
         upstream_response = await client.send(
-            client.build_request("GET", result_url),
+            client.build_request(
+                "GET",
+                result_url,
+                timeout=build_result_download_timeout(),
+            ),
             stream=True,
         )
     except httpx.HTTPError as exc:
@@ -1263,7 +1268,11 @@ async def build_sync_router_task_result_response(
     result_url = f"{task.upstream_base_url}{TASKS_ENDPOINT}/{task.upstream_task_id}/result"
     try:
         upstream_response = await client.send(
-            client.build_request("GET", result_url),
+            client.build_request(
+                "GET",
+                result_url,
+                timeout=build_result_download_timeout(),
+            ),
             stream=True,
         )
     except httpx.HTTPError as exc:
