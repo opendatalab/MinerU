@@ -456,6 +456,9 @@ class oMath2Latex(Tag2Method):
         return bo + BLANK.join(res)
 
     def process_unicode(self, s):
+        if s in CHARS:
+            return BACKSLASH + s
+
         # Check T dictionary first for known math-mode symbols.
         # The T dictionary holds explicit math-mode LaTeX mappings and takes precedence
         # over pylatexenc, which uses text-mode mappings by default and therefore produces
