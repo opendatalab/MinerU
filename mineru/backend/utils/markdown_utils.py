@@ -13,10 +13,25 @@ def escape_conservative_markdown_text(content: str) -> str:
     if not content:
         return content
 
-    for char in CONSERVATIVE_MARKDOWN_SPECIAL_CHARS:
-        content = content.replace(char, "\\" + char)
+    escaped_chars = []
+    preceding_backslashes = 0
 
-    return content
+    for char in content:
+        if char == "\\":
+            escaped_chars.append(char)
+            preceding_backslashes += 1
+            continue
+
+        if (
+            char in CONSERVATIVE_MARKDOWN_SPECIAL_CHARS
+            and preceding_backslashes % 2 == 0
+        ):
+            escaped_chars.append("\\")
+
+        escaped_chars.append(char)
+        preceding_backslashes = 0
+
+    return "".join(escaped_chars)
 
 
 def escape_text_block_markdown_prefix(content: str) -> str:
