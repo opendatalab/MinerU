@@ -52,8 +52,8 @@
     </tr> 
     <tr>
       <th>精度指标<sup>1</sup></th>
-      <td style="text-align:center;">86+</td>
-      <td colspan="4" style="text-align:center;">90+</td>
+      <td style="text-align:center;">85+</td>
+      <td colspan="4" style="text-align:center;">95+</td>
     </tr>
     <tr>
       <th>操作系统</th>
@@ -94,7 +94,7 @@
   </tbody>
 </table>
 
-<sup>1</sup> 精度指标为OmniDocBench (v1.5)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
+<sup>1</sup> 精度指标为OmniDocBench (v1.6)的End-to-End Evaluation Overall分数，基于`MinerU`最新版本测试  
 <sup>2</sup> 兼容OpenAI API的服务器，如通过`vLLM`/`SGLang`/`LMDeploy`等推理框架部署的本地模型服务器或远程模型服务  
 <sup>3</sup> Linux仅支持2019年及以后发行版  
 <sup>4</sup> 由于关键依赖`ray`未能在windows平台支持Python 3.13，故仅支持至3.10~3.12版本  

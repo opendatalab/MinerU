@@ -204,8 +204,8 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
     </tr> 
     <tr>
       <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">86+</td>
-      <td colspan="4" style="text-align:center;">90+</td>
+      <td style="text-align:center;">85+</td>
+      <td colspan="4" style="text-align:center;">95+</td>
     </tr>
     <tr>
       <th>Operating System</th>
@@ -246,7 +246,7 @@ A WebUI developed based on Gradio, with a simple interface and only core parsing
   </tbody>
 </table>
 
-<sup>1</sup> Accuracy metrics are the End-to-End Evaluation Overall scores from OmniDocBench (v1.5), based on the latest version of `MinerU`.  
+<sup>1</sup> Accuracy metrics are the End-to-End Evaluation Overall scores from OmniDocBench (v1.6), based on the latest version of `MinerU`.  
 <sup>2</sup> Servers compatible with OpenAI API, such as local model servers or remote model services deployed via inference frameworks like `vLLM`/`SGLang`/`LMDeploy`.  
 <sup>3</sup> Linux only supports distributions from 2019 and later.  
 <sup>4</sup> Since the key dependency `ray` does not support Python 3.13 on Windows, only versions 3.10~3.12 are supported.  
