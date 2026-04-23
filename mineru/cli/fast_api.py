@@ -82,6 +82,7 @@ TASK_COMPLETED = "completed"
 TASK_FAILED = "failed"
 TASK_TERMINAL_STATES = {TASK_COMPLETED, TASK_FAILED}
 SUPPORTED_UPLOAD_SUFFIXES = pdf_suffixes + image_suffixes + office_suffixes
+RESULT_IMAGE_SUFFIXES = set(image_suffixes) | {"svg"}
 DEFAULT_TASK_RETENTION_SECONDS = 24 * 60 * 60
 DEFAULT_TASK_CLEANUP_INTERVAL_SECONDS = 5 * 60
 DEFAULT_OUTPUT_ROOT = "./output"
@@ -424,7 +425,7 @@ def get_images_dir_image_paths(images_dir: str) -> list[str]:
     return sorted(
         str(path)
         for path in Path(images_dir).iterdir()
-        if path.is_file() and path.suffix.lstrip(".").lower() in image_suffixes
+        if path.is_file() and path.suffix.lstrip(".").lower() in RESULT_IMAGE_SUFFIXES
     )
 
 

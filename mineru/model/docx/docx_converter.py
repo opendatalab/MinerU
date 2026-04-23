@@ -1,9 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import posixpath
 import re
-import zipfile
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from PIL import Image
 from loguru import logger
@@ -26,7 +27,7 @@ from mineru.backend.utils.office_image import (
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
-from mineru.backend.utils.office_chart import html_table_from_excel_bytes
+from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
@@ -73,12 +74,10 @@ class DocxConverter:
         self.xml_namespaces = {
             "w": "http://schemas.microsoft.com/office/word/2003/wordml"
         }
-        self.blip_xpath_expr = etree.XPath(
-            ".//a:blip", namespaces=DocxConverter._BLIP_NAMESPACES
+        self.picture_xpath_expr = etree.XPath(
+            ".//a:blip | .//v:imagedata", namespaces=DocxConverter._BLIP_NAMESPACES
         )
 
-        # 存放文档字节数据，用于需要重读 ZIP 的辅助方法
-        self._file_bytes: bytes = b''
         self.docx_obj = None
         self.pages = []
         self.cur_page = []
@@ -94,7 +93,6 @@ class DocxConverter:
         self.pre_index_ilevel: int = -1  # 上一个目录项的缩进等级
         self.heading_list_numids: set = set()  # 用作章节标题的列表numId集合
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
-        self.chart_list = []  # 图表列表
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
         self._numbering_root: Optional[BaseOxmlElement] = None
@@ -437,6 +435,125 @@ class DocxConverter:
 
         return "".join(result_parts)
 
+    @staticmethod
+    def _resolve_internal_relationship_target(
+        rels_path: str, target: Optional[str]
+    ) -> Optional[str]:
+        """Resolve an OOXML relationship target to a package member path."""
+        if not target:
+            return None
+
+        rels_posix = PurePosixPath(rels_path)
+        if rels_posix.parent.name != "_rels":
+            return None
+
+        base_dir = rels_posix.parent.parent.as_posix()
+        if target.startswith("/"):
+            resolved = posixpath.normpath(target.lstrip("/"))
+        else:
+            resolved = posixpath.normpath(posixpath.join(base_dir, target))
+
+        if resolved in {"", "."} or resolved.startswith("../"):
+            return None
+        return resolved
+
+    def _sanitize_missing_internal_relationships(self, file_bytes: bytes) -> bytes:
+        """Drop broken internal OOXML relationships so python-docx can best-effort load."""
+        try:
+            with ZipFile(BytesIO(file_bytes)) as source:
+                package_members = set(source.namelist())
+                rewritten_rels: dict[str, bytes] = {}
+
+                for info in source.infolist():
+                    if not info.filename.endswith(".rels"):
+                        continue
+
+                    try:
+                        root = etree.fromstring(source.read(info.filename))
+                    except Exception:
+                        continue
+
+                    removed_count = 0
+                    for relationship in list(root):
+                        if etree.QName(relationship).localname != "Relationship":
+                            continue
+                        if relationship.get("TargetMode") == "External":
+                            continue
+
+                        resolved_target = self._resolve_internal_relationship_target(
+                            info.filename, relationship.get("Target")
+                        )
+                        if (
+                            resolved_target is not None
+                            and resolved_target in package_members
+                        ):
+                            continue
+
+                        root.remove(relationship)
+                        removed_count += 1
+
+                    if removed_count == 0:
+                        continue
+
+                    logger.debug(
+                        "Removed {} broken internal DOCX relationships from {}",
+                        removed_count,
+                        info.filename,
+                    )
+                    rewritten_rels[info.filename] = etree.tostring(
+                        root,
+                        xml_declaration=True,
+                        encoding="UTF-8",
+                        standalone="yes",
+                    )
+
+                if not rewritten_rels:
+                    return file_bytes
+
+            output = BytesIO()
+            with ZipFile(BytesIO(file_bytes)) as source, ZipFile(output, "w", ZIP_DEFLATED) as target:
+                for info in source.infolist():
+                    data = rewritten_rels.get(info.filename, source.read(info.filename))
+                    target.writestr(info, data)
+            return output.getvalue()
+        except Exception:
+            return file_bytes
+
+    def _start_new_page(self) -> None:
+        self.cur_page = []
+        self.pages.append(self.cur_page)
+
+    def _is_layout_only_section_break(self, element: BaseOxmlElement) -> bool:
+        w_ns = DocxConverter._BLIP_NAMESPACES["w"]
+        p_pr = element.find(f"{{{w_ns}}}pPr")
+        sect_pr = p_pr.find(f"{{{w_ns}}}sectPr") if p_pr is not None else None
+        if sect_pr is None:
+            return False
+
+        paragraph = Paragraph(element, self.docx_obj)
+        if self._get_paragraph_text(paragraph).strip():
+            return False
+
+        if self.picture_xpath_expr(element):
+            return False
+
+        sect_type = sect_pr.find(f"{{{w_ns}}}type")
+        sect_val = (
+            sect_type.get(f"{{{w_ns}}}val", "continuous")
+            if sect_type is not None else "continuous"
+        )
+        if sect_val != "continuous":
+            return False
+
+        pg_mar = sect_pr.find(f"{{{w_ns}}}pgMar")
+        if pg_mar is None:
+            return False
+
+        for attr in ("header", "footer", "top", "bottom", "left", "right"):
+            if pg_mar.get(f"{{{w_ns}}}{attr}", "0") != "0":
+                return False
+        return True
+
     def convert(
         self,
         file_stream: BinaryIO,
@@ -451,17 +568,13 @@ class DocxConverter:
         self.index_block_stack = []
         self.pre_index_ilevel = -1
         self.heading_list_numids = set()
-        self.chart_list = []
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
         self._numbering_root = None
         self._numbering_root_loaded = False
         self._numbering_level_cache = {}
-
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
-        file_bytes = file_stream.read()
-        # 保存一份字节副本用于后续需要重新打开 ZIP 的方法
-        self._file_bytes = file_bytes
+        file_bytes = self._sanitize_missing_internal_relationships(file_stream.read())
         # 使用完整文档 mammoth 转换预解析所有表格，获得完整上下文（编号/图片/样式等）
         self._mammoth_tables_html = self._preparse_tables_with_mammoth(file_bytes)
         self._mammoth_table_idx = 0
@@ -472,7 +585,6 @@ class DocxConverter:
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
-        self._add_chart_table()
 
     def _collect_toc_anchor_set(self) -> set[str]:
         """Collect TOC hyperlink anchors from the entire document body."""
@@ -496,7 +608,7 @@ class DocxConverter:
             # 获取元素的标签名（去除命名空间前缀）
             tag_name = etree.QName(element).localname
             # 检查是否存在内联图像（blip元素）
-            drawing_blip = self.blip_xpath_expr(element)
+            picture_refs = self.picture_xpath_expr(element)
 
             # 查找所有绘图元素（用于处理DrawingML）
             drawingml_els = element.findall(
@@ -572,7 +684,7 @@ class DocxConverter:
                     # 如果表格解析失败，记录调试信息
                     logger.debug("could not parse a table, broken docx table")
             # 检查图片元素
-            elif drawing_blip:
+            elif picture_refs:
                 # 判断图片是否为锚定（浮动）图片
                 is_anchored = bool(
                     element.findall(
@@ -583,10 +695,10 @@ class DocxConverter:
                 # 锚定图片在段落中浮动定位，段落文本应出现在图片之前
                 if is_anchored and tag_name == "p":
                     self._handle_text_elements(element)
-                    self._handle_pictures(drawing_blip)
+                    self._handle_pictures(picture_refs)
                 else:
                     # 处理图片元素
-                    self._handle_pictures(drawing_blip)
+                    self._handle_pictures(picture_refs)
                     # 如果是段落元素，同时处理其中的文本内容（如描述性文字）
                     if tag_name == "p":
                         self._handle_text_elements(element)
@@ -929,11 +1041,13 @@ class DocxConverter:
 
         """
         is_section_end = False
-        if element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES) is not None:
+        has_section_break = (
+            element.find(".//w:sectPr", namespaces=DocxConverter._BLIP_NAMESPACES) is not None
+        )
+        if has_section_break and not self._is_layout_only_section_break(element):
             # 如果没有text内容
             if element.text == "":
-                self.cur_page = []
-                self.pages.append(self.cur_page)
+                self._start_new_page()
             else:
                 # 标记本节结束，处理完文本之后再分节
                 is_section_end = True
@@ -953,6 +1067,7 @@ class DocxConverter:
         # "List Bullet", "List Number", "List Paragraph"
         # 识别列表是否为编号列表
         p_style_id, p_level = self._get_label_and_level(paragraph)
+        p_style_id = p_style_id or "Normal"
         numid, ilevel = self._get_numId_and_ilvl(paragraph)
 
         if numid == 0:
@@ -1122,19 +1237,28 @@ class DocxConverter:
                 self.cur_page.append(text_block)
 
         if is_section_end:
-            self.cur_page = []
-            self.pages.append(self.cur_page)
+            self._start_new_page()
 
-    def _handle_pictures(self, drawing_blip: Any):
+    def _handle_pictures(self, picture_refs: Any):
         """
         处理图片。
 
         Args:
-            drawing_blip: 绘图 blip 对象
+            picture_refs: 图片引用元素列表
 
         Returns:
 
         """
+
+        def get_docx_image_rel_id(image: Any) -> Optional[str]:
+            rel_id = image.get(
+                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+            )
+            if not rel_id:
+                rel_id = image.get(
+                    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+                )
+            return rel_id
 
         def get_docx_image(image: Any) -> Optional[bytes]:
             """
@@ -1148,17 +1272,21 @@ class DocxConverter:
                 Optional[bytes]: 图像数据
             """
             image_data: Optional[bytes] = None
-            rId = image.get(
-                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-            )
+            rId = get_docx_image_rel_id(image)
             if rId in self.docx_obj.part.rels:
                 # 使用关系 ID 访问图像部分
                 image_part = self.docx_obj.part.rels[rId].target_part
                 image_data = image_part.blob  # 获取二进制图像数据
             return image_data
 
-        # 遍历所有 blip 元素，支持 group images（多个 blip）
-        for image in drawing_blip:
+        seen_rel_ids: set[str] = set()
+        # 遍历所有图片引用元素，支持 DrawingML blip 和 VML imagedata。
+        for image in picture_refs:
+            rel_id = get_docx_image_rel_id(image)
+            if rel_id and rel_id in seen_rel_ids:
+                continue
+            if rel_id:
+                seen_rel_ids.add(rel_id)
             image_data: Optional[bytes] = get_docx_image(image)
             if image_data is None:
                 logger.warning("Warning: image cannot be found")
@@ -1522,7 +1650,11 @@ class DocxConverter:
                     only_texts.append(subt.text)
                     texts_and_equations.append(subt.text)
             elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
-                latex_equation = str(oMath2Latex(subt)).strip()
+                try:
+                    latex_equation = str(oMath2Latex(subt)).strip()
+                except Exception as e:
+                    logger.debug(f"Failed to convert OMML equation to LaTeX: {e}")
+                    continue
                 if len(latex_equation) > 0:
                     only_equations.append(
                         self.equation_bookends.format(EQ=latex_equation)
@@ -1597,7 +1729,7 @@ class DocxConverter:
         if outline_level is not None:
             return "Heading", outline_level + 1
 
-        return name, None
+        return name or label or "Normal", None
 
     def _iter_style_chain(self, style: Any) -> Iterator[Any]:
         """Yield a style and its base-style chain once each."""
@@ -2555,57 +2687,65 @@ class DocxConverter:
         Returns:
 
         """
+        chart_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/chart",
+        }
+        package_rel_types = {
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package",
+            "http://purl.oclc.org/ooxml/officeDocument/relationships/package",
+        }
+        rel_id_attr = (
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        )
         for element in elements:
             chart = element.find(
                 ".//c:chart", namespaces=DocxConverter._BLIP_NAMESPACES
             )
-            if chart is not None:
-                # 如果找到 chart 元素，构造空的图表块，后续回填 html。
-                chart_block = {
-                    "type": BlockType.CHART,
-                    "content": "",
-                }
-                self.cur_page.append(chart_block)
-                self.chart_list.append(chart_block)
+            if chart is None:
+                continue
 
-    def _add_chart_table(self):
-        idx_xlsx_map = {}
-        rel_pattern = re.compile(r"word/charts/_rels/chart(\d+)\.xml\.rels$")
+            chart_block = {
+                "type": BlockType.CHART,
+                "content": "",
+            }
+            self.cur_page.append(chart_block)
 
-        # 定义命名空间
-        namespaces = {
-            "r": "http://schemas.openxmlformats.org/package/2006/relationships"
-        }
+            rel_id = chart.get(rel_id_attr)
+            if not rel_id:
+                continue
 
-        # first pass: read relationships from rewindable byte buffer
-        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
-            for name in zf.namelist():
-                match = rel_pattern.match(name)
-                if match:
-                    # 读取 .rels 文件内容
-                    rels_content = zf.read(name)
-                    # 解析 XML
-                    rels_root = etree.fromstring(rels_content)
+            try:
+                chart_rel = self.docx_obj.part.rels[rel_id]
+            except KeyError:
+                continue
 
-                    # 查找所有 Relationship 元素
-                    for rel in rels_root.findall(
-                        ".//r:Relationship", namespaces=namespaces
-                    ):
-                        target = rel.get("Target")
-                        if target and target.endswith(".xlsx"):
-                            path = Path(target)
-                            idx_xlsx_map[path.name] = int(match.group(1))
+            if chart_rel.reltype not in chart_rel_types:
+                continue
 
-        # second pass: again open buffer rather than original stream
-        with zipfile.ZipFile(BytesIO(self._file_bytes), "r") as zf:
-            for name in zf.namelist():
-                if name.startswith("word/embeddings/"):
-                    for path_name, chart_idx in idx_xlsx_map.items():
-                        if name.endswith(path_name):
-                            content = zf.read(name)
-                            self.chart_list[chart_idx - 1]["content"] = (
-                                html_table_from_excel_bytes(content)
-                            )
+            try:
+                chart_part = chart_rel.target_part
+                chart_xml = chart_part.blob
+            except Exception as e:
+                logger.warning(f"Warning: chart XML cannot be loaded: {e}")
+                continue
+
+            workbook_bytes = None
+            try:
+                for rel in chart_part.rels.values():
+                    if rel.reltype in package_rel_types:
+                        workbook_bytes = rel.target_part.blob
+                        break
+            except Exception as e:
+                logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+
+            try:
+                chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+            except Exception as e:
+                logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
+                continue
+            if chart_html:
+                chart_block["content"] = chart_html
 
     def _handle_textbox_content(
         self,

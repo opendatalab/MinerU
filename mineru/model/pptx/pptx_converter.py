@@ -18,7 +18,7 @@ from mineru.backend.utils.office_image import (
     serialize_vector_image_with_placeholder,
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
-from mineru.backend.utils.office_chart import html_table_from_excel_bytes
+from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -92,6 +92,10 @@ class PptxConverter:
         self.pages = []
         self.cur_page = []
         self.list_block_stack: list = []  # 列表块堆栈
+        self._shape_type_cache: dict[
+            tuple[Optional[str], Optional[int], Optional[str]],
+            Optional[MSO_SHAPE_TYPE],
+        ] = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
@@ -101,6 +105,7 @@ class PptxConverter:
         self.pages = []
         self.cur_page = []
         self.list_block_stack = []
+        self._shape_type_cache = {}
         self.file_stream = file_stream
         self.pptx_obj = Presentation(self.file_stream)
         self.pages.append(self.cur_page)
@@ -157,6 +162,50 @@ class PptxConverter:
             self.cur_page = []
             self.pages.append(self.cur_page)
 
+    @staticmethod
+    def _shape_type_cache_key(
+        shape,
+    ) -> Optional[tuple[Optional[str], Optional[int], Optional[str]]]:
+        part = getattr(shape, "part", None)
+        partname = getattr(part, "partname", None)
+        element = getattr(shape, "element", None)
+        element_tag = getattr(element, "tag", None)
+        try:
+            shape_id = shape.shape_id
+        except Exception:
+            shape_id = None
+
+        if partname is None and shape_id is None and element_tag is None:
+            return None
+
+        return (partname, shape_id, element_tag)
+
+    def _safe_shape_type(self, shape) -> Optional[MSO_SHAPE_TYPE]:
+        shape_key = self._shape_type_cache_key(shape)
+        if shape_key is not None and shape_key in self._shape_type_cache:
+            return self._shape_type_cache[shape_key]
+
+        try:
+            shape_type = shape.shape_type
+        except NotImplementedError as exc:
+            shape_name = getattr(shape, "name", None)
+            shape_element = getattr(shape, "element", None)
+            shape_element_tag = getattr(shape_element, "tag", None)
+            has_text_frame = getattr(shape, "has_text_frame", None)
+            logger.warning(
+                "Skipping shape_type-specific handling for unrecognized PPTX shape: "
+                f"class={type(shape).__name__}, "
+                f"name={shape_name!r}, "
+                f"element_tag={shape_element_tag!r}, "
+                f"has_text_frame={has_text_frame!r}, "
+                f"error={exc}"
+            )
+            shape_type = None
+
+        if shape_key is not None:
+            self._shape_type_cache[shape_key] = shape_type
+        return shape_type
+
     def _flatten_slide_shapes(
         self,
         shapes,
@@ -167,7 +216,8 @@ class PptxConverter:
 
         linear_shapes: list[_FlattenedShape] = []
         for shape in shapes:
-            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            shape_type = self._safe_shape_type(shape)
+            if shape_type == MSO_SHAPE_TYPE.GROUP:
                 group_transform = self._group_shape_transform(shape)
                 linear_shapes.extend(
                     self._flatten_slide_shapes(
@@ -206,7 +256,8 @@ class PptxConverter:
             if getattr(shape, "has_chart", False):
                 self._handle_chart(shape)
 
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            shape_type = self._safe_shape_type(shape)
+            if shape_type == MSO_SHAPE_TYPE.PICTURE:
                 later_shapes = linear_shapes[shape_index + 1 :]
                 if not self._should_skip_picture(
                     shape_entry,
@@ -450,7 +501,8 @@ class PptxConverter:
             return
 
         def handle_notes_shape(shape) -> None:
-            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            shape_type = self._safe_shape_type(shape)
+            if shape_type == MSO_SHAPE_TYPE.GROUP:
                 for grouped_shape in shape.shapes:
                     handle_notes_shape(grouped_shape)
                 return
@@ -585,15 +637,25 @@ class PptxConverter:
 
     def _handle_chart(self, shape) -> None:
         try:
-            chart_workbook = shape.chart.part.chart_workbook
-            xlsx_part = chart_workbook.xlsx_part
-            if xlsx_part is None:
-                logger.warning("Warning: chart workbook part is missing")
-                return
+            chart_part = shape.chart.part
+            chart_xml = chart_part.blob
+        except Exception as e:
+            logger.warning(f"Warning: chart XML cannot be loaded: {e}")
+            return
 
-            chart_html = html_table_from_excel_bytes(xlsx_part.blob)
+        workbook_bytes = None
+        try:
+            chart_workbook = chart_part.chart_workbook
+            xlsx_part = chart_workbook.xlsx_part
+            if xlsx_part is not None:
+                workbook_bytes = xlsx_part.blob
         except Exception as e:
             logger.warning(f"Warning: chart workbook cannot be loaded: {e}")
+
+        try:
+            chart_html = extract_chart_html_from_ooxml(chart_xml, workbook_bytes)
+        except Exception as e:
+            logger.warning(f"Warning: chart HTML cannot be extracted: {e}")
             return
 
         if not chart_html:
