@@ -165,6 +165,12 @@ T = {
     "\u00d7": "\\times ",  # MULTIPLICATION SIGN (×)
     "\u00f7": "\\div ",    # DIVISION SIGN (÷)
     "\u2212": "-",         # MINUS SIGN (−)
+    "\u2010": "-",         # HYPHEN
+    "\u2011": "-",         # NON-BREAKING HYPHEN
+    "\u2012": "-",         # FIGURE DASH
+    "\u2013": "-",         # EN DASH
+    "\u2014": "-",         # EM DASH
+    "\u2015": "-",         # HORIZONTAL BAR
     # Degree / prime — avoid ^{} syntax since escape_latex will mangle bare ^ and braces
     "\u00b0": "\\circ ",   # DEGREE SIGN (°) — caller's context (e.g. 90°) provides the ^
     "\u2032": "'",         # PRIME (′)
