@@ -891,7 +891,7 @@ class RouterTaskRegistry:
 def warn_if_router_preload_ignored(settings: RouterSettings) -> None:
     if settings.enable_vlm_preload and not parse_local_gpus(settings.local_gpus):
         logger.warning(
-            "Ignoring --enable-vlm-preload because mineru-router is not launching any local mineru-api workers."
+            "Ignoro --enable-vlm-preload perché mineru-router non sta avviando alcun worker mineru-api locale."
         )
 
 
@@ -1009,7 +1009,7 @@ async def stage_multipart_request(request: Request) -> MultipartPayload:
 
 def parse_submit_response(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
-        raise ValueError("MinerU upstream returned an invalid submit payload")
+        raise ValueError("L'upstream di MinerU ha restituito un payload di invio non valido")
     task_id = payload.get("task_id")
     status = payload.get("status")
     backend = payload.get("backend")
@@ -1110,7 +1110,7 @@ async def submit_router_task(
         server = await worker_pool.acquire_submission_server(excluded_server_ids=attempted_servers)
         if server is None:
             if last_error is None:
-                raise HTTPException(status_code=503, detail="No healthy upstream MinerU API servers are available")
+                raise HTTPException(status_code=503, detail="Nessun server API MinerU upstream integro disponibile")
             raise HTTPException(status_code=503, detail=last_error)
 
         try:
@@ -1138,7 +1138,7 @@ async def submit_router_task(
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         except UpstreamSubmissionUnavailable as exc:
             attempted_servers.add(server.server_id)
-            last_error = f"Failed to submit task via {server.server_id}: {exc}"
+            last_error = f"Invio del task fallito tramite {server.server_id}: {exc}"
             await worker_pool.mark_submission_failure(server.server_id, str(exc))
         finally:
             await worker_pool.release_submission_server(server.server_id)
@@ -1159,14 +1159,14 @@ async def fetch_router_task_status(
     except httpx.HTTPError as exc:
         updated = await registry.increment_upstream_error(task.task_id, str(exc))
         if updated is None:
-            raise HTTPException(status_code=404, detail="Task not found") from exc
+            raise HTTPException(status_code=404, detail="Task non trovato") from exc
         return updated
 
     if response.status_code != 200:
         error = f"{response.status_code} {response_detail(response)}"
         updated = await registry.increment_upstream_error(task.task_id, error)
         if updated is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(status_code=404, detail="Task non trovato")
         return updated
 
     try:
@@ -1177,12 +1177,12 @@ async def fetch_router_task_status(
             f"Invalid task status payload: {exc}",
         )
         if updated is None:
-            raise HTTPException(status_code=404, detail="Task not found")
+            raise HTTPException(status_code=404, detail="Task non trovato")
         return updated
 
     updated = await registry.update_from_upstream_payload(task.task_id, status_payload)
     if updated is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Task non trovato")
     return updated
 
 
@@ -1201,7 +1201,7 @@ async def wait_for_router_task_terminal_state(
 
     raise HTTPException(
         status_code=504,
-        detail=f"Timed out waiting for result of task {task.task_id}",
+        detail=f"Tempo scaduto durante l'attesa del risultato del task {task.task_id}",
     )
 
 
@@ -1379,7 +1379,7 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
         finally:
             payload.cleanup()
         response_payload = router_task.to_status_payload(http_request)
-        response_payload["message"] = "Task submitted successfully"
+        response_payload["message"] = "Task inviato con successo"
         return JSONResponse(status_code=202, content=response_payload)
 
     @app.get(path="/tasks/{task_id}", name="get_router_task_status")
@@ -1404,7 +1404,7 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
                 status_code=202,
                 content={
                     **task.to_status_payload(request),
-                    "message": "Task result is not ready yet",
+                    "message": "Il risultato del task non è ancora pronto",
                 },
             )
         if task.status == TASK_FAILED:
@@ -1412,7 +1412,7 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
                 status_code=409,
                 content={
                     **task.to_status_payload(request),
-                    "message": "Task execution failed",
+                    "message": "Esecuzione del task fallita",
                 },
             )
         return await proxy_router_task_result(request, task)
@@ -1431,7 +1431,7 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
                 status_code=409,
                 content={
                     **router_task.to_status_payload(request),
-                    "message": "Task execution failed",
+                    "message": "Esecuzione del task fallita",
                 },
             )
 
@@ -1532,8 +1532,8 @@ def main(
     warn_if_public_http_client_policy(host, allow_public_http_client)
 
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
-    print(f"Start MinerU Router Service: http://{host}:{port}")
-    print(f"API documentation: http://{host}:{port}/docs")
+    print(f"Avvio del Servizio Router MinerU: http://{host}:{port}")
+    print(f"Documentazione API: http://{host}:{port}/docs")
 
     if reload:
         uvicorn.run(

@@ -169,7 +169,7 @@ def read_fn(path, file_suffix: str | None = None):
         elif file_suffix in pdf_suffixes + office_suffixes:
             return file_bytes
         else:
-            raise Exception(f"Unknown file suffix: {file_suffix}")
+            raise Exception(f"Estensione del file sconosciuta: {file_suffix}")
 
 
 def prepare_env(output_dir, pdf_file_name, parse_method):
@@ -234,19 +234,19 @@ def _process_output(
     elif process_mode in office_suffixes:
         make_func = office_union_make
     else:
-        raise Exception(f"Unknown process_mode: {process_mode}")
+        raise Exception(f"Modalità di elaborazione sconosciuta: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
         try:
             draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
         except Exception as exc:
-            logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
+            logger.warning(f"Salto la visualizzazione dei bbox del layout per {pdf_file_name}: {exc}")
 
     if f_draw_span_bbox:
         try:
             draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
         except Exception as exc:
-            logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
+            logger.warning(f"Salto la visualizzazione dei bbox degli span per {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
         if process_mode in ["pipeline", "vlm"]:
@@ -346,7 +346,7 @@ def _process_pipeline(
             )
             logger.debug(f"Pipeline output complete: doc{doc_index}")
         except Exception:
-            logger.exception(f"Pipeline output failed: doc{doc_index}")
+            logger.exception(f"Output della Pipeline fallito: doc{doc_index}")
             raise
 
     with ThreadPoolExecutor(max_workers=1) as output_executor:
@@ -746,7 +746,7 @@ async def aio_do_parse(
         del pdf_file_names[index]
         del p_lang_list[index]
     if not pdf_bytes_list:
-        logger.warning("No valid PDF or image files to process.")
+        logger.warning("Nessun file PDF o immagine valido da elaborare.")
         return
 
     # 预处理PDF字节数据
