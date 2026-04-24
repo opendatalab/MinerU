@@ -224,9 +224,16 @@ class LiveTaskStatusRenderer:
 
     @staticmethod
     def _build_render_line_locked(state: LiveTaskStatusState) -> str:
-        parts = [f"status={state.status}"]
+        status_map = {
+            "pending": "in attesa",
+            "processing": "in elaborazione",
+            "completed": "completato",
+            "failed": "fallito"
+        }
+        status_text = status_map.get(state.status, state.status)
+        parts = [f"stato={status_text}"]
         if state.status == "pending" and state.queued_ahead is not None:
-            parts.append(f"ahead={state.queued_ahead}")
+            parts.append(f"in coda={state.queued_ahead}")
         parts.append(f"task_id={state.task_id}")
         return f"{LiveTaskStatusRenderer._build_bar(state.frame_step)} {' | '.join(parts)}"
 
@@ -272,7 +279,7 @@ def normalize_base_url(url: str) -> str:
 
 def format_task_label(task: PlannedTask) -> str:
     doc_names = ", ".join(doc.stem for doc in task.documents)
-    return f"task#{task.index} [{doc_names}]"
+    return f"attività#{task.index} [{doc_names}]"
 
 
 def format_task_log_label(task: PlannedTask, max_documents: int = 3) -> str:
@@ -281,11 +288,11 @@ def format_task_log_label(task: PlannedTask, max_documents: int = 3) -> str:
 
     visible_names = ", ".join(doc.stem for doc in task.documents[:max_documents])
     hidden_count = len(task.documents) - max_documents
-    return f"task#{task.index} [{visible_names}, +{hidden_count} more]"
+    return f"attività#{task.index} [{visible_names}, altri +{hidden_count}]"
 
 
 def format_count(value: int, singular: str, plural: Optional[str] = None) -> str:
-    unit = singular if value == 1 else (plural or f"{singular}s")
+    unit = singular if value == 1 else (plural or (f"{singular}i" if singular.endswith('o') else f"{singular}e"))
     return f"{value} {unit}"
 
 
@@ -294,10 +301,10 @@ def format_task_submission_message(
     progress: TaskExecutionProgress,
 ) -> str:
     return (
-        f"Submitting batch {task.index}/{progress.total_tasks} | "
-        f"{format_count(len(task.documents), 'document')}, "
-        f"{format_count(task.total_pages, 'page')} in this batch | "
-        f"{format_count(progress.total_pages, 'page')} total | "
+        f"Invio del lotto {task.index}/{progress.total_tasks} | "
+        f"{format_count(len(task.documents), 'documento', 'documenti')}, "
+        f"{format_count(task.total_pages, 'pagina', 'pagine')} in questo lotto | "
+        f"{format_count(progress.total_pages, 'pagina', 'pagine')} totali | "
         f"{format_task_log_label(task)}"
     )
 
@@ -308,12 +315,12 @@ def format_task_completion_message(
     completed_tasks: int,
     completed_pages: int,
 ) -> str:
-    batch_word = "batch" if progress.total_tasks == 1 else "batches"
-    page_word = "page" if progress.total_pages == 1 else "pages"
+    batch_word = "lotto" if progress.total_tasks == 1 else "lotti"
+    page_word = "pagina" if progress.total_pages == 1 else "pagine"
     return (
-        f"Completed batch {task.index}/{progress.total_tasks} | "
-        f"Processed {completed_pages}/{progress.total_pages} {page_word} | "
-        f"{completed_tasks} of {progress.total_tasks} {batch_word} finished | "
+        f"Completato lotto {task.index}/{progress.total_tasks} | "
+        f"Elaborate {completed_pages}/{progress.total_pages} {page_word} | "
+        f"{completed_tasks} su {progress.total_tasks} {batch_word} terminati | "
         f"{format_task_log_label(task)}"
     )
 
@@ -347,7 +354,7 @@ def create_visualization_context() -> Optional[VisualizationContext]:
             futures=[],
         )
     except Exception as exc:
-        logger.warning(f"Failed to start visualization worker process: {exc}")
+        logger.warning(f"Impossibile avviare il processo di visualizzazione: {exc}")
         return None
 
 
@@ -383,12 +390,12 @@ def log_visualization_future_result(
     try:
         result = future.result()
     except Exception as exc:
-        logger.warning(f"Skipping visualization for {job.document_stem}: {exc}")
+        logger.warning(f"Salto la visualizzazione per {job.document_stem}: {exc}")
         return
 
     if result.status != "finished":
         logger.warning(
-            f"Skipping visualization for {result.document_stem}: {result.message}"
+            f"Salto la visualizzazione per {result.document_stem}: {result.message}"
         )
 
 
@@ -406,7 +413,7 @@ def queue_visualization_jobs(
         try:
             future = visualization_context.executor.submit(run_visualization_job, job)
         except Exception as exc:
-            logger.warning(f"Skipping visualization for {job.document_stem}: {exc}")
+            logger.warning(f"Salto la visualizzazione per {job.document_stem}: {exc}")
             continue
 
         future.add_done_callback(
@@ -479,13 +486,13 @@ def probe_pdf_effective_pages(
         close_pdfium_document(pdf_doc)
 
     if page_count <= 0:
-        raise click.ClickException(f"PDF has no pages: {path}")
+        raise click.ClickException(f"Il PDF non ha pagine: {path}")
 
     effective_end_page_id = get_end_page_id(end_page_id, page_count)
     if start_page_id > effective_end_page_id:
         raise click.ClickException(
-            f"Requested page range is empty for PDF {path}: "
-            f"start={start_page_id}, end={end_page_id}"
+            f"L'intervallo di pagine richiesto è vuoto per il PDF {path}: "
+            f"inizio={start_page_id}, fine={end_page_id}"
         )
     return effective_end_page_id - start_page_id + 1
 
@@ -527,7 +534,7 @@ def collect_input_documents(
         )
 
     if not collected:
-        raise click.ClickException(f"No supported documents found under {input_path}")
+        raise click.ClickException(f"Nessun documento supportato trovato in {input_path}")
 
     normalized_stems, renamed_stems = uniquify_task_stems(
         [document.stem for document in collected]
@@ -539,7 +546,7 @@ def collect_input_documents(
             if document.stem != effective_stem
         )
         logger.warning(
-            f"Normalized duplicate document stems within this run: {rename_details}"
+            f"Normalizzati i nomi dei documenti duplicati in questa esecuzione: {rename_details}"
         )
         return [
             InputDocument(
@@ -821,7 +828,7 @@ async def run_planned_task(
         )
     except Exception as exc:
         logger.warning(
-            f"Skipping visualization for {format_task_log_label(planned_task)}: {exc}"
+            f"Salto la visualizzazione per {format_task_log_label(planned_task)}: {exc}"
         )
     else:
         queue_visualization_jobs(
@@ -846,9 +853,9 @@ async def run_orchestrated_cli(
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
     if start_page_id < 0:
-        raise click.ClickException("--start must be greater than or equal to 0")
+        raise click.ClickException("--start deve essere maggiore o uguale a 0")
     if end_page_id is not None and end_page_id < 0:
-        raise click.ClickException("--end must be greater than or equal to 0")
+        raise click.ClickException("--end deve essere maggiore o uguale a 0")
     if api_url is None:
         try:
             ensure_backend_dependencies(backend)
@@ -871,7 +878,7 @@ async def run_orchestrated_cli(
             if api_url is None:
                 local_server = LocalAPIServer(extra_cli_args=extra_cli_args)
                 base_url = local_server.start()
-                logger.info(f"Started local mineru-api at {base_url}")
+                logger.info(f"Avviato mineru-api locale su {base_url}")
                 server_health = await wait_for_local_api_ready(http_client, local_server)
                 effective_max_concurrent_requests = (
                     server_health.max_concurrent_requests
@@ -936,7 +943,7 @@ async def run_orchestrated_cli(
                     for failure in sorted(failures, key=lambda item: item.task_index)
                 )
                 raise click.ClickException(
-                    f"{len(failures)} task(s) failed while processing documents:\n{details}"
+                    f"{len(failures)} attività fallite durante l'elaborazione dei documenti:\n{details}"
                 )
         finally:
             try:
@@ -953,14 +960,14 @@ async def run_orchestrated_cli(
 
 @click.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
 @click.pass_context
-@click.version_option(__version__, "--version", "-v", help="display the version and exit")
+@click.version_option(__version__, "--version", "-v", help="mostra la versione ed esci")
 @click.option(
     "-p",
     "--path",
     "input_path",
     type=click.Path(exists=True, path_type=Path),
     required=True,
-    help="local filepath or directory. support pdf, image, docx, pptx, xlsx files",
+    help="percorso file locale o directory. supporta file pdf, immagini, docx, pptx, xlsx",
 )
 @click.option(
     "-o",
@@ -968,14 +975,14 @@ async def run_orchestrated_cli(
     "output_dir",
     type=click.Path(path_type=Path),
     required=True,
-    help="output local directory",
+    help="directory locale di output",
 )
 @click.option(
     "--api-url",
     "api_url",
     type=str,
     default=None,
-    help="MinerU FastAPI base URL. If omitted, mineru starts a temporary local mineru-api service.",
+    help="URL base di MinerU FastAPI. Se omesso, mineru avvia un servizio mineru-api locale temporaneo.",
 )
 @click.option(
     "-m",
@@ -984,12 +991,12 @@ async def run_orchestrated_cli(
     type=click.Choice(["auto", "txt", "ocr"]),
     default="auto",
     help="""\b
-    the method for parsing pdf:
-      auto: Automatically determine the method based on the file type.
-      txt: Use text extraction method.
-      ocr: Use OCR method for image-based PDFs.
-    Without method specified, 'auto' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.""",
+    il metodo per il parsing del pdf:
+      auto: Determina automaticamente il metodo in base al tipo di file.
+      txt: Usa il metodo di estrazione del testo.
+      ocr: Usa il metodo OCR per i PDF basati su immagini.
+    Senza un metodo specificato, 'auto' verrà usato per impostazione predefinita.
+    Adattato solo per i casi in cui il backend è impostato su 'pipeline' e 'hybrid-*'.""",
 )
 @click.option(
     "-b",
@@ -1006,13 +1013,13 @@ async def run_orchestrated_cli(
     ),
     default="hybrid-auto-engine",
     help="""\b
-    the backend for parsing pdf:
-      pipeline: More general.
-      vlm-auto-engine: High accuracy via local computing power.
-      vlm-http-client: High accuracy via remote computing power(client suitable for openai-compatible servers).
-      hybrid-auto-engine: Next-generation high accuracy solution via local computing power.
-      hybrid-http-client: High accuracy but requires a little local computing power(client suitable for openai-compatible servers).
-    Without method specified, hybrid-auto-engine will be used by default.""",
+    il backend per il parsing del pdf:
+      pipeline: Più generico.
+      vlm-auto-engine: Alta precisione tramite potenza di calcolo locale.
+      vlm-http-client: Alta precisione tramite potenza di calcolo remota (client adatto per server compatibili con openai).
+      hybrid-auto-engine: Soluzione ad alta precisione di nuova generazione tramite potenza di calcolo locale.
+      hybrid-http-client: Alta precisione ma richiede un po' di potenza di calcolo locale (client adatto per server compatibili con openai).
+    Senza un metodo specificato, hybrid-auto-engine verrà usato per impostazione predefinita.""",
 )
 @click.option(
     "-l",
@@ -1041,9 +1048,9 @@ async def run_orchestrated_cli(
     ),
     default="ch",
     help="""
-    Input the languages in the pdf (if known) to improve OCR accuracy.
-    Without languages specified, 'ch' will be used by default.
-    Adapted only for the case where the backend is set to 'pipeline' and 'hybrid-*'.
+    Specifica la lingua del pdf (se nota) per migliorare la precisione dell'OCR.
+    Senza lingue specificate, 'ch' verrà usato per impostazione predefinita.
+    Adattato solo per i casi in cui il backend è impostato su 'pipeline' e 'hybrid-*'.
     """,
 )
 @click.option(
@@ -1053,7 +1060,7 @@ async def run_orchestrated_cli(
     type=str,
     default=None,
     help="""
-    When the backend is `<vlm/hybrid>-http-client`, you need to specify the server_url, for example:`http://127.0.0.1:30000`
+    Quando il backend è `<vlm/hybrid>-http-client`, è necessario specificare server_url, ad esempio: `http://127.0.0.1:30000`
     """,
 )
 @click.option(
@@ -1062,7 +1069,7 @@ async def run_orchestrated_cli(
     "start_page_id",
     type=int,
     default=0,
-    help="The starting page for PDF parsing, beginning from 0.",
+    help="La pagina iniziale per il parsing del PDF, a partire da 0.",
 )
 @click.option(
     "-e",
@@ -1070,7 +1077,7 @@ async def run_orchestrated_cli(
     "end_page_id",
     type=int,
     default=None,
-    help="The ending page for PDF parsing, beginning from 0.",
+    help="La pagina finale per il parsing del PDF, a partire da 0.",
 )
 @click.option(
     "-f",
@@ -1078,7 +1085,7 @@ async def run_orchestrated_cli(
     "formula_enable",
     type=bool,
     default=True,
-    help="Enable formula parsing. Default is True. ",
+    help="Abilita il parsing delle formule. Predefinito è True.",
 )
 @click.option(
     "-t",
@@ -1086,7 +1093,7 @@ async def run_orchestrated_cli(
     "table_enable",
     type=bool,
     default=True,
-    help="Enable table parsing. Default is True. ",
+    help="Abilita il parsing delle tabelle. Predefinito è True.",
 )
 def main(
     ctx: click.Context,

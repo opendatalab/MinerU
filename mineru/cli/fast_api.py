@@ -257,7 +257,7 @@ def create_app():
     app.state.max_concurrent_requests = max_concurrent_requests
     _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
     if is_main_multiprocessing_process():
-        logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+        logger.info(f"Concorrenza delle richieste limitata a {max_concurrent_requests}")
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.state.public_bind_exposed = env_flag_enabled(
@@ -377,7 +377,7 @@ def validate_parse_method(parse_method: str) -> str:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Invalid parse_method. Allowed values: "
+                "Metodo di parsing non valido. Valori consentiti: "
                 + ", ".join(sorted(ALLOWED_PARSE_METHODS))
             ),
         )
@@ -1526,16 +1526,16 @@ async def health_check():
                 "status": "unhealthy",
                 "version": __version__,
                 "error": (
-                    "Task manager is not initialized"
+                    "Il gestore dei task non è inizializzato"
                     if task_manager is None
                     else task_manager.last_worker_error
                     or (
-                        "Task cleanup loop is not running"
+                        "Il ciclo di pulizia dei task non è in esecuzione"
                         if (
                             task_manager.task_retention_seconds > 0
                             and task_manager.cleanup_task is None
                         )
-                        else "Task dispatcher is not running"
+                        else "Il dispatcher dei task non è in esecuzione"
                     )
                 ),
             },
@@ -1563,15 +1563,15 @@ async def health_check():
     context_settings=dict(ignore_unknown_options=True, allow_extra_args=True)
 )
 @click.pass_context
-@click.option("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
-@click.option("--port", default=8000, type=int, help="Server port (default: 8000)")
-@click.option("--reload", is_flag=True, help="Enable auto-reload (development mode)")
+@click.option("--host", default="127.0.0.1", help="Host del server (predefinito: 127.0.0.1)")
+@click.option("--port", default=8000, type=int, help="Porta del server (predefinito: 8000)")
+@click.option("--reload", is_flag=True, help="Abilita l'auto-reload (modalità sviluppo)")
 @click.option(
     "--allow-public-http-client",
     is_flag=True,
     help=(
-        "Allow *-http-client backends and server_url even when binding the API to "
-        "0.0.0.0 or ::."
+        "Consenti i backend *-http-client e server_url anche quando si associa l'API a "
+        "0.0.0.0 o ::."
     ),
 )
 @click.option(
@@ -1579,7 +1579,7 @@ async def health_check():
     "enable_vlm_preload",
     type=bool,
     default=False,
-    help="Preload the local VLM model during mineru-api startup.",
+    help="Precarica il modello VLM locale durante l'avvio di mineru-api.",
 )
 def main(
     ctx,
@@ -1613,8 +1613,8 @@ def main(
     warn_if_public_http_client_policy(host, allow_public_http_client)
     access_log = not env_flag_enabled("MINERU_API_DISABLE_ACCESS_LOG")
 
-    print(f"Start MinerU FastAPI Service: http://{host}:{port}")
-    print(f"API documentation: http://{host}:{port}/docs")
+    print(f"Avvio del servizio MinerU FastAPI: http://{host}:{port}")
+    print(f"Documentazione API: http://{host}:{port}/docs")
 
     if reload:
         uvicorn.run(

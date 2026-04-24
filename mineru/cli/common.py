@@ -50,10 +50,10 @@ class HybridDependencyError(RuntimeError):
 
 def build_hybrid_dependency_error_message(backend: str) -> str:
     return (
-        f"`{backend}` requires local pipeline dependencies (`mineru[pipeline]`, "
-        "including `torch`). Install `mineru[pipeline]` or `mineru[core]`. "
-        "If you need a lightweight remote client without local `torch`, "
-        "use `vlm-http-client` instead."
+        f"`{backend}` richiede le dipendenze locali della pipeline (`mineru[pipeline]`, "
+        "incluso `torch`). Installa `mineru[pipeline]` o `mineru[core]`. "
+        "Se hai bisogno di un client remoto leggero senza `torch` locale, "
+        "usa invece `vlm-http-client`."
     )
 
 
@@ -189,11 +189,11 @@ def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
         )
         if rebuilt_pdf_bytes:
             return rebuilt_pdf_bytes
-        logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
+        logger.warning("La riscrittura di PDFium ha restituito byte vuoti, utilizzo dei byte PDF originali.")
     except Exception as fallback_error:
         logger.warning(
-            f"Error in converting PDF bytes with pdfium: {fallback_error}, "
-            "using original PDF bytes."
+            f"Errore nella conversione dei byte PDF con pdfium: {fallback_error}, "
+            "utilizzo dei byte PDF originali."
         )
     return pdf_bytes
 
@@ -654,7 +654,7 @@ def do_parse(
         del pdf_file_names[index]
         del p_lang_list[index]
     if not pdf_bytes_list:
-        logger.warning("No valid PDF or image files to process.")
+        logger.warning("Nessun file PDF o immagine valido da elaborare.")
         return
 
     # 预处理PDF字节数据
