@@ -420,8 +420,9 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
         }
     elif para_type == BlockType.IMAGE:
         para_content = {'type': ContentType.IMAGE, 'img_path': '', BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
-        image_path, _ = get_body_data(para_block)
+        image_path, image_content = get_body_data(para_block)
         para_content['img_path'] = _build_media_path(img_buket_path, image_path)
+        para_content['content'] = image_content if image_content else ''
         _apply_visual_sub_type(para_content, para_block)
         for block in para_block['blocks']:
             if block['type'] == BlockType.IMAGE_CAPTION:
@@ -560,7 +561,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
     elif para_type == BlockType.IMAGE:
         image_caption = []
         image_footnote = []
-        image_path, _ = get_body_data(para_block)
+        image_path, image_content = get_body_data(para_block)
         image_source = {
             'path': _build_media_path(img_buket_path, image_path),
         }
@@ -573,6 +574,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
             'type': ContentTypeV2.IMAGE,
             'content': {
                 'image_source': image_source,
+                'content': image_content if image_content else '',
                 'image_caption': image_caption,
                 'image_footnote': image_footnote,
             }
