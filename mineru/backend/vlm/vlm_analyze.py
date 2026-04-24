@@ -262,6 +262,21 @@ class ModelSingleton:
         gc.collect()
 
 
+async def _get_model_async(
+    backend: str,
+    model_path: str | None,
+    server_url: str | None,
+    **kwargs,
+) -> MinerUClient:
+    return await asyncio.to_thread(
+        ModelSingleton().get_model,
+        backend,
+        model_path,
+        server_url,
+        **kwargs,
+    )
+
+
 def _iter_shutdown_candidates(predictor: MinerUClient):
     runtime_handles = getattr(predictor, "_mineru_runtime_handles", {})
     client = getattr(predictor, "client", None)
@@ -507,7 +522,7 @@ async def aio_doc_analyze(
     **kwargs,
 ):
     if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+        predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
