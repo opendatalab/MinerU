@@ -698,7 +698,7 @@ def do_parse(
                 backend = get_vlm_engine(inference_engine='auto', is_async=False)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
-            os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
 
             _process_hybrid(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
@@ -790,7 +790,7 @@ async def aio_do_parse(
                 backend = get_vlm_engine(inference_engine='auto', is_async=True)
 
             os.environ['MINERU_VLM_TABLE_ENABLE'] = str(table_enable)
-            os.environ['MINERU_VLM_FORMULA_ENABLE'] = "true"
+            os.environ['MINERU_VLM_FORMULA_ENABLE'] = str(formula_enable)
 
             await _async_process_hybrid(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
