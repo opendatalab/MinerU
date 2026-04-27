@@ -6,7 +6,6 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Optional, Union, Any, Final, Iterator
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from PIL import Image
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -24,11 +23,9 @@ from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.utils.docx_formatting import Formatting, Script
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.backend.utils.office_image import (
-    is_vector_image,
-    serialize_vector_image_with_placeholder,
+    serialize_office_image,
 )
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
-from mineru.utils.pdf_reader import image_to_b64str
 
 class DocxConverter:
     _BLIP_NAMESPACES: Final = {
@@ -1260,24 +1257,22 @@ class DocxConverter:
                 )
             return rel_id
 
-        def get_docx_image(image: Any) -> Optional[bytes]:
+        def get_docx_image_part(image: Any) -> Optional[Any]:
             """
-            获取 DOCX 图像数据。
+            获取 DOCX 图像 part。
 
             Args:
                 image: 单个 blip 元素
 
             Returns:
 
-                Optional[bytes]: 图像数据
+                Optional[Any]: 图像 part
             """
-            image_data: Optional[bytes] = None
             rId = get_docx_image_rel_id(image)
             if rId in self.docx_obj.part.rels:
                 # 使用关系 ID 访问图像部分
-                image_part = self.docx_obj.part.rels[rId].target_part
-                image_data = image_part.blob  # 获取二进制图像数据
-            return image_data
+                return self.docx_obj.part.rels[rId].target_part
+            return None
 
         seen_rel_ids: set[str] = set()
         # 遍历所有图片引用元素，支持 DrawingML blip 和 VML imagedata。
@@ -1287,27 +1282,24 @@ class DocxConverter:
                 continue
             if rel_id:
                 seen_rel_ids.add(rel_id)
-            image_data: Optional[bytes] = get_docx_image(image)
-            if image_data is None:
+            image_part = get_docx_image_part(image)
+            if image_part is None:
                 logger.warning("Warning: image cannot be found")
-            else:
-                image_bytes = BytesIO(image_data)
-                pil_image = Image.open(image_bytes)
-                if is_vector_image(pil_image):
-                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
-                else:
-                    # 处理常规图片
-                    if pil_image.mode != "RGB":
-                        # RGBA, P, L 等模式保留原貌并存为 PNG (PNG支持透明度)
-                        img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                    else:
-                        # 纯 RGB 图片存为 JPEG 以减小体积
-                        img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                image_block = {
-                    "type": BlockType.IMAGE,
-                    "content": img_base64,
-                }
-                self.cur_page.append(image_block)
+                continue
+
+            img_base64 = serialize_office_image(
+                image_part.blob,
+                part_name=getattr(image_part, "partname", None),
+                content_type=getattr(image_part, "content_type", None),
+            )
+            if img_base64 is None:
+                continue
+
+            image_block = {
+                "type": BlockType.IMAGE,
+                "content": img_base64,
+            }
+            self.cur_page.append(image_block)
 
     def _get_paragraph_elements(self, paragraph: Paragraph):
         """
@@ -1964,6 +1956,8 @@ class DocxConverter:
         content_text = self._build_text_with_equations_and_hyperlinks(
             elements, text, equations
         )
+        if content_text == "":
+            return None
 
         # 确定列表属性
         list_attribute = "ordered" if is_numbered else "unordered"
@@ -2012,6 +2006,22 @@ class DocxConverter:
                 "ilevel": ilevel,
             }
 
+            if not self.list_block_stack:
+                logger.warning(
+                    "Missing DOCX list parent for increased indent; "
+                    f"numid={numid}, ilevel={ilevel}. Starting a new list block."
+                )
+                self.cur_page.append(child_list_block)
+                self.list_block_stack.append(child_list_block)
+                child_list_block["content"].append(
+                    {
+                        "type": BlockType.TEXT,
+                        "content": content_text,
+                    }
+                )
+                self.pre_ilevel = ilevel
+                return None
+
             # 获取栈顶的列表块，将子列表直接添加到其content中
             parent_list_block = self.list_block_stack[-1]
             parent_list_block["content"].append(child_list_block)
@@ -2041,7 +2051,21 @@ class DocxConverter:
                 if top_list_block["ilevel"] == ilevel:
                     break
                 self.list_block_stack.pop()
-            list_block = self.list_block_stack[-1]
+            if not self.list_block_stack:
+                logger.warning(
+                    "Malformed DOCX list nesting; "
+                    f"numid={numid}, ilevel={ilevel}. Starting a new list block."
+                )
+                list_block = {
+                    "type": BlockType.LIST,
+                    "attribute": list_attribute,
+                    "content": [],
+                    "ilevel": ilevel,
+                }
+                self.cur_page.append(list_block)
+                self.list_block_stack.append(list_block)
+            else:
+                list_block = self.list_block_stack[-1]
 
             list_item = {
                 "type": BlockType.TEXT,
@@ -2052,9 +2076,22 @@ class DocxConverter:
 
         # 情况 4: 同级列表项（相同缩进）
         elif self.pre_num_id == numid and self.pre_ilevel == ilevel:
-            # 获取栈顶的列表块
-            list_block = self.list_block_stack[-1]
-
+            if not self.list_block_stack:
+                logger.warning(
+                    "Missing DOCX list block for same indent; "
+                    f"numid={numid}, ilevel={ilevel}. Starting a new list block."
+                )
+                list_block = {
+                    "type": BlockType.LIST,
+                    "attribute": list_attribute,
+                    "content": [],
+                    "ilevel": ilevel,
+                }
+                self.cur_page.append(list_block)
+                self.list_block_stack.append(list_block)
+            else:
+                # 获取栈顶的列表块
+                list_block = self.list_block_stack[-1]
 
             list_item = {
                 "type": BlockType.TEXT,
