@@ -88,6 +88,7 @@ class DocxConverter:
         )  # 列表计数器 (numId, ilvl) -> count
         self.index_block_stack: list = []  # 目录索引块堆栈
         self.pre_index_ilevel: int = -1  # 上一个目录项的缩进等级
+        self.plain_toc_base_level: Optional[int] = None  # 普通目录段落的起始层级
         self.heading_list_numids: set = set()  # 用作章节标题的列表numId集合
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.processed_textbox_elements: list = []
@@ -564,6 +565,7 @@ class DocxConverter:
         self.list_counters = {}
         self.index_block_stack = []
         self.pre_index_ilevel = -1
+        self.plain_toc_base_level = None
         self.heading_list_numids = set()
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
@@ -582,6 +584,12 @@ class DocxConverter:
         self.pages.append(self.cur_page)
         self._walk_linear(self.docx_obj.element.body)
         self._add_header_footer(self.docx_obj)
+
+    def _reset_index_state(self) -> None:
+        """重置目录索引栈，避免相隔的多个目录块被错误合并。"""
+        self.index_block_stack = []
+        self.pre_index_ilevel = -1
+        self.plain_toc_base_level = None
 
     def _collect_toc_anchor_set(self) -> set[str]:
         """Collect TOC hyperlink anchors from the entire document body."""
@@ -1059,6 +1067,16 @@ class DocxConverter:
         if text is None:
             return None
         text = text.strip()
+
+        if self._handle_plain_toc_paragraph_as_index(
+            paragraph=paragraph,
+            paragraph_element=element,
+            paragraph_elements=paragraph_elements,
+            text=text,
+            equations=equations,
+        ):
+            return None
+        self._reset_index_state()
 
         # 常见的项目符号和编号列表样式。
         # "List Bullet", "List Number", "List Paragraph"
@@ -2468,6 +2486,42 @@ class DocxConverter:
                 return anchor
         return anchors[0]
 
+    def _handle_plain_toc_paragraph_as_index(
+        self,
+        *,
+        paragraph: Paragraph,
+        paragraph_element: BaseOxmlElement,
+        paragraph_elements: list,
+        text: str,
+        equations: list,
+    ) -> bool:
+        """将未包裹在 SDT 中的普通目录段落转换为 INDEX 项。"""
+        toc_level = self._get_toc_item_level(paragraph)
+        if toc_level is None:
+            return False
+        if not text:
+            return True
+
+        target_anchor = self._extract_toc_target_anchor(paragraph_element)
+        # 只有已经进入目录序列后才允许无锚点条目，避免误收复用 TOC 样式的封面文本。
+        if not target_anchor and self.pre_index_ilevel == -1:
+            return False
+        if target_anchor and target_anchor.startswith("_Toc"):
+            self.toc_anchor_set.add(target_anchor)
+
+        if self.plain_toc_base_level is None:
+            self.plain_toc_base_level = toc_level
+        normalized_level = max(0, toc_level - self.plain_toc_base_level)
+        corrected_level = self._correct_toc_level_by_text(normalized_level, text)
+        self._add_index_item(
+            ilevel=corrected_level,
+            elements=paragraph_elements,
+            text=text,
+            equations=equations,
+            anchor=target_anchor,
+        )
+        return True
+
     def _handle_sdt_as_index(self, sdt_content: BaseOxmlElement) -> None:
         """
         处理目录SDT内容，将其转换为层级化的INDEX块。
@@ -2516,8 +2570,7 @@ class DocxConverter:
         is_flat = self._is_flat_list_toc(toc_items)
 
         # 重置索引状态，开始新的目录块
-        self.index_block_stack = []
-        self.pre_index_ilevel = -1
+        self._reset_index_state()
 
         for toc_level, text, elements, equations, target_anchor in toc_items:
             if is_flat:
@@ -2536,8 +2589,7 @@ class DocxConverter:
             )
 
         # 处理完成后重置索引状态
-        self.index_block_stack = []
-        self.pre_index_ilevel = -1
+        self._reset_index_state()
 
     def _get_heading_and_level(self, style_label: str) -> tuple[str, Optional[int]]:
         """
