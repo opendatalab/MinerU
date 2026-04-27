@@ -23,6 +23,7 @@ from mineru.backend.vlm.vlm_analyze import (
     aio_predictor_execution_guard,
     predictor_execution_guard,
     _maybe_enable_serial_execution,
+    _get_model_async,
 )
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.config_reader import get_device, get_processing_window_size
@@ -681,7 +682,7 @@ async def aio_doc_analyze(
     **kwargs,
 ):
     if predictor is None:
-        predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
+        predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
 
     device = get_device()

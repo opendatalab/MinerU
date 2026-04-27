@@ -837,31 +837,38 @@ def submit_parse_task_sync(
     upload_assets: Sequence[UploadAsset],
     form_data: dict[str, str | list[str]],
 ) -> SubmitResponse:
-    with httpx.Client(timeout=build_http_timeout(), follow_redirects=True) as sync_client:
-        with ExitStack() as stack:
-            files = []
-            for upload_asset in upload_assets:
-                mime_type = (
-                    mimetypes.guess_type(upload_asset.upload_name)[0]
-                    or "application/octet-stream"
-                )
-                file_handle = stack.enter_context(open(upload_asset.path, "rb"))
-                files.append(
-                    (
-                        "files",
-                        (
-                            upload_asset.upload_name,
-                            file_handle,
-                            mime_type,
-                        ),
+    task_url = f"{base_url}{TASKS_ENDPOINT}"
+    try:
+        with httpx.Client(timeout=build_http_timeout(), follow_redirects=True) as sync_client:
+            with ExitStack() as stack:
+                files = []
+                for upload_asset in upload_assets:
+                    mime_type = (
+                        mimetypes.guess_type(upload_asset.upload_name)[0]
+                        or "application/octet-stream"
                     )
-                )
+                    file_handle = stack.enter_context(open(upload_asset.path, "rb"))
+                    files.append(
+                        (
+                            "files",
+                            (
+                                upload_asset.upload_name,
+                                file_handle,
+                                mime_type,
+                            ),
+                        )
+                    )
 
-            response = sync_client.post(
-                f"{base_url}{TASKS_ENDPOINT}",
-                data=form_data,
-                files=files,
-            )
+                response = sync_client.post(
+                    task_url,
+                    data=form_data,
+                    files=files,
+                )
+    except httpx.TimeoutException as exc:
+        raise click.ClickException(
+            f"Timed out submitting parsing task to {task_url}. "
+            "The server may still be starting up or initializing the model."
+        ) from exc
 
     if response.status_code != 202:
         raise click.ClickException(

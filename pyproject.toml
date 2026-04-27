@@ -88,6 +88,7 @@ lmdeploy = [
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
+    "mlx<=0.31.1",
 ]
 pipeline = [
     "dill>=0.3.8,<1",
