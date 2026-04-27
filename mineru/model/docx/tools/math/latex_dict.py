@@ -158,6 +158,7 @@ T = {
     "\u2127": "\\mho ",          # ℧ INVERTED OHM SIGN — pylatexenc: \textmho (textcomp, not in KaTeX/MathJax)
     "\u212e": "e",               # ℮ ESTIMATED SIGN — pylatexenc: \textestimated (no math equivalent; use 'e')
     "\u00c5": "\\mathring{A} ",  # Å LATIN CAPITAL LETTER A WITH RING — pylatexenc: \r{A} (text-mode only)
+    "\u2103": "\\text{°C}",       # ℃ DEGREE CELSIUS — pylatexenc: \textcelsius (textcomp, not in KaTeX/MathJax)
     # Multiplication/division operators (text-mode pylatexenc mappings overridden to math-mode)
     "\u00b7": "\\cdot ",   # MIDDLE DOT (·) — common in Chinese scientific notation
     "\u22c5": "\\cdot ",   # DOT OPERATOR (⋅)

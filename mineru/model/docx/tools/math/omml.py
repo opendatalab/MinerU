@@ -88,6 +88,13 @@ def get_val(key, default=None, store=CHR):
         return default
 
 
+def _normalize_latex_delimiter(delimiter):
+    """将 Word OMML 定界符字符转换为 LaTeX/KaTeX 可渲染的定界符。"""
+    if delimiter in ("\u2225", "\u2016"):
+        return r"\|"
+    return delimiter
+
+
 class Tag2Method:
     def call_method(self, elm, stag=None):
         getmethod = self.tag2meth.get
@@ -273,8 +280,12 @@ class oMath2Latex(Tag2Method):
         pr = c_dict["dPr"]
         null = D_DEFAULT.get("null")
 
-        s_val = get_val(pr.begChr, default=D_DEFAULT.get("left"), store=T)
-        e_val = get_val(pr.endChr, default=D_DEFAULT.get("right"), store=T)
+        s_val = _normalize_latex_delimiter(
+            get_val(pr.begChr, default=D_DEFAULT.get("left"), store=T)
+        )
+        e_val = _normalize_latex_delimiter(
+            get_val(pr.endChr, default=D_DEFAULT.get("right"), store=T)
+        )
         delim = pr.text + D.format(
             left=null if not s_val else escape_latex(s_val),
             text=c_dict["e"],
