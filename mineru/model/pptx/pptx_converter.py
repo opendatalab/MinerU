@@ -10,7 +10,7 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 from loguru import logger
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageFile, UnidentifiedImageError
 
 from mineru.utils.enum_class import BlockType
 from mineru.backend.utils.office_image import (
@@ -19,6 +19,7 @@ from mineru.backend.utils.office_image import (
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
+from mineru.model.pptx.package_normalizer import normalize_pptx_package
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -102,11 +103,29 @@ class PptxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        file_bytes = file_stream.read()
+        try:
+            self._convert_package_bytes(file_bytes)
+        except Exception as exc:
+            normalized_bytes = normalize_pptx_package(file_bytes)
+            if normalized_bytes == file_bytes:
+                raise
+            logger.warning(f"Retrying PPTX parsing after package normalization: {exc}")
+            self._convert_package_bytes(normalized_bytes)
+
+    def _reset_state(self) -> None:
+        """重置解析状态，确保失败重试时不会残留上一次半解析结果。"""
         self.pages = []
         self.cur_page = []
         self.list_block_stack = []
         self._shape_type_cache = {}
-        self.file_stream = file_stream
+        self.file_stream = None
+        self.pptx_obj = None
+
+    def _convert_package_bytes(self, file_bytes: bytes) -> None:
+        """用独立字节流解析 PPTX 包，便于原始包失败后用规范化包重试。"""
+        self._reset_state()
+        self.file_stream = BytesIO(file_bytes)
         self.pptx_obj = Presentation(self.file_stream)
         self.pages.append(self.cur_page)
         if self.pptx_obj:
@@ -683,25 +702,51 @@ class PptxConverter:
             self.cur_page.append(image_block)
             return
 
-        # 使用PIL打开图像
-        try:
-            pil_image = Image.open(BytesIO(image_bytes))
+        img_base64 = self._serialize_picture_image_best_effort(image_bytes)
+        if img_base64 is None:
+            return
 
-            if is_vector_image(pil_image):
-                img_base64 = serialize_vector_image_with_placeholder(pil_image)
-            else:
-                if pil_image.mode != "RGB":
-                    pil_image = pil_image.convert("RGB")
-                img_base64 = image_to_b64str(pil_image)
-            image_block = {
-                "type": BlockType.IMAGE,
-                "content": img_base64,
-            }
-            self.cur_page.append(image_block)
-
-        except (UnidentifiedImageError, OSError) as e:
-            logger.warning(f"Warning: image cannot be loaded by Pillow: {e}")
+        image_block = {
+            "type": BlockType.IMAGE,
+            "content": img_base64,
+        }
+        self.cur_page.append(image_block)
         return
+
+    @classmethod
+    def _serialize_picture_image_best_effort(cls, image_bytes: bytes) -> Optional[str]:
+        """尽量序列化图片；损坏图片失败时降级跳过，避免中断整份 PPTX。"""
+        try:
+            return cls._serialize_picture_image(image_bytes)
+        except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+            logger.warning(
+                f"Warning: image cannot be loaded by Pillow, retrying with truncated-image mode: {exc}"
+            )
+
+        previous_truncated_setting = ImageFile.LOAD_TRUNCATED_IMAGES
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
+        try:
+            return cls._serialize_picture_image(image_bytes)
+        except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+            logger.warning(f"Warning: image cannot be loaded by Pillow: {exc}")
+            return None
+        finally:
+            ImageFile.LOAD_TRUNCATED_IMAGES = previous_truncated_setting
+
+    @staticmethod
+    def _serialize_picture_image(image_bytes: bytes) -> str:
+        """将单张 Pillow 支持的图片转为 Markdown 可用的 base64 字符串。"""
+        pil_image = Image.open(BytesIO(image_bytes))
+
+        if is_vector_image(pil_image):
+            return serialize_vector_image_with_placeholder(pil_image)
+
+        if pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+        else:
+            pil_image.load()
+
+        return image_to_b64str(pil_image)
 
     @staticmethod
     def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
