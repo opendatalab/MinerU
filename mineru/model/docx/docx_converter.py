@@ -258,6 +258,17 @@ class DocxConverter:
         return "".join(result_parts) if result_parts else ""
 
     @staticmethod
+    def _normalize_text_block_content(content: str) -> str:
+        """
+        规范化普通文本块导出内容。
+
+        DOCX 常用段首/段尾空格模拟版式对齐，导出普通文本块前去除这些前后空白。
+        """
+        if not content:
+            return content
+        return content.strip()
+
+    @staticmethod
     def _split_paragraph_elements_at_eq_boundaries(
         paragraph_elements: list,
         non_eq_segments: list,
@@ -652,6 +663,9 @@ class DocxConverter:
                             # 从形状文本创建自定义文本元素
                             text_content = " ".join(
                                 [t.text for t in shape_text_elements if t.text]
+                            )
+                            text_content = self._normalize_text_block_content(
+                                text_content
                             )
                             if text_content.strip():
                                 logger.debug(
@@ -1194,13 +1208,15 @@ class DocxConverter:
                 content_text = self._build_text_with_equations_and_hyperlinks(
                     paragraph_elements, text, equations
                 )
-                text_with_inline_eq_block = {
-                    "type": BlockType.TEXT,
-                    "content": content_text,
-                }
-                if paragraph_anchor:
-                    text_with_inline_eq_block["anchor"] = paragraph_anchor
-                self.cur_page.append(text_with_inline_eq_block)
+                content_text = self._normalize_text_block_content(content_text)
+                if content_text != "":
+                    text_with_inline_eq_block = {
+                        "type": BlockType.TEXT,
+                        "content": content_text,
+                    }
+                    if paragraph_anchor:
+                        text_with_inline_eq_block["anchor"] = paragraph_anchor
+                    self.cur_page.append(text_with_inline_eq_block)
         elif p_style_id in [
             "Paragraph",
             "Normal",
@@ -1215,6 +1231,7 @@ class DocxConverter:
             content_text = self._build_text_with_equations_and_hyperlinks(
                 paragraph_elements, text, equations
             )
+            content_text = self._normalize_text_block_content(content_text)
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -1242,6 +1259,7 @@ class DocxConverter:
             content_text = self._build_text_with_equations_and_hyperlinks(
                 paragraph_elements, text, equations
             )
+            content_text = self._normalize_text_block_content(content_text)
             if content_text != "":
                 text_block = {
                     "type": BlockType.TEXT,
@@ -1974,6 +1992,7 @@ class DocxConverter:
         content_text = self._build_text_with_equations_and_hyperlinks(
             elements, text, equations
         )
+        content_text = self._normalize_text_block_content(content_text)
         if content_text == "":
             return None
 
@@ -2370,6 +2389,9 @@ class DocxConverter:
         content_text = self._build_text_with_equations_and_hyperlinks(
             elements, text, equations
         )
+        content_text = self._normalize_text_block_content(content_text)
+        if content_text == "":
+            return
 
         # 情况 1: 首个目录项，创建新的顶层索引块
         if self.pre_index_ilevel == -1:
