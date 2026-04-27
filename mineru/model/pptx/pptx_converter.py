@@ -1541,6 +1541,16 @@ class PptxConverter:
         )
 
     @staticmethod
+    def _normalize_contiguous_list_level(
+        raw_level: int,
+        base_level: int,
+    ) -> int:
+        """
+        将连续列表段的首个可见层级归一化为0级，避免缺失父级时输出代码块缩进。
+        """
+        return max(0, raw_level - base_level)
+
+    @staticmethod
     def _most_common_size(font_sizes: list[float]) -> Optional[float]:
         if not font_sizes:
             return None
@@ -1679,6 +1689,7 @@ class PptxConverter:
 
     def _handle_text_elements(self, shape):
         self.list_block_stack = []
+        list_level_base: Optional[int] = None
 
         # 遍历段落以构建文本
         for paragraph in shape.text_frame.paragraphs:
@@ -1689,9 +1700,14 @@ class PptxConverter:
                     self._build_paragraph_rich_text(paragraph, shape)
                 )
                 if rich_text:
+                    if list_level_base is None:
+                        list_level_base = list_info["level"]
                     self._append_list_item(
                         self.list_block_stack,
-                        list_info["level"],
+                        self._normalize_contiguous_list_level(
+                            list_info["level"],
+                            list_level_base,
+                        ),
                         list_info["attribute"],
                         rich_text,
                     )
@@ -1699,6 +1715,7 @@ class PptxConverter:
 
             # 段落不是列表项，关闭当前 shape 的列表上下文
             self.list_block_stack.clear()
+            list_level_base = None
 
             p_text = self._normalize_text_block_content(
                 self._build_paragraph_rich_text(paragraph, shape)
