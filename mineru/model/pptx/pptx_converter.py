@@ -286,14 +286,7 @@ class PptxConverter:
                 ):
                     self._handle_pictures(shape)
 
-            if not hasattr(shape, "text"):
-                return shape_blocks
-            if shape.text is None:
-                return shape_blocks
-            if len(shape.text.strip()) == 0:
-                return shape_blocks
-            if not shape.has_text_frame:
-                logger.warning("Warning: shape has text but not text_frame")
+            if not getattr(shape, "has_text_frame", False):
                 return shape_blocks
 
             self._handle_text_elements(shape)
@@ -421,15 +414,30 @@ class PptxConverter:
         return total_area
 
     @staticmethod
-    def _is_nonempty_text_shape(shape) -> bool:
+    def _shape_has_raw_text(shape) -> bool:
+        """通过shape底层XML判断是否有文本，避免数学公式触发python-pptx文本转换。"""
         if not getattr(shape, "has_text_frame", False):
             return False
 
-        text = getattr(shape, "text", None)
-        if text is None:
+        shape_xml = getattr(shape, "_element", None)
+        if shape_xml is None:
             return False
 
-        return len(text.strip()) > 0
+        text_tags = {
+            f"{{{DRAWINGML_NS}}}t",
+            f"{{{OMML_NS}}}t",
+        }
+        for text_node in shape_xml.iter():
+            if getattr(text_node, "tag", None) not in text_tags:
+                continue
+            if text_node.text and text_node.text.strip():
+                return True
+
+        return False
+
+    @staticmethod
+    def _is_nonempty_text_shape(shape) -> bool:
+        return PptxConverter._shape_has_raw_text(shape)
 
     def _is_small_picture(
         self,
@@ -547,11 +555,7 @@ class PptxConverter:
 
     @staticmethod
     def _should_skip_notes_shape(shape) -> bool:
-        if not getattr(shape, "has_text_frame", False):
-            return True
-
-        text = getattr(shape, "text", None)
-        if text is None or len(text.strip()) == 0:
+        if not PptxConverter._shape_has_raw_text(shape):
             return True
 
         if not getattr(shape, "is_placeholder", False):
@@ -741,12 +745,16 @@ class PptxConverter:
         if is_vector_image(pil_image):
             return serialize_vector_image_with_placeholder(pil_image)
 
-        if pil_image.mode != "RGB":
-            pil_image = pil_image.convert("RGB")
-        else:
+        if pil_image.mode == "RGB":
             pil_image.load()
+            return image_to_b64str(pil_image, image_format="JPEG")
 
-        return image_to_b64str(pil_image)
+        if pil_image.mode in {"RGBA", "LA"} or (
+            pil_image.mode == "P" and "transparency" in pil_image.info
+        ):
+            return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
+
+        return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")
 
     @staticmethod
     def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
@@ -769,6 +777,26 @@ class PptxConverter:
 
         return None
 
+    @staticmethod
+    def _has_blip_without_relationship(shape) -> bool:
+        """判断图片节点是否只有空blip，避免把空fallback误报为图片资源缺失。"""
+        if not hasattr(shape, "_element"):
+            return False
+
+        blips = [
+            *shape._element.findall(f".//{{{SVG_BLIP_NS}}}svgBlip"),
+            *shape._element.findall(f".//{{{DRAWINGML_NS}}}blip"),
+        ]
+        if not blips:
+            return False
+
+        for blip in blips:
+            if blip.get(f"{{{RELATIONSHIP_NS}}}embed") or blip.get(
+                f"{{{RELATIONSHIP_NS}}}link"
+            ):
+                return False
+        return True
+
     def _get_shape_image_data(self, shape) -> Optional[tuple[bytes, Optional[str]]]:
         relationship_id = None
         if hasattr(shape, "_element"):
@@ -784,6 +812,10 @@ class PptxConverter:
                 )
             else:
                 return image_bytes, getattr(image_part, "content_type", None)
+
+        if self._has_blip_without_relationship(shape):
+            logger.debug("Skipping PPTX picture with empty blip and no image relation")
+            return None
 
         try:
             image = shape.image
@@ -866,6 +898,26 @@ class PptxConverter:
             return run_xml.find("a:rPr", namespaces=self.namespaces)
         except Exception:
             return None
+
+    @staticmethod
+    def _get_run_raw_text(run) -> str:
+        """从run底层XML读取文本，避免数学run触发python-pptx的to_latex诊断输出。"""
+        run_xml = getattr(run, "_r", None)
+        if run_xml is None:
+            return ""
+
+        text_parts = []
+        text_tags = {
+            f"{{{DRAWINGML_NS}}}t",
+            f"{{{OMML_NS}}}t",
+        }
+        for text_node in run_xml.iter():
+            if getattr(text_node, "tag", None) not in text_tags:
+                continue
+            if text_node.text:
+                text_parts.append(text_node.text)
+
+        return "".join(text_parts)
 
     def _resolve_effective_run_bool(
         self,
@@ -1399,8 +1451,8 @@ class PptxConverter:
         has_non_whitespace_run = False
 
         for run in paragraph.runs:
-            run_text = getattr(run, "text", None)
-            if run_text is None or not run_text.strip():
+            run_text = self._get_run_raw_text(run)
+            if not run_text.strip():
                 continue
 
             has_non_whitespace_run = True

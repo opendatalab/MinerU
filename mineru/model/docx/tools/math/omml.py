@@ -481,17 +481,19 @@ class oMath2Latex(Tag2Method):
 
         out_latex_str = self.u.unicode_to_latex(s)
 
-        if (
+        # pylatexenc常把数学字符包成 {\ensuremath{...}}，这里只剥离外层包装，
+        # 不能删除内部LaTeX命令的闭合花括号。
+        if out_latex_str.startswith(r"{\ensuremath{") and out_latex_str.endswith("}}"):
+            out_latex_str = out_latex_str[len(r"{\ensuremath{") : -2]
+        elif out_latex_str.startswith(r"\ensuremath{") and out_latex_str.endswith("}"):
+            out_latex_str = out_latex_str[len(r"\ensuremath{") : -1]
+        elif (
             s.startswith("{") is False
             and out_latex_str.startswith("{")
             and s.endswith("}") is False
             and out_latex_str.endswith("}")
         ):
             out_latex_str = f" {out_latex_str[1:-1]} "
-
-        if "ensuremath" in out_latex_str:
-            out_latex_str = out_latex_str.replace("\\ensuremath{", " ")
-            out_latex_str = out_latex_str.replace("}", " ")
 
         # Do NOT wrap remaining content in \text{}.
         # Previously this code matched any string starting with "\text" and wrapped it
