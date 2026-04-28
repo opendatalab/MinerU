@@ -88,6 +88,13 @@ def get_val(key, default=None, store=CHR):
         return default
 
 
+def _normalize_latex_delimiter(delimiter):
+    """将 Word OMML 定界符字符转换为 LaTeX/KaTeX 可渲染的定界符。"""
+    if delimiter in ("\u2225", "\u2016"):
+        return r"\|"
+    return delimiter
+
+
 class Tag2Method:
     def call_method(self, elm, stag=None):
         getmethod = self.tag2meth.get
@@ -273,8 +280,12 @@ class oMath2Latex(Tag2Method):
         pr = c_dict["dPr"]
         null = D_DEFAULT.get("null")
 
-        s_val = get_val(pr.begChr, default=D_DEFAULT.get("left"), store=T)
-        e_val = get_val(pr.endChr, default=D_DEFAULT.get("right"), store=T)
+        s_val = _normalize_latex_delimiter(
+            get_val(pr.begChr, default=D_DEFAULT.get("left"), store=T)
+        )
+        e_val = _normalize_latex_delimiter(
+            get_val(pr.endChr, default=D_DEFAULT.get("right"), store=T)
+        )
         delim = pr.text + D.format(
             left=null if not s_val else escape_latex(s_val),
             text=c_dict["e"],
@@ -470,17 +481,19 @@ class oMath2Latex(Tag2Method):
 
         out_latex_str = self.u.unicode_to_latex(s)
 
-        if (
+        # pylatexenc常把数学字符包成 {\ensuremath{...}}，这里只剥离外层包装，
+        # 不能删除内部LaTeX命令的闭合花括号。
+        if out_latex_str.startswith(r"{\ensuremath{") and out_latex_str.endswith("}}"):
+            out_latex_str = out_latex_str[len(r"{\ensuremath{") : -2]
+        elif out_latex_str.startswith(r"\ensuremath{") and out_latex_str.endswith("}"):
+            out_latex_str = out_latex_str[len(r"\ensuremath{") : -1]
+        elif (
             s.startswith("{") is False
             and out_latex_str.startswith("{")
             and s.endswith("}") is False
             and out_latex_str.endswith("}")
         ):
             out_latex_str = f" {out_latex_str[1:-1]} "
-
-        if "ensuremath" in out_latex_str:
-            out_latex_str = out_latex_str.replace("\\ensuremath{", " ")
-            out_latex_str = out_latex_str.replace("}", " ")
 
         # Do NOT wrap remaining content in \text{}.
         # Previously this code matched any string starting with "\text" and wrapped it

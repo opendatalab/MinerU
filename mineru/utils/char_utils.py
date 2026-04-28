@@ -2,17 +2,20 @@
 import re
 
 
+# PDF 文本抽取时，英文跨行断词可能被编码为多种 hyphen 字符。
+# 这里只用于判断“行末英文断词符”，不要扩展到 en/em dash 等普通破折号。
+LINE_END_HYPHEN_CHARS = "-\u00ad\u2010\u2011\u2043"
+LINE_END_HYPHEN_RE = re.compile(
+    rf"[A-Za-z]+[{re.escape(LINE_END_HYPHEN_CHARS)}]\s*$"
+)
+
+
 def is_hyphen_at_line_end(line):
-    """Check if a line ends with one or more letters followed by a hyphen.
+    """判断文本行是否以英文单词的跨行断词符结尾。
 
-    Args:
-    line (str): The line of text to check.
-
-    Returns:
-    bool: True if the line ends with one or more letters followed by a hyphen, False otherwise.
+    只识别字母后紧跟行末 hyphen 的断词场景，不处理词内连字符或普通破折号。
     """
-    # Use regex to check if the line ends with one or more letters followed by a hyphen
-    return bool(re.search(r'[A-Za-z]+-\s*$', line))
+    return bool(LINE_END_HYPHEN_RE.search(line))
 
 
 def full_to_half_exclude_marks(text: str) -> str:
