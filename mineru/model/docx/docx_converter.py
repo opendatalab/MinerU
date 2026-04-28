@@ -1089,6 +1089,9 @@ class DocxConverter:
             text=text,
             equations=equations,
         ):
+            # 普通 TOC 段落被转换为 INDEX 后，也要保留段落末尾分节分页语义。
+            if is_section_end:
+                self._start_new_page()
             return None
         self._reset_index_state()
 
