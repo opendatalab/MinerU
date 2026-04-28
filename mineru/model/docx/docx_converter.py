@@ -1089,6 +1089,12 @@ class DocxConverter:
             text=text,
             equations=equations,
         ):
+            # 普通 TOC 是列表边界，避免后续同 numId 列表项继续合并到目录前的列表块。
+            if self.pre_num_id != -1:
+                self.pre_num_id = -1
+                self.pre_ilevel = -1
+                self.list_block_stack = []
+                self.list_counters = {}
             # 普通 TOC 段落被转换为 INDEX 后，也要保留段落末尾分节分页语义。
             if is_section_end:
                 self._start_new_page()
