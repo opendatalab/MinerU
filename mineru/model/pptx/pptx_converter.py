@@ -20,6 +20,7 @@ from mineru.backend.utils.office_image import (
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
+from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
 from mineru.model.pptx.package_normalizer import normalize_pptx_package
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
@@ -104,20 +105,20 @@ class PptxConverter:
         self,
         file_stream: BinaryIO,
     ):
-        # 兼容上游预读同一个 stream 后再交给 PPTX 转换器的场景。
-        try:
-            file_stream.seek(0)
-        except (AttributeError, OSError, ValueError):
-            pass
+        if rewind_stream(file_stream):
+            try:
+                self._convert_package_stream(file_stream)
+                return
+            except Exception as exc:
+                file_bytes = read_stream_bytes_from_start(file_stream)
+                self._retry_convert_package_bytes_after_normalization(file_bytes, exc)
+                return
+
         file_bytes = file_stream.read()
         try:
             self._convert_package_bytes(file_bytes)
         except Exception as exc:
-            normalized_bytes = normalize_pptx_package(file_bytes)
-            if normalized_bytes == file_bytes:
-                raise
-            logger.warning(f"Retrying PPTX parsing after package normalization: {exc}")
-            self._convert_package_bytes(normalized_bytes)
+            self._retry_convert_package_bytes_after_normalization(file_bytes, exc)
 
     def _reset_state(self) -> None:
         """重置解析状态，确保失败重试时不会残留上一次半解析结果。"""
@@ -130,14 +131,31 @@ class PptxConverter:
 
     def _convert_package_bytes(self, file_bytes: bytes) -> None:
         """用独立字节流解析 PPTX 包，便于原始包失败后用规范化包重试。"""
+        self._convert_package_stream(BytesIO(file_bytes))
+
+    def _convert_package_stream(self, file_stream: BinaryIO) -> None:
+        """直接使用可复位的 PPTX 流解析正常路径，避免提前复制完整包字节。"""
         self._reset_state()
-        self.file_stream = BytesIO(file_bytes)
+        rewind_stream(file_stream)
+        self.file_stream = file_stream
         self.pptx_obj = Presentation(self.file_stream)
         self.pages.append(self.cur_page)
         if self.pptx_obj:
             self._walk_linear(self.pptx_obj)
         if self.pages and self.pages[-1] == []:
             self.pages.pop()
+
+    def _retry_convert_package_bytes_after_normalization(
+        self,
+        file_bytes: bytes,
+        exc: Exception,
+    ) -> None:
+        """首次解析失败后，仅在包规范化确实产生变化时使用规范化字节重试。"""
+        normalized_bytes = normalize_pptx_package(file_bytes)
+        if normalized_bytes == file_bytes:
+            raise exc
+        logger.warning(f"Retrying PPTX parsing after package normalization: {exc}")
+        self._convert_package_bytes(normalized_bytes)
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
         slide_width = int(pptx_obj.slide_width)
@@ -814,6 +832,9 @@ class PptxConverter:
 
         try:
             image = shape.image
+        except KeyError as e:
+            logger.warning(f"Warning: shape image relation cannot be loaded: {e}")
+            return None
         except ValueError as e:
             logger.warning(f"Warning: shape image cannot be loaded: {e}")
             return None
