@@ -10,10 +10,11 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 from loguru import logger
-from PIL import Image, ImageFile, UnidentifiedImageError
+from PIL import Image
 
 from mineru.utils.enum_class import BlockType
 from mineru.backend.utils.office_image import (
+    PIL_IMAGE_LOAD_ERRORS,
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
@@ -103,6 +104,11 @@ class PptxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        # 兼容上游预读同一个 stream 后再交给 PPTX 转换器的场景。
+        try:
+            file_stream.seek(0)
+        except (AttributeError, OSError, ValueError):
+            pass
         file_bytes = file_stream.read()
         try:
             self._convert_package_bytes(file_bytes)
@@ -722,20 +728,9 @@ class PptxConverter:
         """尽量序列化图片；损坏图片失败时降级跳过，避免中断整份 PPTX。"""
         try:
             return cls._serialize_picture_image(image_bytes)
-        except (UnidentifiedImageError, OSError, SyntaxError) as exc:
-            logger.warning(
-                f"Warning: image cannot be loaded by Pillow, retrying with truncated-image mode: {exc}"
-            )
-
-        previous_truncated_setting = ImageFile.LOAD_TRUNCATED_IMAGES
-        ImageFile.LOAD_TRUNCATED_IMAGES = True
-        try:
-            return cls._serialize_picture_image(image_bytes)
-        except (UnidentifiedImageError, OSError, SyntaxError) as exc:
+        except PIL_IMAGE_LOAD_ERRORS as exc:
             logger.warning(f"Warning: image cannot be loaded by Pillow: {exc}")
             return None
-        finally:
-            ImageFile.LOAD_TRUNCATED_IMAGES = previous_truncated_setting
 
     @staticmethod
     def _serialize_picture_image(image_bytes: bytes) -> str:

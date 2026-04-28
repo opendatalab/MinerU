@@ -20,6 +20,7 @@ VECTOR_IMAGE_CONTENT_TYPES = frozenset(
         "application/x-msmetafile",
     }
 )
+PIL_IMAGE_LOAD_ERRORS = (UnidentifiedImageError, OSError, SyntaxError)
 
 
 def is_vector_image(pil_image: Image.Image) -> bool:
@@ -129,7 +130,7 @@ def serialize_vector_image_with_placeholder(
         try:
             pil_image.load()
             return image_to_b64str(pil_image, image_format="PNG")
-        except OSError as e:
+        except PIL_IMAGE_LOAD_ERRORS as e:
             logger.warning(
                 f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead."
             )
@@ -179,12 +180,28 @@ def serialize_office_image(
     content_type: str | None = None,
 ) -> str | None:
     if is_vector_image_part(part_name, content_type):
-        return serialize_vector_part_with_placeholder(part_name, content_type)
+        if not is_windows_environment():
+            return serialize_vector_part_with_placeholder(part_name, content_type)
+
+        try:
+            pil_image = Image.open(BytesIO(image_data))
+        except PIL_IMAGE_LOAD_ERRORS as e:
+            logger.warning(
+                f"Warning: vector image cannot be opened by Pillow: {e}, "
+                f"part_name={part_name}, content_type={content_type}. "
+                "Using placeholder instead."
+            )
+            return serialize_vector_part_with_placeholder(part_name, content_type)
+
+        return serialize_vector_image_with_placeholder(
+            pil_image,
+            image_format_override=_vector_image_format_label(part_name, content_type),
+        )
 
     try:
         pil_image = Image.open(BytesIO(image_data))
         pil_image.load()
-    except (UnidentifiedImageError, OSError) as e:
+    except PIL_IMAGE_LOAD_ERRORS as e:
         logger.warning(
             f"Warning: image cannot be loaded by Pillow: {e}, "
             f"part_name={part_name}, content_type={content_type}"
