@@ -10,15 +10,18 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 from loguru import logger
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from mineru.utils.enum_class import BlockType
 from mineru.backend.utils.office_image import (
+    PIL_IMAGE_LOAD_ERRORS,
     is_vector_image,
     serialize_vector_image_with_placeholder,
 )
 from mineru.model.docx.tools.math.omml import oMath2Latex
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
+from mineru.model.office_stream import read_stream_bytes_from_start, rewind_stream
+from mineru.model.pptx.package_normalizer import normalize_pptx_package
 from mineru.model.pptx.xycut_pp_sorter import sort_entries
 from mineru.utils.pdf_reader import image_to_b64str
 
@@ -102,10 +105,38 @@ class PptxConverter:
         self,
         file_stream: BinaryIO,
     ):
+        if rewind_stream(file_stream):
+            try:
+                self._convert_package_stream(file_stream)
+                return
+            except Exception as exc:
+                file_bytes = read_stream_bytes_from_start(file_stream)
+                self._retry_convert_package_bytes_after_normalization(file_bytes, exc)
+                return
+
+        file_bytes = file_stream.read()
+        try:
+            self._convert_package_bytes(file_bytes)
+        except Exception as exc:
+            self._retry_convert_package_bytes_after_normalization(file_bytes, exc)
+
+    def _reset_state(self) -> None:
+        """重置解析状态，确保失败重试时不会残留上一次半解析结果。"""
         self.pages = []
         self.cur_page = []
         self.list_block_stack = []
         self._shape_type_cache = {}
+        self.file_stream = None
+        self.pptx_obj = None
+
+    def _convert_package_bytes(self, file_bytes: bytes) -> None:
+        """用独立字节流解析 PPTX 包，便于原始包失败后用规范化包重试。"""
+        self._convert_package_stream(BytesIO(file_bytes))
+
+    def _convert_package_stream(self, file_stream: BinaryIO) -> None:
+        """直接使用可复位的 PPTX 流解析正常路径，避免提前复制完整包字节。"""
+        self._reset_state()
+        rewind_stream(file_stream)
         self.file_stream = file_stream
         self.pptx_obj = Presentation(self.file_stream)
         self.pages.append(self.cur_page)
@@ -113,6 +144,18 @@ class PptxConverter:
             self._walk_linear(self.pptx_obj)
         if self.pages and self.pages[-1] == []:
             self.pages.pop()
+
+    def _retry_convert_package_bytes_after_normalization(
+        self,
+        file_bytes: bytes,
+        exc: Exception,
+    ) -> None:
+        """首次解析失败后，仅在包规范化确实产生变化时使用规范化字节重试。"""
+        normalized_bytes = normalize_pptx_package(file_bytes)
+        if normalized_bytes == file_bytes:
+            raise exc
+        logger.warning(f"Retrying PPTX parsing after package normalization: {exc}")
+        self._convert_package_bytes(normalized_bytes)
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
         slide_width = int(pptx_obj.slide_width)
@@ -267,14 +310,7 @@ class PptxConverter:
                 ):
                     self._handle_pictures(shape)
 
-            if not hasattr(shape, "text"):
-                return shape_blocks
-            if shape.text is None:
-                return shape_blocks
-            if len(shape.text.strip()) == 0:
-                return shape_blocks
-            if not shape.has_text_frame:
-                logger.warning("Warning: shape has text but not text_frame")
+            if not getattr(shape, "has_text_frame", False):
                 return shape_blocks
 
             self._handle_text_elements(shape)
@@ -402,15 +438,30 @@ class PptxConverter:
         return total_area
 
     @staticmethod
-    def _is_nonempty_text_shape(shape) -> bool:
+    def _shape_has_raw_text(shape) -> bool:
+        """通过shape底层XML判断是否有文本，避免数学公式触发python-pptx文本转换。"""
         if not getattr(shape, "has_text_frame", False):
             return False
 
-        text = getattr(shape, "text", None)
-        if text is None:
+        shape_xml = getattr(shape, "_element", None)
+        if shape_xml is None:
             return False
 
-        return len(text.strip()) > 0
+        text_tags = {
+            f"{{{DRAWINGML_NS}}}t",
+            f"{{{OMML_NS}}}t",
+        }
+        for text_node in shape_xml.iter():
+            if getattr(text_node, "tag", None) not in text_tags:
+                continue
+            if text_node.text and text_node.text.strip():
+                return True
+
+        return False
+
+    @staticmethod
+    def _is_nonempty_text_shape(shape) -> bool:
+        return PptxConverter._shape_has_raw_text(shape)
 
     def _is_small_picture(
         self,
@@ -528,11 +579,7 @@ class PptxConverter:
 
     @staticmethod
     def _should_skip_notes_shape(shape) -> bool:
-        if not getattr(shape, "has_text_frame", False):
-            return True
-
-        text = getattr(shape, "text", None)
-        if text is None or len(text.strip()) == 0:
+        if not PptxConverter._shape_has_raw_text(shape):
             return True
 
         if not getattr(shape, "is_placeholder", False):
@@ -683,25 +730,44 @@ class PptxConverter:
             self.cur_page.append(image_block)
             return
 
-        # 使用PIL打开图像
-        try:
-            pil_image = Image.open(BytesIO(image_bytes))
+        img_base64 = self._serialize_picture_image_best_effort(image_bytes)
+        if img_base64 is None:
+            return
 
-            if is_vector_image(pil_image):
-                img_base64 = serialize_vector_image_with_placeholder(pil_image)
-            else:
-                if pil_image.mode != "RGB":
-                    pil_image = pil_image.convert("RGB")
-                img_base64 = image_to_b64str(pil_image)
-            image_block = {
-                "type": BlockType.IMAGE,
-                "content": img_base64,
-            }
-            self.cur_page.append(image_block)
-
-        except (UnidentifiedImageError, OSError) as e:
-            logger.warning(f"Warning: image cannot be loaded by Pillow: {e}")
+        image_block = {
+            "type": BlockType.IMAGE,
+            "content": img_base64,
+        }
+        self.cur_page.append(image_block)
         return
+
+    @classmethod
+    def _serialize_picture_image_best_effort(cls, image_bytes: bytes) -> Optional[str]:
+        """尽量序列化图片；损坏图片失败时降级跳过，避免中断整份 PPTX。"""
+        try:
+            return cls._serialize_picture_image(image_bytes)
+        except PIL_IMAGE_LOAD_ERRORS as exc:
+            logger.warning(f"Warning: image cannot be loaded by Pillow: {exc}")
+            return None
+
+    @staticmethod
+    def _serialize_picture_image(image_bytes: bytes) -> str:
+        """将单张 Pillow 支持的图片转为 Markdown 可用的 base64 字符串。"""
+        pil_image = Image.open(BytesIO(image_bytes))
+
+        if is_vector_image(pil_image):
+            return serialize_vector_image_with_placeholder(pil_image)
+
+        if pil_image.mode == "RGB":
+            pil_image.load()
+            return image_to_b64str(pil_image, image_format="JPEG")
+
+        if pil_image.mode in {"RGBA", "LA"} or (
+            pil_image.mode == "P" and "transparency" in pil_image.info
+        ):
+            return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
+
+        return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")
 
     @staticmethod
     def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
@@ -724,6 +790,26 @@ class PptxConverter:
 
         return None
 
+    @staticmethod
+    def _has_blip_without_relationship(shape) -> bool:
+        """判断图片节点是否只有空blip，避免把空fallback误报为图片资源缺失。"""
+        if not hasattr(shape, "_element"):
+            return False
+
+        blips = [
+            *shape._element.findall(f".//{{{SVG_BLIP_NS}}}svgBlip"),
+            *shape._element.findall(f".//{{{DRAWINGML_NS}}}blip"),
+        ]
+        if not blips:
+            return False
+
+        for blip in blips:
+            if blip.get(f"{{{RELATIONSHIP_NS}}}embed") or blip.get(
+                f"{{{RELATIONSHIP_NS}}}link"
+            ):
+                return False
+        return True
+
     def _get_shape_image_data(self, shape) -> Optional[tuple[bytes, Optional[str]]]:
         relationship_id = None
         if hasattr(shape, "_element"):
@@ -740,8 +826,15 @@ class PptxConverter:
             else:
                 return image_bytes, getattr(image_part, "content_type", None)
 
+        if self._has_blip_without_relationship(shape):
+            logger.debug("Skipping PPTX picture with empty blip and no image relation")
+            return None
+
         try:
             image = shape.image
+        except KeyError as e:
+            logger.warning(f"Warning: shape image relation cannot be loaded: {e}")
+            return None
         except ValueError as e:
             logger.warning(f"Warning: shape image cannot be loaded: {e}")
             return None
@@ -821,6 +914,26 @@ class PptxConverter:
             return run_xml.find("a:rPr", namespaces=self.namespaces)
         except Exception:
             return None
+
+    @staticmethod
+    def _get_run_raw_text(run) -> str:
+        """从run底层XML读取文本，避免数学run触发python-pptx的to_latex诊断输出。"""
+        run_xml = getattr(run, "_r", None)
+        if run_xml is None:
+            return ""
+
+        text_parts = []
+        text_tags = {
+            f"{{{DRAWINGML_NS}}}t",
+            f"{{{OMML_NS}}}t",
+        }
+        for text_node in run_xml.iter():
+            if getattr(text_node, "tag", None) not in text_tags:
+                continue
+            if text_node.text:
+                text_parts.append(text_node.text)
+
+        return "".join(text_parts)
 
     def _resolve_effective_run_bool(
         self,
@@ -1354,8 +1467,8 @@ class PptxConverter:
         has_non_whitespace_run = False
 
         for run in paragraph.runs:
-            run_text = getattr(run, "text", None)
-            if run_text is None or not run_text.strip():
+            run_text = self._get_run_raw_text(run)
+            if not run_text.strip():
                 continue
 
             has_non_whitespace_run = True
@@ -1496,6 +1609,16 @@ class PptxConverter:
         )
 
     @staticmethod
+    def _normalize_contiguous_list_level(
+        raw_level: int,
+        base_level: int,
+    ) -> int:
+        """
+        将连续列表段的首个可见层级归一化为0级，避免缺失父级时输出代码块缩进。
+        """
+        return max(0, raw_level - base_level)
+
+    @staticmethod
     def _most_common_size(font_sizes: list[float]) -> Optional[float]:
         if not font_sizes:
             return None
@@ -1634,6 +1757,7 @@ class PptxConverter:
 
     def _handle_text_elements(self, shape):
         self.list_block_stack = []
+        list_level_base: Optional[int] = None
 
         # 遍历段落以构建文本
         for paragraph in shape.text_frame.paragraphs:
@@ -1644,9 +1768,14 @@ class PptxConverter:
                     self._build_paragraph_rich_text(paragraph, shape)
                 )
                 if rich_text:
+                    if list_level_base is None:
+                        list_level_base = list_info["level"]
                     self._append_list_item(
                         self.list_block_stack,
-                        list_info["level"],
+                        self._normalize_contiguous_list_level(
+                            list_info["level"],
+                            list_level_base,
+                        ),
                         list_info["attribute"],
                         rich_text,
                     )
@@ -1654,6 +1783,7 @@ class PptxConverter:
 
             # 段落不是列表项，关闭当前 shape 的列表上下文
             self.list_block_stack.clear()
+            list_level_base = None
 
             p_text = self._normalize_text_block_content(
                 self._build_paragraph_rich_text(paragraph, shape)
