@@ -47,7 +47,6 @@ theme:
     - navigation.tracking
     - search.suggest
     - toc.follow
-    - toc.integrate
 
 extra:
   analytics:
