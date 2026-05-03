@@ -118,9 +118,9 @@ uv pip install -e .[all]
 ```
 
 > [!TIP]
-> `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
-> If CUDA acceleration is unavailable after installing on Windows, see the [Windows CUDA acceleration FAQ](../faq/index.md#windows-cuda-acceleration).
-> If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
+> - `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
+> - If CUDA acceleration is unavailable after installing on Windows, see the [Windows CUDA acceleration FAQ](../faq/index.md#windows-cuda-acceleration).
+> - If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
 
 ---
  
