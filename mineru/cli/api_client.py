@@ -35,7 +35,6 @@ from mineru.utils.check_sys_env import is_linux_environment
 HEALTH_ENDPOINT = "/health"
 TASKS_ENDPOINT = "/tasks"
 TASK_STATUS_POLL_INTERVAL_SECONDS = 1.0
-TASK_RESULT_TIMEOUT_SECONDS = 3600
 LOCAL_API_SHUTDOWN_TIMEOUT_SECONDS = 10
 LOCAL_API_CLEANUP_RETRIES = 8
 LOCAL_API_CLEANUP_RETRY_INTERVAL_SECONDS = 0.25
@@ -84,6 +83,29 @@ def get_local_api_startup_timeout_seconds(default: float = 300.0) -> float:
 
 
 LOCAL_API_STARTUP_TIMEOUT_SECONDS = get_local_api_startup_timeout_seconds()
+
+
+def get_task_result_timeout_seconds(default: float = 3600.0) -> float:
+    return get_float_env(
+        "MINERU_TASK_RESULT_TIMEOUT_SECONDS",
+        default,
+        minimum=1.0,
+    )
+
+
+TASK_RESULT_TIMEOUT_SECONDS = get_task_result_timeout_seconds()
+
+
+def get_task_result_download_timeout_seconds(default: float = 600.0) -> float:
+    """读取任务结果下载超时时间，避免和任务处理等待超时混用。"""
+    return get_float_env(
+        "MINERU_TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS",
+        default,
+        minimum=1.0,
+    )
+
+
+TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS = get_task_result_download_timeout_seconds()
 
 
 def get_local_api_launch_mode(default: str = LOCAL_API_LAUNCH_MODE_SUBPROCESS) -> str:
@@ -619,7 +641,7 @@ def build_http_timeout() -> httpx.Timeout:
 def build_result_download_timeout() -> httpx.Timeout:
     return httpx.Timeout(
         connect=10,
-        read=TASK_RESULT_TIMEOUT_SECONDS,
+        read=TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS,
         write=300,
         pool=30,
     )
