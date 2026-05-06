@@ -176,11 +176,17 @@ class XlsxConverter:
             )
             if self.workbook is not None:
                 # 遍历需要参与转换的工作表，避免为隐藏表或尾部空页生成无效页面。
+                sheet_pages = []
                 for idx, sheet in enumerate(self._iter_sheets_to_convert(), start=1):
                     logger.debug(f"正在处理第 {idx} 个工作表：{sheet.title}")
                     self.cur_page = []
                     self._convert_sheet(sheet)
-                    self.pages.append(self.cur_page)
+                    sheet_pages.append((sheet.title, self.cur_page))
+                if self._should_emit_sheet_titles(
+                    [page for _, page in sheet_pages]
+                ):
+                    self._prepend_sheet_titles(sheet_pages)
+                self.pages.extend(page for _, page in sheet_pages)
             else:
                 logger.error("工作簿未初始化。")
         finally:
@@ -212,6 +218,26 @@ class XlsxConverter:
                 logger.debug(f"跳过隐藏工作表：{sheet.title}")
                 continue
             yield sheet
+
+    @staticmethod
+    def _build_sheet_title_block(sheet_title: str) -> dict:
+        """构造工作表标题块，复用 Office 标题渲染链路输出 Markdown 标题。"""
+        return {
+            "type": BlockType.TITLE,
+            "content": sheet_title,
+        }
+
+    @staticmethod
+    def _should_emit_sheet_titles(pages: list[list[dict]]) -> bool:
+        """仅当存在多个非空输出 sheet 时才添加标题，避免单表或空表噪声。"""
+        return sum(1 for page in pages if page) > 1
+
+    def _prepend_sheet_titles(self, sheet_pages: list[tuple[str, list[dict]]]) -> None:
+        """将 sheet 标题插入每个非空 page 开头，不参与表格/图表视觉排序。"""
+        for sheet_title, page in sheet_pages:
+            if not page:
+                continue
+            page.insert(0, self._build_sheet_title_block(sheet_title))
 
     def _convert_sheet(self, sheet):
         if isinstance(sheet, Worksheet):
