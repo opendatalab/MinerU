@@ -16,6 +16,10 @@ import re
 import numpy as np
 import torch
 
+INVISIBLE_DECODED_CHAR_TRANSLATION = str.maketrans({
+    "\u2060": None,
+})
+
 
 class BaseRecLabelDecode(object):
     """ Convert between text-label and text-index """
@@ -49,6 +53,10 @@ class BaseRecLabelDecode(object):
         for i, char in enumerate(dict_character):
             self.dict[char] = i
         self.character = np.array(dict_character)
+
+    @staticmethod
+    def sanitize_decoded_text(text):
+        return text.translate(INVISIBLE_DECODED_CHAR_TRANSLATION)
 
     def pred_reverse(self, pred):
         pred_re = []
@@ -157,7 +165,7 @@ class BaseRecLabelDecode(object):
 
             sequence = sequence[final_mask]
             probs = None if probs is None else probs[final_mask]
-            text = "".join(self.character[sequence])
+            text = self.sanitize_decoded_text("".join(self.character[sequence]))
 
             if text_prob is not None and probs is not None and len(probs) > 0:
                 mean_conf = np.mean(probs)
@@ -264,7 +272,7 @@ class NRTRLabelDecode(BaseRecLabelDecode):
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = self.sanitize_decoded_text(''.join(char_list))
             result_list.append((text.lower(), np.mean(conf_list).tolist()))
         return result_list
 
@@ -336,7 +344,7 @@ class AttnLabelDecode(BaseRecLabelDecode):
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = self.sanitize_decoded_text(''.join(char_list))
             result_list.append((text, np.mean(conf_list)))
         return result_list
 
@@ -416,7 +424,7 @@ class RFLLabelDecode(BaseRecLabelDecode):
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = self.sanitize_decoded_text(''.join(char_list))
             result_list.append((text, np.mean(conf_list).tolist()))
         return result_list
 
@@ -522,7 +530,7 @@ class SRNLabelDecode(BaseRecLabelDecode):
                 else:
                     conf_list.append(1)
 
-            text = ''.join(char_list)
+            text = self.sanitize_decoded_text(''.join(char_list))
             result_list.append((text, np.mean(conf_list)))
         return result_list
 
@@ -732,7 +740,7 @@ class SARLabelDecode(BaseRecLabelDecode):
                     conf_list.append(text_prob[batch_idx][idx])
                 else:
                     conf_list.append(1)
-            text = ''.join(char_list)
+            text = self.sanitize_decoded_text(''.join(char_list))
             if self.rm_symbol:
                 comp = re.compile('[^A-Z^a-z^0-9^\u4e00-\u9fa5]')
                 text = text.lower()
@@ -776,7 +784,7 @@ class CANLabelDecode(BaseRecLabelDecode):
             if preds_prob is not None:
                 probs = preds_prob[batch_idx][:len(symbol_list)].tolist()
 
-            result_list.append([' '.join(symbol_list), probs])
+            result_list.append([self.sanitize_decoded_text(' '.join(symbol_list)), probs])
         return result_list
 
     def __call__(self, preds, label=None, *args, **kwargs):
