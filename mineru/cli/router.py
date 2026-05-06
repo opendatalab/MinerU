@@ -350,7 +350,10 @@ class ManagedLocalServer:
         env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
         env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
         if self.gpu is not None:
-            env["CUDA_VISIBLE_DEVICES"] = str(self.gpu)
+            if os.getenv("MINERU_DEVICE_MODE") == "npu":
+                env["ASCEND_RT_VISIBLE_DEVICES"] = str(self.gpu)
+            else:
+                env["CUDA_VISIBLE_DEVICES"] = str(self.gpu)
 
         command = [
             sys.executable,
