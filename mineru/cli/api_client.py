@@ -268,7 +268,7 @@ def stop_managed_process(
             process.wait(timeout=shutdown_timeout_seconds)
         except subprocess.TimeoutExpired:
             logger.warning(
-                "Managed MinerU process {} did not exit after forceful stop.",
+                "Il processo gestito MinerU {} non è terminato dopo l'arresto forzato.",
                 process.pid,
             )
 
@@ -331,7 +331,7 @@ def _stop_spawn_managed_process(
 
         if process.exitcode is None:
             logger.warning(
-                "Managed MinerU spawn process {} did not exit after forceful stop.",
+                "Il processo spawn gestito MinerU {} non è terminato dopo l'arresto forzato.",
                 process.pid,
             )
         return
@@ -346,7 +346,7 @@ def _stop_spawn_managed_process(
         process.join(timeout=shutdown_timeout_seconds)
         if process.exitcode is None:
             logger.warning(
-                "Managed MinerU spawn process {} did not exit after forceful stop.",
+                "Il processo spawn gestito MinerU {} non è terminato dopo l'arresto forzato.",
                 process.pid,
             )
 
@@ -378,8 +378,8 @@ def _validate_local_api_launch_mode_cli_args(
         and _cli_args_include_flag(cli_args, "--reload")
     ):
         raise click.ClickException(
-            "Local mineru-api spawn launch mode does not support --reload. "
-            "Remove --reload or set MINERU_LOCAL_API_LAUNCH_MODE=subprocess."
+            "La modalità di avvio spawn locale di mineru-api non supporta --reload. "
+            "Rimuovere --reload o impostare MINERU_LOCAL_API_LAUNCH_MODE=subprocess."
         )
 
 
@@ -588,8 +588,8 @@ class LocalAPIServer:
 
         if last_error is not None:
             logger.warning(
-                "Failed to clean up temporary MinerU API directory {}: {}. "
-                "You can remove it manually after processes release any open handles.",
+                "Impossibile pulire la directory temporanea dell'API di MinerU {}: {}. "
+                "È possibile rimuoverla manualmente dopo che i processi avranno rilasciato tutti gli handle aperti.",
                 self.temp_root,
                 last_error,
             )
@@ -700,7 +700,7 @@ def resolve_effective_max_concurrent_requests(
 ) -> int:
     if local_max <= 0 or server_max <= 0:
         raise ValueError(
-            "local_max and server_max must both be positive integers"
+            "local_max e server_max devono essere entrambi interi positivi"
         )
     return min(local_max, server_max)
 
@@ -729,25 +729,25 @@ def validate_server_health_payload(payload: dict, base_url: str) -> ServerHealth
     status = payload.get("status")
     if status != "healthy":
         raise click.ClickException(
-            f"MinerU API at {base_url} is not healthy: {json.dumps(payload, ensure_ascii=False)}"
+            f"L'API MinerU su {base_url} non è integra: {json.dumps(payload, ensure_ascii=False)}"
         )
 
     protocol_version = payload.get("protocol_version")
     if protocol_version != API_PROTOCOL_VERSION:
         raise click.ClickException(
-            f"MinerU API at {base_url} returned protocol_version={protocol_version}, "
-            f"expected {API_PROTOCOL_VERSION}"
+            f"L'API MinerU su {base_url} ha restituito protocol_version={protocol_version}, "
+            f"previsto {API_PROTOCOL_VERSION}"
         )
 
     max_concurrent_requests = payload.get("max_concurrent_requests")
     processing_window_size = payload.get("processing_window_size")
     if not isinstance(max_concurrent_requests, int) or max_concurrent_requests <= 0:
         raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid positive max_concurrent_requests"
+            f"L'API MinerU su {base_url} non ha restituito un max_concurrent_requests positivo valido"
         )
     if not isinstance(processing_window_size, int):
         raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid processing_window_size"
+            f"L'API MinerU su {base_url} non ha restituito un processing_window_size valido"
         )
 
     return ServerHealth(
@@ -764,7 +764,7 @@ async def fetch_server_health(
     response = await client.get(f"{base_url}{HEALTH_ENDPOINT}")
     if response.status_code != 200:
         raise click.ClickException(
-            f"Failed to query MinerU API health from {base_url}: "
+            f"Impossibile interrogare lo stato dell'API MinerU da {base_url}: "
             f"{response.status_code} {response_detail(response)}"
         )
     return validate_server_health_payload(response.json(), base_url)
@@ -795,7 +795,7 @@ async def wait_for_local_api_ready(
             last_error = str(exc)
         await asyncio.sleep(TASK_STATUS_POLL_INTERVAL_SECONDS)
 
-    message = "Timed out waiting for local mineru-api to become healthy."
+    message = "Tempo scaduto durante l'attesa che l'API mineru locale diventasse integra."
     if last_error:
         message = f"{message} {last_error}"
     raise click.ClickException(message)
@@ -894,7 +894,7 @@ def submit_parse_task_sync(
 
     if response.status_code != 202:
         raise click.ClickException(
-            f"Failed to submit parsing task: "
+            f"Impossibile inviare il task di analisi: "
             f"{response.status_code} {response_detail(response)}"
         )
 

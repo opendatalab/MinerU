@@ -50,10 +50,10 @@ class HybridDependencyError(RuntimeError):
 
 def build_hybrid_dependency_error_message(backend: str) -> str:
     return (
-        f"`{backend}` requires local pipeline dependencies (`mineru[pipeline]`, "
-        "including `torch`). Install `mineru[pipeline]` or `mineru[core]`. "
-        "If you need a lightweight remote client without local `torch`, "
-        "use `vlm-http-client` instead."
+        f"`{backend}` richiede le dipendenze locali della pipeline (`mineru[pipeline]`, "
+        "incluso `torch`). Installa `mineru[pipeline]` o `mineru[core]`. "
+        "Se hai bisogno di un client remoto leggero senza `torch` locale, "
+        "usa invece `vlm-http-client`."
     )
 
 
@@ -169,7 +169,7 @@ def read_fn(path, file_suffix: str | None = None):
         elif file_suffix in pdf_suffixes + office_suffixes:
             return file_bytes
         else:
-            raise Exception(f"Unknown file suffix: {file_suffix}")
+            raise Exception(f"Estensione del file sconosciuta: {file_suffix}")
 
 
 def prepare_env(output_dir, pdf_file_name, parse_method):
@@ -189,11 +189,11 @@ def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
         )
         if rebuilt_pdf_bytes:
             return rebuilt_pdf_bytes
-        logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
+        logger.warning("La riscrittura di PDFium ha restituito byte vuoti, utilizzo dei byte PDF originali.")
     except Exception as fallback_error:
         logger.warning(
-            f"Error in converting PDF bytes with pdfium: {fallback_error}, "
-            "using original PDF bytes."
+            f"Errore nella conversione dei byte PDF con pdfium: {fallback_error}, "
+            "utilizzo dei byte PDF originali."
         )
     return pdf_bytes
 
@@ -234,19 +234,19 @@ def _process_output(
     elif process_mode in office_suffixes:
         make_func = office_union_make
     else:
-        raise Exception(f"Unknown process_mode: {process_mode}")
+        raise Exception(f"Modalità di elaborazione sconosciuta: {process_mode}")
     """处理输出文件"""
     if f_draw_layout_bbox:
         try:
             draw_layout_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
         except Exception as exc:
-            logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
+            logger.warning(f"Salto la visualizzazione dei bbox del layout per {pdf_file_name}: {exc}")
 
     if f_draw_span_bbox:
         try:
             draw_span_bbox(pdf_info, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
         except Exception as exc:
-            logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
+            logger.warning(f"Salto la visualizzazione dei bbox degli span per {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
         if process_mode in ["pipeline", "vlm"]:
@@ -346,7 +346,7 @@ def _process_pipeline(
             )
             logger.debug(f"Pipeline output complete: doc{doc_index}")
         except Exception:
-            logger.exception(f"Pipeline output failed: doc{doc_index}")
+            logger.exception(f"Output della Pipeline fallito: doc{doc_index}")
             raise
 
     with ThreadPoolExecutor(max_workers=1) as output_executor:
@@ -654,7 +654,7 @@ def do_parse(
         del pdf_file_names[index]
         del p_lang_list[index]
     if not pdf_bytes_list:
-        logger.warning("No valid PDF or image files to process.")
+        logger.warning("Nessun file PDF o immagine valido da elaborare.")
         return
 
     # 预处理PDF字节数据
@@ -746,7 +746,7 @@ async def aio_do_parse(
         del pdf_file_names[index]
         del p_lang_list[index]
     if not pdf_bytes_list:
-        logger.warning("No valid PDF or image files to process.")
+        logger.warning("Nessun file PDF o immagine valido da elaborare.")
         return
 
     # 预处理PDF字节数据

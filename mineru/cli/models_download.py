@@ -60,7 +60,7 @@ def configure_model(model_dir, model_type):
     }
 
     download_and_modify_json(json_url, config_file, json_mods)
-    logger.info(f'The configuration file has been successfully configured, the path is: {config_file}')
+    logger.info(f'Il file di configurazione è stato configurato con successo, il percorso è: {config_file}')
 
 
 def download_pipeline_models():
@@ -77,16 +77,16 @@ def download_pipeline_models():
     ]
     download_finish_path = ""
     for model_path in model_paths:
-        logger.info(f"Downloading model: {model_path}")
+        logger.info(f"Download del modello: {model_path}")
         download_finish_path = auto_download_and_get_model_root_path(model_path, repo_mode='pipeline')
-    logger.info(f"Pipeline models downloaded successfully to: {download_finish_path}")
+    logger.info(f"Modelli Pipeline scaricati con successo in: {download_finish_path}")
     configure_model(download_finish_path, "pipeline")
 
 
 def download_vlm_models():
     """下载VLM模型"""
     download_finish_path = auto_download_and_get_model_root_path("/", repo_mode='vlm')
-    logger.info(f"VLM models downloaded successfully to: {download_finish_path}")
+    logger.info(f"Modelli VLM scaricati con successo in: {download_finish_path}")
     configure_model(download_finish_path, "vlm")
 
 
@@ -95,9 +95,9 @@ def get_effective_download_model_source(requested_model_source):
     current_model_source = os.getenv(MODEL_SOURCE_ENV_VAR)
     if current_model_source == 'local':
         logger.warning(
-            f"{MODEL_SOURCE_ENV_VAR}=local means using pre-downloaded local models. "
-            f"`mineru-models-download` will temporarily use '{requested_model_source}' "
-            f"to perform a real download."
+            f"{MODEL_SOURCE_ENV_VAR}=local significa utilizzare modelli locali scaricati in precedenza. "
+            f"`mineru-models-download` utilizzerà temporaneamente '{requested_model_source}' "
+            f"per eseguire un download reale."
         )
         return requested_model_source
 
@@ -138,34 +138,32 @@ def temporary_model_source(model_source):
     'model_type',
     type=click.Choice(['pipeline', 'vlm', 'all']),
     help="""
-        The type of the model to download.
-        """,
-    default=None,
+    help="Il tipo di modello da scaricare.",
 )
 def download_models(model_source, model_type):
-    """Download MinerU model files.
+    """Scarica i file dei modelli MinerU.
 
-    Supports downloading pipeline or VLM models from ModelScope or HuggingFace.
+    Supporta il download di modelli pipeline o VLM da ModelScope o HuggingFace.
     """
-    # 如果未显式指定则交互式输入下载来源
+    # Se non specificato esplicitamente, richiede l'origine del download in modo interattivo
     if model_source is None:
         model_source = click.prompt(
-            "Please select the model download source: ",
+            "Seleziona l'origine del download del modello: ",
             type=click.Choice(REMOTE_MODEL_SOURCES),
             default='huggingface'
         )
 
     effective_model_source = get_effective_download_model_source(model_source)
 
-    # 如果未显式指定则交互式输入模型类型
+    # Se non specificato esplicitamente, richiede il tipo di modello in modo interattivo
     if model_type is None:
         model_type = click.prompt(
-            "Please select the model type to download: ",
+            "Seleziona il tipo di modello da scaricare: ",
             type=click.Choice(['pipeline', 'vlm', 'all']),
             default='all'
         )
 
-    logger.info(f"Downloading {model_type} model from {effective_model_source}...")
+    logger.info(f"Download del modello {model_type} da {effective_model_source}...")
 
     try:
         with temporary_model_source(effective_model_source):
@@ -177,11 +175,11 @@ def download_models(model_source, model_type):
                 download_pipeline_models()
                 download_vlm_models()
             else:
-                click.echo(f"Unsupported model type: {model_type}", err=True)
+                click.echo(f"Tipo di modello non supportato: {model_type}", err=True)
                 sys.exit(1)
 
     except Exception as e:
-        logger.exception(f"An error occurred while downloading models: {str(e)}")
+        logger.exception(f"Si è verificato un errore durante il download dei modelli: {str(e)}")
         sys.exit(1)
 
 if __name__ == '__main__':

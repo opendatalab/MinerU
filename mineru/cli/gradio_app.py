@@ -27,7 +27,9 @@ IS_GRADIO_6 = _gradio_major_version >= 6
 
 log_level = os.getenv("MINERU_LOG_LEVEL", "INFO").upper()
 logger.remove()  # 移除默认handler
-logger.add(sys.stderr, level=log_level)  # 添加新handler
+logger.add(sys.stderr, level=log_level
+)  # 添加新
+handler
 
 from mineru.cli.common import (
     docx_suffixes,
@@ -213,15 +215,15 @@ STATUS_TIMER_INTERVAL_SECONDS = 0.1
 STATUS_QUEUE_ANIMATION_INTERVAL_SECONDS = 1.0
 STATUS_QUEUE_ANIMATION_MAX_DOTS = 10
 
-STATUS_PREPARING_REQUEST = "Preparing request..."
-STATUS_CHECKING_SERVER = "Checking server status..."
-STATUS_SUBMITTING_TASK = "Submitting task..."
-STATUS_DOWNLOADING_RESULT = "Task completed, downloading result..."
-STATUS_PROCESSING_OUTPUT = "Preparing outputs..."
-STATUS_COMPLETED = "Completed"
-STATUS_QUEUED_ON_SERVER = "Queued on server"
-STATUS_PROCESSING_ON_SERVER = "Processing on server"
-STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
+STATUS_PREPARING_REQUEST = "Preparazione della richiesta..."
+STATUS_CHECKING_SERVER = "Controllo dello stato del server..."
+STATUS_SUBMITTING_TASK = "Invio dell'attività..."
+STATUS_DOWNLOADING_RESULT = "Attività completata, download del risultato..."
+STATUS_PROCESSING_OUTPUT = "Preparazione dell'output..."
+STATUS_COMPLETED = "Completato"
+STATUS_QUEUED_ON_SERVER = "In coda sul server"
+STATUS_PROCESSING_ON_SERVER = "In elaborazione sul server"
+STATUS_QUEUED_LOCALLY_PREFIX = "In coda localmente:"
 
 
 @dataclass
@@ -370,7 +372,7 @@ class StatusPanelState:
 
 
 def format_failed_status(error: Exception | str) -> str:
-    return f"Failed: {error}"
+    return f"Fallito: {error}"
 
 
 def format_processing_status(elapsed_seconds: float) -> str:
@@ -385,7 +387,7 @@ def format_queue_status(base_message: str, elapsed_seconds: float) -> str:
 
 
 def format_concurrency_wait_message(snapshot: GradioConcurrencyWaitSnapshot) -> str:
-    return f"{STATUS_QUEUED_LOCALLY_PREFIX} {snapshot.ahead} request(s) ahead"
+    return f"{STATUS_QUEUED_LOCALLY_PREFIX} {snapshot.ahead} richiesta/e in attesa"
 
 
 def format_remote_status_message(
@@ -400,15 +402,15 @@ def format_remote_status_message(
 
     if status == "pending":
         if queued_ahead is not None:
-            return f"{STATUS_QUEUED_ON_SERVER}: {queued_ahead} request(s) ahead"
+            return f"{STATUS_QUEUED_ON_SERVER}: {queued_ahead} richiesta/e in attesa"
         return STATUS_QUEUED_ON_SERVER
     if status == "processing":
         return STATUS_PROCESSING_ON_SERVER
     if status == "completed":
         return STATUS_COMPLETED
     if status == "failed":
-        return format_failed_status("server task failed")
-    return f"Task status: {status}"
+        return format_failed_status("errore attività server")
+    return f"Stato attività: {status}"
 
 
 def compress_directory_to_zip(directory_path, output_zip_path):
@@ -681,7 +683,7 @@ async def _run_to_markdown_job(
                 upload_assets=upload_assets,
                 form_data=form_data,
             )
-            emit_status(f"Task submitted：task_id={submit_response.task_id}")
+            emit_status(f"Attività inviata：task_id={submit_response.task_id}")
 
             last_task_snapshot = None
 
@@ -1148,6 +1150,38 @@ def main(ctx,
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
             "backend_info_default": "选择文档解析的后端引擎。",
+        },
+        it={
+            "upload_file": "Seleziona un file da caricare (PDF, immagine, DOCX, PPTX o XLSX)",
+            "max_pages": "Pagine massime",
+            "backend": "Backend",
+            "server_url": "URL del server",
+            "server_url_info": "URL del server compatibile con OpenAI per il backend http-client.",
+            "recognition_options": "**Opzioni di riconoscimento:**",
+            "table_enable": "Abilita riconoscimento tabelle",
+            "table_info": "Se disabilitato, le tabelle saranno mostrate come immagini.",
+            "formula_label_vlm": "Abilita riconoscimento formule (display)",
+            "formula_label_pipeline": "Abilita riconoscimento formule",
+            "formula_label_hybrid": "Abilita riconoscimento formule inline",
+            "formula_info_vlm": "Se disabilitato, le formule saranno mostrate come immagini.",
+            "formula_info_pipeline": "Se disabilitato, le formule saranno mostrate come immagini e le formule inline non saranno rilevate.",
+            "formula_info_hybrid": "Se disabilitato, le formule inline non saranno rilevate o analizzate.",
+            "ocr_language": "Lingua OCR",
+            "ocr_language_info": "Lingua OCR per PDF e immagini basate su scansione.",
+            "force_ocr": "Forza abilitazione OCR",
+            "force_ocr_info": "Abilita solo se il risultato è molto scarso. Richiede la lingua OCR corretta.",
+            "convert": "Converti",
+            "clear": "Pulisci",
+            "doc_preview": "Anteprima documento",
+            "examples": "Esempi:",
+            "convert_status": "Stato conversione",
+            "convert_result": "Risultato conversione",
+            "md_rendering": "Resa Markdown",
+            "md_text": "Testo Markdown",
+            "backend_info_vlm": "Analisi VLM ad alta precisione, supporta solo documenti in cinese e inglese.",
+            "backend_info_pipeline": "Analisi pipeline tradizionale, supporta più lingue, senza allucinazioni.",
+            "backend_info_hybrid": "Analisi ibrida ad alta precisione, supporta più lingue.",
+            "backend_info_default": "Scegli il motore di analisi per il documento.",
         },
     )
 
