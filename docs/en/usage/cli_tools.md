@@ -147,6 +147,16 @@ Here are the environment variables and their descriptions:
     * Default is `300` seconds.
     * Applies to temporary local API startup in `mineru`, preload startup in `mineru-gradio`, and router-managed local workers.
 
+- `MINERU_TASK_RESULT_TIMEOUT_SECONDS`:
+    * Used to control how long clients wait for a task to complete and reach a terminal state.
+    * Default is `3600` seconds, and the value must be greater than or equal to `1`.
+    * Applies to task-status polling in `mineru`, `mineru-gradio`, `mineru-router`, and other API-client scenarios.
+
+- `MINERU_TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS`:
+    * Used to control the read timeout when retrieving completed task results, including waiting for server-side ZIP generation and downloading the result ZIP.
+    * Default is `600` seconds, and the value must be greater than or equal to `1`.
+    * This is not a hard limit for total download duration; if the server keeps returning data, the total download time may exceed this value.
+
 - `MINERU_API_TASK_RETENTION_SECONDS`:
     * Used to set how long completed or failed tasks are retained, in seconds.
     * Default is `86400` seconds (24 hours).

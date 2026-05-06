@@ -96,6 +96,18 @@ def get_task_result_timeout_seconds(default: float = 3600.0) -> float:
 TASK_RESULT_TIMEOUT_SECONDS = get_task_result_timeout_seconds()
 
 
+def get_task_result_download_timeout_seconds(default: float = 600.0) -> float:
+    """读取任务结果下载超时时间，避免和任务处理等待超时混用。"""
+    return get_float_env(
+        "MINERU_TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS",
+        default,
+        minimum=1.0,
+    )
+
+
+TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS = get_task_result_download_timeout_seconds()
+
+
 def get_local_api_launch_mode(default: str = LOCAL_API_LAUNCH_MODE_SUBPROCESS) -> str:
     value = os.getenv(MINERU_LOCAL_API_LAUNCH_MODE_ENV)
     if value is None:
@@ -629,7 +641,7 @@ def build_http_timeout() -> httpx.Timeout:
 def build_result_download_timeout() -> httpx.Timeout:
     return httpx.Timeout(
         connect=10,
-        read=TASK_RESULT_TIMEOUT_SECONDS,
+        read=TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS,
         write=300,
         pool=30,
     )
