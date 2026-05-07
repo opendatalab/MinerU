@@ -5,24 +5,38 @@ from mineru.utils.ocr_utils import _is_overlaps_y_exceeds_threshold, _is_overlap
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
 VERTICAL_SPAN_IN_BLOCK_THRESHOLD = 0.8
 
+
+def is_vertical_text_block_by_spans(spans):
+    """根据块内文本 span 的高宽比判断文本块是否更像竖排文本。"""
+    valid_span_count = 0
+    vertical_span_count = 0
+    for span in spans:
+        bbox = span.get('bbox')
+        if not bbox or len(bbox) < 4:
+            continue
+
+        span_width = bbox[2] - bbox[0]
+        span_height = bbox[3] - bbox[1]
+        if span_width <= 0 or span_height <= 0:
+            continue
+
+        valid_span_count += 1
+        if span_height / span_width > VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD:
+            vertical_span_count += 1
+
+    if valid_span_count == 0:
+        return False
+
+    return vertical_span_count / valid_span_count > VERTICAL_SPAN_IN_BLOCK_THRESHOLD
+
+
 def fix_text_block(block):
     # 文本block中的公式span都应该转换成行内type
     for span in block['spans']:
         if span['type'] == ContentType.INTERLINE_EQUATION:
             span['type'] = ContentType.INLINE_EQUATION
 
-    # 假设block中的span超过80%的数量高度是宽度的两倍以上，则认为是纵向文本块
-    vertical_span_count = sum(
-        1 for span in block['spans']
-        if (span['bbox'][3] - span['bbox'][1]) / (span['bbox'][2] - span['bbox'][0]) > VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD
-    )
-    total_span_count = len(block['spans'])
-    if total_span_count == 0:
-        vertical_ratio = 0
-    else:
-        vertical_ratio = vertical_span_count / total_span_count
-
-    if vertical_ratio > VERTICAL_SPAN_IN_BLOCK_THRESHOLD:
+    if is_vertical_text_block_by_spans(block['spans']):
         # 如果是纵向文本块，则按纵向lines处理
         block_lines = merge_spans_to_vertical_line(block['spans'])
         sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
