@@ -10,7 +10,7 @@ from mineru.utils.boxbase import (
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
-    merge_spans_to_line, line_sort_spans_by_left_to_right
+    merge_spans_to_line, line_sort_spans_by_left_to_right, is_vertical_text_block_by_spans
 from mineru.utils.span_pre_proc import txt_spans_extract
 
 
@@ -124,6 +124,13 @@ class MagicModel:
 
     @staticmethod
     def __fix_text_block(block):
+        if (
+            block["type"] == BlockType.TEXT
+            and is_vertical_text_block_by_spans(block["spans"])
+        ):
+            # layout 偶发会把竖排正文识别为横排 text，这里用旧版 span 高宽比规则兜底。
+            block["type"] = BlockType.VERTICAL_TEXT
+
         if block["type"] == BlockType.VERTICAL_TEXT:
             # 如果是纵向文本块，则按纵向lines处理
             block_lines = merge_spans_to_vertical_line(block['spans'])
