@@ -4,6 +4,7 @@ import json
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -188,6 +189,24 @@ def resolve_connect_host(host: str) -> str:
     if host in {"0.0.0.0", "::"}:
         return "127.0.0.1"
     return host
+
+
+def reserve_unique_local_ports(count: int) -> list[int]:
+    """一次性占用并释放多个本地端口，降低并行启动 worker 时的端口重复风险。"""
+    if count <= 0:
+        return []
+
+    sockets: list[socket.socket] = []
+    try:
+        for _ in range(count):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(1)
+            sockets.append(sock)
+        return [int(sock.getsockname()[1]) for sock in sockets]
+    finally:
+        for sock in sockets:
+            sock.close()
 
 
 def normalize_local_device_type(device: str | None) -> str:
@@ -384,7 +403,7 @@ class ManagedLocalServer:
     def is_running(self) -> bool:
         return self.process is not None and self.process.poll() is None
 
-    async def start(self, client: httpx.AsyncClient) -> None:
+    async def start(self, client: httpx.AsyncClient, port: int | None = None) -> None:
         if self.is_running():
             return
 
@@ -392,7 +411,7 @@ class ManagedLocalServer:
         output_root = Path(self.temp_dir.name) / "output"
         output_root.mkdir(parents=True, exist_ok=True)
 
-        resolved_port = find_free_port()
+        resolved_port = port if port is not None else find_free_port()
         remaining_cli_args = strip_local_api_network_args(self.extra_cli_args)
         worker_cli_args = build_local_api_cli_args(
             remaining_cli_args,
@@ -573,20 +592,32 @@ class WorkerPool:
         return list(self._servers.values())
 
     async def start(self) -> None:
-        for server in self.servers:
-            if server.local_server is None:
-                continue
-            try:
-                await server.local_server.start(self.client)
-                server.base_url = normalize_base_url(server.local_server.base_url or "")
-            except Exception as exc:
-                server.healthy = False
-                server.last_error = str(exc)
-                server.last_checked_at = utc_now_iso()
+        local_servers = [
+            server for server in self.servers if server.local_server is not None
+        ]
+        local_ports = reserve_unique_local_ports(len(local_servers))
+        await asyncio.gather(
+            *(
+                self._start_local_server(server, port)
+                for server, port in zip(local_servers, local_ports)
+            )
+        )
 
         await self.refresh_all()
         if self._monitor_task is None or self._monitor_task.done():
             self._monitor_task = asyncio.create_task(self._monitor_loop(), name="mineru-router-worker-monitor")
+
+    async def _start_local_server(self, server: WorkerState, port: int) -> None:
+        """启动单个本地 worker，并把启动失败限制在该 worker 状态内。"""
+        if server.local_server is None:
+            return
+        try:
+            await server.local_server.start(self.client, port=port)
+            server.base_url = normalize_base_url(server.local_server.base_url or "")
+        except Exception as exc:
+            server.healthy = False
+            server.last_error = str(exc)
+            server.last_checked_at = utc_now_iso()
 
     async def shutdown(self) -> None:
         if self._monitor_task is not None:
