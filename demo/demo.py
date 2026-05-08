@@ -232,7 +232,7 @@ def main() -> None:
     start_page_id = 0
     end_page_id = None
 
-    """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
+    """If you cannot download the model due to network issues, you can set the environment variable MINERU_MODEL_SOURCE to modelscope to use a proxy-free repository for model download"""
     # os.environ['MINERU_MODEL_SOURCE'] = "modelscope"
 
     asyncio.run(

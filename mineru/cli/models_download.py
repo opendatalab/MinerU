@@ -7,6 +7,7 @@ import click
 import requests
 from loguru import logger
 
+from mineru.utils.config_reader import resolve_config_file_path
 from mineru.utils.enum_class import ModelPath
 from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
@@ -49,9 +50,7 @@ def download_and_modify_json(url, local_filename, modifications):
 def configure_model(model_dir, model_type):
     """配置模型"""
     json_url = 'https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/mineru.template.json'
-    config_file_name = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
-    home_dir = os.path.expanduser('~')
-    config_file = os.path.join(home_dir, config_file_name)
+    config_file = str(resolve_config_file_path())
 
     json_mods = {
         'models-dir': {

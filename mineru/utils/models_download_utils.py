@@ -3,8 +3,17 @@ import os
 from huggingface_hub import snapshot_download as hf_snapshot_download
 from modelscope import snapshot_download as ms_snapshot_download
 
-from mineru.utils.config_reader import get_local_models_dir
+from mineru.utils.config_reader import get_local_models_dir, get_repo_models_root
 from mineru.utils.enum_class import ModelPath
+
+
+def _get_repo_cache_dir(repo_mode: str) -> str | None:
+    repo_models_root = get_repo_models_root()
+    if repo_models_root is None:
+        return None
+    cache_dir = repo_models_root / repo_mode / '.cache'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return str(cache_dir)
 
 def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipeline') -> str:
     """
@@ -52,18 +61,31 @@ def auto_download_and_get_model_root_path(relative_path: str, repo_mode='pipelin
     else:
         raise ValueError(f"未知的仓库类型: {model_source}")
 
-    cache_dir = None
+    cache_dir = _get_repo_cache_dir(repo_mode)
 
     if repo_mode == 'pipeline':
         relative_path = relative_path.strip('/')
-        cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+        download_kwargs = {
+            'allow_patterns': [relative_path, relative_path+"/*"],
+        }
+        if cache_dir is not None:
+            download_kwargs['cache_dir'] = cache_dir
+        cache_dir = snapshot_download(repo, **download_kwargs)
     elif repo_mode == 'vlm':
         # VLM 模式下，根据 relative_path 的不同处理方式
         if relative_path == "/":
-            cache_dir = snapshot_download(repo)
+            download_kwargs = {}
+            if cache_dir is not None:
+                download_kwargs['cache_dir'] = cache_dir
+            cache_dir = snapshot_download(repo, **download_kwargs)
         else:
             relative_path = relative_path.strip('/')
-            cache_dir = snapshot_download(repo, allow_patterns=[relative_path, relative_path+"/*"])
+            download_kwargs = {
+                'allow_patterns': [relative_path, relative_path+"/*"],
+            }
+            if cache_dir is not None:
+                download_kwargs['cache_dir'] = cache_dir
+            cache_dir = snapshot_download(repo, **download_kwargs)
 
     if not cache_dir:
         raise FileNotFoundError(f"Failed to download model: {relative_path} from {repo}")

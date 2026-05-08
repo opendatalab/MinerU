@@ -86,6 +86,8 @@ nav:
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
     - Reference:
       - Reference: reference/index.md
+      - Module Overview: reference/module_overview.md
+      - Processing Flow: reference/processing_flow.md
       - Output File Format: reference/output_files.md
       - Changelog: reference/changelog.md
     - FAQ:
@@ -104,6 +106,8 @@ nav:
     - Advanced CLI Parameters: usage/advanced_cli_parameters.md
   - Reference:
     - Reference: reference/index.md
+    - Module Overview: reference/module_overview.md
+    - Processing Flow: reference/processing_flow.md
     - Output File Format: reference/output_files.md
     - Changelog: reference/changelog.md
   - FAQ:
@@ -139,6 +143,8 @@ plugins:
             Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答
             Reference: 参考资料
+            Module Overview: 模块功能总览
+            Processing Flow: 文件处理流程
             Output File Format: 输出文件格式
             Changelog: 更新日志
             Demo: 在线演示
