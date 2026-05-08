@@ -44,6 +44,7 @@ class BatchAnalyze:
         table_ori_cls_batch_enabled: bool | None = None,
         text_ocr_det_batch_enabled: bool | None = None,
         mask_inline_formula_for_ocr_det: bool = True,
+        formula_recognition_scope: str = "all",
     ):
         self.batch_ratio = batch_ratio
         self.formula_enable = get_formula_enable(formula_enable)
@@ -59,6 +60,10 @@ class BatchAnalyze:
         self.mask_inline_formula_for_ocr_det = (
             get_ocr_det_mask_inline_formula_enable(mask_inline_formula_for_ocr_det)
         )
+        if formula_recognition_scope not in {"all", "inline_only"}:
+            raise ValueError(f"Unsupported formula_recognition_scope: {formula_recognition_scope}")
+        # 控制公式识别范围，默认保持pipeline原行为；hybrid-flash只让pipeline处理行内公式。
+        self.formula_recognition_scope = formula_recognition_scope
 
     @staticmethod
     def _apply_mask_boxes_to_image(
@@ -327,11 +332,14 @@ class BatchAnalyze:
         clean_vram(self.model.device, vram_threshold=8)
 
         if self.formula_enable:
+            formula_labels = ["display_formula", "inline_formula"]
+            if self.formula_recognition_scope == "inline_only":
+                formula_labels = ["inline_formula"]
             images_mfd_res = []
             for layout_res in images_layout_res:
                 page_formula_res = []
                 for res in layout_res:
-                    if res.get("label") in ["display_formula", "inline_formula"]:
+                    if res.get("label") in formula_labels:
                         res.setdefault("latex", "")
                         page_formula_res.append(res)
                 images_mfd_res.append(page_formula_res)

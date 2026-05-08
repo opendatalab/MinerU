@@ -295,7 +295,8 @@ def doc_analyze_streaming(
 def batch_image_analyze(
         images_with_extra_info: List[Tuple[Image.Image, bool, str]],
         formula_enable=True,
-        table_enable=True):
+        table_enable=True,
+        formula_recognition_scope="all"):
 
     from .batch_analyze import BatchAnalyze
 
@@ -340,7 +341,14 @@ def batch_image_analyze(
             os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
         enable_ocr_det_batch = True
 
-    batch_model = BatchAnalyze(model_manager, batch_ratio, formula_enable, table_enable, enable_ocr_det_batch)
+    batch_model = BatchAnalyze(
+        model_manager,
+        batch_ratio,
+        formula_enable,
+        table_enable,
+        enable_ocr_det_batch,
+        formula_recognition_scope=formula_recognition_scope,
+    )
     results = batch_model(images_with_extra_info)
 
     clean_memory(get_device())
