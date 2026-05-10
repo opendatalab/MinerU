@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import json
 import os
+from pathlib import Path
 from loguru import logger
 
 try:
@@ -14,14 +15,37 @@ except ImportError:
 CONFIG_FILE_NAME = os.getenv('MINERU_TOOLS_CONFIG_JSON', 'mineru.json')
 
 
-def read_config():
-    if os.path.isabs(CONFIG_FILE_NAME):
-        config_file = CONFIG_FILE_NAME
-    else:
-        home_dir = os.path.expanduser('~')
-        config_file = os.path.join(home_dir, CONFIG_FILE_NAME)
+def get_repo_root() -> Path | None:
+    """Best-effort detection of the MinerU source checkout root."""
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / 'pyproject.toml').exists() and (parent / 'mineru.template.json').exists():
+            return parent
+    return None
 
-    if not os.path.exists(config_file):
+
+def resolve_config_file_path() -> Path:
+    if os.path.isabs(CONFIG_FILE_NAME):
+        return Path(CONFIG_FILE_NAME)
+
+    repo_root = get_repo_root()
+    if repo_root is not None:
+        return repo_root / CONFIG_FILE_NAME
+
+    return Path.home() / CONFIG_FILE_NAME
+
+
+def get_repo_models_root() -> Path | None:
+    repo_root = get_repo_root()
+    if repo_root is None:
+        return None
+    return repo_root / '.mineru' / 'models'
+
+
+def read_config():
+    config_file = resolve_config_file_path()
+
+    if not config_file.exists():
         # logger.warning(f'{config_file} not found, using default configuration')
         return None
     else:
@@ -188,9 +212,28 @@ def get_llm_aided_config():
 
 def get_local_models_dir():
     config = read_config()
+    repo_models_root = get_repo_models_root()
+    default_models_dir = None
+    if repo_models_root is not None:
+        default_models_dir = {
+            'pipeline': str(repo_models_root / 'pipeline'),
+            'vlm': str(repo_models_root / 'vlm'),
+        }
+
     if config is None:
-        return None
+        return default_models_dir
+
     models_dir = config.get('models-dir')
     if models_dir is None:
-        logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
-    return models_dir
+        if default_models_dir is None:
+            logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
+        return default_models_dir
+
+    if default_models_dir is None:
+        return models_dir
+
+    resolved = dict(default_models_dir)
+    for key, value in models_dir.items():
+        if value:
+            resolved[key] = value
+    return resolved

@@ -32,7 +32,7 @@ def page_to_image(
 
 def image_to_bytes(
     image: Image.Image,
-    # image_format: str = "PNG",  # 也可以用 "JPEG"
+    # image_format: str = "PNG",  # Can also use "JPEG"
     image_format: str = "JPEG",
 ) -> bytes:
     with BytesIO() as image_buffer:

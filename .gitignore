@@ -57,3 +57,18 @@ _build/
 
 
 output/
+
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+*.json
+*.ppt
+
+images
+.cache
+*.sh
+*.lock
+test_output/
+.cursor/
+*.toml
