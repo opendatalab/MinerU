@@ -70,3 +70,5 @@ images
 *.sh
 *.lock
 test_output/
+.cursor/
+*.toml

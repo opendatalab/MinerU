@@ -65,6 +65,7 @@ dependencies = [
     "fastapi",
     "python-multipart",
     "uvicorn",
+    "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]

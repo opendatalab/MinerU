@@ -5,7 +5,8 @@ DEMO_PPTX = "demo/office_docs/pptx_01.pptx"
 DEMO_XLSX = "demo/office_docs/xlsx_01.xlsx"
 DEMO_PDF = "/home/aidi/devtest/IMPORTANT_FORMULAE_FOR_COMPETITIVE_EXAMS.pdf"
 
-# URL server VLM khi dùng backend http-client (ví dụ: chạy vLLM/SGLang cục bộ)
+# VLM server URL when using the http-client backend
+# Example: running vLLM/SGLang locally
 VLM_SERVER_URL = "http://127.0.0.1:8000"
 
 
@@ -33,7 +34,7 @@ def test_xlsx():
 def test_pdf_pipeline():
     processor = DirectFlowProcessor(output_root="./output")
     result, saved = processor.run_pipeline(
-        "/home/aidi/devtest/IMPORTANT_FORMULAE_FOR_COMPETITIVE_EXAMS.pdf",
+        "/home/tomkey/aidi/nbc/MinerU/demo/pdfs/demo3.pdf",
         parse_method="auto",
         language="lt",
         formula_enable=True,
@@ -46,11 +47,11 @@ def test_pdf_pipeline():
 
 
 def test_pdf_vlm():
-    """VLM flow với local model (cần GPU + model đã download)."""
+    """VLM flow with a local model (requires GPU + downloaded model)."""
     processor = DirectFlowProcessor(output_root="./output")
     result, saved = processor.run_vlm(
         DEMO_PDF,
-        backend="auto-engine",   # tự phát hiện engine phù hợp (huggingface / lmdeploy / ...)
+        backend="auto-engine",   # Automatically detects the appropriate engine (huggingface / lmdeploy / ...)
         language="en",
         draw_layout=True,
     )
@@ -59,10 +60,10 @@ def test_pdf_vlm():
 
 
 def test_pdf_vlm_http():
-    """VLM flow qua HTTP client (remote VLM server, không cần GPU cục bộ).
+    """VLM flow via HTTP client (remote VLM server, no local GPU required).
 
-    Yêu cầu server VLM đang chạy tại VLM_SERVER_URL.
-    Ví dụ khởi động server: ./run.sh api --host 127.0.0.1 --port 8000
+    Requires the VLM server to be running at VLM_SERVER_URL.
+    Example server startup: ./run.sh api --host 127.0.0.1 --port 8000
     """
     processor = DirectFlowProcessor(output_root="./output")
     result, saved = processor.run_vlm(
@@ -76,9 +77,9 @@ def test_pdf_vlm_http():
 
 
 def test_pdf_hybrid():
-    """Hybrid flow = VLM + OCR refinement (cần GPU + model đã download).
+    """Hybrid flow = VLM + OCR refinement (requires GPU + downloaded model).
 
-    Tốt hơn vlm thuần khi tài liệu có nhiều công thức toán.
+    Better than pure VLM when documents contain many mathematical formulas.
     """
     processor = DirectFlowProcessor(output_root="./output")
     result, saved = processor.run_hybrid(
@@ -95,9 +96,11 @@ def test_pdf_hybrid():
 
 
 def test_pdf_hybrid_http():
-    """Hybrid flow qua HTTP client (remote VLM + local pipeline OCR).
+    """Hybrid flow via HTTP client (remote VLM + local pipeline OCR).
 
-    Yêu cầu: server VLM tại VLM_SERVER_URL + `mineru[pipeline]` cài cục bộ.
+    Requires:
+    - VLM server running at VLM_SERVER_URL
+    - `mineru[pipeline]` installed locally
     """
     processor = DirectFlowProcessor(output_root="./output")
     result, saved = processor.run_hybrid(
@@ -121,14 +124,14 @@ if __name__ == "__main__":
 
     test_pdf_pipeline()
 
-    # --- PDF VLM needs GPU + local model ---
+    # --- PDF VLM requires GPU + local model ---
     # test_pdf_vlm()
 
-    # --- PDF VLM to HTTP client ---
+    # --- PDF VLM via HTTP client ---
     # test_pdf_vlm_http()
 
-    # --- PDF Hybrid / local model neads GPU ---
+    # --- PDF Hybrid / local model requires GPU ---
     # test_pdf_hybrid()
 
-    # --- PDF Hybrid qua HTTP client (remote VLM + local pipeline OCR) ---
+    # --- PDF Hybrid via HTTP client (remote VLM + local pipeline OCR) ---
     # test_pdf_hybrid_http()
