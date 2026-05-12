@@ -23,7 +23,11 @@ class MagicModel:
 
             block_type = block_info["type"]
             block_content = block_info.get("content", "")
-            if not block_content and block_type != BlockType.CHART:
+            if (
+                not block_content
+                and block_type != BlockType.CHART
+                and not block_info.get("image_path")
+            ):
                 continue
 
             if block_type in [
@@ -42,8 +46,11 @@ class MagicModel:
                 block_type = BlockType.IMAGE_BODY
                 span = {
                     "type": ContentType.IMAGE,
-                    "image_base64": block_content,
                 }
+                if block_info.get("image_path"):
+                    span["image_path"] = block_info["image_path"]
+                else:
+                    span["image_base64"] = block_content
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
                 span = {

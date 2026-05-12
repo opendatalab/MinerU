@@ -1,4 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import hashlib
+import mimetypes
 import re
 from io import BytesIO
 from pathlib import Path
@@ -36,6 +38,7 @@ from mineru.utils.office_rich_text import (
 )
 from mineru.backend.utils.office_image import (
     serialize_office_image,
+    serialize_office_image_bytes,
 )
 from mineru.backend.utils.office_chart import extract_chart_html_from_ooxml
 
@@ -76,7 +79,7 @@ class DocxConverter:
     - a14: Office 2010 Drawing 命名空间
     """
 
-    def __init__(self):
+    def __init__(self, image_writer: Any | None = None):
         self.XML_KEY = (
             "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"
         )
@@ -92,6 +95,7 @@ class DocxConverter:
         self.cur_page = []
         self._mammoth_tables_html: list = []   # 完整文档 mammoth 预解析的表格 HTML 列表
         self._mammoth_table_idx: int = 0       # 当前预解析表格游标
+        self.image_writer = image_writer
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
         self.list_block_stack: list = []  # 列表块堆栈
@@ -863,6 +867,72 @@ class DocxConverter:
             ]
         )
 
+    @staticmethod
+    def _mammoth_image_extension(content_type: str | None) -> str:
+        normalized = (content_type or "").split(";", 1)[0].strip().lower()
+        explicit_extensions = {
+            "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
+            "image/png": ".png",
+            "image/gif": ".gif",
+            "image/bmp": ".bmp",
+            "image/tiff": ".tiff",
+            "image/svg+xml": ".svg",
+            "image/x-wmf": ".wmf",
+            "image/wmf": ".wmf",
+            "image/x-emf": ".emf",
+            "image/emf": ".emf",
+        }
+        if normalized in explicit_extensions:
+            return explicit_extensions[normalized]
+
+        guessed = mimetypes.guess_extension(normalized) if normalized else None
+        if guessed in {".jpe", ".jpeg"}:
+            return ".jpg"
+        return guessed or ".bin"
+
+    def _build_mammoth_table_image_converter(self):
+        import mammoth as _mammoth
+
+        @_mammoth.images.img_element
+        def convert_image(image):
+            if self.image_writer is None:
+                return {}
+
+            with image.open() as image_bytes:
+                image_data = image_bytes.read()
+            extension = self._mammoth_image_extension(image.content_type)
+            image_path = self._write_image_data(image_data, extension)
+            return {"src": image_path}
+
+        return convert_image
+
+    def _write_image_data(self, image_data: bytes, extension: str) -> str:
+        if self.image_writer is None:
+            raise RuntimeError("image_writer is required to write DOCX images")
+
+        normalized_extension = extension if extension.startswith(".") else f".{extension}"
+        image_path = f"{hashlib.sha256(image_data).hexdigest()}{normalized_extension}"
+        self.image_writer.write(image_path, image_data)
+        return image_path
+
+    def _write_serialized_office_image(
+        self,
+        image_data: bytes,
+        *,
+        part_name: object | None = None,
+        content_type: str | None = None,
+    ) -> str | None:
+        serialized = serialize_office_image_bytes(
+            image_data,
+            part_name=part_name,
+            content_type=content_type,
+        )
+        if serialized is None:
+            return None
+        serialized_image, extension = serialized
+        return self._write_image_data(serialized_image, extension)
+
     def _preparse_tables_with_mammoth(self, file_bytes: bytes) -> list:
         """
         使用 mammoth 在完整 DOCX 上下文中预解析所有顶层表格的 HTML。
@@ -874,7 +944,8 @@ class DocxConverter:
         包上下文，但通过 transform_document 只转换顶层表格节点，避免把
         非表格正文转换成巨大的 HTML 字符串。
 
-        图片会被 mammoth 转换为内联 data-URI base64 格式（<img src="data:...">）。
+        表格图片不再由 mammoth 转换为内联 data-URI base64。API/CLI 路径
+        提供 image_writer 时会直接落盘，并在 HTML 中保留相对路径。
 
         注意：mammoth 不支持 OMML（Office Math Markup Language）公式，会静默丢弃
         表格单元格内的公式。本方法在获取 mammoth HTML 后，会同步遍历原始 DOCX XML，
@@ -890,6 +961,7 @@ class DocxConverter:
             result = _mammoth.convert_to_html(
                 BytesIO(file_bytes),
                 transform_document=self._mammoth_top_level_table_document,
+                convert_image=self._build_mammoth_table_image_converter(),
             )
             soup = _BeautifulSoup(result.value, 'html.parser')
 
@@ -1442,18 +1514,30 @@ class DocxConverter:
                 logger.warning("Warning: image cannot be found")
                 continue
 
-            img_base64 = serialize_office_image(
-                image_part.blob,
-                part_name=getattr(image_part, "partname", None),
-                content_type=getattr(image_part, "content_type", None),
-            )
-            if img_base64 is None:
-                continue
-
-            image_block = {
-                "type": BlockType.IMAGE,
-                "content": img_base64,
-            }
+            if self.image_writer is not None:
+                image_path = self._write_serialized_office_image(
+                    image_part.blob,
+                    part_name=getattr(image_part, "partname", None),
+                    content_type=getattr(image_part, "content_type", None),
+                )
+                if image_path is None:
+                    continue
+                image_block = {
+                    "type": BlockType.IMAGE,
+                    "image_path": image_path,
+                }
+            else:
+                img_base64 = serialize_office_image(
+                    image_part.blob,
+                    part_name=getattr(image_part, "partname", None),
+                    content_type=getattr(image_part, "content_type", None),
+                )
+                if img_base64 is None:
+                    continue
+                image_block = {
+                    "type": BlockType.IMAGE,
+                    "content": img_base64,
+                }
             self.cur_page.append(image_block)
 
     def _get_paragraph_elements(self, paragraph: Paragraph):

@@ -15,7 +15,7 @@ def office_docx_analyze(
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
-    results = convert_binary(file_stream)
+    results = convert_binary(file_stream, image_writer=image_writer)
 
     infer_time = round(time.time() - infer_start, 2)
     safe_time = max(infer_time, 0.01)

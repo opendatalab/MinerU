@@ -737,14 +737,14 @@ async def aio_do_parse(
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
         output_dir,
-        pdf_file_names=pdf_file_names,
-        pdf_bytes_list=pdf_bytes_list,
-        f_dump_md=f_dump_md,
-        f_dump_middle_json=f_dump_middle_json,
-        f_dump_model_output=f_dump_model_output,
-        f_dump_orig_file=f_dump_orig_pdf,
-        f_dump_content_list=f_dump_content_list,
-        f_make_md_mode=f_make_md_mode,
+        pdf_file_names,
+        pdf_bytes_list,
+        f_dump_md,
+        f_dump_middle_json,
+        f_dump_model_output,
+        f_dump_orig_pdf,
+        f_dump_content_list,
+        f_make_md_mode,
     )
     for index in sorted(need_remove_index, reverse=True):
         del pdf_bytes_list[index]

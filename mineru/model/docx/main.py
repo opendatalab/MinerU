@@ -9,8 +9,8 @@ def convert_path(file_path: str):
         return convert_binary(fh)
 
 
-def convert_binary(file_binary: BinaryIO):
-    converter = DocxConverter()
+def convert_binary(file_binary: BinaryIO, image_writer=None):
+    converter = DocxConverter(image_writer=image_writer)
     converter.convert(file_binary)
     return converter.pages
 

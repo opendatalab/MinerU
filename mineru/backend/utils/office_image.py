@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from loguru import logger
 
 from mineru.utils.check_sys_env import is_windows_environment
-from mineru.utils.pdf_reader import image_to_b64str
+from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes
 
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
@@ -171,6 +171,109 @@ def serialize_vector_part_with_placeholder(
         ],
     )
     return image_to_b64str(placeholder, image_format="JPEG")
+
+
+def serialize_vector_image_bytes_with_placeholder(
+    pil_image: Image.Image, image_format_override: str | None = None
+) -> tuple[bytes, str]:
+    image_format = (
+        image_format_override or getattr(pil_image, "format", None) or "WMF/EMF"
+    ).upper()
+
+    if is_windows_environment():
+        try:
+            pil_image.load()
+            return image_to_bytes(pil_image, image_format="PNG"), ".png"
+        except PIL_IMAGE_LOAD_ERRORS as e:
+            logger.warning(
+                f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead."
+            )
+            placeholder_lines = [
+                f"{image_format} placeholder",
+                "Windows rendering failed",
+            ]
+    else:
+        logger.warning(
+            f"Skipping {image_format} image on non-Windows environment, size: {pil_image.size}"
+        )
+        placeholder_lines = [
+            f"{image_format} placeholder",
+            "Use Windows to parse",
+            "the original image",
+        ]
+
+    placeholder = create_text_placeholder(pil_image.size, placeholder_lines)
+    return image_to_bytes(placeholder, image_format="JPEG"), ".jpg"
+
+
+def serialize_vector_part_bytes_with_placeholder(
+    part_name: object | None = None,
+    content_type: str | None = None,
+    size: tuple[int, int] = (320, 180),
+) -> tuple[bytes, str]:
+    image_format = _vector_image_format_label(part_name, content_type)
+    logger.warning(
+        f"Skipping {image_format} image part before Pillow load, "
+        f"part_name={part_name}, content_type={content_type}"
+    )
+    placeholder = create_text_placeholder(
+        size,
+        [
+            f"{image_format} placeholder",
+            "Use Windows to parse",
+            "the original image",
+        ],
+    )
+    return image_to_bytes(placeholder, image_format="JPEG"), ".jpg"
+
+
+def serialize_office_image_bytes(
+    image_data: bytes,
+    *,
+    part_name: object | None = None,
+    content_type: str | None = None,
+) -> tuple[bytes, str] | None:
+    if is_vector_image_part(part_name, content_type):
+        if not is_windows_environment():
+            return serialize_vector_part_bytes_with_placeholder(part_name, content_type)
+
+        try:
+            pil_image = Image.open(BytesIO(image_data))
+        except PIL_IMAGE_LOAD_ERRORS as e:
+            logger.warning(
+                f"Warning: vector image cannot be opened by Pillow: {e}, "
+                f"part_name={part_name}, content_type={content_type}. "
+                "Using placeholder instead."
+            )
+            return serialize_vector_part_bytes_with_placeholder(part_name, content_type)
+
+        return serialize_vector_image_bytes_with_placeholder(
+            pil_image,
+            image_format_override=_vector_image_format_label(part_name, content_type),
+        )
+
+    try:
+        pil_image = Image.open(BytesIO(image_data))
+        pil_image.load()
+    except PIL_IMAGE_LOAD_ERRORS as e:
+        logger.warning(
+            f"Warning: image cannot be loaded by Pillow: {e}, "
+            f"part_name={part_name}, content_type={content_type}"
+        )
+        return None
+
+    if is_vector_image(pil_image):
+        return serialize_vector_image_bytes_with_placeholder(pil_image)
+
+    if pil_image.mode == "RGB":
+        return image_to_bytes(pil_image, image_format="JPEG"), ".jpg"
+
+    if pil_image.mode in {"RGBA", "LA"} or (
+        pil_image.mode == "P" and "transparency" in pil_image.info
+    ):
+        return image_to_bytes(pil_image.convert("RGBA"), image_format="PNG"), ".png"
+
+    return image_to_bytes(pil_image.convert("RGB"), image_format="JPEG"), ".jpg"
 
 
 def serialize_office_image(
