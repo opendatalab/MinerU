@@ -598,7 +598,7 @@ def doc_analyze(
                     pdf_bytes=pdf_bytes,
                 )
                 try:
-                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    images_pil_list = [image_dict["img_pil"].copy() for image_dict in images_list]
                     logger.info(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
@@ -730,7 +730,7 @@ async def aio_doc_analyze(
                     image_type=ImageType.PIL,
                 )
                 try:
-                    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+                    images_pil_list = [image_dict["img_pil"].copy() for image_dict in images_list]
                     logger.info(
                         f'Hybrid processing window {window_index + 1}/{total_windows}: '
                         f'pages {window_start + 1}-{window_end + 1}/{page_count} '
