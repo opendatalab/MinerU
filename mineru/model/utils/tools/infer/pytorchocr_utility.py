@@ -79,7 +79,7 @@ def init_args():
 
     parser.add_argument("--use_space_char", type=str2bool, default=True)
     parser.add_argument("--drop_score", type=float, default=0.5)
-    parser.add_argument("--limited_max_width", type=int, default=1280)
+    parser.add_argument("--limited_max_width", type=int, default=2560)
     parser.add_argument("--limited_min_width", type=int, default=16)
 
     parser.add_argument(
