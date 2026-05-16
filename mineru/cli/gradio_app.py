@@ -363,6 +363,9 @@ APP_CSS = """
 .mineru-upload-file label[data-testid="block-label"] > span {
     margin-top: 2px;
 }
+#mineru-example-files label[data-testid="block-label"] {
+    display: none !important;
+}
 .mineru-actions {
     flex-wrap: nowrap !important;
     gap: 8px !important;
@@ -389,7 +392,6 @@ APP_CSS = """
     width: 100% !important;
 }
 .mineru-advanced-popover {
-    display: none !important;
     position: fixed !important;
     left: var(--mineru-popover-left, 316px) !important;
     top: var(--mineru-popover-top, 360px) !important;
@@ -406,9 +408,26 @@ APP_CSS = """
         0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
     backdrop-filter: blur(12px);
     overflow: hidden !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(-4px) scale(0.985) !important;
+    transform-origin: left center !important;
+    transition:
+        opacity 140ms ease,
+        transform 140ms ease,
+        visibility 0s linear 140ms !important;
 }
+body.mineru-advanced-popover-open .gradio-container .contain .mineru-advanced-popover,
 body.mineru-advanced-popover-open .mineru-advanced-popover {
-    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translateY(0) scale(1) !important;
+    transition:
+        opacity 140ms ease,
+        transform 140ms ease,
+        visibility 0s linear 0s !important;
 }
 .mineru-advanced-popover::before {
     display: none !important;
@@ -586,19 +605,166 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 
 APP_JS = """
 () => {
-    const POPOVER_SCRIPT_VERSION = "dropdown-position-v4";
+    const POPOVER_SCRIPT_VERSION = "clipboard-upload-v1";
     if (window.__mineruAdvancedPopoverInstalled === POPOVER_SCRIPT_VERSION) {
         return;
     }
     window.__mineruAdvancedPopoverInstalled = POPOVER_SCRIPT_VERSION;
 
     const POPOVER_OPEN_CLASS = "mineru-advanced-popover-open";
+    const OPEN_DELAY_MS = 120;
+    const CLOSE_DELAY_MS = 280;
+    const ANIMATION_DELAY_MS = 140;
+    const CLIPBOARD_MIME_EXTENSIONS = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+        "image/bmp": "bmp",
+        "image/tiff": "tiff",
+        "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    };
 
     // 兼容 Gradio 将 elem_classes 挂到按钮自身或按钮外层容器的两种 DOM 结构。
     const findButton = () => document.querySelector(
         "button.mineru-advanced-open, .mineru-advanced-open button, .mineru-advanced-open"
     );
     const findPopover = () => document.querySelector(".mineru-advanced-popover");
+    let openTimer = null;
+    let closeTimer = null;
+    let visibilityTimer = null;
+    let hoverHandlersInstalled = false;
+    const findUploadFileInput = () => {
+        const uploadRoot = document.querySelector(".mineru-upload-file");
+        if (!uploadRoot) {
+            return null;
+        }
+        return uploadRoot.querySelector('input[type="file"]');
+    };
+
+    // 读取上传控件 accept 规则，后续粘贴文件仍复用 gr.File 的支持格式边界。
+    const getUploadAcceptedTypes = (uploadInput) => {
+        const accept = uploadInput?.getAttribute("accept") || "";
+        return accept.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
+    };
+
+    // 判断剪贴板文件是否匹配 gr.File 当前支持的扩展名或 MIME 类型。
+    const fileMatchesAcceptedType = (file, acceptedTypes) => {
+        if (!acceptedTypes.length) {
+            return true;
+        }
+        const name = (file.name || "").toLowerCase();
+        const type = (file.type || "").toLowerCase();
+        return acceptedTypes.some((accepted) => {
+            if (accepted.startsWith(".")) {
+                return name.endsWith(accepted);
+            }
+            if (accepted.endsWith("/*")) {
+                return type.startsWith(accepted.slice(0, -1));
+            }
+            return type === accepted;
+        });
+    };
+
+    // 为截图等无文件名剪贴板图片补一个扩展名，确保后端按普通图片文件解析。
+    const buildClipboardFileName = (file) => {
+        const type = (file.type || "").toLowerCase();
+        const extension = CLIPBOARD_MIME_EXTENSIONS[type];
+        if (!extension) {
+            return "";
+        }
+        const timestamp = new Date().toISOString()
+            .replace(/[-:]/g, "")
+            .replace(/[.].+/, "")
+            .replace("T", "-");
+        const prefix = type.startsWith("image/") ? "clipboard-image" : "clipboard-file";
+        return `${prefix}-${timestamp}.${extension}`;
+    };
+
+    // 保留浏览器暴露的原始文件；仅在文件名缺少扩展名时复制一份并补齐名称。
+    const normalizeClipboardFile = (file) => {
+        if (/[.][^.]+$/.test(file.name || "")) {
+            return file;
+        }
+        const fileName = buildClipboardFileName(file);
+        if (!fileName || typeof File === "undefined") {
+            return file;
+        }
+        return new File([file], fileName, {
+            type: file.type,
+            lastModified: file.lastModified || Date.now(),
+        });
+    };
+
+    // 同时兼容剪贴板 files 与 items，两种入口在不同浏览器里暴露情况不一致。
+    const collectClipboardFiles = (clipboardData) => {
+        const files = Array.from(clipboardData.files || []);
+        if (files.length) {
+            return files;
+        }
+        return Array.from(clipboardData.items || [])
+            .filter((item) => item.kind === "file")
+            .map((item) => item.getAsFile())
+            .filter(Boolean);
+    };
+
+    // 构造只包含目标文件的 FileList；部分浏览器不允许构造 DataTransfer，需要降级处理。
+    const createUploadFileList = (file) => {
+        try {
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            return transfer.files;
+        } catch (error) {
+            return null;
+        }
+    };
+
+    // 把文件列表赋值给 gr.File 的原生 input，并触发 Gradio 监听的变更事件。
+    const assignClipboardFileToUpload = (uploadInput, uploadFiles) => {
+        if (!uploadFiles) {
+            return false;
+        }
+        try {
+            uploadInput.files = uploadFiles;
+        } catch (error) {
+            return false;
+        }
+        uploadInput.dispatchEvent(new Event("input", { bubbles: true }));
+        uploadInput.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+    };
+
+    // 将剪贴板文件注入现有 gr.File input，避免为图片、PDF、Office 维护第二套上传链路。
+    const uploadClipboardFile = (event) => {
+        const clipboardData = event.clipboardData;
+        const uploadInput = findUploadFileInput();
+        if (!clipboardData || !uploadInput) {
+            return false;
+        }
+
+        const acceptedTypes = getUploadAcceptedTypes(uploadInput);
+        const rawClipboardFiles = clipboardData.files || null;
+        const clipboardFiles = collectClipboardFiles(clipboardData)
+            .map((rawFile) => ({ rawFile, uploadFile: normalizeClipboardFile(rawFile) }))
+            .filter(({ uploadFile }) => fileMatchesAcceptedType(uploadFile, acceptedTypes));
+        if (!clipboardFiles.length) {
+            return false;
+        }
+
+        const { rawFile, uploadFile } = clipboardFiles[0];
+        const uploadFiles = createUploadFileList(uploadFile)
+            || (
+                rawClipboardFiles?.length === 1
+                && rawClipboardFiles[0] === rawFile
+                && rawFile === uploadFile
+                    ? rawClipboardFiles
+                    : null
+            );
+        return assignClipboardFileToUpload(uploadInput, uploadFiles);
+    };
 
     // 修正 Gradio Dropdown 在 fixed 浮层里按视口定位导致的下拉列表漂移。
     const positionAdvancedDropdowns = () => {
@@ -640,6 +806,62 @@ APP_JS = """
         });
     };
 
+    // 只在真正支持鼠标悬浮的桌面环境启用 hover 浮窗，触屏设备继续使用点击兜底。
+    const supportsHoverPopover = () => (
+        typeof window.matchMedia === "function"
+        && window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    );
+
+    // 取消尚未执行的打开/关闭计时，避免鼠标在按钮和气泡之间移动时闪烁。
+    const cancelPopoverTimers = () => {
+        if (openTimer !== null) {
+            clearTimeout(openTimer);
+            openTimer = null;
+        }
+        if (closeTimer !== null) {
+            clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+        if (visibilityTimer !== null) {
+            clearTimeout(visibilityTimer);
+            visibilityTimer = null;
+        }
+    };
+
+    // 清理旧版 display 开关留下的内联样式，后续统一交给 CSS 的可见性和动画状态控制。
+    const clearLegacyPopoverDisplay = (popover) => {
+        if (popover) {
+            popover.style.removeProperty("display");
+        }
+    };
+
+    // 用内联 important 同步动画属性，避免 Gradio 自动 scoped CSS 抬高隐藏规则优先级。
+    const applyOpenPopoverStyle = (popover) => {
+        if (!popover) {
+            return;
+        }
+        popover.style.setProperty("visibility", "visible", "important");
+        popover.style.setProperty("opacity", "1", "important");
+        popover.style.setProperty("pointer-events", "auto", "important");
+        popover.style.setProperty("transform", "translateY(0) scale(1)", "important");
+    };
+
+    // 关闭时先取消交互并播放淡出，动画结束后再隐藏可见性。
+    const applyClosedPopoverStyle = (popover) => {
+        if (!popover) {
+            return;
+        }
+        popover.style.setProperty("opacity", "0", "important");
+        popover.style.setProperty("pointer-events", "none", "important");
+        popover.style.setProperty("transform", "translateY(-4px) scale(0.985)", "important");
+        visibilityTimer = window.setTimeout(() => {
+            if (!document.body.classList.contains(POPOVER_OPEN_CLASS)) {
+                popover.style.setProperty("visibility", "hidden", "important");
+            }
+            visibilityTimer = null;
+        }, ANIMATION_DELAY_MS);
+    };
+
     // 等待 Gradio 完成下拉列表挂载后，再按当前输入框位置校正。
     const queueDropdownPosition = () => {
         requestAnimationFrame(() => {
@@ -677,24 +899,79 @@ APP_JS = """
         popover.style.setProperty("--mineru-popover-top", `${top}px`);
     };
 
-    // 打开时使用内联 important 覆盖 Gradio 组件自身的隐藏样式。
+    // 打开气泡时保持组件 DOM 挂载，只切换 body 状态类并重新计算位置。
     const openPopover = () => {
         const popover = findPopover();
+        cancelPopoverTimers();
+        clearLegacyPopoverDisplay(popover);
         document.body.classList.add(POPOVER_OPEN_CLASS);
-        if (popover) {
-            popover.style.setProperty("display", "block", "important");
-        }
-        requestAnimationFrame(positionPopover);
+        applyOpenPopoverStyle(popover);
+        requestAnimationFrame(() => {
+            positionPopover();
+            queueDropdownPosition();
+        });
     };
 
-    // 点击外部或按 Esc 时只收起气泡，不重置用户已经配置的高级参数。
+    // 收起气泡时不卸载 Gradio 控件，用户已经修改的高级配置会保留在原组件上。
     const closePopover = () => {
         const popover = findPopover();
+        cancelPopoverTimers();
+        clearLegacyPopoverDisplay(popover);
         document.body.classList.remove(POPOVER_OPEN_CLASS);
-        if (popover) {
-            popover.style.setProperty("display", "none", "important");
-        }
+        applyClosedPopoverStyle(popover);
     };
+
+    // 鼠标进入按钮后延迟打开，防止只是路过按钮时频繁弹出。
+    const scheduleHoverOpen = () => {
+        if (!supportsHoverPopover()) {
+            return;
+        }
+        cancelPopoverTimers();
+        openTimer = window.setTimeout(() => {
+            openTimer = null;
+            openPopover();
+        }, OPEN_DELAY_MS);
+    };
+
+    // 鼠标离开按钮或气泡后延迟关闭，给用户从按钮移动到气泡留出缓冲时间。
+    const scheduleHoverClose = () => {
+        if (!supportsHoverPopover()) {
+            return;
+        }
+        cancelPopoverTimers();
+        closeTimer = window.setTimeout(() => {
+            closeTimer = null;
+            closePopover();
+        }, CLOSE_DELAY_MS);
+    };
+
+    // 给真实桌面指针安装 hover 事件；如果 Gradio 稍后才挂载 DOM，就通过观察器重试。
+    const installHoverPopoverHandlers = () => {
+        if (hoverHandlersInstalled || !supportsHoverPopover()) {
+            return;
+        }
+        const button = findButton();
+        const popover = findPopover();
+        if (!button || !popover) {
+            return;
+        }
+        button.addEventListener("pointerenter", scheduleHoverOpen);
+        button.addEventListener("pointerleave", scheduleHoverClose);
+        button.addEventListener("mouseenter", scheduleHoverOpen);
+        button.addEventListener("mouseleave", scheduleHoverClose);
+        popover.addEventListener("pointerenter", cancelPopoverTimers);
+        popover.addEventListener("pointerleave", scheduleHoverClose);
+        popover.addEventListener("mouseenter", cancelPopoverTimers);
+        popover.addEventListener("mouseleave", scheduleHoverClose);
+        hoverHandlersInstalled = true;
+    };
+
+    installHoverPopoverHandlers();
+    requestAnimationFrame(installHoverPopoverHandlers);
+    if (typeof MutationObserver !== "undefined") {
+        const hoverObserver = new MutationObserver(installHoverPopoverHandlers);
+        hoverObserver.observe(document.body, { childList: true, subtree: true });
+    }
 
     document.addEventListener("click", (event) => {
         const target = event.target;
@@ -742,6 +1019,12 @@ APP_JS = """
         }
     });
 
+    document.addEventListener("paste", (event) => {
+        if (uploadClipboardFile(event)) {
+            event.preventDefault();
+        }
+    });
+
     window.addEventListener("resize", () => {
         if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
             positionPopover();
@@ -749,6 +1032,20 @@ APP_JS = """
         }
     });
 }
+"""
+
+# Gradio 6 的 js 参数在部分托管环境里只注入函数文本，使用 head 包装确保页面加载后主动执行。
+APP_HEAD = f"""
+<script>
+(() => {{
+    const installMineruAdvancedPopover = {APP_JS};
+    if (document.readyState === "loading") {{
+        document.addEventListener("DOMContentLoaded", installMineruAdvancedPopover, {{ once: true }});
+    }} else {{
+        installMineruAdvancedPopover();
+    }}
+}})();
+</script>
 """
 
 
@@ -1736,7 +2033,7 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please select a file to upload\n(PDF, image, DOCX, PPTX, or XLSX)",
+            "upload_file": "Select or paste a file to upload\n(PDF, image, DOCX, PPTX, or XLSX)",
             "header_title": "MinerU 3: Document Extraction Demo",
             "header_subtitle": "Open-source document extraction for PDF, DOCX, PPTX, XLSX, and images to Markdown and JSON.",
             "header_support_text": "If you found our project helpful, please give us a ⭐️ to support us!",
@@ -1800,7 +2097,7 @@ def main(ctx,
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请选择要上传的文件\n（PDF、图片、DOCX、PPTX 或 XLSX）",
+            "upload_file": "请选择或粘贴要上传的文件\n（PDF、图片、DOCX、PPTX 或 XLSX）",
             "header_title": "MinerU 3：文档提取演示",
             "header_subtitle": "开源文档提取工具，支持将 PDF、DOCX、PPTX、XLSX 和图片转换为 Markdown 与 JSON。",
             "header_support_text": "如果我们的项目对你有帮助，请点亮 ⭐️ 支持我们！",
@@ -1963,7 +2260,8 @@ def main(ctx,
             yield update
 
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
-    with gr.Blocks(css=APP_CSS, js=APP_JS) as demo:
+    _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
+    with gr.Blocks(**_blocks_kwargs) as demo:
         gr.HTML(render_header_html(i18n))
         with gr.Row(elem_classes=["mineru-workspace-row"]):
             with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
@@ -2008,10 +2306,12 @@ def main(ctx,
                             if _.endswith(tuple(suffixes))
                         ]
                         if example_files:
-                            with gr.Accordion(i18n("examples"), open=False):
+                            with gr.Accordion(i18n("examples"), open=True):
                                 gr.Examples(
                                     examples=example_files,
                                     inputs=input_file,
+                                    elem_id="mineru-example-files",
+                                    label=None,
                                 )
 
             with gr.Column(variant='panel', scale=8, min_width=560, elem_classes=["mineru-work-column"]):
@@ -2041,7 +2341,7 @@ def main(ctx,
                                     **_textarea_copy_kwargs
                                 )
 
-        with gr.Group(elem_classes=["mineru-advanced-popover"]):
+        with gr.Column(elem_classes=["mineru-advanced-popover"]):
             with gr.Column(elem_classes=["mineru-advanced-card"]):
                 gr.Markdown(
                     f"### {translate_ui(i18n, 'advanced_options')}",
@@ -2154,7 +2454,7 @@ def main(ctx,
         footer_links = ["gradio", "settings"]
         if api_enable:
             footer_links.append("api")
-        _launch_kwargs = {"footer_links": footer_links}
+        _launch_kwargs = {"footer_links": footer_links, "css": APP_CSS, "head": APP_HEAD}
     else:
         _launch_kwargs = {"show_api": api_enable}
     maybe_prepare_local_api_for_gradio_startup(
