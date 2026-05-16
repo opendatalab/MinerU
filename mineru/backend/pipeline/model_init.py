@@ -95,7 +95,13 @@ def ocr_model_init(det_db_box_thresh=0.5,
                    det_db_unclip_ratio=1.5,
                    enable_merge_det_boxes=True
                    ):
-    use_dilation = False
+
+    if lang in [None, "ch"]:
+        use_dilation = True
+        det_db_unclip_ratio = 1.8
+    else:
+        use_dilation = False
+
     if lang is not None and lang != '':
         model = PytorchPaddleOCR(
             det_db_box_thresh=det_db_box_thresh,

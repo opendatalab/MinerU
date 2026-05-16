@@ -277,7 +277,7 @@ def resolve_status_step_index(status_lines):
         return -1, False
     if status_lines[-1].startswith("Failed:"):
         return len(STATUS_STEP_DEFINITIONS) - 1, True
-    if STATUS_COMPLETED in status_lines:
+    if any(line.startswith(STATUS_COMPLETED) for line in status_lines):
         return len(STATUS_STEP_DEFINITIONS) - 1, False
 
     for index in range(len(STATUS_STEP_DEFINITIONS) - 1, -1, -1):
@@ -757,6 +757,7 @@ class StatusPanelState:
     lines: list[str] = field(default_factory=list)
     processing_index: int | None = None
     processing_started_at: float | None = None
+    last_processing_elapsed_seconds: float | None = None
     queue_index: int | None = None
     queue_started_at: float | None = None
     queue_base_message: str | None = None
@@ -775,6 +776,8 @@ class StatusPanelState:
 
         self.finalize_processing()
         self.finalize_queue()
+        if message == STATUS_COMPLETED:
+            message = format_completed_status(self.last_processing_elapsed_seconds)
         if not self.lines or self.lines[-1] != message:
             self.lines.append(message)
             return True
@@ -785,6 +788,7 @@ class StatusPanelState:
             return self.tick_processing()
 
         self.processing_started_at = time.monotonic()
+        self.last_processing_elapsed_seconds = 0.0
         self.processing_index = len(self.lines)
         self.lines.append(format_processing_status(0.0))
         return True
@@ -793,9 +797,9 @@ class StatusPanelState:
         if self.processing_started_at is None or self.processing_index is None:
             return False
 
-        updated = format_processing_status(
-            max(0.0, time.monotonic() - self.processing_started_at)
-        )
+        elapsed_seconds = max(0.0, time.monotonic() - self.processing_started_at)
+        self.last_processing_elapsed_seconds = elapsed_seconds
+        updated = format_processing_status(elapsed_seconds)
         if self.lines[self.processing_index] != updated:
             self.lines[self.processing_index] = updated
             return True
@@ -903,6 +907,13 @@ def format_failed_status(error: Exception | str) -> str:
 
 def format_processing_status(elapsed_seconds: float) -> str:
     return f"{STATUS_PROCESSING_ON_SERVER} ({elapsed_seconds:.1f}s)"
+
+
+def format_completed_status(elapsed_seconds: float | None) -> str:
+    """生成完成状态文案，保留服务端解析阶段最终耗时。"""
+    if elapsed_seconds is None:
+        return STATUS_COMPLETED
+    return f"{STATUS_COMPLETED} ({elapsed_seconds:.1f}s)"
 
 
 def format_queue_status(base_message: str, elapsed_seconds: float) -> str:
