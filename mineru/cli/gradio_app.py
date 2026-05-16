@@ -2,6 +2,7 @@
 
 import base64
 import asyncio
+import html as html_lib
 import httpx
 import os
 import re
@@ -14,6 +15,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote
 
 import click
 import gradio as gr
@@ -222,6 +224,532 @@ STATUS_COMPLETED = "Completed"
 STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
+
+BACKEND_CHOICE_DEFINITIONS = [
+    "pipeline",
+    "vlm-auto-engine",
+    "hybrid-auto-engine",
+]
+HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
+    "vlm-http-client",
+    "hybrid-http-client",
+]
+STATUS_STEP_DEFINITIONS = [
+    ("status_step_prepare", STATUS_PREPARING_REQUEST),
+    ("status_step_check", STATUS_CHECKING_SERVER),
+    ("status_step_submit", STATUS_SUBMITTING_TASK),
+    ("status_step_queue", STATUS_QUEUED_ON_SERVER),
+    ("status_step_process", STATUS_PROCESSING_ON_SERVER),
+    ("status_step_download", STATUS_DOWNLOADING_RESULT),
+    ("status_step_outputs", STATUS_PROCESSING_OUTPUT),
+    ("status_step_done", STATUS_COMPLETED),
+]
+
+
+def translate_ui(i18n, key):
+    """读取自定义 HTML/选项需要的纯文本文案，避免直接渲染 Gradio I18nData 元数据。"""
+    if i18n is None:
+        return key
+    translations = getattr(i18n, "translations", None)
+    if translations:
+        preferred_locale = os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
+        preferred_text = translations.get(preferred_locale, {}).get(key)
+        if preferred_text is not None:
+            return preferred_text
+        fallback_text = translations.get("en", {}).get(key)
+        if fallback_text is not None:
+            return fallback_text
+        return key
+    return i18n(key)
+
+
+def build_backend_choices(http_client_enable, i18n):
+    """构建后端选项列表，展示文案与提交给后端的 backend 值保持完全一致。"""
+    choices = list(BACKEND_CHOICE_DEFINITIONS)
+    if http_client_enable:
+        choices.extend(HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS)
+    return choices
+
+
+def resolve_status_step_index(status_lines):
+    """根据现有状态日志推断步骤面板中当前应高亮的步骤索引。"""
+    if not status_lines:
+        return -1, False
+    if status_lines[-1].startswith("Failed:"):
+        return len(STATUS_STEP_DEFINITIONS) - 1, True
+    if STATUS_COMPLETED in status_lines:
+        return len(STATUS_STEP_DEFINITIONS) - 1, False
+
+    for index in range(len(STATUS_STEP_DEFINITIONS) - 1, -1, -1):
+        _, marker = STATUS_STEP_DEFINITIONS[index]
+        if marker == STATUS_QUEUED_ON_SERVER:
+            if any(StatusPanelState.is_queue_message(line) for line in status_lines):
+                return index, False
+            continue
+        if any(line.startswith(marker) for line in status_lines):
+            return index, False
+    return 0, False
+
+
+def render_status_steps_html(status_text, i18n):
+    """把流式状态日志渲染为步骤式状态面板，底层日志格式保持不变。"""
+    status_lines = [line for line in str(status_text or "").splitlines() if line]
+    current_index, is_failed = resolve_status_step_index(status_lines)
+    latest_status = status_lines[-1] if status_lines else translate_ui(i18n, "status_idle_hint")
+
+    step_items = []
+    for index, (label_key, _) in enumerate(STATUS_STEP_DEFINITIONS):
+        classes = ["status-step"]
+        if is_failed and index == current_index:
+            classes.extend(["is-active", "is-error"])
+            label = translate_ui(i18n, "status_step_failed")
+        elif index < current_index or (current_index == len(STATUS_STEP_DEFINITIONS) - 1 and not is_failed):
+            classes.append("is-done")
+            label = translate_ui(i18n, label_key)
+        elif index == current_index:
+            classes.append("is-active")
+            label = translate_ui(i18n, label_key)
+        else:
+            classes.append("is-pending")
+            label = translate_ui(i18n, label_key)
+        step_items.append(
+            f'<div class="{" ".join(classes)}">'
+            f'<span class="status-dot"></span>'
+            f'<span class="status-label">{html_lib.escape(label)}</span>'
+            "</div>"
+        )
+
+    title = translate_ui(i18n, "status_idle_title") if not status_lines else translate_ui(i18n, "status_latest")
+    return (
+        '<div class="status-steps-panel">'
+        f'<div class="status-panel-title">{html_lib.escape(title)}</div>'
+        f'<div class="status-steps-list">{"".join(step_items)}</div>'
+        f'<div class="status-latest">{html_lib.escape(latest_status)}</div>'
+        "</div>"
+    )
+
+
+APP_CSS = """
+.gradio-container {
+    --mineru-accent: #f97316;
+    --mineru-panel: rgba(255, 255, 255, 0.045);
+    --mineru-panel-border: rgba(255, 255, 255, 0.1);
+}
+.mineru-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.mineru-workspace-row {
+    align-items: stretch;
+}
+.mineru-control-column,
+.mineru-work-column {
+    border: 1px solid var(--mineru-panel-border);
+    border-radius: 8px;
+    background: var(--mineru-panel);
+    padding: 12px;
+}
+.mineru-control-column {
+    position: sticky;
+    top: 12px;
+    align-self: flex-start;
+}
+.mineru-upload-file label[data-testid="block-label"] {
+    align-items: flex-start !important;
+    line-height: 1.35 !important;
+    white-space: pre-line !important;
+}
+.mineru-upload-file label[data-testid="block-label"] > span {
+    margin-top: 2px;
+}
+.mineru-actions {
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+}
+.mineru-actions > * {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+}
+.mineru-actions button {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
+.mineru-actions button:first-child {
+    background: var(--mineru-accent) !important;
+    border-color: var(--mineru-accent) !important;
+    color: #111827 !important;
+    font-weight: 700;
+}
+.mineru-advanced-open,
+.mineru-advanced-open button {
+    min-width: 0 !important;
+    width: 100% !important;
+}
+.mineru-advanced-popover {
+    display: none !important;
+    position: fixed !important;
+    left: var(--mineru-popover-left, 316px) !important;
+    top: var(--mineru-popover-top, 360px) !important;
+    z-index: 1000 !important;
+    width: min(420px, calc(100vw - var(--mineru-popover-left, 316px) - 18px)) !important;
+    max-width: calc(100vw - 36px) !important;
+    padding: 1px !important;
+    border: 0 !important;
+    border-radius: 14px !important;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.05) 44%, rgba(255, 122, 24, 0.18)) !important;
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.34),
+        0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+    backdrop-filter: blur(12px);
+    overflow: hidden !important;
+}
+body.mineru-advanced-popover-open .mineru-advanced-popover {
+    display: block !important;
+}
+.mineru-advanced-popover::before {
+    display: none !important;
+}
+.mineru-advanced-card {
+    width: 100% !important;
+    max-height: min(70vh, 620px) !important;
+    margin: 0 !important;
+    padding: 14px !important;
+    overflow: auto !important;
+    border: 0 !important;
+    border-radius: 13px !important;
+    background:
+        linear-gradient(180deg, rgba(42, 43, 48, 0.97), rgba(32, 33, 36, 0.94)) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset !important;
+}
+.mineru-advanced-popover-title .markdown {
+    margin-bottom: 8px;
+}
+.mineru-advanced-popover .wrap,
+.mineru-advanced-popover .block {
+    min-width: 0 !important;
+}
+.mineru-advanced-popover .wrap,
+.mineru-advanced-popover .block,
+.mineru-advanced-popover .form,
+.mineru-advanced-popover .styler,
+.mineru-advanced-popover .gr-group {
+    overflow: visible !important;
+}
+.mineru-advanced-popover ul.options {
+    border-radius: 8px !important;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.36) !important;
+}
+.mineru-result-tabs .tab-nav {
+    border-bottom-color: var(--mineru-panel-border);
+}
+.mineru-compare-row {
+    align-items: stretch;
+}
+.mineru-preview-pane,
+.mineru-markdown-pane {
+    min-width: 340px;
+}
+.mineru-preview-pane > .block,
+.mineru-markdown-output {
+    min-height: 684px;
+}
+.mineru-result-file {
+    height: auto !important;
+    min-height: 44px !important;
+    margin-top: 2px;
+}
+.mineru-result-file .empty {
+    display: none !important;
+}
+.block.mineru-status-panel .html-container.padding {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+.block.mineru-status-panel .prose,
+.block.mineru-status-panel .status-steps-panel {
+    width: 100% !important;
+    max-width: none !important;
+}
+.mineru-markdown-tabs .tab-nav {
+    border-bottom-color: var(--mineru-panel-border);
+}
+.mineru-markdown-tabs textarea {
+    min-height: 640px !important;
+}
+.status-steps-panel {
+    border: 1px solid var(--mineru-panel-border);
+    border-radius: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.18);
+}
+.status-panel-title {
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.status-steps-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+.status-step {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--body-text-color-subdued);
+    font-size: 12px;
+}
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border-color-primary);
+    flex: none;
+}
+.status-step.is-done .status-dot {
+    background: #22c55e;
+}
+.status-step.is-active {
+    color: var(--body-text-color);
+    font-weight: 700;
+}
+.status-step.is-active .status-dot {
+    background: var(--mineru-accent);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.22);
+}
+.status-step.is-error .status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+.status-latest {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--mineru-panel-border);
+    color: var(--body-text-color-subdued);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.45;
+    word-break: break-word;
+}
+.office-preview-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 720px;
+}
+.office-preview-notice {
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(249, 115, 22, 0.08);
+}
+.office-preview-notice strong,
+.office-preview-notice span,
+.office-preview-notice code {
+    display: block;
+}
+.office-preview-notice span {
+    margin-top: 4px;
+    color: var(--body-text-color-subdued);
+    font-size: 12px;
+}
+.office-preview-notice code {
+    margin-top: 6px;
+    white-space: normal;
+    word-break: break-all;
+}
+.office-preview-frame {
+    width: 100%;
+    min-height: 720px;
+    border: 1px solid var(--mineru-panel-border);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.18);
+}
+@media (max-width: 900px) {
+    .mineru-control-column {
+        position: static;
+    }
+    .mineru-preview-pane,
+    .mineru-markdown-pane {
+        min-width: 100%;
+    }
+    .status-steps-list {
+        grid-template-columns: 1fr;
+    }
+}
+"""
+
+APP_JS = """
+() => {
+    const POPOVER_SCRIPT_VERSION = "dropdown-position-v4";
+    if (window.__mineruAdvancedPopoverInstalled === POPOVER_SCRIPT_VERSION) {
+        return;
+    }
+    window.__mineruAdvancedPopoverInstalled = POPOVER_SCRIPT_VERSION;
+
+    const POPOVER_OPEN_CLASS = "mineru-advanced-popover-open";
+
+    // 兼容 Gradio 将 elem_classes 挂到按钮自身或按钮外层容器的两种 DOM 结构。
+    const findButton = () => document.querySelector(
+        "button.mineru-advanced-open, .mineru-advanced-open button, .mineru-advanced-open"
+    );
+    const findPopover = () => document.querySelector(".mineru-advanced-popover");
+
+    // 修正 Gradio Dropdown 在 fixed 浮层里按视口定位导致的下拉列表漂移。
+    const positionAdvancedDropdowns = () => {
+        const popover = findPopover();
+        if (!popover || !document.body.classList.contains(POPOVER_OPEN_CLASS)) {
+            return;
+        }
+
+        popover.querySelectorAll("ul.options").forEach((options) => {
+            const wrap = options.closest(".wrap");
+            if (!wrap) {
+                return;
+            }
+
+            popover.querySelectorAll(".wrap").forEach((item) => {
+                item.style.removeProperty("z-index");
+            });
+
+            const wrapRect = wrap.getBoundingClientRect();
+            const popoverRect = popover.getBoundingClientRect();
+            const viewportPadding = 12;
+            const gap = 6;
+            const belowSpace = Math.max(0, popoverRect.bottom - wrapRect.bottom - viewportPadding);
+            const aboveSpace = Math.max(0, wrapRect.top - popoverRect.top - viewportPadding);
+            const naturalHeight = Math.max(36, Math.min(options.scrollHeight || 220, 240));
+            const openBelow = belowSpace >= Math.min(180, naturalHeight) || belowSpace >= aboveSpace;
+            const availableHeight = Math.max(84, openBelow ? belowSpace : aboveSpace);
+            const height = Math.min(naturalHeight, availableHeight);
+            const top = openBelow ? wrap.offsetHeight + gap : -height - gap;
+
+            wrap.style.setProperty("z-index", "1003", "important");
+            options.style.setProperty("position", "absolute", "important");
+            options.style.setProperty("left", "0", "important");
+            options.style.setProperty("top", `${top}px`, "important");
+            options.style.setProperty("bottom", "auto", "important");
+            options.style.setProperty("width", `${wrapRect.width}px`, "important");
+            options.style.setProperty("max-height", `${height}px`, "important");
+            options.style.setProperty("z-index", "1004", "important");
+        });
+    };
+
+    // 等待 Gradio 完成下拉列表挂载后，再按当前输入框位置校正。
+    const queueDropdownPosition = () => {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(positionAdvancedDropdowns);
+        });
+    };
+
+    // 根据高级选项按钮的位置，把气泡贴在左侧控制栏右侧并限制在视口内。
+    const positionPopover = () => {
+        const button = findButton();
+        const popover = findPopover();
+        if (!button || !popover) {
+            return;
+        }
+
+        const buttonRect = button.getBoundingClientRect();
+        const preferredWidth = Math.min(420, window.innerWidth - 36);
+        const left = Math.min(
+            Math.max(18, buttonRect.right + 12),
+            Math.max(18, window.innerWidth - preferredWidth - 18)
+        );
+        const availableHeight = Math.max(260, window.innerHeight - 36);
+        const measuredHeight = Math.min(
+            popover.scrollHeight || 520,
+            availableHeight,
+            Math.round(window.innerHeight * 0.7)
+        );
+        const centeredTop = buttonRect.top + buttonRect.height / 2 - measuredHeight / 2;
+        const top = Math.min(
+            Math.max(18, centeredTop),
+            Math.max(18, window.innerHeight - measuredHeight - 18)
+        );
+
+        popover.style.setProperty("--mineru-popover-left", `${left}px`);
+        popover.style.setProperty("--mineru-popover-top", `${top}px`);
+    };
+
+    // 打开时使用内联 important 覆盖 Gradio 组件自身的隐藏样式。
+    const openPopover = () => {
+        const popover = findPopover();
+        document.body.classList.add(POPOVER_OPEN_CLASS);
+        if (popover) {
+            popover.style.setProperty("display", "block", "important");
+        }
+        requestAnimationFrame(positionPopover);
+    };
+
+    // 点击外部或按 Esc 时只收起气泡，不重置用户已经配置的高级参数。
+    const closePopover = () => {
+        const popover = findPopover();
+        document.body.classList.remove(POPOVER_OPEN_CLASS);
+        if (popover) {
+            popover.style.setProperty("display", "none", "important");
+        }
+    };
+
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+        if (target.closest(".mineru-advanced-open")) {
+            if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
+                closePopover();
+            } else {
+                openPopover();
+            }
+            return;
+        }
+        if (target.closest(".mineru-advanced-popover")) {
+            queueDropdownPosition();
+        }
+        if (!target.closest(".mineru-advanced-popover")) {
+            closePopover();
+        }
+    });
+
+    document.addEventListener("focusin", (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest(".mineru-advanced-popover")) {
+            queueDropdownPosition();
+        }
+    });
+
+    document.addEventListener("input", (event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest(".mineru-advanced-popover")) {
+            queueDropdownPosition();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            closePopover();
+            return;
+        }
+        const target = event.target;
+        if (target instanceof Element && target.closest(".mineru-advanced-popover")) {
+            queueDropdownPosition();
+        }
+    });
+
+    window.addEventListener("resize", () => {
+        if (document.body.classList.contains(POPOVER_OPEN_CLASS)) {
+            positionPopover();
+            positionAdvancedDropdowns();
+        }
+    });
+}
+"""
 
 
 @dataclass
@@ -958,7 +1486,30 @@ latex_delimiters_type_all = latex_delimiters_type_a + latex_delimiters_type_b
 
 header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
 with open(header_path, mode='r', encoding='utf-8') as header_file:
-    header = header_file.read()
+    header_template = header_file.read()
+
+HEADER_I18N_PLACEHOLDERS = {
+    "{{HEADER_TITLE}}": "header_title",
+    "{{HEADER_SUBTITLE}}": "header_subtitle",
+    "{{HEADER_SUPPORT_TEXT}}": "header_support_text",
+    "{{HEADER_STARS_ALT}}": "header_stars_alt",
+    "{{HEADER_CODE_LINK}}": "header_code_link",
+    "{{HEADER_MODEL_LINK}}": "header_model_link",
+    "{{HEADER_PAPER_LINK}}": "header_paper_link",
+    "{{HEADER_HOMEPAGE_LINK}}": "header_homepage_link",
+    "{{HEADER_DOWNLOAD_LINK}}": "header_download_link",
+}
+
+
+def render_header_html(i18n):
+    """渲染支持 i18n 的顶部 Header，保留静态模板中的样式和链接。"""
+    rendered_header = header_template
+    for placeholder, translation_key in HEADER_I18N_PLACEHOLDERS.items():
+        rendered_header = rendered_header.replace(
+            placeholder,
+            html_lib.escape(translate_ui(i18n, translation_key)),
+        )
+    return rendered_header
 
 other_lang = [
     'ch (Chinese, English, Chinese Traditional)',
@@ -1020,7 +1571,36 @@ def to_pdf_preview(file_path):
     return to_pdf(file_path)
 
 
-def update_file_options_html(file_path, request: gr.Request):
+def build_office_preview_html(file_path, request: gr.Request, i18n=None):
+    """生成 Office 在线预览 HTML，并提示该预览依赖外部 Microsoft 服务访问。"""
+    host = (
+        request.headers.get('x-forwarded-host')
+        or request.headers.get('host', 'localhost:7860')
+    )
+    proto = request.headers.get('x-forwarded-proto', 'http')
+    base_url = f"{proto}://{host}"
+    public_url = f"{base_url}/gradio_api/file={file_path}"
+    viewer_url = (
+        "https://view.officeapps.live.com/op/embed.aspx?src="
+        f"{quote(public_url, safe='')}"
+    )
+    file_name = html_lib.escape(Path(file_path).name)
+    title = html_lib.escape(translate_ui(i18n, "office_preview_title"))
+    notice = html_lib.escape(translate_ui(i18n, "office_preview_notice"))
+    return (
+        '<div class="office-preview-shell">'
+        '<div class="office-preview-notice">'
+        f"<strong>{title}</strong>"
+        f"<span>{notice}</span>"
+        f"<code>{file_name}</code>"
+        "</div>"
+        f'<iframe class="office-preview-frame" src="{html_lib.escape(viewer_url)}" '
+        'frameborder="0"></iframe>'
+        "</div>"
+    )
+
+
+def update_file_options_html(file_path, request: gr.Request, i18n=None):
     """处理文件上传第一阶段：根据文件类型更新 options_group 和 office_html。
     将 doc_show（gradio_pdf.PDF）的更新拆分到独立的 .then() 事件中，
     以规避 gradio_pdf 0.0.24 在 Gradio 6 中对 value=None 处理不当导致的
@@ -1036,18 +1616,7 @@ def update_file_options_html(file_path, request: gr.Request):
     is_office = file_suffix in office_suffixes
 
     if is_office:
-        # 构建可公开访问的文件 URL，供 Microsoft 在线预览使用
-        host = (request.headers.get('x-forwarded-host')
-                or request.headers.get('host', 'localhost:7860'))
-        proto = request.headers.get('x-forwarded-proto', 'http')
-        base_url = f"{proto}://{host}"
-        public_url = f"{base_url}/gradio_api/file={file_path}"
-        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={public_url}"
-        html_content = (
-            f'<iframe src="{viewer_url}" '
-            f'width="100%" height="960px" frameborder="0" '
-            f'style="border: none;"></iframe>'
-        )
+        html_content = build_office_preview_html(file_path, request, i18n)
         return (
             gr.update(visible=False),                    # options_group - 隐藏
             gr.update(value=html_content, visible=True), # office_html - 显示
@@ -1156,12 +1725,27 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please select a file to upload (PDF, image, DOCX, PPTX, or XLSX)",
+            "upload_file": "Please select a file to upload\n(PDF, image, DOCX, PPTX, or XLSX)",
+            "header_title": "MinerU 3: Document Extraction Demo",
+            "header_subtitle": "Open-source document extraction for PDF, DOCX, PPTX, XLSX, and images to Markdown and JSON.",
+            "header_support_text": "If you found our project helpful, please give us a ⭐️ to support us!",
+            "header_stars_alt": "stars",
+            "header_code_link": "Code",
+            "header_model_link": "Model",
+            "header_paper_link": "Paper",
+            "header_homepage_link": "Homepage",
+            "header_download_link": "Download",
             "max_pages": "Max convert pages",
             "backend": "Backend",
+            "backend_label_hybrid": "Hybrid (Recommended)",
+            "backend_label_pipeline": "Pipeline (Stable multilingual)",
+            "backend_label_vlm": "VLM (High-precision Chinese/English)",
+            "backend_label_remote_vlm": "Remote VLM",
+            "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "Server URL",
             "server_url_info": "OpenAI-compatible server URL for http-client backend.",
             "recognition_options": "**Recognition Options:**",
+            "advanced_options": "Advanced options",
             "table_enable": "Enable table recognition",
             "table_info": "If disabled, tables will be shown as images.",
             "image_analysis_enable": "Enable image analysis",
@@ -1182,20 +1766,50 @@ def main(ctx,
             "examples": "Examples:",
             "convert_status": "Conversion Status",
             "convert_result": "Convert result",
+            "result_file": "Result file",
             "md_rendering": "Markdown rendering",
             "md_text": "Markdown text",
+            "status_idle_title": "Waiting",
+            "status_idle_hint": "Upload a file and start conversion.",
+            "status_latest": "Latest status",
+            "status_step_prepare": "Prepare",
+            "status_step_check": "Check service",
+            "status_step_submit": "Submit",
+            "status_step_queue": "Queue",
+            "status_step_process": "Parse",
+            "status_step_download": "Download",
+            "status_step_outputs": "Build outputs",
+            "status_step_done": "Done",
+            "status_step_failed": "Failed",
+            "office_preview_title": "Office online preview",
+            "office_preview_notice": "This preview requires the current file to be reachable by Microsoft Office Online. Conversion does not depend on this preview.",
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
             "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请选择要上传的文件（PDF、图片、DOCX、PPTX 或 XLSX）",
+            "upload_file": "请选择要上传的文件\n（PDF、图片、DOCX、PPTX 或 XLSX）",
+            "header_title": "MinerU 3：文档提取演示",
+            "header_subtitle": "开源文档提取工具，支持将 PDF、DOCX、PPTX、XLSX 和图片转换为 Markdown 与 JSON。",
+            "header_support_text": "如果我们的项目对你有帮助，请点亮 ⭐️ 支持我们！",
+            "header_stars_alt": "GitHub 星标",
+            "header_code_link": "代码",
+            "header_model_link": "模型",
+            "header_paper_link": "论文",
+            "header_homepage_link": "主页",
+            "header_download_link": "下载",
             "max_pages": "最大转换页数",
             "backend": "解析后端",
+            "backend_label_hybrid": "Hybrid 推荐",
+            "backend_label_pipeline": "Pipeline 稳定多语言",
+            "backend_label_vlm": "VLM 高精度中英文",
+            "backend_label_remote_vlm": "Remote VLM",
+            "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "服务器地址",
             "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
             "recognition_options": "**识别选项：**",
+            "advanced_options": "高级选项",
             "table_enable": "启用表格识别",
             "table_info": "禁用后，表格将显示为图片。",
             "image_analysis_enable": "启用图片分析",
@@ -1216,8 +1830,23 @@ def main(ctx,
             "examples": "示例：",
             "convert_status": "转换状态",
             "convert_result": "转换结果",
+            "result_file": "结果文件",
             "md_rendering": "Markdown 渲染",
             "md_text": "Markdown 文本",
+            "status_idle_title": "等待任务",
+            "status_idle_hint": "上传文件后开始转换。",
+            "status_latest": "最新状态",
+            "status_step_prepare": "准备请求",
+            "status_step_check": "检查服务",
+            "status_step_submit": "提交任务",
+            "status_step_queue": "排队",
+            "status_step_process": "解析中",
+            "status_step_download": "下载结果",
+            "status_step_outputs": "整理输出",
+            "status_step_done": "完成",
+            "status_step_failed": "失败",
+            "office_preview_title": "Office 在线预览",
+            "office_preview_notice": "该预览需要当前文件可被 Microsoft 在线预览服务访问，转换不依赖该预览。",
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
@@ -1272,7 +1901,6 @@ def main(ctx,
 
         return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update
 
-
     del kwargs
     _gradio_local_api_server.configure(
         resolve_gradio_local_api_cli_args(
@@ -1316,7 +1944,7 @@ def main(ctx,
             api_url=api_url,
         ):
             update = (
-                update[0],
+                render_status_steps_html(update[0], i18n),
                 update[1],
                 prepare_markdown_for_gradio_preview(update[2], latex_delimiters),
                 *update[3:],
@@ -1324,82 +1952,114 @@ def main(ctx,
             yield update
 
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
-    with gr.Blocks() as demo:
-        gr.HTML(header)
-        with gr.Row():
-            with gr.Column(variant='panel', scale=5):
-                with gr.Row():
-                    input_file = gr.File(label=i18n("upload_file"), file_types=suffixes)
+    with gr.Blocks(css=APP_CSS, js=APP_JS) as demo:
+        gr.HTML(render_header_html(i18n))
+        with gr.Row(elem_classes=["mineru-workspace-row"]):
+            with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
+                input_file = gr.File(
+                    label=i18n("upload_file"),
+                    file_types=suffixes,
+                    elem_classes=["mineru-upload-file"],
+                )
+                preferred_option = "hybrid-auto-engine"
+                backend = gr.Dropdown(
+                    build_backend_choices(http_client_enable, i18n),
+                    label=i18n("backend"),
+                    value=preferred_option,
+                    info=get_backend_info(preferred_option),
+                )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
-                    with gr.Row():
-                        max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                    with gr.Row():
-                        drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
-                        preferred_option = "hybrid-auto-engine"
-                        if http_client_enable:
-                            drop_list.extend(["vlm-http-client", "hybrid-http-client"])
-                        backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
-                    with gr.Row(visible=False) as client_options:
-                        url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
-                    with gr.Row(equal_height=True):
-                        with gr.Column():
-                            gr.Markdown(i18n("recognition_options"))
-                            table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                            formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                            image_analysis = gr.Checkbox(
-                                label=i18n("image_analysis_enable"),
-                                value=True,
-                                visible=is_image_analysis_option_visible(preferred_option),
-                                info=i18n("image_analysis_info"),
-                            )
-                        with gr.Column() as ocr_options:
-                            language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
-                            is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
-                with gr.Row():
-                    change_bu = gr.Button(i18n("convert"))
-                    clear_bu = gr.ClearButton(value=i18n("clear"))
-                _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
-                doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=800)
-                office_html = gr.HTML(value="", visible=False)
+                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
+                    advanced_bu = gr.Button(
+                        i18n("advanced_options"),
+                        size="sm",
+                        elem_classes=["mineru-advanced-open"],
+                    )
+                with gr.Row(elem_classes=["mineru-actions"]):
+                    change_bu = gr.Button(i18n("convert"), variant="primary", scale=1, min_width=0)
+                    clear_bu = gr.ClearButton(value=i18n("clear"), scale=1, min_width=0)
+                output_file = gr.File(
+                    label=i18n("convert_result"),
+                    interactive=False,
+                    elem_classes=["mineru-result-file"],
+                )
+                status_panel = gr.HTML(
+                    value=render_status_steps_html("", i18n),
+                    label=i18n("convert_status"),
+                    elem_classes=["mineru-status-panel"],
+                )
                 if example_enable:
                     example_root = os.path.join(os.getcwd(), 'examples')
                     if os.path.exists(example_root):
-                        gr.Examples(
-                            label=i18n("examples"),
-                            examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
-                                      _.endswith(tuple(suffixes))],
-                            inputs=input_file
-                        )
+                        example_files = [
+                            os.path.join(example_root, _) for _ in os.listdir(example_root)
+                            if _.endswith(tuple(suffixes))
+                        ]
+                        if example_files:
+                            with gr.Accordion(i18n("examples"), open=False):
+                                gr.Examples(
+                                    examples=example_files,
+                                    inputs=input_file,
+                                )
 
-            with gr.Column(variant='panel', scale=5):
-                status_box = gr.TextArea(
-                    label=i18n("convert_status"),
-                    value="",
-                    lines=4,
-                    max_lines=4,
-                    interactive=False,
-                    autoscroll=True,
-                    elem_classes=["convert-status-box"],
-                )
-                output_file = gr.File(label=i18n("convert_result"), interactive=False)
-                with gr.Blocks():
-                    with gr.Tab(i18n("md_rendering")):
+            with gr.Column(variant='panel', scale=8, min_width=560, elem_classes=["mineru-work-column"]):
+                with gr.Row(equal_height=True, elem_classes=["mineru-compare-row"]):
+                    with gr.Column(scale=1, min_width=340, elem_classes=["mineru-preview-pane"]):
+                        _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
+                        doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=720)
+                        office_html = gr.HTML(value="", visible=False, min_height=760)
+                    with gr.Column(scale=1, min_width=340, elem_classes=["mineru-markdown-pane"]):
                         _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
-                        md = gr.Markdown(
-                            label=i18n("md_rendering"),
-                            height=1200,
-                            latex_delimiters=latex_delimiters,
-                            line_breaks=True,
-                            **_md_copy_kwargs
-                        )
-                    with gr.Tab(i18n("md_text")):
                         _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
-                        md_text = gr.TextArea(
-                            lines=45,
-                            label=i18n("md_text"),
-                            **_textarea_copy_kwargs
-                        )
+                        with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
+                            with gr.Tab(i18n("md_rendering")):
+                                md = gr.Markdown(
+                                    label=i18n("md_rendering"),
+                                    height=684,
+                                    elem_classes=["mineru-markdown-output"],
+                                    latex_delimiters=latex_delimiters,
+                                    line_breaks=True,
+                                    **_md_copy_kwargs
+                                )
+                            with gr.Tab(i18n("md_text")):
+                                md_text = gr.TextArea(
+                                    lines=28,
+                                    label=i18n("md_text"),
+                                    elem_classes=["mineru-markdown-text"],
+                                    **_textarea_copy_kwargs
+                                )
+
+        with gr.Group(elem_classes=["mineru-advanced-popover"]):
+            with gr.Column(elem_classes=["mineru-advanced-card"]):
+                gr.Markdown(
+                    f"### {translate_ui(i18n, 'advanced_options')}",
+                    elem_classes=["mineru-advanced-popover-title"],
+                )
+                with gr.Row(visible=False) as client_options:
+                    url = gr.Textbox(
+                        label=i18n("server_url"),
+                        value='http://localhost:30000',
+                        placeholder='http://localhost:30000',
+                        info=i18n("server_url_info"),
+                    )
+                with gr.Group():
+                    table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
+                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                    image_analysis = gr.Checkbox(
+                        label=i18n("image_analysis_enable"),
+                        value=True,
+                        visible=is_image_analysis_option_visible(preferred_option),
+                        info=i18n("image_analysis_info"),
+                    )
+                with gr.Group() as ocr_options:
+                    language = gr.Dropdown(
+                        all_lang,
+                        label=i18n("ocr_language"),
+                        value='ch (Chinese, English, Chinese Traditional)',
+                        info=i18n("ocr_language_info"),
+                    )
+                    is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1420,33 +2080,34 @@ def main(ctx,
             outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
             **_private_api_kwargs
         )
-        status_box.change(
-            fn=None,
-            inputs=[status_box],
-            outputs=[],
-            js=STATUS_BOX_AUTOSCROLL_JS,
-            **_private_api_kwargs
-        )
-        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_box])
+        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_panel])
 
-        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
-        clear_bu.click(
-            fn=lambda: (
+        def reset_primary_ui():
+            """清除主界面状态。高级气泡由前端点击外部逻辑自动收起。"""
+            return (
                 gr.update(visible=True),
                 gr.update(value=None, visible=True),
                 gr.update(value="", visible=False),
-                gr.update(value=""),
-            ),
+                gr.update(value=render_status_steps_html("", i18n)),
+            )
+
+        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
+        clear_bu.click(
+            fn=reset_primary_ui,
             inputs=[],
-            outputs=[options_group, doc_show, office_html, status_box],
+            outputs=[options_group, doc_show, office_html, status_panel],
             **_private_api_kwargs
         )
+
+        def update_file_options_html_for_ui(file_path, request: gr.Request):
+            """绑定当前 i18n 的文件上传 UI 更新函数，避免事件签名暴露额外参数。"""
+            return update_file_options_html(file_path, request, i18n)
 
         # 第一阶段：快速更新 options_group 和 office_html，不涉及 gradio_pdf 组件
         # 第二阶段（.then）：单独更新 doc_show，使 office_html 的 processing 遮罩
         # 在第一阶段完成后立即消失，规避 gradio_pdf 0.0.24 与 Gradio 6 的兼容性问题。
         input_file.change(
-            fn=update_file_options_html,
+            fn=update_file_options_html_for_ui,
             inputs=input_file,
             outputs=[options_group, office_html],
             **_private_api_kwargs
@@ -1472,7 +2133,7 @@ def main(ctx,
         change_bu.click(
             fn=convert_to_markdown_stream,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
-            outputs=[status_box, output_file, md, md_text, doc_show],
+            outputs=[status_panel, output_file, md, md_text, doc_show],
             **_to_md_api_kwargs
         )
 
