@@ -1,6 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from functools import lru_cache
 from io import BytesIO
 from pathlib import PurePosixPath
+from typing import Final
 
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from loguru import logger
@@ -21,6 +23,12 @@ VECTOR_IMAGE_CONTENT_TYPES = frozenset(
     }
 )
 PIL_IMAGE_LOAD_ERRORS = (UnidentifiedImageError, OSError, SyntaxError)
+STANDARD_VECTOR_PLACEHOLDER_SIZE: Final = (320, 180)
+STANDARD_VECTOR_PLACEHOLDER_LINES: Final = (
+    "WMF/EMF placeholder",
+    "Use Windows to parse",
+    "the original image",
+)
 
 
 def is_vector_image(pil_image: Image.Image) -> bool:
@@ -119,6 +127,21 @@ def create_text_placeholder(
     return placeholder
 
 
+@lru_cache(maxsize=1)
+def _standard_vector_placeholder_data_uri() -> str:
+    """生成并缓存标准 WMF/EMF 占位图，避免每张矢量图重复绘制。"""
+    placeholder = create_text_placeholder(
+        STANDARD_VECTOR_PLACEHOLDER_SIZE,
+        list(STANDARD_VECTOR_PLACEHOLDER_LINES),
+    )
+    return image_to_b64str(placeholder, image_format="JPEG")
+
+
+def get_standard_vector_placeholder_data_uri() -> str:
+    """返回标准 WMF/EMF 占位图 data URI，供 Office 各格式复用。"""
+    return _standard_vector_placeholder_data_uri()
+
+
 def serialize_vector_image_with_placeholder(
     pil_image: Image.Image, image_format_override: str | None = None
 ) -> str:
@@ -134,22 +157,12 @@ def serialize_vector_image_with_placeholder(
             logger.warning(
                 f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead."
             )
-            placeholder_lines = [
-                f"{image_format} placeholder",
-                "Windows rendering failed",
-            ]
     else:
         logger.warning(
             f"Skipping {image_format} image on non-Windows environment, size: {pil_image.size}"
         )
-        placeholder_lines = [
-            f"{image_format} placeholder",
-            "Use Windows to parse",
-            "the original image",
-        ]
 
-    placeholder = create_text_placeholder(pil_image.size, placeholder_lines)
-    return image_to_b64str(placeholder, image_format="JPEG")
+    return get_standard_vector_placeholder_data_uri()
 
 
 def serialize_vector_part_with_placeholder(
@@ -160,17 +173,9 @@ def serialize_vector_part_with_placeholder(
     image_format = _vector_image_format_label(part_name, content_type)
     logger.warning(
         f"Skipping {image_format} image part before Pillow load, "
-        f"part_name={part_name}, content_type={content_type}"
+        f"part_name={part_name}, content_type={content_type}, requested_size={size}"
     )
-    placeholder = create_text_placeholder(
-        size,
-        [
-            f"{image_format} placeholder",
-            "Use Windows to parse",
-            "the original image",
-        ],
-    )
-    return image_to_b64str(placeholder, image_format="JPEG")
+    return get_standard_vector_placeholder_data_uri()
 
 
 def serialize_office_image(

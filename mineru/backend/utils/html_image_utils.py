@@ -18,7 +18,6 @@ def _normalize_image_extension(fmt: str) -> str:
 
 
 def _save_inline_vector_image(
-    b64_data_uri: str,
     img_bytes: bytes,
     image_writer,
     fmt: str,
@@ -48,9 +47,27 @@ def _save_inline_vector_image(
         logger.warning(f"Failed to decode converted vector image on page {page_index}: {exc}")
         return None
 
-    img_path = f"{str_sha256(b64_data_uri)}.{rendered_fmt}"
-    image_writer.write(img_path, rendered_bytes)
+    img_path = f"{str_sha256(rendered_data_uri)}.{rendered_fmt}"
+    _write_image_once(image_writer, img_path, rendered_bytes)
     return img_path
+
+
+def _write_image_once(image_writer, img_path: str, img_bytes: bytes) -> None:
+    """同一 writer 生命周期内同一路径只写一次，便于复用标准占位图。"""
+    written_paths = getattr(image_writer, "_mineru_written_image_paths", None)
+    if written_paths is None:
+        written_paths = set()
+        try:
+            setattr(image_writer, "_mineru_written_image_paths", written_paths)
+        except Exception:
+            image_writer.write(img_path, img_bytes)
+            return
+
+    if img_path in written_paths:
+        return
+
+    image_writer.write(img_path, img_bytes)
+    written_paths.add(img_path)
 
 
 def save_base64_image(b64_data_uri: str, image_writer, page_index: int):
@@ -73,7 +90,6 @@ def save_base64_image(b64_data_uri: str, image_writer, page_index: int):
 
     if is_vector_image_part(content_type=f"image/{raw_fmt.lower()}"):
         return _save_inline_vector_image(
-            b64_data_uri,
             img_bytes,
             image_writer,
             raw_fmt,
@@ -81,7 +97,7 @@ def save_base64_image(b64_data_uri: str, image_writer, page_index: int):
         )
 
     img_path = f"{str_sha256(b64_data_uri)}.{fmt}"
-    image_writer.write(img_path, img_bytes)
+    _write_image_once(image_writer, img_path, img_bytes)
     return img_path
 
 
