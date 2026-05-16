@@ -63,17 +63,32 @@ def _get_ordered_list_start(list_block):
         return 1
 
 
-def _flatten_list_items(list_block):
+def _get_list_ilevel(list_block) -> int:
+    """安全读取 DOCX 列表原始 ilevel，异常值按顶层 0 处理。"""
+    try:
+        return int(list_block.get('ilevel', 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _get_relative_list_ilevel(list_block, root_ilevel: int) -> int:
+    """将 DOCX 原始 ilevel 转为当前列表树内的相对缩进层级。"""
+    return max(_get_list_ilevel(list_block) - root_ilevel, 0)
+
+
+def _flatten_list_items(list_block, root_ilevel: int | None = None):
     """Recursively flatten nested list blocks into a list of prefixed item strings."""
     items = []
-    ilevel = list_block.get('ilevel', 0)
+    if root_ilevel is None:
+        root_ilevel = _get_list_ilevel(list_block)
+    relative_ilevel = _get_relative_list_ilevel(list_block, root_ilevel)
     attribute = list_block.get('attribute', 'unordered')
-    indent = '    ' * ilevel
+    indent = '    ' * relative_ilevel
     ordered_counter = _get_ordered_list_start(list_block)
 
     for block in list_block.get('blocks', []):
         if block['type'] in [BlockType.LIST, BlockType.INDEX]:
-            items.extend(_flatten_list_items(block))
+            items.extend(_flatten_list_items(block, root_ilevel))
         else:
             item_text = merge_para_with_text(block, escape_text_block_prefix=False)
             if item_text.strip():
@@ -86,27 +101,29 @@ def _flatten_list_items(list_block):
     return items
 
 
-def _flatten_list_items_v2(list_block):
+def _flatten_list_items_v2(list_block, root_ilevel: int | None = None):
     """Recursively flatten nested list blocks into v2-structured item dicts."""
     items = []
-    ilevel = list_block.get('ilevel', 0)
+    if root_ilevel is None:
+        root_ilevel = _get_list_ilevel(list_block)
+    relative_ilevel = _get_relative_list_ilevel(list_block, root_ilevel)
     attribute = list_block.get('attribute', 'unordered')
     ordered_counter = _get_ordered_list_start(list_block)
 
     for block in list_block.get('blocks', []):
         if block['type'] in [BlockType.LIST, BlockType.INDEX]:
-            items.extend(_flatten_list_items_v2(block))
+            items.extend(_flatten_list_items_v2(block, root_ilevel))
         else:
             item_content = merge_para_with_text_v2(block)
             if item_content:
                 if attribute == 'ordered':
-                    prefix = f"{'    ' * ilevel}{ordered_counter}."
+                    prefix = f"{'    ' * relative_ilevel}{ordered_counter}."
                     ordered_counter += 1
                 else:
-                    prefix = f"{'    ' * ilevel}-"
+                    prefix = f"{'    ' * relative_ilevel}-"
                 item = {
                     'item_type': 'text',
-                    'ilevel': ilevel,
+                    'ilevel': relative_ilevel,
                     'prefix': prefix,
                     'item_content': item_content,
                 }
