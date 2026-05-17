@@ -332,8 +332,42 @@ def render_status_steps_html(status_text, i18n):
 APP_CSS = """
 .gradio-container {
     --mineru-accent: #f97316;
+    --mineru-panel: rgba(255, 255, 255, 0.62);
+    --mineru-panel-border: rgba(17, 24, 39, 0.10);
+    --mineru-status-panel-bg: rgba(255, 255, 255, 0.78);
+    --mineru-status-latest-border: rgba(17, 24, 39, 0.13);
+    --mineru-status-latest-text: #374151;
+    --mineru-popover-border: rgba(17, 24, 39, 0.12);
+    --mineru-popover-shell-bg: rgba(255, 255, 255, 0.88);
+    --mineru-popover-card-bg: rgba(255, 255, 255, 0.96);
+    --mineru-popover-shadow: 0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(17, 24, 39, 0.04) inset;
+    --mineru-popover-dropdown-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+}
+@media (prefers-color-scheme: light) {
+    .gradio-container {
+        --mineru-panel: rgba(255, 255, 255, 0.62);
+        --mineru-panel-border: rgba(17, 24, 39, 0.10);
+        --mineru-status-panel-bg: rgba(255, 255, 255, 0.78);
+        --mineru-status-latest-border: rgba(17, 24, 39, 0.13);
+        --mineru-status-latest-text: #374151;
+        --mineru-popover-border: rgba(17, 24, 39, 0.12);
+        --mineru-popover-shell-bg: rgba(255, 255, 255, 0.88);
+        --mineru-popover-card-bg: rgba(255, 255, 255, 0.96);
+        --mineru-popover-shadow: 0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(17, 24, 39, 0.04) inset;
+        --mineru-popover-dropdown-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+    }
+}
+body.dark .gradio-container {
     --mineru-panel: rgba(255, 255, 255, 0.045);
     --mineru-panel-border: rgba(255, 255, 255, 0.1);
+    --mineru-status-panel-bg: rgba(0, 0, 0, 0.18);
+    --mineru-status-latest-border: var(--mineru-panel-border);
+    --mineru-status-latest-text: var(--body-text-color-subdued);
+    --mineru-popover-border: rgba(255, 255, 255, 0.08);
+    --mineru-popover-shell-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.05) 44%, rgba(249, 115, 22, 0.16));
+    --mineru-popover-card-bg: linear-gradient(180deg, rgba(42, 43, 48, 0.97), rgba(32, 33, 36, 0.94));
+    --mineru-popover-shadow: 0 18px 42px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    --mineru-popover-dropdown-shadow: 0 14px 30px rgba(0, 0, 0, 0.36);
 }
 .mineru-shell {
     display: flex;
@@ -380,12 +414,6 @@ APP_CSS = """
     padding-left: 8px !important;
     padding-right: 8px !important;
 }
-.mineru-actions button:first-child {
-    background: var(--mineru-accent) !important;
-    border-color: var(--mineru-accent) !important;
-    color: #111827 !important;
-    font-weight: 700;
-}
 .mineru-advanced-open,
 .mineru-advanced-open button {
     min-width: 0 !important;
@@ -399,13 +427,10 @@ APP_CSS = """
     width: min(420px, calc(100vw - var(--mineru-popover-left, 316px) - 18px)) !important;
     max-width: calc(100vw - 36px) !important;
     padding: 1px !important;
-    border: 0 !important;
+    border: 1px solid var(--mineru-popover-border) !important;
     border-radius: 14px !important;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.05) 44%, rgba(255, 122, 24, 0.18)) !important;
-    box-shadow:
-        0 18px 42px rgba(0, 0, 0, 0.34),
-        0 0 0 1px rgba(255, 255, 255, 0.04) inset !important;
+    background: var(--mineru-popover-shell-bg) !important;
+    box-shadow: var(--mineru-popover-shadow) !important;
     backdrop-filter: blur(12px);
     overflow: hidden !important;
     visibility: hidden !important;
@@ -440,8 +465,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     overflow: auto !important;
     border: 0 !important;
     border-radius: 13px !important;
-    background:
-        linear-gradient(180deg, rgba(42, 43, 48, 0.97), rgba(32, 33, 36, 0.94)) !important;
+    background: var(--mineru-popover-card-bg) !important;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset !important;
 }
 .mineru-advanced-popover-title .markdown {
@@ -460,7 +484,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 }
 .mineru-advanced-popover ul.options {
     border-radius: 8px !important;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.36) !important;
+    box-shadow: var(--mineru-popover-dropdown-shadow) !important;
 }
 .mineru-result-tabs .tab-nav {
     border-bottom-color: var(--mineru-panel-border);
@@ -503,7 +527,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     border: 1px solid var(--mineru-panel-border);
     border-radius: 8px;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--mineru-status-panel-bg);
 }
 .status-panel-title {
     margin-bottom: 10px;
@@ -548,8 +572,8 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .status-latest {
     margin-top: 10px;
     padding-top: 10px;
-    border-top: 1px solid var(--mineru-panel-border);
-    color: var(--body-text-color-subdued);
+    border-top: 1px solid var(--mineru-status-latest-border);
+    color: var(--mineru-status-latest-text);
     font-family: var(--font-mono);
     font-size: 12px;
     line-height: 1.45;
