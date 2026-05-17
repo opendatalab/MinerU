@@ -2366,6 +2366,7 @@ def main(ctx,
                                 md_text = gr.TextArea(
                                     lines=28,
                                     label=i18n("md_text"),
+                                    show_label=False,
                                     elem_classes=["mineru-markdown-text"],
                                     **_textarea_copy_kwargs
                                 )
