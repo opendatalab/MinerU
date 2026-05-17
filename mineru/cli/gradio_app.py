@@ -1831,6 +1831,7 @@ HEADER_I18N_PLACEHOLDERS = {
     "{{HEADER_HOMEPAGE_LINK}}": "header_homepage_link",
     "{{HEADER_DOWNLOAD_LINK}}": "header_download_link",
 }
+HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER = "{{HEADER_GRADIO_VERSION_CLASS}}"
 
 
 def render_header_html(i18n):
@@ -1841,6 +1842,10 @@ def render_header_html(i18n):
             placeholder,
             html_lib.escape(translate_ui(i18n, translation_key)),
         )
+    rendered_header = rendered_header.replace(
+        HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER,
+        "mineru-gradio6-header" if IS_GRADIO_6 else "",
+    )
     return rendered_header
 
 other_lang = [
