@@ -1941,7 +1941,7 @@ def render_header_html(i18n):
         )
     rendered_header = rendered_header.replace(
         HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER,
-        "mineru-gradio6-header" if IS_GRADIO_6 else "",
+        " mineru-gradio6-header" if IS_GRADIO_6 else "",
     )
     return rendered_header
 
