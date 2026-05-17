@@ -355,7 +355,9 @@ def render_status_steps_html(status_text, i18n):
 APP_CSS = """
 .gradio-container {
     --mineru-accent: #f97316;
-    --mineru-preview-content-height: 720px;
+    --mineru-preview-content-height: 775px;
+    --mineru-pdf-page-height: 720px;
+    --mineru-markdown-text-content-height: 753px;
     --mineru-panel: rgba(255, 255, 255, 0.62);
     --mineru-panel-border: rgba(17, 24, 39, 0.10);
     --mineru-status-panel-bg: rgba(255, 255, 255, 0.78);
@@ -521,12 +523,29 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     min-width: 340px;
 }
 .mineru-preview-pane > .block {
+    height: calc(var(--mineru-preview-content-height) + 48px) !important;
+    max-height: calc(var(--mineru-preview-content-height) + 48px) !important;
     overflow: hidden !important;
     resize: none !important;
 }
 .mineru-preview-pane > .block,
 .mineru-markdown-output {
     min-height: var(--mineru-preview-content-height);
+}
+.mineru-preview-pane .pdf-canvas {
+    height: var(--mineru-pdf-page-height) !important;
+    max-height: var(--mineru-pdf-page-height) !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    overflow: auto !important;
+}
+.mineru-preview-pane .pdf-canvas canvas {
+    max-width: 100% !important;
+    max-height: var(--mineru-pdf-page-height) !important;
+    object-fit: contain;
+}
+.mineru-preview-pane .button-row {
+    flex: none !important;
 }
 .mineru-result-file {
     height: auto !important;
@@ -555,8 +574,8 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     border-bottom-color: var(--mineru-panel-border);
 }
 .mineru-markdown-tabs textarea {
-    height: var(--mineru-preview-content-height) !important;
-    min-height: var(--mineru-preview-content-height) !important;
+    height: var(--mineru-markdown-text-content-height) !important;
+    min-height: var(--mineru-markdown-text-content-height) !important;
 }
 .status-steps-panel {
     border: 1px solid var(--mineru-panel-border);
@@ -2425,13 +2444,15 @@ def main(ctx,
                 with gr.Row(equal_height=True, elem_classes=["mineru-compare-row"]):
                     with gr.Column(scale=1, min_width=340, elem_classes=["mineru-preview-pane"]):
                         _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
-                        # 保持 PDF 预览、Markdown 渲染和原文文本框的内容区高度一致。
-                        preview_content_height = 720
+                        # preview_content_height 约束右侧 Markdown/Office 的内容区；gradio_pdf 的 height
+                        # 实际是单页 canvas 高度，需要单独扣除 label 和分页器占用，避免上传 PDF 后撑高左侧块。
+                        preview_content_height = 775
+                        pdf_preview_page_height = 720
                         doc_show = PDF(
                             label=_doc_preview_label,
                             interactive=False,
                             visible=True,
-                            height=preview_content_height,
+                            height=pdf_preview_page_height,
                         )
                         office_html = gr.HTML(value="", visible=False, min_height=preview_content_height)
                     with gr.Column(scale=1, min_width=340, elem_classes=["mineru-markdown-pane"]):
