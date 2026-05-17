@@ -246,13 +246,13 @@ STATUS_STEP_DEFINITIONS = [
 ]
 
 
-def translate_ui(i18n, key):
-    """读取自定义 HTML/选项需要的纯文本文案，避免直接渲染 Gradio I18nData 元数据。"""
+def resolve_i18n_text(i18n, key, locale=None):
+    """按指定语言读取自定义 HTML 需要的纯文本文案，避免直接渲染 Gradio I18nData 元数据。"""
     if i18n is None:
         return key
     translations = getattr(i18n, "translations", None)
     if translations:
-        preferred_locale = os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
+        preferred_locale = locale or os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
         preferred_text = translations.get(preferred_locale, {}).get(key)
         if preferred_text is not None:
             return preferred_text
@@ -261,6 +261,29 @@ def translate_ui(i18n, key):
             return fallback_text
         return key
     return i18n(key)
+
+
+def translate_ui(i18n, key):
+    """按服务端默认语言读取纯文本文案，用作自定义 HTML 的初始渲染内容。"""
+    return resolve_i18n_text(i18n, key)
+
+
+def build_client_i18n_attrs(i18n, key):
+    """为自定义 HTML 输出中英文文案属性，交给前端按浏览器语言切换。"""
+    attrs = [f'data-mineru-i18n-key="{html_lib.escape(key, quote=True)}"']
+    for locale in ("en", "zh"):
+        text = resolve_i18n_text(i18n, key, locale)
+        attrs.append(f'data-mineru-i18n-{locale}="{html_lib.escape(text, quote=True)}"')
+    return " ".join(attrs)
+
+
+def render_client_i18n_text(i18n, key):
+    """生成可被前端重新本地化的文本节点，避免 header/status 在英文环境固定成中文。"""
+    return (
+        f"<span {build_client_i18n_attrs(i18n, key)}>"
+        f"{html_lib.escape(translate_ui(i18n, key))}"
+        "</span>"
+    )
 
 
 def build_backend_choices(http_client_enable, i18n):
@@ -295,36 +318,36 @@ def render_status_steps_html(status_text, i18n):
     """把流式状态日志渲染为步骤式状态面板，底层日志格式保持不变。"""
     status_lines = [line for line in str(status_text or "").splitlines() if line]
     current_index, is_failed = resolve_status_step_index(status_lines)
-    latest_status = status_lines[-1] if status_lines else translate_ui(i18n, "status_idle_hint")
+    latest_status = status_lines[-1] if status_lines else render_client_i18n_text(i18n, "status_idle_hint")
 
     step_items = []
     for index, (label_key, _) in enumerate(STATUS_STEP_DEFINITIONS):
         classes = ["status-step"]
         if is_failed and index == current_index:
             classes.extend(["is-active", "is-error"])
-            label = translate_ui(i18n, "status_step_failed")
+            label = render_client_i18n_text(i18n, "status_step_failed")
         elif index < current_index or (current_index == len(STATUS_STEP_DEFINITIONS) - 1 and not is_failed):
             classes.append("is-done")
-            label = translate_ui(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key)
         elif index == current_index:
             classes.append("is-active")
-            label = translate_ui(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key)
         else:
             classes.append("is-pending")
-            label = translate_ui(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key)
         step_items.append(
             f'<div class="{" ".join(classes)}">'
             f'<span class="status-dot"></span>'
-            f'<span class="status-label">{html_lib.escape(label)}</span>'
+            f'<span class="status-label">{label}</span>'
             "</div>"
         )
 
-    title = translate_ui(i18n, "status_idle_title") if not status_lines else translate_ui(i18n, "status_latest")
+    title_key = "status_idle_title" if not status_lines else "status_latest"
     return (
         '<div class="status-steps-panel">'
-        f'<div class="status-panel-title">{html_lib.escape(title)}</div>'
+        f'<div class="status-panel-title">{render_client_i18n_text(i18n, title_key)}</div>'
         f'<div class="status-steps-list">{"".join(step_items)}</div>'
-        f'<div class="status-latest">{html_lib.escape(latest_status)}</div>'
+        f'<div class="status-latest">{latest_status if not status_lines else html_lib.escape(latest_status)}</div>'
         "</div>"
     )
 
@@ -497,6 +520,10 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .mineru-markdown-pane {
     min-width: 340px;
 }
+.mineru-preview-pane > .block {
+    overflow: hidden !important;
+    resize: none !important;
+}
 .mineru-preview-pane > .block,
 .mineru-markdown-output {
     min-height: var(--mineru-preview-content-height);
@@ -509,7 +536,13 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .mineru-result-file .empty {
     display: none !important;
 }
-.block.mineru-status-panel .html-container.padding {
+.block.mineru-status-panel {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+.block.mineru-status-panel .html-container {
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
@@ -652,6 +685,38 @@ APP_JS = """
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    };
+    // 只把中文浏览器语言映射为中文；其他所有语言统一降级到英文。
+    const normalizeMineruLocale = (locale) => {
+        const normalized = String(locale || "").toLowerCase();
+        if (normalized.startsWith("zh")) {
+            return "zh";
+        }
+        return "en";
+    };
+
+    // 以浏览器首选语言为准；非中文语言包括 en/ja/ko/fr 等都统一使用英文文案。
+    const resolveMineruLocale = () => {
+        if (typeof navigator !== "undefined") {
+            const languages = Array.from(navigator.languages || []);
+            const primaryLocale = languages[0] || navigator.language;
+            if (primaryLocale) {
+                return normalizeMineruLocale(primaryLocale);
+            }
+        }
+        return normalizeMineruLocale(document.documentElement.getAttribute("lang"));
+    };
+
+    // Gradio 只会自动翻译组件属性；header/status 这类自定义 HTML 需要前端按浏览器语言补一次。
+    const localizeMineruCustomText = () => {
+        const locale = resolveMineruLocale();
+        document.querySelectorAll("[data-mineru-i18n-key]").forEach((item) => {
+            const localizedText = item.getAttribute(`data-mineru-i18n-${locale}`)
+                || item.getAttribute("data-mineru-i18n-en");
+            if (localizedText !== null && item.textContent !== localizedText) {
+                item.textContent = localizedText;
+            }
+        });
     };
 
     // 兼容 Gradio 将 elem_classes 挂到按钮自身或按钮外层容器的两种 DOM 结构。
@@ -992,11 +1057,18 @@ APP_JS = """
         hoverHandlersInstalled = true;
     };
 
+    localizeMineruCustomText();
     installHoverPopoverHandlers();
-    requestAnimationFrame(installHoverPopoverHandlers);
+    requestAnimationFrame(() => {
+        localizeMineruCustomText();
+        installHoverPopoverHandlers();
+    });
     if (typeof MutationObserver !== "undefined") {
-        const hoverObserver = new MutationObserver(installHoverPopoverHandlers);
-        hoverObserver.observe(document.body, { childList: true, subtree: true });
+        const uiObserver = new MutationObserver(() => {
+            localizeMineruCustomText();
+            installHoverPopoverHandlers();
+        });
+        uiObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     document.addEventListener("click", (event) => {
@@ -1840,9 +1912,13 @@ def render_header_html(i18n):
     """渲染支持 i18n 的顶部 Header，保留静态模板中的样式和链接。"""
     rendered_header = header_template
     for placeholder, translation_key in HEADER_I18N_PLACEHOLDERS.items():
+        if translation_key == "header_stars_alt":
+            replacement = html_lib.escape(translate_ui(i18n, translation_key), quote=True)
+        else:
+            replacement = render_client_i18n_text(i18n, translation_key)
         rendered_header = rendered_header.replace(
             placeholder,
-            html_lib.escape(translate_ui(i18n, translation_key)),
+            replacement,
         )
     rendered_header = rendered_header.replace(
         HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER,
