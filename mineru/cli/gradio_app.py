@@ -332,6 +332,7 @@ def render_status_steps_html(status_text, i18n):
 APP_CSS = """
 .gradio-container {
     --mineru-accent: #f97316;
+    --mineru-preview-content-height: 720px;
     --mineru-panel: rgba(255, 255, 255, 0.62);
     --mineru-panel-border: rgba(17, 24, 39, 0.10);
     --mineru-status-panel-bg: rgba(255, 255, 255, 0.78);
@@ -498,7 +499,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 }
 .mineru-preview-pane > .block,
 .mineru-markdown-output {
-    min-height: 684px;
+    min-height: var(--mineru-preview-content-height);
 }
 .mineru-result-file {
     height: auto !important;
@@ -521,7 +522,8 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     border-bottom-color: var(--mineru-panel-border);
 }
 .mineru-markdown-tabs textarea {
-    min-height: 640px !important;
+    height: var(--mineru-preview-content-height) !important;
+    min-height: var(--mineru-preview-content-height) !important;
 }
 .status-steps-panel {
     border: 1px solid var(--mineru-panel-border);
@@ -583,7 +585,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    min-height: 720px;
+    min-height: var(--mineru-preview-content-height);
 }
 .office-preview-notice {
     border: 1px solid rgba(249, 115, 22, 0.35);
@@ -608,7 +610,7 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 }
 .office-preview-frame {
     width: 100%;
-    min-height: 720px;
+    min-height: var(--mineru-preview-content-height);
     border: 1px solid var(--mineru-panel-border);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.18);
@@ -2347,8 +2349,15 @@ def main(ctx,
                 with gr.Row(equal_height=True, elem_classes=["mineru-compare-row"]):
                     with gr.Column(scale=1, min_width=340, elem_classes=["mineru-preview-pane"]):
                         _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
-                        doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=720)
-                        office_html = gr.HTML(value="", visible=False, min_height=760)
+                        # 保持 PDF 预览、Markdown 渲染和原文文本框的内容区高度一致。
+                        preview_content_height = 720
+                        doc_show = PDF(
+                            label=_doc_preview_label,
+                            interactive=False,
+                            visible=True,
+                            height=preview_content_height,
+                        )
+                        office_html = gr.HTML(value="", visible=False, min_height=preview_content_height)
                     with gr.Column(scale=1, min_width=340, elem_classes=["mineru-markdown-pane"]):
                         _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
@@ -2356,7 +2365,7 @@ def main(ctx,
                             with gr.Tab(i18n("md_rendering")):
                                 md = gr.Markdown(
                                     label=i18n("md_rendering"),
-                                    height=684,
+                                    height=preview_content_height,
                                     elem_classes=["mineru-markdown-output"],
                                     latex_delimiters=latex_delimiters,
                                     line_breaks=True,
