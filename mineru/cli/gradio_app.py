@@ -494,9 +494,6 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     background: var(--mineru-popover-card-bg) !important;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset !important;
 }
-.mineru-advanced-popover-title .markdown {
-    margin-bottom: 8px;
-}
 .mineru-advanced-popover .wrap,
 .mineru-advanced-popover .block {
     min-width: 0 !important;
@@ -2479,10 +2476,6 @@ def main(ctx,
 
         with gr.Column(elem_classes=["mineru-advanced-popover"]):
             with gr.Column(elem_classes=["mineru-advanced-card"]):
-                gr.Markdown(
-                    f"### {translate_ui(i18n, 'advanced_options')}",
-                    elem_classes=["mineru-advanced-popover-title"],
-                )
                 with gr.Row(visible=False) as client_options:
                     url = gr.Textbox(
                         label=i18n("server_url"),
