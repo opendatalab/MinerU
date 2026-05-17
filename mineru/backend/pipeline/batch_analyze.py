@@ -684,7 +684,6 @@ class BatchAnalyze:
                 # 获取OCR模型
                 ocr_model = atom_model_manager.get_atom_model(
                     atom_model_name=AtomicModel.OCR,
-                    det_db_box_thresh=0.3,
                     lang=lang
                 )
 
@@ -761,8 +760,6 @@ class BatchAnalyze:
                 # Get OCR results for this language's images
                 ocr_model = atom_model_manager.get_atom_model(
                     atom_model_name=AtomicModel.OCR,
-                    ocr_show_log=False,
-                    det_db_box_thresh=0.3,
                     lang=_lang
                 )
                 for res in ocr_res_list_dict['ocr_res_list']:
@@ -832,7 +829,6 @@ class BatchAnalyze:
 
                     ocr_model = atom_model_manager.get_atom_model(
                         atom_model_name=AtomicModel.OCR,
-                        det_db_box_thresh=0.3,
                         lang=lang
                     )
                     ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
