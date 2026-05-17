@@ -2057,7 +2057,7 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Select or paste a file to upload\n(PDF, image, DOCX, PPTX, or XLSX)",
+            "upload_file": "Select or paste a file to upload\nPDF, image, DOCX, PPTX, or XLSX",
             "header_title": "MinerU 3: Document Extraction Demo",
             "header_subtitle": "Open-source document extraction for PDF, DOCX, PPTX, XLSX, and images to Markdown and JSON.",
             "header_support_text": "If you found our project helpful, please give us a ⭐️ to support us!",
@@ -2121,7 +2121,7 @@ def main(ctx,
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请选择或粘贴要上传的文件\n（PDF、图片、DOCX、PPTX 或 XLSX）",
+            "upload_file": "请选择或粘贴要上传的文件\nPDF、图片、DOCX、PPTX 或 XLSX",
             "header_title": "MinerU 3：文档提取演示",
             "header_subtitle": "开源文档提取工具，支持将 PDF、DOCX、PPTX、XLSX 和图片转换为 Markdown 与 JSON。",
             "header_support_text": "如果我们的项目对你有帮助，请点亮 ⭐️ 支持我们！",
