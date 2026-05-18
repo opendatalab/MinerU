@@ -374,6 +374,14 @@ class CropByPolys:
 
         points_sample = self.sample_points_on_bbox(points)
         points_sample = points_sample.astype(np.int32)
+        # 印章检测在极小噪声框上可能只采样出少于4个有效点，回退到外接矩形裁剪避免中断整篇解析。
+        if (
+            points_sample.ndim != 2
+            or points_sample.shape[0] < 4
+            or points_sample.shape[1] != 2
+            or np.unique(points_sample, axis=0).shape[0] < 4
+        ):
+            return temp_crop_img
         head_edge, tail_edge, top_line, bot_line = self.reorder_poly_edge(points_sample)
 
         resample_top_line = self.sample_points_on_bbox_bp(top_line, 15)

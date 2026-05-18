@@ -749,7 +749,8 @@ async def aio_doc_analyze(
                                 not_extract_list=not_extract_list,
                                 image_analysis=image_analysis,
                             )
-                        window_model_list, hybrid_pipeline_model = _process_ocr_and_formulas(
+                        window_model_list, hybrid_pipeline_model = await asyncio.to_thread(
+                            _process_ocr_and_formulas,
                             images_pil_list,
                             window_model_list,
                             language,
