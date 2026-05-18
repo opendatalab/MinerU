@@ -404,7 +404,8 @@ body.dark .gradio-container {
     align-items: stretch;
 }
 .mineru-control-column,
-.mineru-work-column {
+.mineru-preview-pane,
+.mineru-markdown-pane {
     border: 1px solid var(--mineru-panel-border);
     border-radius: 8px;
     background: var(--mineru-panel);
@@ -423,8 +424,21 @@ body.dark .gradio-container {
 .mineru-upload-file label[data-testid="block-label"] > span {
     margin-top: 2px;
 }
-#mineru-example-files label[data-testid="block-label"] {
+#mineru-example-files label[data-testid="block-label"],
+#mineru-example-files [data-testid="block-label"],
+#mineru-example-files .label {
     display: none !important;
+}
+.mineru-examples-panel,
+.block.mineru-examples-panel {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+#mineru-example-files {
+    width: 100% !important;
+    max-width: none !important;
 }
 .mineru-actions {
     flex-wrap: nowrap !important;
@@ -511,9 +525,6 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 }
 .mineru-result-tabs .tab-nav {
     border-bottom-color: var(--mineru-panel-border);
-}
-.mineru-compare-row {
-    align-items: stretch;
 }
 .mineru-preview-pane,
 .mineru-markdown-pane {
@@ -2086,7 +2097,7 @@ def update_doc_show(file_path):
     'example_enable',
     type=bool,
     help="Enable example files for input."
-         "The example files to be input need to be placed in the `example` folder within the directory where the command is currently executed.",
+         "The example files to be input need to be placed in the `examples` folder within the directory where the command is currently executed.",
     default=True,
 )
 @click.option(
@@ -2421,58 +2432,58 @@ def main(ctx,
                     label=i18n("convert_status"),
                     elem_classes=["mineru-status-panel"],
                 )
-                if example_enable:
-                    example_root = os.path.join(os.getcwd(), 'examples')
-                    if os.path.exists(example_root):
-                        example_files = [
-                            os.path.join(example_root, _) for _ in os.listdir(example_root)
-                            if _.endswith(tuple(suffixes))
-                        ]
-                        if example_files:
-                            with gr.Accordion(i18n("examples"), open=True):
-                                gr.Examples(
-                                    examples=example_files,
-                                    inputs=input_file,
-                                    elem_id="mineru-example-files",
-                                    label=None,
-                                )
 
-            with gr.Column(variant='panel', scale=8, min_width=560, elem_classes=["mineru-work-column"]):
-                with gr.Row(equal_height=True, elem_classes=["mineru-compare-row"]):
-                    with gr.Column(scale=1, min_width=340, elem_classes=["mineru-preview-pane"]):
-                        _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
-                        # preview_content_height 约束右侧 Markdown/Office 的内容区；gradio_pdf 的 height
-                        # 实际是单页 canvas 高度，需要单独扣除 label 和分页器占用，避免上传 PDF 后撑高左侧块。
-                        preview_content_height = 775
-                        pdf_preview_page_height = 720
-                        doc_show = PDF(
-                            label=_doc_preview_label,
-                            interactive=False,
-                            visible=True,
-                            height=pdf_preview_page_height,
+            _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
+            # preview_content_height 约束文档预览/Markdown 的内容区；gradio_pdf 的 height
+            # 实际是单页 canvas 高度，需要单独扣除 label 和分页器占用，避免上传 PDF 后撑高预览块。
+            preview_content_height = 775
+            pdf_preview_page_height = 720
+            with gr.Column(variant='panel', scale=4, min_width=340, elem_classes=["mineru-preview-pane"]):
+                doc_show = PDF(
+                    label=_doc_preview_label,
+                    interactive=False,
+                    visible=True,
+                    height=pdf_preview_page_height,
+                )
+                office_html = gr.HTML(value="", visible=False, min_height=preview_content_height)
+
+            with gr.Column(variant='panel', scale=4, min_width=340, elem_classes=["mineru-markdown-pane"]):
+                _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
+                _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
+                with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
+                    with gr.Tab(i18n("md_rendering")):
+                        md = gr.Markdown(
+                            label=i18n("md_rendering"),
+                            height=preview_content_height,
+                            elem_classes=["mineru-markdown-output"],
+                            latex_delimiters=latex_delimiters,
+                            line_breaks=True,
+                            **_md_copy_kwargs
                         )
-                        office_html = gr.HTML(value="", visible=False, min_height=preview_content_height)
-                    with gr.Column(scale=1, min_width=340, elem_classes=["mineru-markdown-pane"]):
-                        _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
-                        _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
-                        with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
-                            with gr.Tab(i18n("md_rendering")):
-                                md = gr.Markdown(
-                                    label=i18n("md_rendering"),
-                                    height=preview_content_height,
-                                    elem_classes=["mineru-markdown-output"],
-                                    latex_delimiters=latex_delimiters,
-                                    line_breaks=True,
-                                    **_md_copy_kwargs
-                                )
-                            with gr.Tab(i18n("md_text")):
-                                md_text = gr.TextArea(
-                                    lines=28,
-                                    label=i18n("md_text"),
-                                    show_label=False,
-                                    elem_classes=["mineru-markdown-text"],
-                                    **_textarea_copy_kwargs
-                                )
+                    with gr.Tab(i18n("md_text")):
+                        md_text = gr.TextArea(
+                            lines=28,
+                            label=i18n("md_text"),
+                            show_label=False,
+                            elem_classes=["mineru-markdown-text"],
+                            **_textarea_copy_kwargs
+                        )
+
+        if example_enable:
+            example_root = os.path.join(os.getcwd(), 'examples')
+            if os.path.exists(example_root):
+                example_files = [
+                    os.path.join(example_root, _) for _ in os.listdir(example_root)
+                    if _.endswith(tuple(suffixes))
+                ]
+                if example_files:
+                    with gr.Accordion(i18n("examples"), open=True, elem_classes=["mineru-examples-panel"]):
+                        gr.Examples(
+                            examples=example_files,
+                            inputs=input_file,
+                            elem_id="mineru-example-files",
+                            label=None,
+                        )
 
         with gr.Column(elem_classes=["mineru-advanced-popover"]):
             with gr.Column(elem_classes=["mineru-advanced-card"]):
