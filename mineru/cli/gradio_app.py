@@ -592,6 +592,23 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .mineru-markdown-output {
     min-height: var(--mineru-preview-content-height);
 }
+.mineru-preview-pane > .block.mineru-office-preview-html {
+    height: calc(var(--mineru-preview-content-height) + 48px) !important;
+    max-height: calc(var(--mineru-preview-content-height) + 48px) !important;
+    min-height: var(--mineru-preview-content-height) !important;
+    overflow: hidden !important;
+    resize: none !important;
+}
+.mineru-office-preview-html .html-container {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+}
+.mineru-office-preview-html .prose {
+    height: 100% !important;
+    max-width: none !important;
+}
 .mineru-preview-pane .pdf-canvas {
     height: var(--mineru-pdf-page-height) !important;
     max-height: var(--mineru-pdf-page-height) !important;
@@ -697,32 +714,90 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    height: 100%;
     min-height: var(--mineru-preview-content-height);
 }
 .office-preview-notice {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 24px;
     border: 1px solid rgba(249, 115, 22, 0.35);
     border-radius: 8px;
     padding: 10px 12px;
     background: rgba(249, 115, 22, 0.08);
 }
-.office-preview-notice strong,
-.office-preview-notice span,
-.office-preview-notice code {
+.office-preview-notice.is-dismissed {
+    display: none !important;
+}
+.office-preview-copy {
+    min-width: 0;
+}
+.office-preview-copy strong,
+.office-preview-copy > span {
     display: block;
 }
-.office-preview-notice span {
+.office-preview-copy > span {
     margin-top: 4px;
     color: var(--body-text-color-subdued);
     font-size: 12px;
 }
-.office-preview-notice code {
+.office-preview-actions {
+    display: grid;
+    grid-template-columns: 100px;
+    grid-auto-rows: 28px;
+    align-items: stretch;
+    justify-items: stretch;
+    justify-content: end;
+    flex: none;
+    gap: 6px;
+}
+.office-preview-actions button {
+    display: inline-flex;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+    border: 1px solid rgba(249, 115, 22, 0.36);
+    border-radius: 8px;
+    padding: 0 6px !important;
+    background: rgba(249, 115, 22, 0.10);
+    color: var(--body-text-color);
+    font-size: 12px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    cursor: pointer;
+}
+.office-preview-actions button > span {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+}
+.office-preview-actions button:hover {
+    background: rgba(249, 115, 22, 0.18);
+}
+.office-preview-source-link {
     margin-top: 6px;
-    white-space: normal;
+    min-width: 0;
+    color: var(--body-text-color-subdued);
+    font-size: 12px;
+    line-height: 1.45;
     word-break: break-all;
 }
+.office-preview-source-link a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
 .office-preview-frame {
+    flex: 1 1 auto;
     width: 100%;
-    min-height: var(--mineru-preview-content-height);
+    height: auto;
+    min-height: 0;
     border: 1px solid var(--mineru-panel-border);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.18);
@@ -743,13 +818,14 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 
 APP_JS = """
 () => {
-    const POPOVER_SCRIPT_VERSION = "clipboard-upload-v1";
+    const POPOVER_SCRIPT_VERSION = "office-preview-dismiss-v1";
     if (window.__mineruAdvancedPopoverInstalled === POPOVER_SCRIPT_VERSION) {
         return;
     }
     window.__mineruAdvancedPopoverInstalled = POPOVER_SCRIPT_VERSION;
 
     const POPOVER_OPEN_CLASS = "mineru-advanced-popover-open";
+    const OFFICE_PREVIEW_NOTICE_STORAGE_KEY = "mineru.officePreviewNoticeIgnored";
     const OPEN_DELAY_MS = 120;
     const CLOSE_DELAY_MS = 280;
     const ANIMATION_DELAY_MS = 140;
@@ -796,6 +872,44 @@ APP_JS = """
                 item.textContent = localizedText;
             }
         });
+    };
+
+    // 读取浏览器本地偏好时做容错，避免隐私模式禁用 localStorage 影响页面初始化。
+    const getOfficePreviewNoticeIgnored = () => {
+        try {
+            return localStorage.getItem(OFFICE_PREVIEW_NOTICE_STORAGE_KEY) === "1";
+        } catch (error) {
+            return false;
+        }
+    };
+
+    // 保存“不再提示”偏好；失败时仅降级为本次点击隐藏，不阻断预览。
+    const setOfficePreviewNoticeIgnored = () => {
+        try {
+            localStorage.setItem(OFFICE_PREVIEW_NOTICE_STORAGE_KEY, "1");
+        } catch (error) {
+            return false;
+        }
+        return true;
+    };
+
+    const findOfficePreviewNotices = () =>
+        document.querySelectorAll(".office-preview-notice");
+
+    // 根据浏览器持久偏好隐藏新挂载的 Office 预览提示。
+    const applyOfficePreviewNoticePreference = () => {
+        if (!getOfficePreviewNoticeIgnored()) {
+            return;
+        }
+        findOfficePreviewNotices().forEach((notice) => {
+            notice.classList.add("is-dismissed");
+        });
+    };
+
+    // 自定义 HTML 由 Gradio 动态重绘，统一在 DOM 变更后补本地化和忽略状态。
+    const refreshMineruCustomHtml = () => {
+        localizeMineruCustomText();
+        applyOfficePreviewNoticePreference();
     };
 
     // 兼容 Gradio 将 elem_classes 挂到按钮自身或按钮外层容器的两种 DOM 结构。
@@ -1136,15 +1250,15 @@ APP_JS = """
         hoverHandlersInstalled = true;
     };
 
-    localizeMineruCustomText();
+    refreshMineruCustomHtml();
     installHoverPopoverHandlers();
     requestAnimationFrame(() => {
-        localizeMineruCustomText();
+        refreshMineruCustomHtml();
         installHoverPopoverHandlers();
     });
     if (typeof MutationObserver !== "undefined") {
         const uiObserver = new MutationObserver(() => {
-            localizeMineruCustomText();
+            refreshMineruCustomHtml();
             installHoverPopoverHandlers();
         });
         uiObserver.observe(document.body, { childList: true, subtree: true });
@@ -1153,6 +1267,19 @@ APP_JS = """
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
+            return;
+        }
+        if (target.closest(".office-preview-ignore-forever")) {
+            const notice = target.closest(".office-preview-notice");
+            if (setOfficePreviewNoticeIgnored()) {
+                applyOfficePreviewNoticePreference();
+            } else {
+                notice?.classList.add("is-dismissed");
+            }
+            return;
+        }
+        if (target.closest(".office-preview-ignore-once")) {
+            target.closest(".office-preview-notice")?.classList.add("is-dismissed");
             return;
         }
         if (target.closest(".mineru-advanced-open")) {
@@ -2065,28 +2192,56 @@ def to_pdf_preview(file_path):
     return to_pdf(file_path)
 
 
+def build_gradio_file_public_url(file_path, request: gr.Request):
+    """根据当前 Gradio 请求构建上传文件的外部访问 URL，兼容本地和反代环境。"""
+    headers = getattr(request, "headers", None) or {}
+    host = (
+        headers.get('x-forwarded-host')
+        or headers.get('host', 'localhost:7860')
+    )
+    proto = headers.get('x-forwarded-proto', 'http')
+    return f"{proto}://{host}/gradio_api/file={file_path}"
+
+
+def build_short_gradio_file_url(public_url, file_path):
+    """生成页面展示用的短链接文本，保留站点前缀和文件名尾部以避免长路径撑破预览区。"""
+    base_url = public_url.split("/gradio_api/file=", 1)[0]
+    file_name = Path(file_path).name
+    file_suffix = Path(file_name).suffix
+    file_stem = Path(file_name).stem
+    short_file_name = f"{file_stem[-12:]}{file_suffix}" if file_stem else file_name
+    return f"{base_url}/....{short_file_name}"
+
+
 def build_office_preview_html(file_path, request: gr.Request, i18n=None):
     """生成 Office 在线预览 HTML，并提示该预览依赖外部 Microsoft 服务访问。"""
-    host = (
-        request.headers.get('x-forwarded-host')
-        or request.headers.get('host', 'localhost:7860')
-    )
-    proto = request.headers.get('x-forwarded-proto', 'http')
-    base_url = f"{proto}://{host}"
-    public_url = f"{base_url}/gradio_api/file={file_path}"
+    public_url = build_gradio_file_public_url(file_path, request)
+    short_public_url = build_short_gradio_file_url(public_url, file_path)
     viewer_url = (
         "https://view.officeapps.live.com/op/embed.aspx?src="
         f"{quote(public_url, safe='')}"
     )
-    file_name = html_lib.escape(Path(file_path).name)
-    title = html_lib.escape(translate_ui(i18n, "office_preview_title"))
-    notice = html_lib.escape(translate_ui(i18n, "office_preview_notice"))
+    title = render_client_i18n_text(i18n, "office_preview_title")
+    notice = render_client_i18n_text(i18n, "office_preview_notice")
+    source_link = render_client_i18n_text(i18n, "office_preview_source_link")
+    ignore_once = render_client_i18n_text(i18n, "office_preview_ignore_once")
+    ignore_forever = render_client_i18n_text(i18n, "office_preview_ignore_forever")
     return (
         '<div class="office-preview-shell">'
         '<div class="office-preview-notice">'
+        '<div class="office-preview-copy">'
         f"<strong>{title}</strong>"
         f"<span>{notice}</span>"
-        f"<code>{file_name}</code>"
+        '<div class="office-preview-source-link">'
+        f"{source_link}: "
+        f'<a href="{html_lib.escape(public_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
+        f"{html_lib.escape(short_public_url)}</a>"
+        "</div>"
+        "</div>"
+        '<div class="office-preview-actions">'
+        f'<button type="button" class="office-preview-ignore-once">{ignore_once}</button>'
+        f'<button type="button" class="office-preview-ignore-forever">{ignore_forever}</button>'
+        "</div>"
         "</div>"
         f'<iframe class="office-preview-frame" src="{html_lib.escape(viewer_url)}" '
         'frameborder="0"></iframe>'
@@ -2277,6 +2432,9 @@ def main(ctx,
             "status_step_failed": "Failed",
             "office_preview_title": "Office online preview",
             "office_preview_notice": "This preview requires the current file to be reachable by Microsoft Office Online. Conversion does not depend on this preview.",
+            "office_preview_source_link": "File url",
+            "office_preview_ignore_once": "Dismiss",
+            "office_preview_ignore_forever": "Always dismiss",
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
             "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
@@ -2341,6 +2499,9 @@ def main(ctx,
             "status_step_failed": "失败",
             "office_preview_title": "Office 在线预览",
             "office_preview_notice": "该预览需要当前文件可被 Microsoft 在线预览服务访问，转换不依赖该预览。",
+            "office_preview_source_link": "文件链接",
+            "office_preview_ignore_once": "忽略",
+            "office_preview_ignore_forever": "不再提示",
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
@@ -2499,7 +2660,12 @@ def main(ctx,
                     visible=True,
                     height=pdf_preview_page_height,
                 )
-                office_html = gr.HTML(value="", visible=False, min_height=preview_content_height)
+                office_html = gr.HTML(
+                    value="",
+                    visible=False,
+                    min_height=preview_content_height,
+                    elem_classes=["mineru-office-preview-html"],
+                )
 
             with gr.Column(variant='panel', scale=4, min_width=340, elem_classes=["mineru-markdown-pane"]):
                 _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
