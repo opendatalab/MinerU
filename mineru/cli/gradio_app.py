@@ -246,13 +246,23 @@ STATUS_STEP_DEFINITIONS = [
 ]
 
 
+def normalize_mineru_locale(locale):
+    """统一自定义 HTML 的语言归一规则：中文使用 zh，其他语言降级为英文。"""
+    normalized = str(locale or "").strip().lower()
+    if normalized.startswith("zh"):
+        return "zh"
+    return "en"
+
+
 def resolve_i18n_text(i18n, key, locale=None):
     """按指定语言读取自定义 HTML 需要的纯文本文案，避免直接渲染 Gradio I18nData 元数据。"""
     if i18n is None:
         return key
     translations = getattr(i18n, "translations", None)
     if translations:
-        preferred_locale = locale or os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
+        preferred_locale = normalize_mineru_locale(
+            locale or os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
+        )
         preferred_text = translations.get(preferred_locale, {}).get(key)
         if preferred_text is not None:
             return preferred_text
@@ -263,9 +273,41 @@ def resolve_i18n_text(i18n, key, locale=None):
     return i18n(key)
 
 
-def translate_ui(i18n, key):
-    """按服务端默认语言读取纯文本文案，用作自定义 HTML 的初始渲染内容。"""
-    return resolve_i18n_text(i18n, key)
+def translate_ui(i18n, key, locale=None):
+    """按目标语言读取纯文本文案，用作自定义 HTML 的初始渲染内容。"""
+    return resolve_i18n_text(i18n, key, locale)
+
+
+def resolve_request_locale(request):
+    """根据 Gradio 请求头推断浏览器语言，避免流式状态面板高频刷新时闪回默认语言。"""
+    headers = getattr(request, "headers", None) or {}
+    if not hasattr(headers, "get"):
+        return None
+
+    accept_language = headers.get("accept-language") or headers.get("Accept-Language")
+    if not accept_language:
+        return None
+
+    language_candidates = []
+    for order, raw_item in enumerate(str(accept_language).split(",")):
+        parts = [part.strip() for part in raw_item.split(";") if part.strip()]
+        if not parts:
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            name, separator, value = parameter.partition("=")
+            if separator and name.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+                break
+        language_candidates.append((-quality, order, parts[0]))
+
+    if not language_candidates:
+        return None
+    _, _, preferred_language = min(language_candidates)
+    return normalize_mineru_locale(preferred_language)
 
 
 def build_client_i18n_attrs(i18n, key):
@@ -277,11 +319,11 @@ def build_client_i18n_attrs(i18n, key):
     return " ".join(attrs)
 
 
-def render_client_i18n_text(i18n, key):
+def render_client_i18n_text(i18n, key, locale=None):
     """生成可被前端重新本地化的文本节点，避免 header/status 在英文环境固定成中文。"""
     return (
         f"<span {build_client_i18n_attrs(i18n, key)}>"
-        f"{html_lib.escape(translate_ui(i18n, key))}"
+        f"{html_lib.escape(translate_ui(i18n, key, locale))}"
         "</span>"
     )
 
@@ -314,27 +356,33 @@ def resolve_status_step_index(status_lines):
     return 0, False
 
 
-def render_status_steps_html(status_text, i18n):
+def render_status_steps_html(status_text, i18n, locale=None):
     """把流式状态日志渲染为步骤式状态面板，底层日志格式保持不变。"""
     status_lines = [line for line in str(status_text or "").splitlines() if line]
     current_index, is_failed = resolve_status_step_index(status_lines)
-    latest_status = status_lines[-1] if status_lines else render_client_i18n_text(i18n, "status_idle_hint")
+    latest_status = (
+        status_lines[-1]
+        if status_lines
+        else render_client_i18n_text(i18n, "status_idle_hint", locale)
+    )
 
     step_items = []
     for index, (label_key, _) in enumerate(STATUS_STEP_DEFINITIONS):
         classes = ["status-step"]
         if is_failed and index == current_index:
             classes.extend(["is-active", "is-error"])
-            label = render_client_i18n_text(i18n, "status_step_failed")
-        elif index < current_index or (current_index == len(STATUS_STEP_DEFINITIONS) - 1 and not is_failed):
+            label = render_client_i18n_text(i18n, "status_step_failed", locale)
+        elif index < current_index or (
+            current_index == len(STATUS_STEP_DEFINITIONS) - 1 and not is_failed
+        ):
             classes.append("is-done")
-            label = render_client_i18n_text(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key, locale)
         elif index == current_index:
             classes.append("is-active")
-            label = render_client_i18n_text(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key, locale)
         else:
             classes.append("is-pending")
-            label = render_client_i18n_text(i18n, label_key)
+            label = render_client_i18n_text(i18n, label_key, locale)
         step_items.append(
             f'<div class="{" ".join(classes)}">'
             f'<span class="status-dot"></span>'
@@ -345,9 +393,13 @@ def render_status_steps_html(status_text, i18n):
     title_key = "status_idle_title" if not status_lines else "status_latest"
     return (
         '<div class="status-steps-panel">'
-        f'<div class="status-panel-title">{render_client_i18n_text(i18n, title_key)}</div>'
+        f'<div class="status-panel-title">'
+        f'{render_client_i18n_text(i18n, title_key, locale)}'
+        f'</div>'
         f'<div class="status-steps-list">{"".join(step_items)}</div>'
-        f'<div class="status-latest">{latest_status if not status_lines else html_lib.escape(latest_status)}</div>'
+        f'<div class="status-latest">'
+        f'{latest_status if not status_lines else html_lib.escape(latest_status)}'
+        f'</div>'
         "</div>"
     )
 
@@ -2372,7 +2424,9 @@ def main(ctx,
         language="ch",
         backend="pipeline",
         url=None,
+        request: gr.Request = None,
     ):
+        request_locale = resolve_request_locale(request)
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
@@ -2386,7 +2440,7 @@ def main(ctx,
             api_url=api_url,
         ):
             update = (
-                render_status_steps_html(update[0], i18n),
+                render_status_steps_html(update[0], i18n, locale=request_locale),
                 update[1],
                 prepare_markdown_for_gradio_preview(update[2], latex_delimiters),
                 *update[3:],
