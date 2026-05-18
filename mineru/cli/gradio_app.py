@@ -32,7 +32,6 @@ logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
 from mineru.cli.common import (
-    docx_suffixes,
     image_suffixes,
     normalize_task_stem,
     office_suffixes,
