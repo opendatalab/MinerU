@@ -90,7 +90,7 @@ class DocxConverter:
         self.docx_obj = None
         self.pages = []
         self.cur_page = []
-        self._mammoth_tables_html: list = []   # 完整文档 mammoth 预解析的表格 HTML 列表
+        self._mammoth_tables_html: list = []   # 与正文顶层表格对齐的 mammoth 预解析 HTML，None 表示回退解析
         self._mammoth_table_idx: int = 0       # 当前预解析表格游标
         self.pre_num_id: int = -1  # 上一个处理元素的 numId
         self.pre_ilevel: int = -1  # 上一个处理元素的缩进等级, 用于判断列表层级
@@ -111,6 +111,17 @@ class DocxConverter:
             tuple[int, int], Optional[BaseOxmlElement]
         ] = {}
         self._numbering_start_cache: dict[tuple[int, int], int] = {}
+
+    @staticmethod
+    def _local_name(element: Any) -> Optional[str]:
+        """安全获取 XML 元素本地标签名，遇到注释或处理指令等非元素节点时返回 None。"""
+        tag = getattr(element, "tag", None)
+        if not isinstance(tag, str):
+            return None
+        try:
+            return etree.QName(tag).localname
+        except ValueError:
+            return None
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -729,7 +740,9 @@ class DocxConverter:
     ):
         for element in body:
             # 获取元素的标签名（去除命名空间前缀）
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             # 检查是否存在内联图像（blip元素）
             picture_refs = self.picture_xpath_expr(element)
 
@@ -881,7 +894,8 @@ class DocxConverter:
         将丢失的公式重新注入对应的 HTML 单元格。
 
         Returns:
-            list[str]: 文档中所有顶层表格的 HTML 字符串列表，按文档顺序排列
+            list[str | None]: 与正文顶层表格对齐的 HTML 列表；None 表示该表格
+                未找到可靠 Mammoth 结果，后续走孤立 XML 回退解析
         """
         try:
             import mammoth as _mammoth
@@ -901,25 +915,130 @@ class DocxConverter:
             docx_obj = Document(BytesIO(file_bytes))
             xml_top_tables = [
                 elem for elem in docx_obj.element.body
-                if etree.QName(elem).localname == 'tbl'
+                if self._local_name(elem) == 'tbl'
             ]
 
             logger.debug(
                 f"Pre-parsed {len(top_level_tables)} top-level tables via filtered mammoth conversion"
             )
 
-            # 将 XML 表格中的 OMML 公式注入到 mammoth HTML 表格中
-            result_tables = []
-            for idx, html_table in enumerate(top_level_tables):
-                if idx < len(xml_top_tables):
-                    html_table = self._inject_equations_into_table(
-                        html_table, xml_top_tables[idx]
-                    )
-                result_tables.append(str(html_table))
+            result_tables = self._align_mammoth_tables_to_xml_tables(
+                top_level_tables, xml_top_tables
+            )
             return result_tables
         except Exception as e:
             logger.debug(f"Could not pre-parse tables with filtered mammoth conversion: {e}")
             return []
+
+    def _align_mammoth_tables_to_xml_tables(self, html_tables, xml_tables) -> list:
+        """
+        将 Mammoth 输出表格按正文顶层 XML 表格重新对齐。
+
+        某些 DOCX 会在文本框、图片形状或兼容结构中包含表格，Mammoth 完整
+        文档转换时可能把这些结构表格也输出为顶层 HTML table；但正文遍历
+        只会在真实 body/w:tbl 上调用 _handle_tables。这里按 XML 表格的
+        顺序扫描 Mammoth 候选表，跳过不属于正文顶层表格的候选，避免后续
+        _mammoth_table_idx 顺序消费时发生错位。
+        """
+        aligned_tables = []
+        html_index = 0
+        matched_count = 0
+
+        for xml_table in xml_tables:
+            matched_html_table = None
+            scan_index = html_index
+            while scan_index < len(html_tables):
+                candidate = html_tables[scan_index]
+                if self._mammoth_table_matches_xml_table(candidate, xml_table):
+                    matched_html_table = candidate
+                    html_index = scan_index + 1
+                    matched_count += 1
+                    break
+                scan_index += 1
+
+            if matched_html_table is None:
+                aligned_tables.append(None)
+                continue
+
+            matched_html_table = self._inject_equations_into_table(
+                matched_html_table, xml_table
+            )
+            aligned_tables.append(str(matched_html_table))
+
+        if len(html_tables) != len(xml_tables):
+            logger.debug(
+                f"Aligned {matched_count}/{len(xml_tables)} body tables from "
+                f"{len(html_tables)} mammoth tables"
+            )
+        return aligned_tables
+
+    @staticmethod
+    def _mammoth_table_matches_xml_table(html_table, xml_table) -> bool:
+        """
+        判断 Mammoth HTML 表格是否对应当前正文 XML 表格。
+
+        文本表优先比较去空白后的表格文本，避免同为 1x1 的图片/文本框表格
+        误占正文表格位置；无文本表格再使用结构和图片数量兜底。
+        """
+        xml_signature = DocxConverter._xml_table_signature(xml_table)
+        html_signature = DocxConverter._html_table_signature(html_table)
+
+        if xml_signature["text"] or html_signature["text"]:
+            if not DocxConverter._table_text_matches(
+                xml_signature["text"], html_signature["text"]
+            ):
+                return False
+            return (
+                xml_signature["cell_count"] == html_signature["cell_count"]
+                or xml_signature["row_count"] == html_signature["row_count"]
+            )
+
+        return (
+            xml_signature["row_count"] == html_signature["row_count"]
+            and xml_signature["cell_count"] == html_signature["cell_count"]
+            and xml_signature["image_count"] == html_signature["image_count"]
+        )
+
+    @staticmethod
+    def _xml_table_signature(xml_table) -> dict:
+        """提取 XML 表格的轻量签名，用于与 Mammoth HTML 表格对齐。"""
+        text = "".join(
+            node.text or ""
+            for node in xml_table.xpath('.//*[local-name()="t"]')
+            if node.text
+        )
+        return {
+            "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
+            "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
+            "image_count": len(xml_table.xpath('.//*[local-name()="blip"]')),
+            "text": DocxConverter._normalize_table_match_text(text),
+        }
+
+    @staticmethod
+    def _html_table_signature(html_table) -> dict:
+        """提取 HTML 表格的轻量签名，用于过滤 Mammoth 额外生成的表格。"""
+        return {
+            "row_count": len(html_table.find_all("tr")),
+            "cell_count": len(html_table.find_all(["td", "th"])),
+            "image_count": len(html_table.find_all("img")),
+            "text": DocxConverter._normalize_table_match_text(
+                html_table.get_text("", strip=True)
+            ),
+        }
+
+    @staticmethod
+    def _normalize_table_match_text(text: str) -> str:
+        """统一表格匹配文本，消除 Word 拆字和 Mammoth 空白差异。"""
+        return re.sub(r"\s+", "", text or "")
+
+    @staticmethod
+    def _table_text_matches(xml_text: str, html_text: str) -> bool:
+        """比较表格文本是否指向同一个正文表格。"""
+        if not xml_text or not html_text:
+            return False
+        if xml_text == html_text:
+            return True
+        return xml_text.startswith(html_text) or html_text.startswith(xml_text)
 
     def _inject_equations_into_table(self, html_table, xml_table):
         """
@@ -995,7 +1114,9 @@ class DocxConverter:
 
         parts = []
         for child in xml_cell:
-            child_tag = etree.QName(child).localname
+            child_tag = self._local_name(child)
+            if child_tag is None:
+                continue
             if child_tag == 'p':
                 para_html = self._build_paragraph_html_with_equations(child)
                 if para_html is not None:
@@ -1021,13 +1142,16 @@ class DocxConverter:
         """
         items = []
         for subt in xml_para.iter():
-            tag_name = etree.QName(subt).localname
+            tag_name = self._local_name(subt)
+            if tag_name is None:
+                continue
+            tag = subt.tag
             # 普通文本节点（排除 math 命名空间下的 <m:t>）
-            if tag_name == 't' and 'math' not in subt.tag:
+            if tag_name == 't' and 'math' not in tag:
                 if isinstance(subt.text, str) and subt.text:
                     items.append(subt.text)
             # OMML 公式元素（排除 oMathPara 容器避免重复处理）
-            elif 'oMath' in subt.tag and 'oMathPara' not in subt.tag:
+            elif 'oMath' in tag and 'oMathPara' not in tag:
                 try:
                     latex = str(oMath2Latex(subt)).strip()
                     if latex:
@@ -1055,13 +1179,14 @@ class DocxConverter:
         if self._mammoth_table_idx < len(self._mammoth_tables_html):
             html = self._mammoth_tables_html[self._mammoth_table_idx]
             self._mammoth_table_idx += 1
-            html = self._normalize_table_colspans(html)
-            table_block = {
-                "type": BlockType.TABLE,
-                "content": html,
-            }
-            self.cur_page.append(table_block)
-            return
+            if html is not None:
+                html = self._normalize_table_colspans(html)
+                table_block = {
+                    "type": BlockType.TABLE,
+                    "content": html,
+                }
+                self.cur_page.append(table_block)
+                return
 
         # 回退：孤立 XML 解析模式（原始方案，不含文档上下文）
         table = read_str(element.xml)
@@ -1698,7 +1823,9 @@ class DocxConverter:
         _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
         for child in container:
-            tag_name = etree.QName(child).localname
+            tag_name = self._local_name(child)
+            if tag_name is None:
+                continue
 
             if tag_name == "r":
                 yield Run(child, paragraph)
@@ -1853,12 +1980,15 @@ class DocxConverter:
         only_equations = []
         texts_and_equations = []
         for subt in element.iter():
-            tag_name = etree.QName(subt).localname
-            if tag_name == "t" and "math" not in subt.tag:
+            tag_name = self._local_name(subt)
+            if tag_name is None:
+                continue
+            tag = subt.tag
+            if tag_name == "t" and "math" not in tag:
                 if isinstance(subt.text, str):
                     only_texts.append(subt.text)
                     texts_and_equations.append(subt.text)
-            elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
+            elif "oMath" in tag and "oMathPara" not in tag:
                 try:
                     latex_equation = str(oMath2Latex(subt)).strip()
                 except Exception as e:
@@ -2470,7 +2600,9 @@ class DocxConverter:
         numid_ilvels: dict[int, set] = {}
 
         for element in self.docx_obj.element.body:
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             if tag_name == "p":
                 try:
                     paragraph = Paragraph(element, self.docx_obj)
@@ -3235,7 +3367,9 @@ class DocxConverter:
             if element_id in processed_paragraphs:
                 continue
 
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             processed_paragraphs.append(element_id)
 
             # 处理直接找到的段落（VML 文本框）
@@ -3296,7 +3430,7 @@ class DocxConverter:
             parent = paragraph_element.getparent()
             # 获取所有段落兄弟节点
             paragraphs = [
-                p for p in parent.getchildren() if etree.QName(p).localname == "p"
+                p for p in parent.getchildren() if self._local_name(p) == "p"
             ]
             # 查找当前段落在其兄弟节点中的索引
             try:

@@ -44,7 +44,7 @@ Usage: mineru-gradio [OPTIONS]
 
 Options:
   --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
-                                  执行命令目录下的 `example` 文件夹中)
+                                  执行命令目录下的 `examples` 文件夹中)
   --enable-http-client BOOLEAN    在后端选项中启用 HTTP 客户端选项
   --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
   --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数

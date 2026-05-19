@@ -45,7 +45,7 @@ Usage: mineru-gradio [OPTIONS]
 Options:
   --enable-example BOOLEAN        Enable example files for input. The example
                                   files to be input need to be placed in the
-                                  `example` folder within the directory where
+                                  `examples` folder within the directory where
                                   the command is currently executed.
   --enable-http-client BOOLEAN    Enable http-client backend to link openai-
                                   compatible servers.

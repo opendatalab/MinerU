@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-import base64
 import asyncio
+import html as html_lib
 import httpx
 import os
 import re
@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from urllib.parse import quote
 
 import click
 import gradio as gr
@@ -30,7 +31,6 @@ logger.remove()  # 移除默认handler
 logger.add(sys.stderr, level=log_level)  # 添加新handler
 
 from mineru.cli.common import (
-    docx_suffixes,
     image_suffixes,
     normalize_task_stem,
     office_suffixes,
@@ -223,12 +223,219 @@ STATUS_QUEUED_ON_SERVER = "Queued on server"
 STATUS_PROCESSING_ON_SERVER = "Processing on server"
 STATUS_QUEUED_LOCALLY_PREFIX = "Queued locally:"
 
+BACKEND_CHOICE_DEFINITIONS = [
+    "pipeline",
+    "vlm-auto-engine",
+    "hybrid-auto-engine",
+]
+HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS = [
+    "vlm-http-client",
+    "hybrid-http-client",
+]
+STATUS_STEP_DEFINITIONS = [
+    ("status_step_prepare", STATUS_PREPARING_REQUEST),
+    ("status_step_check", STATUS_CHECKING_SERVER),
+    ("status_step_submit", STATUS_SUBMITTING_TASK),
+    ("status_step_queue", STATUS_QUEUED_ON_SERVER),
+    ("status_step_process", STATUS_PROCESSING_ON_SERVER),
+    ("status_step_download", STATUS_DOWNLOADING_RESULT),
+    ("status_step_outputs", STATUS_PROCESSING_OUTPUT),
+    ("status_step_done", STATUS_COMPLETED),
+]
+
+
+def normalize_mineru_locale(locale):
+    """统一自定义 HTML 的语言归一规则：中文使用 zh，其他语言降级为英文。"""
+    normalized = str(locale or "").strip().lower()
+    if normalized.startswith("zh"):
+        return "zh"
+    return "en"
+
+
+def resolve_i18n_text(i18n, key, locale=None):
+    """按指定语言读取自定义 HTML 需要的纯文本文案，避免直接渲染 Gradio I18nData 元数据。"""
+    if i18n is None:
+        return key
+    translations = getattr(i18n, "translations", None)
+    if translations:
+        preferred_locale = normalize_mineru_locale(
+            locale or os.getenv("MINERU_GRADIO_DEFAULT_LOCALE", "zh")
+        )
+        preferred_text = translations.get(preferred_locale, {}).get(key)
+        if preferred_text is not None:
+            return preferred_text
+        fallback_text = translations.get("en", {}).get(key)
+        if fallback_text is not None:
+            return fallback_text
+        return key
+    return i18n(key)
+
+
+def translate_ui(i18n, key, locale=None):
+    """按目标语言读取纯文本文案，用作自定义 HTML 的初始渲染内容。"""
+    return resolve_i18n_text(i18n, key, locale)
+
+
+def resolve_request_locale(request):
+    """根据 Gradio 请求头推断浏览器语言，避免流式状态面板高频刷新时闪回默认语言。"""
+    headers = getattr(request, "headers", None) or {}
+    if not hasattr(headers, "get"):
+        return None
+
+    accept_language = headers.get("accept-language") or headers.get("Accept-Language")
+    if not accept_language:
+        return None
+
+    language_candidates = []
+    for order, raw_item in enumerate(str(accept_language).split(",")):
+        parts = [part.strip() for part in raw_item.split(";") if part.strip()]
+        if not parts:
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            name, separator, value = parameter.partition("=")
+            if separator and name.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+                break
+        language_candidates.append((-quality, order, parts[0]))
+
+    if not language_candidates:
+        return None
+    _, _, preferred_language = min(language_candidates)
+    return normalize_mineru_locale(preferred_language)
+
+
+def build_client_i18n_attrs(i18n, key):
+    """为自定义 HTML 输出中英文文案属性，交给前端按浏览器语言切换。"""
+    attrs = [f'data-mineru-i18n-key="{html_lib.escape(key, quote=True)}"']
+    for locale in ("en", "zh"):
+        text = resolve_i18n_text(i18n, key, locale)
+        attrs.append(f'data-mineru-i18n-{locale}="{html_lib.escape(text, quote=True)}"')
+    return " ".join(attrs)
+
+
+def render_client_i18n_text(i18n, key, locale=None):
+    """生成可被前端重新本地化的文本节点，避免 header/status 在英文环境固定成中文。"""
+    return (
+        f"<span {build_client_i18n_attrs(i18n, key)}>"
+        f"{html_lib.escape(translate_ui(i18n, key, locale))}"
+        "</span>"
+    )
+
+
+def build_backend_choices(http_client_enable, i18n):
+    """构建后端选项列表，展示文案与提交给后端的 backend 值保持完全一致。"""
+    choices = list(BACKEND_CHOICE_DEFINITIONS)
+    if http_client_enable:
+        choices.extend(HTTP_CLIENT_BACKEND_CHOICE_DEFINITIONS)
+    return choices
+
+
+def resolve_status_step_index(status_lines):
+    """根据现有状态日志推断步骤面板中当前应高亮的步骤索引。"""
+    if not status_lines:
+        return -1, False
+    if status_lines[-1].startswith("Failed:"):
+        return len(STATUS_STEP_DEFINITIONS) - 1, True
+    if any(line.startswith(STATUS_COMPLETED) for line in status_lines):
+        return len(STATUS_STEP_DEFINITIONS) - 1, False
+
+    for index in range(len(STATUS_STEP_DEFINITIONS) - 1, -1, -1):
+        _, marker = STATUS_STEP_DEFINITIONS[index]
+        if marker == STATUS_QUEUED_ON_SERVER:
+            if any(StatusPanelState.is_queue_message(line) for line in status_lines):
+                return index, False
+            continue
+        if any(line.startswith(marker) for line in status_lines):
+            return index, False
+    return 0, False
+
+
+def render_status_steps_html(status_text, i18n, locale=None):
+    """把流式状态日志渲染为步骤式状态面板，底层日志格式保持不变。"""
+    status_lines = [line for line in str(status_text or "").splitlines() if line]
+    current_index, is_failed = resolve_status_step_index(status_lines)
+    latest_status = (
+        status_lines[-1]
+        if status_lines
+        else render_client_i18n_text(i18n, "status_idle_hint", locale)
+    )
+
+    step_items = []
+    for index, (label_key, _) in enumerate(STATUS_STEP_DEFINITIONS):
+        classes = ["status-step"]
+        if is_failed and index == current_index:
+            classes.extend(["is-active", "is-error"])
+            label = render_client_i18n_text(i18n, "status_step_failed", locale)
+        elif index < current_index or (
+            current_index == len(STATUS_STEP_DEFINITIONS) - 1 and not is_failed
+        ):
+            classes.append("is-done")
+            label = render_client_i18n_text(i18n, label_key, locale)
+        elif index == current_index:
+            classes.append("is-active")
+            label = render_client_i18n_text(i18n, label_key, locale)
+        else:
+            classes.append("is-pending")
+            label = render_client_i18n_text(i18n, label_key, locale)
+        step_items.append(
+            f'<div class="{" ".join(classes)}">'
+            f'<span class="status-dot"></span>'
+            f'<span class="status-label">{label}</span>'
+            "</div>"
+        )
+
+    title_key = "status_idle_title" if not status_lines else "status_latest"
+    return (
+        '<div class="status-steps-panel">'
+        f'<div class="status-panel-title">'
+        f'{render_client_i18n_text(i18n, title_key, locale)}'
+        f'</div>'
+        f'<div class="status-steps-list">{"".join(step_items)}</div>'
+        f'<div class="status-latest">'
+        f'{latest_status if not status_lines else html_lib.escape(latest_status)}'
+        f'</div>'
+        "</div>"
+    )
+
+
+RESOURCE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources')
+
+
+def load_resource_text(resource_name):
+    """读取 mineru/resources 下的文本资源，集中管理 Gradio 静态片段。"""
+    resource_path = os.path.join(RESOURCE_DIR, resource_name)
+    with open(resource_path, mode='r', encoding='utf-8') as resource_file:
+        return resource_file.read()
+
+
+APP_CSS = load_resource_text('gradio_app.css')
+APP_JS = load_resource_text('gradio_app.js')
+
+# Gradio 6 的 js 参数在部分托管环境里只注入函数文本，使用 head 包装确保页面加载后主动执行。
+APP_HEAD = f"""
+<script>
+(() => {{
+    const installMineruAdvancedPopover = {APP_JS};
+    if (document.readyState === "loading") {{
+        document.addEventListener("DOMContentLoaded", installMineruAdvancedPopover, {{ once: true }});
+    }} else {{
+        installMineruAdvancedPopover();
+    }}
+}})();
+</script>
+"""
+
 
 @dataclass
 class StatusPanelState:
     lines: list[str] = field(default_factory=list)
     processing_index: int | None = None
     processing_started_at: float | None = None
+    last_processing_elapsed_seconds: float | None = None
     queue_index: int | None = None
     queue_started_at: float | None = None
     queue_base_message: str | None = None
@@ -247,6 +454,8 @@ class StatusPanelState:
 
         self.finalize_processing()
         self.finalize_queue()
+        if message == STATUS_COMPLETED:
+            message = format_completed_status(self.last_processing_elapsed_seconds)
         if not self.lines or self.lines[-1] != message:
             self.lines.append(message)
             return True
@@ -257,6 +466,7 @@ class StatusPanelState:
             return self.tick_processing()
 
         self.processing_started_at = time.monotonic()
+        self.last_processing_elapsed_seconds = 0.0
         self.processing_index = len(self.lines)
         self.lines.append(format_processing_status(0.0))
         return True
@@ -265,9 +475,9 @@ class StatusPanelState:
         if self.processing_started_at is None or self.processing_index is None:
             return False
 
-        updated = format_processing_status(
-            max(0.0, time.monotonic() - self.processing_started_at)
-        )
+        elapsed_seconds = max(0.0, time.monotonic() - self.processing_started_at)
+        self.last_processing_elapsed_seconds = elapsed_seconds
+        updated = format_processing_status(elapsed_seconds)
         if self.lines[self.processing_index] != updated:
             self.lines[self.processing_index] = updated
             return True
@@ -377,6 +587,13 @@ def format_processing_status(elapsed_seconds: float) -> str:
     return f"{STATUS_PROCESSING_ON_SERVER} ({elapsed_seconds:.1f}s)"
 
 
+def format_completed_status(elapsed_seconds: float | None) -> str:
+    """生成完成状态文案，保留服务端解析阶段最终耗时。"""
+    if elapsed_seconds is None:
+        return STATUS_COMPLETED
+    return f"{STATUS_COMPLETED} ({elapsed_seconds:.1f}s)"
+
+
 def format_queue_status(base_message: str, elapsed_seconds: float) -> str:
     dots = "." * (
         (int(max(0.0, elapsed_seconds)) % STATUS_QUEUE_ANIMATION_MAX_DOTS) + 1
@@ -435,53 +652,74 @@ def compress_directory_to_zip(directory_path, output_zip_path):
         return -1
 
 
-def image_to_base64(image_path):
-    with open(image_path, 'rb') as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+GRADIO_PREVIEW_IMAGE_SUFFIXES = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".svg",
+}
+GRADIO_PREVIEW_EXTERNAL_SRC_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
-def replace_image_with_base64(markdown_text, image_dir_path):
-    # MIME类型映射
-    mime_types = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.svg': 'image/svg+xml',
-    }
+def _resolve_gradio_preview_image_path(src, image_dir_path):
+    """将 Markdown/HTML 中的图片路径解析成 Gradio 文件路由需要的本地完整路径。"""
+    image_src = str(src).strip()
+    if not image_src:
+        return None
+    if Path(image_src).suffix.lower() not in GRADIO_PREVIEW_IMAGE_SUFFIXES:
+        return None
 
-    def _path_to_data_uri(relative_path):
-        file_ext = os.path.splitext(relative_path)[1].lower()
-        if file_ext not in mime_types:
+    resolved_path = (Path(image_dir_path) / image_src).resolve(strict=False)
+    if not resolved_path.is_file():
+        logger.warning(f"Skip missing Gradio preview image: {resolved_path}")
+        return None
+    return str(resolved_path)
+
+
+def replace_image_with_gradio_file_urls(markdown_text, image_dir_path):
+    """将 Gradio 预览中的本地图片路径改写为 HTTP 文件链接，不修改导出的 Markdown 文件。"""
+    if not isinstance(markdown_text, str) or not image_dir_path:
+        return markdown_text
+
+    def _path_to_public_url(image_src):
+        image_path = _resolve_gradio_preview_image_path(image_src, image_dir_path)
+        if not image_path:
             return None
-        try:
-            full_path = os.path.join(image_dir_path, relative_path)
-            base64_image = image_to_base64(full_path)
-            return f'data:{mime_types[file_ext]};base64,{base64_image}'
-        except Exception as e:
-            logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
-            return None
+        return f"/gradio_api/file={quote(image_path, safe='/:')}"
 
-    # 匹配Markdown中的图片标签 ![...](path)
+    # 匹配 Markdown 正文图片 ![alt](path)，只替换可安全访问的本地图片路径。
     def replace_md(match):
-        relative_path = match.group(1)
-        data_uri = _path_to_data_uri(relative_path)
-        if data_uri:
-            return f'![{relative_path}]({data_uri})'
+        alt_text = match.group("alt")
+        image_src = match.group("src")
+        public_url = _path_to_public_url(image_src)
+        if public_url:
+            return f"![{alt_text}]({public_url})"
         return match.group(0)
 
-    result = re.sub(r'\!\[(?:[^\]]*)\]\(([^)]+)\)', replace_md, markdown_text)
+    result = re.sub(
+        r"!\[(?P<alt>[^\]]*)\]\((?P<src>[^)]+)\)",
+        replace_md,
+        markdown_text,
+    )
 
-    # 匹配HTML表格中的 <img src="path"> (跳过已有的data: URI)
+    # 匹配 HTML 表格内的 <img src="path">，跳过 data/http/blob 等已有可访问地址。
     def replace_html_src(match):
-        relative_path = match.group(1)
-        data_uri = _path_to_data_uri(relative_path)
-        if data_uri:
-            return f'src="{data_uri}"'
+        prefix = match.group("prefix")
+        quote_char = match.group("quote")
+        image_src = match.group("src")
+        public_url = _path_to_public_url(image_src)
+        if public_url:
+            return f"{prefix}{quote_char}{public_url}{quote_char}"
         return match.group(0)
 
-    result = re.sub(r'src="(?!data:)([^"]+)"', replace_html_src, result)
+    result = re.sub(
+        r"(?P<prefix><img\b[^>]*?\bsrc\s*=\s*)(?P<quote>[\"'])(?P<src>[^\"']+)(?P=quote)",
+        replace_html_src,
+        result,
+        flags=re.IGNORECASE,
+    )
 
     return result
 
@@ -573,6 +811,20 @@ def create_gradio_run_paths(file_path, output_root="./output"):
     extract_root = run_root / "result"
     archive_zip_path = run_root / f"{safe_stem(Path(file_path).stem)}.zip"
     return run_root, extract_root, archive_zip_path
+
+
+def build_gradio_allowed_paths(output_root="./output"):
+    """生成 Gradio 可公开访问目录，确保预览 HTTP 图片链接能被 /gradio_api/file= 读取。"""
+    allowed_paths = []
+    for item in os.environ.get("GRADIO_ALLOWED_PATHS", "").split(","):
+        item = item.strip()
+        if item:
+            allowed_paths.append(item)
+
+    output_path = str(Path(output_root).resolve())
+    if output_path not in allowed_paths:
+        allowed_paths.append(output_path)
+    return allowed_paths
 
 
 def build_gradio_upload_name(file_path):
@@ -806,7 +1058,7 @@ async def _run_to_markdown_job(
     md_path = Path(local_md_dir) / f"{file_name}.md"
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
-    md_content = replace_image_with_base64(txt_content, local_md_dir)
+    md_content = replace_image_with_gradio_file_urls(txt_content, local_md_dir)
 
     if file_suffix in office_suffixes:
         preview_pdf_path = None
@@ -956,9 +1208,39 @@ latex_delimiters_type_b = [
 ]
 latex_delimiters_type_all = latex_delimiters_type_a + latex_delimiters_type_b
 
-header_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'resources', 'header.html')
-with open(header_path, mode='r', encoding='utf-8') as header_file:
-    header = header_file.read()
+header_template = load_resource_text('gradio_header.html')
+
+HEADER_I18N_PLACEHOLDERS = {
+    "{{HEADER_TITLE}}": "header_title",
+    "{{HEADER_SUBTITLE}}": "header_subtitle",
+    "{{HEADER_SUPPORT_TEXT}}": "header_support_text",
+    "{{HEADER_STARS_ALT}}": "header_stars_alt",
+    "{{HEADER_CODE_LINK}}": "header_code_link",
+    "{{HEADER_MODEL_LINK}}": "header_model_link",
+    "{{HEADER_PAPER_LINK}}": "header_paper_link",
+    "{{HEADER_HOMEPAGE_LINK}}": "header_homepage_link",
+    "{{HEADER_DOWNLOAD_LINK}}": "header_download_link",
+}
+HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER = "{{HEADER_GRADIO_VERSION_CLASS}}"
+
+
+def render_header_html(i18n):
+    """渲染支持 i18n 的顶部 Header，保留静态模板中的样式和链接。"""
+    rendered_header = header_template
+    for placeholder, translation_key in HEADER_I18N_PLACEHOLDERS.items():
+        if translation_key == "header_stars_alt":
+            replacement = html_lib.escape(translate_ui(i18n, translation_key), quote=True)
+        else:
+            replacement = render_client_i18n_text(i18n, translation_key)
+        rendered_header = rendered_header.replace(
+            placeholder,
+            replacement,
+        )
+    rendered_header = rendered_header.replace(
+        HEADER_GRADIO_VERSION_CLASS_PLACEHOLDER,
+        " mineru-gradio6-header" if IS_GRADIO_6 else "",
+    )
+    return rendered_header
 
 other_lang = [
     'ch (Chinese, English, Chinese Traditional)',
@@ -1020,7 +1302,63 @@ def to_pdf_preview(file_path):
     return to_pdf(file_path)
 
 
-def update_file_options_html(file_path, request: gr.Request):
+def build_gradio_file_public_url(file_path, request: gr.Request):
+    """根据当前 Gradio 请求构建上传文件的外部访问 URL，兼容本地和反代环境。"""
+    headers = getattr(request, "headers", None) or {}
+    host = (
+        headers.get('x-forwarded-host')
+        or headers.get('host', 'localhost:7860')
+    )
+    proto = headers.get('x-forwarded-proto', 'http')
+    return f"{proto}://{host}/gradio_api/file={quote(str(file_path), safe='/:')}"
+
+
+def build_short_gradio_file_url(public_url, file_path):
+    """生成页面展示用的短链接文本，保留站点前缀和文件名尾部以避免长路径撑破预览区。"""
+    base_url = public_url.split("/gradio_api/file=", 1)[0]
+    file_name = Path(file_path).name
+    file_suffix = Path(file_name).suffix
+    file_stem = Path(file_name).stem
+    short_file_name = f"{file_stem[-12:]}{file_suffix}" if file_stem else file_name
+    return f"{base_url}/....{short_file_name}"
+
+
+def build_office_preview_html(file_path, request: gr.Request, i18n=None):
+    """生成 Office 在线预览 HTML，并提示该预览依赖外部 Microsoft 服务访问。"""
+    public_url = build_gradio_file_public_url(file_path, request)
+    short_public_url = build_short_gradio_file_url(public_url, file_path)
+    viewer_url = (
+        "https://view.officeapps.live.com/op/embed.aspx?src="
+        f"{quote(public_url, safe='')}"
+    )
+    title = render_client_i18n_text(i18n, "office_preview_title")
+    notice = render_client_i18n_text(i18n, "office_preview_notice")
+    source_link = render_client_i18n_text(i18n, "office_preview_source_link")
+    ignore_once = render_client_i18n_text(i18n, "office_preview_ignore_once")
+    ignore_forever = render_client_i18n_text(i18n, "office_preview_ignore_forever")
+    return (
+        '<div class="office-preview-shell">'
+        '<div class="office-preview-notice">'
+        '<div class="office-preview-copy">'
+        f"<strong>{title}</strong>"
+        f"<span>{notice}</span>"
+        '<div class="office-preview-source-link">'
+        f"{source_link}: "
+        f"{html_lib.escape(short_public_url)}"
+        "</div>"
+        "</div>"
+        '<div class="office-preview-actions">'
+        f'<button type="button" class="office-preview-ignore-once">{ignore_once}</button>'
+        f'<button type="button" class="office-preview-ignore-forever">{ignore_forever}</button>'
+        "</div>"
+        "</div>"
+        f'<iframe class="office-preview-frame" src="{html_lib.escape(viewer_url)}" '
+        'frameborder="0"></iframe>'
+        "</div>"
+    )
+
+
+def update_file_options_html(file_path, request: gr.Request, i18n=None):
     """处理文件上传第一阶段：根据文件类型更新 options_group 和 office_html。
     将 doc_show（gradio_pdf.PDF）的更新拆分到独立的 .then() 事件中，
     以规避 gradio_pdf 0.0.24 在 Gradio 6 中对 value=None 处理不当导致的
@@ -1036,18 +1374,7 @@ def update_file_options_html(file_path, request: gr.Request):
     is_office = file_suffix in office_suffixes
 
     if is_office:
-        # 构建可公开访问的文件 URL，供 Microsoft 在线预览使用
-        host = (request.headers.get('x-forwarded-host')
-                or request.headers.get('host', 'localhost:7860'))
-        proto = request.headers.get('x-forwarded-proto', 'http')
-        base_url = f"{proto}://{host}"
-        public_url = f"{base_url}/gradio_api/file={file_path}"
-        viewer_url = f"https://view.officeapps.live.com/op/embed.aspx?src={public_url}"
-        html_content = (
-            f'<iframe src="{viewer_url}" '
-            f'width="100%" height="960px" frameborder="0" '
-            f'style="border: none;"></iframe>'
-        )
+        html_content = build_office_preview_html(file_path, request, i18n)
         return (
             gr.update(visible=False),                    # options_group - 隐藏
             gr.update(value=html_content, visible=True), # office_html - 显示
@@ -1086,7 +1413,7 @@ def update_doc_show(file_path):
     'example_enable',
     type=bool,
     help="Enable example files for input."
-         "The example files to be input need to be placed in the `example` folder within the directory where the command is currently executed.",
+         "The example files to be input need to be placed in the `examples` folder within the directory where the command is currently executed.",
     default=True,
 )
 @click.option(
@@ -1156,12 +1483,27 @@ def main(ctx,
     # 创建 i18n 实例，支持中英文
     i18n = gr.I18n(
         en={
-            "upload_file": "Please select a file to upload (PDF, image, DOCX, PPTX, or XLSX)",
+            "upload_file": "Select or paste a file to upload\nPDF, image, DOCX, PPTX, or XLSX",
+            "header_title": "MinerU 3: Document Extraction Demo",
+            "header_subtitle": "Open-source document extraction for PDF, DOCX, PPTX, XLSX, and images to Markdown and JSON.",
+            "header_support_text": "If you found our project helpful, please give us a ⭐️ to support us!",
+            "header_stars_alt": "stars",
+            "header_code_link": "Code",
+            "header_model_link": "Model",
+            "header_paper_link": "Paper",
+            "header_homepage_link": "Homepage",
+            "header_download_link": "Download",
             "max_pages": "Max convert pages",
             "backend": "Backend",
+            "backend_label_hybrid": "Hybrid (Recommended)",
+            "backend_label_pipeline": "Pipeline (Stable multilingual)",
+            "backend_label_vlm": "VLM (High-precision Chinese/English)",
+            "backend_label_remote_vlm": "Remote VLM",
+            "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "Server URL",
             "server_url_info": "OpenAI-compatible server URL for http-client backend.",
             "recognition_options": "**Recognition Options:**",
+            "advanced_options": "Advanced options",
             "table_enable": "Enable table recognition",
             "table_info": "If disabled, tables will be shown as images.",
             "image_analysis_enable": "Enable image analysis",
@@ -1182,20 +1524,53 @@ def main(ctx,
             "examples": "Examples:",
             "convert_status": "Conversion Status",
             "convert_result": "Convert result",
+            "result_file": "Result file",
             "md_rendering": "Markdown rendering",
             "md_text": "Markdown text",
+            "status_idle_title": "Waiting",
+            "status_idle_hint": "Upload a file and start conversion.",
+            "status_latest": "Latest status",
+            "status_step_prepare": "Prepare",
+            "status_step_check": "Check service",
+            "status_step_submit": "Submit",
+            "status_step_queue": "Queue",
+            "status_step_process": "Parse",
+            "status_step_download": "Download",
+            "status_step_outputs": "Build outputs",
+            "status_step_done": "Done",
+            "status_step_failed": "Failed",
+            "office_preview_title": "Office online preview",
+            "office_preview_notice": "This preview requires the current file to be reachable by Microsoft Office Online. Conversion does not depend on this preview.",
+            "office_preview_source_link": "File url",
+            "office_preview_ignore_once": "Dismiss",
+            "office_preview_ignore_forever": "Always dismiss",
             "backend_info_vlm": "High-precision parsing via VLM, supports Chinese and English documents only.",
             "backend_info_pipeline": "Traditional Multi-model pipeline parsing, supports multiple languages, hallucination-free.",
             "backend_info_hybrid": "High-precision hybrid parsing, supports multiple languages.",
             "backend_info_default": "Select the backend engine for document parsing.",
         },
         zh={
-            "upload_file": "请选择要上传的文件（PDF、图片、DOCX、PPTX 或 XLSX）",
+            "upload_file": "请选择或粘贴要上传的文件\nPDF、图片、DOCX、PPTX 或 XLSX",
+            "header_title": "MinerU 3：文档提取演示",
+            "header_subtitle": "开源文档提取工具，支持将 PDF、DOCX、PPTX、XLSX 和图片转换为 Markdown 与 JSON。",
+            "header_support_text": "如果我们的项目对你有帮助，请点亮 ⭐️ 支持我们！",
+            "header_stars_alt": "GitHub 星标",
+            "header_code_link": "代码",
+            "header_model_link": "模型",
+            "header_paper_link": "论文",
+            "header_homepage_link": "主页",
+            "header_download_link": "下载",
             "max_pages": "最大转换页数",
             "backend": "解析后端",
+            "backend_label_hybrid": "Hybrid 推荐",
+            "backend_label_pipeline": "Pipeline 稳定多语言",
+            "backend_label_vlm": "VLM 高精度中英文",
+            "backend_label_remote_vlm": "Remote VLM",
+            "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "服务器地址",
             "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
             "recognition_options": "**识别选项：**",
+            "advanced_options": "高级选项",
             "table_enable": "启用表格识别",
             "table_info": "禁用后，表格将显示为图片。",
             "image_analysis_enable": "启用图片分析",
@@ -1216,8 +1591,26 @@ def main(ctx,
             "examples": "示例：",
             "convert_status": "转换状态",
             "convert_result": "转换结果",
+            "result_file": "结果文件",
             "md_rendering": "Markdown 渲染",
             "md_text": "Markdown 文本",
+            "status_idle_title": "等待任务",
+            "status_idle_hint": "上传文件后开始转换。",
+            "status_latest": "最新状态",
+            "status_step_prepare": "准备请求",
+            "status_step_check": "检查服务",
+            "status_step_submit": "提交任务",
+            "status_step_queue": "排队",
+            "status_step_process": "解析中",
+            "status_step_download": "下载结果",
+            "status_step_outputs": "整理输出",
+            "status_step_done": "完成",
+            "status_step_failed": "失败",
+            "office_preview_title": "Office 在线预览",
+            "office_preview_notice": "该预览需要当前文件可被 Microsoft 在线预览服务访问，转换不依赖该预览。",
+            "office_preview_source_link": "文件链接",
+            "office_preview_ignore_once": "忽略",
+            "office_preview_ignore_forever": "不再提示",
             "backend_info_vlm": "多模态大模型高精度解析，仅支持中英文文档。",
             "backend_info_pipeline": "传统多模型管道解析，支持多语言，无幻觉。",
             "backend_info_hybrid": "高精度混合解析，支持多语言。",
@@ -1272,7 +1665,6 @@ def main(ctx,
 
         return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update
 
-
     del kwargs
     _gradio_local_api_server.configure(
         resolve_gradio_local_api_cli_args(
@@ -1302,7 +1694,9 @@ def main(ctx,
         language="ch",
         backend="pipeline",
         url=None,
+        request: gr.Request = None,
     ):
+        request_locale = resolve_request_locale(request)
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
@@ -1316,7 +1710,7 @@ def main(ctx,
             api_url=api_url,
         ):
             update = (
-                update[0],
+                render_status_steps_html(update[0], i18n, locale=request_locale),
                 update[1],
                 prepare_markdown_for_gradio_preview(update[2], latex_delimiters),
                 *update[3:],
@@ -1324,82 +1718,128 @@ def main(ctx,
             yield update
 
     suffixes = [f".{suffix}" for suffix in pdf_suffixes + image_suffixes + office_suffixes]
-    with gr.Blocks() as demo:
-        gr.HTML(header)
-        with gr.Row():
-            with gr.Column(variant='panel', scale=5):
-                with gr.Row():
-                    input_file = gr.File(label=i18n("upload_file"), file_types=suffixes)
+    _blocks_kwargs = {} if IS_GRADIO_6 else {"css": APP_CSS, "js": APP_JS}
+    with gr.Blocks(**_blocks_kwargs) as demo:
+        gr.HTML(render_header_html(i18n))
+        with gr.Row(elem_classes=["mineru-workspace-row"]):
+            with gr.Column(variant='panel', scale=2, min_width=280, elem_classes=["mineru-control-column"]):
+                input_file = gr.File(
+                    label=i18n("upload_file"),
+                    file_types=suffixes,
+                    elem_classes=["mineru-upload-file"],
+                )
+                preferred_option = "hybrid-auto-engine"
+                backend = gr.Dropdown(
+                    build_backend_choices(http_client_enable, i18n),
+                    label=i18n("backend"),
+                    value=preferred_option,
+                    info=get_backend_info(preferred_option),
+                )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
-                    with gr.Row():
-                        max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
-                    with gr.Row():
-                        drop_list = ["pipeline", "vlm-auto-engine", "hybrid-auto-engine"]
-                        preferred_option = "hybrid-auto-engine"
-                        if http_client_enable:
-                            drop_list.extend(["vlm-http-client", "hybrid-http-client"])
-                        backend = gr.Dropdown(drop_list, label=i18n("backend"), value=preferred_option, info=get_backend_info(preferred_option))
-                    with gr.Row(visible=False) as client_options:
-                        url = gr.Textbox(label=i18n("server_url"), value='http://localhost:30000', placeholder='http://localhost:30000', info=i18n("server_url_info"))
-                    with gr.Row(equal_height=True):
-                        with gr.Column():
-                            gr.Markdown(i18n("recognition_options"))
-                            table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
-                            formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
-                            image_analysis = gr.Checkbox(
-                                label=i18n("image_analysis_enable"),
-                                value=True,
-                                visible=is_image_analysis_option_visible(preferred_option),
-                                info=i18n("image_analysis_info"),
-                            )
-                        with gr.Column() as ocr_options:
-                            language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
-                            is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
-                with gr.Row():
-                    change_bu = gr.Button(i18n("convert"))
-                    clear_bu = gr.ClearButton(value=i18n("clear"))
-                _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
-                doc_show = PDF(label=_doc_preview_label, interactive=False, visible=True, height=800)
-                office_html = gr.HTML(value="", visible=False)
-                if example_enable:
-                    example_root = os.path.join(os.getcwd(), 'examples')
-                    if os.path.exists(example_root):
-                        gr.Examples(
-                            label=i18n("examples"),
-                            examples=[os.path.join(example_root, _) for _ in os.listdir(example_root) if
-                                      _.endswith(tuple(suffixes))],
-                            inputs=input_file
-                        )
-
-            with gr.Column(variant='panel', scale=5):
-                status_box = gr.TextArea(
-                    label=i18n("convert_status"),
-                    value="",
-                    lines=4,
-                    max_lines=4,
+                    max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
+                    advanced_bu = gr.Button(
+                        i18n("advanced_options"),
+                        size="sm",
+                        elem_classes=["mineru-advanced-open"],
+                    )
+                with gr.Row(elem_classes=["mineru-actions"]):
+                    change_bu = gr.Button(i18n("convert"), variant="primary", scale=1, min_width=0)
+                    clear_bu = gr.ClearButton(value=i18n("clear"), scale=1, min_width=0)
+                output_file = gr.File(
+                    label=i18n("convert_result"),
                     interactive=False,
-                    autoscroll=True,
-                    elem_classes=["convert-status-box"],
+                    elem_classes=["mineru-result-file"],
                 )
-                output_file = gr.File(label=i18n("convert_result"), interactive=False)
-                with gr.Blocks():
+                status_panel = gr.HTML(
+                    value=render_status_steps_html("", i18n),
+                    label=i18n("convert_status"),
+                    elem_classes=["mineru-status-panel"],
+                )
+
+            _doc_preview_label = "doc preview" if IS_GRADIO_6 else i18n("doc_preview")
+            # preview_content_height 约束文档预览/Markdown 的内容区；gradio_pdf 的 height
+            # 实际是单页 canvas 高度，需要单独扣除 label 和分页器占用，避免上传 PDF 后撑高预览块。
+            preview_content_height = 775
+            pdf_preview_page_height = 720
+            with gr.Column(variant='panel', scale=4, min_width=340, elem_classes=["mineru-preview-pane"]):
+                doc_show = PDF(
+                    label=_doc_preview_label,
+                    interactive=False,
+                    visible=True,
+                    height=pdf_preview_page_height,
+                )
+                office_html = gr.HTML(
+                    value="",
+                    visible=False,
+                    min_height=preview_content_height,
+                    elem_classes=["mineru-office-preview-html"],
+                )
+
+            with gr.Column(variant='panel', scale=4, min_width=340, elem_classes=["mineru-markdown-pane"]):
+                _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
+                _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
+                with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
                     with gr.Tab(i18n("md_rendering")):
-                        _md_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md = gr.Markdown(
                             label=i18n("md_rendering"),
-                            height=1200,
+                            height=preview_content_height,
+                            elem_classes=["mineru-markdown-output"],
                             latex_delimiters=latex_delimiters,
                             line_breaks=True,
                             **_md_copy_kwargs
                         )
                     with gr.Tab(i18n("md_text")):
-                        _textarea_copy_kwargs = {"buttons": ["copy"]} if IS_GRADIO_6 else {"show_copy_button": True}
                         md_text = gr.TextArea(
-                            lines=45,
+                            lines=28,
                             label=i18n("md_text"),
+                            show_label=False,
+                            elem_classes=["mineru-markdown-text"],
                             **_textarea_copy_kwargs
                         )
+
+        if example_enable:
+            example_root = os.path.join(os.getcwd(), 'examples')
+            if os.path.exists(example_root):
+                example_files = [
+                    os.path.join(example_root, _) for _ in os.listdir(example_root)
+                    if _.endswith(tuple(suffixes))
+                ]
+                if example_files:
+                    with gr.Accordion(i18n("examples"), open=True, elem_classes=["mineru-examples-panel"]):
+                        gr.Examples(
+                            examples=example_files,
+                            inputs=input_file,
+                            elem_id="mineru-example-files",
+                            label=None,
+                        )
+
+        with gr.Column(elem_classes=["mineru-advanced-popover"]):
+            with gr.Column(elem_classes=["mineru-advanced-card"]):
+                with gr.Row(visible=False) as client_options:
+                    url = gr.Textbox(
+                        label=i18n("server_url"),
+                        value='http://localhost:30000',
+                        placeholder='http://localhost:30000',
+                        info=i18n("server_url_info"),
+                    )
+                with gr.Group():
+                    table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
+                    formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                    image_analysis = gr.Checkbox(
+                        label=i18n("image_analysis_enable"),
+                        value=True,
+                        visible=is_image_analysis_option_visible(preferred_option),
+                        info=i18n("image_analysis_info"),
+                    )
+                with gr.Group() as ocr_options:
+                    language = gr.Dropdown(
+                        all_lang,
+                        label=i18n("ocr_language"),
+                        value='ch (Chinese, English, Chinese Traditional)',
+                        info=i18n("ocr_language_info"),
+                    )
+                    is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
 
         # 添加事件处理
         _private_api_kwargs = (
@@ -1420,33 +1860,34 @@ def main(ctx,
             outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
             **_private_api_kwargs
         )
-        status_box.change(
-            fn=None,
-            inputs=[status_box],
-            outputs=[],
-            js=STATUS_BOX_AUTOSCROLL_JS,
-            **_private_api_kwargs
-        )
-        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_box])
+        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_panel])
 
-        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
-        clear_bu.click(
-            fn=lambda: (
+        def reset_primary_ui():
+            """清除主界面状态。高级气泡由前端点击外部逻辑自动收起。"""
+            return (
                 gr.update(visible=True),
                 gr.update(value=None, visible=True),
                 gr.update(value="", visible=False),
-                gr.update(value=""),
-            ),
+                gr.update(value=render_status_steps_html("", i18n)),
+            )
+
+        # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
+        clear_bu.click(
+            fn=reset_primary_ui,
             inputs=[],
-            outputs=[options_group, doc_show, office_html, status_box],
+            outputs=[options_group, doc_show, office_html, status_panel],
             **_private_api_kwargs
         )
+
+        def update_file_options_html_for_ui(file_path, request: gr.Request):
+            """绑定当前 i18n 的文件上传 UI 更新函数，避免事件签名暴露额外参数。"""
+            return update_file_options_html(file_path, request, i18n)
 
         # 第一阶段：快速更新 options_group 和 office_html，不涉及 gradio_pdf 组件
         # 第二阶段（.then）：单独更新 doc_show，使 office_html 的 processing 遮罩
         # 在第一阶段完成后立即消失，规避 gradio_pdf 0.0.24 与 Gradio 6 的兼容性问题。
         input_file.change(
-            fn=update_file_options_html,
+            fn=update_file_options_html_for_ui,
             inputs=input_file,
             outputs=[options_group, office_html],
             **_private_api_kwargs
@@ -1472,7 +1913,7 @@ def main(ctx,
         change_bu.click(
             fn=convert_to_markdown_stream,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
-            outputs=[status_box, output_file, md, md_text, doc_show],
+            outputs=[status_panel, output_file, md, md_text, doc_show],
             **_to_md_api_kwargs
         )
 
@@ -1482,7 +1923,7 @@ def main(ctx,
         footer_links = ["gradio", "settings"]
         if api_enable:
             footer_links.append("api")
-        _launch_kwargs = {"footer_links": footer_links}
+        _launch_kwargs = {"footer_links": footer_links, "css": APP_CSS, "head": APP_HEAD}
     else:
         _launch_kwargs = {"show_api": api_enable}
     maybe_prepare_local_api_for_gradio_startup(
@@ -1493,6 +1934,7 @@ def main(ctx,
         server_name=server_name,
         server_port=server_port,
         i18n=i18n,
+        allowed_paths=build_gradio_allowed_paths(),
         **_launch_kwargs,
     )
 

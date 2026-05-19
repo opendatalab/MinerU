@@ -13,12 +13,12 @@ from contextlib import ExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Annotated, Any, Optional, Sequence
 
 import click
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from loguru import logger
@@ -41,6 +41,7 @@ from mineru.cli.api_client import (
     response_detail,
 )
 from mineru.cli.api_protocol import API_PROTOCOL_VERSION
+from mineru.cli.api_request import ParseRequestOptions, parse_request_form
 from mineru.cli.common import normalize_upload_filename
 from mineru.cli.public_http_client_policy import (
     configure_public_http_client_policy,
@@ -1455,8 +1456,22 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-    @app.post(path="/tasks", status_code=202)
-    async def submit_parse_task(http_request: Request):
+    @app.post(
+        path="/tasks",
+        status_code=202,
+        summary="Submit an asynchronous parse task through the router",
+        description=(
+            "Submit files and parse options to a healthy upstream MinerU API "
+            "server selected by the router, then return a router task id."
+        ),
+    )
+    async def submit_parse_task(
+        http_request: Request,
+        request_options: Annotated[
+            ParseRequestOptions, Depends(parse_request_form)
+        ],
+    ):
+        del request_options
         payload = await stage_multipart_request(http_request)
         try:
             router_task = await submit_router_task(http_request, payload)
@@ -1501,8 +1516,23 @@ def create_app(settings: RouterSettings | None = None) -> FastAPI:
             )
         return await proxy_router_task_result(request, task)
 
-    @app.post(path="/file_parse", status_code=200)
-    async def file_parse(request: Request):
+    @app.post(
+        path="/file_parse",
+        status_code=200,
+        summary="Synchronously parse uploaded files through the router",
+        description=(
+            "Submit files and parse options to a healthy upstream MinerU API "
+            "server selected by the router, wait for completion, and proxy the "
+            "final result in the same response."
+        ),
+    )
+    async def file_parse(
+        request: Request,
+        request_options: Annotated[
+            ParseRequestOptions, Depends(parse_request_form)
+        ],
+    ):
+        del request_options
         payload = await stage_multipart_request(request)
         try:
             router_task = await submit_router_task(request, payload)
