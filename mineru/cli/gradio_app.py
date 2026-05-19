@@ -1,6 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-import base64
 import asyncio
 import html as html_lib
 import httpx
@@ -653,53 +652,74 @@ def compress_directory_to_zip(directory_path, output_zip_path):
         return -1
 
 
-def image_to_base64(image_path):
-    with open(image_path, 'rb') as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+GRADIO_PREVIEW_IMAGE_SUFFIXES = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".svg",
+}
+GRADIO_PREVIEW_EXTERNAL_SRC_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
-def replace_image_with_base64(markdown_text, image_dir_path):
-    # MIME类型映射
-    mime_types = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.svg': 'image/svg+xml',
-    }
+def _resolve_gradio_preview_image_path(src, image_dir_path):
+    """将 Markdown/HTML 中的图片路径解析成 Gradio 文件路由需要的本地完整路径。"""
+    image_src = str(src).strip()
+    if not image_src:
+        return None
+    if Path(image_src).suffix.lower() not in GRADIO_PREVIEW_IMAGE_SUFFIXES:
+        return None
 
-    def _path_to_data_uri(relative_path):
-        file_ext = os.path.splitext(relative_path)[1].lower()
-        if file_ext not in mime_types:
+    resolved_path = (Path(image_dir_path) / image_src).resolve(strict=False)
+    if not resolved_path.is_file():
+        logger.warning(f"Skip missing Gradio preview image: {resolved_path}")
+        return None
+    return str(resolved_path)
+
+
+def replace_image_with_gradio_file_urls(markdown_text, image_dir_path):
+    """将 Gradio 预览中的本地图片路径改写为 HTTP 文件链接，不修改导出的 Markdown 文件。"""
+    if not isinstance(markdown_text, str) or not image_dir_path:
+        return markdown_text
+
+    def _path_to_public_url(image_src):
+        image_path = _resolve_gradio_preview_image_path(image_src, image_dir_path)
+        if not image_path:
             return None
-        try:
-            full_path = os.path.join(image_dir_path, relative_path)
-            base64_image = image_to_base64(full_path)
-            return f'data:{mime_types[file_ext]};base64,{base64_image}'
-        except Exception as e:
-            logger.warning(f"Failed to convert image {relative_path} to base64: {e}")
-            return None
+        return f"/gradio_api/file={quote(image_path, safe='/:')}"
 
-    # 匹配Markdown中的图片标签 ![...](path)
+    # 匹配 Markdown 正文图片 ![alt](path)，只替换可安全访问的本地图片路径。
     def replace_md(match):
-        relative_path = match.group(1)
-        data_uri = _path_to_data_uri(relative_path)
-        if data_uri:
-            return f'![{relative_path}]({data_uri})'
+        alt_text = match.group("alt")
+        image_src = match.group("src")
+        public_url = _path_to_public_url(image_src)
+        if public_url:
+            return f"![{alt_text}]({public_url})"
         return match.group(0)
 
-    result = re.sub(r'\!\[(?:[^\]]*)\]\(([^)]+)\)', replace_md, markdown_text)
+    result = re.sub(
+        r"!\[(?P<alt>[^\]]*)\]\((?P<src>[^)]+)\)",
+        replace_md,
+        markdown_text,
+    )
 
-    # 匹配HTML表格中的 <img src="path"> (跳过已有的data: URI)
+    # 匹配 HTML 表格内的 <img src="path">，跳过 data/http/blob 等已有可访问地址。
     def replace_html_src(match):
-        relative_path = match.group(1)
-        data_uri = _path_to_data_uri(relative_path)
-        if data_uri:
-            return f'src="{data_uri}"'
+        prefix = match.group("prefix")
+        quote_char = match.group("quote")
+        image_src = match.group("src")
+        public_url = _path_to_public_url(image_src)
+        if public_url:
+            return f"{prefix}{quote_char}{public_url}{quote_char}"
         return match.group(0)
 
-    result = re.sub(r'src="(?!data:)([^"]+)"', replace_html_src, result)
+    result = re.sub(
+        r"(?P<prefix><img\b[^>]*?\bsrc\s*=\s*)(?P<quote>[\"'])(?P<src>[^\"']+)(?P=quote)",
+        replace_html_src,
+        result,
+        flags=re.IGNORECASE,
+    )
 
     return result
 
@@ -791,6 +811,20 @@ def create_gradio_run_paths(file_path, output_root="./output"):
     extract_root = run_root / "result"
     archive_zip_path = run_root / f"{safe_stem(Path(file_path).stem)}.zip"
     return run_root, extract_root, archive_zip_path
+
+
+def build_gradio_allowed_paths(output_root="./output"):
+    """生成 Gradio 可公开访问目录，确保预览 HTTP 图片链接能被 /gradio_api/file= 读取。"""
+    allowed_paths = []
+    for item in os.environ.get("GRADIO_ALLOWED_PATHS", "").split(","):
+        item = item.strip()
+        if item:
+            allowed_paths.append(item)
+
+    output_path = str(Path(output_root).resolve())
+    if output_path not in allowed_paths:
+        allowed_paths.append(output_path)
+    return allowed_paths
 
 
 def build_gradio_upload_name(file_path):
@@ -1024,7 +1058,7 @@ async def _run_to_markdown_job(
     md_path = Path(local_md_dir) / f"{file_name}.md"
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
-    md_content = replace_image_with_base64(txt_content, local_md_dir)
+    md_content = replace_image_with_gradio_file_urls(txt_content, local_md_dir)
 
     if file_suffix in office_suffixes:
         preview_pdf_path = None
@@ -1276,7 +1310,7 @@ def build_gradio_file_public_url(file_path, request: gr.Request):
         or headers.get('host', 'localhost:7860')
     )
     proto = headers.get('x-forwarded-proto', 'http')
-    return f"{proto}://{host}/gradio_api/file={file_path}"
+    return f"{proto}://{host}/gradio_api/file={quote(str(file_path), safe='/:')}"
 
 
 def build_short_gradio_file_url(public_url, file_path):
@@ -1310,8 +1344,7 @@ def build_office_preview_html(file_path, request: gr.Request, i18n=None):
         f"<span>{notice}</span>"
         '<div class="office-preview-source-link">'
         f"{source_link}: "
-        f'<a href="{html_lib.escape(public_url, quote=True)}" target="_blank" rel="noopener noreferrer">'
-        f"{html_lib.escape(short_public_url)}</a>"
+        f"{html_lib.escape(short_public_url)}"
         "</div>"
         "</div>"
         '<div class="office-preview-actions">'
@@ -1901,6 +1934,7 @@ def main(ctx,
         server_name=server_name,
         server_port=server_port,
         i18n=i18n,
+        allowed_paths=build_gradio_allowed_paths(),
         **_launch_kwargs,
     )
 
