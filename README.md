@@ -289,6 +289,11 @@ You can get the [Docker Deployment Instructions](https://opendatalab.github.io/M
 
 ### Using MinerU
 
+> [!TIP]
+> MinerU downloads its default models from Hugging Face the first time you run it. If Hugging Face is unavailable in your environment, switch to the ModelScope mirror before running MinerU:
+> ```bash
+> export MINERU_MODEL_SOURCE=modelscope
+> ```
 
 If your device meets the GPU acceleration requirements in the table above, you can use a simple command line for document parsing:
 ```bash
