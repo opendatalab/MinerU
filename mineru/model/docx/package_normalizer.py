@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import posixpath
+import zlib
 from io import BytesIO
 from typing import Iterator
 from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
@@ -12,6 +13,8 @@ PACKAGE_RELATIONSHIPS_NS = (
     "http://schemas.openxmlformats.org/package/2006/relationships"
 )
 RELATIONSHIP_TAG = f"{{{PACKAGE_RELATIONSHIPS_NS}}}Relationship"
+ZIP_MEMBER_READ_ERRORS = (BadZipFile, RuntimeError, NotImplementedError, zlib.error)
+DOCX_EMBEDDED_OFFICE_PREFIX = "word/embeddings/"
 
 
 def normalize_docx_package(file_bytes: bytes) -> bytes:
@@ -150,7 +153,7 @@ def _read_member_best_effort(
     """读取 ZIP 成员；仅跳过不可达坏成员或可降级媒体，关键成员继续失败。"""
     try:
         return source.read(info.filename)
-    except BadZipFile as exc:
+    except ZIP_MEMBER_READ_ERRORS as exc:
         if _is_skippable_corrupt_member(info.filename, reachable_members):
             logger.warning(
                 "Skipping corrupt non-critical DOCX member {}: {}",
@@ -168,7 +171,14 @@ def _is_skippable_corrupt_member(
     """判断损坏成员是否可安全丢弃，避免吞掉正文结构损坏。"""
     if filename.startswith("word/media/"):
         return True
+    if _is_docx_embedded_office_member(filename):
+        return True
     return reachable_members is not None and filename not in reachable_members
+
+
+def _is_docx_embedded_office_member(filename: str) -> bool:
+    """判断成员是否为 Word 内嵌 Office/OLE 对象载荷，解析正文时可降级跳过。"""
+    return filename.replace("\\", "/").startswith(DOCX_EMBEDDED_OFFICE_PREFIX)
 
 
 def _is_relationship_element(element: etree._Element) -> bool:
