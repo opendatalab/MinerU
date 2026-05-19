@@ -946,13 +946,15 @@ class DocxConverter:
 
         for xml_table in xml_tables:
             matched_html_table = None
-            while html_index < len(html_tables):
-                candidate = html_tables[html_index]
-                html_index += 1
+            scan_index = html_index
+            while scan_index < len(html_tables):
+                candidate = html_tables[scan_index]
                 if self._mammoth_table_matches_xml_table(candidate, xml_table):
                     matched_html_table = candidate
+                    html_index = scan_index + 1
                     matched_count += 1
                     break
+                scan_index += 1
 
             if matched_html_table is None:
                 aligned_tables.append(None)
