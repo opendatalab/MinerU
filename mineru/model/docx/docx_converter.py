@@ -113,6 +113,17 @@ class DocxConverter:
         self._numbering_start_cache: dict[tuple[int, int], int] = {}
 
     @staticmethod
+    def _local_name(element: Any) -> Optional[str]:
+        """安全获取 XML 元素本地标签名，遇到注释或处理指令等非元素节点时返回 None。"""
+        tag = getattr(element, "tag", None)
+        if not isinstance(tag, str):
+            return None
+        try:
+            return etree.QName(tag).localname
+        except ValueError:
+            return None
+
+    @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
         """
         转义超链接文本中的方括号。
@@ -729,7 +740,9 @@ class DocxConverter:
     ):
         for element in body:
             # 获取元素的标签名（去除命名空间前缀）
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             # 检查是否存在内联图像（blip元素）
             picture_refs = self.picture_xpath_expr(element)
 
@@ -902,7 +915,7 @@ class DocxConverter:
             docx_obj = Document(BytesIO(file_bytes))
             xml_top_tables = [
                 elem for elem in docx_obj.element.body
-                if etree.QName(elem).localname == 'tbl'
+                if self._local_name(elem) == 'tbl'
             ]
 
             logger.debug(
@@ -1099,7 +1112,9 @@ class DocxConverter:
 
         parts = []
         for child in xml_cell:
-            child_tag = etree.QName(child).localname
+            child_tag = self._local_name(child)
+            if child_tag is None:
+                continue
             if child_tag == 'p':
                 para_html = self._build_paragraph_html_with_equations(child)
                 if para_html is not None:
@@ -1125,13 +1140,16 @@ class DocxConverter:
         """
         items = []
         for subt in xml_para.iter():
-            tag_name = etree.QName(subt).localname
+            tag_name = self._local_name(subt)
+            if tag_name is None:
+                continue
+            tag = subt.tag
             # 普通文本节点（排除 math 命名空间下的 <m:t>）
-            if tag_name == 't' and 'math' not in subt.tag:
+            if tag_name == 't' and 'math' not in tag:
                 if isinstance(subt.text, str) and subt.text:
                     items.append(subt.text)
             # OMML 公式元素（排除 oMathPara 容器避免重复处理）
-            elif 'oMath' in subt.tag and 'oMathPara' not in subt.tag:
+            elif 'oMath' in tag and 'oMathPara' not in tag:
                 try:
                     latex = str(oMath2Latex(subt)).strip()
                     if latex:
@@ -1803,7 +1821,9 @@ class DocxConverter:
         _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
         for child in container:
-            tag_name = etree.QName(child).localname
+            tag_name = self._local_name(child)
+            if tag_name is None:
+                continue
 
             if tag_name == "r":
                 yield Run(child, paragraph)
@@ -1958,12 +1978,15 @@ class DocxConverter:
         only_equations = []
         texts_and_equations = []
         for subt in element.iter():
-            tag_name = etree.QName(subt).localname
-            if tag_name == "t" and "math" not in subt.tag:
+            tag_name = self._local_name(subt)
+            if tag_name is None:
+                continue
+            tag = subt.tag
+            if tag_name == "t" and "math" not in tag:
                 if isinstance(subt.text, str):
                     only_texts.append(subt.text)
                     texts_and_equations.append(subt.text)
-            elif "oMath" in subt.tag and "oMathPara" not in subt.tag:
+            elif "oMath" in tag and "oMathPara" not in tag:
                 try:
                     latex_equation = str(oMath2Latex(subt)).strip()
                 except Exception as e:
@@ -2575,7 +2598,9 @@ class DocxConverter:
         numid_ilvels: dict[int, set] = {}
 
         for element in self.docx_obj.element.body:
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             if tag_name == "p":
                 try:
                     paragraph = Paragraph(element, self.docx_obj)
@@ -3340,7 +3365,9 @@ class DocxConverter:
             if element_id in processed_paragraphs:
                 continue
 
-            tag_name = etree.QName(element).localname
+            tag_name = self._local_name(element)
+            if tag_name is None:
+                continue
             processed_paragraphs.append(element_id)
 
             # 处理直接找到的段落（VML 文本框）
@@ -3401,7 +3428,7 @@ class DocxConverter:
             parent = paragraph_element.getparent()
             # 获取所有段落兄弟节点
             paragraphs = [
-                p for p in parent.getchildren() if etree.QName(p).localname == "p"
+                p for p in parent.getchildren() if self._local_name(p) == "p"
             ]
             # 查找当前段落在其兄弟节点中的索引
             try:
