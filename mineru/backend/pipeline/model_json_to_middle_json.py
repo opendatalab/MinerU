@@ -50,7 +50,6 @@ def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer
             ContentType.IMAGE,
             ContentType.TABLE,
             ContentType.CHART,
-            ContentType.SEAL,
             ContentType.INTERLINE_EQUATION
         ]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)

@@ -44,7 +44,6 @@ class BlockType:
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
     VERTICAL_TEXT = "vertical_text"
-    SEAL = "seal"
     HEADER_IMAGE = "header_image"
     FOOTER_IMAGE = "footer_image"
     FORMULA_NUMBER = "formula_number"
@@ -58,7 +57,6 @@ class ContentType:
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
     HYPERLINK = 'hyperlink'
-    SEAL = 'seal'
 
 
 class ContentTypeV2:
@@ -66,7 +64,6 @@ class ContentTypeV2:
     ALGORITHM = "algorithm"
     EQUATION_INTERLINE = 'equation_interline'
     IMAGE = 'image'
-    SEAL = 'seal'
     TABLE = 'table'
     CHART = 'chart'
     TABLE_SIMPLE = 'simple_table'

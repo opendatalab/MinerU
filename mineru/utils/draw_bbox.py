@@ -189,8 +189,6 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                     elif nested_block["type"] == BlockType.CHART_FOOTNOTE:
                         bbox = nested_block["bbox"]
                         imgs_footnote.append(bbox)
-            elif block["type"] == BlockType.SEAL:
-                imgs_body.append(bbox)
             elif block["type"] == BlockType.TITLE:
                 titles.append(bbox)
             elif block["type"] in [BlockType.TEXT, BlockType.REF_TEXT, BlockType.ABSTRACT]:
@@ -234,7 +232,6 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                 BlockType.INTERLINE_EQUATION,
                 BlockType.LIST,
                 BlockType.INDEX,
-                BlockType.SEAL,
             ]:
                 bbox = block["bbox"]
                 page_block_list.append(bbox)
@@ -315,7 +312,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
             page_inline_equation_list.append(span['bbox'])
         elif span['type'] == ContentType.INTERLINE_EQUATION:
             page_interline_equation_list.append(span['bbox'])
-        elif span['type'] in [ContentType.IMAGE, ContentType.CHART, ContentType.SEAL]:
+        elif span['type'] in [ContentType.IMAGE, ContentType.CHART]:
             page_image_list.append(span['bbox'])
         elif span['type'] == ContentType.TABLE:
             page_table_list.append(span['bbox'])
@@ -346,7 +343,6 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
                 BlockType.INDEX,
                 BlockType.REF_TEXT,
                 BlockType.ABSTRACT,
-                BlockType.SEAL,
             ]:
                 for line in block['lines']:
                     for span in line['spans']:
