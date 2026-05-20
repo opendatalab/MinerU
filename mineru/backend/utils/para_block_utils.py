@@ -7,6 +7,8 @@ from mineru.utils.enum_class import BlockType, SplitFlag
 LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':', '：', ';', '；')
 MERGE_BARRIER_TYPES = {
     BlockType.TITLE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
     BlockType.INTERLINE_EQUATION,
     BlockType.LIST,
 }

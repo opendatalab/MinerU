@@ -24,7 +24,7 @@ from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType
+from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
@@ -170,6 +170,22 @@ def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
                 span['score'] = 0.0
 
 
+def _normalize_split_title_blocks(pdf_info_list):
+    """将Hybrid内部拆分标题统一为输出层通用title，并补齐默认标题层级。"""
+    title_type_to_level = {
+        BlockType.DOC_TITLE: 1,
+        BlockType.PARAGRAPH_TITLE: 2,
+    }
+    for page_info in pdf_info_list:
+        for block_key in ["preproc_blocks", "para_blocks"]:
+            for block in page_info.get(block_key, []):
+                title_level = title_type_to_level.get(block.get("type"))
+                if title_level is None:
+                    continue
+                block["type"] = BlockType.TITLE
+                block["level"] = title_level
+
+
 def init_middle_json(_ocr_enable, _vlm_ocr_enable):
     return {
         "pdf_info": [],
@@ -255,6 +271,7 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
         llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
 
+    _normalize_split_title_blocks(pdf_info_list)
     cleanup_internal_para_block_metadata(pdf_info_list)
 
 
