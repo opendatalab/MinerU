@@ -68,6 +68,22 @@ def _normalize_text_content(content):
     return full_to_half_exclude_marks(content)
 
 
+def _has_following_joinable_span(para_block, line_idx, span_idx):
+    """判断当前 span 后面是否还有可拼接文本，避免把分隔空格落到段落末尾。"""
+    for next_line_idx in range(line_idx, len(para_block['lines'])):
+        next_line = para_block['lines'][next_line_idx]
+        start_span_idx = span_idx + 1 if next_line_idx == line_idx else 0
+        for next_span in next_line.get('spans', [])[start_span_idx:]:
+            next_span_type = next_span.get('type')
+            if next_span_type == ContentType.TEXT:
+                if _normalize_text_content(next_span.get('content')).strip():
+                    return True
+            elif next_span_type == ContentType.INLINE_EQUATION:
+                if str(next_span.get('content', '')).strip():
+                    return True
+    return False
+
+
 def _build_media_path(img_buket_path, image_path):
     if not image_path:
         return ''
@@ -288,12 +304,16 @@ def merge_para_with_text(
 
                 # 判断是否为行末span
                 is_last_span = j == len(line['spans']) - 1
+                has_following_joinable_span = _has_following_joinable_span(para_block, i, j)
 
                 if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
-                    if is_last_span and span_type != ContentType.INLINE_EQUATION:
-                        para_text += content
-                    else:
+                    if (
+                            has_following_joinable_span
+                            and (not is_last_span or span_type == ContentType.INLINE_EQUATION)
+                    ):
                         para_text += f'{content} '
+                    else:
+                        para_text += content
                 else:
                     # 西方文本语境下 每行的最后一个span判断是否要去除连字符
                     if span_type in [ContentType.TEXT, ContentType.INLINE_EQUATION]:
@@ -315,7 +335,10 @@ def merge_para_with_text(
                             else:  # 如果没有下一行，或者下一行的第一个span不是小写字母开头，则保留连字符但不加空格
                                 para_text += content
                         else:  # 西方文本语境下 content间需要空格分隔
-                            para_text += f'{content} '
+                            if has_following_joinable_span:
+                                para_text += f'{content} '
+                            else:
+                                para_text += content
     if escape_text_block_prefix and para_block.get('type') == BlockType.TEXT:
         para_text = escape_text_block_markdown_prefix(para_text)
     return para_text
@@ -801,12 +824,13 @@ def merge_para_with_text_v2(para_block):
 
                     # 判断是否为行末span
                     is_last_span = j == len(line['spans']) - 1
+                    has_following_joinable_span = _has_following_joinable_span(para_block, i, j)
 
                     if block_lang in cjk_langs:  # 中文/日语/韩文语境下，换行不需要空格分隔,但是如果是行内公式结尾，还是要加空格
-                        if is_last_span:
-                            span_content = span['content']
-                        else:
+                        if has_following_joinable_span and not is_last_span:
                             span_content = f"{span['content']} "
+                        else:
+                            span_content = span['content']
                     else:
                         # 如果span是line的最后一个且末尾带有-连字符，那么末尾不应该加空格,同时应该把-删除
                         if (
@@ -826,7 +850,10 @@ def merge_para_with_text_v2(para_block):
                                 span_content = span['content']
                         else:
                             # 西方文本语境下content间需要空格分隔
-                            span_content = f"{span['content']} "
+                            if has_following_joinable_span:
+                                span_content = f"{span['content']} "
+                            else:
+                                span_content = span['content']
 
                     if para_content and para_content[-1]['type'] == span_type:
                         # 合并相同类型的span
