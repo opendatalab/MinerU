@@ -27,8 +27,9 @@ from mineru.backend.vlm.vlm_analyze import (
     _get_model_async,
 )
 from mineru.data.data_reader_writer import DataWriter
+from mineru.utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from mineru.utils.config_reader import get_device, get_processing_window_size
-from mineru.utils.enum_class import ImageType, NotExtractType
+from mineru.utils.enum_class import ImageType, NotExtractType, BlockType as MineruBlockType
 from mineru.utils.model_utils import crop_img, get_vram, clean_memory
 from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
     update_det_boxes, OcrConfidence
@@ -49,6 +50,7 @@ os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
 OCR_DET_BASE_BATCH_SIZE = 8
+LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
 
@@ -281,6 +283,90 @@ def _build_inline_formula_inputs(images_layout_res):
     return inline_formula_inputs
 
 
+def _normalize_page_size(page_image):
+    """从PIL或numpy图像中读取页面宽高，供归一化bbox还原为像素bbox。"""
+    if hasattr(page_image, "size"):
+        return page_image.size
+
+    height, width = page_image.shape[:2]
+    return width, height
+
+
+def _bbox_to_pixel_bbox(bbox, page_size):
+    """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
+    if bbox is None or len(bbox) != 4:
+        return None
+
+    try:
+        x0, y0, x1, y1 = [float(v) for v in bbox]
+    except (TypeError, ValueError):
+        return None
+
+    width, height = page_size
+    if all(0.0 <= value <= 1.0 for value in [x0, y0, x1, y1]):
+        x0, y0, x1, y1 = x0 * width, y0 * height, x1 * width, y1 * height
+
+    left, right = sorted([x0, x1])
+    top, bottom = sorted([y0, y1])
+    if right <= left or bottom <= top:
+        return None
+    return [left, top, right, bottom]
+
+
+def _collect_layout_doc_title_bboxes(layout_res, page_size):
+    """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
+    doc_title_bboxes = []
+    for layout_item in layout_res or []:
+        if layout_item.get("label") != MineruBlockType.DOC_TITLE:
+            continue
+        bbox = _bbox_to_pixel_bbox(layout_item.get("bbox"), page_size)
+        if bbox is not None:
+            doc_title_bboxes.append(bbox)
+    return doc_title_bboxes
+
+
+def _has_doc_title_overlap(title_bbox, doc_title_bboxes, overlap_threshold):
+    """判断VLM标题框是否与任一layout doc_title框达到最小框重叠阈值。"""
+    return any(
+        calculate_overlap_area_2_minbox_area_ratio(title_bbox, doc_title_bbox)
+        >= overlap_threshold
+        for doc_title_bbox in doc_title_bboxes
+    )
+
+
+def _apply_layout_title_split(
+    model_list,
+    images_layout_res,
+    page_sizes,
+    overlap_threshold=LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
+):
+    """用layout doc_title框将VLM title拆分为doc_title和paragraph_title。"""
+    for page_model_list, layout_res, page_size in zip(model_list, images_layout_res, page_sizes):
+        doc_title_bboxes = _collect_layout_doc_title_bboxes(layout_res, page_size)
+        for block in page_model_list:
+            if block.get("type") != MineruBlockType.TITLE:
+                continue
+            title_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+            if title_bbox is None:
+                continue
+            if _has_doc_title_overlap(title_bbox, doc_title_bboxes, overlap_threshold):
+                block["type"] = MineruBlockType.DOC_TITLE
+            else:
+                block["type"] = MineruBlockType.PARAGRAPH_TITLE
+
+
+def _predict_layout_for_title_split(
+    hybrid_pipeline_model,
+    images,
+    batch_ratio,
+):
+    """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
+    return hybrid_pipeline_model.layout_model.batch_predict(
+        images,
+        batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
+    )
+
+
 def _process_ocr_and_formulas(
     images_pil_list,
     model_list,
@@ -305,14 +391,15 @@ def _process_ocr_and_formulas(
         formula_enable=inline_formula_enable,
     )
 
+    # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
+    layout_images = mask_image_regions(np_images, model_list) if inline_formula_enable else np_images
+    images_layout_res = _predict_layout_for_title_split(
+        hybrid_pipeline_model,
+        layout_images,
+        batch_ratio,
+    )
+
     if inline_formula_enable:
-        # 在进行`行内`公式检测和识别前，先将图像中的图片、表格、`行间`公式区域mask掉
-        np_images = mask_image_regions(np_images, model_list)
-        # 使用layout模型提供行内公式检测框
-        images_layout_res = hybrid_pipeline_model.layout_model.batch_predict(
-            np_images,
-            batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
-        )
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
         inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
@@ -401,6 +488,12 @@ def _process_ocr_and_formulas(
                 if need_ocr_res in page_ocr_res_list:
                     page_ocr_res_list.remove(need_ocr_res)
 
+    _apply_layout_title_split(
+        model_list,
+        images_layout_res,
+        [_normalize_page_size(image) for image in images_pil_list],
+    )
+
     _normalize_bbox(inline_formula_list, ocr_res_list, images_pil_list)
     merged_model_list = _merge_page_sidecar_items(
         model_list,
@@ -408,6 +501,31 @@ def _process_ocr_and_formulas(
         ocr_res_list,
     )
     return merged_model_list, hybrid_pipeline_model
+
+
+def _apply_layout_title_split_for_window(
+    images_pil_list,
+    model_list,
+    language,
+    batch_ratio,
+):
+    """为VLM-OCR路径补跑layout小模型，并只用其doc_title结果拆分VLM标题。"""
+    hybrid_model_singleton = HybridModelSingleton()
+    hybrid_pipeline_model = hybrid_model_singleton.get_model(
+        lang=language,
+        formula_enable=False,
+    )
+    images_layout_res = _predict_layout_for_title_split(
+        hybrid_pipeline_model,
+        images_pil_list,
+        batch_ratio,
+    )
+    _apply_layout_title_split(
+        model_list,
+        images_layout_res,
+        [_normalize_page_size(image) for image in images_pil_list],
+    )
+    return hybrid_pipeline_model
 
 
 def _normalize_bbox(
@@ -610,6 +728,12 @@ def doc_analyze(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
+                        hybrid_pipeline_model = _apply_layout_title_split_for_window(
+                            images_pil_list,
+                            window_model_list,
+                            language,
+                            batch_ratio,
+                        )
                     else:
                         with predictor_execution_guard(predictor):
                             window_model_list = predictor.batch_two_step_extract(
@@ -742,6 +866,13 @@ async def aio_doc_analyze(
                                 images=images_pil_list,
                                 image_analysis=image_analysis,
                             )
+                        hybrid_pipeline_model = await asyncio.to_thread(
+                            _apply_layout_title_split_for_window,
+                            images_pil_list,
+                            window_model_list,
+                            language,
+                            batch_ratio,
+                        )
                     else:
                         async with aio_predictor_execution_guard(predictor):
                             window_model_list = await predictor.aio_batch_two_step_extract(

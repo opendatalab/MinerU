@@ -2,7 +2,7 @@
     --mineru-accent: #f97316;
     --mineru-preview-content-height: 775px;
     --mineru-pdf-page-height: 720px;
-    --mineru-markdown-text-content-height: 753px;
+    --mineru-markdown-text-content-height: var(--mineru-preview-content-height);
     --mineru-panel: rgba(255, 255, 255, 0.62);
     --mineru-panel-border: rgba(17, 24, 39, 0.10);
     --mineru-status-panel-bg: rgba(255, 255, 255, 0.78);
@@ -246,6 +246,27 @@ body.mineru-advanced-popover-open .mineru-advanced-popover {
 .mineru-markdown-tabs textarea {
     height: var(--mineru-markdown-text-content-height) !important;
     min-height: var(--mineru-markdown-text-content-height) !important;
+}
+.mineru-markdown-text,
+.mineru-content-list-json,
+.mineru-markdown-text .wrap,
+.mineru-content-list-json .wrap,
+.mineru-markdown-text .codemirror-wrapper,
+.mineru-content-list-json .codemirror-wrapper {
+    height: var(--mineru-markdown-text-content-height) !important;
+    min-height: var(--mineru-markdown-text-content-height) !important;
+}
+.mineru-markdown-text .cm-editor,
+.mineru-content-list-json .cm-editor,
+.mineru-markdown-text .cm-scroller,
+.mineru-content-list-json .cm-scroller {
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+}
+.mineru-markdown-text .cm-scroller,
+.mineru-content-list-json .cm-scroller {
+    overflow: auto !important;
 }
 .status-steps-panel {
     border: 1px solid var(--mineru-panel-border);

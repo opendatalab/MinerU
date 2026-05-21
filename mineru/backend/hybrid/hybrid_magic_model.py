@@ -23,6 +23,8 @@ from mineru.utils.visual_magic_model_utils import (
 not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.CAPTION,
     BlockType.FOOTNOTE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
 ]
 
 
@@ -118,6 +120,8 @@ class MagicModel:
             if block_type in [
                 "text",
                 "title",
+                "doc_title",
+                "paragraph_title",
                 "ref_text",
                 "phonetic",
                 "header",
@@ -185,7 +189,7 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content)
 
-                if block_type == "title" and block_content:
+                if block_type in [BlockType.TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
                     block_content = re.sub(r"\n\s*", " ", block_content).strip()
 
                 if (
@@ -327,7 +331,11 @@ class MagicModel:
                 self.interline_equation_blocks.append(block)
             elif block["type"] == BlockType.TEXT:
                 self.text_blocks.append(block)
-            elif block["type"] == BlockType.TITLE:
+            elif block["type"] in [
+                BlockType.TITLE,
+                BlockType.DOC_TITLE,
+                BlockType.PARAGRAPH_TITLE,
+            ]:
                 self.title_blocks.append(block)
             elif block["type"] == BlockType.REF_TEXT:
                 self.ref_text_blocks.append(block)

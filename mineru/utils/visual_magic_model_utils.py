@@ -190,6 +190,17 @@ def _block_text_content(block):
     )
 
 
+def is_transparent_visual_relation_block(block):
+    """判断视觉关系中可忽略的结构性空块。"""
+    if block.get("type") != BlockType.LIST:
+        return False
+
+    if block.get("blocks"):
+        return False
+
+    return not _block_text_content(block).strip()
+
+
 def _is_leading_continuation_cluster_near_table(leading_blocks, table_block):
     """判断页首续表文本簇是否与后续 table 在几何上相邻。"""
     next_top = table_block["bbox"][1]
@@ -370,14 +381,19 @@ def regroup_visual_blocks(blocks):
     effective_blocks = [
         block for block in ordered_blocks if block["index"] not in absorbed_member_indices
     ]
+    visual_relation_blocks = [
+        block
+        for block in effective_blocks
+        if not is_transparent_visual_relation_block(block)
+    ]
     position_by_index = {
-        block["index"]: pos for pos, block in enumerate(effective_blocks)
+        block["index"]: pos for pos, block in enumerate(visual_relation_blocks)
     }
     main_blocks = [
-        block for block in effective_blocks if block["type"] in VISUAL_MAIN_TYPES
+        block for block in visual_relation_blocks if block["type"] in VISUAL_MAIN_TYPES
     ]
     child_blocks = [
-        block for block in effective_blocks if block["type"] in GENERIC_CHILD_TYPES
+        block for block in visual_relation_blocks if block["type"] in GENERIC_CHILD_TYPES
     ]
 
     grouped_children = {
@@ -393,7 +409,7 @@ def regroup_visual_blocks(blocks):
         parent_block = find_best_visual_parent(
             child_block,
             main_blocks,
-            effective_blocks,
+            visual_relation_blocks,
             position_by_index,
         )
         if parent_block is None:
@@ -609,23 +625,22 @@ def effective_visual_index_diff(
     ordered_blocks,
     type_by_index=None,
 ):
-    """计算视觉子块与主体的有效 index 距离，忽略中间同类子块。"""
-    child_index = child_block["index"]
-    main_index = main_block["index"]
-    start_index = min(child_index, main_index)
-    end_index = max(child_index, main_index)
+    """按有效块序列计算视觉子块与主体距离，吸收的 image 子成员视为零成本。"""
+    position_by_index = {
+        block["index"]: position for position, block in enumerate(ordered_blocks)
+    }
+    child_pos = position_by_index[child_block["index"]]
+    main_pos = position_by_index[main_block["index"]]
+    start_pos = min(child_pos, main_pos)
+    end_pos = max(child_pos, main_pos)
     skipped_child_count = 0
     child_type = block_type(child_block, type_by_index)
 
-    for block in ordered_blocks:
-        block_index = block["index"]
-        if (
-            start_index < block_index < end_index
-            and block_type(block, type_by_index) == child_type
-        ):
+    for block in ordered_blocks[start_pos + 1:end_pos]:
+        if block_type(block, type_by_index) == child_type:
             skipped_child_count += 1
 
-    return end_index - start_index - skipped_child_count
+    return end_pos - start_pos - skipped_child_count
 
 
 def is_visual_neighbor(
