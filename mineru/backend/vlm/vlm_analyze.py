@@ -79,7 +79,6 @@ class ModelSingleton:
                         del kwargs[param]
                 if backend not in ["http-client"] and not model_path:
                     model_path = auto_download_and_get_model_root_path("/","vlm")
-                    model_path = "/Volumes/2TB/2.5pro_2605/mineru2.5pro_2605_stage3_ckpt640"
                 if backend == "transformers":
                     try:
                         from transformers import (
