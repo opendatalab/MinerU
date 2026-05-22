@@ -29,6 +29,11 @@ DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
 SPAN_SOURCE_BLOCK_TYPES = DIRECT_LAYOUT_BBOX_BLOCK_TYPES
 
 
+def _get_layout_source_blocks(page):
+    """获取 layout.pdf 的页内原始布局块，避免段落合并后跨页子项串页绘制。"""
+    return page.get("preproc_blocks", [])
+
+
 def cal_canvas_rect(page, bbox):
     """
     Calculate the rectangle coordinates on the canvas based on the original PDF page and bounding box.
@@ -165,7 +170,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         for dropped_bbox in page['discarded_blocks']:
             page_dropped_list.append(dropped_bbox['bbox'])
         dropped_bbox_list.append(page_dropped_list)
-        for block in page["para_blocks"]:
+        for block in _get_layout_source_blocks(page):
             bbox = block["bbox"]
             if block["type"] == BlockType.TABLE:
                 for nested_block in block["blocks"]:
@@ -243,7 +248,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
 
     for page in pdf_info:
         page_block_list = []
-        for block in page["para_blocks"]:
+        for block in _get_layout_source_blocks(page):
             if block["type"] in DIRECT_LAYOUT_BBOX_BLOCK_TYPES:
                 bbox = block["bbox"]
                 page_block_list.append(bbox)
