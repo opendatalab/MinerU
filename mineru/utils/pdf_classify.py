@@ -49,20 +49,12 @@ def _is_disallowed_control_unicode(unicode_code: int) -> bool:
 
 def classify(pdf_bytes):
     """
-    Classify a PDF as text-based or OCR-based.
+    Fast PDF classification path.
+
+    The path uses pdfium + pypdf to detect text PDFs and garbled PDFs.
 
     Returns:
         "txt" if the PDF can be parsed as text, otherwise "ocr".
-    """
-
-    return classify_hybrid(pdf_bytes)
-
-
-def classify_hybrid(pdf_bytes):
-    """
-    Fast PDF classification path.
-
-    The hybrid path uses pdfium + pypdf to detect text PDFs and garbled PDFs.
     """
 
     pdf = None
@@ -159,7 +151,7 @@ def classify_hybrid(pdf_bytes):
                 return "ocr"
 
     except Exception as e:
-        logger.error(f"Failed to classify PDF with hybrid strategy: {e}")
+        logger.error(f"Failed to classify PDF: {e}")
         return "ocr"
 
     finally:
