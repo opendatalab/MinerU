@@ -28,6 +28,9 @@
 
 | Method | Path | 用途 |
 |--------|------|------|
+| `GET` | `/v1/health` | 健康检查 |
+| `GET` | `/v1/models` | 列出可用解析模型 |
+| `GET` | `/v1/models/{model}` | 查询单个模型信息 |
 | `POST` | `/v1/uploads` | 创建 Upload(可选传 sha256sum 启用秒传) |
 | `POST` | `/v1/uploads/{upload_id}/complete` | 完成 Upload,生成 File 对象 |
 | `POST` | `/v1/uploads/{upload_id}/cancel` | 取消 Upload |
@@ -41,9 +44,6 @@
 | `GET` | `/v1/parse/jobs/{job_id}/events` | SSE 流式状态推送(可选) |
 | `GET` | `/v1/parse/jobs` | 列出任务(分页) |
 | `DELETE` | `/v1/parse/jobs/{job_id}` | 取消任务 |
-| `GET` | `/v1/health` | 健康检查 |
-| `GET` | `/v1/models` | 列出可用解析模型 |
-| `GET` | `/v1/models/{model}` | 查询单个模型信息 |
 
 ### 1.3 认证
 
@@ -157,25 +157,25 @@ Authorization: Bearer <token>
   "object": "list",
   "data": [
     {
-      "id": "auto",
-      "object": "model",
-      "created": 1700000000,
-      "owned_by": "mineru"
-    },
-    {
       "id": "pipeline",
       "object": "model",
       "created": 1700000000,
       "owned_by": "mineru"
     },
     {
-      "id": "vlm",
+      "id": "MinerU2.5-Pro-2604-1.2B",
       "object": "model",
       "created": 1700000000,
       "owned_by": "mineru"
     },
     {
-      "id": "html",
+      "id": "MinerU2.5-Pro-2605-1.2B",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "mineru"
+    },
+    {
+      "id": "MinerU-HTML",
       "object": "model",
       "created": 1700000000,
       "owned_by": "mineru"
@@ -190,7 +190,7 @@ Authorization: Bearer <token>
 |------|------|------|
 | `object`(顶层) | string | 固定为 `"list"` |
 | `data[]` | array | 模型对象数组 |
-| `data[].id` | string | 模型标识,用于 `POST /v1/parse/jobs` 的 `model` 字段 |
+| `data[].id` | string | 模型标识 |
 | `data[].object` | string | 固定为 `"model"` |
 | `data[].created` | int | Unix 秒级时间戳(模型首次上线时间) |
 | `data[].owned_by` | string | 拥有者(本平台均为 `"mineru"`,自部署可设组织名) |
@@ -210,13 +210,13 @@ Authorization: Bearer <token>
 
 | 参数 | 说明 |
 |------|------|
-| `model` | 模型 ID(`auto` / `pipeline` / `vlm` / `html`) |
+| `model` | 模型 ID(`pipeline` / `MinerU2.5-Pro-2604-1.2B` / `MinerU-HTML`) |
 
 **Response (200)**
 
 ```json
 {
-  "id": "vlm",
+  "id": "MinerU2.5-Pro-2604-1.2B",
   "object": "model",
   "created": 1700000000,
   "owned_by": "mineru"
@@ -453,7 +453,23 @@ OpenAI 的 Uploads API 流程为:`POST /v1/uploads` → `PUT /v1/uploads/{id}/co
 
 因此我们将字节传输点从 API 网关移到了 OSS 预签名 URL,而上传生命周期(Create / Complete / Cancel)保持与 OpenAI 完全一致。这是本 API 对 OpenAI 协议的**唯一务实偏离**。
 
-### 5.4 POST `/v1/uploads/{upload_id}/complete` — Complete Upload
+### 5.4 部署场景的行为差异
+
+API 定义完全一致,但三种部署场景下部分行为有差异:
+
+| 场景 | 文件来源 | 上传方式 | 产物下载 |
+|------|---------|---------|---------|
+| **mineru.net**(云端) | `file_id` / `url` / `inline` | `upload_url` 指向 OSS,字节直传 OSS | 302 重定向到 CDN |
+| **LAN server**(局域网) | `file_id` / `url` / `inline` / `local` | `upload_url` 指向 API server 自身,字节直传 API server;`local` 跳过上传 | 200 + body,不重定向 |
+| **localhost**(本机) | `local` / `file_id` / ... | `local` 直接读磁盘;其他与 LAN 相同 | 200 + body,不重定向 |
+
+**上传差异**:云端 `upload_url` 指向 OSS,LAN/本机指向 API server 自身的临时上传端点(如 `/_upload/{upload_id}`)。客户端调用流程(`POST /v1/uploads` → `PUT upload_url` → `POST /v1/uploads/{id}/complete`)完全相同,仅 URL 目标不同。
+
+**下载差异**:云端 `GET /v1/files/{id}/content` 返回 302 重定向到 CDN,LAN/本机直接返回 200 + body。客户端使用 `-L` 跟随重定向即可通吃。
+
+**`local` source 差异**:mineru.net 拒绝此来源返回 `400 invalid_request`,LAN/本机直接读取磁盘。
+
+### 5.5 POST `/v1/uploads/{upload_id}/complete` — Complete Upload
 
 字节上传完成后调用,标记 Upload 完成并生成 File 对象。对齐 OpenAI Complete Upload API。
 
@@ -511,7 +527,7 @@ Content-Type: application/json
 - `400 file_hash_mismatch`:提供的 sha256sum 与实际字节不匹配
 - `400 bytes_mismatch`:实际上传字节数与创建时声明的 `bytes` 不一致
 
-### 5.5 POST `/v1/uploads/{upload_id}/cancel` — Cancel Upload
+### 5.6 POST `/v1/uploads/{upload_id}/cancel` — Cancel Upload
 
 取消进行中的 Upload,已上传字节将被清理。对齐 OpenAI Cancel Upload API。
 
@@ -543,7 +559,7 @@ Authorization: Bearer <token>
 - `404 upload_not_found`
 - `409 upload_already_terminal`:已是 `completed` / `cancelled` / `expired`
 
-### 5.6 GET `/v1/uploads/{upload_id}` — 查询 Upload
+### 5.7 GET `/v1/uploads/{upload_id}` — 查询 Upload
 
 **Request**
 
@@ -571,7 +587,7 @@ Authorization: Bearer <token>
 
 `status` 取值:`pending`(等待上传) / `completed`(含 `file`) / `cancelled` / `expired`
 
-### 5.7 GET `/v1/files` — 列出文件
+### 5.8 GET `/v1/files` — 列出文件
 
 列出当前租户的全部文件,游标分页(分页设计参考 OpenAI Files API)。
 
@@ -638,7 +654,7 @@ Authorization: Bearer <token>
 | `status` | 有(已 deprecated) | 无 | 跟随 OpenAI 弃用 |
 | `sha256sum` | 无 | **新增** | 本 API 特有,辅助秒传 |
 
-### 5.8 GET `/v1/files/{file_id}` — 元信息
+### 5.9 GET `/v1/files/{file_id}` — 元信息
 
 **Response (200)**
 
@@ -657,7 +673,7 @@ Authorization: Bearer <token>
 
 > 字段与 `GET /v1/files` 中的单条 `data[]` 元素完全一致。
 
-### 5.9 GET `/v1/files/{file_id}/content` — 下载解析产物
+### 5.10 GET `/v1/files/{file_id}/content` — 下载解析产物
 
 下载 `parse_output` 类文件的原始内容(markdown/json/images 等)。源文件(`purpose:parse`)不提供下载——用户理应持有原始文件,平台不充当文件托管。
 
@@ -683,7 +699,7 @@ curl -L "https://mineru.net/api/v1/files/file-MD.../content" \
 
 - `404 file_not_found`
 
-### 5.10 DELETE `/v1/files/{file_id}` — 删除
+### 5.11 DELETE `/v1/files/{file_id}` — 删除
 
 仅从当前租户视图删除;已关联的 jobs 不受影响。
 
@@ -745,9 +761,15 @@ Authorization: Bearer <token>
         "name": "scan.jpg",
         "data": "base64..."
       }
+    },
+    {
+      "source": {
+        "type": "local",
+        "path": "/data/docs/report.pdf"
+      }
     }
   ],
-  "model": "auto",
+  "preset": "auto",
   "output_formats": ["markdown", "json", "content_list", "images"],
   "wait": 60,
   "callback": {
@@ -762,20 +784,21 @@ Authorization: Bearer <token>
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `files` | array | 是 | 至少 1 个,最多由 token 等级决定 |
-| `model` | enum | 否 | `auto`(默认,平台推荐模型) / `pipeline` / `vlm` / `html` |
+| `preset` | enum | 否 | `auto`(默认,平台推荐组合) / `pipeline` / `vlm` / `html`。预设的解析方案组合,服务端按 preset 自动选择各阶段模型 |
 | `output_formats` | array | 否 | 选择产物,默认 `["markdown"]`。产物以 File 对象形式存储(`purpose:parse_output`),通过 `GET /v1/files/{file_id}/content` 下载。可选值见下表 |
 | `wait` | int | 否 | 同步等待秒数。不传或 `0`:异步模式,立即返回 202。传正值:阻塞等待最多 N 秒,范围 `[5, 300]`,完成返回 200(内容内联),超时返回 202(转为异步轮询) |
 | `callback` | object | 否 | Webhook 通知(需 Token) |
 
-#### `files[].source` 四种来源
+#### `files[].source`
 
 ```json
 { "type": "file_id",   "file_id": "file-01HXYZ123ABCDEF" }                 // 引用平台中已有文件(Create 秒传/Complete 后获得)
 { "type": "url",       "url": "https://..." }                          // 服务端拉取(内部转为 file_id)
 { "type": "inline",    "name": "report.pdf", "data": "base64..." }      // 小文件内嵌(< 1MB,内部转为 file_id)。name 必填,作为文件显示名
+{ "type": "local",     "path": "/data/docs/report.pdf" }                // 本地文件路径,支持三种格式: Unix 绝对路径("/data/a.pdf")、Windows 绝对路径("D:\\my-files\\a.pdf")、file URI("file:///data/a.pdf")。仅本地 server 支持,mineru.net 拒绝此类型
 ```
 
-> 在 `POST /v1/parse/jobs` 中,file source 只需 `file_id`(Create 秒传命中时立即获得,或 Complete 后获得)、`url` 或 `inline` 三种。完成上传后即可复用 file_id,不再依赖 upload_id。
+> `local` 类型的文件由服务端直接从磁盘读取,不经过上传流程,不生成 `file_id`。云端 `mineru.net` 不支持此来源,传入返回 `400 invalid_request`。
 
 #### `files[].options`
 
@@ -811,7 +834,7 @@ Authorization: Bearer <token>
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "queued",
   "created_at": "2026-05-21T08:30:00Z",
-  "model": "auto",
+  "preset": "auto",
   "output_formats": ["markdown", "json", "content_list", "images"],
   "tier": "pro",
   "files": [
@@ -837,7 +860,7 @@ Authorization: Bearer <token>
   "created_at": "2026-05-21T08:30:00Z",
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
-  "model": "vlm",
+  "preset": "vlm",
   "output_formats": ["markdown", "json", "images"],
   "tier": "pro",
   "progress": { "completed": 1, "failed": 0, "total": 1 },
@@ -848,7 +871,7 @@ Authorization: Bearer <token>
       "status": "completed",
       "metadata": {
         "pages": 12,
-        "model_used": "vlm",
+        "model_used": "MinerU2.5-Pro-2604-1.2B",
         "language_detected": "ch",
         "processing_time_ms": 8234,
         "backend_version": "3.1.14"
@@ -884,7 +907,7 @@ Authorization: Bearer <token>
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "running",
   "created_at": "2026-05-21T08:30:00Z",
-  "model": "auto",
+  "preset": "auto",
   "output_formats": ["markdown", "json", "images"],
   "tier": "pro",
   "files": [
@@ -926,7 +949,7 @@ Authorization: Bearer <token>
   "created_at": "2026-05-21T08:30:00Z",
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
-  "model": "vlm",
+  "preset": "vlm",
   "output_formats": ["markdown", "json", "images"],
   "tier": "pro",
   "progress": { "completed": 2, "failed": 0, "total": 2 },
@@ -937,7 +960,7 @@ Authorization: Bearer <token>
       "status": "completed",
       "metadata": {
         "pages": 12,
-        "model_used": "vlm",
+        "model_used": "MinerU2.5-Pro-2604-1.2B",
         "language_detected": "ch",
         "processing_time_ms": 8234,
         "backend_version": "3.1.14"
@@ -1081,7 +1104,7 @@ Tier 由 Token 决定,但**响应格式完全一致**。
 | 单任务文件数 | 1 | 100 |
 | 并发任务 | 1 | 10+ |
 | 队列优先级 | 默认 | 优先 |
-| `model` 可选 | `auto` / `pipeline` / `html` | 全部含 `vlm` |
+| `preset` 可选 | `auto` / `pipeline` / `html` | 全部含 `vlm` |
 | `output_formats` 高级格式 | 拒绝 `html`/`latex`/`docx` | 全部支持 |
 | `callback` | 拒绝 | 支持 |
 | 产物保留期 | 24h | 7d |
@@ -1181,7 +1204,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
       \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
     }],
-    \"model\": \"vlm\",
+    \"preset\": \"vlm\",
     \"output_formats\": [\"markdown\",\"json\",\"images\"]
   }"
 
@@ -1239,7 +1262,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
       \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
     }],
-    \"model\": \"vlm\",
+    \"preset\": \"vlm\",
     \"output_formats\": [\"markdown\",\"json\"],
     \"wait\": 60
   }"
@@ -1306,7 +1329,7 @@ done < file_ids.txt | jq -s .)
 curl -X POST https://mineru.net/api/v1/parse/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"files\":$FILES_JSON,\"model\":\"vlm\",\"output_formats\":[\"markdown\"]}"
+  -d "{\"files\":$FILES_JSON,\"preset\":\"vlm\",\"output_formats\":[\"markdown\"]}"
 ```
 
 > 提示:`POST /v1/uploads` 在传入 `sha256sum` 时返回 `status:"completed"`(秒传,含 `file`)或 `status:"pending"`(含 `upload_url`);此外也可用 `GET /v1/files?sha256sum=<hex>` 作纯查询探测。
@@ -1366,7 +1389,7 @@ print(result.markdown())
 result.save(writer)
 ```
 
-调用代码完全相同,Token 仅决定能不能用 `model="vlm"` 或 `output_formats=["docx"]`。
+调用代码完全相同,Token 仅决定能不能用 `preset="vlm"` 或 `output_formats=["docx"]`。
 
 ---
 
@@ -1435,7 +1458,7 @@ Content-Type: application/json
 {
   "files":[{"source":{"type":"file_id","id":"file-..."},
             "options":{"language":"ch"}}],
-  "model":"pipeline",
+  "preset":"pipeline",
   "output_formats":["markdown","json","content_list","images"]
 }
 → 202 {"job_id":"job_...","status":"queued","links":{...}}
@@ -1446,7 +1469,7 @@ Content-Type: application/json
 - 旧:配置开关散落在 form 字段(`return_md`, `return_middle_json`, ...);新:统一收纳到 `output_formats` 数组
 - 旧:每次调用都重新上传;新:可秒传(若提供 sha256)
 - 旧:无文件级标识;新:不透明 `file_id`(`file-xxx`)+ 可选 `sha256sum` 元信息,file_id 可跨任务复用
-- 旧:`backend` 字段直接选实现;新:`model` 字段语义化(`pipeline`/`vlm`/`html`/`auto`)
+- 旧:`backend` 字段直接选实现;新:`preset` 字段语义化(`pipeline`/`vlm`/`html`/`auto`)
 
 #### Call 2 — 查询状态
 
@@ -1589,7 +1612,7 @@ POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","id":"file-01HXYZ..."},
             "options":{"language":"ch","ocr":"auto","page_range":"1-10"}}],
-  "model":"vlm",
+  "preset":"vlm",
   "output_formats":["markdown","json","images","docx"]
 }
 → 202 {"job_id":"job_...","status":"queued"}
@@ -1598,7 +1621,7 @@ POST /v1/parse/jobs
 **差异**
 - 旧:上传 = 解析任务(`batch_id` 同时是上传组和解析任务);新:文件与任务解耦,**同一 `file_id` 可被多个 jobs 复用**(切换 model、改 page_range、跑不同 output_formats 都不必重传)
 - 旧:`page_ranges` 写在 Call 1 的 file 条目里;新:写在 job 的 `options`(因为属于解析行为)
-- 旧:`model_version` 在 Call 1 顶层;新:`model` 在 `POST /v1/parse/jobs` 顶层
+- 旧:`model_version` 在 Call 1 顶层;新:`preset` 在 `POST /v1/parse/jobs` 顶层
 
 #### Call 4 — 轮询结果
 
@@ -1717,7 +1740,7 @@ POST /v1/parse/jobs
 - 旧:**单文件**任务;新:任意数量文件(Free 档限 1,Pro 档限 100)
 - 旧:`{code,msg,data}` envelope;新:扁平资源
 - 旧:无 sha256/秒传概念;新:可选秒传
-- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`, `language`)在 `files[].options`,任务级参数(`model`, `output_formats`)在 job 顶层
+- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`, `language`)在 `files[].options`,任务级参数(`preset`, `output_formats`)在 job 顶层
 
 #### Call 2 — 上传字节
 
@@ -1812,5 +1835,5 @@ GET /v1/files/file-MD.../content
 | 新 API(同 file_id 复用) | 2 (+轮询) | POST /v1/parse/jobs → poll → GET /v1/files/{id}/content |
 | 新 API(同步 wait) | 1 | POST /v1/parse/jobs {wait:60} → 200 content 内联 |
 
-> 同 file_id 复用是新 API 独有优势:相同文件换个 `model` / `page_range` / `output_formats` 重跑无需任何上传。
+> 同 file_id 复用是新 API 独有优势:相同文件换个 `preset` / `page_range` / `output_formats` 重跑无需任何上传。
 
