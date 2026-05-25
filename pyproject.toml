@@ -31,7 +31,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "boto3>=1.28.43",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -70,7 +69,8 @@ test = [
     "pytest",
     "pytest-cov",
     "coverage",
-    "fuzzywuzzy"
+    "fuzzywuzzy",
+    "tomli; python_version < '3.11'",
 ]
 vlm = [
     "torch>=2.6.0,<3",
@@ -86,6 +86,9 @@ lmdeploy = [
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
     "mlx<=0.31.1",
+]
+s3 = [
+    "boto3>=1.28.43",
 ]
 pipeline = [
     "dill>=0.3.8,<1",
@@ -111,6 +114,7 @@ core = [
 ]
 all = [
     "mineru[core]",
+    "mineru[s3]",
     "mineru[mlx] ; sys_platform == 'darwin'",
     "mineru[vllm] ; sys_platform == 'linux'",
     "mineru[lmdeploy] ; sys_platform == 'win32'",
