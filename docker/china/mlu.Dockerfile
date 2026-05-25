@@ -26,7 +26,9 @@ RUN /bin/bash -c '\
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install $(if [ "$BACKEND" = "lmdeploy" ]; then echo "accelerate==1.2.0"; else echo "transformers==4.50.3"; fi) && \
+    python3 -m pip install \
+        $(if [ "$BACKEND" = "lmdeploy" ]; then echo "qwen-vl-utils>=0.0.14,<1 accelerate==1.2.0"; else echo "transformers==4.50.3"; fi) \
+        -i https://mirrors.aliyun.com/pypi/simple && \
     python3 -m pip cache purge'
 
 # Download models and update the configuration file
