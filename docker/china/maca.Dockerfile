@@ -3,6 +3,7 @@
 FROM cr.metax-tech.com/public-ai-release/maca/vllm:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-amd64
 # Base image containing the LMDeploy inference environment, requiring amd64(x86-64) CPU + metax GPU.
 # FROM crpi-vofi3w62lkohhxsp.cn-shanghai.personal.cr.aliyuncs.com/opendatalab-mineru/maca:maca.ai3.1.0.7-torch2.6-py310-ubuntu22.04-lmdeploy0.10.2-amd64
+# ARG BACKEND=lmdeploy
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
@@ -25,6 +26,9 @@ RUN /opt/conda/bin/python3 -m pip install -U pip -i https://mirrors.aliyun.com/p
                                            numpy==1.26.4 \
                                            opencv-python==4.11.0.86 \
                                            -i https://mirrors.aliyun.com/pypi/simple && \
+    if [ "$BACKEND" = "lmdeploy" ]; then \
+        /opt/conda/bin/python3 -m pip install 'qwen-vl-utils>=0.0.14,<1' -i https://mirrors.aliyun.com/pypi/simple; \
+    fi && \
     /opt/conda/bin/python3 -m pip cache purge
 
 # Download models and update the configuration file

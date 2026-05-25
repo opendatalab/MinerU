@@ -7,6 +7,7 @@ from typing import BinaryIO, Optional, Union, Any, Final, Iterator
 from loguru import logger
 from docx import Document
 from docx.document import Document as DocxDocument
+from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml.xmlchemy import BaseOxmlElement
 from docx.text.paragraph import Paragraph
 from docx.text.hyperlink import Hyperlink
@@ -111,6 +112,8 @@ class DocxConverter:
             tuple[int, int], Optional[BaseOxmlElement]
         ] = {}
         self._numbering_start_cache: dict[tuple[int, int], int] = {}
+        self._style_lookup_cache: dict[tuple[Any, Optional[str]], Any] = {}
+        self._style_bool_cache: dict[tuple[int, str], Optional[bool]] = {}
 
     @staticmethod
     def _local_name(element: Any) -> Optional[str]:
@@ -122,6 +125,85 @@ class DocxConverter:
             return etree.QName(tag).localname
         except ValueError:
             return None
+
+    def _reset_style_caches(self) -> None:
+        """重置样式查询缓存，避免同一 converter 实例多次转换时复用旧文档样式。"""
+        self._style_lookup_cache = {}
+        self._style_bool_cache = {}
+
+    def _get_style_id_from_property(
+        self,
+        xml_element: Optional[BaseOxmlElement],
+        property_tag: str,
+        style_tag: str,
+    ) -> Optional[str]:
+        """从段落或 run 的直接属性节点读取样式 ID，避免触发 python-docx 样式查找。"""
+        if xml_element is None:
+            return None
+
+        property_element = xml_element.find(
+            property_tag,
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        )
+        if property_element is None:
+            return None
+
+        style_element = property_element.find(
+            style_tag,
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        )
+        if style_element is None:
+            return None
+
+        return style_element.get(self.XML_KEY) or None
+
+    def _get_cached_docx_style(
+        self,
+        part: Any,
+        style_id: Optional[str],
+        style_type: Any,
+    ) -> Any:
+        """按 style id 和类型缓存 python-docx 样式对象，避免大 styles.xml 被反复线性扫描。"""
+        if part is None:
+            return None
+
+        cache_key = (style_type, style_id)
+        if cache_key not in self._style_lookup_cache:
+            self._style_lookup_cache[cache_key] = part.get_style(
+                style_id,
+                style_type,
+            )
+        return self._style_lookup_cache[cache_key]
+
+    def _get_paragraph_style(self, paragraph: Optional[Paragraph]) -> Any:
+        """读取段落样式；无显式 pStyle 时缓存默认段落样式查询结果。"""
+        if paragraph is None:
+            return None
+        style_id = self._get_style_id_from_property(
+            paragraph._element,
+            "w:pPr",
+            "w:pStyle",
+        )
+        return self._get_cached_docx_style(
+            paragraph.part,
+            style_id,
+            WD_STYLE_TYPE.PARAGRAPH,
+        )
+
+    def _get_run_style(self, run: Optional[Run]) -> Any:
+        """读取 run 字符样式；无显式 rStyle 时缓存默认字符样式查询结果。"""
+        if run is None:
+            return None
+        style_id = self._get_style_id_from_property(
+            run._element,
+            "w:rPr",
+            "w:rStyle",
+        )
+        return self._get_cached_docx_style(
+            run.part,
+            style_id,
+            WD_STYLE_TYPE.CHARACTER,
+        )
 
     @staticmethod
     def _escape_hyperlink_text(text: str) -> str:
@@ -209,9 +291,8 @@ class DocxConverter:
             preserve_blank_non_visible_style=preserve_blank_non_visible_style,
         )
 
-    @classmethod
     def _find_adjacent_non_blank_run_format(
-        cls,
+        self,
         inline_contents: list[Any],
         current_index: int,
         step: int,
@@ -226,18 +307,17 @@ class DocxConverter:
             if not isinstance(content, Run):
                 index += step
                 continue
-            if cls._is_hidden_run(content):
+            if self._is_hidden_run(content):
                 index += step
                 continue
             text = content.text or ""
             if text.strip():
-                return cls._get_format_from_run(content)
+                return self._get_format_from_run(content)
             index += step
         return None
 
-    @classmethod
     def _should_preserve_blank_non_visible_style(
-        cls,
+        self,
         inline_contents: list[Any],
         current_index: int,
         text: str,
@@ -246,10 +326,10 @@ class DocxConverter:
         """判断空白 run 的 bold/italic 是否应保留，以便连续同样式文本合并成一个 span。"""
         if not text or text.strip():
             return False
-        if not cls._has_non_visible_text_style(format_obj):
+        if not self._has_non_visible_text_style(format_obj):
             return False
 
-        previous_format = cls._find_adjacent_non_blank_run_format(
+        previous_format = self._find_adjacent_non_blank_run_format(
             inline_contents,
             current_index,
             -1,
@@ -257,7 +337,7 @@ class DocxConverter:
         if format_obj == previous_format:
             return True
 
-        next_format = cls._find_adjacent_non_blank_run_format(
+        next_format = self._find_adjacent_non_blank_run_format(
             inline_contents,
             current_index,
             1,
@@ -695,6 +775,7 @@ class DocxConverter:
         self._numbering_root_loaded = False
         self._numbering_level_cache = {}
         self._numbering_start_cache = {}
+        self._reset_style_caches()
         # 读取文件字节，以便 mammoth 和 python-docx 各自使用独立读取流
         file_bytes = self._sanitize_missing_internal_relationships(file_stream.read())
         # 使用完整 DOCX 上下文预解析顶层表格，避免转换非表格正文带来的资源浪费
@@ -1851,14 +1932,21 @@ class DocxConverter:
             list(self._iter_paragraph_inner_content(paragraph))
         )
 
-    @classmethod
     def _resolve_style_chain_bool(
-        cls,
+        self,
         style_obj,
         attr_name: str,
     ) -> Optional[bool]:
         """从样式继承链中解析布尔字体属性。"""
+        if style_obj is None:
+            return None
+
+        cache_key = (id(style_obj), attr_name)
+        if cache_key in self._style_bool_cache:
+            return self._style_bool_cache[cache_key]
+
         style = style_obj
+        result = None
         while style is not None:
             font = getattr(style, "font", None)
             if font is not None:
@@ -1869,13 +1957,14 @@ class DocxConverter:
                 else:
                     value = getattr(font, attr_name, None)
                 if value is not None:
-                    return bool(value)
+                    result = bool(value)
+                    break
             style = getattr(style, "base_style", None)
-        return None
+        self._style_bool_cache[cache_key] = result
+        return result
 
-    @classmethod
     def _resolve_run_bool_with_inheritance(
-        cls,
+        self,
         run: Run,
         attr_name: str,
     ) -> bool:
@@ -1892,20 +1981,23 @@ class DocxConverter:
 
         # 先看 run 级字符样式链（跳过 Hyperlink 默认字符样式，避免把默认下划线
         # 误当作正文强调样式注入到解析结果中）
-        run_style = getattr(run, "style", None)
+        run_style = self._get_run_style(run)
         run_style_id = str(getattr(run_style, "style_id", "") or "").lower()
         run_style_name = str(getattr(run_style, "name", "") or "").lower()
         is_hyperlink_style = (
             run_style_id == "hyperlink" or "hyperlink" in run_style_name
         )
         if not is_hyperlink_style:
-            inherited = cls._resolve_style_chain_bool(run_style, attr_name)
+            inherited = self._resolve_style_chain_bool(run_style, attr_name)
             if inherited is not None:
                 return inherited
 
         # 再看所在段落样式链
         parent = getattr(run, "_parent", None)
-        inherited = cls._resolve_style_chain_bool(getattr(parent, "style", None), attr_name)
+        inherited = self._resolve_style_chain_bool(
+            self._get_paragraph_style(parent),
+            attr_name,
+        )
         if inherited is not None:
             return inherited
 
@@ -1923,8 +2015,7 @@ class DocxConverter:
             return ""
         return underline.get(f"{{{_W}}}val", "single")
 
-    @classmethod
-    def _get_format_from_run(cls, run: Run) -> Optional[Formatting]:
+    def _get_format_from_run(self, run: Run) -> Optional[Formatting]:
         """
         从 Run 对象获取格式信息。
 
@@ -1934,11 +2025,11 @@ class DocxConverter:
         Returns:
             Optional[Formatting]: 格式对象
         """
-        is_bold = cls._resolve_run_bool_with_inheritance(run, "bold")
-        is_italic = cls._resolve_run_bool_with_inheritance(run, "italic")
-        is_strikethrough = cls._resolve_run_bool_with_inheritance(run, "strikethrough")
-        is_underline = cls._resolve_run_bool_with_inheritance(run, "underline")
-        underline_style = cls._get_direct_underline_style(run)
+        is_bold = self._resolve_run_bool_with_inheritance(run, "bold")
+        is_italic = self._resolve_run_bool_with_inheritance(run, "italic")
+        is_strikethrough = self._resolve_run_bool_with_inheritance(run, "strikethrough")
+        is_underline = self._resolve_run_bool_with_inheritance(run, "underline")
+        underline_style = self._get_direct_underline_style(run)
 
         # 检测着重符号 (w:em)：独立保留为 emphasis，避免和真实下划线混淆。
         is_emphasis = False
@@ -2042,16 +2133,17 @@ class DocxConverter:
         Returns:
             tuple[str, Optional[int]]: (标签, 层级) 元组
         """
-        if paragraph.style is None:
+        paragraph_style = self._get_paragraph_style(paragraph)
+        if paragraph_style is None:
             return "Normal", None
 
-        label = paragraph.style.style_id
-        name = paragraph.style.name
+        label = paragraph_style.style_id
+        name = paragraph_style.name
 
         if label is None:
             return "Normal", None
 
-        for style in self._iter_style_chain(paragraph.style):
+        for style in self._iter_style_chain(paragraph_style):
             style_label = getattr(style, "style_id", None)
             style_name = getattr(style, "name", None)
 
@@ -2103,7 +2195,7 @@ class DocxConverter:
         if numPr is not None:
             return numPr
 
-        for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+        for style in self._iter_style_chain(self._get_paragraph_style(paragraph)):
             style_element = getattr(style, "element", None)
             numPr = self._get_paragraph_property_child(style_element, "w:numPr")
             if numPr is not None:
@@ -2117,7 +2209,7 @@ class DocxConverter:
             paragraph._element, "w:outlineLvl"
         )
         if outline_lvl is None:
-            for style in self._iter_style_chain(getattr(paragraph, "style", None)):
+            for style in self._iter_style_chain(self._get_paragraph_style(paragraph)):
                 style_element = getattr(style, "element", None)
                 outline_lvl = self._get_paragraph_property_child(
                     style_element, "w:outlineLvl"
@@ -2218,7 +2310,7 @@ class DocxConverter:
 
         style_ids = {
             str(getattr(style, "style_id", "") or "")
-            for style in self._iter_style_chain(getattr(paragraph, "style", None))
+            for style in self._iter_style_chain(self._get_paragraph_style(paragraph))
         }
         style_ids.discard("")
         if not style_ids:
@@ -2701,8 +2793,9 @@ class DocxConverter:
             for p in paragraphs[:5]:  # 只检查前5个段落即可判断
                 try:
                     p_obj = Paragraph(p, self.docx_obj)
-                    if p_obj.style and p_obj.style.name:
-                        style_name = p_obj.style.name
+                    paragraph_style = self._get_paragraph_style(p_obj)
+                    if paragraph_style and paragraph_style.name:
+                        style_name = paragraph_style.name
                         if re.match(r'^TOC\s*\d+$', style_name, re.IGNORECASE) or \
                            re.match(r'^目录\s*\d+$', style_name):
                             return True
@@ -2725,9 +2818,10 @@ class DocxConverter:
         Returns:
             Optional[int]: 层级（0-based），如果不是目录样式则返回 None
         """
-        if paragraph.style is None:
+        paragraph_style = self._get_paragraph_style(paragraph)
+        if paragraph_style is None:
             return None
-        style_name = paragraph.style.name
+        style_name = paragraph_style.name
         if style_name:
             match = re.match(r'^(?:TOC|目录)\s*(\d+)$', style_name, re.IGNORECASE)
             if match:

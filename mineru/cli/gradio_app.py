@@ -334,6 +334,11 @@ def build_backend_choices(http_client_enable, i18n):
     return choices
 
 
+def is_http_client_backend(backend_choice):
+    """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
+    return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
+
+
 def resolve_status_step_index(status_lines):
     """根据现有状态日志推断步骤面板中当前应高亮的步骤索引。"""
     if not status_lines:
@@ -1675,10 +1680,7 @@ def main(ctx,
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
-        if "http-client" in backend_choice:
-            client_options_update = gr.update(visible=True)
-        else:
-            client_options_update = gr.update(visible=False)
+        client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         if "vlm" in backend_choice:
             ocr_options_update = gr.update(visible=False)
         else:
@@ -1756,6 +1758,13 @@ def main(ctx,
                     value=preferred_option,
                     info=get_backend_info(preferred_option),
                 )
+                with gr.Row(visible=is_http_client_backend(preferred_option)) as client_options:
+                    url = gr.Textbox(
+                        label=i18n("server_url"),
+                        value='http://localhost:30000',
+                        placeholder='http://localhost:30000',
+                        info=i18n("server_url_info"),
+                    )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
@@ -1849,13 +1858,6 @@ def main(ctx,
 
         with gr.Column(elem_classes=["mineru-advanced-popover"]):
             with gr.Column(elem_classes=["mineru-advanced-card"]):
-                with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(
-                        label=i18n("server_url"),
-                        value='http://localhost:30000',
-                        placeholder='http://localhost:30000',
-                        info=i18n("server_url_info"),
-                    )
                 with gr.Group():
                     table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
                     formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))

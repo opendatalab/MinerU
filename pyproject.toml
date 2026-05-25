@@ -31,11 +31,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "boto3>=1.28.43",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
-    "pdfminer.six>=20251230",
     "tqdm>=4.67.1",
     "requests",
     "httpx",
@@ -49,18 +47,15 @@ dependencies = [
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
     "fast-langdetect>=0.2.3,<0.3.0",
-    "scikit-image>=0.25.0,<1.0.0",
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
     "magika>=0.6.2,<1.1.0",
     "mineru-vl-utils>=1.0.0,<2",
-    "qwen-vl-utils>=0.0.14,<1",
     "python-docx>=1.2.0,<2",
     'pypptx-with-oxml>=1.0.3,<2',
     "mammoth>=1.11.0,<2",
     "pylatexenc>=2.10,<3",
     "lxml>=4.0.0,<7.0.0",
-    "pandas>=2.3.3,<3",
     "openpyxl>=3.1.5,<4",
     "fastapi",
     "python-multipart",
@@ -73,7 +68,8 @@ test = [
     "pytest",
     "pytest-cov",
     "coverage",
-    "fuzzywuzzy"
+    "fuzzywuzzy",
+    "tomli; python_version < '3.11'",
 ]
 vlm = [
     "torch>=2.6.0,<3",
@@ -85,10 +81,14 @@ vllm = [
 ]
 lmdeploy = [
     "lmdeploy>=0.10.2,<0.12",
+    "qwen-vl-utils>=0.0.14,<1",
 ]
 mlx = [
     "mlx-vlm>=0.3.3,<0.4",
     "mlx<=0.31.1",
+]
+s3 = [
+    "boto3>=1.28.43",
 ]
 pipeline = [
     "dill>=0.3.8,<1",
@@ -114,6 +114,7 @@ core = [
 ]
 all = [
     "mineru[core]",
+    "mineru[s3]",
     "mineru[mlx] ; sys_platform == 'darwin'",
     "mineru[vllm] ; sys_platform == 'linux'",
     "mineru[lmdeploy] ; sys_platform == 'win32'",

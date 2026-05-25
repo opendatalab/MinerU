@@ -3,7 +3,7 @@
 FROM quay.m.daocloud.io/ascend/vllm-ascend:v0.11.0
 # Base image containing the LMDeploy inference environment, requiring ARM(AArch64) CPU + Ascend NPU.
 # FROM crpi-4crprmm5baj1v8iv.cn-hangzhou.personal.cr.aliyuncs.com/lmdeploy_dlinfer/ascend:mineru-a2
-
+# ARG BACKEND=lmdeploy
 
 # Install libgl for opencv support & Noto fonts for Chinese characters
 RUN apt-get update && \
@@ -23,6 +23,9 @@ RUN python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \
+    if [ "$BACKEND" = "lmdeploy" ]; then \
+        python3 -m pip install 'qwen-vl-utils>=0.0.14,<1' -i https://mirrors.aliyun.com/pypi/simple; \
+    fi && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file

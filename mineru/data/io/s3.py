@@ -1,8 +1,18 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import boto3
-from botocore.config import Config
-
 from ..io.base import IOReader, IOWriter
+
+
+def _load_s3_client_dependencies():
+    """按需加载 S3 客户端依赖，避免导入 S3 类时强制安装 boto3。"""
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError as exc:
+        raise ModuleNotFoundError(
+            "S3 IO requires optional dependencies. Install them with `pip install 'mineru[s3]'`."
+        ) from exc
+
+    return boto3, Config
 
 
 class S3Reader(IOReader):
@@ -24,6 +34,7 @@ class S3Reader(IOReader):
             addressing_style (str, optional): Defaults to 'auto'. Other valid options here are 'path' and 'virtual'
             refer to https://boto3.amazonaws.com/v1/documentation/api/1.9.42/guide/s3.html
         """
+        boto3, Config = _load_s3_client_dependencies()
         self._bucket = bucket
         self._ak = ak
         self._sk = sk
@@ -91,6 +102,7 @@ class S3Writer(IOWriter):
             addressing_style (str, optional): Defaults to 'auto'. Other valid options here are 'path' and 'virtual'
             refer to https://boto3.amazonaws.com/v1/documentation/api/1.9.42/guide/s3.html
         """
+        boto3, Config = _load_s3_client_dependencies()
         self._bucket = bucket
         self._ak = ak
         self._sk = sk

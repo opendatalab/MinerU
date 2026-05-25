@@ -47,7 +47,7 @@ docker build --network=host -t mineru:npu-vllm-latest -f npu.Dockerfile .
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/npu.Dockerfile
 # 将基础镜像从 vllm 切换为 lmdeploy
-sed -i '3s/^/# /' npu.Dockerfile && sed -i '5s/^# //' npu.Dockerfile
+sed -i '3s/^/# /' npu.Dockerfile && sed -i '5,6s/^# //' npu.Dockerfile
 docker build --network=host -t mineru:npu-lmdeploy-latest -f npu.Dockerfile .
 ```
 

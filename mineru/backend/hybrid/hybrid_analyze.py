@@ -53,6 +53,25 @@ OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
+HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list) | {
+    MineruBlockType.ABSTRACT,
+    MineruBlockType.CAPTION,
+    MineruBlockType.FOOTNOTE,
+    MineruBlockType.DOC_TITLE,
+    MineruBlockType.PARAGRAPH_TITLE,
+    MineruBlockType.LIST,
+    MineruBlockType.INDEX,
+    MineruBlockType.ASIDE_TEXT,
+    MineruBlockType.PHONETIC,
+    MineruBlockType.CHART_CAPTION,
+    MineruBlockType.CHART_FOOTNOTE,
+    MineruBlockType.CODE_FOOTNOTE,
+}
+
+
+def _is_hybrid_ocr_det_candidate(block):
+    """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
+    return (block.get("type") or block.get("label")) in HYBRID_OCR_DET_TEXT_TYPES
 
 def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
     # 确定OCR设置
@@ -71,6 +90,8 @@ def ocr_det(
     mfd_res,
     _ocr_enable,
     batch_ratio: int = 1,
+    *,
+    fill_text: bool = True,
 ):
     def _set_temp_pixel_bbox(res, pixel_bbox):
         res["_normalized_bbox"] = list(res["bbox"])
@@ -92,7 +113,7 @@ def ocr_det(
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
-                if res['type'] not in not_extract_list:
+                if not _is_hybrid_ocr_det_candidate(res):
                     continue
                 x0 = max(0, int(res['bbox'][0] * img_width))
                 y0 = max(0, int(res['bbox'][1] * img_height))
@@ -116,7 +137,11 @@ def ocr_det(
                 )[0]
                 if ocr_res:
                     ocr_result_list = get_ocr_result_list(
-                        ocr_res, useful_list, _ocr_enable, bgr_image, hybrid_pipeline_model.lang
+                        ocr_res,
+                        useful_list,
+                        _ocr_enable if fill_text else False,
+                        bgr_image,
+                        hybrid_pipeline_model.lang,
                     )
 
                     ocr_res_list[-1].extend(ocr_result_list)
@@ -131,7 +156,7 @@ def ocr_det(
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
-                if res['type'] not in not_extract_list:
+                if not _is_hybrid_ocr_det_candidate(res):
                     continue
                 x0 = max(0, int(res['bbox'][0] * img_width))
                 y0 = max(0, int(res['bbox'][1] * img_height))
@@ -200,7 +225,11 @@ def ocr_det(
                     if dt_boxes_final:
                         ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
                         ocr_result_list = get_ocr_result_list(
-                            ocr_res, useful_list, _ocr_enable, bgr_image, hybrid_pipeline_model.lang
+                            ocr_res,
+                            useful_list,
+                            _ocr_enable if fill_text else False,
+                            bgr_image,
+                            hybrid_pipeline_model.lang,
                         )
                         ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
@@ -281,6 +310,21 @@ def _build_inline_formula_inputs(images_layout_res):
             )
         inline_formula_inputs.append(page_inline_formula_inputs)
     return inline_formula_inputs
+
+
+def _build_formula_mask_inputs(images_layout_res):
+    """从 layout 检测结果提取公式框，供 OCR det 规避行内/行间公式区域。"""
+    page_formula_masks = []
+    for layout_res in images_layout_res:
+        page_masks = []
+        for res in layout_res:
+            if res.get('label') not in ['inline_formula', 'display_formula']:
+                continue
+            bbox = _formula_item_to_pixel_bbox(res)
+            if bbox is not None:
+                page_masks.append({"bbox": bbox})
+        page_formula_masks.append(page_masks)
+    return page_formula_masks
 
 
 def _normalize_page_size(page_image):
@@ -509,7 +553,7 @@ def _apply_layout_title_split_for_window(
     language,
     batch_ratio,
 ):
-    """为VLM-OCR路径补跑layout小模型，并只用其doc_title结果拆分VLM标题。"""
+    """为VLM-OCR路径补跑layout小模型，拆分标题并追加空文本OCR det sidecar。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
         lang=language,
@@ -524,6 +568,23 @@ def _apply_layout_title_split_for_window(
         model_list,
         images_layout_res,
         [_normalize_page_size(image) for image in images_pil_list],
+    )
+    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    ocr_res_list = ocr_det(
+        hybrid_pipeline_model,
+        np_images,
+        model_list,
+        _build_formula_mask_inputs(images_layout_res),
+        False,
+        batch_ratio=batch_ratio,
+        fill_text=False,
+    )
+    _normalize_bbox([[] for _ in images_pil_list], ocr_res_list, images_pil_list)
+    model_list[:] = _merge_page_sidecar_items(
+        model_list,
+        [[] for _ in images_pil_list],
+        ocr_res_list,
+        keep_ocr_text=False,
     )
     return hybrid_pipeline_model
 
@@ -556,11 +617,12 @@ def _build_inline_formula_model_item(formula):
     }
 
 
-def _build_ocr_text_model_item(ocr_res):
+def _build_ocr_text_model_item(ocr_res, keep_text=True):
+    """构造 OCR det sidecar；VLM-OCR 路径可只保留空文本行提示。"""
     return {
         "type": "ocr_text",
         "bbox": list(ocr_res["bbox"]),
-        "text": ocr_res.get("text", ""),
+        "text": ocr_res.get("text", "") if keep_text else "",
         "score": float(ocr_res.get("score", 0.0)),
     }
 
@@ -569,6 +631,7 @@ def _merge_page_sidecar_items(
     model_list,
     inline_formula_list,
     ocr_res_list,
+    keep_ocr_text=True,
 ):
     merged_model_list = []
     for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
@@ -581,7 +644,7 @@ def _merge_page_sidecar_items(
             if formula.get("bbox") is not None
         )
         merged_page_model_list.extend(
-            _build_ocr_text_model_item(ocr_res)
+            _build_ocr_text_model_item(ocr_res, keep_text=keep_ocr_text)
             for ocr_res in page_ocr_res_list
             if ocr_res.get("bbox") is not None
         )

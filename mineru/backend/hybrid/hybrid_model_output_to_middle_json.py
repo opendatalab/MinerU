@@ -13,10 +13,8 @@ from mineru.backend.utils.ocr_det_utils import (
     get_ch_lite_ocr_det_model,
 )
 from mineru.backend.utils.para_block_utils import (
-    annotate_hybrid_cross_page_merge_prev,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
-    edge_text_line_hints_key,
     iter_block_spans,
     merge_para_text_blocks,
 )
@@ -133,10 +131,6 @@ def blocks_to_page_info(
         "page_size": [width, height],
         "page_idx": page_index,
     }
-    if _vlm_ocr_enable:
-        edge_text_line_hints = _detect_edge_text_line_hints(page_blocks, page_pil_img, scale)
-        if edge_text_line_hints:
-            page_info[edge_text_line_hints_key()] = edge_text_line_hints
     return page_info
 
 
@@ -256,11 +250,10 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
     build_para_blocks_from_preproc(pdf_info_list)
-    annotate_hybrid_cross_page_merge_prev(
+    merge_para_text_blocks(
         pdf_info_list,
-        prefer_edge_line_hints=_vlm_ocr_enable,
+        auto_merge_by_det=True,
     )
-    merge_para_text_blocks(pdf_info_list, allow_cross_page=True)
 
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
@@ -273,59 +266,6 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
 
     _normalize_split_title_blocks(pdf_info_list)
     cleanup_internal_para_block_metadata(pdf_info_list)
-
-
-def _detect_edge_text_line_hints(page_blocks, page_pil_img, scale):
-    text_blocks = [block for block in page_blocks if block.get("type") == "text"]
-    if not text_blocks:
-        return {}
-
-    edge_blocks = {}
-    edge_blocks["first"] = text_blocks[0]
-    edge_blocks["last"] = text_blocks[-1]
-
-    ocr_model = get_ch_lite_ocr_det_model()
-
-    edge_line_hints = {}
-    for edge_name, block in edge_blocks.items():
-        line_bboxes = _detect_block_line_bboxes(block, page_pil_img, scale, ocr_model)
-        if line_bboxes:
-            edge_line_hints[edge_name] = {
-                "index": block.get("index"),
-                "lines": [{"bbox": bbox, "spans": []} for bbox in line_bboxes],
-            }
-
-    return edge_line_hints
-
-
-def _detect_block_line_bboxes(block, page_pil_img, scale, ocr_model):
-    block_bbox = block.get("bbox")
-    if not block_bbox:
-        return []
-
-    ocr_det_res, padding = detect_ocr_boxes_from_padded_crop(
-        block_bbox,
-        page_pil_img,
-        scale,
-        ocr_model=ocr_model,
-    )
-    if not ocr_det_res:
-        return []
-
-    block_x0, block_y0 = block_bbox[0], block_bbox[1]
-    line_bboxes = []
-    for box in ocr_det_res:
-        x_coords = [point[0] - padding for point in box]
-        y_coords = [point[1] - padding for point in box]
-        line_bboxes.append([
-            block_x0 + min(x_coords) / scale,
-            block_y0 + min(y_coords) / scale,
-            block_x0 + max(x_coords) / scale,
-            block_y0 + max(y_coords) / scale,
-        ])
-
-    line_bboxes.sort(key=lambda bbox: bbox[1])
-    return line_bboxes
 
 
 def result_to_middle_json(

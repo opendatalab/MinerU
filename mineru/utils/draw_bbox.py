@@ -9,6 +9,31 @@ from reportlab.pdfgen import canvas
 from .enum_class import BlockType, ContentType, SplitFlag
 
 
+# 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
+TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.ABSTRACT,
+    BlockType.PHONETIC,
+}
+
+# layout.pdf 中这些 block 直接使用自身 bbox，复合 block 则使用子 block bbox。
+DIRECT_LAYOUT_BBOX_BLOCK_TYPES = TEXT_LIKE_BLOCK_TYPES_FOR_BBOX | {
+    BlockType.TITLE,
+    BlockType.INTERLINE_EQUATION,
+    BlockType.LIST,
+    BlockType.INDEX,
+}
+
+# span.pdf 从这些结构性 block 中收集内部 span bbox。
+SPAN_SOURCE_BLOCK_TYPES = DIRECT_LAYOUT_BBOX_BLOCK_TYPES
+
+
+def _get_layout_source_blocks(page):
+    """获取 layout.pdf 的页内原始布局块，避免段落合并后跨页子项串页绘制。"""
+    return page.get("preproc_blocks", [])
+
+
 def cal_canvas_rect(page, bbox):
     """
     Calculate the rectangle coordinates on the canvas based on the original PDF page and bounding box.
@@ -145,7 +170,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         for dropped_bbox in page['discarded_blocks']:
             page_dropped_list.append(dropped_bbox['bbox'])
         dropped_bbox_list.append(page_dropped_list)
-        for block in page["para_blocks"]:
+        for block in _get_layout_source_blocks(page):
             bbox = block["bbox"]
             if block["type"] == BlockType.TABLE:
                 for nested_block in block["blocks"]:
@@ -191,7 +216,7 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
                         imgs_footnote.append(bbox)
             elif block["type"] == BlockType.TITLE:
                 titles.append(bbox)
-            elif block["type"] in [BlockType.TEXT, BlockType.REF_TEXT, BlockType.ABSTRACT]:
+            elif block["type"] in TEXT_LIKE_BLOCK_TYPES_FOR_BBOX:
                 texts.append(bbox)
             elif block["type"] == BlockType.INTERLINE_EQUATION:
                 interline_equations.append(bbox)
@@ -223,16 +248,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
 
     for page in pdf_info:
         page_block_list = []
-        for block in page["para_blocks"]:
-            if block["type"] in [
-                BlockType.TEXT,
-                BlockType.REF_TEXT,
-                BlockType.ABSTRACT,
-                BlockType.TITLE,
-                BlockType.INTERLINE_EQUATION,
-                BlockType.LIST,
-                BlockType.INDEX,
-            ]:
+        for block in _get_layout_source_blocks(page):
+            if block["type"] in DIRECT_LAYOUT_BBOX_BLOCK_TYPES:
                 bbox = block["bbox"]
                 page_block_list.append(bbox)
             elif block["type"] in [BlockType.IMAGE, BlockType.CHART, BlockType.CODE, BlockType.TABLE]:
@@ -335,15 +352,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         # 构造其余useful_list
         # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
         for block in page['preproc_blocks']:
-            if block['type'] in [
-                BlockType.TEXT,
-                BlockType.TITLE,
-                BlockType.INTERLINE_EQUATION,
-                BlockType.LIST,
-                BlockType.INDEX,
-                BlockType.REF_TEXT,
-                BlockType.ABSTRACT,
-            ]:
+            if block['type'] in SPAN_SOURCE_BLOCK_TYPES:
                 for line in block['lines']:
                     for span in line['spans']:
                         get_span_info(span)
