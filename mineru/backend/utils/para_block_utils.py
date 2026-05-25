@@ -15,7 +15,13 @@ TEXT_MERGE_BARRIER_TYPES = {
     *SECTION_MERGE_BARRIER_TYPES,
     BlockType.LIST,
 }
-_CROSS_PAGE_MERGE_KEY = "_cross_page_merge_prev"
+# 文本段落合并只允许跨过这些视觉根块，避免 ref_text/phonetic 等语义块被当作透明块。
+TEXT_MERGE_TRANSPARENT_TYPES = {
+    BlockType.IMAGE,
+    BlockType.TABLE,
+    BlockType.CHART,
+    BlockType.CODE,
+}
 OCR_DET_LINES_KEY = "_ocr_det_lines"
 
 
@@ -33,7 +39,7 @@ def build_para_blocks_from_preproc(pdf_info_list):
         page_info["para_blocks"] = copy.deepcopy(page_info.get("preproc_blocks", []))
 
 
-def merge_para_text_blocks(pdf_info_list, allow_cross_page=False, auto_merge_by_det=False):
+def merge_para_text_blocks(pdf_info_list, auto_merge_by_det=False):
     ordered_blocks = []
     for page_info in pdf_info_list:
         page_idx = page_info.get("page_idx")
@@ -51,7 +57,6 @@ def merge_para_text_blocks(pdf_info_list, allow_cross_page=False, auto_merge_by_
                 current_index,
                 current_page_idx,
                 current_block,
-                allow_cross_page,
                 auto_merge_by_det,
             )
         elif current_type == BlockType.LIST:
@@ -60,9 +65,7 @@ def merge_para_text_blocks(pdf_info_list, allow_cross_page=False, auto_merge_by_
             _merge_current_ref_text_list_block(
                 ordered_blocks,
                 current_index,
-                current_page_idx,
                 current_block,
-                allow_cross_page,
             )
 
 
@@ -71,40 +74,36 @@ def _merge_current_text_block(
     current_index,
     current_page_idx,
     current_block,
-    allow_cross_page,
     auto_merge_by_det,
 ):
-    """处理当前 text block 的 merge_prev 强制合并和 Hybrid det 自动合并。"""
+    """处理当前 text block 的 merge_prev 候选合并和 Hybrid det 自动合并。"""
     previous_block = None
     if current_block.get("merge_prev"):
-        previous_block = _find_previous_text_block(
+        previous_block = _find_previous_merge_prev_text_block(
             ordered_blocks,
             current_index,
-            current_block,
             current_page_idx,
-            allow_cross_page=allow_cross_page,
         )
+        if previous_block is not None:
+            _, _, previous_text_block = previous_block
+            if not can_auto_merge_text_blocks(
+                current_block,
+                previous_text_block,
+                allow_single_line_blocks=True,
+            ):
+                previous_block = None
 
     if previous_block is None and auto_merge_by_det:
         previous_block = _find_previous_text_block(
             ordered_blocks,
             current_index,
-            current_block,
-            current_page_idx,
-            allow_cross_page=allow_cross_page,
-            force_cross_page=allow_cross_page,
         )
         if previous_block is not None:
-            previous_page_idx, _, previous_text_block = previous_block
-            is_cross_page = current_page_idx != previous_page_idx
-            if can_auto_merge_text_blocks(
+            _, _, previous_text_block = previous_block
+            if not can_auto_merge_text_blocks(
                 current_block,
                 previous_text_block,
-                is_cross_page=is_cross_page,
             ):
-                if is_cross_page:
-                    current_block[_CROSS_PAGE_MERGE_KEY] = True
-            else:
                 previous_block = None
 
     if previous_block is None:
@@ -121,21 +120,18 @@ def _merge_current_text_block(
 def _merge_current_ref_text_list_block(
     ordered_blocks,
     current_index,
-    current_page_idx,
     current_block,
-    allow_cross_page,
 ):
     """处理当前 ref_text list 与前一个相邻 ref_text list 的合并。"""
     previous_block = _find_previous_ref_text_list_block(
         ordered_blocks,
         current_index,
-        current_page_idx,
         current_block,
-        allow_cross_page,
     )
     if previous_block is None:
         return
 
+    current_page_idx, _, _ = ordered_blocks[current_index]
     previous_page_idx, _, previous_list_block = previous_block
     _merge_ref_text_list_block(
         current_block,
@@ -144,13 +140,22 @@ def _merge_current_ref_text_list_block(
     )
 
 
-def can_auto_merge_text_blocks(current_block, previous_block, is_cross_page=False):
-    """基于 OCR det 行几何和 canonical 文本首尾规则判断 Hybrid text 是否应自动合并。"""
+def can_auto_merge_text_blocks(
+    current_block,
+    previous_block,
+    allow_single_line_blocks=False,
+):
+    """按段落首尾文本和行几何规则判断 text 是否可合并。"""
     current_lines = current_block.get("lines", [])
     previous_lines = previous_block.get("lines", [])
     current_metric_lines = _resolve_auto_metric_lines(current_block)
     previous_metric_lines = _resolve_auto_metric_lines(previous_block)
-    if not current_lines or not previous_lines or not current_metric_lines or not previous_metric_lines:
+    if (
+        not current_lines
+        or not previous_lines
+        or not current_metric_lines
+        or not previous_metric_lines
+    ):
         return False
 
     first_metric_line = current_metric_lines[0]
@@ -184,7 +189,11 @@ def can_auto_merge_text_blocks(current_block, previous_block, is_cross_page=Fals
     if abs(current_metric_width - previous_metric_width) >= min_metric_width:
         return False
 
-    if len(current_metric_lines) <= 1 and len(previous_metric_lines) <= 1:
+    if (
+        not allow_single_line_blocks
+        and len(current_metric_lines) <= 1
+        and len(previous_metric_lines) <= 1
+    ):
         return False
     return _has_mergeable_block_bbox_relation(current_block, previous_block)
 
@@ -199,24 +208,40 @@ def cleanup_internal_para_block_metadata(pdf_info_list):
 def _find_previous_text_block(
     ordered_blocks,
     current_index,
-    current_block,
-    current_page_idx,
-    allow_cross_page,
-    force_cross_page=False,
 ):
-    cross_page_allowed = allow_cross_page and (
-        force_cross_page or current_block.get(_CROSS_PAGE_MERGE_KEY, False)
-    )
+    """查找前序 text；除 merge_prev 专用路径外默认允许跨页查找。"""
+    for previous_index in range(current_index - 1, -1, -1):
+        _, _, previous_block = ordered_blocks[previous_index]
 
+        previous_type = previous_block.get("type")
+        if previous_type in TEXT_MERGE_BARRIER_TYPES:
+            return None
+        if previous_type != BlockType.TEXT:
+            if previous_type not in TEXT_MERGE_TRANSPARENT_TYPES:
+                return None
+            continue
+        return ordered_blocks[previous_index]
+
+    return None
+
+
+def _find_previous_merge_prev_text_block(
+    ordered_blocks,
+    current_index,
+    current_page_idx,
+):
+    """查找同页 merge_prev 提示对应的前序 text，但不跨越段落合并屏障。"""
     for previous_index in range(current_index - 1, -1, -1):
         previous_page_idx, _, previous_block = ordered_blocks[previous_index]
-        if previous_page_idx != current_page_idx and not cross_page_allowed:
+        if previous_page_idx != current_page_idx:
             return None
 
         previous_type = previous_block.get("type")
         if previous_type in TEXT_MERGE_BARRIER_TYPES:
             return None
         if previous_type != BlockType.TEXT:
+            if previous_type not in TEXT_MERGE_TRANSPARENT_TYPES:
+                return None
             continue
         return ordered_blocks[previous_index]
 
@@ -226,23 +251,21 @@ def _find_previous_text_block(
 def _find_previous_ref_text_list_block(
     ordered_blocks,
     current_index,
-    current_page_idx,
     current_block,
-    allow_cross_page,
 ):
-    """查找紧邻当前 list 的前一个 ref_text list，避免跨正文或标题误合并。"""
+    """查找紧邻当前 list 的前一个 ref_text list，默认允许跨页拼接。"""
     previous_index = current_index - 1
     if previous_index < 0:
         return None
 
-    previous_page_idx, _, previous_block = ordered_blocks[previous_index]
-    if previous_page_idx != current_page_idx and not allow_cross_page:
-        return None
+    _, _, previous_block = ordered_blocks[previous_index]
     if previous_block.get("type") in SECTION_MERGE_BARRIER_TYPES:
         return None
     if previous_block.get("type") != BlockType.LIST:
         return None
-    if not _is_ref_text_list_block(current_block) or not _is_ref_text_list_block(previous_block):
+    if not _is_ref_text_list_block(current_block) or not _is_ref_text_list_block(
+        previous_block
+    ):
         return None
     return ordered_blocks[previous_index]
 
@@ -333,7 +356,6 @@ def _has_mergeable_block_bbox_relation(current_block, previous_block):
 
 def _cleanup_block_internal_metadata(block):
     """递归清理只供 Hybrid 内部段落合并使用的临时字段。"""
-    block.pop(_CROSS_PAGE_MERGE_KEY, None)
     block.pop(OCR_DET_LINES_KEY, None)
     for sub_block in block.get("blocks", []):
         _cleanup_block_internal_metadata(sub_block)

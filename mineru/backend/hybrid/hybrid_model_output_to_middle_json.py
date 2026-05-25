@@ -252,7 +252,6 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(
         pdf_info_list,
-        allow_cross_page=True,
         auto_merge_by_det=True,
     )
 

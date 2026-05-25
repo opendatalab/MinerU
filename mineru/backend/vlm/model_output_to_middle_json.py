@@ -131,7 +131,7 @@ def append_page_blocks_to_middle_json(
 
 def finalize_middle_json(pdf_info_list):
     build_para_blocks_from_preproc(pdf_info_list)
-    merge_para_text_blocks(pdf_info_list, allow_cross_page=False)
+    merge_para_text_blocks(pdf_info_list)
 
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
