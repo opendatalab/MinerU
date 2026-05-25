@@ -219,8 +219,9 @@ def base64_to_cv2(b64str):
 
 
 def get_arch_config(model_path):
-    from omegaconf import OmegaConf
-    all_arch_config = OmegaConf.load(DEFAULT_CFG_PATH)
+    import yaml
+    with open(DEFAULT_CFG_PATH, encoding='utf-8') as f:
+        all_arch_config = yaml.safe_load(f)
     path = Path(model_path)
     file_name = path.stem
     if file_name not in all_arch_config:
