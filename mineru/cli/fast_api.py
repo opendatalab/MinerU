@@ -385,8 +385,44 @@ def encode_image(image_path: str) -> str:
 
 
 def _get_s3_upload_config() -> Optional[dict[str, str]]:
-    """Check if S3/MinIO upload is configured and return the config dict."""
+    """Check if S3/MinIO upload is configured and return the config dict.
+
+    Searches: ~/mineru.json (via read_config), $MINERU_TOOLS_CONFIG_JSON,
+    then walks up from cwd and common project paths.
+    """
     config = read_config()
+    if config is None:
+        # Fallback: search cwd and parent dirs for mineru.json
+        import json as _json
+        candidate_dirs = [os.getcwd(), os.path.dirname(os.path.abspath(__file__))]
+        # Also check a few common deployment paths
+        candidate_dirs.extend([
+            '/data/MinerU',
+            '/opt/MinerU',
+            '/app',
+        ])
+        tried: set[str] = set()
+        for start_dir in candidate_dirs:
+            d = os.path.abspath(start_dir)
+            while True:
+                if d in tried:
+                    break
+                tried.add(d)
+                config_path = os.path.join(d, 'mineru.json')
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, 'r', encoding='utf-8') as f:
+                            config = _json.load(f)
+                        logger.info(f"Loaded config from fallback path: {config_path}")
+                        break
+                    except Exception:
+                        pass
+                parent = os.path.dirname(d)
+                if parent == d:
+                    break
+                d = parent
+            if config is not None:
+                break
     if config is None:
         return None
     bucket_info = config.get('bucket_info')
