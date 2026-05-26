@@ -190,6 +190,17 @@ def _block_text_content(block):
     )
 
 
+def is_transparent_visual_relation_block(block):
+    """判断视觉关系中可忽略的结构性空块。"""
+    if block.get("type") != BlockType.LIST:
+        return False
+
+    if block.get("blocks"):
+        return False
+
+    return not _block_text_content(block).strip()
+
+
 def _is_leading_continuation_cluster_near_table(leading_blocks, table_block):
     """判断页首续表文本簇是否与后续 table 在几何上相邻。"""
     next_top = table_block["bbox"][1]
@@ -370,14 +381,19 @@ def regroup_visual_blocks(blocks):
     effective_blocks = [
         block for block in ordered_blocks if block["index"] not in absorbed_member_indices
     ]
+    visual_relation_blocks = [
+        block
+        for block in effective_blocks
+        if not is_transparent_visual_relation_block(block)
+    ]
     position_by_index = {
-        block["index"]: pos for pos, block in enumerate(effective_blocks)
+        block["index"]: pos for pos, block in enumerate(visual_relation_blocks)
     }
     main_blocks = [
-        block for block in effective_blocks if block["type"] in VISUAL_MAIN_TYPES
+        block for block in visual_relation_blocks if block["type"] in VISUAL_MAIN_TYPES
     ]
     child_blocks = [
-        block for block in effective_blocks if block["type"] in GENERIC_CHILD_TYPES
+        block for block in visual_relation_blocks if block["type"] in GENERIC_CHILD_TYPES
     ]
 
     grouped_children = {
@@ -393,7 +409,7 @@ def regroup_visual_blocks(blocks):
         parent_block = find_best_visual_parent(
             child_block,
             main_blocks,
-            effective_blocks,
+            visual_relation_blocks,
             position_by_index,
         )
         if parent_block is None:
@@ -609,23 +625,22 @@ def effective_visual_index_diff(
     ordered_blocks,
     type_by_index=None,
 ):
-    """计算视觉子块与主体的有效 index 距离，忽略中间同类子块。"""
-    child_index = child_block["index"]
-    main_index = main_block["index"]
-    start_index = min(child_index, main_index)
-    end_index = max(child_index, main_index)
+    """按有效块序列计算视觉子块与主体距离，吸收的 image 子成员视为零成本。"""
+    position_by_index = {
+        block["index"]: position for position, block in enumerate(ordered_blocks)
+    }
+    child_pos = position_by_index[child_block["index"]]
+    main_pos = position_by_index[main_block["index"]]
+    start_pos = min(child_pos, main_pos)
+    end_pos = max(child_pos, main_pos)
     skipped_child_count = 0
     child_type = block_type(child_block, type_by_index)
 
-    for block in ordered_blocks:
-        block_index = block["index"]
-        if (
-            start_index < block_index < end_index
-            and block_type(block, type_by_index) == child_type
-        ):
+    for block in ordered_blocks[start_pos + 1:end_pos]:
+        if block_type(block, type_by_index) == child_type:
             skipped_child_count += 1
 
-    return end_index - start_index - skipped_child_count
+    return end_pos - start_pos - skipped_child_count
 
 
 def is_visual_neighbor(
@@ -651,10 +666,67 @@ def is_visual_neighbor(
 
     for pos in range(start_pos, end_pos):
         between_block = ordered_blocks[pos]
-        if block_type(between_block, type_by_index) not in allowed_between_types:
-            return False
+        if block_type(between_block, type_by_index) in allowed_between_types:
+            continue
+        if is_block_outside_visual_gap(between_block, child_block, main_block):
+            continue
+        return False
 
     return True
+
+
+def is_block_outside_visual_gap(between_block, child_block, main_block):
+    """判断阅读顺序夹在中间的块是否没有落入视觉父子块的垂直间隔。"""
+    visual_gap = vertical_gap_between_blocks(child_block, main_block)
+    if visual_gap is None:
+        return False
+
+    if is_bbox_overlapping_visual_relation_block(
+        between_block["bbox"],
+        child_block["bbox"],
+        main_block["bbox"],
+    ):
+        return False
+
+    if not is_bbox_intersecting_vertical_gap(between_block["bbox"], visual_gap):
+        return True
+
+    return False
+
+
+def vertical_gap_between_blocks(first_block, second_block):
+    """计算两个块上下分离时的垂直间隔；发生纵向重叠时保持严格阻断。"""
+    first_bbox = first_block["bbox"]
+    second_bbox = second_block["bbox"]
+    if first_bbox[3] <= second_bbox[1]:
+        return first_bbox[3], second_bbox[1]
+    if second_bbox[3] <= first_bbox[1]:
+        return second_bbox[3], first_bbox[1]
+    return None
+
+
+def is_bbox_intersecting_vertical_gap(bbox, vertical_gap):
+    """判断 bbox 是否与视觉父子块之间的垂直间隔相交。"""
+    gap_top, gap_bottom = vertical_gap
+    return bbox[1] < gap_bottom and bbox[3] > gap_top
+
+
+def is_bbox_overlapping_visual_relation_block(bbox, child_bbox, main_bbox):
+    """判断 bbox 是否覆盖到父子块本身；覆盖时不能当作普通 index 噪声跳过。"""
+    return (
+        are_bboxes_overlapping(bbox, child_bbox)
+        or are_bboxes_overlapping(bbox, main_bbox)
+    )
+
+
+def are_bboxes_overlapping(first_bbox, second_bbox):
+    """判断两个 bbox 是否存在二维相交。"""
+    return not (
+        first_bbox[2] <= second_bbox[0]
+        or first_bbox[0] >= second_bbox[2]
+        or first_bbox[3] <= second_bbox[1]
+        or first_bbox[1] >= second_bbox[3]
+    )
 
 
 def block_type(block, type_by_index=None):

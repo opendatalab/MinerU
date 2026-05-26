@@ -1,6 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import html as html_lib
 import re
 from typing import Literal
+from urllib.parse import urlparse
 
 from loguru import logger
 
@@ -481,6 +483,23 @@ def parse_index_block(index_block: dict):
     return result
 
 
+def _sanitize_table_hyperlink_href(href: str) -> str:
+    """清洗表格内超链接地址，仅保留安全协议或相对链接。"""
+    normalized_href = html_lib.unescape(href).strip()
+    if not normalized_href:
+        return ""
+
+    if normalized_href.lower().startswith(("javascript:", "data:", "vbscript:")):
+        return ""
+
+    parsed = urlparse(normalized_href)
+    scheme = parsed.scheme.lower() if parsed.scheme else ""
+    if scheme and scheme not in {"http", "https", "mailto", "ftp"}:
+        return ""
+
+    return html_lib.escape(normalized_href, quote=True)
+
+
 def clean_table_html(html: str) -> str:
     """
     清洗表格HTML，只保留对表格结构表示有用的信息。
@@ -488,6 +507,8 @@ def clean_table_html(html: str) -> str:
     保留的属性：
     - colspan: 列合并
     - rowspan: 行合并
+    - a.href: 表格内超链接
+    - img.src/alt/width/height: 表格内图片
 
     清洗的内容：
     - 移除所有style属性
@@ -508,6 +529,8 @@ def clean_table_html(html: str) -> str:
     preserved_attrs = {'colspan', 'rowspan'}
     # img 标签需要额外保留的属性（内联 base64 图片内容）
     img_preserved_attrs = {'src', 'alt', 'width', 'height'}
+    # a 标签只保留清洗后的 href，避免表格超链接在中间层被清掉。
+    anchor_preserved_attrs = {'href'}
 
     def clean_tag(match):
         """清洗单个标签，只保留结构相关的属性"""
@@ -519,6 +542,7 @@ def clean_table_html(html: str) -> str:
 
         # img 标签额外保留图片相关属性（如内联 base64 src）
         current_preserved = preserved_attrs | (img_preserved_attrs if tag_name == 'img' else set())
+        current_preserved |= anchor_preserved_attrs if tag_name == 'a' else set()
 
         # 提取需要保留的属性
         kept_attrs = []
@@ -537,6 +561,11 @@ def clean_table_html(html: str) -> str:
             attr_value = attr_match.group(2) or attr_match.group(3) or attr_match.group(4) or ""
 
             # 只保留指定属性（表格结构属性，img 标签还额外保留图片内容属性）
+            if tag_name == "a" and attr_name == "href":
+                attr_value = _sanitize_table_hyperlink_href(attr_value)
+                if not attr_value:
+                    continue
+
             if attr_name in current_preserved:
                 kept_attrs.append(f'{attr_name}="{attr_value}"')
 

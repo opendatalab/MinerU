@@ -36,6 +36,13 @@ class RowSignature:
 
 
 @dataclass
+class RenderedCellSegment:
+    text: str
+    start_col: int
+    end_col: int
+
+
+@dataclass
 class RowScanResult:
     row_effective_cols: list[int]
     row_metrics: list[RowMetrics]
@@ -471,6 +478,64 @@ def build_visual_col_mapping(
         colspan = int(cell.get("colspan", 1))
         col_idx += colspan
     return mapping
+
+
+def build_row_rendered_cell_segments(
+    rows,
+    target_row_index: int,
+    initial_occupied: dict[int, set[int]] | None = None,
+) -> list[RenderedCellSegment]:
+    """构建目标行的渲染单元格段，保留每段覆盖的视觉列范围。
+
+    该函数复用表格行视觉来源扫描结果，语义与 calculate_row_rendered_segments()
+    保持一致：colspan 只算一个渲染段，rowspan 延续下来的单元格也会作为
+    目标行的渲染段返回。
+    """
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return []
+
+    target_occupied, total_cols = _scan_row_visual_sources(
+        rows,
+        target_row_index,
+        initial_occupied=initial_occupied,
+    )
+    if total_cols == 0:
+        return []
+
+    segments: list[RenderedCellSegment] = []
+    current_marker: tuple[int, int] | None = None
+    current_start_col: int | None = None
+    current_text = ""
+
+    # 连续视觉列来自同一个源单元格时，合并为一个渲染段。
+    for col_idx in range(total_cols):
+        marker = target_occupied.get(col_idx)
+        if marker is None:
+            if current_marker is not None and current_start_col is not None:
+                segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=col_idx))
+            current_marker = None
+            current_start_col = None
+            current_text = ""
+            continue
+
+        if marker != current_marker:
+            if current_marker is not None and current_start_col is not None:
+                segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=col_idx))
+            current_marker = marker
+            current_start_col = col_idx
+            source_row_idx, source_cell_idx = marker
+            current_text = ""
+            if source_row_idx >= 0:
+                source_cells = rows[source_row_idx].find_all(["td", "th"])
+                if source_cell_idx < len(source_cells):
+                    current_text = _display_cell_text(source_cells[source_cell_idx])
+
+    if current_marker is not None and current_start_col is not None:
+        segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=total_cols))
+
+    return segments
 
 
 def calculate_row_rendered_segments(rows, target_row_index: int) -> int:

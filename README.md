@@ -326,7 +326,6 @@ This repository is licensed under the [MinerU Open Source License](https://githu
 - [fast-langdetect](https://github.com/LlmKira/fast-langdetect)
 - [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - [pdftext](https://github.com/datalab-to/pdftext)
-- [pdfminer.six](https://github.com/pdfminer/pdfminer.six)
 - [pypdf](https://github.com/py-pdf/pypdf)
 - [magika](https://github.com/google/magika)
 - [vLLM](https://github.com/vllm-project/vllm)

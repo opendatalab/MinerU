@@ -2,9 +2,20 @@
 
 from ..utils.exceptions import InvalidConfig, InvalidParams
 from .base import DataReader, DataWriter
-from ..io.s3 import S3Reader, S3Writer
 from ..utils.schemas import S3Config
 from ..utils.path_utils import parse_s3_range_params, parse_s3path, remove_non_official_s3_args
+
+
+def _load_s3_io_classes():
+    """延迟加载 S3 IO 类，仅在实际读写 S3 时要求安装 boto3。"""
+    try:
+        from ..io.s3 import S3Reader, S3Writer
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "S3 reader/writer requires optional dependencies. Install them with `pip install 'mineru[s3]'`."
+        ) from exc
+
+    return S3Reader, S3Writer
 
 
 class MultiS3Mixin:
@@ -77,6 +88,7 @@ class MultiBucketS3DataReader(DataReader, MultiS3Mixin):
             conf = next(
                 filter(lambda conf: conf.bucket_name == bucket_name, self.s3_configs)
             )
+            S3Reader, _ = _load_s3_io_classes()
             self._s3_clients_h[bucket_name] = S3Reader(
                 bucket_name,
                 conf.access_key,
@@ -118,6 +130,7 @@ class MultiBucketS3DataWriter(DataWriter, MultiS3Mixin):
             conf = next(
                 filter(lambda conf: conf.bucket_name == bucket_name, self.s3_configs)
             )
+            _, S3Writer = _load_s3_io_classes()
             self._s3_clients_h[bucket_name] = S3Writer(
                 bucket_name,
                 conf.access_key,

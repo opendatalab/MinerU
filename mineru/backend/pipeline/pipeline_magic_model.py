@@ -38,7 +38,7 @@ class MagicModel:
         "number": BlockType.PAGE_NUMBER,
         "paragraph_title": BlockType.PARAGRAPH_TITLE,
         "reference_content": BlockType.REF_TEXT,
-        "seal": BlockType.SEAL,
+        "seal": BlockType.IMAGE,
         "table": BlockType.TABLE,
         "text": BlockType.TEXT,
         "vertical_text": BlockType.VERTICAL_TEXT,
@@ -117,6 +117,8 @@ class MagicModel:
                     index=block_index,
                     score=block_score,
                 )
+                if self.__is_seal_layout_block(layout_det):
+                    block["sub_type"] = "seal"
                 self.page_blocks.append(block)
 
         self.page_blocks.sort(key=lambda x: x["index"])
@@ -183,6 +185,20 @@ class MagicModel:
     def __is_ocr_text_block(layout_det: dict) -> bool:
         return layout_det.get("label") == "ocr_text"
 
+    @staticmethod
+    def __is_seal_layout_block(layout_det: dict) -> bool:
+        """判断原始 layout 是否为印章，输出层会将其规范为 image 子类型。"""
+        return layout_det.get("label") == "seal"
+
+    @staticmethod
+    def __normalize_seal_text(content):
+        """将 seal OCR 的列表或字符串结果规范为 VLM 一致的多行字符串。"""
+        if isinstance(content, list):
+            return "\n".join(str(item) for item in content if str(item).strip())
+        if isinstance(content, str):
+            return content.strip()
+        return ""
+
     def __build_return_blocks(self):
         self.preproc_blocks = []
         self.discarded_blocks = []
@@ -237,29 +253,28 @@ class MagicModel:
                 span_type = ContentType.CHART
             elif block["type"] in [BlockType.INTERLINE_EQUATION]:
                 span_type = ContentType.INTERLINE_EQUATION
-            elif block["type"] in [BlockType.SEAL]:
-                span_type = ContentType.SEAL
 
             if span_type in [
                 ContentType.IMAGE,
                 ContentType.TABLE,
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
-                ContentType.SEAL
             ]:
                 span = {
                     "bbox": block["bbox"],
                     "type": span_type,
                 }
+                if span_type == ContentType.IMAGE and block.get("sub_type") == "seal":
+                    seal_text = self.__normalize_seal_text(block.get("text"))
+                    if seal_text:
+                        span["content"] = seal_text
+                    block.pop("text", None)
                 if span_type == ContentType.TABLE:
                     span["html"] = block.get("html", "")
                     block.pop("html", None)
                 if span_type == ContentType.INTERLINE_EQUATION:
                     span["content"] = block.get("latex", "")
                     block.pop("latex", None)
-                if span_type == ContentType.SEAL:
-                    span["content"] = block.get("text")
-                    block.pop("text", None)
 
                 self.all_image_spans.append(span)
                 # 构造line对象
@@ -408,6 +423,8 @@ class MagicModel:
 
             mapping = self.VISUAL_TYPE_MAPPING[original_block_type]
             body_block = self.__make_child_block(block, mapping["body"])
+            if original_block_type in [BlockType.IMAGE, BlockType.CHART]:
+                body_block.pop("sub_type", None)
             captions = sorted(
                 [
                     self.__make_child_block(caption, mapping["caption"])
@@ -444,6 +461,8 @@ class MagicModel:
                 "index": block["index"],
                 "score": block.get("score"),
             }
+            if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.get("sub_type"):
+                two_layer_block["sub_type"] = block["sub_type"]
             # 对blocks按index排序
             two_layer_block["blocks"].sort(key=lambda x: x["index"])
             rebuilt_page_blocks.append(two_layer_block)

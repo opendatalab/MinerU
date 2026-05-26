@@ -25,7 +25,7 @@ docker build --network=host -t mineru:ppu-vllm-latest -f ppu.Dockerfile .
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/ppu.Dockerfile
 # 将基础镜像从 vllm 切换为 lmdeploy
-sed -i '3s/^/# /' ppu.Dockerfile && sed -i '5s/^# //' ppu.Dockerfile
+sed -i '3s/^/# /' ppu.Dockerfile && sed -i '5,6s/^# //' ppu.Dockerfile
 docker build --network=host -t mineru:ppu-lmdeploy-latest -f ppu.Dockerfile .
 ```
 

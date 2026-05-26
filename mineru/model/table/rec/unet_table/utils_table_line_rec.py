@@ -5,13 +5,10 @@ from typing import Iterator
 import cv2
 import numpy as np
 from scipy.spatial import distance as dist
-from skimage import measure
-from skimage import __version__ as skimage_version
-from packaging import version
 
 
 class ConnectedComponent:
-    """保存连通域的 bbox、bbox 面积和懒加载坐标，字段语义对齐 skimage.regionprops。"""
+    """保存连通域的 bbox、bbox 面积和懒加载坐标，字段语义对齐旧版 regionprops。"""
 
     def __init__(
         self,
@@ -29,7 +26,7 @@ class ConnectedComponent:
 
     @property
     def coords(self) -> np.ndarray:
-        """在组件 bbox 内提取 row/col 坐标，保持 skimage 的行优先顺序。"""
+        """在组件 bbox 内提取 row/col 坐标，保持历史行优先顺序。"""
         if self._coords is None:
             min_row, min_col, max_row, max_col = self.bbox
             label_roi = self._labels[min_row:max_row, min_col:max_col]
@@ -39,7 +36,7 @@ class ConnectedComponent:
 
 
 def _iter_connected_component_coords(binary_mask: np.ndarray) -> Iterator[ConnectedComponent]:
-    """用 OpenCV 提取 8 连通域，避免构造 skimage region 对象带来的额外开销。"""
+    """用 OpenCV 提取 8 连通域，避免构造旧版 region 对象带来的额外开销。"""
     mask = np.asarray(binary_mask)
     if mask.size == 0:
         return
@@ -356,10 +353,9 @@ def min_area_rect_box(
     """
     boxes = []
     for region in regions:
-        if version.parse(skimage_version) >= version.parse("0.26.0"):
+        region_bbox_area = getattr(region, "bbox_area", None)
+        if region_bbox_area is None:
             region_bbox_area = region.area_bbox
-        else:
-            region_bbox_area = region.bbox_area
         if region_bbox_area > H * W * 3 / 4:  # 过滤大的单元格
             continue
         rect = cv2.minAreaRect(region.coords[:, ::-1])

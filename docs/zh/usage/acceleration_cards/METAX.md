@@ -31,7 +31,7 @@ docker: 28.1.1
 ```bash
 wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/maca.Dockerfile
 # 将基础镜像从 vllm 切换为 lmdeploy
-sed -i '3s/^/# /' maca.Dockerfile && sed -i '5s/^# //' maca.Dockerfile
+sed -i '3s/^/# /' maca.Dockerfile && sed -i '5,6s/^# //' maca.Dockerfile
 docker build --network=host -t mineru:maca-lmdeploy-latest -f maca.Dockerfile .
 ```
 

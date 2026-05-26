@@ -334,6 +334,11 @@ def build_backend_choices(http_client_enable, i18n):
     return choices
 
 
+def is_http_client_backend(backend_choice):
+    """判断当前后端是否为 http-client 类型，用于控制服务器地址配置显隐。"""
+    return isinstance(backend_choice, str) and backend_choice.endswith("-http-client")
+
+
 def resolve_status_step_index(status_lines):
     """根据现有状态日志推断步骤面板中当前应高亮的步骤索引。"""
     if not status_lines:
@@ -724,6 +729,23 @@ def replace_image_with_gradio_file_urls(markdown_text, image_dir_path):
     return result
 
 
+def read_gradio_content_list_json(local_md_dir, file_name):
+    """读取本次 Gradio 解析目录中的 legacy content_list JSON，失败时返回空字符串。"""
+    content_list_path = Path(local_md_dir) / f"{file_name}_content_list.json"
+    if not content_list_path.is_file():
+        logger.warning(
+            f"Content list JSON not found for Gradio preview: {content_list_path}"
+        )
+        return ""
+    try:
+        return content_list_path.read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.warning(
+            f"Failed to read Gradio content list JSON: {content_list_path}, error={exc}"
+        )
+        return ""
+
+
 def _escape_latex_html_chars_for_gradio(content):
     """转义公式内部会被 Gradio HTML 解析链路误判的尖括号，保留 LaTeX 对齐用 &。"""
     return content.replace("<", "&lt;").replace(">", "&gt;")
@@ -940,7 +962,7 @@ async def _run_to_markdown_job(
     status_callback: Callable[[str], None] | None = None,
 ):
     if file_path is None:
-        return "", "", None, None
+        return "", "", "", None, None
 
     def emit_status(message: str) -> None:
         if status_callback is not None:
@@ -1059,12 +1081,13 @@ async def _run_to_markdown_job(
     with open(md_path, 'r', encoding='utf-8') as f:
         txt_content = f.read()
     md_content = replace_image_with_gradio_file_urls(txt_content, local_md_dir)
+    content_list_json = read_gradio_content_list_json(local_md_dir, file_name)
 
     if file_suffix in office_suffixes:
         preview_pdf_path = None
 
     emit_status(STATUS_COMPLETED)
-    return md_content, txt_content, str(archive_zip_path), preview_pdf_path
+    return md_content, txt_content, content_list_json, str(archive_zip_path), preview_pdf_path
 
 
 async def stream_to_markdown(
@@ -1083,7 +1106,7 @@ async def stream_to_markdown(
     job_task: asyncio.Task | None = None
     queue_get_task: asyncio.Task | None = None
     timer_task: asyncio.Task | None = None
-    yield status_state.render(), None, "", "", gr.skip()
+    yield status_state.render(), None, "", "", "", gr.skip()
 
     if file_path is None:
         return
@@ -1135,10 +1158,10 @@ async def stream_to_markdown(
             if queue_get_task in done:
                 message = queue_get_task.result()
                 if status_state.append(message):
-                    yield status_state.render(), None, "", "", gr.skip()
+                    yield status_state.render(), None, "", "", "", gr.skip()
             elif timer_task is not None and timer_task in done:
                 if status_state.tick():
-                    yield status_state.render(), None, "", "", gr.skip()
+                    yield status_state.render(), None, "", "", "", gr.skip()
             else:
                 queue_get_task.cancel()
                 await asyncio.gather(queue_get_task, return_exceptions=True)
@@ -1155,7 +1178,7 @@ async def stream_to_markdown(
             status_state.append(status_queue.get_nowait())
     except Exception as exc:
         status_state.append(format_failed_status(exc))
-        yield status_state.render(), None, "", "", gr.skip()
+        yield status_state.render(), None, "", "", "", gr.skip()
         raise
     finally:
         for task in (queue_get_task, timer_task, job_task):
@@ -1165,10 +1188,10 @@ async def stream_to_markdown(
             await asyncio.gather(task, return_exceptions=True)
 
     try:
-        md_content, txt_content, archive_zip_path, preview_pdf_path = await job_task
+        md_content, txt_content, content_list_json, archive_zip_path, preview_pdf_path = await job_task
     except Exception as exc:
         status_state.append(format_failed_status(exc))
-        yield status_state.render(), None, "", "", gr.skip()
+        yield status_state.render(), None, "", "", "", gr.skip()
         raise
 
     status_state.append(STATUS_COMPLETED)
@@ -1177,6 +1200,7 @@ async def stream_to_markdown(
         archive_zip_path,
         md_content,
         txt_content,
+        content_list_json,
         preview_pdf_path,
     )
 
@@ -1527,6 +1551,7 @@ def main(ctx,
             "result_file": "Result file",
             "md_rendering": "Markdown rendering",
             "md_text": "Markdown text",
+            "content_list_json": "JSON Content List",
             "status_idle_title": "Waiting",
             "status_idle_hint": "Upload a file and start conversion.",
             "status_latest": "Latest status",
@@ -1594,6 +1619,7 @@ def main(ctx,
             "result_file": "结果文件",
             "md_rendering": "Markdown 渲染",
             "md_text": "Markdown 文本",
+            "content_list_json": "JSON 内容列表",
             "status_idle_title": "等待任务",
             "status_idle_hint": "上传文件后开始转换。",
             "status_latest": "最新状态",
@@ -1654,10 +1680,7 @@ def main(ctx,
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
         image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
-        if "http-client" in backend_choice:
-            client_options_update = gr.update(visible=True)
-        else:
-            client_options_update = gr.update(visible=False)
+        client_options_update = gr.update(visible=is_http_client_backend(backend_choice))
         if "vlm" in backend_choice:
             ocr_options_update = gr.update(visible=False)
         else:
@@ -1735,6 +1758,13 @@ def main(ctx,
                     value=preferred_option,
                     info=get_backend_info(preferred_option),
                 )
+                with gr.Row(visible=is_http_client_backend(preferred_option)) as client_options:
+                    url = gr.Textbox(
+                        label=i18n("server_url"),
+                        value='http://localhost:30000',
+                        placeholder='http://localhost:30000',
+                        info=i18n("server_url_info"),
+                    )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
                     max_pages = gr.Slider(1, max_convert_pages, max_convert_pages, step=1, label=i18n("max_pages"))
@@ -1790,12 +1820,24 @@ def main(ctx,
                             **_md_copy_kwargs
                         )
                     with gr.Tab(i18n("md_text")):
-                        md_text = gr.TextArea(
+                        md_text = gr.Code(
                             lines=28,
+                            language="markdown",
                             label=i18n("md_text"),
+                            interactive=False,
+                            wrap_lines=True,
                             show_label=False,
                             elem_classes=["mineru-markdown-text"],
-                            **_textarea_copy_kwargs
+                        )
+                    with gr.Tab(i18n("content_list_json")):
+                        content_list_json = gr.Code(
+                            lines=28,
+                            language="json",
+                            label=i18n("content_list_json"),
+                            interactive=False,
+                            wrap_lines=True,
+                            show_label=False,
+                            elem_classes=["mineru-content-list-json"],
                         )
 
         if example_enable:
@@ -1816,13 +1858,6 @@ def main(ctx,
 
         with gr.Column(elem_classes=["mineru-advanced-popover"]):
             with gr.Column(elem_classes=["mineru-advanced-card"]):
-                with gr.Row(visible=False) as client_options:
-                    url = gr.Textbox(
-                        label=i18n("server_url"),
-                        value='http://localhost:30000',
-                        placeholder='http://localhost:30000',
-                        info=i18n("server_url_info"),
-                    )
                 with gr.Group():
                     table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
                     formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
@@ -1860,7 +1895,7 @@ def main(ctx,
             outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
             **_private_api_kwargs
         )
-        clear_bu.add([input_file, md, doc_show, md_text, output_file, is_ocr, office_html, status_panel])
+        clear_bu.add([input_file, md, doc_show, md_text, content_list_json, output_file, is_ocr, office_html, status_panel])
 
         def reset_primary_ui():
             """清除主界面状态。高级气泡由前端点击外部逻辑自动收起。"""
@@ -1869,13 +1904,14 @@ def main(ctx,
                 gr.update(value=None, visible=True),
                 gr.update(value="", visible=False),
                 gr.update(value=render_status_steps_html("", i18n)),
+                gr.update(value=""),
             )
 
         # 清除按钮额外重置 UI 可见性（ClearButton 不一定触发 input_file.change）
         clear_bu.click(
             fn=reset_primary_ui,
             inputs=[],
-            outputs=[options_group, doc_show, office_html, status_panel],
+            outputs=[options_group, doc_show, office_html, status_panel, content_list_json],
             **_private_api_kwargs
         )
 
@@ -1913,7 +1949,7 @@ def main(ctx,
         change_bu.click(
             fn=convert_to_markdown_stream,
             inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
-            outputs=[status_panel, output_file, md, md_text, doc_show],
+            outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )
 
