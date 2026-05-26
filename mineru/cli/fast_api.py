@@ -449,6 +449,8 @@ def _upload_images_and_replace_md_urls(
 
     Returns (base_url, full_bucket_name) so callers can construct URLs.
     """
+    import json as _json
+
     import boto3
     from botocore.config import Config as BotocoreConfig
 
@@ -469,7 +471,7 @@ def _upload_images_and_replace_md_urls(
         ),
     )
 
-    # Ensure bucket exists
+    # Ensure bucket exists and is publicly readable
     try:
         s3_client.head_bucket(Bucket=full_bucket_name)
     except Exception:
@@ -479,6 +481,23 @@ def _upload_images_and_replace_md_urls(
         except Exception as e:
             logger.error(f"Failed to create S3 bucket {full_bucket_name}: {e}")
             raise
+
+    # Set public-read bucket policy so browser can access objects directly
+    try:
+        s3_client.put_bucket_policy(
+            Bucket=full_bucket_name,
+            Policy=_json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [f"arn:aws:s3:::{full_bucket_name}/*"],
+                }],
+            }),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to set bucket policy: {e}")
 
     base_url = f"{endpoint_url}/{full_bucket_name}"
 
