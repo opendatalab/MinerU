@@ -148,8 +148,8 @@ def can_auto_merge_text_blocks(
     """按段落首尾文本和行几何规则判断 text 是否可合并。"""
     current_lines = current_block.get("lines", [])
     previous_lines = previous_block.get("lines", [])
-    current_metric_lines = _resolve_auto_metric_lines(current_block)
-    previous_metric_lines = _resolve_auto_metric_lines(previous_block)
+    current_metric_lines = _resolve_local_metric_lines(current_block)
+    previous_metric_lines = _resolve_local_metric_lines(previous_block)
     if (
         not current_lines
         or not previous_lines
@@ -280,11 +280,19 @@ def _resolve_auto_metric_lines(block):
     return block.get(OCR_DET_LINES_KEY) or block.get("lines", [])
 
 
+def _resolve_local_metric_lines(block):
+    """过滤跨页追加行，避免已合并内容污染后续本地几何判定。"""
+    metric_lines = _resolve_auto_metric_lines(block)
+    local_metric_lines = [
+        line for line in metric_lines if not _is_cross_page_line(line)
+    ]
+    return local_metric_lines or metric_lines
+
+
 def _merge_text_block(current_block, previous_block, is_cross_page):
     if is_cross_page:
-        for line in current_block.get("lines", []):
-            for span in line.get("spans", []):
-                span[SplitFlag.CROSS_PAGE] = True
+        _mark_lines_cross_page(current_block.get("lines", []))
+        _mark_lines_cross_page(current_block.get(OCR_DET_LINES_KEY, []))
 
     previous_block.setdefault("lines", []).extend(current_block.get("lines", []))
     if current_block.get(OCR_DET_LINES_KEY):
@@ -294,6 +302,19 @@ def _merge_text_block(current_block, previous_block, is_cross_page):
     current_block["lines"] = []
     current_block[OCR_DET_LINES_KEY] = []
     current_block[SplitFlag.LINES_DELETED] = True
+
+
+def _mark_lines_cross_page(lines):
+    """给跨页合并进来的文本行和 det hint 行同步打跨页标记。"""
+    for line in lines:
+        for span in line.get("spans", []):
+            span[SplitFlag.CROSS_PAGE] = True
+
+
+def _is_cross_page_line(line):
+    """判断整行是否来自跨页追加，供几何度量时排除。"""
+    spans = line.get("spans", [])
+    return bool(spans) and all(span.get(SplitFlag.CROSS_PAGE) for span in spans)
 
 
 def _merge_ref_text_list_block(current_block, previous_block, is_cross_page):
