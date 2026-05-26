@@ -668,15 +668,15 @@ def is_visual_neighbor(
         between_block = ordered_blocks[pos]
         if block_type(between_block, type_by_index) in allowed_between_types:
             continue
-        if is_index_noise_between_visual_blocks(between_block, child_block, main_block):
+        if is_block_outside_visual_gap(between_block, child_block, main_block):
             continue
         return False
 
     return True
 
 
-def is_index_noise_between_visual_blocks(between_block, child_block, main_block):
-    """判断 index 夹在中间的块是否只是几何上不在父子之间的噪声块。"""
+def is_block_outside_visual_gap(between_block, child_block, main_block):
+    """判断阅读顺序夹在中间的块是否没有落入视觉父子块的垂直间隔。"""
     visual_gap = vertical_gap_between_blocks(child_block, main_block)
     if visual_gap is None:
         return False
