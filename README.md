@@ -65,7 +65,7 @@ MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI c
 | AI Coding Tools | MCP Server — Cursor · Claude Desktop · Windsurf |
 | RAG Frameworks | LangChain · LlamaIndex · RAGFlow · RAG-Anything · Flowise · Dify · FastGPT |
 | Development | Python / Go / TypeScript SDK · CLI · REST API · Docker |
-| No-Code | mineru.net online · Gradio WebUI · Desktop client |
+| No-Code | mineru.net online · [FolioMD](https://foliomd.es) · Gradio WebUI · Desktop client |
 
 **🖥️ Deployment (Private · Fully Offline)**
 
