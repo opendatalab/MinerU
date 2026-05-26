@@ -52,20 +52,7 @@ OCR_DET_BASE_BATCH_SIZE = 8
 LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD = 0.8
 
 not_extract_list = [item.value for item in NotExtractType]
-HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list) | {
-    MineruBlockType.ABSTRACT,
-    MineruBlockType.CAPTION,
-    MineruBlockType.FOOTNOTE,
-    MineruBlockType.DOC_TITLE,
-    MineruBlockType.PARAGRAPH_TITLE,
-    MineruBlockType.LIST,
-    MineruBlockType.INDEX,
-    MineruBlockType.ASIDE_TEXT,
-    MineruBlockType.PHONETIC,
-    MineruBlockType.CHART_CAPTION,
-    MineruBlockType.CHART_FOOTNOTE,
-    MineruBlockType.CODE_FOOTNOTE,
-}
+HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
 
 
 def _is_hybrid_ocr_det_candidate(block):
@@ -552,7 +539,7 @@ def _apply_layout_title_split_for_window(
     language,
     batch_ratio,
 ):
-    """为VLM-OCR路径补跑layout小模型，拆分标题并追加空文本OCR det sidecar。"""
+    """为VLM-OCR路径补跑layout小模型，先基于VLM原始title做OCR det，再拆分标题。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
         lang=language,
@@ -562,11 +549,6 @@ def _apply_layout_title_split_for_window(
         hybrid_pipeline_model,
         images_pil_list,
         batch_ratio,
-    )
-    _apply_layout_title_split(
-        model_list,
-        images_layout_res,
-        [_normalize_page_size(image) for image in images_pil_list],
     )
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
     ocr_res_list = ocr_det(
@@ -584,6 +566,11 @@ def _apply_layout_title_split_for_window(
         [[] for _ in images_pil_list],
         ocr_res_list,
         keep_ocr_text=False,
+    )
+    _apply_layout_title_split(
+        model_list,
+        images_layout_res,
+        [_normalize_page_size(image) for image in images_pil_list],
     )
     return hybrid_pipeline_model
 

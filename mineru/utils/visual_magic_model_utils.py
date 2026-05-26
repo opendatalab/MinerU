@@ -666,10 +666,67 @@ def is_visual_neighbor(
 
     for pos in range(start_pos, end_pos):
         between_block = ordered_blocks[pos]
-        if block_type(between_block, type_by_index) not in allowed_between_types:
-            return False
+        if block_type(between_block, type_by_index) in allowed_between_types:
+            continue
+        if is_block_outside_visual_gap(between_block, child_block, main_block):
+            continue
+        return False
 
     return True
+
+
+def is_block_outside_visual_gap(between_block, child_block, main_block):
+    """判断阅读顺序夹在中间的块是否没有落入视觉父子块的垂直间隔。"""
+    visual_gap = vertical_gap_between_blocks(child_block, main_block)
+    if visual_gap is None:
+        return False
+
+    if is_bbox_overlapping_visual_relation_block(
+        between_block["bbox"],
+        child_block["bbox"],
+        main_block["bbox"],
+    ):
+        return False
+
+    if not is_bbox_intersecting_vertical_gap(between_block["bbox"], visual_gap):
+        return True
+
+    return False
+
+
+def vertical_gap_between_blocks(first_block, second_block):
+    """计算两个块上下分离时的垂直间隔；发生纵向重叠时保持严格阻断。"""
+    first_bbox = first_block["bbox"]
+    second_bbox = second_block["bbox"]
+    if first_bbox[3] <= second_bbox[1]:
+        return first_bbox[3], second_bbox[1]
+    if second_bbox[3] <= first_bbox[1]:
+        return second_bbox[3], first_bbox[1]
+    return None
+
+
+def is_bbox_intersecting_vertical_gap(bbox, vertical_gap):
+    """判断 bbox 是否与视觉父子块之间的垂直间隔相交。"""
+    gap_top, gap_bottom = vertical_gap
+    return bbox[1] < gap_bottom and bbox[3] > gap_top
+
+
+def is_bbox_overlapping_visual_relation_block(bbox, child_bbox, main_bbox):
+    """判断 bbox 是否覆盖到父子块本身；覆盖时不能当作普通 index 噪声跳过。"""
+    return (
+        are_bboxes_overlapping(bbox, child_bbox)
+        or are_bboxes_overlapping(bbox, main_bbox)
+    )
+
+
+def are_bboxes_overlapping(first_bbox, second_bbox):
+    """判断两个 bbox 是否存在二维相交。"""
+    return not (
+        first_bbox[2] <= second_bbox[0]
+        or first_bbox[0] >= second_bbox[2]
+        or first_bbox[3] <= second_bbox[1]
+        or first_bbox[1] >= second_bbox[3]
+    )
 
 
 def block_type(block, type_by_index=None):

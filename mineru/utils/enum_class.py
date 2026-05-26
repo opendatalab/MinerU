@@ -130,3 +130,4 @@ class NotExtractType(Enum):
     TABLE_FOOTNOTE = BlockType.TABLE_FOOTNOTE
     IMAGE_FOOTNOTE = BlockType.IMAGE_FOOTNOTE
     CODE_CAPTION = BlockType.CODE_CAPTION
+    PHONETIC = BlockType.PHONETIC
