@@ -28,7 +28,6 @@ from ...utils.pdfium_guard import (
 
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
 class ModelSingleton:
     _instance = None
