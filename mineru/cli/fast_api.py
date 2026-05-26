@@ -10,7 +10,7 @@ import threading
 import uuid
 import zipfile
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any, Optional
@@ -64,6 +64,7 @@ from mineru.utils.check_sys_env import is_mac_environment
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
     get_processing_window_size,
+    read_config,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
 from mineru.utils.pdf_image_tools import shutdown_pdf_render_executor
@@ -166,6 +167,8 @@ class AsyncParseTask:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     error: Optional[str] = None
+    _s3_base_url: Optional[str] = field(default=None, repr=False)
+    _s3_bucket: Optional[str] = field(default=None, repr=False)
 
     def to_status_payload(
         self,
@@ -378,6 +381,122 @@ def encode_image(image_path: str) -> str:
         return b64encode(f.read()).decode()
 
 
+def _get_s3_upload_config() -> Optional[dict[str, str]]:
+    """Check if S3/MinIO upload is configured and return the config dict."""
+    config = read_config()
+    if config is None:
+        return None
+    bucket_info = config.get('bucket_info')
+    if not bucket_info:
+        return None
+    bucket_name = list(bucket_info.keys())[0]
+    info = bucket_info[bucket_name]
+    if len(info) < 3 or not all(info[:3]):
+        return None
+    access_key, secret_key, endpoint_url = info[0], info[1], info[2]
+    return {
+        'bucket_name': bucket_name,
+        'access_key': access_key,
+        'secret_key': secret_key,
+        'endpoint_url': endpoint_url,
+    }
+
+
+def _upload_images_and_replace_md_urls(
+    output_dir: str,
+    pdf_file_names: list[str],
+    backend: str,
+    parse_method: str,
+    s3_config: dict[str, str],
+) -> tuple[str, str]:
+    """Upload images to S3/MinIO and replace local paths with URLs in markdown.
+
+    Returns (base_url, full_bucket_name) so callers can construct URLs.
+    """
+    import boto3
+    from botocore.config import Config as BotocoreConfig
+
+    endpoint_url = s3_config['endpoint_url']
+    if not endpoint_url.startswith(('http://', 'https://')):
+        endpoint_url = f'http://{endpoint_url}'
+
+    full_bucket_name = f"{s3_config['access_key']}-{s3_config['bucket_name']}"
+
+    s3_client = boto3.client(
+        service_name='s3',
+        aws_access_key_id=s3_config['access_key'],
+        aws_secret_access_key=s3_config['secret_key'],
+        endpoint_url=endpoint_url,
+        config=BotocoreConfig(
+            s3={'addressing_style': 'path'},
+            retries={'max_attempts': 3, 'mode': 'standard'},
+        ),
+    )
+
+    # Ensure bucket exists
+    try:
+        s3_client.head_bucket(Bucket=full_bucket_name)
+    except Exception:
+        try:
+            s3_client.create_bucket(Bucket=full_bucket_name)
+            logger.info(f"Created S3 bucket: {full_bucket_name}")
+        except Exception as e:
+            logger.error(f"Failed to create S3 bucket {full_bucket_name}: {e}")
+            raise
+
+    base_url = f"{endpoint_url}/{full_bucket_name}"
+
+    for pdf_name in pdf_file_names:
+        try:
+            parse_dir = get_parse_dir(output_dir, pdf_name, backend, parse_method)
+        except ValueError:
+            continue
+
+        images_dir = os.path.join(parse_dir, "images")
+        if not os.path.isdir(images_dir):
+            continue
+
+        # Upload each image and build filename -> URL mapping
+        url_map: dict[str, str] = {}
+        for img_path in sorted(Path(images_dir).iterdir()):
+            if not img_path.is_file():
+                continue
+            if img_path.suffix.lstrip(".").lower() not in RESULT_IMAGE_SUFFIXES:
+                continue
+
+            img_filename = img_path.name
+            s3_key = f"{pdf_name}/images/{img_filename}"
+            content_type = mimetypes.guess_type(str(img_path))[0] or 'image/jpeg'
+
+            try:
+                s3_client.put_object(
+                    Bucket=full_bucket_name,
+                    Key=s3_key,
+                    Body=img_path.read_bytes(),
+                    ContentType=content_type,
+                )
+                url_map[img_filename] = f"{base_url}/{s3_key}"
+                logger.debug(f"Uploaded image to S3: {s3_key}")
+            except Exception as e:
+                logger.error(f"Failed to upload image {img_filename}: {e}")
+
+        # Replace local image paths with S3 URLs in markdown
+        md_path = os.path.join(parse_dir, f"{pdf_name}.md")
+        if os.path.exists(md_path) and url_map:
+            with open(md_path, "r", encoding="utf-8") as f:
+                md_content = f.read()
+
+            for img_filename, s3_url in url_map.items():
+                md_content = md_content.replace(
+                    f"![](images/{img_filename})", f"![]({s3_url})"
+                )
+
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(md_content)
+
+    return base_url, full_bucket_name
+
+
 def get_images_dir_image_paths(images_dir: str) -> list[str]:
     """Return all supported image files directly under images_dir."""
     if not os.path.isdir(images_dir):
@@ -441,6 +560,7 @@ def build_result_dict(
     return_model_output: bool,
     return_content_list: bool,
     return_images: bool,
+    s3_base_url: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     result_dict: dict[str, dict[str, Any]] = {}
     for pdf_name in pdf_file_names:
@@ -469,12 +589,20 @@ def build_result_dict(
         if return_images:
             images_dir = os.path.join(parse_dir, "images")
             image_paths = get_images_dir_image_paths(images_dir)
-            data["images"] = {
-                os.path.basename(
-                    image_path
-                ): f"data:{get_image_mime_type(image_path)};base64,{encode_image(image_path)}"
-                for image_path in image_paths
-            }
+            if s3_base_url:
+                data["images"] = {
+                    os.path.basename(image_path): (
+                        f"{s3_base_url}/{pdf_name}/images/{os.path.basename(image_path)}"
+                    )
+                    for image_path in image_paths
+                }
+            else:
+                data["images"] = {
+                    os.path.basename(
+                        image_path
+                    ): f"data:{get_image_mime_type(image_path)};base64,{encode_image(image_path)}"
+                    for image_path in image_paths
+                }
     return result_dict
 
 
@@ -627,6 +755,7 @@ async def build_result_response(
     response_format_zip: bool,
     return_original_file: bool,
     zip_filename: str = "results.zip",
+    s3_base_url: str | None = None,
 ) -> Response:
     if response_format_zip:
         zip_task = asyncio.create_task(
@@ -668,6 +797,7 @@ async def build_result_response(
         return_model_output=return_model_output,
         return_content_list=return_content_list,
         return_images=return_images,
+        s3_base_url=s3_base_url,
     )
     return JSONResponse(
         status_code=status_code,
@@ -711,6 +841,7 @@ async def build_sync_file_parse_response(
             response_format_zip=task.response_format_zip,
             return_original_file=task.return_original_file,
             zip_filename=f"{task.task_id}.zip",
+            s3_base_url=task._s3_base_url,
         )
         response.headers[FILE_PARSE_TASK_ID_HEADER] = task.task_id
         response.headers[FILE_PARSE_TASK_STATUS_HEADER] = task.status
@@ -729,6 +860,7 @@ async def build_sync_file_parse_response(
         return_model_output=task.return_model_output,
         return_content_list=task.return_content_list,
         return_images=task.return_images,
+        s3_base_url=task._s3_base_url,
     )
     return JSONResponse(
         status_code=200,
@@ -1166,6 +1298,22 @@ class AsyncTaskManager:
             request_options=task,
             config=config,
         )
+
+        # Upload images to S3/MinIO if configured
+        s3_config = _get_s3_upload_config()
+        if s3_config:
+            try:
+                task._s3_base_url, task._s3_bucket = await asyncio.to_thread(
+                    _upload_images_and_replace_md_urls,
+                    output_dir=task.output_dir,
+                    pdf_file_names=task.file_names,
+                    backend=task.backend,
+                    parse_method=task.parse_method,
+                    s3_config=s3_config,
+                )
+            except Exception as exc:
+                logger.error(f"Failed to upload images to S3/MinIO: {exc}")
+
         task.status = TASK_COMPLETED
         task.completed_at = utc_now_iso()
         self._signal_task_event(task.task_id)
@@ -1335,6 +1483,7 @@ async def get_async_task_result(
         response_format_zip=task.response_format_zip,
         return_original_file=task.return_original_file,
         zip_filename=f"{task.task_id}.zip",
+        s3_base_url=task._s3_base_url,
     )
 
 
