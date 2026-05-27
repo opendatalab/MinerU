@@ -3,16 +3,12 @@
 import os
 import time
 
-import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils.ocr_det_utils import (
-    detect_ocr_boxes_from_padded_crop,
-    get_ch_lite_ocr_det_model,
-)
 from mineru.backend.utils.para_block_utils import (
+    OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
     iter_block_spans,
@@ -34,6 +30,26 @@ llm_aided_config = get_llm_aided_config()
 if llm_aided_config:
     title_aided_config = llm_aided_config.get('title_aided', {})
     title_aided_enable = title_aided_config.get('enable', False)
+
+
+def _resolve_title_line_avg_height(title_block):
+    """解析标题平均行高：优先复用 Hybrid OCR det 行提示，再回退到原始行或块高。"""
+    for lines_key in [OCR_DET_LINES_KEY, "lines"]:
+        line_heights = []
+        for line in title_block.get(lines_key, []):
+            bbox = line.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            line_height = bbox[3] - bbox[1]
+            if line_height > 0:
+                line_heights.append(line_height)
+        if line_heights:
+            return round(sum(line_heights) / len(line_heights))
+
+    bbox = title_block.get("bbox", [0, 0, 0, 0])
+    if len(bbox) >= 4:
+        return bbox[3] - bbox[1]
+    return 0
 
 
 def blocks_to_page_info(
@@ -75,28 +91,8 @@ def blocks_to_page_info(
 
     # 如果有标题优化需求，计算标题的平均行高
     if title_aided_enable:
-        if _vlm_ocr_enable:  # vlm_ocr导致没有line信息，需要重新det获取平均行高
-            ocr_model = get_ch_lite_ocr_det_model()
-            for title_block in title_blocks:
-                ocr_det_res, _ = detect_ocr_boxes_from_padded_crop(
-                    title_block.get('bbox'),
-                    page_pil_img,
-                    scale,
-                    ocr_model=ocr_model,
-                )
-                if len(ocr_det_res) > 0:
-                    # 计算所有res的平均高度
-                    avg_height = np.mean([box[2][1] - box[0][1] for box in ocr_det_res])
-                    title_block['line_avg_height'] = round(avg_height/scale)
-        else:  # 有line信息，直接计算平均行高
-            for title_block in title_blocks:
-                lines = title_block.get('lines', [])
-                if lines:
-                    # 使用列表推导式和内置函数,一次性计算平均高度
-                    avg_height = sum(line['bbox'][3] - line['bbox'][1] for line in lines) / len(lines)
-                    title_block['line_avg_height'] = round(avg_height)
-                else:
-                    title_block['line_avg_height'] = title_block['bbox'][3] - title_block['bbox'][1]
+        for title_block in title_blocks:
+            title_block['line_avg_height'] = _resolve_title_line_avg_height(title_block)
 
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
