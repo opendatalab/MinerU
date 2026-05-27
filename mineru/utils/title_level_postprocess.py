@@ -50,10 +50,10 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
         )
     elif backend == "vlm":
         from mineru.backend.vlm.model_output_to_middle_json import (
-            finalize_middle_json_from_preproc,
+            finalize_middle_json,
         )
 
-        finalize_middle_json_from_preproc(
+        finalize_middle_json(
             pdf_info,
         )
     elif backend == "hybrid":
