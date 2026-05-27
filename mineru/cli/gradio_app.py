@@ -3,6 +3,7 @@
 import asyncio
 import html as html_lib
 import httpx
+import json
 import os
 import re
 import sys
@@ -958,6 +959,7 @@ async def _run_to_markdown_job(
     language="ch",
     backend="pipeline",
     url=None,
+    server_headers=None,
     api_url=None,
     status_callback: Callable[[str], None] | None = None,
 ):
@@ -992,6 +994,7 @@ async def _run_to_markdown_job(
         return_images=True,
         response_format_zip=True,
         return_original_file=True,
+        server_headers=server_headers,
     )
     upload_assets = [
         _api_client.UploadAsset(
@@ -1100,6 +1103,7 @@ async def stream_to_markdown(
     language="ch",
     backend="pipeline",
     url=None,
+    server_headers=None,
     api_url=None,
 ):
     status_state = StatusPanelState()
@@ -1129,6 +1133,7 @@ async def stream_to_markdown(
                 language=language,
                 backend=backend,
                 url=url,
+                server_headers=server_headers,
                 api_url=api_url,
                 status_callback=enqueue_status,
             )
@@ -1526,6 +1531,8 @@ def main(ctx,
             "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "Server URL",
             "server_url_info": "OpenAI-compatible server URL for http-client backend.",
+            "server_headers": "Server Headers",
+            "server_headers_info": "Custom HTTP headers (JSON) for http-client backend, e.g. {\"Authorization\": \"Bearer token\"}",
             "recognition_options": "**Recognition Options:**",
             "advanced_options": "Advanced options",
             "table_enable": "Enable table recognition",
@@ -1594,6 +1601,8 @@ def main(ctx,
             "backend_label_remote_hybrid": "Remote Hybrid",
             "server_url": "服务器地址",
             "server_url_info": "http-client 后端的 OpenAI 兼容服务器地址。",
+            "server_headers": "服务器请求头",
+            "server_headers_info": "http-client 后端的自定义 HTTP 请求头（JSON），例如 {\"Authorization\": \"Bearer token\"}",
             "recognition_options": "**识别选项：**",
             "advanced_options": "高级选项",
             "table_enable": "启用表格识别",
@@ -1717,9 +1726,17 @@ def main(ctx,
         language="ch",
         backend="pipeline",
         url=None,
+        server_headers=None,
         request: gr.Request = None,
     ):
         request_locale = resolve_request_locale(request)
+        # Parse server_headers from JSON string if provided
+        parsed_server_headers = None
+        if server_headers and server_headers.strip():
+            try:
+                parsed_server_headers = json.loads(server_headers)
+            except (json.JSONDecodeError, TypeError):
+                parsed_server_headers = None
         async for update in stream_to_markdown(
             file_path=file_path,
             end_pages=end_pages,
@@ -1730,6 +1747,7 @@ def main(ctx,
             language=language,
             backend=backend,
             url=url,
+            server_headers=parsed_server_headers,
             api_url=api_url,
         ):
             update = (
@@ -1764,6 +1782,12 @@ def main(ctx,
                         value='http://localhost:30000',
                         placeholder='http://localhost:30000',
                         info=i18n("server_url_info"),
+                    )
+                    server_headers = gr.Textbox(
+                        label=i18n("server_headers"),
+                        value='',
+                        placeholder='{"Authorization": "Bearer token"}',
+                        info=i18n("server_headers_info"),
                     )
                 # 下面这些选项在上传 office 文件时会被自动隐藏
                 with gr.Group() as options_group:
@@ -1948,7 +1972,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url, server_headers],
             outputs=[status_panel, output_file, md, md_text, content_list_json, doc_show],
             **_to_md_api_kwargs
         )

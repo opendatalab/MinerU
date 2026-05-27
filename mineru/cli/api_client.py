@@ -819,6 +819,7 @@ def build_parse_request_form_data(
     return_images: bool,
     response_format_zip: bool,
     return_original_file: bool,
+    server_headers: Optional[dict[str, str]] = None,
 ) -> dict[str, str | list[str]]:
     effective_lang_list = list(lang_list) or ["ch"]
     data: dict[str, str | list[str]] = {
@@ -840,6 +841,8 @@ def build_parse_request_form_data(
     }
     if server_url:
         data["server_url"] = server_url
+    if server_headers:
+        data["server_headers"] = json.dumps(server_headers, ensure_ascii=False)
     return data
 
 

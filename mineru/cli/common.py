@@ -638,6 +638,7 @@ def do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        server_headers: dict[str, str] | None = None,
         **kwargs,
 ):
     need_remove_index = _process_office_doc(
@@ -670,6 +671,9 @@ def do_parse(
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
         )
     else:
+        # Inject server_headers into kwargs for VLM / hybrid backends
+        if server_headers is not None:
+            kwargs["server_headers"] = server_headers
         if backend.startswith("vlm-"):
             backend = backend[4:]
 
@@ -731,6 +735,7 @@ async def aio_do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        server_headers: dict[str, str] | None = None,
         **kwargs,
 ):
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
@@ -766,6 +771,9 @@ async def aio_do_parse(
             f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
         )
     else:
+        # Inject server_headers into kwargs for VLM / hybrid backends
+        if server_headers is not None:
+            kwargs["server_headers"] = server_headers
         if backend.startswith("vlm-"):
             backend = backend[4:]
 

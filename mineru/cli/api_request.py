@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import json
 from dataclasses import dataclass
 from typing import Annotated, Optional
 
@@ -35,6 +36,7 @@ class ParseRequestOptions:
     return_original_file: bool
     start_page_id: int
     end_page_id: int
+    server_headers: Optional[dict[str, str]]
 
 
 def validate_parse_method(parse_method: str) -> str:
@@ -163,6 +165,17 @@ async def parse_request_form(
         int,
         Form(description="The ending page for PDF parsing, beginning from 0"),
     ] = 99999,
+    server_headers: Annotated[
+        Optional[str],
+        Form(
+            description=(
+                "(Adapted only for <vlm/hybrid>-http-client backend) "
+                "JSON object specifying custom HTTP headers to include when "
+                "connecting to the remote OpenAI-compatible server, e.g. "
+                '{\"Authorization\": \"Bearer token\"}'
+            ),
+        ),
+    ] = None,
 ) -> ParseRequestOptions:
     """解析 API/Router 共用的 multipart 表单，并保持 Swagger 参数同源。"""
     validate_public_http_client_request(
@@ -176,6 +189,23 @@ async def parse_request_form(
         server_url=server_url,
     )
     effective_return_original_file = return_original_file and response_format_zip
+    parsed_server_headers: Optional[dict[str, str]] = None
+    if server_headers is not None:
+        try:
+            parsed_server_headers = json.loads(server_headers)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid server_headers JSON: {exc}",
+            )
+        if not isinstance(parsed_server_headers, dict) or not all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in parsed_server_headers.items()
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="server_headers must be a JSON object with string keys and string values",
+            )
     return ParseRequestOptions(
         files=files,
         lang_list=lang_list,
@@ -194,4 +224,5 @@ async def parse_request_form(
         return_original_file=effective_return_original_file,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
+        server_headers=parsed_server_headers,
     )

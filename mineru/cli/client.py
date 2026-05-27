@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
+import json
 import os
 import sys
 import threading
@@ -623,6 +624,7 @@ def build_request_form_data(
     start_page_id: int,
     end_page_id: Optional[int],
     image_analysis: bool = True,
+    server_headers: Optional[dict[str, str]] = None,
 ) -> dict[str, str | list[str]]:
     return _api_client.build_parse_request_form_data(
         lang_list=[lang],
@@ -641,6 +643,7 @@ def build_request_form_data(
         return_images=True,
         response_format_zip=True,
         return_original_file=True,
+        server_headers=server_headers,
     )
 
 
@@ -847,6 +850,7 @@ async def run_orchestrated_cli(
     table_enable: bool,
     image_analysis: bool = True,
     extra_cli_args: tuple[str, ...] = (),
+    server_headers: Optional[dict[str, str]] = None,
 ) -> None:
     if start_page_id < 0:
         raise click.ClickException("--start must be greater than or equal to 0")
@@ -916,6 +920,7 @@ async def run_orchestrated_cli(
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
+                server_headers=server_headers,
             )
             visualization_context = create_visualization_context()
             failures = await execute_planned_tasks(
@@ -1099,6 +1104,17 @@ async def run_orchestrated_cli(
     default=True,
     help="Enable image/chart analysis for VLM and hybrid backends. Default is True. ",
 )
+@click.option(
+    "--server-headers",
+    "server_headers",
+    type=str,
+    default=None,
+    help="""
+    When the backend is `<vlm/hybrid>-http-client`, specify custom HTTP headers
+    as a JSON object to include when connecting to the remote server,
+    e.g.: --server-headers '{"Authorization": "Bearer token"}'
+    """,
+)
 def main(
     ctx: click.Context,
     input_path: Path,
@@ -1113,7 +1129,23 @@ def main(
     formula_enable: bool,
     table_enable: bool,
     image_analysis: bool,
+    server_headers: Optional[str],
 ) -> None:
+    parsed_server_headers: Optional[dict[str, str]] = None
+    if server_headers is not None:
+        try:
+            parsed_server_headers = json.loads(server_headers)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise click.ClickException(
+                f"Invalid --server-headers JSON: {exc}"
+            ) from exc
+        if not isinstance(parsed_server_headers, dict) or not all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in parsed_server_headers.items()
+        ):
+            raise click.ClickException(
+                "--server-headers must be a JSON object with string keys and string values"
+            )
     asyncio.run(
         run_orchestrated_cli(
             input_path=input_path,
@@ -1129,6 +1161,7 @@ def main(
             table_enable=table_enable,
             image_analysis=image_analysis,
             extra_cli_args=tuple(ctx.args),
+            server_headers=parsed_server_headers,
         )
     )
 

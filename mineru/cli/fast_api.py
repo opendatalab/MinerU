@@ -162,6 +162,7 @@ class AsyncParseTask:
     end_page_id: int
     upload_names: list[str]
     uploads: list[str]
+    server_headers: Optional[dict[str, str]] = None
     submit_order: int = 0
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -848,6 +849,7 @@ async def run_parse_job(
         f_dump_content_list=request_options.return_content_list,
         start_page_id=request_options.start_page_id,
         end_page_id=request_options.end_page_id,
+        server_headers=request_options.server_headers,
         **config,
     )
 
@@ -899,6 +901,7 @@ async def create_async_parse_task(
             return_original_file=request_options.return_original_file,
             start_page_id=request_options.start_page_id,
             end_page_id=request_options.end_page_id,
+            server_headers=request_options.server_headers,
             upload_names=[upload.original_name for upload in uploads],
             uploads=[upload.path for upload in uploads],
         )
