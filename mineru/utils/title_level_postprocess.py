@@ -5,163 +5,64 @@ from copy import deepcopy
 from typing import Any
 
 from mineru.utils.config_reader import get_llm_aided_config
-from mineru.utils.enum_class import BlockType
 from mineru.utils.llm_aided import llm_aided_title
 
 
 SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
-PENDING_TITLE_ROLE_LEVELS = {1, 2}
 
 
-def _resolve_title_aided_config(
-    title_aided_config: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """解析标题分级配置，显式参数优先，本地配置作为兜底。"""
-    if title_aided_config is not None:
-        resolved_config = title_aided_config
-    else:
-        llm_aided_config = get_llm_aided_config()
-        resolved_config = (
-            llm_aided_config.get("title_aided")
-            if isinstance(llm_aided_config, dict)
-            else None
-        )
-
-    if not isinstance(resolved_config, dict) or not resolved_config:
+def _resolve_title_aided_config() -> dict[str, Any] | None:
+    """从本地配置解析标题分级开关。"""
+    llm_aided_config = get_llm_aided_config()
+    title_aided_config = (
+        llm_aided_config.get("title_aided")
+        if isinstance(llm_aided_config, dict)
+        else None
+    )
+    if not isinstance(title_aided_config, dict) or not title_aided_config:
         return None
-
-    if resolved_config.get("enable", True) is False:
+    if not title_aided_config.get("enable", False):
         return None
+    return deepcopy(title_aided_config)
 
-    return resolved_config
+
+def apply_title_leveling_to_pdf_info(pdf_info: list[dict[str, Any]]):
+    title_aided_config = _resolve_title_aided_config()
+    if title_aided_config:
+        llm_aided_title(pdf_info, title_aided_config)
 
 
-def _validate_pdf_middle_json(middle_json: dict[str, Any]) -> list[dict[str, Any]]:
-    """校验外置标题分级只处理 PDF 三后端生成的 middle json。"""
+def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, Any]:
+    """根据 staged middle json 的后端类型，在客户端执行完整 finalize。"""
     if not isinstance(middle_json, dict):
         raise ValueError("middle_json must be a dict.")
 
     backend = middle_json.get("_backend")
-    if backend not in SUPPORTED_PDF_BACKENDS:
-        raise ValueError(f"Unsupported middle json backend for title leveling: {backend}")
-
     pdf_info = middle_json.get("pdf_info")
-    if not isinstance(pdf_info, list):
-        raise ValueError("middle_json must contain a list field named pdf_info.")
 
-    return pdf_info
+    if backend == "pipeline":
+        from mineru.backend.pipeline.model_json_to_middle_json import (
+            finalize_middle_json_from_preproc,
+        )
 
+        finalize_middle_json_from_preproc(
+            pdf_info,
+        )
+    elif backend == "vlm":
+        from mineru.backend.vlm.model_output_to_middle_json import (
+            finalize_middle_json_from_preproc,
+        )
 
-def _iter_finalized_para_title_blocks(pdf_info: list[dict[str, Any]]):
-    """遍历 finalized middle json 中 para_blocks 里的普通标题块。"""
-    for page_info in pdf_info:
-        for block in page_info.get("para_blocks", []):
-            if block.get("type") == BlockType.TITLE:
-                yield block
+        finalize_middle_json_from_preproc(
+            pdf_info,
+        )
+    elif backend == "hybrid":
+        from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
+            finalize_middle_json_from_preproc,
+        )
 
-
-def _collect_finalized_title_levels(pdf_info: list[dict[str, Any]]) -> list[Any]:
-    """收集 finalized title 的 level，用于判断是否仍处于待分级角色态。"""
-    return [
-        block.get("level")
-        for block in _iter_finalized_para_title_blocks(pdf_info)
-    ]
-
-
-def _should_skip_llm_title_leveling(pdf_info: list[dict[str, Any]]) -> bool:
-    """判断客户端是否应跳过 LLM 标题分级，仅保留产物重生流程。"""
-    title_levels = _collect_finalized_title_levels(pdf_info)
-    if len(title_levels) == 0:
-        return True
-
-    return any(
-        level is not None and level not in PENDING_TITLE_ROLE_LEVELS
-        for level in title_levels
-    )
-
-
-def _resolve_title_line_avg_height(block: dict[str, Any]) -> int | float | None:
-    """解析标题平均行高：优先保留已有值，再按 lines / bbox 兜底计算。"""
-    line_avg_height = block.get("line_avg_height")
-    if isinstance(line_avg_height, (int, float)) and line_avg_height > 0:
-        return line_avg_height
-
-    line_heights = []
-    for line in block.get("lines", []):
-        bbox = line.get("bbox")
-        if not bbox or len(bbox) < 4:
-            continue
-        line_height = bbox[3] - bbox[1]
-        if line_height > 0:
-            line_heights.append(line_height)
-    if line_heights:
-        return round(sum(line_heights) / len(line_heights))
-
-    bbox = block.get("bbox")
-    if bbox and len(bbox) >= 4:
-        block_height = bbox[3] - bbox[1]
-        if block_height > 0:
-            return block_height
-
-    return None
-
-
-def _ensure_title_line_avg_heights(pdf_info: list[dict[str, Any]]) -> None:
-    """为待分级 para 标题补齐 line_avg_height，供 LLM 标题分级 prompt 使用。"""
-    for page_info in pdf_info:
-        for block in page_info.get("para_blocks", []):
-            if block.get("type") != BlockType.TITLE:
-                continue
-            line_avg_height = _resolve_title_line_avg_height(block)
-            if line_avg_height is None:
-                continue
-            block["line_avg_height"] = line_avg_height
-
-
-def _restore_title_roles_from_finalized_levels(
-    pdf_info: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """根据 finalized level 临时恢复 para title 的 doc/paragraph 角色。"""
-    restored_blocks = []
-    for block in _iter_finalized_para_title_blocks(pdf_info):
-        level = block.get("level")
-        if level == 1:
-            block["type"] = BlockType.DOC_TITLE
-        elif level == 2:
-            block["type"] = BlockType.PARAGRAPH_TITLE
-        else:
-            continue
-        restored_blocks.append(block)
-
-    return restored_blocks
-
-
-def _normalize_restored_para_title_types(blocks: list[dict[str, Any]]) -> None:
-    """将临时恢复过角色的 para title 兜底归一化回普通 title。"""
-    for block in blocks:
-        if block.get("type") in (BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE):
-            block["type"] = BlockType.TITLE
-
-
-def apply_title_leveling_to_middle_json(
-    middle_json: dict[str, Any],
-    title_aided_config: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """对 PDF middle json 执行外置标题分级，并返回写回后的 middle json。"""
-    pdf_info = _validate_pdf_middle_json(middle_json)
-
-    if _should_skip_llm_title_leveling(pdf_info):
-        return middle_json
-
-    resolved_config = _resolve_title_aided_config(title_aided_config)
-    if resolved_config is None:
-        return middle_json
-
-    _ensure_title_line_avg_heights(pdf_info)
-    restored_blocks = _restore_title_roles_from_finalized_levels(pdf_info)
-    try:
-        llm_aided_title(pdf_info, deepcopy(resolved_config))
-    finally:
-        _normalize_restored_para_title_types(restored_blocks)
+        finalize_middle_json_from_preproc(
+            pdf_info,
+        )
 
     return middle_json
