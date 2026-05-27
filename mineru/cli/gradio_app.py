@@ -1073,8 +1073,9 @@ async def _run_to_markdown_job(
         parse_method,
         allow_office_fallback=True,
     )
+    emit_status(STATUS_PROCESSING_OUTPUT)
     if use_client_side_output_generation:
-        regenerate_client_side_outputs(local_md_dir, file_name)
+        await asyncio.to_thread(regenerate_client_side_outputs, local_md_dir, file_name)
 
     preview_pdf_path = maybe_generate_local_preview(
         extract_root=extract_root,
@@ -1084,7 +1085,6 @@ async def _run_to_markdown_job(
         parse_method=parse_method,
     )
 
-    emit_status(STATUS_PROCESSING_OUTPUT)
     zip_archive_success = compress_directory_to_zip(local_md_dir, archive_zip_path)
     if zip_archive_success == 0:
         logger.info('Compression successful')

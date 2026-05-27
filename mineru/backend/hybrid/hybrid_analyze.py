@@ -989,7 +989,8 @@ async def aio_doc_analyze(
             )
 
         if client_side_output_generation:
-            apply_server_side_postprocess(
+            await asyncio.to_thread(
+                apply_server_side_postprocess,
                 middle_json["pdf_info"],
                 hybrid_pipeline_model,
                 _ocr_enable,

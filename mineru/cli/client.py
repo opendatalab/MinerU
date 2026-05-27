@@ -820,7 +820,11 @@ async def run_planned_task(
                 parse_method,
                 is_office=document.suffix in office_suffixes,
             )
-            regenerate_client_side_outputs(parse_dir, document.stem)
+            await asyncio.to_thread(
+                regenerate_client_side_outputs,
+                parse_dir,
+                document.stem,
+            )
     completed_tasks, completed_pages = await mark_task_completed(
         progress,
         planned_task.total_pages,
