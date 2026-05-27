@@ -15,7 +15,7 @@ PENDING_TITLE_ROLE_LEVELS = {1, 2}
 
 def _resolve_title_aided_config(
     title_aided_config: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """解析标题分级配置，显式参数优先，本地配置作为兜底。"""
     if title_aided_config is not None:
         resolved_config = title_aided_config
@@ -28,10 +28,10 @@ def _resolve_title_aided_config(
         )
 
     if not isinstance(resolved_config, dict) or not resolved_config:
-        raise ValueError("Missing llm-aided-config.title_aided for title leveling.")
+        return None
 
     if resolved_config.get("enable", True) is False:
-        raise ValueError("llm-aided-config.title_aided is disabled.")
+        return None
 
     return resolved_config
 
@@ -80,6 +80,44 @@ def _should_skip_llm_title_leveling(pdf_info: list[dict[str, Any]]) -> bool:
     )
 
 
+def _resolve_title_line_avg_height(block: dict[str, Any]) -> int | float | None:
+    """解析标题平均行高：优先保留已有值，再按 lines / bbox 兜底计算。"""
+    line_avg_height = block.get("line_avg_height")
+    if isinstance(line_avg_height, (int, float)) and line_avg_height > 0:
+        return line_avg_height
+
+    line_heights = []
+    for line in block.get("lines", []):
+        bbox = line.get("bbox")
+        if not bbox or len(bbox) < 4:
+            continue
+        line_height = bbox[3] - bbox[1]
+        if line_height > 0:
+            line_heights.append(line_height)
+    if line_heights:
+        return round(sum(line_heights) / len(line_heights))
+
+    bbox = block.get("bbox")
+    if bbox and len(bbox) >= 4:
+        block_height = bbox[3] - bbox[1]
+        if block_height > 0:
+            return block_height
+
+    return None
+
+
+def _ensure_title_line_avg_heights(pdf_info: list[dict[str, Any]]) -> None:
+    """为待分级 para 标题补齐 line_avg_height，供 LLM 标题分级 prompt 使用。"""
+    for page_info in pdf_info:
+        for block in page_info.get("para_blocks", []):
+            if block.get("type") != BlockType.TITLE:
+                continue
+            line_avg_height = _resolve_title_line_avg_height(block)
+            if line_avg_height is None:
+                continue
+            block["line_avg_height"] = line_avg_height
+
+
 def _restore_title_roles_from_finalized_levels(
     pdf_info: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -116,7 +154,10 @@ def apply_title_leveling_to_middle_json(
         return middle_json
 
     resolved_config = _resolve_title_aided_config(title_aided_config)
+    if resolved_config is None:
+        return middle_json
 
+    _ensure_title_line_avg_heights(pdf_info)
     restored_blocks = _restore_title_roles_from_finalized_levels(pdf_info)
     try:
         llm_aided_title(pdf_info, deepcopy(resolved_config))
