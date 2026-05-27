@@ -16,7 +16,7 @@ from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
 from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType
+from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
@@ -129,6 +129,15 @@ def append_page_blocks_to_middle_json(
             progress_bar.update(1)
 
 
+def _normalize_unleveled_title_blocks(pdf_info_list):
+    """未启用 LLM 标题分级时，将 VLM 普通标题默认标记为二级标题。"""
+    for page_info in pdf_info_list:
+        for block_key in ["preproc_blocks", "para_blocks"]:
+            for block in page_info.get(block_key, []):
+                if block.get("type") == BlockType.TITLE:
+                    block["level"] = 2
+
+
 def finalize_middle_json(pdf_info_list):
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(pdf_info_list)
@@ -141,6 +150,8 @@ def finalize_middle_json(pdf_info_list):
         llm_aided_title_start_time = time.time()
         llm_aided_title(pdf_info_list, title_aided_config)
         logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
+    else:
+        _normalize_unleveled_title_blocks(pdf_info_list)
 
     cleanup_internal_para_block_metadata(pdf_info_list)
 
