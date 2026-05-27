@@ -243,7 +243,7 @@ def apply_server_side_postprocess(
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
 
-def finalize_middle_json_from_preproc(pdf_info_list, title_aided_config=None):
+def finalize_middle_json_from_preproc(pdf_info_list):
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(
@@ -255,10 +255,7 @@ def finalize_middle_json_from_preproc(pdf_info_list, title_aided_config=None):
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
-    apply_title_leveling_to_pdf_info(
-        pdf_info_list,
-        title_aided_config=title_aided_config,
-    )
+    apply_title_leveling_to_pdf_info(pdf_info_list)
     _normalize_split_title_blocks(pdf_info_list)
     cleanup_internal_para_block_metadata(pdf_info_list)
 
@@ -268,22 +265,15 @@ def finalize_middle_json(
     hybrid_pipeline_model,
     _ocr_enable,
     _vlm_ocr_enable,
-    *,
-    apply_post_ocr=True,
-    title_aided_config=None,
 ):
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
-    if apply_post_ocr:
-        apply_server_side_postprocess(
-            pdf_info_list,
-            hybrid_pipeline_model,
-            _ocr_enable,
-            _vlm_ocr_enable,
-        )
-    finalize_middle_json_from_preproc(
+    apply_server_side_postprocess(
         pdf_info_list,
-        title_aided_config=title_aided_config,
+        hybrid_pipeline_model,
+        _ocr_enable,
+        _vlm_ocr_enable,
     )
+    finalize_middle_json_from_preproc(pdf_info_list)
 
 
 def result_to_middle_json(
