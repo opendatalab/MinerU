@@ -89,10 +89,9 @@ def blocks_to_page_info(
     phonetic_blocks = magic_model.get_phonetic_blocks()
     list_blocks = magic_model.get_list_blocks()
 
-    # 如果有标题优化需求，计算标题的平均行高
-    if title_aided_enable:
-        for title_block in title_blocks:
-            title_block['line_avg_height'] = _resolve_title_line_avg_height(title_block)
+    # 标题平均行高是 finalized middle json 的稳定字段，供服务端和客户端标题分级共用。
+    for title_block in title_blocks:
+        title_block['line_avg_height'] = _resolve_title_line_avg_height(title_block)
 
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
