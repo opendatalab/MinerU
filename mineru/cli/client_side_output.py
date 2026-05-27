@@ -44,7 +44,6 @@ def _write_json(path: Path, payload: Any) -> None:
 def regenerate_client_side_outputs(
     parse_dir: str | Path,
     doc_stem: str,
-    title_aided_config: dict[str, Any] | None = None,
 ) -> tuple[Path, ...]:
     """读取服务端 staged/finalized middle json，并在客户端覆盖生成最终输出产物。"""
     parse_dir = Path(parse_dir)
@@ -69,10 +68,7 @@ def regenerate_client_side_outputs(
         raise ValueError("middle_json must contain a list field named pdf_info.")
 
     if backend in PDF_BACKENDS:
-        finalize_client_side_middle_json(
-            middle_json,
-            title_aided_config=title_aided_config,
-        )
+        finalize_client_side_middle_json(middle_json)
         pdf_info = middle_json["pdf_info"]
 
     make_func = _select_union_make(backend)
