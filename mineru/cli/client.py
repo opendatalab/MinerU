@@ -647,6 +647,7 @@ def build_request_form_data(
         return_images=True,
         response_format_zip=True,
         return_original_file=True,
+        client_side_output_generation=client_side_output_generation,
     )
 
 

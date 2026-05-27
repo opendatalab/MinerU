@@ -1002,6 +1002,7 @@ async def _run_to_markdown_job(
         return_images=True,
         response_format_zip=True,
         return_original_file=True,
+        client_side_output_generation=use_client_side_output_generation,
     )
     upload_assets = [
         _api_client.UploadAsset(
