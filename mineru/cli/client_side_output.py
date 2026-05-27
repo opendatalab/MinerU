@@ -9,6 +9,10 @@ from mineru.utils.enum_class import MakeMode
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_middle_json
 
 
+PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
+SUPPORTED_BACKENDS = {*PDF_BACKENDS, "office"}
+
+
 def _select_union_make(backend: str) -> Callable[[list, str, str], Any]:
     """根据 middle json 后端选择对应的 Markdown/content list 渲染函数。"""
     if backend == "pipeline":
@@ -19,8 +23,32 @@ def _select_union_make(backend: str) -> Callable[[list, str, str], Any]:
         from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make
 
         return union_make
+    if backend == "office":
+        from mineru.backend.office.office_middle_json_mkcontent import union_make
 
-    raise ValueError(f"Unsupported middle json backend for title leveling: {backend}")
+        return union_make
+
+    raise ValueError(
+        f"Unsupported middle json backend for client-side output generation: {backend}"
+    )
+
+
+def _validate_middle_json(middle_json: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    """校验本地输出生成所需的 middle json 基础字段。"""
+    if not isinstance(middle_json, dict):
+        raise ValueError("middle_json must be a dict.")
+
+    backend = middle_json.get("_backend")
+    if backend not in SUPPORTED_BACKENDS:
+        raise ValueError(
+            f"Unsupported middle json backend for client-side output generation: {backend}"
+        )
+
+    pdf_info = middle_json.get("pdf_info")
+    if not isinstance(pdf_info, list):
+        raise ValueError("middle_json must contain a list field named pdf_info.")
+
+    return backend, pdf_info
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -31,12 +59,12 @@ def _write_json(path: Path, payload: Any) -> None:
     )
 
 
-def regenerate_title_leveled_outputs(
+def regenerate_client_side_outputs(
     parse_dir: str | Path,
     doc_stem: str,
     title_aided_config: dict[str, Any] | None = None,
 ) -> tuple[Path, ...]:
-    """读取 parse 目录中的 middle json，外置分级后覆盖生成最终产物。"""
+    """读取 finalized middle json，并在客户端覆盖生成最终输出产物。"""
     parse_dir = Path(parse_dir)
     middle_json_path = parse_dir / f"{doc_stem}_middle.json"
     markdown_path = parse_dir / f"{doc_stem}.md"
@@ -47,14 +75,15 @@ def regenerate_title_leveled_outputs(
         raise FileNotFoundError(f"Missing middle json file: {middle_json_path}")
 
     middle_json = json.loads(middle_json_path.read_text(encoding="utf-8"))
-    apply_title_leveling_to_middle_json(
-        middle_json,
-        title_aided_config=title_aided_config,
-    )
+    backend, pdf_info = _validate_middle_json(middle_json)
+    if backend in PDF_BACKENDS:
+        apply_title_leveling_to_middle_json(
+            middle_json,
+            title_aided_config=title_aided_config,
+        )
+        pdf_info = middle_json["pdf_info"]
 
-    backend = middle_json.get("_backend")
     make_func = _select_union_make(backend)
-    pdf_info = middle_json["pdf_info"]
     image_dir = "images"
 
     markdown_path.write_text(

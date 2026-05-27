@@ -38,8 +38,8 @@ from mineru.cli.common import (
     read_fn,
 )
 from mineru.cli import api_client as _api_client
+from mineru.cli.client_side_output import regenerate_client_side_outputs
 from mineru.cli.output_paths import resolve_parse_dir
-from mineru.cli.title_level_postprocess import regenerate_title_leveled_outputs
 from mineru.cli.vlm_preload import resolve_gradio_local_api_cli_args
 from mineru.cli.visualization import VisualizationJob, run_visualization_job
 
@@ -828,9 +828,9 @@ def is_image_analysis_option_visible(backend):
     return backend.startswith("vlm") or backend.startswith("hybrid")
 
 
-def should_use_client_side_title_leveling(file_suffix, client_side_title_leveling):
-    """判断当前 Gradio 任务是否需要执行客户端标题分级后处理。"""
-    return client_side_title_leveling and file_suffix not in office_suffixes
+def should_use_client_side_output_generation(client_side_output_generation):
+    """判断当前 Gradio 任务是否需要在客户端生成最终输出。"""
+    return client_side_output_generation
 
 
 def create_gradio_run_paths(file_path, output_root="./output"):
@@ -965,7 +965,7 @@ async def _run_to_markdown_job(
     backend="pipeline",
     url=None,
     api_url=None,
-    client_side_title_leveling=False,
+    client_side_output_generation=False,
     status_callback: Callable[[str], None] | None = None,
 ):
     if file_path is None:
@@ -978,9 +978,8 @@ async def _run_to_markdown_job(
     normalized_language = normalize_language(language)
     file_path = str(file_path)
     file_suffix = Path(file_path).suffix.lower().lstrip('.')
-    use_client_side_title_leveling = should_use_client_side_title_leveling(
-        file_suffix,
-        client_side_title_leveling,
+    use_client_side_output_generation = should_use_client_side_output_generation(
+        client_side_output_generation
     )
     parse_method = resolve_parse_method(file_path, is_ocr, backend)
     run_root, extract_root, archive_zip_path = create_gradio_run_paths(file_path)
@@ -996,10 +995,10 @@ async def _run_to_markdown_job(
         server_url=url,
         start_page_id=0,
         end_page_id=end_pages - 1,
-        return_md=not use_client_side_title_leveling,
+        return_md=not use_client_side_output_generation,
         return_middle_json=True,
-        return_model_output=not use_client_side_title_leveling,
-        return_content_list=not use_client_side_title_leveling,
+        return_model_output=not use_client_side_output_generation,
+        return_content_list=not use_client_side_output_generation,
         return_images=True,
         response_format_zip=True,
         return_original_file=True,
@@ -1073,8 +1072,8 @@ async def _run_to_markdown_job(
         parse_method,
         allow_office_fallback=True,
     )
-    if use_client_side_title_leveling:
-        regenerate_title_leveled_outputs(local_md_dir, file_name)
+    if use_client_side_output_generation:
+        regenerate_client_side_outputs(local_md_dir, file_name)
 
     preview_pdf_path = maybe_generate_local_preview(
         extract_root=extract_root,
@@ -1115,7 +1114,7 @@ async def stream_to_markdown(
     backend="pipeline",
     url=None,
     api_url=None,
-    client_side_title_leveling=False,
+    client_side_output_generation=False,
 ):
     status_state = StatusPanelState()
     job_task: asyncio.Task | None = None
@@ -1145,7 +1144,7 @@ async def stream_to_markdown(
                 backend=backend,
                 url=url,
                 api_url=api_url,
-                client_side_title_leveling=client_side_title_leveling,
+                client_side_output_generation=client_side_output_generation,
                 status_callback=enqueue_status,
             )
         )
@@ -1506,10 +1505,10 @@ def update_doc_show(file_path):
     default=False,
 )
 @click.option(
-    '--client-side-title-leveling',
-    'client_side_title_leveling',
+    '--client-side-output-generation',
+    'client_side_output_generation',
     type=bool,
-    help="Enable local title leveling after receiving finalized PDF middle json from the API service.",
+    help="Generate markdown and content lists locally from server-returned middle json.",
     default=False,
 )
 @click.option(
@@ -1525,7 +1524,7 @@ def main(ctx,
         http_client_enable,
         api_enable, max_convert_pages,
         server_name, server_port, api_url, enable_vlm_preload,
-        client_side_title_leveling, latex_delimiters_type, **kwargs
+        client_side_output_generation, latex_delimiters_type, **kwargs
 ):
 
     # 创建 i18n 实例，支持中英文
@@ -1755,7 +1754,7 @@ def main(ctx,
             backend=backend,
             url=url,
             api_url=api_url,
-            client_side_title_leveling=client_side_title_leveling,
+            client_side_output_generation=client_side_output_generation,
         ):
             update = (
                 render_status_steps_html(update[0], i18n, locale=request_locale),
