@@ -23,6 +23,10 @@ TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.CODE,
 }
 OCR_DET_LINES_KEY = "_ocr_det_lines"
+INTERNAL_BLOCK_METADATA_KEYS = {
+    OCR_DET_LINES_KEY,
+    "line_avg_height",
+}
 
 
 def iter_block_spans(block):
@@ -376,7 +380,8 @@ def _has_mergeable_block_bbox_relation(current_block, previous_block):
 
 
 def _cleanup_block_internal_metadata(block):
-    """递归清理只供 Hybrid 内部段落合并使用的临时字段。"""
-    block.pop(OCR_DET_LINES_KEY, None)
+    """递归清理只供 finalize 内部流程使用的临时字段。"""
+    for metadata_key in INTERNAL_BLOCK_METADATA_KEYS:
+        block.pop(metadata_key, None)
     for sub_block in block.get("blocks", []):
         _cleanup_block_internal_metadata(sub_block)

@@ -28,7 +28,9 @@ uv pip install "mineru[s3]"
 uv pip install "mineru[core,vllm]"
 ```
 > [!TIP]
-> 如在安装包含`vllm`的扩展包过程中发生异常，请参考 [vllm 官方文档](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) 尝试解决，或直接使用 [Docker](./docker_deployment.md) 方式部署镜像。
+> - 由于`vllm`扩展包已放开到 0.21 系列版本，默认安装通常会选择当前允许范围内更高的`vllm`版本。请确保物理机显卡驱动支持所安装`vllm`包对应的 CUDA 运行时，默认路径需要 CUDA 13.0 兼容驱动。
+> - 如需使用 CUDA 12.9 兼容环境，请参考 [vllm 官方文档](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) 选择对应的 CUDA 安装方式，或直接使用 [Docker](./docker_deployment.md) 中的`vllm/vllm-openai:v0.21.0-cu129`基础镜像。
+> - 如在安装包含`vllm`的扩展包过程中发生异常，也可参考 [vllm 官方文档](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) 尝试解决。
 
 ---
 

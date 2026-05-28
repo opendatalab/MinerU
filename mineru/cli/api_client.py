@@ -819,6 +819,7 @@ def build_parse_request_form_data(
     return_images: bool,
     response_format_zip: bool,
     return_original_file: bool,
+    client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
     effective_lang_list = list(lang_list) or ["ch"]
     data: dict[str, str | list[str]] = {
@@ -835,6 +836,7 @@ def build_parse_request_form_data(
         "return_images": str(return_images).lower(),
         "response_format_zip": str(response_format_zip).lower(),
         "return_original_file": str(return_original_file).lower(),
+        "client_side_output_generation": str(client_side_output_generation).lower(),
         "start_page_id": str(start_page_id),
         "end_page_id": str(99999 if end_page_id is None else end_page_id),
     }
