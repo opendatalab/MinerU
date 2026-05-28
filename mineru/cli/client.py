@@ -1128,7 +1128,7 @@ async def run_orchestrated_cli(
 @click.option(
     "--client-side-output-generation",
     "client_side_output_generation",
-    is_flag=True,
+    type=bool,
     default=False,
     help=(
         "Generate markdown and content lists locally from server-returned "
