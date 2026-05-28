@@ -1,18 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
 import os
-import time
 
-import numpy as np
-from loguru import logger
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils.ocr_det_utils import (
-    detect_ocr_boxes_from_padded_crop,
-    get_ch_lite_ocr_det_model,
-)
 from mineru.backend.utils.para_block_utils import (
+    OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
     iter_block_spans,
@@ -20,20 +14,34 @@ from mineru.backend.utils.para_block_utils import (
 )
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.utils.config_reader import get_table_enable, get_llm_aided_config
+from mineru.utils.config_reader import get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
-from mineru.utils.llm_aided import llm_aided_title
-title_aided_enable = False
-llm_aided_config = get_llm_aided_config()
-if llm_aided_config:
-    title_aided_config = llm_aided_config.get('title_aided', {})
-    title_aided_enable = title_aided_config.get('enable', False)
+
+def _resolve_title_line_avg_height(title_block):
+    """解析标题平均行高：优先复用 Hybrid OCR det 行提示，再回退到原始行或块高。"""
+    for lines_key in [OCR_DET_LINES_KEY, "lines"]:
+        line_heights = []
+        for line in title_block.get(lines_key, []):
+            bbox = line.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            line_height = bbox[3] - bbox[1]
+            if line_height > 0:
+                line_heights.append(line_height)
+        if line_heights:
+            return round(sum(line_heights) / len(line_heights))
+
+    bbox = title_block.get("bbox", [0, 0, 0, 0])
+    if len(bbox) >= 4:
+        return bbox[3] - bbox[1]
+    return 0
 
 
 def blocks_to_page_info(
@@ -73,30 +81,9 @@ def blocks_to_page_info(
     phonetic_blocks = magic_model.get_phonetic_blocks()
     list_blocks = magic_model.get_list_blocks()
 
-    # 如果有标题优化需求，计算标题的平均行高
-    if title_aided_enable:
-        if _vlm_ocr_enable:  # vlm_ocr导致没有line信息，需要重新det获取平均行高
-            ocr_model = get_ch_lite_ocr_det_model()
-            for title_block in title_blocks:
-                ocr_det_res, _ = detect_ocr_boxes_from_padded_crop(
-                    title_block.get('bbox'),
-                    page_pil_img,
-                    scale,
-                    ocr_model=ocr_model,
-                )
-                if len(ocr_det_res) > 0:
-                    # 计算所有res的平均高度
-                    avg_height = np.mean([box[2][1] - box[0][1] for box in ocr_det_res])
-                    title_block['line_avg_height'] = round(avg_height/scale)
-        else:  # 有line信息，直接计算平均行高
-            for title_block in title_blocks:
-                lines = title_block.get('lines', [])
-                if lines:
-                    # 使用列表推导式和内置函数,一次性计算平均高度
-                    avg_height = sum(line['bbox'][3] - line['bbox'][1] for line in lines) / len(lines)
-                    title_block['line_avg_height'] = round(avg_height)
-                else:
-                    title_block['line_avg_height'] = title_block['bbox'][3] - title_block['bbox'][1]
+    # 标题平均行高是 finalized middle json 的稳定字段，供服务端和客户端标题分级共用。
+    for title_block in title_blocks:
+        title_block['line_avg_height'] = _resolve_title_line_avg_height(title_block)
 
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
@@ -245,10 +232,19 @@ def append_page_model_list_to_middle_json(
     )
 
 
-def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm_ocr_enable):
+def apply_server_side_postprocess(
+    pdf_info_list,
+    hybrid_pipeline_model,
+    _ocr_enable,
+    _vlm_ocr_enable,
+):
+    """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
     if not (_vlm_ocr_enable or _ocr_enable):
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
+
+def finalize_middle_json_from_preproc(pdf_info_list):
+    """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(
         pdf_info_list,
@@ -259,13 +255,25 @@ def finalize_middle_json(pdf_info_list, hybrid_pipeline_model, _ocr_enable, _vlm
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
-    if title_aided_enable:
-        llm_aided_title_start_time = time.time()
-        llm_aided_title(pdf_info_list, title_aided_config)
-        logger.info(f'llm aided title time: {round(time.time() - llm_aided_title_start_time, 2)}')
-
+    apply_title_leveling_to_pdf_info(pdf_info_list)
     _normalize_split_title_blocks(pdf_info_list)
     cleanup_internal_para_block_metadata(pdf_info_list)
+
+
+def finalize_middle_json(
+    pdf_info_list,
+    hybrid_pipeline_model,
+    _ocr_enable,
+    _vlm_ocr_enable,
+):
+    """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
+    apply_server_side_postprocess(
+        pdf_info_list,
+        hybrid_pipeline_model,
+        _ocr_enable,
+        _vlm_ocr_enable,
+    )
+    finalize_middle_json_from_preproc(pdf_info_list)
 
 
 def result_to_middle_json(

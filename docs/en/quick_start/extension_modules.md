@@ -29,7 +29,9 @@ The `vllm` module provides acceleration support for VLM model inference, suitabl
 uv pip install "mineru[core,vllm]"
 ```
 > [!TIP]
-> If exceptions occur during installation of the extra package including vllm, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to try to resolve the issue, or directly use the [Docker](./docker_deployment.md) deployment method.
+> - Because the `vllm` extra now allows the 0.21 series, the default installation usually resolves to the newer `vllm` version allowed by the current range. Make sure the host GPU driver supports the CUDA runtime required by the installed `vllm` package; the default path requires a CUDA 13.0-compatible driver.
+> - If you need a CUDA 12.9-compatible environment, follow the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to select the matching CUDA installation path, or use the `vllm/vllm-openai:v0.21.0-cu129` base image from the [Docker](./docker_deployment.md) deployment workflow.
+> - If exceptions occur during installation of the extra package including vllm, you can also refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to troubleshoot them.
 
 ---
 

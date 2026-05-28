@@ -13,6 +13,7 @@ from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
+    apply_server_side_postprocess,
     append_page_model_list_to_middle_json,
     finalize_middle_json,
     init_middle_json,
@@ -722,6 +723,9 @@ def doc_analyze(
         image_analysis: bool = True,
         **kwargs,
 ):
+    client_side_output_generation = bool(
+        kwargs.pop("client_side_output_generation", False)
+    )
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -833,12 +837,20 @@ def doc_analyze(
                 f"speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
-        finalize_middle_json(
-            middle_json["pdf_info"],
-            hybrid_pipeline_model,
-            _ocr_enable,
-            _vlm_ocr_enable,
-        )
+        if client_side_output_generation:
+            apply_server_side_postprocess(
+                middle_json["pdf_info"],
+                hybrid_pipeline_model,
+                _ocr_enable,
+                _vlm_ocr_enable,
+            )
+        else:
+            finalize_middle_json(
+                middle_json["pdf_info"],
+                hybrid_pipeline_model,
+                _ocr_enable,
+                _vlm_ocr_enable,
+            )
         close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)
@@ -861,6 +873,9 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    client_side_output_generation = bool(
+        kwargs.pop("client_side_output_generation", False)
+    )
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -973,13 +988,22 @@ async def aio_doc_analyze(
                 f"speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
-        await asyncio.to_thread(
-            finalize_middle_json,
-            middle_json["pdf_info"],
-            hybrid_pipeline_model,
-            _ocr_enable,
-            _vlm_ocr_enable,
-        )
+        if client_side_output_generation:
+            await asyncio.to_thread(
+                apply_server_side_postprocess,
+                middle_json["pdf_info"],
+                hybrid_pipeline_model,
+                _ocr_enable,
+                _vlm_ocr_enable,
+            )
+        else:
+            await asyncio.to_thread(
+                finalize_middle_json,
+                middle_json["pdf_info"],
+                hybrid_pipeline_model,
+                _ocr_enable,
+                _vlm_ocr_enable,
+            )
         close_pdfium_document(pdf_doc)
         doc_closed = True
         clean_memory(device)

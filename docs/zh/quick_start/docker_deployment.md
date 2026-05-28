@@ -15,12 +15,12 @@ docker build -t mineru:latest -f Dockerfile .
 
 ## Docker说明
 
-Mineru的docker使用了`vllm/vllm-openai`作为基础镜像，因此在docker中默认集成了`vllm`推理加速框架和必需的依赖环境。因此在满足条件的设备上，您可以直接使用`vllm`加速VLM模型推理。
+Mineru的docker使用了`vllm/vllm-openai`作为基础镜像，因此在docker中默认集成了`vllm`推理加速框架和必需的依赖环境。当前国内 Dockerfile 默认使用`docker.m.daocloud.io/vllm/vllm-openai:v0.21.0`，适用于 CUDA 13.0 兼容环境；如果您的环境需要 CUDA 12.9 兼容镜像，请将 Dockerfile 顶部的默认`FROM`注释掉，并启用注释中的`docker.m.daocloud.io/vllm/vllm-openai:v0.21.0-cu129`基础镜像。因此在满足条件的设备上，您可以直接使用`vllm`加速VLM模型推理。
 > [!NOTE]
 > 使用`vllm`加速VLM模型推理需要满足的条件是：
 > 
 > - 设备包含Volta及以后架构的显卡，且可用显存大于等于8G。
-> - 物理机的显卡驱动应支持CUDA 12.9.1或更高版本，可通过`nvidia-smi`命令检查驱动版本。
+> - 物理机的显卡驱动应支持所选基础镜像对应的 CUDA 运行时版本：默认`v0.21.0`需要 CUDA 13.0 兼容驱动，`v0.21.0-cu129`需要 CUDA 12.9 兼容驱动。可通过`nvidia-smi`命令检查驱动版本。
 > - docker中能够访问物理机的显卡设备。
 
 
