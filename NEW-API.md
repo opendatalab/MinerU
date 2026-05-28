@@ -10,6 +10,7 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-05-28 | **Callback `seed` → `secret`**:签名字段恢复为 `secret`,`seed` 易与 Chat Completions 确定性采样参数混淆 |
 | 2026-05-27 | **ID 格式统一**:File 对象 `file_<ULID>` → `file-<ULID>`(连字符),全文对齐 |
 | 2026-05-27 | **Upload 状态码统一**:秒传命中与需上传均返回 200,通过 body `status` 区分 |
 | 2026-05-27 | **wait 参数调整**:合法值改为 `0` / `[5, 50]`,与 nginx 默认 60s 超时安全对齐 |
@@ -1406,7 +1407,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "wait": 30,
   "callback": {
     "url": "https://your.app/mineru-webhook",
-    "seed": "abc123"
+    "secret": "abc123"
   }
 }
 ```
@@ -1766,7 +1767,7 @@ Tier 由 Token 决定,但**响应格式完全一致**。
 {
   "callback": {
     "url": "https://your.app/mineru-webhook",
-    "seed": "abc123"
+    "secret": "abc123"
   }
 }
 ```
@@ -1774,7 +1775,7 @@ Tier 由 Token 决定,但**响应格式完全一致**。
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `url` | string | 是 | 回调 URL,支持 HTTP/HTTPS。接口必须支持 POST、UTF-8 编码、`Content-Type: application/json` |
-| `seed` | string | 是 | 随机字符串,由英文字母、数字、下划线组成,不超过 64 字符。用于签名校验 |
+| `secret` | string | 是 | 随机字符串,由英文字母、数字、下划线组成,不超过 64 字符。用于签名校验 |
 
 **Request to your endpoint**
 
@@ -1790,7 +1791,7 @@ Content-Type: application/json
 
 | 字段 | 说明 |
 |------|------|
-| `checksum` | `SHA256(uid + seed + content)`,用于防篡改校验。`uid` 可在个人中心查询 |
+| `checksum` | `SHA256(uid + secret + content)`,用于防篡改校验。`uid` 可在个人中心查询 |
 | `content` | JSON 字符串,需自行解析。结构与 `GET /v1/parse/jobs/{job_id}` 的响应 data 部分一致 |
 
 **回调处理规则**
@@ -1802,7 +1803,7 @@ Content-Type: application/json
 
 **事件类型**:`job.completed` / `job.failed` / `job.canceled` / `job.partial`。
 
-> **设计说明**:`seed` 是一次性的,与 job 生命周期一致,不需要轮换。`seed` 不会在 `GET /v1/parse/jobs/{job_id}` 的响应中 echo。
+> **设计说明**:`secret` 是一次性的,与 job 生命周期一致,不需要轮换。`secret` 不会在 `GET /v1/parse/jobs/{job_id}` 的响应中 echo。
 
 ---
 
