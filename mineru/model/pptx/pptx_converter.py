@@ -162,6 +162,9 @@ class PptxConverter:
         self._convert_package_bytes(normalized_bytes)
 
     def _walk_linear(self, pptx_obj: presentation.Presentation):
+        if pptx_obj.slide_width is None or pptx_obj.slide_height is None:
+            raise ValueError("Invalid PPTX: missing slide dimensions")
+
         slide_width = int(pptx_obj.slide_width)
         slide_height = int(pptx_obj.slide_height)
 
