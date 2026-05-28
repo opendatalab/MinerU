@@ -58,8 +58,24 @@ class ModelSingleton:
         server_url: str | None,
         **kwargs,
     ) -> MinerUClient:
+        server_headers = kwargs.get("server_headers", None)
         key = (backend, model_path, server_url)
         with self._lock:
+            # For http-client backend, server_headers may differ between requests.
+            # When the cached predictor's headers no longer match the requested ones,
+            # replace the cached predictor so each request uses its own headers.
+            if key in self._models:
+                cached_predictor = self._models[key]
+                cached_headers = getattr(
+                    cached_predictor, '_mineru_server_headers', None
+                )
+                if cached_headers != server_headers:
+                    logger.info(
+                        f"server_headers changed for {key}, "
+                        "recreating predictor with new headers"
+                    )
+                    _shutdown_predictor_runtime(cached_predictor)
+                    del self._models[key]
             if key not in self._models:
                 start_time = time.time()
                 model = None
@@ -246,6 +262,10 @@ class ModelSingleton:
                     "lmdeploy_engine": lmdeploy_engine,
                 }
                 _maybe_enable_serial_execution(predictor, backend)
+                # Store server_headers on the predictor for cache invalidation:
+                # when a subsequent request provides different headers, the cached
+                # predictor will be replaced with a new one using the updated headers.
+                predictor._mineru_server_headers = server_headers
                 self._models[key] = predictor
                 elapsed = round(time.time() - start_time, 2)
                 logger.info(f"get {backend} predictor cost: {elapsed}s")
