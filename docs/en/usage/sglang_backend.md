@@ -28,6 +28,7 @@ You need two environments. They can live on the same machine or on different mac
 Launch SGLang's OpenAI-compatible server with the `MinerU2.5-2509-1.2B` model:
 
 ```bash
+SGLANG_USE_CUDA_IPC_TRANSPORT=1 \
 python3 -m sglang.launch_server \
   --model-path opendatalab/MinerU2.5-2509-1.2B \
   --host 0.0.0.0 --port 30000
@@ -36,10 +37,11 @@ python3 -m sglang.launch_server \
 Newer SGLang versions also accept the shorter entrypoint alias:
 
 ```bash
-sglang serve opendatalab/MinerU2.5-2509-1.2B --host 0.0.0.0 --port 30000
+SGLANG_USE_CUDA_IPC_TRANSPORT=1 sglang serve opendatalab/MinerU2.5-2509-1.2B --host 0.0.0.0 --port 30000
 ```
 
 > [!TIP]
+> - `SGLANG_USE_CUDA_IPC_TRANSPORT=1` passes encoded image tensors from the tokenizer process to the scheduler over CUDA IPC instead of serializing them. For this document model (every page sends a layout image plus many block crops) it measured **~10% higher end-to-end throughput** on a single H200 (OmniDocBench: ~153 vs ~135 pages/min) with numerically identical output. It is optional — omit it for the minimal command.
 > - `--chat-template` is **not** required: the tokenizer already ships the `Qwen2-VL` chat template. Passing `--chat-template qwen2-vl` also works but is unnecessary.
 > - `--trust-remote-code` is **not** required, because this is the standard `qwen2_vl` architecture. It is harmless if added.
 > - Port `30000` is SGLang's default and matches MinerU's `vlm-http-client` examples.

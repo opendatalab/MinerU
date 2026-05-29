@@ -28,6 +28,7 @@
 使用 `MinerU2.5-2509-1.2B` 模型启动 SGLang 的 OpenAI 兼容服务：
 
 ```bash
+SGLANG_USE_CUDA_IPC_TRANSPORT=1 \
 python3 -m sglang.launch_server \
   --model-path opendatalab/MinerU2.5-2509-1.2B \
   --host 0.0.0.0 --port 30000
@@ -36,10 +37,11 @@ python3 -m sglang.launch_server \
 较新版本的 SGLang 也支持更简短的入口别名：
 
 ```bash
-sglang serve opendatalab/MinerU2.5-2509-1.2B --host 0.0.0.0 --port 30000
+SGLANG_USE_CUDA_IPC_TRANSPORT=1 sglang serve opendatalab/MinerU2.5-2509-1.2B --host 0.0.0.0 --port 30000
 ```
 
 > [!TIP]
+> - `SGLANG_USE_CUDA_IPC_TRANSPORT=1` 让图像张量通过 CUDA IPC 从 tokenizer 进程传给 scheduler，而不是序列化传输。对该文档模型（每页都要发送一张版面图 + 多个块裁剪图）实测在单张 H200 上端到端吞吐**提升约 10%**（OmniDocBench：约 153 vs 135 页/分钟），输出在数值上完全一致。它是可选项——若要最简命令可省略。
 > - **无需** `--chat-template`：tokenizer 已自带 `Qwen2-VL` 的对话模板。传入 `--chat-template qwen2-vl` 也能工作，但属于多余操作。
 > - **无需** `--trust-remote-code`：这是标准的 `qwen2_vl` 架构。即使加上也无害。
 > - `30000` 是 SGLang 的默认端口，与 MinerU 的 `vlm-http-client` 示例一致。
