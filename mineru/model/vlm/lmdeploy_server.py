@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+import subprocess
 import sys
 
 from loguru import logger
@@ -86,8 +87,8 @@ def main():
     # 启动 lmdeploy 服务器
     print(f"start lmdeploy server: {sys.argv}")
 
-    # 使用os.system调用启动lmdeploy服务器
-    os.system("lmdeploy " + " ".join(sys.argv[1:]))
+    # 使用subprocess调用启动lmdeploy服务器
+    subprocess.run(["lmdeploy"] + sys.argv[1:], check=False)
 
 
 if __name__ == "__main__":
