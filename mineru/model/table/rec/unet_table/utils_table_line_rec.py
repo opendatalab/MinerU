@@ -4,7 +4,6 @@ from typing import Iterator
 
 import cv2
 import numpy as np
-from scipy.spatial import distance as dist
 
 
 class ConnectedComponent:
@@ -232,7 +231,7 @@ def _order_points(pts):
     left_most = left_most[np.argsort(left_most[:, 1]), :]
     (tl, bl) = left_most
 
-    distance = dist.cdist(tl[np.newaxis], right_most, "euclidean")[0]
+    distance = np.linalg.norm(right_most - tl, axis=1)
     (br, tr) = right_most[np.argsort(distance)[::-1], :]
 
     return np.array([tl, tr, br, bl], dtype="float32")

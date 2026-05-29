@@ -34,6 +34,7 @@ class ParseRequestOptions:
     return_images: bool
     response_format_zip: bool
     return_original_file: bool
+    client_side_output_generation: bool
     start_page_id: int
     end_page_id: int
     server_headers: Optional[dict[str, str]]
@@ -157,6 +158,15 @@ async def parse_request_form(
             ),
         ),
     ] = False,
+    client_side_output_generation: Annotated[
+        bool,
+        Form(
+            description=(
+                "Defer final markdown/content-list generation to the client. "
+                "When enabled, the server returns staged middle JSON and images."
+            ),
+        ),
+    ] = False,
     start_page_id: Annotated[
         int,
         Form(description="The starting page for PDF parsing, beginning from 0"),
@@ -188,6 +198,13 @@ async def parse_request_form(
         backend=backend,
         server_url=server_url,
     )
+    if client_side_output_generation:
+        return_md = False
+        return_middle_json = True
+        return_model_output = False
+        return_content_list = False
+        return_images = True
+
     effective_return_original_file = return_original_file and response_format_zip
     parsed_server_headers: Optional[dict[str, str]] = None
     if server_headers is not None:
@@ -222,6 +239,7 @@ async def parse_request_form(
         return_images=return_images,
         response_format_zip=response_format_zip,
         return_original_file=effective_return_original_file,
+        client_side_output_generation=client_side_output_generation,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
         server_headers=parsed_server_headers,

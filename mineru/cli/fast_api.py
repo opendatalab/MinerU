@@ -158,6 +158,7 @@ class AsyncParseTask:
     return_images: bool
     response_format_zip: bool
     return_original_file: bool
+    client_side_output_generation: bool
     start_page_id: int
     end_page_id: int
     upload_names: list[str]
@@ -849,6 +850,11 @@ async def run_parse_job(
         f_dump_content_list=request_options.return_content_list,
         start_page_id=request_options.start_page_id,
         end_page_id=request_options.end_page_id,
+        client_side_output_generation=getattr(
+            request_options,
+            "client_side_output_generation",
+            False,
+        ),
         server_headers=request_options.server_headers,
         **config,
     )
@@ -899,6 +905,7 @@ async def create_async_parse_task(
             return_images=request_options.return_images,
             response_format_zip=request_options.response_format_zip,
             return_original_file=request_options.return_original_file,
+            client_side_output_generation=request_options.client_side_output_generation,
             start_page_id=request_options.start_page_id,
             end_page_id=request_options.end_page_id,
             server_headers=request_options.server_headers,

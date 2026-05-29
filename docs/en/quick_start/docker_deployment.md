@@ -15,13 +15,13 @@ docker build -t mineru:latest -f Dockerfile .
 
 ## Docker Description
 
-MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `vllm` inference acceleration framework and necessary dependencies by default. Therefore, on compatible devices, you can directly use `vllm` to accelerate VLM model inference.
+MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `vllm` inference acceleration framework and necessary dependencies by default. The current Dockerfile uses `vllm/vllm-openai:v0.21.0` by default for CUDA 13.0-compatible environments. If your environment requires a CUDA 12.9-compatible image, comment out the default `FROM` line at the top of the Dockerfile and enable the commented `vllm/vllm-openai:v0.21.0-cu129` base image instead. Therefore, on compatible devices, you can directly use `vllm` to accelerate VLM model inference.
 
 > [!NOTE]
 > Requirements for using `vllm` to accelerate VLM model inference:
 > 
 > - Device must have Volta architecture or later graphics cards with 8GB+ available VRAM.
-> - The host machine's graphics driver should support CUDA 12.9.1 or higher; You can check the driver version using the `nvidia-smi` command.
+> - The host machine's graphics driver must support the CUDA runtime used by the selected base image: the default `v0.21.0` image requires a CUDA 13.0-compatible driver, and `v0.21.0-cu129` requires a CUDA 12.9-compatible driver. You can check the driver version using the `nvidia-smi` command.
 > - Docker container must have access to the host machine's graphics devices.
 
 ## Start Docker Container
