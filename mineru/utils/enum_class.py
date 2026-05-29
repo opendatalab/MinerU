@@ -44,7 +44,6 @@ class BlockType:
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
     VERTICAL_TEXT = "vertical_text"
-    SEAL = "seal"
     HEADER_IMAGE = "header_image"
     FOOTER_IMAGE = "footer_image"
     FORMULA_NUMBER = "formula_number"
@@ -58,7 +57,6 @@ class ContentType:
     INLINE_EQUATION = 'inline_equation'
     EQUATION = 'equation'
     HYPERLINK = 'hyperlink'
-    SEAL = 'seal'
 
 
 class ContentTypeV2:
@@ -66,7 +64,6 @@ class ContentTypeV2:
     ALGORITHM = "algorithm"
     EQUATION_INTERLINE = 'equation_interline'
     IMAGE = 'image'
-    SEAL = 'seal'
     TABLE = 'table'
     CHART = 'chart'
     TABLE_SIMPLE = 'simple_table'
@@ -97,8 +94,8 @@ class MakeMode:
 
 
 class ModelPath:
-    vlm_root_hf = "opendatalab/MinerU2.5-Pro-2604-1.2B"
-    vlm_root_modelscope = "OpenDataLab/MinerU2.5-Pro-2604-1.2B"
+    vlm_root_hf = "opendatalab/MinerU2.5-Pro-2605-1.2B"
+    vlm_root_modelscope = "OpenDataLab/MinerU2.5-Pro-2605-1.2B"
     pipeline_root_modelscope = "OpenDataLab/PDF-Extract-Kit-1.0"
     pipeline_root_hf = "opendatalab/PDF-Extract-Kit-1.0"
     pp_doclayout_v2 = "models/Layout/PP-DocLayoutV2"
@@ -108,7 +105,6 @@ class ModelPath:
     slanet_plus = "models/TabRec/SlanetPlus/slanet-plus.onnx"
     unet_structure = "models/TabRec/UnetStructure/unet.onnx"
     paddle_table_cls = "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx"
-    paddle_orientation_classification = "models/OriCls/paddle_orientation_classification/PP-LCNet_x1_0_doc_ori.onnx"
 
 
 class SplitFlag:
@@ -134,3 +130,4 @@ class NotExtractType(Enum):
     TABLE_FOOTNOTE = BlockType.TABLE_FOOTNOTE
     IMAGE_FOOTNOTE = BlockType.IMAGE_FOOTNOTE
     CODE_CAPTION = BlockType.CODE_CAPTION
+    PHONETIC = BlockType.PHONETIC

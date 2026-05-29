@@ -306,7 +306,6 @@
 | `chart` | 图表 |
 | `text` | 文本/标题 |
 | `equation` | 行间公式 |
-| `seal` | 印章 |
 | `code` | 代码块 / 算法块 |
 | `list` | 列表 / 参考文献列表 |
 | `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块 |
@@ -327,6 +326,7 @@
 - `code` 类型会通过 `sub_type` 区分 `code` 和 `algorithm`，并可包含 `code_body`、`code_caption`、`code_footnote` 等字段。
 - `list` 类型可通过 `sub_type` 区分普通列表和参考文献列表。
 - `image` / `chart` 类型可包含可选 `sub_type` 字段，用于透传视觉子类型。
+- 印章内容通过 `sub_type: "seal"` 的 `image` 类型表示。
 
 ##### 示例数据
 
@@ -423,11 +423,16 @@
 | `title` | 标题块，包含 `title_content` 与 `level` |
 | `paragraph` | 段落块，包含 `paragraph_content` |
 | `equation_interline` | 行间公式，包含 `math_content`、`math_type` |
-| `image` / `table` / `chart` / `seal` | 视觉类块，包含图片路径、说明文字等结构化字段 |
+| `image` / `table` / `chart` | 视觉类块，包含图片路径、说明文字等结构化字段；印章使用 `sub_type: "seal"` 的 `image` 表示 |
 | `code` | 代码块，包含 `code_content`、`code_caption`、`code_footnote`、`code_language` |
 | `algorithm` | 算法块，包含 `algorithm_content`、`algorithm_caption`、`algorithm_footnote` |
 | `list` / `index` | 列表与索引，包含 `list_items` |
 | `page_header` / `page_footer` / `page_number` / `page_aside_text` / `page_footnote` | 页面辅助块 |
+
+`title_content`、`paragraph_content`、说明文字等行内内容通常由 span 列表组成。
+`hyperlink` span 包含 `content`、`url`，当同一个链接内存在多段不同样式文本时，
+还会包含 `children`；此时 `content` 是 children 文本的拼接，精确样式以
+`children` 中的 `text` span 为准。
 
 ##### 示例数据
 

@@ -18,18 +18,27 @@ MAX_TITLE_GROUP_WORKERS = 4
 
 
 def _get_title_line_avg_height(block):
-    if "line_avg_height" in block:
-        return block["line_avg_height"]
+    line_avg_height = block.get("line_avg_height")
+    if isinstance(line_avg_height, (int, float)) and line_avg_height > 0:
+        return line_avg_height
 
     title_block_line_height_list = []
     for line in block.get("lines", []):
-        bbox = line["bbox"]
-        title_block_line_height_list.append(int(bbox[3] - bbox[1]))
+        # 标题行高是 LLM prompt 的几何提示，这里只消费有效 bbox，不回写 middle json。
+        bbox = line.get("bbox")
+        if not bbox or len(bbox) < 4:
+            continue
+        line_height = bbox[3] - bbox[1]
+        if line_height > 0:
+            title_block_line_height_list.append(int(line_height))
 
     if len(title_block_line_height_list) > 0:
         return sum(title_block_line_height_list) / len(title_block_line_height_list)
 
-    return int(block["bbox"][3] - block["bbox"][1])
+    bbox = block.get("bbox")
+    if bbox and len(bbox) >= 4:
+        return max(0, int(bbox[3] - bbox[1]))
+    return 0
 
 
 def _collect_title_block_refs(page_info_list):

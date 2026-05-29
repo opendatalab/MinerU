@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import asyncio
 import importlib
 import importlib.util
 import json
@@ -315,6 +316,7 @@ def _process_pipeline(
         f_dump_orig_pdf,
         f_dump_content_list,
         f_make_md_mode,
+        client_side_output_generation=False,
 ):
     """处理pipeline后端逻辑"""
     from mineru.backend.pipeline.pipeline_analyze import doc_analyze_streaming as pipeline_doc_analyze_streaming
@@ -365,6 +367,7 @@ def _process_pipeline(
             parse_method=parse_method,
             formula_enable=p_formula_enable,
             table_enable=p_table_enable,
+            client_side_output_generation=client_side_output_generation,
         )
 
         for future in output_futures:
@@ -637,6 +640,7 @@ def do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        client_side_output_generation=False,
         **kwargs,
 ):
     need_remove_index = _process_office_doc(
@@ -666,7 +670,8 @@ def do_parse(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+            client_side_output_generation=client_side_output_generation,
         )
     else:
         if backend.startswith("vlm-"):
@@ -685,7 +690,8 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis, **kwargs,
+                server_url, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
             )
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
@@ -705,7 +711,8 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis, **kwargs,
+                server_url, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
 
@@ -730,9 +737,12 @@ async def aio_do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        client_side_output_generation=False,
         **kwargs,
 ):
-    need_remove_index = _process_office_doc(
+    # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
+    need_remove_index = await asyncio.to_thread(
+        _process_office_doc,
         output_dir,
         pdf_file_names=pdf_file_names,
         pdf_bytes_list=pdf_bytes_list,
@@ -760,7 +770,8 @@ async def aio_do_parse(
             output_dir, pdf_file_names, pdf_bytes_list, p_lang_list,
             parse_method, formula_enable, table_enable,
             f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
-            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode
+            f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
+            client_side_output_generation=client_side_output_generation,
         )
     else:
         if backend.startswith("vlm-"):
@@ -779,7 +790,8 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis, **kwargs,
+                server_url, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
             )
         elif backend.startswith("hybrid-"):
             ensure_backend_dependencies(backend)
@@ -798,7 +810,8 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis, **kwargs,
+                server_url, image_analysis=image_analysis,
+                client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
 

@@ -72,7 +72,6 @@ def download_pipeline_models():
         ModelPath.slanet_plus,
         ModelPath.unet_structure,
         ModelPath.paddle_table_cls,
-        ModelPath.paddle_orientation_classification,
         ModelPath.pp_formulanet_plus_m,
     ]
     download_finish_path = ""

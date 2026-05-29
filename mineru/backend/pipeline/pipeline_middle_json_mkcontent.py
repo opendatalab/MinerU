@@ -41,13 +41,6 @@ def make_blocks_to_markdown(paras_of_layout,
                 para_text = merge_para_with_text(para_block)
             else:
                 para_text = f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
-        elif para_type == BlockType.SEAL:
-            if len(para_block['lines']) == 0 or len(para_block['lines'][0]['spans']) == 0:
-                continue
-            para_text = f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
-            if para_block['lines'][0]['spans'][0].get('content', []):
-                content = " ".join(para_block['lines'][0]['spans'][0]['content'])
-                para_text += f"  \n{content}"
         elif para_type == BlockType.IMAGE:
             if mode == MakeMode.NLP_MD:
                 continue
@@ -82,7 +75,7 @@ def merge_visual_blocks_to_markdown(para_block, img_buket_path=''):
 
     for block in get_blocks_in_index_order(para_block.get('blocks', [])):
         render_block = _inherit_parent_code_render_metadata(block, para_block)
-        rendered_segments.extend(render_visual_block_segments(render_block, img_buket_path))
+        rendered_segments.extend(render_visual_block_segments(render_block, img_buket_path, para_block))
 
     para_text = ''
     prev_segment_kind = None
@@ -128,7 +121,7 @@ def _inherit_parent_code_render_metadata(block, parent_block):
     return render_block
 
 
-def render_visual_block_segments(block, img_buket_path=''):
+def render_visual_block_segments(block, img_buket_path='', para_block=None):
     # 将单个视觉子 block 渲染成一个或多个 segment。
     # 文本类子块统一输出 markdown_line；
     # table 的 html 输出为 html_block，供后续决定是否需要空行隔开。
@@ -151,12 +144,23 @@ def render_visual_block_segments(block, img_buket_path=''):
         return []
 
     if block_type == BlockType.IMAGE_BODY:
-        return [
-            (f"![]({img_buket_path}/{span['image_path']})", 'markdown_line')
-            for line in block['lines']
-            for span in line['spans']
-            if span['type'] == ContentType.IMAGE and span.get('image_path', '')
-        ]
+        rendered_segments = []
+        for line in block['lines']:
+            for span in line['spans']:
+                if span['type'] != ContentType.IMAGE:
+                    continue
+                if span.get('image_path', ''):
+                    rendered_segments.append((
+                        f"![]({img_buket_path}/{span['image_path']})",
+                        'markdown_line',
+                    ))
+                details_block = _build_visual_details_block(
+                    span.get('content', ''),
+                    (para_block or {}).get('sub_type') or 'image content',
+                )
+                if details_block:
+                    rendered_segments.append((details_block, 'details_block'))
+        return rendered_segments
 
     if block_type == BlockType.CHART_BODY:
         return [
@@ -192,6 +196,8 @@ def get_visual_block_separator(prev_segment_kind, current_segment_kind):
     if prev_segment_kind == 'html_block':
         # Raw HTML blocks need a blank line after them, otherwise the following
         # markdown text is still treated as part of the HTML block.
+        return '\n\n'
+    if prev_segment_kind == 'details_block' or current_segment_kind == 'details_block':
         return '\n\n'
     if current_segment_kind == 'html_block':
         return '\n'
@@ -245,6 +251,36 @@ def _replace_eq_tags_in_table_html(html):
 def _format_embedded_html(html, img_buket_path):
     """Normalize embedded table HTML for markdown/content outputs."""
     return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
+
+
+def _normalize_visual_content(content):
+    """将视觉块识别内容统一成字符串，便于 markdown 和结构化输出复用。"""
+    if isinstance(content, list):
+        return "\n".join(str(item) for item in content if str(item).strip())
+    if isinstance(content, str):
+        return content.strip()
+    return ''
+
+
+def _build_visual_details_block(content, summary):
+    """根据视觉块的识别文本生成 VLM 风格的折叠详情块。"""
+    normalized_content = _normalize_visual_content(content)
+    if not normalized_content:
+        return ''
+
+    return (
+        "<details>\n"
+        f"<summary>{summary}</summary>\n\n"
+        f"{normalized_content}\n"
+        "</details>"
+    )
+
+
+def _apply_visual_sub_type(para_content, para_block):
+    """将视觉父块的 sub_type 透传到 content_list 输出顶层。"""
+    sub_type = para_block.get('sub_type')
+    if sub_type:
+        para_content['sub_type'] = sub_type
 
 
 def merge_para_with_text(para_block):
@@ -453,27 +489,6 @@ def _build_bbox(para_bbox, page_size):
     ]
 
 
-def _get_seal_span(para_block):
-    for line in para_block.get('lines', []):
-        for span in line.get('spans', []):
-            if span.get('type') == ContentType.SEAL:
-                return span
-    return None
-
-
-def _get_seal_text(para_block):
-    seal_span = _get_seal_span(para_block)
-    if not seal_span:
-        return ''
-
-    content = seal_span.get('content', '')
-    if isinstance(content, list):
-        return ' '.join(str(item) for item in content if str(item).strip())
-    if isinstance(content, str):
-        return content.strip()
-    return ''
-
-
 def _get_ref_text_item_blocks(para_block):
     return para_block.get('blocks') or [para_block]
 
@@ -510,7 +525,7 @@ def _get_body_data(para_block):
                 if span_type == ContentType.CHART:
                     return span.get('image_path', ''), span.get('content', '')
                 if span_type == ContentType.IMAGE:
-                    return span.get('image_path', ''), ''
+                    return span.get('image_path', ''), _normalize_visual_content(span.get('content', ''))
                 if span_type == ContentType.INTERLINE_EQUATION:
                     return span.get('image_path', ''), span.get('content', '')
         return '', ''
@@ -643,17 +658,14 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
         if para_block['lines'][0]['spans'][0].get('content', ''):
             para_content['text'] = merge_para_with_text(para_block)
             para_content['text_format'] = 'latex'
-    elif para_type == BlockType.SEAL:
-        seal_span = _get_seal_span(para_block)
-        if not seal_span:
-            return None
-        para_content = {
-            'type': ContentType.SEAL,
-            'img_path': f"{img_buket_path}/{seal_span.get('image_path', '')}",
-            'text': _get_seal_text(para_block),
-        }
     elif para_type == BlockType.IMAGE:
         para_content = {'type': ContentType.IMAGE, 'img_path': '', BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
+        image_path, image_content = _get_body_data(para_block)
+        if image_path:
+            para_content['img_path'] = f"{img_buket_path}/{image_path}"
+        if image_content:
+            para_content['content'] = image_content
+        _apply_visual_sub_type(para_content, para_block)
         for block in para_block['blocks']:
             if block['type'] == BlockType.IMAGE_BODY:
                 for line in block['lines']:
@@ -799,7 +811,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
     elif para_type == BlockType.IMAGE:
         image_caption = []
         image_footnote = []
-        image_path, _ = _get_body_data(para_block)
+        image_path, image_content = _get_body_data(para_block)
         for block in para_block.get('blocks', []):
             if block['type'] == BlockType.IMAGE_CAPTION:
                 image_caption.extend(merge_para_with_text_v2(block))
@@ -813,6 +825,9 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
                 'image_footnote': image_footnote,
             },
         }
+        if image_content or para_block.get('sub_type'):
+            para_content['content']['content'] = image_content
+        _apply_visual_sub_type(para_content, para_block)
     elif para_type == BlockType.TABLE:
         table_caption = []
         table_footnote = []
@@ -940,24 +955,6 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
                 'list_items': list_items,
             },
         }
-    elif para_type == BlockType.SEAL:
-        seal_span = _get_seal_span(para_block)
-        if not seal_span:
-            return None
-        seal_text = _get_seal_text(para_block)
-        para_content = {
-            'type': ContentTypeV2.SEAL,
-            'content': {
-                'image_source': {
-                    'path': f"{img_buket_path}/{seal_span.get('image_path', '')}",
-                },
-                'seal_content': (
-                    [{'type': ContentTypeV2.SPAN_TEXT, 'content': seal_text}]
-                    if seal_text else []
-                ),
-            },
-        }
-
     if not para_content:
         return None
 

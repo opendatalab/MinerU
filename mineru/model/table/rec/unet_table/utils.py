@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import traceback
-from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from typing import List, Union, Dict, Any, Tuple, Optional
@@ -17,13 +16,11 @@ from onnxruntime import (
 )
 from PIL import Image, UnidentifiedImageError
 
+from ..onnxruntime_provider import build_table_onnx_providers
+
 
 root_dir = Path(__file__).resolve().parent
 InputType = Union[str, np.ndarray, bytes, Path]
-
-
-class EP(Enum):
-    CPU_EP = "CPUExecutionProvider"
 
 
 class OrtInferSession:
@@ -61,13 +58,7 @@ class OrtInferSession:
         return sess_opt
 
     def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        cpu_provider_opts = {
-            "arena_extend_strategy": "kSameAsRequested",
-        }
-        EP_list = [(EP.CPU_EP.value, cpu_provider_opts)]
-
-        return EP_list
-
+        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))

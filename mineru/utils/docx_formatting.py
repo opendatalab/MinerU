@@ -18,5 +18,7 @@ class Formatting(BaseModel):
     bold: bool = False
     italic: bool = False
     underline: bool = False
+    underline_style: str = ""
+    emphasis: bool = False
     strikethrough: bool = False
     script: Script = Script.BASELINE

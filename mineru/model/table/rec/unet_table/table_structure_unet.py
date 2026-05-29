@@ -5,16 +5,16 @@ from typing import Optional, Dict, Any, Tuple
 
 import cv2
 import numpy as np
-from skimage import measure
 
 from mineru.utils.os_env_config import get_op_num_threads
 from .utils import OrtInferSession, resize_img
 from .utils_table_line_rec import (
     get_table_line,
     final_adjust_lines,
-    min_area_rect_box,
     draw_lines,
     adjust_lines,
+    _iter_connected_component_coords,
+    min_area_rect_box_from_components,
 )
 from.utils_table_recover import (
     sorted_ocr_boxes,
@@ -150,10 +150,9 @@ class TSRUnet:
         return polygons, rotated_polygons
 
     def cal_region_boxes(self, tmp):
-        labels = measure.label(tmp < 255, connectivity=2)  # 8连通区域标记
-        regions = measure.regionprops(labels)
-        ceilboxes = min_area_rect_box(
-            regions,
+        components = _iter_connected_component_coords(tmp < 255)  # 8连通区域标记
+        ceilboxes = min_area_rect_box_from_components(
+            components,
             False,
             tmp.shape[1],
             tmp.shape[0],

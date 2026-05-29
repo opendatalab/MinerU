@@ -1,12 +1,67 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import math
+from typing import Iterator
 
 import cv2
 import numpy as np
-from scipy.spatial import distance as dist
-from skimage import measure
-from skimage import __version__ as skimage_version
-from packaging import version
+
+
+class ConnectedComponent:
+    """保存连通域的 bbox、bbox 面积和懒加载坐标，字段语义对齐旧版 regionprops。"""
+
+    def __init__(
+        self,
+        labels: np.ndarray,
+        label_id: int,
+        bbox: tuple[int, int, int, int],
+        bbox_area: int,
+    ):
+        """记录组件基础信息，像素坐标延迟到真正参与几何计算时再生成。"""
+        self._labels = labels
+        self._label_id = label_id
+        self.bbox = bbox
+        self.bbox_area = bbox_area
+        self._coords = None
+
+    @property
+    def coords(self) -> np.ndarray:
+        """在组件 bbox 内提取 row/col 坐标，保持历史行优先顺序。"""
+        if self._coords is None:
+            min_row, min_col, max_row, max_col = self.bbox
+            label_roi = self._labels[min_row:max_row, min_col:max_col]
+            ys, xs = np.nonzero(label_roi == self._label_id)
+            self._coords = np.column_stack((ys + min_row, xs + min_col))
+        return self._coords
+
+
+def _iter_connected_component_coords(binary_mask: np.ndarray) -> Iterator[ConnectedComponent]:
+    """用 OpenCV 提取 8 连通域，避免构造旧版 region 对象带来的额外开销。"""
+    mask = np.asarray(binary_mask)
+    if mask.size == 0:
+        return
+
+    mask = np.ascontiguousarray(mask.astype(np.uint8, copy=False))
+    if not np.any(mask):
+        return
+
+    label_count, labels, stats, _ = cv2.connectedComponentsWithStats(
+        mask,
+        connectivity=8,
+    )
+    if label_count <= 1:
+        return
+
+    for label_id in range(1, label_count):
+        left = int(stats[label_id, cv2.CC_STAT_LEFT])
+        top = int(stats[label_id, cv2.CC_STAT_TOP])
+        width = int(stats[label_id, cv2.CC_STAT_WIDTH])
+        height = int(stats[label_id, cv2.CC_STAT_HEIGHT])
+        yield ConnectedComponent(
+            labels=labels,
+            label_id=label_id,
+            bbox=(top, left, top + height, left + width),
+            bbox_area=width * height,
+        )
 
 
 def transform_preds(coords, center, scale, output_size, rot=0):
@@ -75,19 +130,18 @@ def get_table_line(binimg, axis=0, lineW=10):
     ##获取表格线
     ##axis=0 横线
     ##axis=1 竖线
-    labels = measure.label(binimg > 0, connectivity=2)  # 8连通区域标记
-    regions = measure.regionprops(labels)
+    components = _iter_connected_component_coords(binimg > 0)
     if axis == 1:
         lineboxes = [
-            min_area_rect(line.coords)
-            for line in regions
-            if line.bbox[2] - line.bbox[0] > lineW
+            min_area_rect(component.coords)
+            for component in components
+            if component.bbox[2] - component.bbox[0] > lineW
         ]
     else:
         lineboxes = [
-            min_area_rect(line.coords)
-            for line in regions
-            if line.bbox[3] - line.bbox[1] > lineW
+            min_area_rect(component.coords)
+            for component in components
+            if component.bbox[3] - component.bbox[1] > lineW
         ]
     return lineboxes
 
@@ -177,7 +231,7 @@ def _order_points(pts):
     left_most = left_most[np.argsort(left_most[:, 1]), :]
     (tl, bl) = left_most
 
-    distance = dist.cdist(tl[np.newaxis], right_most, "euclidean")[0]
+    distance = np.linalg.norm(right_most - tl, axis=1)
     (br, tr) = right_most[np.argsort(distance)[::-1], :]
 
     return np.array([tl, tr, br, bl], dtype="float32")
@@ -298,10 +352,9 @@ def min_area_rect_box(
     """
     boxes = []
     for region in regions:
-        if version.parse(skimage_version) >= version.parse("0.26.0"):
+        region_bbox_area = getattr(region, "bbox_area", None)
+        if region_bbox_area is None:
             region_bbox_area = region.area_bbox
-        else:
-            region_bbox_area = region.bbox_area
         if region_bbox_area > H * W * 3 / 4:  # 过滤大的单元格
             continue
         rect = cv2.minAreaRect(region.coords[:, ::-1])
@@ -322,6 +375,30 @@ def min_area_rect_box(
         #             continue
         #         boxes.append([x1, y1, x2, y2, x3, y3, x4, y4])
         # else:
+        if w * h < 0.5 * W * H:
+            if filtersmall and (
+                w < 15 or h < 15
+            ):  # or w / h > 30 or h / w > 30): # 过滤小的单元格
+                continue
+            boxes.append([x1, y1, x2, y2, x3, y3, x4, y4])
+    return boxes
+
+
+def min_area_rect_box_from_components(
+    components, flag=True, W=0, H=0, filtersmall=False, adjust_box=False
+):
+    """对 OpenCV 连通域组件执行与 min_area_rect_box 相同的过滤和外接框计算。"""
+    boxes = []
+    for component in components:
+        if component.bbox_area > H * W * 3 / 4:  # 过滤大的单元格
+            continue
+        rect = cv2.minAreaRect(component.coords[:, ::-1])
+
+        box = cv2.boxPoints(rect)
+        box = box.reshape((8,)).tolist()
+        box = image_location_sort_box(box)
+        x1, y1, x2, y2, x3, y3, x4, y4 = box
+        angle, w, h, cx, cy = calculate_center_rotate_angle(box)
         if w * h < 0.5 * W * H:
             if filtersmall and (
                 w < 15 or h < 15

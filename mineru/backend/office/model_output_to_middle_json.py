@@ -145,10 +145,10 @@ def result_to_middle_json(model_output_blocks_list, image_writer):
                 for deeper in list(section_counters.keys()):
                     if deeper > level:
                         section_counters[deeper] = 0
-                # Build section number string, e.g. "1.2.1."
+                # Build section number string, e.g. "1.2.1"
                 section_number = ".".join(
                     str(section_counters[l]) for l in range(1, level + 1)
-                ) + "."
+                )
                 block["section_number"] = section_number
             else:
                 # Some documents embed the section number directly in the content

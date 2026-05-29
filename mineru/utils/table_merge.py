@@ -8,22 +8,8 @@ from bs4 import BeautifulSoup
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text
 from mineru.utils.char_utils import full_to_half
 from mineru.utils.enum_class import BlockType, SplitFlag
+from mineru.utils.table_continuation import is_table_continuation_text
 
-
-CONTINUATION_END_MARKERS = [
-    "(续)",
-    "(续表)",
-    "(续上表)",
-    "(continued)",
-    "(cont.)",
-    "(cont’d)",
-    "(…continued)",
-    "续表",
-]
-
-CONTINUATION_INLINE_MARKERS = [
-    "(continued)",
-]
 
 MAX_HEADER_ROWS = 5
 
@@ -47,6 +33,13 @@ class RowSignature:
     @property
     def cell_count(self) -> int:
         return len(self.colspans)
+
+
+@dataclass
+class RenderedCellSegment:
+    text: str
+    start_col: int
+    end_col: int
 
 
 @dataclass
@@ -179,11 +172,92 @@ def _build_front_cache(rows, max_header_rows: int = MAX_HEADER_ROWS) -> tuple[li
     return front_header_info, front_first_data_row_metrics
 
 
-def _find_table_body_span(table_block):
+def _find_table_body_block(table_block):
+    """查找 table block 中的主体子块。"""
     for block in table_block["blocks"]:
-        if block["type"] == BlockType.TABLE_BODY and block["lines"] and block["lines"][0]["spans"]:
-            return block["lines"][0]["spans"][0]
+        if block["type"] == BlockType.TABLE_BODY:
+            return block
     return None
+
+
+def _build_post_body_child_index(table_block, offset: int) -> int | float | None:
+    """为跨页搬运到上一页表格的子块生成表体后的安全 index。"""
+    body_block = _find_table_body_block(table_block)
+    if body_block is None:
+        return None
+
+    body_index = body_block.get("index")
+    if not isinstance(body_index, (int, float)):
+        return None
+
+    return body_index + offset
+
+
+def _find_table_body_span(table_block):
+    body_block = _find_table_body_block(table_block)
+    if body_block and body_block["lines"] and body_block["lines"][0]["spans"]:
+        return body_block["lines"][0]["spans"][0]
+    return None
+
+
+def _is_continuation_caption(caption_block) -> bool:
+    """判断 caption 文本是否带有续表标记。"""
+    return is_table_continuation_text(merge_para_with_text(caption_block))
+
+
+def _is_post_table_non_continuation_caption(table_block, caption_block) -> bool:
+    """判断 caption 是否是误挂到表格下方的新段落标题。
+
+    这类 caption 位于 table body 下方，且不含续表标记；它不应作为
+    当前表的新标题阻断跨页合并，后续会被恢复成独立 text block。
+    """
+    if _is_continuation_caption(caption_block):
+        return False
+
+    body_block = _find_table_body_block(table_block)
+    if body_block is None:
+        return False
+
+    body_bbox = body_block.get("bbox")
+    caption_bbox = caption_block.get("bbox")
+    if not body_bbox or not caption_bbox:
+        return False
+
+    return caption_bbox[1] >= body_bbox[3]
+
+
+def _get_post_table_caption_blocks(table_block):
+    """收集当前表格下方、需要恢复为普通文本的非续表 caption。"""
+    return [
+        block for block in table_block["blocks"]
+        if block["type"] == BlockType.TABLE_CAPTION
+        and _is_post_table_non_continuation_caption(table_block, block)
+    ]
+
+
+def _restore_post_table_captions_as_text(page_info, table_block, caption_blocks) -> None:
+    """将误挂到表格下方的 caption 迁回当前页，作为独立 text block 输出。"""
+    if not caption_blocks:
+        return
+
+    para_blocks = page_info.get("para_blocks", [])
+    try:
+        insert_idx = para_blocks.index(table_block) + 1
+    except ValueError:
+        return
+
+    restored_blocks = []
+    for caption_block in caption_blocks:
+        text_block = deepcopy(caption_block)
+        text_block["type"] = BlockType.TEXT
+        restored_blocks.append(text_block)
+
+    para_blocks[insert_idx:insert_idx] = restored_blocks
+    restored_caption_ids = {id(block) for block in caption_blocks}
+    table_block["blocks"] = [
+        block for block in table_block["blocks"]
+        if id(block) not in restored_caption_ids
+    ]
 
 
 def _refresh_table_state_metrics(state: TableMergeState) -> None:
@@ -325,8 +399,17 @@ def calculate_visual_columns(row):
     return len(cells)
 
 
-def _scan_row_visual_sources(rows, target_row_index: int) -> tuple[dict[int, tuple[int, int]], int]:
-    """扫描到目标行，记录每个视觉列当前由哪个源单元格占据。"""
+def _scan_row_visual_sources(
+    rows,
+    target_row_index: int,
+    initial_occupied: dict[int, set[int]] | None = None,
+) -> tuple[dict[int, tuple[int, int]], int]:
+    """扫描到目标行，记录每个视觉列当前由哪个源单元格占据。
+
+    initial_occupied 表示从上一页延续过来的 rowspan 占位，行号相对
+    rows[0] 计算。它只作为虚拟源单元格参与列定位，不对应当前页真实
+    <td>/<th> 元素。
+    """
     if target_row_index < 0:
         target_row_index += len(rows)
     if target_row_index < 0 or target_row_index >= len(rows):
@@ -335,6 +418,13 @@ def _scan_row_visual_sources(rows, target_row_index: int) -> tuple[dict[int, tup
     # occupied[row_idx][col_idx] = (source_row_idx, source_cell_idx)
     occupied: dict[int, dict[int, tuple[int, int]]] = {}
     total_cols = 0
+    for row_offset, cols in (initial_occupied or {}).items():
+        if not cols:
+            continue
+        occupied[row_offset] = {
+            col: (-1, col) for col in cols
+        }
+        total_cols = max(total_cols, max(cols) + 1)
 
     for r_idx in range(target_row_index + 1):
         occupied_row = occupied.setdefault(r_idx, {})
@@ -357,17 +447,26 @@ def _scan_row_visual_sources(rows, target_row_index: int) -> tuple[dict[int, tup
     return occupied.get(target_row_index, {}), total_cols
 
 
-def build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
+def build_visual_col_mapping(
+    rows,
+    target_row_index: int,
+    initial_occupied: dict[int, set[int]] | None = None,
+) -> list[int]:
     """构建目标行中每个显式 <td>/<th> 元素到视觉列位置的映射。
 
     该映射会正确考虑从前序行继承而来的 rowspan 占位。
+    initial_occupied 可额外传入上一页延续到当前切片的 rowspan 占位。
     """
     if target_row_index < 0:
         target_row_index += len(rows)
     if target_row_index < 0 or target_row_index >= len(rows):
         return []
 
-    target_occupied, _ = _scan_row_visual_sources(rows, target_row_index)
+    target_occupied, _ = _scan_row_visual_sources(
+        rows,
+        target_row_index,
+        initial_occupied=initial_occupied,
+    )
 
     col_idx = 0
     mapping = []
@@ -379,6 +478,64 @@ def build_visual_col_mapping(rows, target_row_index: int) -> list[int]:
         colspan = int(cell.get("colspan", 1))
         col_idx += colspan
     return mapping
+
+
+def build_row_rendered_cell_segments(
+    rows,
+    target_row_index: int,
+    initial_occupied: dict[int, set[int]] | None = None,
+) -> list[RenderedCellSegment]:
+    """构建目标行的渲染单元格段，保留每段覆盖的视觉列范围。
+
+    该函数复用表格行视觉来源扫描结果，语义与 calculate_row_rendered_segments()
+    保持一致：colspan 只算一个渲染段，rowspan 延续下来的单元格也会作为
+    目标行的渲染段返回。
+    """
+    if target_row_index < 0:
+        target_row_index += len(rows)
+    if target_row_index < 0 or target_row_index >= len(rows):
+        return []
+
+    target_occupied, total_cols = _scan_row_visual_sources(
+        rows,
+        target_row_index,
+        initial_occupied=initial_occupied,
+    )
+    if total_cols == 0:
+        return []
+
+    segments: list[RenderedCellSegment] = []
+    current_marker: tuple[int, int] | None = None
+    current_start_col: int | None = None
+    current_text = ""
+
+    # 连续视觉列来自同一个源单元格时，合并为一个渲染段。
+    for col_idx in range(total_cols):
+        marker = target_occupied.get(col_idx)
+        if marker is None:
+            if current_marker is not None and current_start_col is not None:
+                segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=col_idx))
+            current_marker = None
+            current_start_col = None
+            current_text = ""
+            continue
+
+        if marker != current_marker:
+            if current_marker is not None and current_start_col is not None:
+                segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=col_idx))
+            current_marker = marker
+            current_start_col = col_idx
+            source_row_idx, source_cell_idx = marker
+            current_text = ""
+            if source_row_idx >= 0:
+                source_cells = rows[source_row_idx].find_all(["td", "th"])
+                if source_cell_idx < len(source_cells):
+                    current_text = _display_cell_text(source_cells[source_cell_idx])
+
+    if current_marker is not None and current_start_col is not None:
+        segments.append(RenderedCellSegment(text=current_text, start_col=current_start_col, end_col=total_cols))
+
+    return segments
 
 
 def calculate_row_rendered_segments(rows, target_row_index: int) -> int:
@@ -461,7 +618,10 @@ def _detect_table_headers_visual(
     for row_idx in range(min_rows):
         row1 = front_rows1[row_idx]
         row2 = front_rows2[row_idx]
-        if row1.normalized_texts == row2.normalized_texts and row1.effective_cols == row2.effective_cols:
+        # OCR 识别表头时可能丢失 colspan/rowspan，这里用渲染段数约束视觉一致性。
+        rendered_segments1 = calculate_row_rendered_segments(state1.rows, row_idx)
+        rendered_segments2 = calculate_row_rendered_segments(state2.rows, row_idx)
+        if row1.normalized_texts == row2.normalized_texts and rendered_segments1 == rendered_segments2:
             header_rows += 1
             header_texts.append(list(row1.display_texts))
         else:
@@ -540,16 +700,14 @@ def can_merge_tables(current_state: TableMergeState, previous_state: TableMergeS
     caption_blocks = [
         block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_CAPTION
     ]
-    if caption_blocks:
-        has_continuation_marker = False
-        for block in caption_blocks:
-            caption_text = full_to_half(merge_para_with_text(block).strip()).lower()
-            if (
-                any(caption_text.endswith(marker.lower()) for marker in CONTINUATION_END_MARKERS)
-                or any(marker.lower() in caption_text for marker in CONTINUATION_INLINE_MARKERS)
-            ):
-                has_continuation_marker = True
-                break
+    merge_caption_blocks = [
+        block for block in caption_blocks
+        if not _is_post_table_non_continuation_caption(current_table_block, block)
+    ]
+    if merge_caption_blocks:
+        has_continuation_marker = any(
+            _is_continuation_caption(block) for block in merge_caption_blocks
+        )
 
         if not has_continuation_marker:
             return False
@@ -672,7 +830,7 @@ def _insert_cell_before_visual_column(rows, target_row_index: int, start_vcol: i
     target_vcol_map = build_visual_col_mapping(rows, target_row_index)
 
     for idx, target_start_vcol in enumerate(target_vcol_map):
-        if target_start_vcol > start_vcol:
+        if target_start_vcol >= start_vcol:
             target_cells[idx].insert_before(cell)
             return
 
@@ -705,6 +863,76 @@ def _carry_rowspan_structure_to_next_row(rows, row_idx: int) -> None:
 
     for start_vcol, carried_cell in sorted(carried_cells, key=lambda item: item[0], reverse=True):
         _insert_cell_before_visual_column(rows, next_row_idx, start_vcol, carried_cell)
+
+
+def _clip_overlapped_blank_rowspan_cells(
+    rows,
+    initial_occupied: dict[int, set[int]],
+) -> bool:
+    """裁剪被上页 rowspan 覆盖的当前页空白结构占位。
+
+    跨页表格中，上一页未结束的 rowspan 会通过 initial_occupied 占住
+    当前页开头的视觉列。如果当前页表格识别又生成了同位置的空白
+    rowspan 单元格，这个单元格只是结构占位；直接拼接会把同一视觉列
+    当成两列。这里仅裁剪无语义内容的空白占位，真实内容单元格不处理。
+    """
+    if not rows or not initial_occupied:
+        return False
+
+    cells_to_remove = []
+    cells_to_move = []
+
+    for row_idx, row in enumerate(rows):
+        cells = row.find_all(["td", "th"])
+        visual_col_map = build_visual_col_mapping(rows, row_idx)
+        for cell, start_vcol in zip(cells, visual_col_map):
+            rowspan = int(cell.get("rowspan", 1))
+            if rowspan <= 1 or _cell_has_semantic_content(cell):
+                continue
+
+            colspan = int(cell.get("colspan", 1))
+            occupied_cols = set(range(start_vcol, start_vcol + colspan))
+            if not occupied_cols:
+                continue
+
+            overlap_rows = 0
+            while overlap_rows < rowspan:
+                covered_cols = initial_occupied.get(row_idx + overlap_rows, set())
+                if not occupied_cols.issubset(covered_cols):
+                    break
+                overlap_rows += 1
+
+            if overlap_rows == 0:
+                continue
+
+            remaining_rowspan = rowspan - overlap_rows
+            target_row_idx = row_idx + overlap_rows
+            if remaining_rowspan > 0 and target_row_idx >= len(rows):
+                continue
+
+            cells_to_remove.append(cell)
+            if remaining_rowspan > 0:
+                moved_cell = deepcopy(cell)
+                if remaining_rowspan > 1:
+                    moved_cell["rowspan"] = str(remaining_rowspan)
+                else:
+                    moved_cell.attrs.pop("rowspan", None)
+                cells_to_move.append((target_row_idx, start_vcol, moved_cell))
+
+    if not cells_to_remove:
+        return False
+
+    for cell in cells_to_remove:
+        cell.extract()
+
+    for target_row_idx, start_vcol, moved_cell in sorted(
+        cells_to_move,
+        key=lambda item: (item[0], item[1]),
+        reverse=True,
+    ):
+        _insert_cell_before_visual_column(rows, target_row_idx, start_vcol, moved_cell)
+
+    return True
 
 
 def _apply_cell_merge(
@@ -740,7 +968,12 @@ def _apply_cell_merge(
     # 构建视觉列到单元格索引的映射
     last_row_idx = len(previous_state.rows) - 1
     vcol_map1 = build_visual_col_mapping(previous_state.rows, last_row_idx)
-    vcol_map2 = build_visual_col_mapping(rows2, header_count)
+    current_merge_rows = rows2[header_count:]
+    vcol_map2 = build_visual_col_mapping(
+        current_merge_rows,
+        0,
+        initial_occupied=previous_state.tail_occupied,
+    )
 
     # 构建视觉列 -> 单元格索引的反向映射（展开 colspan）
     vcol_to_cell1: dict[int, int] = {}
@@ -798,6 +1031,11 @@ def perform_table_merge(
     rows2 = current_state.rows
 
     previous_adjusted = False
+
+    if header_count < len(rows2):
+        current_merge_rows = rows2[header_count:]
+        if _clip_overlapped_blank_rowspan_cells(current_merge_rows, previous_state.tail_occupied):
+            _refresh_table_state_metrics(current_state)
 
     if rows1 and rows2 and header_count < len(rows2):
         last_row1 = rows1[-1]
@@ -869,9 +1107,14 @@ def perform_table_merge(
     previous_table_block["blocks"] = [
         block for block in previous_table_block["blocks"] if block["type"] != BlockType.TABLE_FOOTNOTE
     ]
-    for table_footnote in wait_merge_table_footnotes:
+    for footnote_offset, table_footnote in enumerate(wait_merge_table_footnotes, start=1):
         temp_table_footnote = table_footnote.copy()
         temp_table_footnote[SplitFlag.CROSS_PAGE] = True
+        post_body_index = _build_post_body_child_index(previous_table_block, footnote_offset)
+        if post_body_index is None:
+            temp_table_footnote.pop("index", None)
+        else:
+            temp_table_footnote["index"] = post_body_index
         previous_table_block["blocks"].append(temp_table_footnote)
 
     previous_state.dirty = True
@@ -906,6 +1149,7 @@ def merge_table(page_info_list):
         if current_state is None or previous_state is None:
             continue
 
+        post_table_caption_blocks = _get_post_table_caption_blocks(current_table_block)
         wait_merge_table_footnotes = [
             block for block in current_table_block["blocks"] if block["type"] == BlockType.TABLE_FOOTNOTE
         ]
@@ -918,6 +1162,11 @@ def merge_table(page_info_list):
             current_state,
             previous_table_block,
             wait_merge_table_footnotes,
+        )
+        _restore_post_table_captions_as_text(
+            page_info,
+            current_table_block,
+            post_table_caption_blocks,
         )
 
         merged_away_blocks.add(id(current_table_block))

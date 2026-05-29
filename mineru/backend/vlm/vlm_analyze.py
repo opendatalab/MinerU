@@ -430,6 +430,9 @@ def doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    client_side_output_generation = bool(
+        kwargs.pop("client_side_output_generation", False)
+    )
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -507,7 +510,8 @@ def doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
-        finalize_middle_json(middle_json["pdf_info"])
+        if not client_side_output_generation:
+            finalize_middle_json(middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results
@@ -526,6 +530,9 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     **kwargs,
 ):
+    client_side_output_generation = bool(
+        kwargs.pop("client_side_output_generation", False)
+    )
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -602,7 +609,8 @@ async def aio_doc_analyze(
                 f"processing-window infer finished, cost: {infer_time}, "
                 f"speed: {round(len(results) / infer_time, 3)} page/s"
             )
-        finalize_middle_json(middle_json["pdf_info"])
+        if not client_side_output_generation:
+            await asyncio.to_thread(finalize_middle_json, middle_json["pdf_info"])
         close_pdfium_document(pdf_doc)
         doc_closed = True
         return middle_json, results

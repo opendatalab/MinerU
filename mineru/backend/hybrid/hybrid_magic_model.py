@@ -8,7 +8,7 @@ from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType, NotExtractType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.span_block_fix import fix_text_block
-from mineru.utils.span_pre_proc import txt_spans_extract
+from mineru.utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
 from mineru.utils.visual_magic_model_utils import (
     GENERIC_CHILD_TYPES,
     IMAGE_BLOCK_BODY,
@@ -16,13 +16,27 @@ from mineru.utils.visual_magic_model_utils import (
     clean_content,
     code_content_clean,
     fallback_inline_caption_fragments,
+    fallback_leading_table_continuation_captions,
     isolated_formula_clean,
     regroup_visual_blocks,
 )
 not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.CAPTION,
     BlockType.FOOTNOTE,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
 ]
+OCR_DET_LINES_KEY = "_ocr_det_lines"
+OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
+    BlockType.LIST,
+    BlockType.INDEX,
+    BlockType.ABSTRACT,
+    BlockType.ASIDE_TEXT,
+    BlockType.PHONETIC,
+    BlockType.CHART_CAPTION,
+    BlockType.CHART_FOOTNOTE,
+    BlockType.CODE_FOOTNOTE,
+}
 
 
 def _copy_raw_text_block_metadata(raw_block_type, block_info, block):
@@ -57,39 +71,39 @@ class MagicModel:
         self.all_spans = []
 
         page_text_inline_formula_spans = []
-        if not _vlm_ocr_enable:
-            for inline_formula in self.page_inline_formula:
-                inline_formula["bbox"] = self.cal_real_bbox(inline_formula["bbox"])
-                inline_formula_latex = inline_formula.pop("latex", "")
-                if inline_formula_latex:
-                    page_text_inline_formula_spans.append(
-                        {
-                            "bbox": inline_formula["bbox"],
-                            "type": ContentType.INLINE_EQUATION,
-                            "content": inline_formula_latex,
-                            "score": inline_formula["score"],
-                        }
-                    )
-            for ocr_res in self.page_ocr_res:
-                ocr_res["bbox"] = self.cal_real_bbox(ocr_res["bbox"])
+        for inline_formula in self.page_inline_formula:
+            inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
+            inline_formula_latex = inline_formula.pop("latex", "")
+            if inline_formula_latex:
                 page_text_inline_formula_spans.append(
                     {
-                        "bbox": ocr_res["bbox"],
-                        "type": ContentType.TEXT,
-                        "content": ocr_res["text"],
-                        "score": ocr_res["score"],
+                        "bbox": inline_formula["bbox"],
+                        "type": ContentType.INLINE_EQUATION,
+                        "content": inline_formula_latex,
+                        "score": inline_formula["score"],
                     }
                 )
-            if not _ocr_enable:
-                virtual_block = [0, 0, width, height, None, None, None, "text"]
-                page_text_inline_formula_spans = txt_spans_extract(
-                    page,
-                    page_text_inline_formula_spans,
-                    page_pil_img,
-                    scale,
-                    [virtual_block],
-                    [],
-                )
+        for ocr_res in self.page_ocr_res:
+            ocr_res["bbox"] = list(self.cal_real_bbox(ocr_res["bbox"]))
+            page_text_inline_formula_spans.append(
+                {
+                    "bbox": ocr_res["bbox"],
+                    "type": ContentType.TEXT,
+                    "content": ocr_res.get("text", ""),
+                    "score": ocr_res["score"],
+                }
+            )
+        if not _vlm_ocr_enable and not _ocr_enable:
+            virtual_block = [0, 0, width, height, None, None, None, "text"]
+            page_text_inline_formula_spans = txt_spans_extract(
+                page,
+                page_text_inline_formula_spans,
+                page_pil_img,
+                scale,
+                [virtual_block],
+                [],
+            )
+        span_matcher = SpanBlockMatcher(page_text_inline_formula_spans)
 
         # 解析每个块
         for index, block_info in enumerate(self.page_blocks):
@@ -116,6 +130,8 @@ class MagicModel:
             if block_type in [
                 "text",
                 "title",
+                "doc_title",
+                "paragraph_title",
                 "ref_text",
                 "phonetic",
                 "header",
@@ -154,6 +170,10 @@ class MagicModel:
                 block_type = BlockType.INTERLINE_EQUATION
                 span_type = ContentType.INTERLINE_EQUATION
 
+            if span_type == ContentType.TEXT and block_content is None:
+                # 文本类块缺失 content 时按空文本处理，避免 VLM mkcontent 渲染阶段遇到 None。
+                block_content = ""
+
             # code 和 algorithm 类型的块，如果内容中包含行内公式，则需要将块类型切换为 algorithm
             switch_code_to_algorithm = False
 
@@ -179,7 +199,7 @@ class MagicModel:
                 if block_content:
                     block_content = clean_content(block_content)
 
-                if block_type == "title" and block_content:
+                if block_type in [BlockType.TITLE, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
                     block_content = re.sub(r"\n\s*", " ", block_content).strip()
 
                 if (
@@ -283,22 +303,15 @@ class MagicModel:
                     block["sub_type"] = block_sub_type
                 if raw_block_type == "table" and "cell_merge" in block_info:
                     block["cell_merge"] = block_info["cell_merge"]
+                if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
+                    ocr_det_lines = self._build_ocr_det_lines(
+                        span_matcher.collect_for_block(block_bbox)
+                    )
+                    if ocr_det_lines:
+                        block[OCR_DET_LINES_KEY] = ocr_det_lines
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
             else:
-                block_spans = []
-                for span in page_text_inline_formula_spans:
-                    if (
-                        calculate_overlap_area_in_bbox1_area_ratio(
-                            span["bbox"],
-                            block_bbox,
-                        )
-                        > 0.5
-                    ):
-                        block_spans.append(span)
-
-                if block_spans:
-                    for span in block_spans:
-                        page_text_inline_formula_spans.remove(span)
+                block_spans = span_matcher.collect_for_block(block_bbox)
 
                 block = {
                     "bbox": block_bbox,
@@ -313,6 +326,7 @@ class MagicModel:
             blocks.append(block)
 
         fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
+        fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
 
         self.image_blocks = []
         self.table_blocks = []
@@ -333,7 +347,11 @@ class MagicModel:
                 self.interline_equation_blocks.append(block)
             elif block["type"] == BlockType.TEXT:
                 self.text_blocks.append(block)
-            elif block["type"] == BlockType.TITLE:
+            elif block["type"] in [
+                BlockType.TITLE,
+                BlockType.DOC_TITLE,
+                BlockType.PARAGRAPH_TITLE,
+            ]:
                 self.title_blocks.append(block)
             elif block["type"] == BlockType.REF_TEXT:
                 self.ref_text_blocks.append(block)
@@ -395,6 +413,20 @@ class MagicModel:
                 page_blocks.append(item)
 
         return page_blocks, page_inline_formula, page_ocr_res
+
+    @staticmethod
+    def _supports_ocr_det_lines(block_type):
+        """判断当前块类型是否需要保留 OCR det 行提示供 Hybrid 段落合并使用。"""
+        return block_type in OCR_DET_LINE_BLOCK_TYPES
+
+    @staticmethod
+    def _build_ocr_det_lines(block_spans):
+        """将 OCR det span 聚合成 line，但不改变 VLM-OCR 的 canonical 文本内容。"""
+        if not block_spans:
+            return []
+
+        hint_block = {"spans": copy.deepcopy(block_spans)}
+        return fix_text_block(hint_block).get("lines", [])
 
     def cal_real_bbox(self, bbox):
         x1, y1, x2, y2 = bbox

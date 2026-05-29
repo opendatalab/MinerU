@@ -95,6 +95,13 @@ def _normalize_latex_delimiter(delimiter):
     return delimiter
 
 
+def _ensure_latex_command_boundary(latex_text):
+    """为裸 LaTeX 字母控制词补终止空格，避免后续变量被拼成未知命令。"""
+    if re.fullmatch(r"\\[A-Za-z]+", latex_text):
+        return f"{latex_text} "
+    return latex_text
+
+
 class Tag2Method:
     def call_method(self, elm, stag=None):
         getmethod = self.tag2meth.get
@@ -485,8 +492,10 @@ class oMath2Latex(Tag2Method):
         # 不能删除内部LaTeX命令的闭合花括号。
         if out_latex_str.startswith(r"{\ensuremath{") and out_latex_str.endswith("}}"):
             out_latex_str = out_latex_str[len(r"{\ensuremath{") : -2]
+            out_latex_str = _ensure_latex_command_boundary(out_latex_str)
         elif out_latex_str.startswith(r"\ensuremath{") and out_latex_str.endswith("}"):
             out_latex_str = out_latex_str[len(r"\ensuremath{") : -1]
+            out_latex_str = _ensure_latex_command_boundary(out_latex_str)
         elif (
             s.startswith("{") is False
             and out_latex_str.startswith("{")

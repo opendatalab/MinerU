@@ -891,7 +891,7 @@ class PPDocLayoutV2LayoutModel:
         weight: str,
         device: Optional[str] = "cuda",
         imgsz: Tuple[int, int] = DEFAULT_IMAGE_SIZE,
-        conf: float = 0.5,
+        conf: float = 0.45,
         use_paddlex_filter_boxes: bool = True,
     ):
         self.device = device
@@ -1219,11 +1219,123 @@ class PPDocLayoutV2LayoutModel:
         return boxes
 
     @classmethod
-    def _apply_layout_post_process(cls, boxes: List[Dict]) -> List[Dict]:
+    def _relabel_header_footer_boundary_blocks(
+        cls,
+        boxes: List[Dict],
+        image_size: Optional[Tuple[int, int]] = None,
+    ) -> List[Dict]:
+        """按视觉坐标用页眉/页脚锚点修正边界区域的普通块标签。"""
+        if len(boxes) <= 1:
+            return boxes
+
+        header_labels = {"header", "header_image"}
+        footer_labels = {"footer", "footer_image"}
+        exempt_labels = {"aside_text", "footnote", "number"}
+        ordered_boxes = sorted(boxes, key=lambda box: box["index"])
+        boundary_anchor_ids = {
+            id(box)
+            for box in ordered_boxes
+            if box.get("label") in header_labels or box.get("label") in footer_labels
+        }
+
+        header_anchor = max(
+            (box for box in ordered_boxes if box.get("label") in header_labels),
+            key=lambda box: (box["bbox"][3], box["index"]),
+            default=None,
+        )
+        footer_anchor = min(
+            (box for box in ordered_boxes if box.get("label") in footer_labels),
+            key=lambda box: (box["bbox"][1], box["index"]),
+            default=None,
+        )
+
+        # 先按最后一个页眉锚点的下边界修正，后续页脚修正可覆盖重叠区间。
+        if header_anchor is not None:
+            header_boundary = header_anchor["bbox"][3]
+            for box in ordered_boxes:
+                label = box.get("label")
+                if label in exempt_labels or label in header_labels:
+                    continue
+                if box["bbox"][3] <= header_boundary:
+                    box["label"] = "header"
+                    box["cls_id"] = 12
+
+        if footer_anchor is not None:
+            footer_boundary = footer_anchor["bbox"][1]
+            for box in ordered_boxes:
+                label = box.get("label")
+                if label in exempt_labels or label in footer_labels:
+                    continue
+                if box["bbox"][1] >= footer_boundary:
+                    box["label"] = "footer"
+                    box["cls_id"] = 8
+
+        if image_size is None:
+            return ordered_boxes
+
+        page_height = float(image_size[0])
+        if page_height <= 0:
+            return ordered_boxes
+
+        top_boundary = page_height * 0.3
+        bottom_boundary = page_height * 0.7
+        top_numbers = []
+        bottom_numbers = []
+        for box in ordered_boxes:
+            if box.get("label") != "number":
+                continue
+            y_mid = (float(box["bbox"][1]) + float(box["bbox"][3])) / 2
+            if y_mid <= top_boundary:
+                top_numbers.append(box)
+            elif y_mid >= bottom_boundary:
+                bottom_numbers.append(box)
+
+        top_number_anchor = max(
+            top_numbers,
+            key=lambda box: (box["bbox"][3], box["index"]),
+            default=None,
+        )
+        bottom_number_anchor = min(
+            bottom_numbers,
+            key=lambda box: (box["bbox"][1], box["index"]),
+            default=None,
+        )
+
+        # number 自身不改标签，仅用上下 30% 区域中的 number 作为辅助分割线。
+        if top_number_anchor is not None:
+            header_boundary = top_number_anchor["bbox"][1]
+            for box in ordered_boxes:
+                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                    continue
+                if box["bbox"][3] <= header_boundary:
+                    box["label"] = "header"
+                    box["cls_id"] = 12
+
+        if bottom_number_anchor is not None:
+            footer_boundary = bottom_number_anchor["bbox"][3]
+            for box in ordered_boxes:
+                if id(box) in boundary_anchor_ids or box.get("label") in exempt_labels:
+                    continue
+                if box["bbox"][1] >= footer_boundary:
+                    box["label"] = "footer"
+                    box["cls_id"] = 8
+
+        return ordered_boxes
+
+    @classmethod
+    def _apply_layout_post_process(
+        cls,
+        boxes: List[Dict],
+        image_size: Optional[Tuple[int, int]] = None,
+    ) -> List[Dict]:
         processed_boxes = [{**box, "bbox": list(box["bbox"])} for box in boxes]
         processed_boxes = cls._deduplicate_boxes_by_iou(processed_boxes, iou_threshold=0.9)
         processed_boxes = cls._merge_nested_formula_boxes(processed_boxes, overlap_threshold=0.7)
         processed_boxes = cls._relabel_formula_boxes(processed_boxes, overlap_threshold=0.7)
+        processed_boxes = cls._relabel_header_footer_boundary_blocks(
+            processed_boxes,
+            image_size=image_size,
+        )
         return cls._renumber_indices(processed_boxes)
 
     @classmethod
@@ -1340,7 +1452,7 @@ class PPDocLayoutV2LayoutModel:
                         layout_res = self._parse_prediction(prediction, image_size)
                         if use_paddlex_filter_boxes:
                             layout_res = self._apply_paddlex_filter_boxes(layout_res, drop_inline_formula=False)
-                        layout_res = self._apply_layout_post_process(layout_res)
+                        layout_res = self._apply_layout_post_process(layout_res, image_size=image_size)
                         results.append(layout_res)
                     pbar.update(len(batch_images))
         return results

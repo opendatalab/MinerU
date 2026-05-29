@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import platform
 import traceback
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
 
@@ -25,14 +23,10 @@ from onnxruntime import (
     InferenceSession,
     SessionOptions,
     get_available_providers,
-    get_device,
 )
 
 from loguru import logger
-
-
-class EP(Enum):
-    CPU_EP = "CPUExecutionProvider"
+from ..onnxruntime_provider import build_table_onnx_providers
 
 
 class OrtInferSession:
@@ -76,11 +70,7 @@ class OrtInferSession:
         return content_list
 
     def _get_ep_list(self) -> List[Tuple[str, Dict[str, Any]]]:
-        cpu_provider_opts = {
-            "arena_extend_strategy": "kSameAsRequested",
-        }
-        EP_list = [(EP.CPU_EP.value, cpu_provider_opts)]
-        return EP_list
+        return build_table_onnx_providers(self.had_providers)
 
     def __call__(self, input_content: List[np.ndarray]) -> np.ndarray:
         input_dict = dict(zip(self.get_input_names(), input_content))

@@ -21,6 +21,9 @@ Options:
   -e, --end INTEGER               结束解析的页码（从 0 开始）
   -f, --formula BOOLEAN           是否启用公式解析（默认开启）
   -t, --table BOOLEAN             是否启用表格解析（默认开启）
+  --client-side-output-generation BOOLEAN
+                                  在客户端基于服务端返回的 middle JSON、图片与原文件
+                                  生成 Markdown 和 content list（默认关闭）
   --help                          显示帮助信息
 ```
 > [!TIP]
@@ -44,7 +47,7 @@ Usage: mineru-gradio [OPTIONS]
 
 Options:
   --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
-                                  执行命令目录下的 `example` 文件夹中)
+                                  执行命令目录下的 `examples` 文件夹中)
   --enable-http-client BOOLEAN    在后端选项中启用 HTTP 客户端选项
   --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
   --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
@@ -54,6 +57,9 @@ Options:
                                   mineru-api
   --enable-vlm-preload BOOLEAN    在 Gradio 拉起本地 mineru-api 时预加载本地
                                   VLM 模型
+  --client-side-output-generation BOOLEAN
+                                  在客户端基于服务端返回的 middle JSON 生成 Markdown
+                                  和 content list
   --latex-delimiters-type [a|b|all]
                                   设置在 Markdown 渲染中使用的 LaTeX 分隔符类型
                                   ('a' 表示 '$' 类型，'b' 表示 '()[]' 类型，

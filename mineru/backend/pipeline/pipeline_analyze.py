@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from .model_init import MineruPipelineModel, PIPELINE_MODEL_INIT_LOCK
 from .model_json_to_middle_json import (
+    apply_server_side_postprocess,
     append_batch_results_to_middle_json,
     finalize_middle_json,
     init_middle_json,
@@ -28,7 +29,6 @@ from ...utils.pdfium_guard import (
 
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
-os.environ['NO_ALBUMENTATIONS_UPDATE'] = '1'  # 禁止albumentations检查更新
 
 class ModelSingleton:
     _instance = None
@@ -110,14 +110,23 @@ def _format_doc_slices(batch_slices):
     )
 
 
-def _finalize_processing_window_context(context, on_doc_ready):
+def _finalize_processing_window_context(
+    context,
+    on_doc_ready,
+    client_side_output_generation=False,
+):
     if context['closed']:
         return
-    finalize_middle_json(
-        context['middle_json']['pdf_info'],
-        lang=context['lang'],
-        ocr_enable=context['ocr_enable'],
-    )
+    if client_side_output_generation:
+        apply_server_side_postprocess(
+            context['middle_json']['pdf_info'],
+            lang=context['lang'],
+        )
+    else:
+        finalize_middle_json(
+            context['middle_json']['pdf_info'],
+            lang=context['lang'],
+        )
     logger.debug(
         f"Pipeline doc ready: doc{context['doc_index']} pages={context['page_count']}"
     )
@@ -131,10 +140,18 @@ def _finalize_processing_window_context(context, on_doc_ready):
     context['closed'] = True
 
 
-def _emit_zero_page_contexts(doc_contexts, on_doc_ready):
+def _emit_zero_page_contexts(
+    doc_contexts,
+    on_doc_ready,
+    client_side_output_generation=False,
+):
     for context in doc_contexts:
         if context['page_count'] == 0 and not context['closed']:
-            _finalize_processing_window_context(context, on_doc_ready)
+            _finalize_processing_window_context(
+                context,
+                on_doc_ready,
+                client_side_output_generation=client_side_output_generation,
+            )
 
 
 def doc_analyze_streaming(
@@ -145,6 +162,7 @@ def doc_analyze_streaming(
         parse_method: str = 'auto',
         formula_enable=True,
         table_enable=True,
+        client_side_output_generation=False,
 ):
     if not (len(pdf_bytes_list) == len(image_writer_list) == len(lang_list)):
         raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
@@ -175,7 +193,11 @@ def doc_analyze_streaming(
         )
 
     if total_pages == 0:
-        _emit_zero_page_contexts(doc_contexts, on_doc_ready)
+        _emit_zero_page_contexts(
+            doc_contexts,
+            on_doc_ready,
+            client_side_output_generation=client_side_output_generation,
+        )
         return
 
     window_size = get_processing_window_size(default=64)
@@ -185,7 +207,11 @@ def doc_analyze_streaming(
         f'total_pages={total_pages}, window_size={window_size}, total_batches={total_batches}'
     )
 
-    _emit_zero_page_contexts(doc_contexts, on_doc_ready)
+    _emit_zero_page_contexts(
+        doc_contexts,
+        on_doc_ready,
+        client_side_output_generation=client_side_output_generation,
+    )
     processed_pages = 0
     infer_start = time.time()
     try:
@@ -271,7 +297,11 @@ def doc_analyze_streaming(
                     images_list.clear()
 
                     if context['next_page_idx'] >= context['page_count'] and not context['closed']:
-                        _finalize_processing_window_context(context, on_doc_ready)
+                        _finalize_processing_window_context(
+                            context,
+                            on_doc_ready,
+                            client_side_output_generation=client_side_output_generation,
+                        )
 
                 last_append_end_time = time.time()
                 processed_pages += len(batch_images)

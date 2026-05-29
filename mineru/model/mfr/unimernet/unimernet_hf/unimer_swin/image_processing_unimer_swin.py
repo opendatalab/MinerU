@@ -3,8 +3,7 @@ from PIL import Image, ImageOps
 from transformers.image_processing_utils import BaseImageProcessor
 import numpy as np
 import cv2
-import albumentations as alb
-from albumentations.pytorch import ToTensorV2
+import torch
 from torchvision.transforms.functional import resize
 
 
@@ -16,19 +15,25 @@ class UnimerSwinImageProcessor(BaseImageProcessor):
         ):
         self.input_size = [int(_) for _ in image_size]
         assert len(self.input_size) == 2
-    
-        self.transform = alb.Compose(
-            [
-                alb.ToGray(),
-                alb.Normalize((0.7931, 0.7931, 0.7931), (0.1738, 0.1738, 0.1738)),
-                # alb.Sharpen()
-                ToTensorV2(),
-            ]
-        )
 
     def __call__(self, item):
         image = self.prepare_input(item)
-        return self.transform(image=image)['image'][:1]
+        return self.to_normalized_gray_tensor(image)
+
+    @staticmethod
+    def to_normalized_gray_tensor(image: np.ndarray) -> torch.Tensor:
+        """将图像确定性转灰度、按 UniMERNet 参数归一化，并转为单通道 tensor。"""
+        if image.ndim == 2:
+            gray = image
+        elif image.ndim == 3 and image.shape[2] == 1:
+            gray = image[:, :, 0]
+        elif image.ndim == 3 and image.shape[2] == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            raise ValueError(f"Unsupported image shape for UnimerSwinImageProcessor: {image.shape}")
+
+        normalized = (gray.astype(np.float32) - 0.7931 * 255.0) / (0.1738 * 255.0)
+        return torch.from_numpy(normalized[None, :, :])
 
     @staticmethod
     def crop_margin(img: Image.Image) -> Image.Image:

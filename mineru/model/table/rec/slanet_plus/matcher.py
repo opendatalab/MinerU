@@ -17,6 +17,106 @@ import numpy as np
 from .matcher_utils import compute_iou, distance
 
 
+TABLE_MATCH_CHUNK_SIZE = 256
+
+
+def _normalize_cell_bboxes(cell_bboxes):
+    """将4点或8点单元格框统一为[x0, y0, x1, y1]，便于后续向量化匹配。"""
+    if cell_bboxes is None:
+        return np.empty((0, 4), dtype=np.float64)
+
+    cell_array = np.asarray(cell_bboxes, dtype=object)
+    if cell_array.size == 0:
+        return np.empty((0, 4), dtype=np.float64)
+
+    try:
+        numeric_array = np.asarray(cell_bboxes, dtype=np.float64)
+    except ValueError:
+        numeric_array = None
+
+    if numeric_array is not None and numeric_array.ndim == 2:
+        if numeric_array.shape[1] == 4:
+            return numeric_array
+        if numeric_array.shape[1] == 8:
+            x_coords = numeric_array[:, 0::2]
+            y_coords = numeric_array[:, 1::2]
+            return np.stack(
+                [
+                    np.min(x_coords, axis=1),
+                    np.min(y_coords, axis=1),
+                    np.max(x_coords, axis=1),
+                    np.max(y_coords, axis=1),
+                ],
+                axis=1,
+            ).astype(np.float64, copy=False)
+
+    normalized = []
+    for cell_bbox in cell_bboxes:
+        bbox = np.asarray(cell_bbox, dtype=np.float64).reshape(-1)
+        if bbox.size == 8:
+            normalized.append(
+                [
+                    np.min(bbox[0::2]),
+                    np.min(bbox[1::2]),
+                    np.max(bbox[0::2]),
+                    np.max(bbox[1::2]),
+                ]
+            )
+        elif bbox.size == 4:
+            normalized.append(bbox.tolist())
+        else:
+            raise ValueError(f"Unsupported table cell bbox shape: {bbox.shape}")
+
+    return np.asarray(normalized, dtype=np.float64)
+
+
+def _pairwise_iou_and_distance(dt_boxes, cell_bboxes):
+    """批量计算OCR框到所有单元格框的IoU和原有distance指标，保持旧排序语义。"""
+    dt = dt_boxes[:, None, :]
+    cells = cell_bboxes[None, :, :]
+
+    dt_area = (dt[..., 2] - dt[..., 0]) * (dt[..., 3] - dt[..., 1])
+    cell_area = (cells[..., 2] - cells[..., 0]) * (cells[..., 3] - cells[..., 1])
+    sum_area = dt_area + cell_area
+
+    left_line = np.maximum(dt[..., 1], cells[..., 1])
+    right_line = np.minimum(dt[..., 3], cells[..., 3])
+    top_line = np.maximum(dt[..., 0], cells[..., 0])
+    bottom_line = np.minimum(dt[..., 2], cells[..., 2])
+    intersect = (right_line - left_line) * (bottom_line - top_line)
+    has_intersection = (left_line < right_line) & (top_line < bottom_line)
+    union = sum_area - intersect
+    iou = np.zeros_like(intersect, dtype=np.float64)
+    np.divide(intersect, union, out=iou, where=has_intersection & (union != 0))
+
+    dis = (
+        np.abs(cells[..., 0] - dt[..., 0])
+        + np.abs(cells[..., 1] - dt[..., 1])
+        + np.abs(cells[..., 2] - dt[..., 2])
+        + np.abs(cells[..., 3] - dt[..., 3])
+    )
+    dis_2 = np.abs(cells[..., 0] - dt[..., 0]) + np.abs(cells[..., 1] - dt[..., 1])
+    dis_3 = np.abs(cells[..., 2] - dt[..., 2]) + np.abs(cells[..., 3] - dt[..., 3])
+    distance_score = dis + np.minimum(dis_2, dis_3)
+
+    return iou, distance_score
+
+
+def _select_best_cell_indices(iou_scores, distance_scores):
+    """按旧实现的(1-IoU, distance)排序规则，为每个OCR框选择最优单元格下标。"""
+    best_indices = []
+    inverse_iou_scores = 1.0 - iou_scores
+    for row_index in range(inverse_iou_scores.shape[0]):
+        row_inverse_iou = inverse_iou_scores[row_index]
+        min_inverse_iou = np.min(row_inverse_iou)
+        iou_candidates = np.flatnonzero(row_inverse_iou == min_inverse_iou)
+        candidate_distances = distance_scores[row_index, iou_candidates]
+        min_distance = np.min(candidate_distances)
+        distance_candidates = np.flatnonzero(candidate_distances == min_distance)
+        best_indices.append(int(iou_candidates[distance_candidates[0]]))
+    return best_indices
+
+
 class TableMatch:
     def __init__(self, filter_ocr_result=True, use_master=False):
         self.filter_ocr_result = filter_ocr_result
@@ -31,32 +131,31 @@ class TableMatch:
 
     def match_result(self, dt_boxes, cell_bboxes, min_iou=0.1**8):
         matched = {}
-        for i, gt_box in enumerate(dt_boxes):
-            distances = []
-            for j, pred_box in enumerate(cell_bboxes):
-                if len(pred_box) == 8:
-                    pred_box = [
-                        np.min(pred_box[0::2]),
-                        np.min(pred_box[1::2]),
-                        np.max(pred_box[0::2]),
-                        np.max(pred_box[1::2]),
-                    ]
-                distances.append(
-                    (distance(gt_box, pred_box), 1.0 - compute_iou(gt_box, pred_box))
-                )  # compute iou and l1 distance
-            sorted_distances = distances.copy()
-            # select det box by iou and l1 distance
-            sorted_distances = sorted(
-                sorted_distances, key=lambda item: (item[1], item[0])
-            )
-            # must > min_iou
-            if sorted_distances[0][1] >= 1 - min_iou:
-                continue
+        dt_boxes = np.asarray(dt_boxes, dtype=np.float64)
+        if dt_boxes.size == 0:
+            return matched
+        dt_boxes = dt_boxes.reshape(-1, 4)
 
-            if distances.index(sorted_distances[0]) not in matched:
-                matched[distances.index(sorted_distances[0])] = [i]
-            else:
-                matched[distances.index(sorted_distances[0])].append(i)
+        cell_bboxes = _normalize_cell_bboxes(cell_bboxes)
+        if cell_bboxes.size == 0:
+            return matched
+
+        for start in range(0, len(dt_boxes), TABLE_MATCH_CHUNK_SIZE):
+            end = min(start + TABLE_MATCH_CHUNK_SIZE, len(dt_boxes))
+            iou_scores, distance_scores = _pairwise_iou_and_distance(
+                dt_boxes[start:end],
+                cell_bboxes,
+            )
+            best_cell_indices = _select_best_cell_indices(iou_scores, distance_scores)
+
+            for offset, best_cell_index in enumerate(best_cell_indices):
+                ocr_index = start + offset
+                best_inverse_iou = 1.0 - iou_scores[offset, best_cell_index]
+                # 保持旧实现的阈值语义：最佳IoU过低时不分配到任何单元格。
+                if best_inverse_iou >= 1 - min_iou:
+                    continue
+
+                matched.setdefault(best_cell_index, []).append(ocr_index)
         return matched
 
     def get_pred_html(self, pred_structures, matched_index, ocr_contents):

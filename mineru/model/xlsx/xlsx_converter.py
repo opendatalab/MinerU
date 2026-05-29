@@ -100,6 +100,70 @@ class ExcelTable(BaseModel):
     data: list[ExcelCell]
 
 
+class _MergedCellLookup:
+    """按行缓存合并单元格范围，避免解析时反复扫描 openpyxl 合并区域。"""
+
+    def __init__(self, sheet: Worksheet):
+        """从工作表合并区域构建 0-based 坐标索引。"""
+        self._merged_row_intervals: dict[int, list[tuple[int, int]]] = (
+            collections.defaultdict(list)
+        )
+        self._hidden_row_intervals: dict[int, list[tuple[int, int]]] = (
+            collections.defaultdict(list)
+        )
+        self._anchor_spans: dict[tuple[int, int], tuple[int, int]] = {}
+
+        for merged in sheet.merged_cells.ranges:
+            min_row = merged.min_row - 1
+            max_row = merged.max_row - 1
+            min_col = merged.min_col - 1
+            max_col = merged.max_col - 1
+
+            self._anchor_spans[(min_row, min_col)] = (
+                max_row - min_row + 1,
+                max_col - min_col + 1,
+            )
+
+            for row in range(min_row, max_row + 1):
+                self._merged_row_intervals[row].append((min_col, max_col))
+                hidden_start_col = min_col + 1 if row == min_row else min_col
+                if hidden_start_col <= max_col:
+                    self._hidden_row_intervals[row].append(
+                        (hidden_start_col, max_col)
+                    )
+
+        for intervals in self._merged_row_intervals.values():
+            intervals.sort()
+        for intervals in self._hidden_row_intervals.values():
+            intervals.sort()
+
+    @staticmethod
+    def _contains_interval(
+        row_intervals: dict[int, list[tuple[int, int]]],
+        row: int,
+        col: int,
+    ) -> bool:
+        """判断 0-based 坐标是否落入指定行的任一列区间。"""
+        for start_col, end_col in row_intervals.get(row, []):
+            if start_col <= col <= end_col:
+                return True
+            if start_col > col:
+                break
+        return False
+
+    def contains_merged_cell(self, row: int, col: int) -> bool:
+        """判断 0-based 坐标是否属于任一合并区域。"""
+        return self._contains_interval(self._merged_row_intervals, row, col)
+
+    def is_hidden_merged_cell(self, row: int, col: int) -> bool:
+        """判断 0-based 坐标是否为合并区域内非左上角的隐藏格。"""
+        return self._contains_interval(self._hidden_row_intervals, row, col)
+
+    def get_anchor_span(self, row: int, col: int) -> tuple[int, int]:
+        """返回合并区域左上角坐标对应的 rowspan/colspan，非合并锚点返回 1x1。"""
+        return self._anchor_spans.get((row, col), (1, 1))
+
+
 class XlsxConverter:
     def __init__(
         self,
@@ -119,6 +183,7 @@ class XlsxConverter:
         self.sheet_images = []
         self.table_image_map = {}
         self.math_map = {}
+        self._merged_cell_lookup_cache = {}
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
 
     def convert(
@@ -153,6 +218,7 @@ class XlsxConverter:
         self.table_image_map = {}
         self.cell_image_map = {}
         self.math_map = {}
+        self._merged_cell_lookup_cache = {}
 
     def _convert_package_bytes(self, file_bytes: bytes) -> None:
         """用独立字节流解析 XLSX 包，便于原始包失败后用规范化包重试。"""
@@ -1044,35 +1110,43 @@ class XlsxConverter:
         tables: list[ExcelTable] = []  # 存储已发现的表格
         visited: set[tuple[int, int]] = set()  # 记录已访问的单元格
 
-        # 仅在真实数据边界范围内进行扫描
-        for ri, row in enumerate(
-            sheet.iter_rows(
-                min_row=bounds.min_row,
-                max_row=bounds.max_row,
-                min_col=bounds.min_col,
-                max_col=bounds.max_col,
-                values_only=False,
-            ),
-            start=bounds.min_row - 1,  # 转换为0-based索引
-        ):
-            for rj, cell in enumerate(row, start=bounds.min_col - 1):
-                # 跳过空单元格或已访问的单元格
-                if cell.value is None or (ri, rj) in visited:
-                    continue
+        # 仅遍历已存在且有值的单元格，避免 iter_rows 在稀疏大表上创建大量空单元格。
+        for ri, rj in self._get_non_empty_cell_positions(sheet, bounds):
+            # 跳过已访问的单元格
+            if (ri, rj) in visited:
+                continue
 
-                # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
-                table_bounds, visited_cells = self._find_table_bounds(
-                    sheet,
-                    ri,
-                    rj,
-                    bounds.max_row,
-                    bounds.max_col,
-                    gap_tolerance,
-                )
-                visited.update(visited_cells)  # 将已访问单元格加入全局记录
-                tables.append(table_bounds)
+            # 从当前单元格出发，通过洪水填充算法确定所属表格的边界
+            table_bounds, visited_cells = self._find_table_bounds(
+                sheet,
+                ri,
+                rj,
+                bounds.max_row,
+                bounds.max_col,
+                gap_tolerance,
+            )
+            visited.update(visited_cells)  # 将已访问单元格加入全局记录
+            tables.append(table_bounds)
 
         return tables
+
+    def _get_non_empty_cell_positions(
+        self,
+        sheet: Worksheet,
+        bounds: DataRegion,
+    ) -> list[tuple[int, int]]:
+        """按行列顺序返回真实边界内已有值单元格的 0-based 坐标。"""
+        positions = []
+        for cell in sheet._cells.values():
+            if cell.value is None:
+                continue
+            if not (
+                bounds.min_row <= cell.row <= bounds.max_row
+                and bounds.min_col <= cell.column <= bounds.max_col
+            ):
+                continue
+            positions.append((cell.row - 1, cell.column - 1))
+        return sorted(positions)
 
     def _find_true_data_bounds(self, sheet: Worksheet) -> DataRegion:
         """查找工作表中真实的数据边界（最小/最大行列）。
@@ -1165,6 +1239,7 @@ class XlsxConverter:
         # 动态记录当前表格的行列边界
         min_r, max_r = start_row, start_row
         min_c, max_c = start_col, start_col
+        merged_lookup = self._get_merged_cell_lookup(sheet)
 
         def has_content(r, c):
             """检查指定单元格（0-based索引）是否有内容（有值或属于合并区域）。"""
@@ -1172,15 +1247,12 @@ class XlsxConverter:
                 return False
 
             # 1. 检查单元格直接值
-            cell = sheet.cell(row=r + 1, column=c + 1)
-            if cell.value is not None:
+            cell = sheet._cells.get((r + 1, c + 1))
+            if cell is not None and cell.value is not None:
                 return True
 
             # 2. 检查是否属于某个合并单元格区域
-            for mr in sheet.merged_cells.ranges:
-                if cell.coordinate in mr:
-                    return True
-            return False
+            return merged_lookup.contains_merged_cell(r, c)
 
         # --- 第一阶段：洪水填充（连通性检测）---
         while queue:
@@ -1217,32 +1289,15 @@ class XlsxConverter:
         # --- 第二阶段：数据提取（语义网格构建）---
         data = []
 
-        # 识别被合并单元格"遮蔽"的单元格（即非合并区域左上角的单元格）
-        hidden_merge_cells = set()
-        for mr in sheet.merged_cells.ranges:
-            mr_min_r, mr_min_c = mr.min_row - 1, mr.min_col - 1
-            mr_max_r, mr_max_c = mr.max_row - 1, mr.max_col - 1
-            for r in range(mr_min_r, mr_max_r + 1):
-                for c in range(mr_min_c, mr_max_c + 1):
-                    if r == mr_min_r and c == mr_min_c:
-                        continue  # 左上角单元格保留，其余标记为隐藏
-                    hidden_merge_cells.add((r, c))
-
         # 遍历发现区域的边界框（bbox内部的空格作为空单元格保留，维持矩形布局）
         for ri in range(min_r, max_r + 1):
             for rj in range(min_c, max_c + 1):
                 # 跳过被合并单元格遮蔽的单元格（非左上角）
-                if (ri, rj) in hidden_merge_cells:
+                if merged_lookup.is_hidden_merged_cell(ri, rj):
                     continue
 
                 # 计算合并跨度（默认为 1x1）
-                row_span = 1
-                col_span = 1
-                for mr in sheet.merged_cells.ranges:
-                    if (ri + 1) == mr.min_row and (rj + 1) == mr.min_col:
-                        row_span = (mr.max_row - mr.min_row) + 1
-                        col_span = (mr.max_col - mr.min_col) + 1
-                        break
+                row_span, col_span = merged_lookup.get_anchor_span(ri, rj)
 
                 data.append(
                     self._build_excel_cell(
@@ -1267,6 +1322,15 @@ class XlsxConverter:
             ),
             table_cells,
         )
+
+    def _get_merged_cell_lookup(self, sheet: Worksheet) -> _MergedCellLookup:
+        """获取工作表合并单元格缓存，同一轮转换内每个 sheet 只构建一次。"""
+        cache_key = id(sheet)
+        lookup = self._merged_cell_lookup_cache.get(cache_key)
+        if lookup is None:
+            lookup = _MergedCellLookup(sheet)
+            self._merged_cell_lookup_cache[cache_key] = lookup
+        return lookup
 
     def _get_cell_image(self, text) -> str:
         match = re.search(r'"([^"]+)"', text)
@@ -1415,6 +1479,8 @@ class XlsxConverter:
             return text_html
 
         wrapped = text_html
+        if getattr(inline_font, "strike", False) or getattr(inline_font, "u", None):
+            wrapped = wrapped.replace(" ", "&nbsp;")
         vert_align = getattr(inline_font, "vertAlign", None)
         if vert_align == "superscript":
             wrapped = f"<sup>{wrapped}</sup>"

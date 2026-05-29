@@ -26,10 +26,28 @@
   a {
     text-decoration: none;
   }
+  .mineru-gradio6-header .external-link {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    text-decoration: none !important;
+  }
+  .mineru-demo-header,
+  .mineru-demo-header h1,
+  .mineru-demo-header h1 *,
+  .mineru-demo-header p,
+  .mineru-demo-header p *,
+  .mineru-demo-header .external-link,
+  .mineru-demo-header .external-link * {
+    color: #ffffff !important;
+  }
+  .mineru-demo-header .external-link *,
+  .mineru-demo-header .external-link:hover {
+    text-decoration: none !important;
+  }
 </style></head>
 
 <body>
-  <div style="
+  <div class="mineru-demo-header{{HEADER_GRADIO_VERSION_CLASS}}" style="
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -49,12 +67,12 @@
       <div style="display: flex; flex-direction: column; gap: 8px">
         <h1 style="
             font-size: 48px;
-            color: #fafafa;
+            color: #ffffff !important;
             margin: 0;
             font-family: 'Trebuchet MS', 'Lucida Sans Unicode',
               'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
           ">
-          MinerU 3: Document Extraction Demo
+          {{HEADER_TITLE}}
         </h1>
       </div>
     </div>
@@ -63,13 +81,13 @@
         margin: 0;
         line-height: 1.6rem;
         font-size: 16px;
-        color: #fafafa;
+        color: #ffffff !important;
         opacity: 0.8;
       ">
-        Open-source document extraction for PDF, DOCX, PPTX, XLSX, and images to Markdown and JSON.<br>
-        If you found our project helpful, please give us a ⭐️ to support us!
+        {{HEADER_SUBTITLE}}<br>
+        {{HEADER_SUPPORT_TEXT}}
         <a href="https://github.com/opendatalab/MinerU" target="_blank" style="display: inline-flex; align-items: center;">
-          <img src="https://img.shields.io/github/stars/opendatalab/MinerU.svg" alt="stars" style="vertical-align: middle; position: relative; top: 5px;">
+          <img src="https://img.shields.io/github/stars/opendatalab/MinerU.svg" alt="{{HEADER_STARS_ALT}}" style="vertical-align: middle; position: relative; top: 5px;">
         </a>
     </p>
     <style>
@@ -89,16 +107,16 @@
             <span class="icon" style="margin-right: 4px">
               <i class="fab fa-github" style="color: white; margin-right: 4px"></i>
             </span>
-            <span style="color: white">Code</span>
+            <span style="color: white">{{HEADER_CODE_LINK}}</span>
           </a>
         </span>
         <!-- Code Link. -->
         <span class="link-block">
           <a href="https://huggingface.co/opendatalab/MinerU2.5-Pro-2604-1.2B" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
             <span class="icon" style="margin-right: 4px">
-              <i class="fas fa-archive" style="color: white; margin-right: 4px"></i>
+              <i class="fas fa-cube" style="color: white; margin-right: 4px"></i>
             </span>
-            <span style="color: white">Model</span>
+            <span style="color: white">{{HEADER_MODEL_LINK}}</span>
           </a>
         </span>
         <!-- arXiv Link. -->
@@ -107,17 +125,17 @@
             <span class="icon" style="margin-right: 8px">
               <i class="fas fa-file" style="color: white"></i>
             </span>
-            <span style="color: white">Paper</span>
+            <span style="color: white">{{HEADER_PAPER_LINK}}</span>
           </a>
         </span>
 
         <!-- Homepage Link. -->
         <span class="link-block">
-          <a href="https://mineru.net/home?source=online" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
+          <a href="https://mineru.net/?source=online" target="_blank" class="external-link button is-normal is-rounded is-dark" style="text-decoration: none; cursor: pointer">
             <span class="icon" style="margin-right: 8px">
               <i class="fas fa-home" style="color: white"></i>
             </span>
-            <span style="color: white">Homepage</span>
+            <span style="color: white">{{HEADER_HOMEPAGE_LINK}}</span>
           </a>
         </span>
 
@@ -127,7 +145,7 @@
             <span class="icon" style="margin-right: 8px">
               <i class="fas fa-download" style="color: white"></i>
             </span>
-            <span style="color: white">Download</span>
+            <span style="color: white">{{HEADER_DOWNLOAD_LINK}}</span>
           </a>
         </span>
 

@@ -306,7 +306,6 @@ This is a simplified version of `middle.json` that stores all readable content b
 | `chart` | Chart |
 | `text` | Text/Title |
 | `equation` | Interline formula |
-| `seal` | Seal |
 | `code` | Code block / algorithm block |
 | `list` | List / reference list |
 | `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks |
@@ -327,6 +326,7 @@ Text levels are distinguished through the `text_level` field:
 - `code` entries use `sub_type` to distinguish `code` and `algorithm`, and may include fields such as `code_body`, `code_caption`, and `code_footnote`.
 - `list` entries may use `sub_type` to distinguish ordinary lists from reference-style lists.
 - `image` / `chart` entries may include an optional `sub_type` field to carry the visual subtype through downstream outputs.
+- Seal content is represented as an `image` entry with `sub_type: "seal"`.
 
 ##### Sample Data
 
@@ -423,11 +423,17 @@ Text levels are distinguished through the `text_level` field:
 | `title` | Title block with `title_content` and `level` |
 | `paragraph` | Paragraph block with `paragraph_content` |
 | `equation_interline` | Interline formula with `math_content` and `math_type` |
-| `image` / `table` / `chart` / `seal` | Visual blocks with image paths, captions, and related structured fields |
+| `image` / `table` / `chart` | Visual blocks with image paths, captions, and related structured fields. Seal content uses `image` with `sub_type: "seal"` |
 | `code` | Code block with `code_content`, `code_caption`, `code_footnote`, and `code_language` |
 | `algorithm` | Algorithm block with `algorithm_content`, `algorithm_caption`, and `algorithm_footnote` |
 | `list` / `index` | List and index blocks with `list_items` |
 | `page_header` / `page_footer` / `page_number` / `page_aside_text` / `page_footnote` | Page auxiliary blocks |
+
+Inline fields such as `title_content`, `paragraph_content`, and captions are
+usually span lists. A `hyperlink` span contains `content` and `url`; when one
+link contains text fragments with different styles, it may also contain
+`children`. In that case, `content` is the concatenated child text, and the
+exact styles are represented by the child `text` spans.
 
 ##### Sample Data
 
