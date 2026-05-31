@@ -1,5 +1,41 @@
 # Advanced Command Line Parameters
 
+## External VLM enrichment for visual details
+
+MinerU can optionally enrich existing `image` and `chart` details with an external OpenAI-compatible VLM endpoint. This is intended for RAG workflows where the visual data extracted by MinerU is useful, but an additional didactic interpretation can improve retrieval and downstream answers.
+
+This feature is disabled by default. When enabled, MinerU still performs the primary document parsing, layout detection, image cropping, table extraction, visual `sub_type` classification, and base visual content generation. The external VLM is called only for referenced `image` / `chart` blocks that already have MinerU-generated `content`, and its response is appended as a `### Didactic interpretation` section.
+
+Example:
+
+```bash
+mineru \
+  -p input.pdf \
+  -o output \
+  -b vlm-auto-engine \
+  --details-image-analysis true \
+  --details-vlm-url http://127.0.0.1:11434/v1 \
+  --details-vlm-model qwen-vl-model \
+  --details-vlm-timeout 180 \
+  --details-vlm-max-concurrency 2 \
+  --details-vlm-language en
+```
+
+Parameters:
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `--details-image-analysis` | `false` | Enable external VLM enrichment for referenced `image` / `chart` details. |
+| `--details-vlm-url` | unset | OpenAI-compatible base URL for the external VLM endpoint. Required when enrichment is enabled. |
+| `--details-vlm-model` | unset | Model name sent to the external VLM endpoint. Required when enrichment is enabled. |
+| `--details-vlm-api-key` | empty | Optional API key used as a bearer token for the external VLM endpoint. |
+| `--details-vlm-timeout` | `120` | Per-image request timeout in seconds. |
+| `--details-vlm-max-concurrency` | `1` | Maximum number of parallel external VLM requests. Increase carefully according to endpoint capacity and cost. |
+| `--details-vlm-language` | `auto` | Output language for the appended interpretation. Use `auto` to infer from the document when possible. |
+
+> [!IMPORTANT]
+> The configured external VLM endpoint may receive cropped visual images, captions, footnotes, and nearby document context. Only enable this feature with endpoints that match your privacy and data-governance requirements.
+
 ## Pass-through of inference engine parameters
 
 ### Parameter Passing Instructions

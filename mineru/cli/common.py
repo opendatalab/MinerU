@@ -20,6 +20,11 @@ from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union
 from mineru.backend.office.office_middle_json_mkcontent import union_make as office_union_make
 from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
 from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyze
+from mineru.backend.vlm.visual_details_enrichment import (
+    build_details_vlm_config,
+    enrich_visual_details,
+    validate_details_vlm_config,
+)
 from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
@@ -226,6 +231,7 @@ def _process_output(
         middle_json,
         model_output=None,
         process_mode="vlm",
+        details_vlm_config=None,
 ):
     from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
     if process_mode == "pipeline":
@@ -263,6 +269,14 @@ def _process_output(
 
     image_dir = str(os.path.basename(local_image_dir))
 
+    if process_mode == "vlm" and details_vlm_config is not None:
+        enrich_visual_details(
+            pdf_info,
+            local_image_dir,
+            details_vlm_config,
+            document_name=pdf_file_name,
+        )
+
     if f_dump_md:
         md_content_str = make_func(pdf_info, f_make_md_mode, image_dir)
         md_writer.write_string(
@@ -298,6 +312,10 @@ def _process_output(
         )
 
     logger.debug(f"local output dir is {local_md_dir}")
+
+
+async def _async_process_output(*args, **kwargs):
+    return await asyncio.to_thread(_process_output, *args, **kwargs)
 
 
 def _process_pipeline(
@@ -389,6 +407,7 @@ async def _async_process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        details_vlm_config=None,
         **kwargs,
 ):
     """异步处理VLM后端逻辑"""
@@ -408,11 +427,12 @@ async def _async_process_vlm(
 
         pdf_info = middle_json["pdf_info"]
 
-        _process_output(
+        await _async_process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm",
+            details_vlm_config=details_vlm_config,
         )
 
 
@@ -430,6 +450,7 @@ def _process_vlm(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        details_vlm_config=None,
         **kwargs,
 ):
     """同步处理VLM后端逻辑"""
@@ -453,7 +474,8 @@ def _process_vlm(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm",
+            details_vlm_config=details_vlm_config,
         )
 
 
@@ -474,6 +496,7 @@ def _process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        details_vlm_config=None,
         **kwargs,
 ):
     hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -509,7 +532,8 @@ def _process_hybrid(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm",
+            details_vlm_config=details_vlm_config,
         )
 
 
@@ -530,6 +554,7 @@ async def _async_process_hybrid(
         f_dump_content_list,
         f_make_md_mode,
         server_url=None,
+        details_vlm_config=None,
         **kwargs,
 ):
     aio_hybrid_doc_analyze = _load_hybrid_analyze_entrypoint(
@@ -561,11 +586,12 @@ async def _async_process_hybrid(
         # f_draw_span_bbox = not _vlm_ocr_enable
         f_draw_span_bbox = False
 
-        _process_output(
+        await _async_process_output(
             pdf_info, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir,
             md_writer, f_draw_layout_bbox, f_draw_span_bbox, f_dump_orig_pdf,
             f_dump_md, f_dump_content_list, f_dump_middle_json, f_dump_model_output,
-            f_make_md_mode, middle_json, infer_result, process_mode="vlm"
+            f_make_md_mode, middle_json, infer_result, process_mode="vlm",
+            details_vlm_config=details_vlm_config,
         )
 
 
@@ -640,9 +666,27 @@ def do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        details_image_analysis=False,
+        details_vlm_url=None,
+        details_vlm_model=None,
+        details_vlm_api_key="",
+        details_vlm_timeout=120,
+        details_vlm_max_concurrency=1,
+        details_vlm_language="auto",
         client_side_output_generation=False,
         **kwargs,
 ):
+    details_vlm_config = build_details_vlm_config(
+        details_image_analysis=details_image_analysis,
+        details_vlm_url=details_vlm_url,
+        details_vlm_model=details_vlm_model,
+        details_vlm_api_key=details_vlm_api_key,
+        details_vlm_timeout=details_vlm_timeout,
+        details_vlm_max_concurrency=details_vlm_max_concurrency,
+        details_vlm_language=details_vlm_language,
+    )
+    validate_details_vlm_config(details_vlm_config)
+
     need_remove_index = _process_office_doc(
         output_dir,
         pdf_file_names=pdf_file_names,
@@ -690,7 +734,8 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, details_vlm_config=details_vlm_config,
+                image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
         elif backend.startswith("hybrid-"):
@@ -711,7 +756,8 @@ def do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, details_vlm_config=details_vlm_config,
+                image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 
@@ -737,9 +783,27 @@ async def aio_do_parse(
         start_page_id=0,
         end_page_id=None,
         image_analysis=True,
+        details_image_analysis=False,
+        details_vlm_url=None,
+        details_vlm_model=None,
+        details_vlm_api_key="",
+        details_vlm_timeout=120,
+        details_vlm_max_concurrency=1,
+        details_vlm_language="auto",
         client_side_output_generation=False,
         **kwargs,
 ):
+    details_vlm_config = build_details_vlm_config(
+        details_image_analysis=details_image_analysis,
+        details_vlm_url=details_vlm_url,
+        details_vlm_model=details_vlm_model,
+        details_vlm_api_key=details_vlm_api_key,
+        details_vlm_timeout=details_vlm_timeout,
+        details_vlm_max_concurrency=details_vlm_max_concurrency,
+        details_vlm_language=details_vlm_language,
+    )
+    validate_details_vlm_config(details_vlm_config)
+
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
         _process_office_doc,
@@ -790,7 +854,8 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, details_vlm_config=details_vlm_config,
+                image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
         elif backend.startswith("hybrid-"):
@@ -810,7 +875,8 @@ async def aio_do_parse(
                 output_dir, pdf_file_names, pdf_bytes_list, p_lang_list, parse_method, formula_enable, backend,
                 f_draw_layout_bbox, f_draw_span_bbox, f_dump_md, f_dump_middle_json,
                 f_dump_model_output, f_dump_orig_pdf, f_dump_content_list, f_make_md_mode,
-                server_url, image_analysis=image_analysis,
+                server_url, details_vlm_config=details_vlm_config,
+                image_analysis=image_analysis,
                 client_side_output_generation=client_side_output_generation, **kwargs,
             )
 

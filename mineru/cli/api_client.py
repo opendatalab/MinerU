@@ -812,6 +812,13 @@ def build_parse_request_form_data(
     end_page_id: Optional[int],
     *,
     image_analysis: bool = True,
+    details_image_analysis: bool = False,
+    details_vlm_url: Optional[str] = None,
+    details_vlm_model: Optional[str] = None,
+    details_vlm_api_key: str = "",
+    details_vlm_timeout: int = 120,
+    details_vlm_max_concurrency: int = 1,
+    details_vlm_language: str = "auto",
     return_md: bool,
     return_middle_json: bool,
     return_model_output: bool,
@@ -829,6 +836,11 @@ def build_parse_request_form_data(
         "formula_enable": str(formula_enable).lower(),
         "table_enable": str(table_enable).lower(),
         "image_analysis": str(image_analysis).lower(),
+        "details_image_analysis": str(details_image_analysis).lower(),
+        "details_vlm_api_key": details_vlm_api_key or "",
+        "details_vlm_timeout": str(details_vlm_timeout),
+        "details_vlm_max_concurrency": str(details_vlm_max_concurrency),
+        "details_vlm_language": details_vlm_language or "auto",
         "return_md": str(return_md).lower(),
         "return_middle_json": str(return_middle_json).lower(),
         "return_model_output": str(return_model_output).lower(),
@@ -842,6 +854,10 @@ def build_parse_request_form_data(
     }
     if server_url:
         data["server_url"] = server_url
+    if details_vlm_url:
+        data["details_vlm_url"] = details_vlm_url
+    if details_vlm_model:
+        data["details_vlm_model"] = details_vlm_model
     return data
 
 

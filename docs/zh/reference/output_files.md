@@ -9,6 +9,21 @@
 - **可视化调试文件**：帮助用户直观了解文档解析过程和结果
 - **结构化数据文件**：包含详细的解析数据，可用于二次开发
 - 多模态 markdown 输出中，`image` / `chart` 默认以截图为主；若块内存在 `content`，会在图片后追加一个默认折叠的 HTML `<details>` 内容块，其中折叠标题优先使用块的 `sub_type`，否则回退为 `image content` 或 `chart content`
+- 启用外部视觉详情增强后，MinerU 会保留原始视觉内容，并在同一个 `<details>` 块内追加 `### Didactic interpretation` 小节。外部 endpoint 可能会接收由用户配置发送的裁剪图片和附近上下文。
+
+增强后的视觉块示例：
+
+```md
+![](images/xxx.jpg)
+<details>
+<summary>candlestick</summary>
+
+<MinerU visual content>
+
+### Didactic interpretation
+<external VLM enrichment>
+</details>
+```
 
 下面将详细介绍每个文件的作用和格式。
 
