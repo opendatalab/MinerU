@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import threading
+from contextlib import contextmanager
 
 import torch
 from loguru import logger
@@ -24,12 +25,39 @@ PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
 PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_DET_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
+# 推理准入门闩：清理线程等待静默区时，阻止新的推理调用继续插队进入阶段锁。
+PIPELINE_INFERENCE_ADMISSION_LOCK = threading.RLock()
+PIPELINE_INFERENCE_STAGE_LOCKS = (
+    PIPELINE_LAYOUT_INFERENCE_LOCK,
+    PIPELINE_MFR_INFERENCE_LOCK,
+    PIPELINE_OCR_DET_INFERENCE_LOCK,
+    PIPELINE_OCR_REC_INFERENCE_LOCK,
+)
 
 
 def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs):
     """在指定推理锁内执行真实 native 模型调用。"""
-    with inference_lock:
+    with PIPELINE_INFERENCE_ADMISSION_LOCK:
+        inference_lock.acquire()
+    try:
         return inference_callable(*args, **kwargs)
+    finally:
+        inference_lock.release()
+
+
+@contextmanager
+def pipeline_inference_quiet_zone():
+    """进入 pipeline/hybrid 共享模型推理静默区，等待四类阶段推理全部退出。"""
+    acquired_locks = []
+    with PIPELINE_INFERENCE_ADMISSION_LOCK:
+        try:
+            for inference_lock in PIPELINE_INFERENCE_STAGE_LOCKS:
+                inference_lock.acquire()
+                acquired_locks.append(inference_lock)
+            yield
+        finally:
+            for inference_lock in reversed(acquired_locks):
+                inference_lock.release()
 
 
 def run_layout_inference(inference_callable, *args, **kwargs):
