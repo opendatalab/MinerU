@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
+from ctypes import byref, c_int, create_string_buffer
 from io import BytesIO
 
 import pypdfium2 as pdfium
@@ -18,6 +19,8 @@ HIGH_IMAGE_COVERAGE_THRESHOLD = 0.8
 TEXT_QUALITY_MIN_CHARS = 300
 TEXT_QUALITY_BAD_THRESHOLD = 0.03
 UNICODE_MAP_ERROR_RATIO_THRESHOLD = 0.04
+CID_FONT_USAGE_RATIO_THRESHOLD = 0.01
+CID_FONT_USAGE_COUNT_THRESHOLD = 30
 MAX_PAGE_ASPECT_RATIO = 10.0
 SUSPICIOUS_CJK_72XX_START = 0x7280
 SUSPICIOUS_CJK_72XX_END = 0x72DF
@@ -103,7 +106,20 @@ def classify(pdf_bytes):
                 )
                 return "ocr"
 
-            if detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+            cid_font_signal = get_cid_font_signal_pypdf(pdf_bytes, page_indices)
+            cid_font_usage_signal = _get_cid_font_usage_signal_from_samples(
+                text_samples,
+                cid_font_signal,
+            )
+            if cid_font_usage_signal["triggered"]:
+                logger.debug(
+                    "Classify PDF as OCR due to high CID font usage without ToUnicode: "
+                    f"page={cid_font_usage_signal['page_index'] + 1}, "
+                    f"fonts={cid_font_usage_signal['font_names']}, "
+                    f"chars={cid_font_usage_signal['cid_font_char_count']}, "
+                    f"total={cid_font_usage_signal['total_chars']}, "
+                    f"ratio={cid_font_usage_signal['cid_font_usage_ratio']:.4f}"
+                )
                 return "ocr"
 
             text_quality_signal = _get_text_quality_signal_from_samples(text_samples)
@@ -321,6 +337,107 @@ def _get_unicode_map_error_signal_from_samples(text_samples):
     }
 
 
+def _normalize_pdf_font_name(font_name) -> str:
+    """规范化 PDF 字体名，统一 pypdf 的 NameObject 和 PDFium 返回值格式。"""
+    if font_name is None:
+        return ""
+    return str(font_name).strip().lstrip("/")
+
+
+def _get_pdfium_char_font_name(text_page, char_index: int) -> str:
+    """读取 PDFium 字符级字体名，用于统计可疑 CID 字体的实际使用比例。"""
+    flags = c_int()
+    buffer_length = pdfium_c.FPDFText_GetFontInfo(
+        text_page,
+        char_index,
+        None,
+        0,
+        byref(flags),
+    )
+    if buffer_length <= 0:
+        return ""
+
+    font_name_buffer = create_string_buffer(buffer_length)
+    actual_length = pdfium_c.FPDFText_GetFontInfo(
+        text_page,
+        char_index,
+        font_name_buffer,
+        buffer_length,
+        byref(flags),
+    )
+    if actual_length <= 0:
+        return ""
+
+    return font_name_buffer.value.decode("utf-8", errors="ignore")
+
+
+def _get_cid_font_usage_signal_from_samples(text_samples, cid_font_signal):
+    """基于 PDFium 字符级字体名统计可疑 CID 字体在抽样页中的真实使用比例。"""
+    best_signal = {
+        "triggered": False,
+        "page_index": None,
+        "font_names": [],
+        "cid_font_char_count": 0,
+        "total_chars": 0,
+        "cid_font_usage_ratio": 0.0,
+    }
+    if not cid_font_signal or not cid_font_signal.get("triggered"):
+        return best_signal
+
+    page_fonts = cid_font_signal.get("page_fonts") or {}
+    for text_sample in text_samples:
+        page_index = text_sample.get("page_index")
+        cid_font_names = {
+            _normalize_pdf_font_name(font_name)
+            for font_name in page_fonts.get(page_index, set())
+        }
+        cid_font_names.discard("")
+        if not cid_font_names:
+            continue
+
+        text_page = text_sample["text_page"]
+        total_chars = text_page.count_chars()
+        if total_chars <= 0:
+            continue
+
+        matched_font_names = set()
+        cid_font_char_count = 0
+        for char_index in range(total_chars):
+            font_name = _normalize_pdf_font_name(
+                _get_pdfium_char_font_name(text_page, char_index)
+            )
+            if font_name in cid_font_names:
+                cid_font_char_count += 1
+                matched_font_names.add(font_name)
+
+        cid_font_usage_ratio = cid_font_char_count / total_chars
+        signal = {
+            "triggered": False,
+            "page_index": page_index,
+            "font_names": sorted(matched_font_names),
+            "cid_font_char_count": cid_font_char_count,
+            "total_chars": total_chars,
+            "cid_font_usage_ratio": cid_font_usage_ratio,
+        }
+        if (
+            cid_font_char_count >= CID_FONT_USAGE_COUNT_THRESHOLD
+            and cid_font_usage_ratio >= CID_FONT_USAGE_RATIO_THRESHOLD
+        ):
+            signal["triggered"] = True
+            return signal
+
+        if (
+            signal["cid_font_usage_ratio"],
+            signal["cid_font_char_count"],
+        ) > (
+            best_signal["cid_font_usage_ratio"],
+            best_signal["cid_font_char_count"],
+        ):
+            best_signal = signal
+
+    return best_signal
+
+
 def _get_u72xx_text_signal_from_samples(text_samples):
     """基于已缓存的抽样页文本统计扣除常用字后的 U+7280-U+72DF 字符占比。"""
     cjk_chars = 0
@@ -435,8 +552,10 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples):
     return best_signal
 
 
-def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+def get_cid_font_signal_pypdf(pdf_bytes, page_indices):
+    """收集抽样页中无 ToUnicode 的 Identity CID 字体资源，供后续按实际字符使用量判定。"""
     reader = PdfReader(BytesIO(pdf_bytes))
+    page_fonts = {}
 
     for page_index in page_indices:
         page = reader.pages[page_index]
@@ -448,7 +567,7 @@ def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
         if not fonts:
             continue
 
-        for _, font_ref in fonts.items():
+        for font_key, font_ref in fonts.items():
             font = _resolve_pdf_object(font_ref)
             if not font:
                 continue
@@ -464,9 +583,20 @@ def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
                 and has_descendant_fonts
                 and not has_to_unicode
             ):
-                return True
+                font_name = font.get("/BaseFont") or font_key
+                page_fonts.setdefault(page_index, set()).add(
+                    _normalize_pdf_font_name(font_name)
+                )
 
-    return False
+    return {
+        "triggered": bool(page_fonts),
+        "page_fonts": page_fonts,
+    }
+
+
+def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+    """兼容旧接口：只返回是否存在无 ToUnicode 的 Identity CID 字体资源。"""
+    return get_cid_font_signal_pypdf(pdf_bytes, page_indices)["triggered"]
 
 
 def _resolve_pdf_object(obj):
