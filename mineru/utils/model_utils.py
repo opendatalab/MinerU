@@ -180,15 +180,7 @@ def get_res_list_from_layout_res(layout_res, overlap_threshold=0.8):
     return ocr_res_list, table_res_list, single_page_mfdetrec_res
 
 
-def _pipeline_inference_quiet_zone():
-    """懒加载推理静默区，避免 utils 模块导入时和 pipeline backend 形成循环依赖。"""
-    from mineru.backend.pipeline.model_init import pipeline_inference_quiet_zone
-
-    return pipeline_inference_quiet_zone()
-
-
-def _clean_memory_without_inference(device='cuda'):
-    """执行实际显存/内存清理动作，调用方负责进入推理静默区。"""
+def clean_memory(device='cuda'):
     if str(device).startswith("cuda"):
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -211,11 +203,6 @@ def _clean_memory_without_inference(device='cuda'):
         if torch.sdaa.is_available():
             torch.sdaa.empty_cache()  
     gc.collect()
-
-
-def clean_memory(device='cuda'):
-    with _pipeline_inference_quiet_zone():
-        _clean_memory_without_inference(device)
 
 
 def clean_vram(device, vram_threshold=8):
