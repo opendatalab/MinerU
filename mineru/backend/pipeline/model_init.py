@@ -25,13 +25,12 @@ PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
 PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_DET_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
+# 临时全局推理锁：串行化 Layout/MFR/OCR det/OCR rec，验证跨阶段 native 推理并发是否触发 malloc/segfault。
+PIPELINE_GLOBAL_INFERENCE_LOCK = threading.RLock()
 # 推理准入门闩：清理线程等待静默区时，阻止新的推理调用继续插队进入阶段锁。
 PIPELINE_INFERENCE_ADMISSION_LOCK = threading.RLock()
 PIPELINE_INFERENCE_STAGE_LOCKS = (
-    PIPELINE_LAYOUT_INFERENCE_LOCK,
-    PIPELINE_MFR_INFERENCE_LOCK,
-    PIPELINE_OCR_DET_INFERENCE_LOCK,
-    PIPELINE_OCR_REC_INFERENCE_LOCK,
+    PIPELINE_GLOBAL_INFERENCE_LOCK,
 )
 
 
@@ -61,30 +60,30 @@ def pipeline_inference_quiet_zone():
 
 
 def run_layout_inference(inference_callable, *args, **kwargs):
-    """在共享 Layout 推理锁内执行模型调用。"""
+    """在全局推理锁内执行 Layout 模型调用。"""
     return _run_with_inference_lock(
-        PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs
+        PIPELINE_GLOBAL_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_mfr_inference(inference_callable, *args, **kwargs):
-    """在共享 MFR 推理锁内执行模型调用。"""
+    """在全局推理锁内执行 MFR 模型调用。"""
     return _run_with_inference_lock(
-        PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs
+        PIPELINE_GLOBAL_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_ocr_det_inference(inference_callable, *args, **kwargs):
-    """在共享 OCR det 推理锁内执行模型调用。"""
+    """在全局推理锁内执行 OCR det 模型调用。"""
     return _run_with_inference_lock(
-        PIPELINE_OCR_DET_INFERENCE_LOCK, inference_callable, *args, **kwargs
+        PIPELINE_GLOBAL_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_ocr_rec_inference(inference_callable, *args, **kwargs):
-    """在共享 OCR rec 推理锁内执行模型调用。"""
+    """在全局推理锁内执行 OCR rec 模型调用。"""
     return _run_with_inference_lock(
-        PIPELINE_OCR_REC_INFERENCE_LOCK, inference_callable, *args, **kwargs
+        PIPELINE_GLOBAL_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 MFR_MODEL = os.getenv('MINERU_FORMULA_CH_SUPPORT', 'False')
