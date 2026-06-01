@@ -10,11 +10,14 @@
 
 | 日期 | 修订内容 |
 |------|---------|
+| 2026-06-01 | **`preset` → `tier`**:全文将 `preset` 概念替换为 `tier`,可选值从 `pipeline/vlm/html/auto` 改为 `standard/pro/auto`。`html` 不再作为显式选项,改为系统根据输入文件类型自动路由到 HTML 解析器。与 CLI (`mineru parse --tier`) 命名统一 |
+| 2026-06-01 | **`page_range` 支持 `~` 分隔符**:页码范围除 `-` 外新增 `~` 作为推荐分隔符(如 `1~5,-5~-1`),与 CLI 保持一致。`-` 仍然支持 |
+| 2026-06-01 | **Job 响应 `tier` → `access_level`**:原 job 响应中表示认证档位的 `tier` 字段(anonymous/registered)重命名为 `access_level`,避免与新增的解析档位 `tier` 字段(standard/pro/auto)冲突 |
 | 2026-05-28 | **Callback `seed` → `secret`**:签名字段恢复为 `secret`,`seed` 易与 Chat Completions 确定性采样参数混淆 |
 | 2026-05-27 | **ID 格式统一**:File 对象 `file_<ULID>` → `file-<ULID>`(连字符),全文对齐 |
 | 2026-05-27 | **Upload 状态码统一**:秒传命中与需上传均返回 200,通过 body `status` 区分 |
 | 2026-05-27 | **wait 参数调整**:合法值改为 `0` / `[5, 50]`,与 nginx 默认 60s 超时安全对齐 |
-| 2026-05-27 | **Tier 重命名**:`Free` → `anonymous`(无 Token),`Pro` → `registered`(有 Token),两档不变 |
+| 2026-05-27 | **Access Level 重命名**:`Free` → `anonymous`(无 Token),`Pro` → `registered`(有 Token),两档不变 |
 | 2026-05-27 | **产物保留期修正**:统一为 30d(section 9),此前写 24h/7d 是笔误 |
 | 2026-05-27 | **Health 端点精简**:弱化为仅探测 server 连通性(`status` + `version`),移除 models 检查 |
 | 2026-05-27 | **Model 端点补充**:为模型对象添加 `description` 字段(对齐 OpenAI) |
@@ -25,9 +28,9 @@
 | 2026-05-27 | **Webhook 重写**:签名方案改为 SHA256(uid+seed+content),`seed` 替代 `secret`,增加重试规则 |
 | 2026-05-27 | **SSE/Webhook 可用性**:明确 mineru.net 支持两者,本地 server 均不支持 |
 | 2026-05-27 | **Chat Completions 定位**:补充与 Parse Jobs 的差异说明(细粒度 vs 全文档) |
-| 2026-05-27 | **Usage 端点**:新增 `GET /v1/usage` 查询当日用量与 tier 配额上限 |
+| 2026-05-27 | **Usage 端点**:新增 `GET /v1/usage` 查询当日用量与 access level 配额上限 |
 | 2026-05-27 | **ID 格式确定**:采用 24 字符 base62 随机串(对齐 OpenAI),`file-` 用连字符,`upload_`/`job_` 用下划线 |
-| 2026-05-27 | **Presets 端点**:新增 `GET /v1/presets`(§4.3),列出所有 preset 及其当前模型;§9 放开 anonymous 的 preset 限制 |
+| 2026-05-27 | **Tiers 端点**:新增 `GET /v1/tiers`(§4.3),列出所有 tier 及其当前模型;§9 放开 anonymous 的 tier 限制 |
 | 2026-05-27 | **Health 能力探测**:`features` 字段自描述 SSE/Webhook 可用性(§3),客户端按能力选择通知策略 |
 | 2026-05-27 | **限流粒度确定**:per-token、per-minute、按端点类别(parse/upload/chat/read)四档分桶,独立限额(§11.1) |
 | 2026-05-27 | **`input_image` purpose 新增**:Chat/Responses 图片文件使用 `purpose=input_image` 上传,区别于 `parse` 和 `parse_output`(§5.1/§6.1/§7.2) |
@@ -51,6 +54,8 @@
 
 所有资源 ID 采用 OpenAI 风格:前缀 + 24 字符 base62 随机串(大小写字母 + 数字)。不包含时间信息,全局唯一,不可逆推。
 
+> 本地自部署 server 可使用更简单的 hex 编码(小写 a-f + 数字,同为 24 字符)生成 ID,以降低实现复杂度。
+
 | 资源 | ID 示例 | 备注 |
 |------|---------|------|
 | `file` | `file-r9NSmHLJE6flShV5vQ0Y60Rd` | 不透明随机 ID;全局唯一;同内容不同用户/不同上传得到不同 file_id |
@@ -68,7 +73,7 @@
 | `GET` | `/v1/health` | 健康检查 |
 | `GET` | `/v1/models` | 列出可用解析模型 |
 | `GET` | `/v1/models/{model}` | 查询单个模型信息 |
-| `GET` | `/v1/presets` | 列出可用解析预设 |
+| `GET` | `/v1/tiers` | 列出可用解析档位 |
 | `POST` | `/v1/uploads` | 创建 Upload(可选传 sha256sum 启用秒传) |
 | `POST` | `/v1/uploads/{upload_id}/complete` | 完成 Upload,生成 File 对象 |
 | `POST` | `/v1/uploads/{upload_id}/cancel` | 取消 Upload |
@@ -106,14 +111,14 @@ Authorization: Bearer <MINERU_TOKEN>
 - **版本号**:URL 前缀 `/v1`,新增字段只增不删
 - **Content-Type**:`application/json; charset=utf-8`(除上传字节流)
 - **时间**:ISO-8601 UTC 字符串(如 `2026-05-21T08:30:00Z`)或 Unix 秒级时间戳(如 `1719184911`),各端点按场景选用。JOB/Webhook 等任务相关字段用 ISO-8601,File/Upload/Model/ChatCompletion 等资源元数据字段用 Unix 时间戳
-- **ID 格式**:前缀 + 24 字符 base62 随机串,如 `file-r9NSmHLJE6flShV5vQ0Y60Rd`、`upload_r9NSmHLJE6flShV5vQ0Y60Rd`、`job_r9NSmHLJE6flShV5vQ0Y60Rd`。`file` 用连字符 `-`,`upload` 和 `job` 用下划线 `_`(对齐 OpenAI)。代码示例中使用缩写占位符(如 `file-01HXYZ...`)
+- **ID 格式**:前缀 + 24 字符 base62 随机串,如 `file-r9NSmHLJE6flShV5vQ0Y60Rd`、`upload_r9NSmHLJE6flShV5vQ0Y60Rd`、`job_r9NSmHLJE6flShV5vQ0Y60Rd`。`file` 用连字符 `-`,`upload` 和 `job` 用下划线 `_`(对齐 OpenAI)。代码示例中使用缩写占位符(如 `file-01HXYZ...`)。本地 server 可使用 hex 编码(24 字符,a-f0-9)
 - **空字段**:用 `null`,不省略 key
 - **Idempotency-Key**:`POST` 端点支持 `Idempotency-Key` 请求头。传递相同 key 的重复请求返回首次请求的结果,不会重复创建资源(如重复扣费/重复创建 job)。Key 有效期 24 小时
 - **X-Request-Id**:所有响应(含成功与错误)均携带 `X-Request-Id` 头,用于排查问题
 - **URL source 安全约束**(`POST /v1/parse/jobs` 的 `source.type: "url"`):
   - 拒绝私有网段 IP(10.0.0.0/8、172.16.0.0/12、192.168.0.0/16)及链路本地地址
   - 拒绝 cloud metadata IP(如 `169.254.169.254`)
-  - 下载超时:服务端拉取超时 30s,大小上限与当前 tier 单文件限制一致(参见 §9)
+  - 下载超时:服务端拉取超时 30s,大小上限与当前 access level 单文件限制一致(参见 §9)
   - 拉取失败时 job 中对应 `file` item 的 `status` 为 `"failed"`
 - **`inline` source 大小限制**:`data` 字段为 base64 编码后的字符串,大小不超过 **1MB**(指 base64 字符串字节数,非 decode 后原始字节)
 - **`local` source 安全约束**:仅本地 server 支持;服务端须通过部署时配置的 `allowlist_root` 限制可读目录范围;拒绝路径穿越(`../`、符号链接跳转到 allowlist 外) 
@@ -196,12 +201,19 @@ Authorization: Bearer <MINERU_TOKEN>
 | `features.webhook` | bool | 是否支持 Webhook 回调(§10) |
 
 > **部署差异**:mineru.net 返回 `sse: true, webhook: true`;本地 server 返回 `sse: false, webhook: false`。客户端按此自动选择轮询/SSE/webhook 策略。
+>
+> 本地 server 可额外返回以下字段用于运维监控:
+>
+> | 字段 | 类型 | 说明 |
+> |------|------|------|
+> | `backend_version` | string | 后端引擎版本号 |
+> | `models` | object | 各模型后端健康状态(如 `{"pipeline":"ok","vlm":"ok","html":"ok"}`) |
 
 ---
 
 ## 4. Models — 解析模型
 
-模型列表与查询接口对齐 **OpenAI Models API** 的请求与响应形态。**无需鉴权**,匿名访问返回完整模型列表(tier 不改变可见模型)。
+模型列表与查询接口对齐 **OpenAI Models API** 的请求与响应形态。**无需鉴权**,匿名访问返回完整模型列表(access level 不改变可见模型)。
 
 ### 4.1 GET `/v1/models` — 列出全部模型
 
@@ -262,7 +274,7 @@ Authorization: Bearer <token>
 | `data[].owned_by` | string | 拥有者(本平台均为 `"mineru"`,自部署可设组织名) |
 | `data[].description` | string | 模型描述(可选,对齐 OpenAI) |
 
-> 说明:本端点仅保留 OpenAI 标准字段,**不再包含** `available_to` / `supports` 等本 API 早期字段。模型适用性(`available_to`)由 Tier(参见 §9)决定;格式适用性(`supports`)在使用模型时由服务端自动校验。
+> 说明:本端点仅保留 OpenAI 标准字段,**不再包含** `available_to` / `supports` 等本 API 早期字段。模型适用性(`available_to`)由 Access Level(参见 §9)决定;格式适用性(`supports`)在使用模型时由服务端自动校验。
 
 ### 4.2 GET `/v1/models/{model}` — 查询单个模型
 
@@ -294,16 +306,16 @@ Authorization: Bearer <token>
 **Errors**
 
 - `404 model_not_found`:模型 ID 不存在
-- `403 feature_requires_token`:模型存在但当前 tier 无权使用(响应体含 `upgrade_url`)
+- `403 feature_requires_token`:模型存在但当前 access level 无权使用(响应体含 `upgrade_url`)
 
-### 4.3 GET `/v1/presets` — 列出可用预设
+### 4.3 GET `/v1/tiers` — 列出可用解析档位
 
-列出所有 parser preset 及其当前对应的模型。**无需鉴权**,匿名访问返回完整列表。
+列出所有解析档位及其当前对应的模型。**无需鉴权**,匿名访问返回完整列表。
 
 **Request**
 
 ```http
-GET /v1/presets  HTTP/1.1
+GET /v1/tiers  HTTP/1.1
 ```
 
 **Response (200)**
@@ -313,23 +325,18 @@ GET /v1/presets  HTTP/1.1
   "object": "list",
   "data": [
     {
-      "id": "pipeline",
-      "description": "Local pipeline-based parsing (no GPU required).",
+      "id": "standard",
+      "description": "Pipeline-based parsing, balanced speed and quality.",
       "current_model": "pipeline"
     },
     {
-      "id": "vlm",
+      "id": "pro",
       "description": "VLM-based high-accuracy parsing.",
       "current_model": "MinerU2.5-Pro-2605-1.2B"
     },
     {
-      "id": "html",
-      "description": "HTML page parsing.",
-      "current_model": "MinerU-HTML"
-    },
-    {
       "id": "auto",
-      "description": "Platform selects best preset per document.",
+      "description": "Platform selects best tier per document.",
       "current_model": null
     }
   ]
@@ -341,12 +348,14 @@ GET /v1/presets  HTTP/1.1
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `object`(顶层) | string | 固定为 `"list"` |
-| `data[]` | array | preset 对象数组 |
-| `data[].id` | string | preset 标识,对应 `POST /v1/parse/jobs` 的 `preset` 参数 |
+| `data[]` | array | tier 对象数组 |
+| `data[].id` | string | tier 标识,对应 `POST /v1/parse/jobs` 的 `tier` 参数 |
 | `data[].description` | string | 用途说明 |
-| `data[].current_model` | string \| null | 当前该 preset 背后实际使用的模型 ID,对应 `GET /v1/models` 中的 `id`。`auto` 不绑定单一模型,为 `null` |
+| `data[].current_model` | string \| null | 当前该 tier 背后实际使用的模型 ID,对应 `GET /v1/models` 中的 `id`。`auto` 不绑定单一模型,为 `null` |
 
-> **设计说明**:`preset` 是平台精选的解析方案组合,由服务端维护对应的模型版本。客户端用 `preset` 无需关心具体模型,平台升级模型版本时无感。`current_model` 与 job 响应中的 `metadata.model_used` 形成追踪链——用户可从 job 结果反查解析时所使用的模型。
+> **设计说明**:`tier` 是平台精选的解析方案档位,由服务端维护对应的模型版本。客户端用 `tier` 无需关心具体模型,平台升级模型版本时无感。`current_model` 与 job 响应中的 `metadata.model_used` 形成追踪链——用户可从 job 结果反查解析时所使用的模型。
+>
+> **HTML 解析**:当输入文件为 HTML 页面(URL 或 `.html` 文件)时,系统自动路由到 HTML 解析器,无需显式指定 tier。`tier` 参数仅影响 PDF/图片等需要版面分析的文档。
 
 ---
 
@@ -548,7 +557,7 @@ GET /v1/presets  HTTP/1.1
 
 - `400 invalid_request`:缺少必填字段
 - `400 invalid_sha256sum`:sha256sum 格式非法(非 64 位小写 hex)
-- `413 file_too_large`:超出当前 tier 限制(响应体含 `upgrade_url`)
+- `413 file_too_large`:超出当前 access level 限制(响应体含 `upgrade_url`)
 
 ### 5.3 PUT `{upload_url}` — 上传字节到 OSS
 
@@ -583,7 +592,7 @@ API 定义完全一致,但三种部署场景下部分行为有差异:
 | **LAN server**(局域网) | `file_id` / `url` / `inline` / `local` | `upload_url` 指向 API server 自身,字节直传 API server;`local` 跳过上传 | 200 + body,不重定向 |
 | **localhost**(本机) | `local` / `file_id` / ... | `local` 直接读磁盘;其他与 LAN 相同 | 200 + body,不重定向 |
 
-**上传差异**:云端 `upload_url` 指向 OSS,LAN/本机指向 API server 自身的临时上传端点(如 `/_upload/{upload_id}`)。客户端调用流程(`POST /v1/uploads` → `PUT upload_url` → `POST /v1/uploads/{id}/complete`)完全相同,仅 URL 目标不同。
+**上传差异**:云端 `upload_url` 指向 OSS,LAN/本机指向 API server 自身的临时上传端点(如 `/v1/uploads/{upload_id}/content`)。客户端调用流程(`POST /v1/uploads` → `PUT upload_url` → `POST /v1/uploads/{id}/complete`)完全相同,仅 URL 目标不同。
 
 **下载差异**:云端 `GET /v1/files/{id}/content` 返回 302 重定向到 CDN,LAN/本机直接返回 200 + body。客户端使用 `-L` 跟随重定向即可通吃。
 
@@ -1402,7 +1411,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
       }
     }
   ],
-  "preset": "auto",
+  "tier": "auto",
   "output_formats": ["markdown", "json", "content_list", "images"],
   "wait": 30,
   "callback": {
@@ -1417,9 +1426,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `files` | array | 是 | 至少 1 个,最多由 token 等级决定 |
-| `preset` | enum | 否 | `auto`(默认,平台推荐组合) / `pipeline` / `vlm` / `html`。预设的解析方案组合,服务端按 preset 自动选择各阶段模型 |
+| `tier` | enum | 否 | `auto`(默认,平台按文件类型自动选择最佳方案) / `standard` / `pro`。解析档位,服务端按 tier 自动选择模型。HTML 输入自动路由到 HTML 解析器,无需指定 tier |
 | `output_formats` | array | 否 | 选择产物,默认 `["markdown"]`。产物以 File 对象形式存储(`purpose:parse_output`),通过 `GET /v1/files/{file_id}/content` 下载。可选值见下表 |
-| `wait` | int | 否 | 同步等待秒数。`0`:异步模式,立即返回 202。传正值(`[5, 50]`):阻塞等待最多 N 秒,完成返回 200(内容内联),超时返回 202(转为异步轮询) |
+| `wait` | int | 否 | 同步等待秒数。`0`:异步模式,立即返回 202。传正值(`[5, 50]`):阻塞等待最多 N 秒,完成返回 200(内容内联),超时返回 202(转为异步轮询)。本地 server 可将上限放宽至 `600` |
 | `callback` | object | 否 | Webhook 通知(需 Token) |
 
 #### `files[].source`
@@ -1442,7 +1451,7 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
 | `formula` | bool | `true` | 公式识别 |
 | `table` | bool | `true` | 表格识别 |
 | `image_analysis` | bool | `true` | 图片内容分析 |
-| `page_range` | string | `null` | `"1-10"`、`"1,3,5-7"`、`"2--2"`(到倒数第二页) |
+| `page_range` | string | `null` | 页码范围,推荐用 `~` 分隔(如 `"1~10"`、`"1,3,5~7"`、`"-5~-1"`)。也支持 `-` 分隔(如 `"1-10"`、`"2--2"` 到倒数第二页) |
 
 #### `output_formats` 可选值
 
@@ -1467,9 +1476,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "queued",
   "created_at": "2026-05-21T08:30:00Z",
-  "preset": "auto",
+  "tier": "auto",
   "output_formats": ["markdown", "json", "content_list", "images"],
-  "tier": "registered",
+  "access_level": "registered",
   "files": [
     { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "status": "queued" },
     { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "status": "queued" }
@@ -1493,9 +1502,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "created_at": "2026-05-21T08:30:00Z",
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
-  "preset": "vlm",
+  "tier": "pro",
   "output_formats": ["markdown", "json", "images"],
-  "tier": "registered",
+  "access_level": "registered",
   "progress": { "completed": 1, "failed": 0, "total": 1 },
   "files": [
     {
@@ -1540,9 +1549,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "running",
   "created_at": "2026-05-21T08:30:00Z",
-  "preset": "auto",
+  "tier": "auto",
   "output_formats": ["markdown", "json", "images"],
-  "tier": "registered",
+  "access_level": "registered",
   "files": [
     { "file_id": "file-01HXYZ123ABCDEF", "name": "report.pdf", "status": "running" },
     { "file_id": "file-01HXYZ456GHIJKL", "name": "scan.jpg",   "status": "running" }
@@ -1582,9 +1591,9 @@ data: {"type":"response.completed","response":{"id":"resp_...","object":"respons
   "created_at": "2026-05-21T08:30:00Z",
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
-  "preset": "vlm",
+  "tier": "pro",
   "output_formats": ["markdown", "json", "images"],
-  "tier": "registered",
+  "access_level": "registered",
   "progress": { "completed": 2, "failed": 0, "total": 2 },
   "files": [
     {
@@ -1731,9 +1740,9 @@ data: {"job_id":"job_01HXYZ...","status":"completed"}
 
 ---
 
-## 9. Tier 与差异化
+## 9. Access Level 与差异化
 
-Tier 由 Token 决定,但**响应格式完全一致**。
+Access Level 由 Token 决定,但**响应格式完全一致**。
 
 | 能力 | anonymous(无 Token) | registered(有 Token) |
 |------|---------------------|-----------------------|
@@ -1742,7 +1751,7 @@ Tier 由 Token 决定,但**响应格式完全一致**。
 | 单任务文件数 | 100 | 100 |
 | 并发任务 | 10+ | 10+ |
 | 队列优先级 | 默认 | 优先 |
-| `preset` 可选 | 全部含 `vlm` | 全部含 `vlm` |
+| `tier` 可选 | 全部(`standard`/`pro`/`auto`) | 全部(`standard`/`pro`/`auto`) |
 | `output_formats` 高级格式 | 拒绝 `html`/`latex`/`docx` | 全部支持 |
 | `callback` | 拒绝 | 支持 |
 | 产物保留期 | 30d | 30d |
@@ -1863,7 +1872,7 @@ Retry-After: 0
 
 ## 12. Usage — 用量查询
 
-查询当前计费周期的用量与所属 tier 的配额上限。
+查询当前计费周期的用量与所属 access level 的配额上限。
 
 ### GET `/v1/usage`
 
@@ -1881,7 +1890,7 @@ Authorization: Bearer <token>
 ```json
 {
   "object": "usage",
-  "tier": "registered",
+  "access_level": "registered",
   "billing_period": {
     "start": "2026-05-27T00:00:00Z",
     "end": "2026-05-28T00:00:00Z"
@@ -1906,7 +1915,7 @@ Authorization: Bearer <token>
 ```json
 {
   "object": "usage",
-  "tier": "anonymous",
+  "access_level": "anonymous",
   "billing_period": {
     "start": "2026-05-27T00:00:00Z",
     "end": "2026-05-28T00:00:00Z"
@@ -1931,7 +1940,7 @@ Authorization: Bearer <token>
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `object` | string | 固定 `"usage"` |
-| `tier` | string | `"anonymous"` / `"registered"` |
+| `access_level` | string | `"anonymous"` / `"registered"` |
 | `billing_period.start` | ISO-8601 | 当前计费周期开始(UTC) |
 | `billing_period.end` | ISO-8601 | 当前计费周期结束(UTC),与 `start` 差值 24h |
 | `current.pages_processed` | int | 当日累计处理页数 |
@@ -1947,7 +1956,7 @@ Authorization: Bearer <token>
 
 - registered:按 Token 统计用量;anonymous:按请求 IP 统计用量
 - 不传 Token 也能查,返回 anonymous 档的 `limits`
-- `limits` 字段集与 §9 Tier 表一一对应
+- `limits` 字段集与 §9 Access Level 表一一对应
 - `billing_period` 粒度为天,始终 UTC 零点对齐,无时区歧义
 - 若未来引入月度配额上限(如"每月最多 10000 页"),可在 `limits` 中增补字段,向后兼容
 
@@ -2000,8 +2009,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
       \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
     }],
-    \"preset\": \"vlm\",
-    \"output_formats\": [\"markdown\",\"json\",\"images\"]
+    \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\",\"images\"]
   }"
 
 # → 202 {"job_id":"job_...","status":"queued",...}
@@ -2058,8 +2066,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
       \"source\": {\"type\":\"file_id\",\"file_id\":\"$FILE_ID\"},
       \"options\": {\"language\":\"ch\",\"ocr\":\"auto\"}
     }],
-    \"preset\": \"vlm\",
-    \"output_formats\": [\"markdown\",\"json\"],
+    \"tier\": \"pro\",    \"output_formats\": [\"markdown\",\"json\"],
     \"wait\": 30
   }"
 
@@ -2125,7 +2132,7 @@ done < file_ids.txt | jq -s .)
 curl -X POST https://mineru.net/api/v1/parse/jobs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"files\":$FILES_JSON,\"preset\":\"vlm\",\"output_formats\":[\"markdown\"]}"
+  -d "{\"files\":$FILES_JSON,\"tier\":\"pro\",\"output_formats\":[\"markdown\"]}"
 ```
 
 > 提示:`POST /v1/uploads` 在传入 `sha256sum` 时返回 `status:"completed"`(秒传,含 `file`)或 `status:"pending"`(含 `upload_url`)。
@@ -2142,7 +2149,7 @@ curl -X POST https://mineru.net/api/v1/parse/jobs \
     "output_formats": ["markdown"]
   }'
 
-# → 202 {"job_id":"job_...","tier":"anonymous","files":[{"file_id":"file-01HXYZ..."}]}
+# → 202 {"job_id":"job_...","access_level":"anonymous","files":[{"file_id":"file-01HXYZ..."}]}
 # (服务端拉取后,响应中的 file_id 已回填,可后续复用免重新上传)
 ```
 
@@ -2185,7 +2192,7 @@ print(result.markdown())
 result.save(writer)
 ```
 
-调用代码完全相同,Token 仅决定能不能用 `preset="vlm"` 或 `output_formats=["docx"]`。
+调用代码完全相同,Token 仅决定能不能用 `tier="pro"` 或 `output_formats=["docx"]`。
 
 ---
 
@@ -2238,7 +2245,7 @@ POST /v1/uploads  HTTP/1.1
 Content-Type: application/json
 
 {"filename":"doc.pdf","bytes":1048576,"purpose":"parse"}
-→ 200 {"id":"upload_...","upload_url":"http://localhost:8000/_upload/..."}
+→ 200 {"id":"upload_...","upload_url":"http://localhost:8000/v1/uploads/upload_.../content"}
 
 PUT {upload_url}
 <binary bytes>
@@ -2254,7 +2261,7 @@ Content-Type: application/json
 {
   "files":[{"source":{"type":"file_id","file_id":"file-..."},
             "options":{"language":"ch"}}],
-  "preset":"pipeline",
+  "tier":"standard",
   "output_formats":["markdown","json","content_list","images"]
 }
 → 202 {"job_id":"job_...","status":"queued","links":{...}}
@@ -2265,7 +2272,7 @@ Content-Type: application/json
 - 旧:配置开关散落在 form 字段(`return_md`, `return_middle_json`, ...);新:统一收纳到 `output_formats` 数组
 - 旧:每次调用都重新上传;新:可秒传(若提供 sha256)
 - 旧:无文件级标识;新:不透明 `file_id`(`file-xxx`)+ 可选 `sha256sum` 元信息,file_id 可跨任务复用
-- 旧:`backend` 字段直接选实现;新:`preset` 字段语义化(`pipeline`/`vlm`/`html`/`auto`)
+- 旧:`backend` 字段直接选实现;新:`tier` 字段语义化(`standard`/`pro`/`auto`)
 
 #### Call 2 — 查询状态
 
@@ -2408,7 +2415,7 @@ POST /v1/parse/jobs
 {
   "files":[{"source":{"type":"file_id","file_id":"file-01HXYZ..."},
             "options":{"language":"ch","ocr":"auto","page_range":"1-10"}}],
-  "preset":"vlm",
+  "tier":"pro",
   "output_formats":["markdown","json","images","docx"]
 }
 → 202 {"job_id":"job_...","status":"queued"}
@@ -2417,7 +2424,7 @@ POST /v1/parse/jobs
 **差异**
 - 旧:上传 = 解析任务(`batch_id` 同时是上传组和解析任务);新:文件与任务解耦,**同一 `file_id` 可被多个 jobs 复用**(切换 model、改 page_range、跑不同 output_formats 都不必重传)
 - 旧:`page_ranges` 写在 Call 1 的 file 条目里;新:写在 job 的 `options`(因为属于解析行为)
-- 旧:`model_version` 在 Call 1 顶层;新:`preset` 在 `POST /v1/parse/jobs` 顶层
+- 旧:`model_version` 在 Call 1 顶层;新:`tier` 在 `POST /v1/parse/jobs` 顶层
 
 #### Call 4 — 轮询结果
 
@@ -2528,7 +2535,7 @@ POST /v1/parse/jobs
             "options":{"language":"ch","page_range":"1-5","ocr":"auto"}}],
   "output_formats":["markdown"]
 }
-→ 202 {"job_id":"job_...","tier":"anonymous"}
+→ 202 {"job_id":"job_...","access_level":"anonymous"}
 ```
 
 **差异**
@@ -2536,7 +2543,7 @@ POST /v1/parse/jobs
 - 旧:**单文件**任务;新:任意数量文件
 - 旧:`{code,msg,data}` envelope;新:扁平资源
 - 旧:无 sha256/秒传概念;新:可选秒传
-- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`, `language`)在 `files[].options`,任务级参数(`preset`, `output_formats`)在 job 顶层
+- 旧:任务参数写在 Call 1 顶层;新:文件级参数(`page_range`, `language`)在 `files[].options`,任务级参数(`tier`, `output_formats`)在 job 顶层
 
 #### Call 2 — 上传字节
 
@@ -2607,7 +2614,7 @@ GET /v1/files/file-MD.../content
 
 | 维度 | Local ParseApi | V4 API | Flash API | 新 API |
 |------|---------------|--------|-----------|--------|
-| 鉴权 | 无 | Bearer 必填 | 无 | Bearer 可选(决定 tier) |
+| 鉴权 | 无 | Bearer 必填 | 无 | Bearer 可选(决定 access level) |
 | 上传方式 | multipart 同请求 | 预签名 PUT(批量下发) | 预签名 PUT(单个) | 预签名 PUT(每文件) |
 | 文件标识 | 无 | 无(batch 内序号) | 无(task 内单一) | 不透明 `file-xxx` + 可选 `sha256sum` |
 | 秒传 | 不支持 | 不支持 | 不支持 | 支持(可选) |
@@ -2631,7 +2638,7 @@ GET /v1/files/file-MD.../content
 | 新 API(同 file_id 复用) | 2 (+轮询) | POST /v1/parse/jobs → poll → GET /v1/files/{id}/content |
 | 新 API(同步 wait) | 1 | POST /v1/parse/jobs {wait:30} → 200 content 内联 |
 
-> 同 file_id 复用是新 API 独有优势:相同文件换个 `preset` / `page_range` / `output_formats` 重跑无需任何上传。
+> 同 file_id 复用是新 API 独有优势:相同文件换个 `tier` / `page_range` / `output_formats` 重跑无需任何上传。
 
 
 
