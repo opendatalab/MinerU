@@ -177,8 +177,14 @@ def _recycle_pdf_render_executor(
             _pdf_render_executor = None
 
     if terminate_processes:
-        _terminate_executor_processes(executor)
-    executor.shutdown(wait=False, cancel_futures=True)
+        try:
+            _terminate_executor_processes(executor)
+        except Exception as exc:
+            logger.warning(f"Failed to terminate PDF render executor processes: {exc}")
+    try:
+        executor.shutdown(wait=False, cancel_futures=True)
+    except Exception as exc:
+        logger.warning(f"Failed to shutdown PDF render executor: {exc}")
 
 
 def shutdown_pdf_render_executor() -> None:
@@ -298,7 +304,9 @@ async def aio_load_images_from_pdf_bytes_range(
 
 def _terminate_executor_processes(executor):
     """强制终止 ProcessPoolExecutor 中的所有子进程"""
-    processes = list(getattr(executor, "_processes", {}).values())
+    # executor.shutdown() 后 _processes 会被置空，重复回收时直接视为无进程。
+    process_map = getattr(executor, "_processes", None) or {}
+    processes = list(process_map.values())
     if not processes:
         return
 
