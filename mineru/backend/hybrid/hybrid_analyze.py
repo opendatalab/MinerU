@@ -19,7 +19,13 @@ from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     init_middle_json,
 )
 from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
-from mineru.backend.pipeline.model_init import HybridModelSingleton
+from mineru.backend.pipeline.model_init import (
+    HybridModelSingleton,
+    run_layout_inference,
+    run_mfr_inference,
+    run_ocr_det_inference,
+    run_ocr_rec_inference,
+)
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
     aio_predictor_execution_guard,
@@ -119,8 +125,11 @@ def ocr_det(
                     page_mfd_res, useful_list
                 )
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-                ocr_res = hybrid_pipeline_model.ocr_model.ocr(
-                    bgr_image, mfd_res=adjusted_mfdetrec_res, rec=False
+                ocr_res = run_ocr_det_inference(
+                    hybrid_pipeline_model.ocr_model.ocr,
+                    bgr_image,
+                    mfd_res=adjusted_mfdetrec_res,
+                    rec=False,
                 )[0]
                 if ocr_res:
                     ocr_result_list = get_ocr_result_list(
@@ -193,7 +202,11 @@ def ocr_det(
 
             # 批处理检测
             det_batch_size = min(len(batch_images), batch_ratio * OCR_DET_BASE_BATCH_SIZE)
-            batch_results = hybrid_pipeline_model.ocr_model.text_detector.batch_predict(batch_images, det_batch_size)
+            batch_results = run_ocr_det_inference(
+                hybrid_pipeline_model.ocr_model.text_detector.batch_predict,
+                batch_images,
+                det_batch_size,
+            )
 
             # 处理批处理结果
             for crop_info, (dt_boxes, _) in zip(group_crops, batch_results):
@@ -392,7 +405,8 @@ def _predict_layout_for_title_split(
     batch_ratio,
 ):
     """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
-    return hybrid_pipeline_model.layout_model.batch_predict(
+    return run_layout_inference(
+        hybrid_pipeline_model.layout_model.batch_predict,
         images,
         batch_size=min(8, batch_ratio * LAYOUT_BASE_BATCH_SIZE),
     )
@@ -433,7 +447,8 @@ def _process_ocr_and_formulas(
     if inline_formula_enable:
         images_mfd_res = _build_inline_formula_inputs(images_layout_res)
         # 公式识别
-        inline_formula_list = hybrid_pipeline_model.mfr_model.batch_predict(
+        inline_formula_list = run_mfr_inference(
+            hybrid_pipeline_model.mfr_model.batch_predict,
             images_mfd_res,
             np_images,
             batch_size=batch_ratio * MFR_BASE_BATCH_SIZE,
@@ -473,7 +488,12 @@ def _process_ocr_and_formulas(
                     img_crop_list.append(ocr_res.pop('np_img'))
         if len(img_crop_list) > 0:
             # Process OCR
-            ocr_result_list = hybrid_pipeline_model.ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+            ocr_result_list = run_ocr_rec_inference(
+                hybrid_pipeline_model.ocr_model.ocr,
+                img_crop_list,
+                det=False,
+                tqdm_enable=True,
+            )[0]
 
             # Verify we have matching counts
             assert len(ocr_result_list) == len(need_ocr_list), f'ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}'

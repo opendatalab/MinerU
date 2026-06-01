@@ -7,7 +7,10 @@ from tqdm import tqdm
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.utils.config_reader import get_device
-from mineru.backend.pipeline.model_init import AtomModelSingleton
+from mineru.backend.pipeline.model_init import (
+    AtomModelSingleton,
+    run_ocr_rec_inference,
+)
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
@@ -231,7 +234,9 @@ def _apply_post_ocr(pdf_info_list, lang=None):
         det_db_box_thresh=0.3,
         lang=lang
     )
-    ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+    ocr_res_list = run_ocr_rec_inference(
+        ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
+    )[0]
     assert len(ocr_res_list) == len(
         need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
     for index, span in enumerate(need_ocr_list):

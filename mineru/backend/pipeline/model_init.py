@@ -19,6 +19,45 @@ from ...utils.enum_class import ModelPath
 from ...utils.models_download_utils import auto_download_and_get_model_root_path
 
 PIPELINE_MODEL_INIT_LOCK = threading.RLock()
+# 这些锁保护 pipeline 与 hybrid 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
+PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
+PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
+PIPELINE_OCR_DET_INFERENCE_LOCK = threading.RLock()
+PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
+
+
+def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs):
+    """在指定推理锁内执行真实 native 模型调用。"""
+    with inference_lock:
+        return inference_callable(*args, **kwargs)
+
+
+def run_layout_inference(inference_callable, *args, **kwargs):
+    """在共享 Layout 推理锁内执行模型调用。"""
+    return _run_with_inference_lock(
+        PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs
+    )
+
+
+def run_mfr_inference(inference_callable, *args, **kwargs):
+    """在共享 MFR 推理锁内执行模型调用。"""
+    return _run_with_inference_lock(
+        PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs
+    )
+
+
+def run_ocr_det_inference(inference_callable, *args, **kwargs):
+    """在共享 OCR det 推理锁内执行模型调用。"""
+    return _run_with_inference_lock(
+        PIPELINE_OCR_DET_INFERENCE_LOCK, inference_callable, *args, **kwargs
+    )
+
+
+def run_ocr_rec_inference(inference_callable, *args, **kwargs):
+    """在共享 OCR rec 推理锁内执行模型调用。"""
+    return _run_with_inference_lock(
+        PIPELINE_OCR_REC_INFERENCE_LOCK, inference_callable, *args, **kwargs
+    )
 
 MFR_MODEL = os.getenv('MINERU_FORMULA_CH_SUPPORT', 'False')
 if MFR_MODEL.lower() in ['true', '1', 'yes']:
