@@ -1,12 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
-import os
 
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.utils.config_reader import get_device
 from mineru.backend.pipeline.model_init import (
     AtomModelSingleton,
     run_ocr_rec_inference,
@@ -16,7 +14,6 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
