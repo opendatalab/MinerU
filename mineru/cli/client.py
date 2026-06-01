@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
+import multiprocessing
 import os
 import sys
 import threading
@@ -343,8 +344,12 @@ async def mark_task_completed(
 
 def create_visualization_context() -> Optional[VisualizationContext]:
     try:
+        spawn_context = multiprocessing.get_context("spawn")
         return VisualizationContext(
-            executor=ProcessPoolExecutor(max_workers=1),
+            executor=ProcessPoolExecutor(
+                max_workers=1,
+                mp_context=spawn_context,
+            ),
             futures=[],
         )
     except Exception as exc:

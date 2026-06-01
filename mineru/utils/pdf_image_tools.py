@@ -35,11 +35,15 @@ DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
 MAX_PDF_RENDER_PROCESSES = 3
 MIN_PAGES_PER_RENDER_PROCESS = 30
+PDF_RENDER_PROCESS_SPAWN_DELAY_SECONDS = 0.1
 PDF_RENDER_TERMINATE_GRACE_PERIOD_SECONDS = 0.1
 PDF_RENDER_KILL_JOIN_TIMEOUT_SECONDS = 0.1
 
 _pdf_render_executor: ProcessPoolExecutor | None = None
 _pdf_render_executor_lock = threading.Lock()
+_pdf_render_spawn_submit_lock = threading.Lock()
+_pdf_render_spawn_submit_executor_id: int | None = None
+_pdf_render_spawn_submit_count = 0
 
 
 def pdf_page_to_image(
@@ -137,9 +141,10 @@ def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
         return ProcessPoolExecutor(max_workers=max_workers)
 
     start_method = multiprocessing.get_start_method()
-    if start_method == "fork":
+    if start_method != "spawn":
         logger.debug(
-            "PDF image rendering switches multiprocessing start method from fork to spawn"
+            "PDF image rendering switches multiprocessing start method "
+            f"from {start_method} to spawn"
         )
         return ProcessPoolExecutor(
             max_workers=max_workers,
@@ -147,6 +152,44 @@ def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
         )
 
     return ProcessPoolExecutor(max_workers=max_workers)
+
+
+def _is_pdf_render_pool_still_spawning_workers(executor: ProcessPoolExecutor) -> bool:
+    """判断渲染进程池是否还可能因为 submit 而继续创建新的 worker。"""
+    max_workers = getattr(executor, "_max_workers", None)
+    if max_workers is None or max_workers <= 1:
+        return False
+
+    processes = getattr(executor, "_processes", None)
+    process_count = 0 if processes is None else len(processes)
+    return process_count < max_workers
+
+
+def _submit_pdf_render_task(
+    executor: ProcessPoolExecutor,
+    fn,
+    *args,
+    **kwargs,
+):
+    """提交 PDF 渲染任务；冷启动补 worker 时串行 submit 并错开 100ms。"""
+    global _pdf_render_spawn_submit_executor_id, _pdf_render_spawn_submit_count
+
+    with _pdf_render_spawn_submit_lock:
+        should_throttle = _is_pdf_render_pool_still_spawning_workers(executor)
+        if should_throttle:
+            executor_id = id(executor)
+            if _pdf_render_spawn_submit_executor_id != executor_id:
+                _pdf_render_spawn_submit_executor_id = executor_id
+                _pdf_render_spawn_submit_count = 0
+            elif _pdf_render_spawn_submit_count > 0:
+                time.sleep(PDF_RENDER_PROCESS_SPAWN_DELAY_SECONDS)
+
+        future = executor.submit(fn, *args, **kwargs)
+
+        if should_throttle:
+            _pdf_render_spawn_submit_count += 1
+
+        return future
 
 
 def _get_pdf_render_executor() -> ProcessPoolExecutor:
@@ -238,7 +281,8 @@ def _load_images_from_pdf_bytes_range(
         futures = []
         future_to_range = {}
         for range_start, range_end in page_ranges:
-            future = executor.submit(
+            future = _submit_pdf_render_task(
+                executor,
                 _load_images_from_pdf_worker,
                 pdf_bytes,
                 dpi,
