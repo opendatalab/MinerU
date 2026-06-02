@@ -25,6 +25,10 @@ PIPELINE_LAYOUT_INFERENCE_LOCK = threading.RLock()
 PIPELINE_MFR_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_DET_INFERENCE_LOCK = threading.RLock()
 PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
+# 临时关闭 pipeline/hybrid 共享推理阶段锁；需要回滚实验时可通过环境变量重新打开。
+PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv(
+    'MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS', 'False'
+).lower() in ['true', '1', 'yes']
 # 推理准入门闩：清理线程等待静默区时，阻止新的推理调用继续插队进入阶段锁。
 PIPELINE_INFERENCE_ADMISSION_LOCK = threading.RLock()
 PIPELINE_INFERENCE_STAGE_LOCKS = (
@@ -36,7 +40,10 @@ PIPELINE_INFERENCE_STAGE_LOCKS = (
 
 
 def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs):
-    """在指定推理锁内执行真实 native 模型调用。"""
+    """按实验开关决定是否在指定推理锁内执行真实 native 模型调用。"""
+    if not PIPELINE_INFERENCE_LOCKS_ENABLED:
+        return inference_callable(*args, **kwargs)
+
     with PIPELINE_INFERENCE_ADMISSION_LOCK:
         inference_lock.acquire()
     try:
@@ -47,7 +54,11 @@ def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs
 
 @contextmanager
 def pipeline_inference_quiet_zone():
-    """进入 pipeline/hybrid 共享模型推理静默区，等待四类阶段推理全部退出。"""
+    """进入 pipeline/hybrid 共享模型推理静默区；锁关闭时保持直通。"""
+    if not PIPELINE_INFERENCE_LOCKS_ENABLED:
+        yield
+        return
+
     acquired_locks = []
     with PIPELINE_INFERENCE_ADMISSION_LOCK:
         try:
