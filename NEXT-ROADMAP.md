@@ -29,7 +29,7 @@ mineru.net                              mineru (pip / uv install)
                                                     ├── 本地引擎（默认，Privacy First）
                                                     │     CLI / Python SDK / Server / UI / MCP Server
                                                     │
-                                                    └── mineru.net/api（--server 显式指定）
+                                                    └── mineru.net/api（--remote 显式指定）
                                                             远程高质量解析
 ```
 
@@ -75,7 +75,7 @@ mineru.net                              mineru (pip / uv install)
 
 Privacy First 收窄到两件事，分别处理：
 
-- **文档隐私（绝对）**：文档内容绝不离开本地；仅用户显式指定 `--server` 时上传，且有明确提示（服务端数据政策见 6.4 节）
+- **文档隐私（绝对）**：文档内容绝不离开本地；仅用户显式指定 `--remote` 时上传，且有明确提示（服务端数据政策见 6.4 节）
 - **使用统计（透明可控）**：分级匿名遥测，不含文档内容 / 文件名 / 路径；首次启动强制用户选择不预选；用户可随时通过 `mineru telemetry` 命令审阅与切换
 
 #### 遥测分级
@@ -109,7 +109,7 @@ Privacy First 收窄到两件事，分别处理：
 - 普通用户零配置：通过 Agent + Skill 使用，Skill 内嵌 uv 安装引导，无需自己装 pip
 - 包体小、依赖精简
 - 本地模型数量少、Size 小
-- `--server` 一键访问远程高质量解析
+- `--remote` 一键访问远程高质量解析
 
 ### 2.4 SaaS 极致质量
 
@@ -166,7 +166,7 @@ Privacy First 收窄到两件事，分别处理：
 | 改进计划 | CLI / GUI 首次启动 Tier 1 opt-in 率 ≥40% |
 | Privacy First | 遥测字段经第三方审阅无文档内容泄漏 |
 
-基础设施类项目（`mineru` CLI 主命令、`--server` 远程切换、统一 REST API 等）以**功能完成 + 集成测试通过**为验收，不单列定量指标。
+基础设施类项目（`mineru` CLI 主命令、`--remote` 远程切换、统一 REST API 等）以**功能完成 + 集成测试通过**为验收，不单列定量指标。
 
 ## 3. 团队工作原则
 
@@ -188,10 +188,10 @@ Agent 不直接调用 mineru.net/api。双通道设计（Skill 指 Claude Code /
 Agent
   │
   ├── Skill（推荐）► mineru CLI ─┬── 本地引擎（默认）
-  │                              └── mineru.net/api（--server）
+  │                              └── mineru.net/api（--remote）
   │
   └── MCP Server（高级）► mineru SDK ─┬── 本地引擎（默认）
-                                      └── mineru.net/api（--server）
+                                      └── mineru.net/api（--remote）
 ```
 
 | 通道 | 协议 | 定位 | 适用场景 |
@@ -231,27 +231,26 @@ Agent
 mineru
 ├── CLI         — mineru / mineru-kit 命令行工具
 ├── Python SDK  — 编程调用接口
-├── Server      — 本地 HTTP 服务
-├── UI          — 本地 Web 界面
-└── MCP Server  — Agent 协议入口
+└── Server      — 本地后台服务（含 Web UI 和 MCP Server，P1 阶段交付）
 ```
+
+> 注：NEXT-CLI.md 覆盖 CLI + Server 的详细设计；Python SDK 设计见 mineru/api 模块；Web UI 和 MCP Server 为 P1 交付，作为 Server 的扩展能力集成。
 
 ### 5.1 两个 CLI 命令分工
 
 | 命令 | 面向 | 定位 |
 |------|------|------|
 | `mineru` | 普通用户 / Agent | 文档管理中心 — 在 `mineru-kit` 之上叠加本地数据库、去重、搜索、与桌面端互通。**Agent 默认通道，Skill 仅介绍此命令** |
-| `mineru-kit` | 解析内核 / 批处理开发者 | 纯解析工具 — 无状态、不建索引。**`mineru` 的基础解析层**，亦可独立用于嵌入流水线、容器批处理等无状态场景。**Skill 不暴露此命令** |
+| `mineru-kit` | 解析内核 / 批处理开发者 | 纯解析工具 — 无状态、不建索引。子命令：`parse`（文件/目录解析）、`api-server`（端到端解析服务，兼容 SaaS API）、`vlm-server`（本地 VLM 服务，兼容 OpenAI API）。**Skill 不暴露此命令** |
 
 ### 5.2 本地能力矩阵
 
 | 能力 | 优先级 | 说明 |
 |------|--------|------|
-| 解析引擎 | P0 | 多 backend：pipeline / vlm / hybrid / office |
-| 远程切换 | P0 | `--server` 一键访问 mineru.net/api |
+| 解析引擎 | P0 | 三档 tier：`flash`（轻量 CPU）/ `standard`（Pipeline）/ `pro`（VLM）。用户通过 `--tier` 选择档位，引擎名不暴露 |
+| 远程切换 | P0 | `--remote` 一键访问 mineru.net/api |
 | 文档库 | P0 | SQLite + SHA256 去重，Agent-native 缓存的底层依赖 |
-| UI | P1 | 本地 Web 界面 |
-| MCP Server | P1 | Agent 协议入口 |
+| Server | P0(基础) / P1(完整) | 本地后台进程，提供 Watch / 解析队列 / 搜索索引。P1 阶段扩展 Web UI 和 MCP Server |
 | 搜索 | P1 | 按文件名/内容检索 |
 | 桌面端 | P1 | `MinerU.app/MinerU.exe` — CLI 的 GUI 壳 |
 
@@ -304,7 +303,7 @@ SaaS 通过统一 REST API 暴露能力，API 面向开发者和 `mineru CLI`/MC
 
 ### 6.4 服务端数据政策
 
-`--server` 上传到 mineru.net/api 的数据按以下策略处理。
+`--remote` 上传到 mineru.net/api 的数据按以下策略处理。
 
 #### 默认行为
 
@@ -373,7 +372,7 @@ P0 — 本地能力中心 MVP + 远程入口
 ├── mineru CLI（mineru / mineru-kit 双命令）
 ├── Skill 配套发布
 ├── Agent-native 7 条特性（见 4.2 节）
-├── --server 一键切换远程高质量解析
+├── --remote 一键切换远程高质量解析
 ├── 统一 REST API 在 mineru-be（mineru.net/api 服务端实现）落地
 ├── 中间结构统一：Pipeline / VLM / Office middle_json 对齐（Agent-native 特性的前置依赖）
 ├── 文档库：SQLite + SHA256 去重（Agent-native 缓存的前置依赖）
@@ -383,7 +382,7 @@ P0 — 本地能力中心 MVP + 远程入口
 └── Privacy First 默认本地（见 2.1 节）
 
 P1 — 并行推进
-├── 本地能力深化：搜索 / UI / MCP Server
+├── Server 扩展：Web UI / MCP Server / 搜索
 ├── SaaS 提速：小模型替换 Layout+OCR / 降分辨率 / 推理加速
 └── MinerU.app/MinerU.exe 桌面客户端
 

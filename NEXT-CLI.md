@@ -393,10 +393,40 @@ mineru config watch rm ~/Documents
 - 注册后默认使用 **flash** tier 解析首尾各 5 页
 - 文件类型决定解析方式：office 文档直接本地全量解析（成本低），PDF/image 用 flash
 
+**文件类型白名单**（Watch 自动发现的范围）：
+
+```
+文档类: pdf, doc, docx, xls, xlsx, ppt, pptx, csv, rtf, odt, ods
+电子书: epub, mobi
+Apple:  pages, key, numbers
+文本类: txt, md, markdown, rst, tex
+网页类: html, htm
+邮件类: eml, mbox
+```
+
+> **图片类**（jpg, png 等）不在 Watch 白名单中——Watch 扫描到的图片默认不算做文档。但用户可通过 `mineru parse image.png` 显式触发图片解析。
+
 **约束**：
 - Watch 目录不允许嵌套
 - 必须是绝对路径
-- 默认排除：`*/Library/*`, `*/.git/*`, `*/node_modules/*`, `*/.venv/*` 等
+- 默认排除：`*/Library/*`, `*/.git/*`, `*/node_modules/*`, `*/vendor/*`, `*/go/pkg/*`, `*/__pycache__/*`, `*/.venv/*`, `*/miniconda3/*`, `*/.nvm/*`, `*/.docker/*`, `*/target/*`, `*/dist/*`, `*/build/*`
+
+## 可插拔设备
+
+> 设计 P0（架构需提前考虑），实现 P1。
+
+支持外接硬盘、U 盘等可插拔存储设备的 Watch：
+
+```bash
+mineru config watch add /Volumes/SSD --removable
+```
+
+**设计要点**：
+- Server 定期对 `--removable` 的 watch 根路径执行 `os.stat()` 检测设备状态
+- 设备拔出 → watch 状态标记为 `unreachable`，该 watch 下所有文件标记为 `unreachable`（非 `deleted`）
+- 设备插回 → 恢复为 `active`，触发增量扫描，重试之前因拔出而失败的任务
+- 正在进行中的解析任务遇到设备拔出 → 标记特殊错误（留有恢复机会），不视为永久失败
+- 搜索结果中 `unreachable` 文件仍可命中，但标注"设备未连接"
 
 ## Parsing-Rules（解析规则）
 
@@ -497,6 +527,7 @@ config             KV 全局配置
 
 - **File/Doc 分离**：多个路径（备份副本）可指向同一个 doc（SHA-256 去重）
 - **增量解析**：`docs.parsed_pages` 记录已解析的页码范围，新请求只解析未覆盖的页
+- **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索时优先使用最高 tier 的结果，用户可按 tier 查询历史解析
 - **任务队列**：无实体队列，靠 DB 查询 `WHERE status='pending' AND lock_expired`
 - **锁机制**：时间戳锁，超时自动释放（parse 锁 30 分钟，registration 锁 60 秒）
 - **错误分类**：File 级（路径/权限）、Doc 级（内容损坏/加密）、Parse 级（API 超时/引擎失败）
