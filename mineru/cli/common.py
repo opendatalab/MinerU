@@ -23,7 +23,10 @@ from mineru.backend.vlm.vlm_analyze import aio_doc_analyze as aio_vlm_doc_analyz
 from mineru.backend.office.pptx_analyze import office_pptx_analyze
 from mineru.backend.office.xlsx_analyze import office_xlsx_analyze
 from mineru.backend.office.docx_analyze import office_docx_analyze
-from mineru.utils.pdfium_guard import rewrite_pdf_bytes_with_pdfium
+from mineru.utils.pdfium_guard import (
+    get_loadable_pdfium_page_indices,
+    rewrite_pdf_bytes_with_pdfium,
+)
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
@@ -190,11 +193,49 @@ def convert_pdf_bytes_to_bytes(pdf_bytes, start_page_id=0, end_page_id=None):
         )
         if rebuilt_pdf_bytes:
             return rebuilt_pdf_bytes
-        logger.warning("PDFium rewrite returned empty bytes, using original PDF bytes.")
+        logger.warning(
+            "PDFium rewrite returned empty bytes, trying to skip broken pages."
+        )
     except Exception as fallback_error:
         logger.warning(
             f"Error in converting PDF bytes with pdfium: {fallback_error}, "
+            "trying to skip broken pages."
+        )
+
+    try:
+        loadable_page_indices, broken_page_indices = get_loadable_pdfium_page_indices(
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+        )
+        if broken_page_indices:
+            skipped_pages = [page_index + 1 for page_index in broken_page_indices]
+            logger.warning(
+                f"Skipped broken PDF pages during PDFium rewrite: {skipped_pages}"
+            )
+        if not loadable_page_indices:
+            logger.warning(
+                "PDFium skip-broken-page rewrite found no loadable pages, "
+                "using original PDF bytes."
+            )
+            return pdf_bytes
+
+        rebuilt_pdf_bytes = rewrite_pdf_bytes_with_pdfium(
+            pdf_bytes,
+            start_page_id=start_page_id,
+            end_page_id=end_page_id,
+            page_indices=loadable_page_indices,
+        )
+        if rebuilt_pdf_bytes:
+            return rebuilt_pdf_bytes
+        logger.warning(
+            "PDFium skip-broken-page rewrite returned empty bytes, "
             "using original PDF bytes."
+        )
+    except Exception as fallback_error:
+        logger.warning(
+            "Error in converting PDF bytes with skip-broken-page fallback: "
+            f"{fallback_error}, using original PDF bytes."
         )
     return pdf_bytes
 
