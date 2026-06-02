@@ -12,7 +12,7 @@ from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import BlockType, ContentType
 from mineru.utils.pdf_image_tools import get_crop_img
 from mineru.utils.pdf_text_tool import get_lines_from_chars, get_page_chars
-from mineru.utils.pdfium_guard import pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 
 MAX_NATIVE_TEXT_CHARS_PER_PAGE = 65535
 
@@ -35,91 +35,94 @@ def txt_spans_extract(pdf_page, spans, pil_img, scale, all_bboxes, all_discarded
     page_char_count = None
     textpage = None
     try:
-        with pdfium_guard():
-            textpage = pdf_page.get_textpage()
-            page_char_count = textpage.count_chars()
-    except Exception as exc:
-        logger.debug(f"Failed to get page char count before txt extraction: {exc}")
+        try:
+            with pdfium_guard():
+                textpage = pdf_page.get_textpage()
+                page_char_count = textpage.count_chars()
+        except Exception as exc:
+            logger.debug(f"Failed to get page char count before txt extraction: {exc}")
 
-    if page_char_count is not None and page_char_count > MAX_NATIVE_TEXT_CHARS_PER_PAGE:
-        logger.info(
-            "Fallback to post-OCR in txt_spans_extract due to high char count: "
-            f"count_chars={page_char_count}"
+        if page_char_count is not None and page_char_count > MAX_NATIVE_TEXT_CHARS_PER_PAGE:
+            logger.info(
+                "Fallback to post-OCR in txt_spans_extract due to high char count: "
+                f"count_chars={page_char_count}"
+            )
+            need_ocr_spans = [
+                span for span in spans if span.get('type') == ContentType.TEXT
+            ]
+            return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
+
+        page_chars = get_page_chars(
+            pdf_page,
+            textpage=textpage,
+            page_char_count=page_char_count,
         )
-        need_ocr_spans = [
-            span for span in spans if span.get('type') == ContentType.TEXT
+        page_all_chars = [
+            char for char in page_chars['chars']
+            if _is_supported_rotation(char['rotation'])
         ]
-        return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
-    page_chars = get_page_chars(
-        pdf_page,
-        textpage=textpage,
-        page_char_count=page_char_count,
-    )
-    page_all_chars = [
-        char for char in page_chars['chars']
-        if _is_supported_rotation(char['rotation'])
-    ]
+        # 计算所有sapn的高度的中位数
+        span_height_list = []
+        for span in spans:
+            if span['type'] in [ContentType.TEXT]:
+                span_height = span['bbox'][3] - span['bbox'][1]
+                span['height'] = span_height
+                span['width'] = span['bbox'][2] - span['bbox'][0]
+                span_height_list.append(span_height)
+        if len(span_height_list) == 0:
+            return spans
+        else:
+            median_span_height = statistics.median(span_height_list)
 
-    # 计算所有sapn的高度的中位数
-    span_height_list = []
-    for span in spans:
-        if span['type'] in [ContentType.TEXT]:
-            span_height = span['bbox'][3] - span['bbox'][1]
-            span['height'] = span_height
-            span['width'] = span['bbox'][2] - span['bbox'][0]
-            span_height_list.append(span_height)
-    if len(span_height_list) == 0:
-        return spans
-    else:
-        median_span_height = statistics.median(span_height_list)
+        useful_spans = []
+        unuseful_spans = []
+        # 纵向span的两个特征：1. 高度超过多个line 2. 高宽比超过某个值
+        vertical_spans = []
+        for span in spans:
+            if span['type'] in [ContentType.TEXT]:
+                for block in all_bboxes + all_discarded_blocks:
+                    if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
+                        continue
+                    if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
+                        if span['height'] > median_span_height * 2.3 and span['height'] > span['width'] * 2.3:
+                            vertical_spans.append(span)
+                        elif block in all_bboxes:
+                            useful_spans.append(span)
+                        else:
+                            unuseful_spans.append(span)
+                        break
 
-    useful_spans = []
-    unuseful_spans = []
-    # 纵向span的两个特征：1. 高度超过多个line 2. 高宽比超过某个值
-    vertical_spans = []
-    for span in spans:
-        if span['type'] in [ContentType.TEXT]:
-            for block in all_bboxes + all_discarded_blocks:
-                if block[7] in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.INTERLINE_EQUATION]:
-                    continue
-                if calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block[0:4]) > 0.5:
-                    if span['height'] > median_span_height * 2.3 and span['height'] > span['width'] * 2.3:
-                        vertical_spans.append(span)
-                    elif block in all_bboxes:
-                        useful_spans.append(span)
-                    else:
-                        unuseful_spans.append(span)
-                    break
+        """垂直的span框直接用line进行填充"""
+        if len(vertical_spans) > 0:
+            page_all_lines = [
+                line for line in get_lines_from_chars(page_chars['chars'])
+                if _is_supported_rotation(line['rotation'])
+            ]
+            for pdfium_line in page_all_lines:
+                for span in vertical_spans:
+                    if calculate_overlap_area_in_bbox1_area_ratio(pdfium_line['bbox'].bbox, span['bbox']) > 0.5:
+                        for pdfium_span in pdfium_line['spans']:
+                            span['content'] += pdfium_span['text']
+                        break
 
-    """垂直的span框直接用line进行填充"""
-    if len(vertical_spans) > 0:
-        page_all_lines = [
-            line for line in get_lines_from_chars(page_chars['chars'])
-            if _is_supported_rotation(line['rotation'])
-        ]
-        for pdfium_line in page_all_lines:
             for span in vertical_spans:
-                if calculate_overlap_area_in_bbox1_area_ratio(pdfium_line['bbox'].bbox, span['bbox']) > 0.5:
-                    for pdfium_span in pdfium_line['spans']:
-                        span['content'] += pdfium_span['text']
-                    break
+                if len(span['content']) == 0:
+                    spans.remove(span)
 
-        for span in vertical_spans:
-            if len(span['content']) == 0:
-                spans.remove(span)
+        """水平的span框先用char填充，再用ocr填充空的span框"""
+        new_spans = []
 
-    """水平的span框先用char填充，再用ocr填充空的span框"""
-    new_spans = []
+        for span in useful_spans + unuseful_spans:
+            if span['type'] in [ContentType.TEXT]:
+                span['chars'] = []
+                new_spans.append(span)
 
-    for span in useful_spans + unuseful_spans:
-        if span['type'] in [ContentType.TEXT]:
-            span['chars'] = []
-            new_spans.append(span)
+        need_ocr_spans = fill_char_in_spans(new_spans, page_all_chars, median_span_height)
 
-    need_ocr_spans = fill_char_in_spans(new_spans, page_all_chars, median_span_height)
-
-    return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
+        return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
+    finally:
+        close_pdfium_child(textpage)
 
 
 def _is_supported_rotation(rotation) -> bool:

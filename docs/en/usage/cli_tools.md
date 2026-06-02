@@ -21,6 +21,10 @@ Options:
   -e, --end INTEGER               Ending page number for parsing (0-based)
   -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
   -t, --table BOOLEAN             Enable table parsing (default: enabled)
+  --client-side-output-generation BOOLEAN
+                                  Generate Markdown and content lists locally
+                                  from server-returned middle JSON, images, and
+                                  original files (default: disabled)
   --help                          Show help information
 ```
 > [!TIP]
@@ -59,6 +63,9 @@ Options:
                                   starts a reusable local mineru-api service.
   --enable-vlm-preload BOOLEAN    Preload the local VLM model when gradio
                                   starts a local mineru-api service.
+  --client-side-output-generation BOOLEAN
+                                  Generate Markdown and content lists locally
+                                  from server-returned middle JSON.
   --latex-delimiters-type [a|b|all]
                                   Set the type of LaTeX delimiters to use in
                                   Markdown rendering: 'a' for type '$', 'b' for

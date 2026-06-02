@@ -1,8 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
+import time
 from copy import deepcopy
 from typing import Any
+
+from loguru import logger
 
 from mineru.utils.config_reader import get_llm_aided_config
 from mineru.utils.llm_aided import llm_aided_title
@@ -29,7 +32,15 @@ def _resolve_title_aided_config() -> dict[str, Any] | None:
 def apply_title_leveling_to_pdf_info(pdf_info: list[dict[str, Any]]):
     title_aided_config = _resolve_title_aided_config()
     if title_aided_config:
-        llm_aided_title(pdf_info, title_aided_config)
+        start_time = time.perf_counter()
+        success = False
+        try:
+            llm_aided_title(pdf_info, title_aided_config)
+            success = True
+        finally:
+            elapsed = time.perf_counter() - start_time
+            status = "finished" if success else "failed"
+            logger.info(f"title leveling {status}, cost: {elapsed:.2f}s")
 
 
 def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, Any]:

@@ -1,24 +1,24 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
-import os
 
 from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.utils.config_reader import get_device
-from mineru.backend.pipeline.model_init import AtomModelSingleton
+from mineru.backend.pipeline.model_init import (
+    AtomModelSingleton,
+    run_ocr_rec_inference,
+)
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.model_utils import clean_memory
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
 
 
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
@@ -77,20 +77,24 @@ def append_page_model_infos_to_middle_json(
 ):
     for offset, (page_model_info, image_dict) in enumerate(zip(page_model_infos, images_list)):
         page_index = page_start_index + offset
-        with pdfium_guard():
-            page = pdf_doc[page_index]
-        page_info = page_model_info_to_page_info(
-            copy.deepcopy(page_model_info),
-            image_dict,
-            page,
-            image_writer,
-            page_index,
-            ocr_enable=ocr_enable,
-        )
-        if page_info is None:
+        page = None
+        try:
             with pdfium_guard():
-                page_w, page_h = map(int, pdf_doc[page_index].get_size())
-            page_info = make_page_info_dict([], page_index, page_w, page_h, [])
+                page = pdf_doc[page_index]
+            page_info = page_model_info_to_page_info(
+                copy.deepcopy(page_model_info),
+                image_dict,
+                page,
+                image_writer,
+                page_index,
+                ocr_enable=ocr_enable,
+            )
+            if page_info is None:
+                with pdfium_guard():
+                    page_w, page_h = map(int, page.get_size())
+                page_info = make_page_info_dict([], page_index, page_w, page_h, [])
+        finally:
+            close_pdfium_child(page)
         middle_json["pdf_info"].append(page_info)
         if progress_bar is not None:
             progress_bar.update(1)
@@ -231,7 +235,9 @@ def _apply_post_ocr(pdf_info_list, lang=None):
         det_db_box_thresh=0.3,
         lang=lang
     )
-    ocr_res_list = ocr_model.ocr(img_crop_list, det=False, tqdm_enable=True)[0]
+    ocr_res_list = run_ocr_rec_inference(
+        ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
+    )[0]
     assert len(ocr_res_list) == len(
         need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
     for index, span in enumerate(need_ocr_list):
@@ -280,8 +286,6 @@ def finalize_middle_json(
     """Apply document-level post processing once all page_info entries are ready."""
     apply_server_side_postprocess(pdf_info_list, lang=lang)
     finalize_middle_json_from_preproc(pdf_info_list)
-    if os.getenv('MINERU_DONOT_CLEAN_MEM') is None and len(pdf_info_list) >= 10:
-        clean_memory(get_device())
 
 
 def init_middle_json():

@@ -20,13 +20,16 @@ def page_to_image(
         if (long_side_length*scale) > max_width_or_height:
             scale = max_width_or_height / long_side_length
 
-        bitmap: PdfBitmap = page.render(scale=scale)  # type: ignore
-
-        image = bitmap.to_pil()
+        bitmap: PdfBitmap | None = None
         try:
-            bitmap.close()
-        except Exception as e:
-            logger.error(f"Failed to close bitmap: {e}")
+            bitmap = page.render(scale=scale)  # type: ignore
+            image = bitmap.to_pil().copy()
+        finally:
+            if bitmap is not None:
+                try:
+                    bitmap.close()
+                except Exception as e:
+                    logger.error(f"Failed to close bitmap: {e}")
     return image, scale
 
 
