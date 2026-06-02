@@ -161,7 +161,7 @@ async def parse_request_form(
         Form(
             description=(
                 "Defer final markdown/content-list generation to the client. "
-                "When enabled, the server returns staged middle JSON and images."
+                "When enabled, the server returns staged middle JSON, model output, and images."
             ),
         ),
     ] = False,
@@ -188,7 +188,7 @@ async def parse_request_form(
     if client_side_output_generation:
         return_md = False
         return_middle_json = True
-        return_model_output = False
+        return_model_output = True
         return_content_list = False
         return_images = True
 

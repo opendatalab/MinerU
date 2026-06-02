@@ -997,7 +997,7 @@ async def _run_to_markdown_job(
         end_page_id=end_pages - 1,
         return_md=not use_client_side_output_generation,
         return_middle_json=True,
-        return_model_output=not use_client_side_output_generation,
+        return_model_output=True,
         return_content_list=not use_client_side_output_generation,
         return_images=True,
         response_format_zip=True,

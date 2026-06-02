@@ -6,7 +6,7 @@ import pypdfium2 as pdfium
 from pdftext.pdf.chars import deduplicate_chars, get_chars
 from pdftext.pdf.pages import assign_scripts, get_blocks, get_lines, get_spans
 
-from mineru.utils.pdfium_guard import pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 
 
 def get_page(
@@ -39,25 +39,30 @@ def get_page_chars(
     page_char_count: int | None = None,
 ) -> dict:
     """轻量读取页面字符坐标，供只需要 char 级信息的路径复用。"""
-    with pdfium_guard():
-        if textpage is None:
-            textpage = page.get_textpage()
-        page_bbox: List[float] = page.get_bbox()
-        page_width = math.ceil(abs(page_bbox[2] - page_bbox[0]))
-        page_height = math.ceil(abs(page_bbox[1] - page_bbox[3]))
+    owns_textpage = textpage is None
+    try:
+        with pdfium_guard():
+            if textpage is None:
+                textpage = page.get_textpage()
+            page_bbox: List[float] = page.get_bbox()
+            page_width = math.ceil(abs(page_bbox[2] - page_bbox[0]))
+            page_height = math.ceil(abs(page_bbox[1] - page_bbox[3]))
 
-        page_rotation = 0
-        try:
-            page_rotation = page.get_rotation()
-        except Exception:
-            pass
+            page_rotation = 0
+            try:
+                page_rotation = page.get_rotation()
+            except Exception:
+                pass
 
-        if page_char_count is None:
-            page_char_count = textpage.count_chars()
+            if page_char_count is None:
+                page_char_count = textpage.count_chars()
 
-        chars = deduplicate_chars(
-            get_chars(textpage, page_bbox, page_rotation, quote_loosebox)
-        )
+            chars = deduplicate_chars(
+                get_chars(textpage, page_bbox, page_rotation, quote_loosebox)
+            )
+    finally:
+        if owns_textpage:
+            close_pdfium_child(textpage)
 
     return {
         "bbox": page_bbox,
