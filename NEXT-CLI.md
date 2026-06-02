@@ -526,7 +526,7 @@ config             KV 全局配置
 ## 关键设计
 
 - **File/Doc 分离**：多个路径（备份副本）可指向同一个 doc（SHA-256 去重）
-- **增量解析**：`docs.parsed_pages` 记录已解析的页码范围，新请求只解析未覆盖的页
+- **增量解析**：每个 tier 独立追踪 `parsed_pages`，互不影响。同一 tier 内只解析未覆盖的页（增量），不同 tier 之间不存在覆盖关系。`--force` 忽略所有 tier 的缓存，强制重新解析
 - **多 tier 结果共存**：同一文件用 flash 解析过，再用 pro 解析，两份结果共存（不覆盖）。搜索时优先使用最高 tier 的结果，用户可按 tier 查询历史解析
 - **任务队列**：无实体队列，靠 DB 查询 `WHERE status='pending' AND lock_expired`
 - **锁机制**：时间戳锁，超时自动释放（parse 锁 30 分钟，registration 锁 60 秒）
@@ -632,7 +632,7 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--server` | — | url | — | 远端 API 地址。指定则切换为远端模式，否则使用本地引擎 |
-| `--token` | — | string | — | API Token (覆盖环境变量 `MINERU_TOKEN`) |
+| `--api-key` | — | string | — | API Key (覆盖环境变量 `MINERU_API_KEY`) |
 | `--verbose` | `-v` | bool | false | 详细输出 (远端: HTTP 调试; 本地: 引擎日志) |
 
 ### 同步/异步行为
@@ -702,7 +702,7 @@ mineru-kit parse a/report.pdf b/report.pdf -o out/ --on-collision path
 | `--fast` | ○ | ● |
 | `--async` | ○ | ● |
 | `--wait` | ○ | ● |
-| `--token` | ○ | ● |
+| `--api-key` | ○ | ● |
 | `--concurrency` | ● | ● |
 
 - ● 有效 / ○ 忽略
