@@ -8,6 +8,7 @@ import pypdfium2.raw as pdfium_c
 from loguru import logger
 from pypdf import PdfReader
 from mineru.utils.pdfium_guard import (
+    close_pdfium_child,
     close_pdfium_document,
     open_pdfium_document,
     pdfium_guard,
@@ -225,18 +226,9 @@ def get_extreme_aspect_ratio_page_pdfium(
                 if aspect_ratio > max_page_aspect_ratio:
                     return page_index, aspect_ratio
             finally:
-                _close_pdfium_child(page)
+                close_pdfium_child(page)
 
     return None, None
-
-
-def _close_pdfium_child(pdfium_obj) -> None:
-    """显式关闭 PDFium 子对象，避免依赖 weakref/finalizer 延迟释放 native 资源。"""
-    if pdfium_obj is None:
-        return
-    close = getattr(pdfium_obj, "close", None)
-    if callable(close):
-        close()
 
 
 def _collect_pdfium_text_sample_from_page(page_index, page):
@@ -286,7 +278,7 @@ def _collect_pdfium_text_sample_from_page(page_index, page):
             "font_name_counts": font_name_counts,
         }
     finally:
-        _close_pdfium_child(text_page)
+        close_pdfium_child(text_page)
 
 
 def _collect_pdfium_text_samples(pdf_doc, page_indices):
@@ -302,7 +294,7 @@ def _collect_pdfium_text_samples(pdf_doc, page_indices):
                     _collect_pdfium_text_sample_from_page(page_index, page)
                 )
             finally:
-                _close_pdfium_child(page)
+                close_pdfium_child(page)
 
     return text_samples
 
@@ -669,7 +661,7 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
                         left, bottom, right, top = page_object.get_pos()
                         image_area += max(0.0, right - left) * max(0.0, top - bottom)
                     finally:
-                        _close_pdfium_child(page_object)
+                        close_pdfium_child(page_object)
 
                 coverage_ratio = (
                     min(image_area / page_area, 1.0) if page_area > 0 else 0.0
@@ -677,7 +669,7 @@ def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
                 if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
                     high_image_coverage_pages += 1
             finally:
-                _close_pdfium_child(page)
+                close_pdfium_child(page)
 
     if not page_indices:
         return 0.0

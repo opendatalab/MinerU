@@ -21,7 +21,7 @@ from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
 
@@ -198,17 +198,21 @@ def append_page_results_to_middle_json(
         zip(model_list, images_list)
     ):
         page_index = page_start_index + offset
-        with pdfium_guard():
-            page = pdf_doc[page_index]
-        page_info = blocks_to_page_info(
-            page_model_list,
-            image_dict,
-            page,
-            image_writer,
-            page_index,
-            _ocr_enable,
-            _vlm_ocr_enable,
-        )
+        page = None
+        try:
+            with pdfium_guard():
+                page = pdf_doc[page_index]
+            page_info = blocks_to_page_info(
+                page_model_list,
+                image_dict,
+                page,
+                image_writer,
+                page_index,
+                _ocr_enable,
+                _vlm_ocr_enable,
+            )
+        finally:
+            close_pdfium_child(page)
         middle_json["pdf_info"].append(page_info)
         if progress_bar is not None:
             progress_bar.update(1)

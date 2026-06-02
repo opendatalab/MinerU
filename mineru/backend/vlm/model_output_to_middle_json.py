@@ -16,7 +16,7 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
 from mineru.version import __version__
 
 
@@ -91,9 +91,13 @@ def append_page_blocks_to_middle_json(
 ):
     for offset, (page_blocks, image_dict) in enumerate(zip(model_output_blocks_list, images_list)):
         page_index = page_start_index + offset
-        with pdfium_guard():
-            page = pdf_doc[page_index]
-        page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
+        page = None
+        try:
+            with pdfium_guard():
+                page = pdf_doc[page_index]
+            page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
+        finally:
+            close_pdfium_child(page)
         middle_json["pdf_info"].append(page_info)
         if progress_bar is not None:
             progress_bar.update(1)

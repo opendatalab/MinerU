@@ -21,6 +21,7 @@ from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
 from mineru.utils.pdf_page_id import get_end_page_id
 from mineru.utils.pdfium_guard import (
+    close_pdfium_child,
     close_pdfium_document,
     get_pdfium_document_page_count,
     open_pdfium_document,
@@ -66,7 +67,10 @@ def pdf_page_to_image(
         "scale": scale,
     }
     if image_type == ImageType.BASE64:
-        image_dict["img_base64"] = image_to_b64str(pil_img)
+        try:
+            image_dict["img_base64"] = image_to_b64str(pil_img)
+        finally:
+            pil_img.close()
     else:
         image_dict["img_pil"] = pil_img
 
@@ -80,6 +84,18 @@ def _load_images_from_pdf_worker(
     return load_images_from_pdf_core(
         pdf_bytes, dpi, start_page_id, end_page_id, image_type
     )
+
+
+def _close_image_dicts(images_list) -> None:
+    """关闭 image dict 中的 PIL 图片，供异常清理路径释放已生成的图像资源。"""
+    for image_dict in images_list or []:
+        pil_img = image_dict.get("img_pil")
+        if pil_img is None:
+            continue
+        try:
+            pil_img.close()
+        except Exception:
+            pass
 
 
 def _calculate_render_process_count(total_pages: int, threads: int, cpu_count=None) -> int:
@@ -277,6 +293,7 @@ def _load_images_from_pdf_bytes_range(
 
     executor = _get_pdf_render_executor()
     recycle_executor = False
+    collected_image_lists = []
     try:
         futures = []
         future_to_range = {}
@@ -305,6 +322,7 @@ def _load_images_from_pdf_bytes_range(
         for future in futures:
             range_start = future_to_range[future]
             images_list = future.result()
+            collected_image_lists.append(images_list)
             all_results.append((range_start, images_list))
 
         all_results.sort(key=lambda x: x[0])
@@ -312,9 +330,14 @@ def _load_images_from_pdf_bytes_range(
         for _, imgs in all_results:
             images_list.extend(imgs)
 
+        collected_image_lists.clear()
         return images_list
     except BrokenProcessPool:
         recycle_executor = True
+        raise
+    except Exception:
+        for images_list in collected_image_lists:
+            _close_image_dicts(images_list)
         raise
     finally:
         if recycle_executor:
@@ -410,9 +433,13 @@ def load_images_from_pdf_core(
 
             for index in range(start_page_id, end_page_id + 1):
                 # logger.debug(f"Converting page {index}/{pdf_page_num} to image")
-                page = pdf_doc[index]
-                image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-                images_list.append(image_dict)
+                page = None
+                try:
+                    page = pdf_doc[index]
+                    image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+                    images_list.append(image_dict)
+                finally:
+                    close_pdfium_child(page)
     finally:
         close_pdfium_document(pdf_doc)
 
@@ -446,9 +473,13 @@ def load_images_from_pdf_doc(
     images_list = []
     with pdfium_guard():
         for index in range(start_page_id, normalized_end_page_id + 1):
-            page = pdf_doc[index]
-            image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
-            images_list.append(image_dict)
+            page = None
+            try:
+                page = pdf_doc[index]
+                image_dict = pdf_page_to_image(page, dpi=dpi, image_type=image_type)
+                images_list.append(image_dict)
+            finally:
+                close_pdfium_child(page)
 
     return images_list
 

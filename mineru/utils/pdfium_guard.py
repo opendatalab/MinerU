@@ -4,6 +4,8 @@ from io import BytesIO
 from contextlib import contextmanager
 from typing import Any, Callable, Sequence, TypeVar
 
+from loguru import logger
+
 from mineru.utils.pdf_page_id import get_end_page_id
 
 
@@ -37,6 +39,27 @@ def close_pdfium_document(pdf_doc) -> None:
         return
     with pdfium_guard():
         pdf_doc.close()
+
+
+def close_pdfium_child(pdfium_obj) -> None:
+    """显式关闭 PDFium 子对象，避免依赖 weakref/finalizer 延迟释放 native 资源。"""
+    if pdfium_obj is None:
+        return
+    close = getattr(pdfium_obj, "close", None)
+    if callable(close):
+        with pdfium_guard():
+            close()
+
+
+def close_pdfium_objects_safely(*pdfium_objs, owner: str = "pdfium cleanup") -> None:
+    """清理多个 PDFium 对象时逐个尝试关闭，避免前一个关闭失败阻断后续对象释放。"""
+    for pdfium_obj in pdfium_objs:
+        if pdfium_obj is None:
+            continue
+        try:
+            close_pdfium_child(pdfium_obj)
+        except Exception as exc:
+            logger.warning(f"Failed to close PDFium object during {owner}: {exc}")
 
 
 def rewrite_pdf_bytes_with_pdfium(
@@ -79,7 +102,8 @@ def rewrite_pdf_bytes_with_pdfium(
             output_doc.save(output_buffer)
             return output_buffer.getvalue()
     finally:
-        if output_doc is not None:
-            close_pdfium_document(output_doc)
-        if pdf_doc is not None:
-            close_pdfium_document(pdf_doc)
+        close_pdfium_objects_safely(
+            output_doc,
+            pdf_doc,
+            owner="rewrite_pdf_bytes_with_pdfium",
+        )
