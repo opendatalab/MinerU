@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 import threading
-from contextlib import contextmanager
 
 import torch
 from loguru import logger
@@ -29,14 +28,6 @@ PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
 PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv(
     'MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS', 'False'
 ).lower() in ['true', '1', 'yes']
-# 推理准入门闩：清理线程等待静默区时，阻止新的推理调用继续插队进入阶段锁。
-PIPELINE_INFERENCE_ADMISSION_LOCK = threading.RLock()
-PIPELINE_INFERENCE_STAGE_LOCKS = (
-    PIPELINE_LAYOUT_INFERENCE_LOCK,
-    PIPELINE_MFR_INFERENCE_LOCK,
-    PIPELINE_OCR_DET_INFERENCE_LOCK,
-    PIPELINE_OCR_REC_INFERENCE_LOCK,
-)
 
 
 def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs):
@@ -44,56 +35,33 @@ def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs
     if not PIPELINE_INFERENCE_LOCKS_ENABLED:
         return inference_callable(*args, **kwargs)
 
-    with PIPELINE_INFERENCE_ADMISSION_LOCK:
-        inference_lock.acquire()
-    try:
+    with inference_lock:
         return inference_callable(*args, **kwargs)
-    finally:
-        inference_lock.release()
-
-
-@contextmanager
-def pipeline_inference_quiet_zone():
-    """进入 pipeline/hybrid 共享模型推理静默区；锁关闭时保持直通。"""
-    if not PIPELINE_INFERENCE_LOCKS_ENABLED:
-        yield
-        return
-
-    acquired_locks = []
-    with PIPELINE_INFERENCE_ADMISSION_LOCK:
-        try:
-            for inference_lock in PIPELINE_INFERENCE_STAGE_LOCKS:
-                inference_lock.acquire()
-                acquired_locks.append(inference_lock)
-            yield
-        finally:
-            for inference_lock in reversed(acquired_locks):
-                inference_lock.release()
 
 
 def run_layout_inference(inference_callable, *args, **kwargs):
-    """在共享 Layout 推理锁内执行模型调用。"""
+    """按实验开关执行共享 Layout 模型调用。"""
     return _run_with_inference_lock(
         PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_mfr_inference(inference_callable, *args, **kwargs):
-    """在共享 MFR 推理锁内执行模型调用。"""
+    """按实验开关执行共享 MFR 模型调用。"""
     return _run_with_inference_lock(
         PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_ocr_det_inference(inference_callable, *args, **kwargs):
-    """在共享 OCR det 推理锁内执行模型调用。"""
+    """按实验开关执行共享 OCR det 模型调用。"""
     return _run_with_inference_lock(
         PIPELINE_OCR_DET_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
 
 
 def run_ocr_rec_inference(inference_callable, *args, **kwargs):
-    """在共享 OCR rec 推理锁内执行模型调用。"""
+    """按实验开关执行共享 OCR rec 模型调用。"""
     return _run_with_inference_lock(
         PIPELINE_OCR_REC_INFERENCE_LOCK, inference_callable, *args, **kwargs
     )
