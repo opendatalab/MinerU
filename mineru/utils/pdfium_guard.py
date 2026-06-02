@@ -62,6 +62,49 @@ def close_pdfium_objects_safely(*pdfium_objs, owner: str = "pdfium cleanup") -> 
             logger.warning(f"Failed to close PDFium object during {owner}: {exc}")
 
 
+def get_loadable_pdfium_page_indices(
+    src_pdf_bytes: bytes,
+    start_page_id: int = 0,
+    end_page_id: int | None = None,
+) -> tuple[list[int], list[int]]:
+    """逐页探测 PDFium 可加载页面，返回可保留页和损坏页的 0-based 索引。"""
+    import pypdfium2 as pdfium
+
+    loadable_page_indices = []
+    broken_page_indices = []
+    pdf_doc = None
+
+    try:
+        with pdfium_guard():
+            pdf_doc = pdfium.PdfDocument(src_pdf_bytes)
+            total_page_count = len(pdf_doc)
+            if total_page_count == 0:
+                return [], []
+
+            normalized_start_page_id = max(0, start_page_id)
+            normalized_end_page_id = get_end_page_id(end_page_id, total_page_count)
+            if normalized_start_page_id > normalized_end_page_id:
+                return [], []
+
+            for page_index in range(
+                normalized_start_page_id,
+                normalized_end_page_id + 1,
+            ):
+                page = None
+                try:
+                    page = pdf_doc[page_index]
+                    page.get_size()
+                    loadable_page_indices.append(page_index)
+                except Exception:
+                    broken_page_indices.append(page_index)
+                finally:
+                    close_pdfium_child(page)
+    finally:
+        close_pdfium_document(pdf_doc)
+
+    return loadable_page_indices, broken_page_indices
+
+
 def rewrite_pdf_bytes_with_pdfium(
     src_pdf_bytes: bytes,
     start_page_id: int = 0,
