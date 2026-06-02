@@ -212,35 +212,97 @@ def get_extreme_aspect_ratio_page_pdfium(
     page_indices,
     max_page_aspect_ratio: float = MAX_PAGE_ASPECT_RATIO,
 ):
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
-        page_width, page_height = page.get_size()
-        if page_width <= 0 or page_height <= 0:
-            continue
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                page_width, page_height = page.get_size()
+                if page_width <= 0 or page_height <= 0:
+                    continue
 
-        aspect_ratio = max(page_width / page_height, page_height / page_width)
-        if aspect_ratio > max_page_aspect_ratio:
-            return page_index, aspect_ratio
+                aspect_ratio = max(page_width / page_height, page_height / page_width)
+                if aspect_ratio > max_page_aspect_ratio:
+                    return page_index, aspect_ratio
+            finally:
+                _close_pdfium_child(page)
 
     return None, None
 
 
-def _collect_pdfium_text_samples(pdf_doc, page_indices):
-    """一次性收集抽样页的 textpage 和文本，避免分类链路重复读取 PDFium 文本。"""
-    text_samples = []
+def _close_pdfium_child(pdfium_obj) -> None:
+    """显式关闭 PDFium 子对象，避免依赖 weakref/finalizer 延迟释放 native 资源。"""
+    if pdfium_obj is None:
+        return
+    close = getattr(pdfium_obj, "close", None)
+    if callable(close):
+        close()
 
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
+
+def _collect_pdfium_text_sample_from_page(page_index, page):
+    """从单页 PDFium 对象提取纯 Python 文本统计，并在调用方释放子对象。"""
+    text_page = None
+    try:
         text_page = page.get_textpage()
         text = text_page.get_text_bounded()
-        text_samples.append(
-            {
-                "page_index": page_index,
-                "text_page": text_page,
-                "text": text,
-                "cleaned_text": re.sub(r"\s+", "", text),
-            }
-        )
+        char_count = text_page.count_chars()
+        null_char_count = 0
+        replacement_char_count = 0
+        control_char_count = 0
+        private_use_char_count = 0
+        unicode_map_error_count = 0
+        font_name_counts = {}
+
+        for char_index in range(char_count):
+            unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
+            if unicode_code == 0:
+                null_char_count += 1
+            elif unicode_code == 0xFFFD:
+                replacement_char_count += 1
+            elif _is_disallowed_control_unicode(unicode_code):
+                control_char_count += 1
+            elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
+                private_use_char_count += 1
+
+            if pdfium_c.FPDFText_HasUnicodeMapError(text_page, char_index):
+                unicode_map_error_count += 1
+
+            font_name = _normalize_pdf_font_name(
+                _get_pdfium_char_font_name(text_page, char_index)
+            )
+            if font_name:
+                font_name_counts[font_name] = font_name_counts.get(font_name, 0) + 1
+
+        return {
+            "page_index": page_index,
+            "text": text,
+            "cleaned_text": re.sub(r"\s+", "", text),
+            "char_count": char_count,
+            "null_char_count": null_char_count,
+            "replacement_char_count": replacement_char_count,
+            "control_char_count": control_char_count,
+            "private_use_char_count": private_use_char_count,
+            "unicode_map_error_count": unicode_map_error_count,
+            "font_name_counts": font_name_counts,
+        }
+    finally:
+        _close_pdfium_child(text_page)
+
+
+def _collect_pdfium_text_samples(pdf_doc, page_indices):
+    """一次性收集抽样页文本统计，返回纯 Python 数据，避免缓存 PDFium 子对象。"""
+    text_samples = []
+
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                text_samples.append(
+                    _collect_pdfium_text_sample_from_page(page_index, page)
+                )
+            finally:
+                _close_pdfium_child(page)
 
     return text_samples
 
@@ -263,7 +325,7 @@ def get_avg_cleaned_chars_per_page_pdfium(pdf_doc, page_indices):
 
 
 def _get_text_quality_signal_from_samples(text_samples):
-    """基于已缓存的 PDFium textpage 统计异常字符质量信号。"""
+    """基于已缓存的抽样页字符计数统计异常字符质量信号。"""
     total_chars = 0
     null_char_count = 0
     replacement_char_count = 0
@@ -271,20 +333,11 @@ def _get_text_quality_signal_from_samples(text_samples):
     private_use_char_count = 0
 
     for text_sample in text_samples:
-        text_page = text_sample["text_page"]
-        char_count = text_page.count_chars()
-        total_chars += char_count
-
-        for char_index in range(char_count):
-            unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
-            if unicode_code == 0:
-                null_char_count += 1
-            elif unicode_code == 0xFFFD:
-                replacement_char_count += 1
-            elif _is_disallowed_control_unicode(unicode_code):
-                control_char_count += 1
-            elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
-                private_use_char_count += 1
+        total_chars += text_sample["char_count"]
+        null_char_count += text_sample["null_char_count"]
+        replacement_char_count += text_sample["replacement_char_count"]
+        control_char_count += text_sample["control_char_count"]
+        private_use_char_count += text_sample["private_use_char_count"]
 
     abnormal_chars = (
         null_char_count
@@ -318,13 +371,8 @@ def _get_unicode_map_error_signal_from_samples(text_samples):
     unicode_map_error_count = 0
 
     for text_sample in text_samples:
-        text_page = text_sample["text_page"]
-        char_count = text_page.count_chars()
-        total_chars += char_count
-
-        for char_index in range(char_count):
-            if pdfium_c.FPDFText_HasUnicodeMapError(text_page, char_index):
-                unicode_map_error_count += 1
+        total_chars += text_sample["char_count"]
+        unicode_map_error_count += text_sample["unicode_map_error_count"]
 
     unicode_map_error_ratio = 0.0
     if total_chars > 0:
@@ -395,20 +443,15 @@ def _get_cid_font_usage_signal_from_samples(text_samples, cid_font_signal):
         if not cid_font_names:
             continue
 
-        text_page = text_sample["text_page"]
-        total_chars = text_page.count_chars()
+        total_chars = text_sample["char_count"]
         if total_chars <= 0:
             continue
 
-        matched_font_names = set()
-        cid_font_char_count = 0
-        for char_index in range(total_chars):
-            font_name = _normalize_pdf_font_name(
-                _get_pdfium_char_font_name(text_page, char_index)
-            )
-            if font_name in cid_font_names:
-                cid_font_char_count += 1
-                matched_font_names.add(font_name)
+        font_name_counts = text_sample.get("font_name_counts") or {}
+        matched_font_names = cid_font_names.intersection(font_name_counts)
+        cid_font_char_count = sum(
+            font_name_counts[font_name] for font_name in matched_font_names
+        )
 
         cid_font_usage_ratio = cid_font_char_count / total_chars
         signal = {
@@ -608,23 +651,33 @@ def _resolve_pdf_object(obj):
 def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
     high_image_coverage_pages = 0
 
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
-        page_bbox = page.get_bbox()
-        page_area = abs(
-            (page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1])
-        )
-        image_area = 0.0
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                page_bbox = page.get_bbox()
+                page_area = abs(
+                    (page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1])
+                )
+                image_area = 0.0
 
-        for page_object in page.get_objects(
-            filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
-        ):
-            left, bottom, right, top = page_object.get_pos()
-            image_area += max(0.0, right - left) * max(0.0, top - bottom)
+                for page_object in page.get_objects(
+                    filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
+                ):
+                    try:
+                        left, bottom, right, top = page_object.get_pos()
+                        image_area += max(0.0, right - left) * max(0.0, top - bottom)
+                    finally:
+                        _close_pdfium_child(page_object)
 
-        coverage_ratio = min(image_area / page_area, 1.0) if page_area > 0 else 0.0
-        if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
-            high_image_coverage_pages += 1
+                coverage_ratio = (
+                    min(image_area / page_area, 1.0) if page_area > 0 else 0.0
+                )
+                if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
+                    high_image_coverage_pages += 1
+            finally:
+                _close_pdfium_child(page)
 
     if not page_indices:
         return 0.0
