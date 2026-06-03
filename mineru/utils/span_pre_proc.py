@@ -280,6 +280,10 @@ LINE_STOP_FLAG = ('.', '!', '?', '。', '！', '？', ')', '）', '"', '”', ':
 LINE_START_FLAG = ('(', '（', '"', '“', '【', '{', '《', '<', '「', '『', '【', '[',)
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
+SCRIPT_BODY_HEIGHT_RATIO = 0.9
+SCRIPT_CENTER_TOLERANCE_RATIO = 0.12
+
+
 def calculate_char_in_span(char_bbox, span_bbox, char, span_height_ratio=Span_Height_Ratio):
     char_center_x = (char_bbox[0] + char_bbox[2]) / 2
     char_center_y = (char_bbox[1] + char_bbox[3]) / 2
@@ -315,6 +319,114 @@ def calculate_char_in_span(char_bbox, span_bbox, char, span_height_ratio=Span_He
             return False
 
 
+def _get_char_bbox_metrics(char):
+    """提取字符 bbox 的宽高和中心点，统一兼容 list 与 pdftext Bbox 对象。"""
+    bbox = char['bbox']
+    x0, y0, x1, y1 = [float(v) for v in bbox]
+    return {
+        'width': x1 - x0,
+        'height': y1 - y0,
+        'center_y': (y0 + y1) / 2,
+    }
+
+
+def _get_char_bbox_metrics_list(chars):
+    """预计算 span 内全部字符的 bbox 指标，避免上下标判断重复解析 bbox。"""
+    return [_get_char_bbox_metrics(char) for char in chars]
+
+
+def _is_valid_script_reference_char(char, metrics) -> bool:
+    """过滤空白和退化 bbox，只用真实可见字符估计正文主带。"""
+    if char['char'] in {' ', '\r', '\n'}:
+        return False
+
+    return metrics['height'] > 1 and metrics['width'] > 0
+
+
+def _get_body_axis(chars, char_metrics):
+    """根据同一 span 内最大高度字符簇估计正文中心线和正文高度。"""
+    valid_metrics = [
+        metrics for char, metrics in zip(chars, char_metrics)
+        if _is_valid_script_reference_char(char, metrics)
+    ]
+    if not valid_metrics:
+        return None
+
+    max_height = max(metrics['height'] for metrics in valid_metrics)
+    body_metrics = [
+        metrics for metrics in valid_metrics
+        if metrics['height'] >= max_height * SCRIPT_BODY_HEIGHT_RATIO
+    ]
+    if not body_metrics:
+        return None
+
+    return {
+        'center_y': statistics.median(metrics['center_y'] for metrics in body_metrics),
+        'height': statistics.median(metrics['height'] for metrics in body_metrics),
+    }
+
+
+def _classify_char_script_roles(chars, char_metrics):
+    """按正文主带判断每个字符属于正文、上标或下标。"""
+    body_axis = _get_body_axis(chars, char_metrics)
+    if body_axis is None or body_axis['height'] <= 0:
+        return ['body'] * len(chars)
+
+    tolerance = body_axis['height'] * SCRIPT_CENTER_TOLERANCE_RATIO
+    roles = []
+    for char, metrics in zip(chars, char_metrics):
+        if not _is_valid_script_reference_char(char, metrics):
+            roles.append('body')
+            continue
+
+        char_center_y = metrics['center_y']
+        if char_center_y < body_axis['center_y'] - tolerance:
+            roles.append('sup')
+        elif char_center_y > body_axis['center_y'] + tolerance:
+            roles.append('sub')
+        else:
+            roles.append('body')
+    return roles
+
+
+def _append_script_wrapped_text(parts, role, text):
+    """把连续同类上下标文本包裹成 HTML 标签，正文保持原样。"""
+    if not text:
+        return
+    if role == 'sup':
+        parts.append(f'<sup>{text}</sup>')
+    elif role == 'sub':
+        parts.append(f'<sub>{text}</sub>')
+    else:
+        parts.append(text)
+
+
+def _wrap_script_runs(role_text_parts):
+    """合并连续正文、上标、下标 run，避免每个字符单独生成标签。"""
+    wrapped_parts = []
+    current_role = None
+    current_text_parts = []
+
+    for role, text in role_text_parts:
+        if role != current_role:
+            _append_script_wrapped_text(
+                wrapped_parts,
+                current_role,
+                ''.join(current_text_parts),
+            )
+            current_role = role
+            current_text_parts = [text]
+        else:
+            current_text_parts.append(text)
+
+    _append_script_wrapped_text(
+        wrapped_parts,
+        current_role,
+        ''.join(current_text_parts),
+    )
+    return ''.join(wrapped_parts)
+
+
 def chars_to_content(span):
     # 检查span中的char是否为空
     if len(span['chars']) != 0:
@@ -326,28 +438,31 @@ def chars_to_content(span):
         ):
             chars = sorted(chars, key=lambda x: x['char_idx'])
 
+        char_metrics = _get_char_bbox_metrics_list(chars)
         # Calculate the width of each character
-        char_widths = [char['bbox'][2] - char['bbox'][0] for char in chars]
+        char_widths = [metrics['width'] for metrics in char_metrics]
         # Calculate the median width
         median_width = statistics.median(char_widths)
+        script_roles = _classify_char_script_roles(chars, char_metrics)
 
-        parts = []
+        role_text_parts = []
         for idx, char1 in enumerate(chars):
             char2 = chars[idx + 1] if idx + 1 < len(chars) else None
+            role1 = script_roles[idx]
+            role2 = script_roles[idx + 1] if char2 else None
 
             # 如果下一个char的x0和上一个char的x1距离超过0.25个字符宽度，则需要在中间插入一个空格
+            role_text_parts.append((role1, char1['char']))
             if (
                 char2
                 and char2['bbox'][0] - char1['bbox'][2] > median_width * 0.25
                 and char1['char'] != ' '
                 and char2['char'] != ' '
             ):
-                parts.append(char1['char'])
-                parts.append(' ')
-            else:
-                parts.append(char1['char'])
+                space_role = role1 if role1 == role2 else 'body'
+                role_text_parts.append((space_role, ' '))
 
-        content = ''.join(parts)
+        content = _wrap_script_runs(role_text_parts)
         content = __replace_unicode(content)
         content = __replace_ligatures(content)
         span['content'] = content.strip()
