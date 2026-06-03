@@ -1,25 +1,26 @@
 # Copyright (c) Opendatalab. All rights reserved.
-from mineru.backend.pipeline.para_split import ListLineTag
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import _merge_para_text
-from mineru.utils.boxbase import (
-    calculate_overlap_area_2_minbox_area_ratio,
-    calculate_overlap_area_in_bbox1_area_ratio,
+from ...types import Block, Line, Span
+from ...utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
+from ...utils.enum_class import BlockType, ContentType
+from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.span_block_fix import (
+    is_vertical_text_block_by_spans,
+    line_sort_spans_by_left_to_right,
+    merge_spans_to_line,
+    merge_spans_to_vertical_line,
+    vertical_line_sort_spans_from_top_to_bottom,
 )
-from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.guess_suffix_or_lang import guess_language_by_text
-from mineru.types import Block, Line, Span
-from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
-    merge_spans_to_line, line_sort_spans_by_left_to_right, is_vertical_text_block_by_spans
-from mineru.utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
-from mineru.utils.visual_magic_model_utils import (
+from ...utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
+from ...utils.visual_magic_model_utils import (
     fallback_inline_caption_fragments,
     fallback_leading_table_continuation_captions,
     find_best_visual_parent,
 )
+from .para_split import ListLineTag
+from .pipeline_middle_json_mkcontent import _merge_para_text
 
 
 class MagicModel:
-
     PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES = {
         "abstract": BlockType.ABSTRACT,
         "algorithm": BlockType.CODE,
@@ -68,7 +69,7 @@ class MagicModel:
             "body": BlockType.CODE_BODY,
             "caption": BlockType.CODE_CAPTION,
             "footnote": BlockType.CODE_FOOTNOTE,
-        }
+        },
     }
 
     def __init__(
@@ -105,12 +106,12 @@ class MagicModel:
             )
         self.page_text_inline_formula_spans = self.page_inline_formula + self.page_ocr_res
 
-        for layout_det in self.__page_model_info['layout_dets']:
-            if layout_det.get('label') in self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES:
-                block_bbox = layout_det['bbox']
-                block_type = self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES[layout_det['label']]
-                block_index = layout_det['index']
-                block_score = layout_det['score']
+        for layout_det in self.__page_model_info["layout_dets"]:
+            if layout_det.get("label") in self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES:
+                block_bbox = layout_det["bbox"]
+                block_type = self.PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES[layout_det["label"]]
+                block_index = layout_det["index"]
+                block_score = layout_det["score"]
                 block = self.__copy_block_fields(
                     layout_det,
                     type=block_type,
@@ -129,58 +130,45 @@ class MagicModel:
         self.__classify_visual_blocks()
         self.__build_return_blocks()
 
-
     @staticmethod
     def __fix_text_block(block):
-        if (
-            block["type"] == BlockType.TEXT
-            and is_vertical_text_block_by_spans(block["spans"])
-        ):
+        if block["type"] == BlockType.TEXT and is_vertical_text_block_by_spans(block["spans"]):
             # layout 偶发会把竖排正文识别为横排 text，这里用旧版 span 高宽比规则兜底。
             block["type"] = BlockType.VERTICAL_TEXT
 
         if block["type"] == BlockType.VERTICAL_TEXT:
             # 如果是纵向文本块，则按纵向lines处理
-            block_lines = merge_spans_to_vertical_line(block['spans'])
+            block_lines = merge_spans_to_vertical_line(block["spans"])
             sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
         else:
-            block_lines = merge_spans_to_line(block['spans'])
+            block_lines = merge_spans_to_line(block["spans"])
             sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
 
         if block["type"] == BlockType.CODE:
             for line in sort_block_lines:
                 line[ListLineTag.IS_LIST_START_LINE] = True
-            code_content = _merge_para_text(
-                {'lines': sort_block_lines},
-                False,
-                '\n'
-            )
+            code_content = _merge_para_text({"lines": sort_block_lines}, False, "\n")
             guess_lang = guess_language_by_text(code_content)
             if guess_lang not in ["txt", "unknown"]:
                 block["sub_type"] = "code"
                 block["guess_lang"] = guess_lang
 
-        block['lines'] = sort_block_lines
-        del block['spans']
+        block["lines"] = sort_block_lines
+        del block["spans"]
         return block
 
     @staticmethod
     def __copy_block_fields(block, **overrides):
-        extra = {k: v for k, v in block.items()
-                 if k not in {"cls_id", "label"} and k not in Block.__dataclass_fields__}
+        extra = {k: v for k, v in block.items() if k not in {"cls_id", "label"} and k not in Block.__dataclass_fields__}
         return Block(
             type=overrides.pop("type", block.get("type", "")),
             bbox=overrides.pop("bbox", block.get("bbox")),
             _extra={**extra, **overrides},
         )
 
-
     @staticmethod
     def __is_inline_formula_block(layout_det: dict) -> bool:
-        return (
-            layout_det.get("label") == "inline_formula"
-            or layout_det.get("cls_id") == 15
-        )
+        return layout_det.get("label") == "inline_formula" or layout_det.get("cls_id") == 15
 
     @staticmethod
     def __is_ocr_text_block(layout_det: dict) -> bool:
@@ -209,7 +197,7 @@ class MagicModel:
                 BlockType.FOOTER,
                 BlockType.PAGE_NUMBER,
                 BlockType.ASIDE_TEXT,
-                BlockType.PAGE_FOOTNOTE
+                BlockType.PAGE_FOOTNOTE,
             ]:
                 self.discarded_blocks.append(block)
             else:
@@ -298,8 +286,8 @@ class MagicModel:
     def __formula_number_overlap_ratio(span, block_bbox):
         """公式编号框较窄时，沿用最小框重叠比例提高回填召回。"""
         return max(
-            calculate_overlap_area_in_bbox1_area_ratio(span['bbox'], block_bbox),
-            calculate_overlap_area_2_minbox_area_ratio(span['bbox'], block_bbox),
+            calculate_overlap_area_in_bbox1_area_ratio(span["bbox"], block_bbox),
+            calculate_overlap_area_2_minbox_area_ratio(span["bbox"], block_bbox),
         )
 
     def __fix_axis(self):
@@ -326,21 +314,25 @@ class MagicModel:
         for layout_det in layout_dets:
             if self.__is_inline_formula_block(layout_det):
                 layout_det.pop("index", None)
-                self.page_inline_formula.append(Span(
-                    type=ContentType.INLINE_EQUATION,
-                    bbox=layout_det["bbox"],
-                    content=layout_det["latex"],
-                    score=layout_det["score"],
-                ))
+                self.page_inline_formula.append(
+                    Span(
+                        type=ContentType.INLINE_EQUATION,
+                        bbox=layout_det["bbox"],
+                        content=layout_det["latex"],
+                        score=layout_det["score"],
+                    )
+                )
                 continue
 
             if self.__is_ocr_text_block(layout_det):
-                self.page_ocr_res.append(Span(
-                    type=ContentType.TEXT,
-                    bbox=layout_det["bbox"],
-                    content=layout_det["text"],
-                    score=layout_det["score"],
-                ))
+                self.page_ocr_res.append(
+                    Span(
+                        type=ContentType.TEXT,
+                        bbox=layout_det["bbox"],
+                        content=layout_det["text"],
+                        score=layout_det["score"],
+                    )
+                )
                 continue
 
             if "index" in layout_det:
@@ -352,28 +344,13 @@ class MagicModel:
             return
 
         ordered_blocks = sorted(self.page_blocks, key=lambda x: x["index"])
-        original_type_by_index = {
-            block["index"]: block["type"] for block in ordered_blocks
-        }
-        position_by_index = {
-            block["index"]: pos for pos, block in enumerate(ordered_blocks)
-        }
-        main_blocks = [
-            block
-            for block in ordered_blocks
-            if original_type_by_index[block["index"]] in self.VISUAL_MAIN_TYPES
-        ]
-        child_blocks = [
-            block
-            for block in ordered_blocks
-            if original_type_by_index[block["index"]] in self.VISUAL_CHILD_TYPES
-        ]
+        original_type_by_index = {block["index"]: block["type"] for block in ordered_blocks}
+        position_by_index = {block["index"]: pos for pos, block in enumerate(ordered_blocks)}
+        main_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_MAIN_TYPES]
+        child_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_CHILD_TYPES]
 
         child_parent_map = {}
-        grouped_children = {
-            main_block["index"]: {"captions": [], "footnotes": []}
-            for main_block in main_blocks
-        }
+        grouped_children = {main_block["index"]: {"captions": [], "footnotes": []} for main_block in main_blocks}
 
         for child_block in child_blocks:
             parent_block = self.__find_best_visual_parent(
@@ -383,9 +360,7 @@ class MagicModel:
                 original_type_by_index,
                 position_by_index,
             )
-            child_parent_map[child_block["index"]] = (
-                None if parent_block is None else parent_block["index"]
-            )
+            child_parent_map[child_block["index"]] = None if parent_block is None else parent_block["index"]
 
         for child_block in child_blocks:
             original_child_type = original_type_by_index[child_block["index"]]
@@ -486,9 +461,7 @@ class MagicModel:
             main_blocks,
             ordered_blocks,
             position_by_index,
-            main_type_to_visual_type={
-                block_type: block_type for block_type in self.VISUAL_MAIN_TYPES
-            },
+            main_type_to_visual_type={block_type: block_type for block_type in self.VISUAL_MAIN_TYPES},
             type_by_index=original_type_by_index,
         )
 
@@ -529,16 +502,10 @@ class MagicModel:
         return self.chart_groups
 
     def get_image_blocks(self):
-        return [
-            block for block in self.page_blocks if block["type"] == BlockType.IMAGE
-        ]
+        return [block for block in self.page_blocks if block["type"] == BlockType.IMAGE]
 
     def get_table_blocks(self):
-        return [
-            block for block in self.page_blocks if block["type"] == BlockType.TABLE
-        ]
+        return [block for block in self.page_blocks if block["type"] == BlockType.TABLE]
 
     def get_chart_blocks(self):
-        return [
-            block for block in self.page_blocks if block["type"] == BlockType.CHART
-        ]
+        return [block for block in self.page_blocks if block["type"] == BlockType.CHART]

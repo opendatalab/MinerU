@@ -48,22 +48,22 @@ def blocks_to_page_info(
     return page_info
 
 
-def build_page_model_info(page_layout_dets, page_index, pil_img):
+def build_page_model_info(page_layout_dets: list, page_index: int, pil_img: Any) -> dict:
     page_info_dict = {"page_no": page_index, "width": pil_img.width, "height": pil_img.height}
     return {"layout_dets": page_layout_dets, "page_info": page_info_dict}
 
 
 def append_batch_results_to_middle_json(
-    middle_json,
-    batch_results,
-    images_list,
-    pdf_doc,
-    image_writer,
-    page_start_index=0,
-    ocr_enable=False,
-    model_list=None,
-    progress_bar=None,
-):
+    middle_json: dict,
+    batch_results: list,
+    images_list: list,
+    pdf_doc: Any,
+    image_writer: Any,
+    page_start_index: int = 0,
+    ocr_enable: bool = False,
+    model_list: list | None = None,
+    progress_bar: Any = None,
+) -> None:
     page_model_infos = []
     for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
         page_index = page_start_index + offset
@@ -88,7 +88,7 @@ def append_batch_results_to_middle_json(
     )
 
 
-def _extract_text_from_block(block):
+def _extract_text_from_block(block: Block) -> str:
     text_parts = []
     for line in block.get("lines", []):
         for span in line.get("spans", []):
@@ -97,7 +97,7 @@ def _extract_text_from_block(block):
     return "".join(text_parts).strip()
 
 
-def _normalize_formula_tag_content(tag_content):
+def _normalize_formula_tag_content(tag_content: str) -> str:
     tag_content = full_to_half(tag_content.strip())
     if tag_content.startswith("("):
         tag_content = tag_content[1:].strip()
@@ -106,7 +106,7 @@ def _normalize_formula_tag_content(tag_content):
     return tag_content
 
 
-def _get_interline_equation_span(block):
+def _get_interline_equation_span(block: Block) -> Span | None:
     for line in block.get("lines", []):
         for span in line.get("spans", []):
             if span.get("type") == ContentType.INTERLINE_EQUATION:
@@ -114,7 +114,7 @@ def _get_interline_equation_span(block):
     return None
 
 
-def _append_formula_number_tag(equation_block, formula_number_block):
+def _append_formula_number_tag(equation_block: Block, formula_number_block: Block) -> None:
     equation_span = _get_interline_equation_span(equation_block)
     tag_content = _normalize_formula_tag_content(_extract_text_from_block(formula_number_block))
     if equation_span is not None:
@@ -122,7 +122,7 @@ def _append_formula_number_tag(equation_block, formula_number_block):
         equation_span["content"] = f"{formula}\\tag{{{tag_content}}}"
 
 
-def _optimize_formula_number_blocks(pdf_info_list):
+def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
         optimized_blocks = []
         blocks = page_info.get("preproc_blocks", [])
@@ -152,7 +152,7 @@ def _optimize_formula_number_blocks(pdf_info_list):
         page_info["preproc_blocks"] = optimized_blocks
 
 
-def _apply_post_ocr(pdf_info_list, lang=None):
+def _apply_post_ocr(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
     from mineru.backend.utils.middle_json_utils import apply_post_ocr
 
     atom_model_manager = AtomModelSingleton()
@@ -164,7 +164,7 @@ def _apply_post_ocr(pdf_info_list, lang=None):
     apply_post_ocr(pdf_info_list, ocr_model)
 
 
-def _post_block_process(pdf_info_list):
+def _post_block_process(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
         for block_key in ["preproc_blocks", "para_blocks"]:
             for block in page_info.get(block_key, []):
@@ -179,12 +179,12 @@ def _post_block_process(pdf_info_list):
                     block["type"] = BlockType.TEXT
 
 
-def apply_server_side_postprocess(pdf_info_list, lang=None):
+def apply_server_side_postprocess(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
     """执行只能在服务端完成的后处理；目前仅包含依赖 OCR 模型的 post-OCR。"""
     _apply_post_ocr(pdf_info_list, lang=lang)
 
 
-def finalize_middle_json_from_preproc(pdf_info_list):
+def finalize_middle_json_from_preproc(pdf_info_list: list[PageInfo]) -> None:
     """从 preproc_blocks 执行确定性 finalize，供服务端完整路径和客户端复用。"""
     _optimize_formula_number_blocks(pdf_info_list)
     para_split(pdf_info_list)
@@ -194,19 +194,19 @@ def finalize_middle_json_from_preproc(pdf_info_list):
 
 
 def finalize_middle_json(
-    pdf_info_list,
-    lang=None,
-):
+    pdf_info_list: list[PageInfo],
+    lang: str | None = None,
+) -> None:
     """Apply document-level post processing once all page_info entries are ready."""
     apply_server_side_postprocess(pdf_info_list, lang=lang)
     finalize_middle_json_from_preproc(pdf_info_list)
 
 
-def init_middle_json():
+def init_middle_json() -> dict:
     return {"pdf_info": [], "_backend": "pipeline", "_version_name": __version__}
 
 
-def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enable=None):
+def result_to_middle_json(model_list: list, images_list: list, pdf_doc: Any, image_writer: Any, lang: str | None = None, ocr_enable: bool = False, formula_enable: bool | None = None) -> dict:
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(
