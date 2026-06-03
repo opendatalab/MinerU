@@ -121,6 +121,6 @@ def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_
     return build_middle_json(
         model_output_blocks_list, images_list, pdf_doc, image_writer,
         init_fn=init_middle_json,
-        append_fn=append_page_blocks_to_middle_json,
+        page_cvt_fn=blocks_to_page_info,
         finalize_fn=finalize_middle_json,
     )

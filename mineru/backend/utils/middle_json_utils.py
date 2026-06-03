@@ -19,7 +19,7 @@ def build_middle_json(
     image_writer: Any,
     *,
     init_fn: Callable[..., dict],
-    append_fn: Callable[..., None],
+    page_cvt_fn: Callable[..., dict],
     finalize_fn: Callable[..., None],
     **kwargs: Any,
 ) -> dict:
@@ -28,30 +28,32 @@ def build_middle_json(
     Parameters
     ----------
     model_list / images_list / pdf_doc / image_writer:
-        Backend-specific inputs forwarded to ``append_fn``.
+        Backend-specific inputs.
     init_fn(**kwargs) -> middle_json:
         Creates the initial middle_json dict.
-    append_fn(middle_json, model_list, images_list, pdf_doc,
-              image_writer, progress_bar, **kwargs):
-        Per-page processing loop.
+    page_cvt_fn(page_data, image_dict, page, image_writer, page_index, **kwargs) -> page_info:
+        Converts one page's model output into a page_info dict.
     finalize_fn(pdf_info_list, **kwargs):
         Post-processing applied once all pages are ready.
-    **kwargs:
-        Backend-specific parameters forwarded to each helper.
     """
-    from ....utils.pdfium_guard import close_pdfium_document
+    from ....utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
 
     middle_json = init_fn(**kwargs)
     with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
-        append_fn(
-            middle_json,
-            model_list,
-            images_list,
-            pdf_doc,
-            image_writer,
-            progress_bar=progress_bar,
-            **kwargs,
-        )
+        for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
+            page_index = offset
+            page = None
+            try:
+                with pdfium_guard():
+                    page = pdf_doc[page_index]
+                page_info = page_cvt_fn(
+                    page_data, image_dict, page, image_writer, page_index, **kwargs
+                )
+            finally:
+                close_pdfium_child(page)
+            middle_json["pdf_info"].append(page_info)
+            progress_bar.update(1)
+
     finalize_fn(middle_json["pdf_info"], **kwargs)
     close_pdfium_document(pdf_doc)
     return middle_json

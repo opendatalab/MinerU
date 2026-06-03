@@ -12,7 +12,6 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
-from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
@@ -253,7 +252,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     return build_middle_json(
         model_list, images_list, pdf_doc, image_writer,
         init_fn=init_middle_json,
-        append_fn=append_page_model_infos_to_middle_json,
+        page_cvt_fn=page_model_info_to_page_info,
         finalize_fn=finalize_middle_json,
         lang=lang,
         ocr_enable=ocr_enable,
