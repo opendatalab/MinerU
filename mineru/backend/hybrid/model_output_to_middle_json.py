@@ -18,7 +18,6 @@ from ..pipeline.model_init import MineruHybridModel
 from ..utils.html_image_utils import replace_inline_table_images
 from ..utils.middle_json_utils import apply_post_ocr, build_middle_json
 from ..utils.para_block_utils import (
-    OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
     merge_para_text_blocks,
@@ -29,10 +28,10 @@ from .hybrid_magic_model import MagicModel
 
 def _resolve_title_line_avg_height(title_block: Block) -> int:
     """解析标题平均行高：优先复用 Hybrid OCR det 行提示，再回退到原始行或块高。"""
-    for lines_key in [OCR_DET_LINES_KEY, "lines"]:
+    for lines in [title_block._ocr_det_lines, title_block.lines]:
         line_heights = []
-        for line in title_block.get(lines_key, []):
-            bbox = line.get("bbox")
+        for line in lines:
+            bbox = line.bbox
             if not bbox or len(bbox) < 4:
                 continue
             line_height = bbox[3] - bbox[1]
@@ -40,11 +39,7 @@ def _resolve_title_line_avg_height(title_block: Block) -> int:
                 line_heights.append(line_height)
         if line_heights:
             return round(sum(line_heights) / len(line_heights))
-
-    bbox = title_block.get("bbox", [0, 0, 0, 0])
-    if len(bbox) >= 4:
-        return bbox[3] - bbox[1]
-    return 0
+    return int(title_block.bbox[3] - title_block.bbox[1])
 
 
 def blocks_to_page_info(
@@ -86,7 +81,7 @@ def blocks_to_page_info(
 
     # 标题平均行高是 finalized middle json 的稳定字段，供服务端和客户端标题分级共用。
     for title_block in title_blocks:
-        title_block["line_avg_height"] = _resolve_title_line_avg_height(title_block)
+        title_block._line_avg_height = _resolve_title_line_avg_height(title_block)
 
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
@@ -94,7 +89,7 @@ def blocks_to_page_info(
     all_spans = magic_model.get_all_spans()
     # 对image/table/chart/interline_equation的span截图
     for span in all_spans:
-        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
+        if span.type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     replace_inline_table_images(table_blocks, image_writer, page_index)

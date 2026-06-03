@@ -3,9 +3,7 @@
 import re
 
 CONSERVATIVE_MARKDOWN_SPECIAL_CHARS = ("*", "_", "`", "~", "$")
-TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(
-    r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])"
-)
+TEXT_BLOCK_MARKDOWN_PREFIX_RE = re.compile(r"^(?P<indent>[ \t]{0,3})(?P<marker>#{1,6}|[+-])(?=[ \t])")
 
 
 def escape_conservative_markdown_text(content: str) -> str:
@@ -22,10 +20,7 @@ def escape_conservative_markdown_text(content: str) -> str:
             preceding_backslashes += 1
             continue
 
-        if (
-            char in CONSERVATIVE_MARKDOWN_SPECIAL_CHARS
-            and preceding_backslashes % 2 == 0
-        ):
+        if char in CONSERVATIVE_MARKDOWN_SPECIAL_CHARS and preceding_backslashes % 2 == 0:
             escaped_chars.append("\\")
 
         escaped_chars.append(char)

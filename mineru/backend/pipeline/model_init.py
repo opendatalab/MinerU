@@ -108,7 +108,7 @@ def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str = "cpu") -> UnimernetModel | FormulaRecognizer:
+def mfr_model_init(weight_dir: str, device: str | torch.device = "cpu") -> UnimernetModel | FormulaRecognizer:
     if MFR_MODEL == "unimernet_small":
         mfr_model = UnimernetModel(weight_dir, device)
     elif MFR_MODEL == "pp_formulanet_plus_m":
@@ -119,7 +119,7 @@ def mfr_model_init(weight_dir: str, device: str = "cpu") -> UnimernetModel | For
     return mfr_model
 
 
-def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> PPDocLayoutV2LayoutModel:
+def pp_doclayout_v2_model_init(weight: str, device: str | torch.device = "cpu") -> PPDocLayoutV2LayoutModel:
     if str(device).startswith("npu"):
         device = torch.device(device)
     model = PPDocLayoutV2LayoutModel(weight, device)

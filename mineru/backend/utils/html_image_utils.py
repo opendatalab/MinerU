@@ -71,7 +71,7 @@ def _write_image_once(image_writer: DataWriter, img_path: str, img_bytes: bytes)
     written_paths.add(img_path)
 
 
-def save_base64_image(b64_data_uri: str, image_writer: DataWriter, page_index: int) -> str | None:
+def _save_base64_image(b64_data_uri: str, image_writer: DataWriter, page_index: int) -> str | None:
     """Persist a data-URI image via image_writer and return a relative path."""
     if not image_writer:
         return None
@@ -102,13 +102,13 @@ def save_base64_image(b64_data_uri: str, image_writer: DataWriter, page_index: i
     return img_path
 
 
-def replace_inline_base64_img_src(markup: str, image_writer: DataWriter, page_index: int) -> str:
+def _replace_inline_base64_img_src(markup: str, image_writer: DataWriter, page_index: int) -> str:
     """Replace inline base64 image sources in HTML-like markup with local paths."""
     if not markup or not image_writer or "base64," not in markup:
         return markup
 
     def _replace_src(match: re.Match[str], _writer: DataWriter = image_writer, _idx: int = page_index) -> str:
-        img_path = save_base64_image(match.group(1), _writer, _idx)
+        img_path = _save_base64_image(match.group(1), _writer, _idx)
         if img_path:
             return f'src="{img_path}"'
         return match.group(0)
@@ -122,7 +122,7 @@ def replace_inline_base64_img_src(markup: str, image_writer: DataWriter, page_in
 
 def replace_inline_table_images(
     blocks: list[Block],
-    image_writer: DataWriter,
+    image_writer: DataWriter | None,
     page_index: int,
     table_block_type: str = BlockType.TABLE,
     table_body_type: str = BlockType.TABLE_BODY,
@@ -144,30 +144,17 @@ def replace_inline_table_images(
                 for span in line.spans:
                     if span.type != table_span_type:
                         continue
-                    span.html = replace_inline_base64_img_src(
+                    span.html = _replace_inline_base64_img_src(
                         span.html,
                         image_writer,
                         page_index,
                     )
 
 
-def save_span_image_if_needed(
-    span: Span,
-    image_writer: DataWriter,
-    page_index: int,
-    source_key: str = "image_base64",
-    target_key: str = "image_path",
-) -> None:
+def save_span_image_if_needed(span: Span, image_writer: DataWriter, page_index: int) -> None:
     """Persist a span-level base64 image and normalize the target path field."""
-    image_base64 = span.get(source_key, "")
-    if not image_base64:
-        span.setdefault(target_key, "")
-        return
-
-    img_path = save_base64_image(image_base64, image_writer, page_index)
-    if img_path:
-        span[target_key] = img_path
-        del span[source_key]
-        return
-
-    span.setdefault(target_key, "")
+    if span.image_base64:
+        image_path = _save_base64_image(span.image_base64, image_writer, page_index)
+        if image_path:
+            span.image_path = image_path
+            span.image_base64 = ""

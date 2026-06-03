@@ -27,7 +27,7 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: ContentBlock,
     if raw_block_type != BlockType.TEXT:
         return
     if "merge_prev" in block_info:
-        block["merge_prev"] = block_info["merge_prev"]
+        block.merge_prev = block_info["merge_prev"]
 
 
 class MagicModel:
@@ -211,9 +211,7 @@ class MagicModel:
             else:
                 line = Line(spans=spans, bbox=block_bbox)
 
-            block = Block(type=block_type, bbox=block_bbox, lines=[line])
-            block["angle"] = block_angle
-            block["index"] = index
+            block = Block(index=index, type=block_type, bbox=block_bbox, lines=[line], angle=block_angle)
             if block_sub_type:
                 block["sub_type"] = block_sub_type
             if raw_block_type == "table" and "cell_merge" in content_block:

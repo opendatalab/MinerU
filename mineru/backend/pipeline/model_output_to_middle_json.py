@@ -99,8 +99,8 @@ def _extract_text_from_block(block: Block) -> str:
     text_parts = []
     for line in block.lines:
         for span in line.spans:
-            if span.get("type") == ContentType.TEXT:
-                text_parts.append(span.get("content", ""))
+            if span.type == ContentType.TEXT:
+                text_parts.append(span.content)
     return "".join(text_parts).strip()
 
 
@@ -116,7 +116,7 @@ def _normalize_formula_tag_content(tag_content: str) -> str:
 def _get_interline_equation_span(block: Block) -> Span | None:
     for line in block.lines:
         for span in line.spans:
-            if span.get("type") == ContentType.INTERLINE_EQUATION:
+            if span.type == ContentType.INTERLINE_EQUATION:
                 return span
     return None
 
@@ -125,21 +125,21 @@ def _append_formula_number_tag(equation_block: Block, formula_number_block: Bloc
     equation_span = _get_interline_equation_span(equation_block)
     tag_content = _normalize_formula_tag_content(_extract_text_from_block(formula_number_block))
     if equation_span is not None:
-        formula = equation_span.get("content", "")
-        equation_span["content"] = f"{formula}\\tag{{{tag_content}}}"
+        formula = equation_span.content
+        equation_span.content = f"{formula}\\tag{{{tag_content}}}"
 
 
 def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
         optimized_blocks = []
-        blocks = page_info.get("preproc_blocks", [])
+        blocks = page_info.preproc_blocks
         for index, block in enumerate(blocks):
-            if block.get("type") != BlockType.FORMULA_NUMBER:
+            if block.type != BlockType.FORMULA_NUMBER:
                 optimized_blocks.append(block)
                 continue
 
             prev_block = blocks[index - 1] if index > 0 else None
-            if prev_block and prev_block.get("type") == BlockType.INTERLINE_EQUATION:
+            if prev_block and prev_block.type == BlockType.INTERLINE_EQUATION:
                 _append_formula_number_tag(prev_block, block)
                 continue
 
@@ -147,16 +147,15 @@ def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
             next_next_block = blocks[index + 2] if index + 2 < len(blocks) else None
             if (
                 next_block
-                and next_block.get("type") == BlockType.INTERLINE_EQUATION
-                and (next_next_block is None or next_next_block.get("type") != BlockType.FORMULA_NUMBER)
+                and next_block.type == BlockType.INTERLINE_EQUATION
+                and (next_next_block is None or next_next_block.type != BlockType.FORMULA_NUMBER)
             ):
                 _append_formula_number_tag(next_block, block)
                 continue
 
-            block["type"] = BlockType.TEXT
+            block.type = BlockType.TEXT
             optimized_blocks.append(block)
-
-        page_info["preproc_blocks"] = optimized_blocks
+        page_info.preproc_blocks = optimized_blocks
 
 
 def _apply_post_ocr(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
@@ -171,17 +170,17 @@ def _apply_post_ocr(pdf_info_list: list[PageInfo], lang: str | None = None) -> N
 
 def _post_block_process(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
-        for block_key in ["preproc_blocks", "para_blocks"]:
-            for block in page_info.get(block_key, []):
-                block_type = block.get("type")
+        for blocks in [page_info.preproc_blocks, page_info.para_blocks]:
+            for block in blocks:
+                block_type = block.type
                 if block_type == BlockType.DOC_TITLE:
-                    block["type"] = BlockType.TITLE
-                    block["level"] = 1
+                    block.type = BlockType.TITLE
+                    block.level = 1
                 elif block_type == BlockType.PARAGRAPH_TITLE:
-                    block["type"] = BlockType.TITLE
-                    block["level"] = 2
+                    block.type = BlockType.TITLE
+                    block.level = 2
                 elif block_type == BlockType.VERTICAL_TEXT:
-                    block["type"] = BlockType.TEXT
+                    block.type = BlockType.TEXT
 
 
 def apply_server_side_postprocess(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:

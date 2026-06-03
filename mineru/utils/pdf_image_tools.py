@@ -5,6 +5,8 @@ import multiprocessing
 import os
 import threading
 import time
+from concurrent.futures import ALL_COMPLETED, ProcessPoolExecutor, wait
+from concurrent.futures.process import BrokenProcessPool
 from io import BytesIO
 
 import numpy as np
@@ -13,13 +15,13 @@ from loguru import logger
 from PIL import Image, ImageOps
 
 from mineru.data.data_reader_writer import FileBasedDataWriter
-from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.bbox_utils import normalize_to_int_bbox
-from mineru.utils.os_env_config import get_load_images_timeout, get_load_images_threads
-from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
+from mineru.utils.check_sys_env import is_windows_environment
 from mineru.utils.enum_class import ImageType
 from mineru.utils.hash_utils import str_sha256
+from mineru.utils.os_env_config import get_load_images_threads, get_load_images_timeout
 from mineru.utils.pdf_page_id import get_end_page_id
+from mineru.utils.pdf_reader import image_to_b64str, image_to_bytes, page_to_image
 from mineru.utils.pdfium_guard import (
     close_pdfium_child,
     close_pdfium_document,
@@ -27,10 +29,6 @@ from mineru.utils.pdfium_guard import (
     open_pdfium_document,
     pdfium_guard,
 )
-
-from concurrent.futures import ProcessPoolExecutor, wait, ALL_COMPLETED
-from concurrent.futures.process import BrokenProcessPool
-
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
@@ -77,13 +75,9 @@ def pdf_page_to_image(
     return image_dict
 
 
-def _load_images_from_pdf_worker(
-    pdf_bytes, dpi, start_page_id, end_page_id, image_type
-):
+def _load_images_from_pdf_worker(pdf_bytes, dpi, start_page_id, end_page_id, image_type):
     """用于进程池的包装函数"""
-    return load_images_from_pdf_core(
-        pdf_bytes, dpi, start_page_id, end_page_id, image_type
-    )
+    return load_images_from_pdf_core(pdf_bytes, dpi, start_page_id, end_page_id, image_type)
 
 
 def _close_image_dicts(images_list) -> None:
@@ -137,9 +131,7 @@ def _get_render_process_plan(
 ) -> tuple[int, list[tuple[int, int]]]:
     total_pages = end_page_id - start_page_id + 1
     actual_threads = _calculate_render_process_count(total_pages, threads, cpu_count)
-    return actual_threads, _build_render_page_ranges(
-        start_page_id, end_page_id, actual_threads
-    )
+    return actual_threads, _build_render_page_ranges(start_page_id, end_page_id, actual_threads)
 
 
 def _get_pdf_render_pool_capacity(cpu_count=None) -> int:
@@ -158,10 +150,7 @@ def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
 
     start_method = multiprocessing.get_start_method()
     if start_method != "spawn":
-        logger.debug(
-            "PDF image rendering switches multiprocessing start method "
-            f"from {start_method} to spawn"
-        )
+        logger.debug(f"PDF image rendering switches multiprocessing start method from {start_method} to spawn")
         return ProcessPoolExecutor(
             max_workers=max_workers,
             mp_context=multiprocessing.get_context("spawn"),
@@ -215,9 +204,7 @@ def _get_pdf_render_executor() -> ProcessPoolExecutor:
         if _pdf_render_executor is None:
             max_workers = _get_pdf_render_pool_capacity()
             _pdf_render_executor = _create_pdf_render_executor(max_workers=max_workers)
-            logger.debug(
-                f"Created persistent PDF render executor with max_workers={max_workers}"
-            )
+            logger.debug(f"Created persistent PDF render executor with max_workers={max_workers}")
         return _pdf_render_executor
 
 
@@ -287,8 +274,7 @@ def _load_images_from_pdf_bytes_range(
     )
 
     logger.debug(
-        f"PDF image rendering uses {actual_threads} processes for pages "
-        f"{start_page_id + 1}-{end_page_id + 1}: {page_ranges}"
+        f"PDF image rendering uses {actual_threads} processes for pages {start_page_id + 1}-{end_page_id + 1}: {page_ranges}"
     )
 
     executor = _get_pdf_render_executor()
@@ -313,10 +299,7 @@ def _load_images_from_pdf_bytes_range(
         _, not_done = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
         if not_done:
             recycle_executor = True
-            raise TimeoutError(
-                f"PDF image rendering timeout after {timeout}s "
-                f"for pages {start_page_id + 1}-{end_page_id + 1}"
-            )
+            raise TimeoutError(f"PDF image rendering timeout after {timeout}s for pages {start_page_id + 1}-{end_page_id + 1}")
 
         all_results = []
         for future in futures:
@@ -514,14 +497,14 @@ def cut_image(
     return img_hash256_path
 
 
-def get_crop_img(bbox: tuple, pil_img, scale=2):
+def get_crop_img(bbox: tuple[float, float, float, float], pil_img: Image.Image, scale: float = 2.0):
     scale_bbox = normalize_to_int_bbox([float(v) * scale for v in bbox])
     if scale_bbox is None:
         return pil_img.crop((0, 0, 0, 0))
     return pil_img.crop(tuple(scale_bbox))
 
 
-def get_crop_np_img(bbox: tuple, input_img, scale=2):
+def get_crop_np_img(bbox: tuple, input_img, scale: float = 2.0):
     if isinstance(input_img, Image.Image):
         np_img = np.asarray(input_img)
     elif isinstance(input_img, np.ndarray):

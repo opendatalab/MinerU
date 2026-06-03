@@ -3,7 +3,7 @@ import copy
 from collections.abc import Generator
 
 from ...types import Block, Line, PageInfo, Span
-from ...utils.enum_class import BlockType, SplitFlag
+from ...utils.enum_class import BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -23,11 +23,6 @@ TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.CHART,
     BlockType.CODE,
 }
-OCR_DET_LINES_KEY = "_ocr_det_lines"
-INTERNAL_BLOCK_METADATA_KEYS = {
-    OCR_DET_LINES_KEY,
-    "line_avg_height",
-}
 
 
 def iter_block_spans(block: Block) -> Generator[Span, None, None]:
@@ -41,14 +36,14 @@ def iter_block_spans(block: Block) -> Generator[Span, None, None]:
 
 def build_para_blocks_from_preproc(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
-        page_info["para_blocks"] = copy.deepcopy(page_info.get("preproc_blocks", []))
+        page_info.para_blocks = copy.deepcopy(page_info.preproc_blocks)
 
 
 def merge_para_text_blocks(pdf_info_list: list[PageInfo], auto_merge_by_det: bool = False) -> None:
     ordered_blocks: list[tuple[int, int, Block]] = []
     for page_info in pdf_info_list:
-        page_idx = page_info.get("page_idx")
-        for order_idx, block in enumerate(page_info.get("para_blocks", [])):
+        page_idx = page_info.page_idx
+        for order_idx, block in enumerate(page_info.para_blocks):
             ordered_blocks.append((page_idx, order_idx, block))
 
     for current_index in range(len(ordered_blocks) - 1, -1, -1):
@@ -83,7 +78,7 @@ def _merge_current_text_block(
 ) -> None:
     """处理当前 text block 的 merge_prev 候选合并和 Hybrid det 自动合并。"""
     previous_block = None
-    if current_block.get("merge_prev"):
+    if current_block.merge_prev:
         previous_block = _find_previous_merge_prev_text_block(
             ordered_blocks,
             current_index,
@@ -167,9 +162,9 @@ def can_auto_merge_text_blocks(
 
     current_bbox_fs = _build_bbox_fs(current_block, current_metric_lines)
     previous_bbox_fs = _build_bbox_fs(previous_block, previous_metric_lines)
-    if abs(current_bbox_fs[0] - first_metric_line["bbox"][0]) >= first_line_height / 2:
+    if abs(current_bbox_fs[0] - first_metric_line.bbox[0]) >= first_line_height / 2:
         return False
-    if abs(previous_bbox_fs[2] - last_metric_line["bbox"][2]) >= last_line_height:
+    if abs(previous_bbox_fs[2] - last_metric_line.bbox[2]) >= last_line_height:
         return False
 
     first_content = _first_non_empty_content(current_lines)
@@ -196,9 +191,12 @@ def can_auto_merge_text_blocks(
 
 def cleanup_internal_para_block_metadata(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
-        for block_key in ["preproc_blocks", "para_blocks", "discarded_blocks"]:
-            for block in page_info.get(block_key, []):
-                _cleanup_block_internal_metadata(block)
+        for block in page_info.preproc_blocks:
+            _cleanup_block_internal_metadata(block)
+        for block in page_info.para_blocks:
+            _cleanup_block_internal_metadata(block)
+        for block in page_info.discarded_blocks:
+            _cleanup_block_internal_metadata(block)
 
 
 def _find_previous_text_block(
@@ -271,7 +269,7 @@ def _is_ref_text_list_block(block: Block) -> bool:
 
 def _resolve_auto_metric_lines(block: Block) -> list[Line]:
     """优先使用 OCR det 行提示；没有提示时退回 block 自身 lines。"""
-    return block.get(OCR_DET_LINES_KEY) or block.lines
+    return block._ocr_det_lines or block.lines
 
 
 def _resolve_local_metric_lines(block: Block) -> list[Line]:
@@ -284,42 +282,42 @@ def _resolve_local_metric_lines(block: Block) -> list[Line]:
 def _merge_text_block(current_block: Block, previous_block: Block, is_cross_page: bool) -> None:
     if is_cross_page:
         _mark_lines_cross_page(current_block.lines)
-        _mark_lines_cross_page(current_block.get(OCR_DET_LINES_KEY, []))
+        _mark_lines_cross_page(current_block._ocr_det_lines)
 
-    previous_block.setdefault("lines", []).extend(current_block.lines)
-    if current_block.get(OCR_DET_LINES_KEY):
-        previous_block.setdefault(OCR_DET_LINES_KEY, []).extend(current_block.get(OCR_DET_LINES_KEY, []))
-    current_block["lines"] = []
-    current_block[OCR_DET_LINES_KEY] = []
-    current_block[SplitFlag.LINES_DELETED] = True
+    previous_block.lines.extend(current_block.lines)
+    previous_block._ocr_det_lines.extend(current_block._ocr_det_lines)
+
+    current_block.lines = []
+    current_block._ocr_det_lines = []
+    current_block._lines_deleted = True
 
 
 def _mark_lines_cross_page(lines: list[Line]) -> None:
     """给跨页合并进来的文本行和 det hint 行同步打跨页标记。"""
     for line in lines:
         for span in line.spans:
-            span[SplitFlag.CROSS_PAGE] = True
+            span._cross_page = True
 
 
 def _is_cross_page_line(line: Line) -> bool:
     """判断整行是否来自跨页追加，供几何度量时排除。"""
     spans = line.spans
-    return bool(spans) and all(span.get(SplitFlag.CROSS_PAGE) for span in spans)
+    return bool(spans) and all(span._cross_page for span in spans)
 
 
 def _merge_ref_text_list_block(current_block: Block, previous_block: Block, is_cross_page: bool) -> None:
     """合并相邻 ref_text list，并在跨页时给当前 list 内 span 标记跨页。"""
     if is_cross_page:
         for span in iter_block_spans(current_block):
-            span[SplitFlag.CROSS_PAGE] = True
+            span._cross_page = True
 
-    previous_block.setdefault("blocks", []).extend(current_block.blocks)
-    current_block["blocks"] = []
-    current_block[SplitFlag.LINES_DELETED] = True
+    previous_block.blocks.extend(current_block.blocks)
+    current_block.blocks = []
+    current_block._lines_deleted = True
 
 
 def _line_height(line: Line) -> float:
-    bbox = line.get("bbox")
+    bbox = line.bbox
     if not bbox:
         return 0
     return bbox[3] - bbox[1]
@@ -328,23 +326,23 @@ def _line_height(line: Line) -> float:
 def _build_bbox_fs(block: Block, lines: list[Line]) -> list[float]:
     if lines:
         return [
-            min(line["bbox"][0] for line in lines),
-            min(line["bbox"][1] for line in lines),
-            max(line["bbox"][2] for line in lines),
-            max(line["bbox"][3] for line in lines),
+            min(line.bbox[0] for line in lines),
+            min(line.bbox[1] for line in lines),
+            max(line.bbox[2] for line in lines),
+            max(line.bbox[3] for line in lines),
         ]
-    return list(block.get("bbox", []))
+    return list(block.bbox or [])
 
 
 def _block_has_lines(block: Block) -> bool:
-    return any(line.get("spans") for line in block.lines)
+    return any(line.spans for line in block.lines)
 
 
 def _first_non_empty_content(lines: list[Line]) -> str:
     """从行列表中提取第一个非空 span 文本，用于段落起始字符规则判断。"""
     for line in lines:
         for span in line.spans:
-            content = span.get("content", "")
+            content = span.content or ""
             if content:
                 return content
     return ""
@@ -354,7 +352,7 @@ def _last_non_empty_content(lines: list[Line]) -> str:
     """从行列表中提取最后一个非空 span 文本，用于段落结尾字符规则判断。"""
     for line in reversed(lines):
         for span in reversed(line.spans):
-            content = span.get("content", "")
+            content = span.content or ""
             if content:
                 return content
     return ""
@@ -362,12 +360,12 @@ def _last_non_empty_content(lines: list[Line]) -> str:
 
 def _has_mergeable_block_bbox_relation(current_block: Block, previous_block: Block) -> bool:
     """复刻 pipeline text 合并的核心几何条件：当前块上边界进入前块范围。"""
-    return current_block["bbox"][1] < previous_block["bbox"][3]
+    return current_block.bbox[1] < previous_block.bbox[3]
 
 
 def _cleanup_block_internal_metadata(block: Block) -> None:
     """递归清理只供 finalize 内部流程使用的临时字段。"""
-    for metadata_key in INTERNAL_BLOCK_METADATA_KEYS:
-        block.pop(metadata_key, None)
+    block._ocr_det_lines = []
+    block._line_avg_height = 0
     for sub_block in block.blocks:
         _cleanup_block_internal_metadata(sub_block)

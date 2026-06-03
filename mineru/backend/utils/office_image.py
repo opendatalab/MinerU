@@ -52,12 +52,8 @@ def _vector_image_format_label(part_name: object | None = None, content_type: st
     return "WMF/EMF"
 
 
-def _load_placeholder_font(font_size: int) -> ImageFont.ImageFont:
-    for font_name in (
-        "DejaVuSans.ttf",
-        "Arial.ttf",
-        "LiberationSans-Regular.ttf",
-    ):
+def _load_placeholder_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for font_name in ("DejaVuSans.ttf", "Arial.ttf", "LiberationSans-Regular.ttf"):
         try:
             return ImageFont.truetype(font_name, font_size)
         except OSError:

@@ -31,7 +31,6 @@ not_extract_list = [item.value for item in NotExtractType] + [
     BlockType.DOC_TITLE,
     BlockType.PARAGRAPH_TITLE,
 ]
-OCR_DET_LINES_KEY = "_ocr_det_lines"
 OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
     BlockType.LIST,
     BlockType.INDEX,
@@ -48,7 +47,7 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict[str, obj
     if raw_block_type != BlockType.TEXT:
         return
     if "merge_prev" in block_info:
-        block["merge_prev"] = block_info["merge_prev"]
+        block.merge_prev = block_info["merge_prev"]
 
 
 class MagicModel:
@@ -278,17 +277,16 @@ class MagicModel:
                 else:
                     line = Line(spans=spans, bbox=block_bbox)
 
-                block = Block(type=block_type, bbox=block_bbox, lines=[line])
-                block["angle"] = block_angle
-                block["index"] = index
+                block = Block(index=index, type=block_type, bbox=block_bbox, lines=[line], angle=block_angle)
+                block.index = index
                 if block_sub_type:
-                    block["sub_type"] = block_sub_type
+                    block.sub_type = block_sub_type
                 if raw_block_type == "table" and "cell_merge" in block_info:
                     block["cell_merge"] = block_info["cell_merge"]
                 if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(span_matcher.collect_for_block(block_bbox))
                     if ocr_det_lines:
-                        block[OCR_DET_LINES_KEY] = ocr_det_lines
+                        block._ocr_det_lines = ocr_det_lines
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
             else:
                 block_spans = span_matcher.collect_for_block(block_bbox)
@@ -321,11 +319,11 @@ class MagicModel:
         self.list_blocks = []
 
         for block in blocks:
-            if block["type"] in VISUAL_MAIN_TYPES or block["type"] in GENERIC_CHILD_TYPES:
+            if block.type in VISUAL_MAIN_TYPES or block.type in GENERIC_CHILD_TYPES:
                 continue
-            elif block["type"] == BlockType.INTERLINE_EQUATION:
+            elif block.type == BlockType.INTERLINE_EQUATION:
                 self.interline_equation_blocks.append(block)
-            elif block["type"] == BlockType.TEXT:
+            elif block.type == BlockType.TEXT:
                 self.text_blocks.append(block)
             elif block["type"] in [
                 BlockType.TITLE,
@@ -333,11 +331,11 @@ class MagicModel:
                 BlockType.PARAGRAPH_TITLE,
             ]:
                 self.title_blocks.append(block)
-            elif block["type"] == BlockType.REF_TEXT:
+            elif block.type == BlockType.REF_TEXT:
                 self.ref_text_blocks.append(block)
-            elif block["type"] == BlockType.PHONETIC:
+            elif block.type == BlockType.PHONETIC:
                 self.phonetic_blocks.append(block)
-            elif block["type"] in [
+            elif block.type in [
                 BlockType.HEADER,
                 BlockType.FOOTER,
                 BlockType.PAGE_NUMBER,
@@ -345,7 +343,7 @@ class MagicModel:
                 BlockType.PAGE_FOOTNOTE,
             ]:
                 self.discarded_blocks.append(block)
-            elif block["type"] == BlockType.LIST:
+            elif block.type == BlockType.LIST:
                 self.list_blocks.append(block)
 
         self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(
@@ -361,20 +359,20 @@ class MagicModel:
         self.code_blocks = visual_groups[BlockType.CODE]
 
         for code_block in self.code_blocks:
-            for block in code_block["blocks"]:
-                if block["type"] == BlockType.CODE_BODY:
-                    if block["lines"]:
-                        line = block["lines"][0]
-                        code_block["sub_type"] = line["extra"]["type"]
-                        if code_block["sub_type"] == "code":
-                            code_block["guess_lang"] = line["extra"]["guess_lang"]
+            for block in code_block.blocks:
+                if block.type == BlockType.CODE_BODY:
+                    if block.lines:
+                        line = block.lines[0]
+                        code_block.sub_type = line["extra"]["type"]
+                        if code_block.sub_type == "code":
+                            code_block.guess_lang = line["extra"]["guess_lang"]
                         del line["extra"]
                     else:
-                        code_block["sub_type"] = "code"
-                        code_block["guess_lang"] = "txt"
+                        code_block.sub_type = "code"
+                        code_block.guess_lang = "txt"
 
         for block in unmatched_child_blocks:
-            block["type"] = BlockType.TEXT
+            block.type = BlockType.TEXT
             self.text_blocks.append(block)
 
     @staticmethod
@@ -408,7 +406,7 @@ class MagicModel:
             return []
 
         hint_block = {"spans": copy.deepcopy(block_spans)}
-        return fix_text_block(hint_block).get("lines", [])
+        return fix_text_block(hint_block)["lines"]
 
     def cal_real_bbox(self, bbox: list[float]) -> tuple[int, int, int, int]:
         x1, y1, x2, y2 = bbox
@@ -465,9 +463,9 @@ def fix_list_blocks(
     list_blocks: list[Block], text_blocks: list[Block], ref_text_blocks: list[Block]
 ) -> tuple[list[Block], list[Block], list[Block]]:
     for list_block in list_blocks:
-        list_block["blocks"] = []
-        if "lines" in list_block:
-            del list_block["lines"]
+        list_block.blocks = []
+        if list_block.lines:
+            list_block.lines = []
 
     temp_text_blocks = text_blocks + ref_text_blocks
     need_remove_blocks = []
@@ -475,12 +473,12 @@ def fix_list_blocks(
         for list_block in list_blocks:
             if (
                 calculate_overlap_area_in_bbox1_area_ratio(
-                    block["bbox"],
-                    list_block["bbox"],
+                    block.bbox,
+                    list_block.bbox,
                 )
                 >= 0.8
             ):
-                list_block["blocks"].append(block)
+                list_block.blocks.append(block)
                 need_remove_blocks.append(block)
                 break
 
@@ -490,19 +488,19 @@ def fix_list_blocks(
         elif block in ref_text_blocks:
             ref_text_blocks.remove(block)
 
-    list_blocks = [lb for lb in list_blocks if lb["blocks"]]
+    list_blocks = [lb for lb in list_blocks if lb.blocks]
 
     for list_block in list_blocks:
         type_count = {}
-        for sub_block in list_block["blocks"]:
-            sub_block_type = sub_block["type"]
+        for sub_block in list_block.blocks:
+            sub_block_type = sub_block.type
             if sub_block_type not in type_count:
                 type_count[sub_block_type] = 0
             type_count[sub_block_type] += 1
 
         if type_count:
-            list_block["sub_type"] = max(type_count, key=type_count.get)
+            list_block.sub_type = max(type_count, key=type_count.get)
         else:
-            list_block["sub_type"] = "unknown"
+            list_block.sub_type = "unknown"
 
     return list_blocks, text_blocks, ref_text_blocks

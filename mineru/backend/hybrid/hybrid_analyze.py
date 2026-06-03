@@ -374,7 +374,7 @@ def _has_doc_title_overlap(title_bbox: list[float], doc_title_bboxes: list[list[
 def _apply_layout_title_split(
     model_list: list[list[dict[str, object]]],
     images_layout_res: list[list[dict[str, object]]],
-    page_sizes: list[tuple[int, int]],
+    page_sizes: list[list[int]],
     overlap_threshold: float = LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
 ) -> None:
     """用layout doc_title框将VLM title拆分为doc_title和paragraph_title。"""

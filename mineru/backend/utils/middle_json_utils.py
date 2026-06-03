@@ -28,7 +28,7 @@ def build_middle_json(
     image_writer: DataWriter,
     *,
     init_fn: Callable[..., dict[str, Any]],
-    page_cvt_fn: Callable[[T], PageInfo],
+    page_cvt_fn: Callable[[T, dict, Any, DataWriter | None, int], PageInfo],
     finalize_fn: Callable[..., None],
     **kwargs: Any,
 ) -> dict[str, Any]:
@@ -117,8 +117,8 @@ def apply_post_ocr(pdf_info_list: list[PageInfo], ocr_model: Any) -> None:
     img_crop_list = []
 
     for page_info in pdf_info_list:
-        for blocks_key in ("preproc_blocks", "discarded_blocks"):
-            for block in page_info.get(blocks_key, []):
+        for blocks in [page_info.preproc_blocks, page_info.discarded_blocks]:
+            for block in blocks:
                 for span in _iter_block_spans(block):
                     if "np_img" in span:
                         need_ocr_list.append(span)

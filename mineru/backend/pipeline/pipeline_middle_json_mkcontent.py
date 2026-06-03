@@ -13,23 +13,22 @@ from ...utils.config_reader import get_latex_delimiter_config
 from ...utils.enum_class import BlockType, ContentType, ContentTypeV2, MakeMode
 from ...utils.language import detect_lang
 from ..utils.markdown_utils import escape_conservative_markdown_text, escape_text_block_markdown_prefix
-from .para_split import ListLineTag
 
 
-def make_blocks_to_markdown(paras_of_layout: list[Block], mode: str, img_buket_path: str = "") -> str:
+def make_blocks_to_markdown(paras_of_layout: list[Block], mode: str, img_buket_path: str = "") -> list[str]:
     page_markdown = []
     for para_block in paras_of_layout:
         para_text = ""
-        para_type = para_block["type"]
+        para_type = para_block.type
         if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX, BlockType.ABSTRACT, BlockType.REF_TEXT]:
             para_text = merge_para_with_text(para_block)
         elif para_type == BlockType.TITLE:
             title_level = get_title_level(para_block)
             para_text = f"{'#' * title_level} {merge_para_with_text(para_block)}"
         elif para_type == BlockType.INTERLINE_EQUATION:
-            if len(para_block["lines"]) == 0 or len(para_block["lines"][0]["spans"]) == 0:
+            if len(para_block.lines) == 0 or len(para_block.lines[0].spans) == 0:
                 continue
-            if para_block["lines"][0]["spans"][0].get("content", ""):
+            if para_block.lines[0].spans[0].get("content", ""):
                 para_text = merge_para_with_text(para_block)
             else:
                 para_text = f"![]({img_buket_path}/{para_block['lines'][0]['spans'][0]['image_path']})"
@@ -95,9 +94,9 @@ def get_blocks_in_index_order(blocks: list[Block]) -> list[Block]:
 def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> None:
     # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
     # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
-    if block.get("type") != BlockType.CODE_BODY:
+    if block.type != BlockType.CODE_BODY:
         return block
-    if parent_block.get("type") != BlockType.CODE:
+    if parent_block.type != BlockType.CODE:
         return block
 
     needs_sub_type = "sub_type" not in block and "sub_type" in parent_block
@@ -113,11 +112,13 @@ def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> N
     return render_block
 
 
-def render_visual_block_segments(block: Block, img_buket_path: str = "", para_block: Block | None = None) -> list[str]:
+def render_visual_block_segments(
+    block: Block, img_buket_path: str = "", para_block: Block | None = None
+) -> list[tuple[str, str]]:
     # 将单个视觉子 block 渲染成一个或多个 segment。
     # 文本类子块统一输出 markdown_line；
     # table 的 html 输出为 html_block，供后续决定是否需要空行隔开。
-    block_type = block["type"]
+    block_type = block.type
 
     if block_type in [
         BlockType.IMAGE_CAPTION,
@@ -137,9 +138,9 @@ def render_visual_block_segments(block: Block, img_buket_path: str = "", para_bl
 
     if block_type == BlockType.IMAGE_BODY:
         rendered_segments = []
-        for line in block["lines"]:
-            for span in line["spans"]:
-                if span["type"] != ContentType.IMAGE:
+        for line in block.lines:
+            for span in line.spans:
+                if span.type != ContentType.IMAGE:
                     continue
                 if span.get("image_path", ""):
                     rendered_segments.append(
@@ -159,21 +160,21 @@ def render_visual_block_segments(block: Block, img_buket_path: str = "", para_bl
     if block_type == BlockType.CHART_BODY:
         return [
             (f"![]({img_buket_path}/{span['image_path']})", "markdown_line")
-            for line in block["lines"]
-            for span in line["spans"]
-            if span["type"] == ContentType.CHART and span.get("image_path", "")
+            for line in block.lines
+            for span in line.spans
+            if span.type == ContentType.CHART and span.get("image_path", "")
         ]
 
     if block_type == BlockType.TABLE_BODY:
         rendered_segments = []
-        for line in block["lines"]:
-            for span in line["spans"]:
-                if span["type"] != ContentType.TABLE:
+        for line in block.lines:
+            for span in line.spans:
+                if span.type != ContentType.TABLE:
                     continue
                 if span.get("html", ""):
                     rendered_segments.append(
                         (
-                            _format_embedded_html(span["html"], img_buket_path),
+                            _format_embedded_html(span.html, img_buket_path),
                             "html_block",
                         )
                     )
@@ -184,7 +185,7 @@ def render_visual_block_segments(block: Block, img_buket_path: str = "", para_bl
     return []
 
 
-def get_visual_block_separator(prev_segment_kind: str, current_segment_kind: str) -> str:
+def get_visual_block_separator(prev_segment_kind: str | None, current_segment_kind: str) -> str:
     # 根据前后 segment 类型决定分隔符：
     # 1. 普通 markdown 行之间用 hard break（"  \\n"）
     # 2. 进入 html block 前只换一行
@@ -264,7 +265,7 @@ def _build_visual_details_block(content: str, summary: str) -> str:
 
 def _apply_visual_sub_type(para_content: str, para_block: Block) -> str:
     """将视觉父块的 sub_type 透传到 content_list 输出顶层。"""
-    sub_type = para_block.get("sub_type")
+    sub_type = para_block.sub_type
     if sub_type:
         para_content["sub_type"] = sub_type
 
@@ -283,7 +284,7 @@ def merge_para_with_text(para_block: Block) -> str:
         return f"```{guess_lang}\n{code_text}\n```"
 
     para_text = _merge_para_text(para_block)
-    if para_block.get("type") == BlockType.TEXT:
+    if para_block.type == BlockType.TEXT:
         para_text = escape_text_block_markdown_prefix(para_text)
     return para_text
 
@@ -297,12 +298,12 @@ def _merge_para_text(para_block: Block, escape_markdown: bool = True, list_line_
     block_lang = detect_lang(_collect_text_for_lang_detection(para_block))
     para_parts = []
 
-    for line_idx, line in enumerate(para_block["lines"]):
+    for line_idx, line in enumerate(para_block.lines):
         line_prefix = _line_prefix(line_idx, line, list_line_break)
         if line_prefix:
             para_parts.append(line_prefix)
 
-        for span_idx, span in enumerate(line["spans"]):
+        for span_idx, span in enumerate(line.spans):
             rendered_span = _render_span(span, escape_markdown=escape_markdown)
             if rendered_span is None:
                 continue
@@ -325,16 +326,16 @@ def _merge_para_text(para_block: Block, escape_markdown: bool = True, list_line_
 
 
 def _is_fenced_code_block(para_block: Block) -> bool:
-    return para_block.get("type") == BlockType.CODE_BODY and para_block.get("sub_type") == BlockType.CODE
+    return para_block.type == BlockType.CODE_BODY and para_block.sub_type == BlockType.CODE
 
 
 def _collect_text_for_lang_detection(para_block: Block) -> str:
     # 只收集 TEXT span 的内容，用于语言检测。
     # 这里会先做全角转半角，但不会修改原始输入数据。
     block_text_parts = []
-    for line in para_block["lines"]:
-        for span in line["spans"]:
-            if span["type"] == ContentType.TEXT:
+    for line in para_block.lines:
+        for span in line.spans:
+            if span.type == ContentType.TEXT:
                 block_text_parts.append(_normalize_text_content(span.get("content", "")))
     return "".join(block_text_parts)
 
@@ -348,7 +349,7 @@ def _normalize_text_content(content: str) -> str:
 def _render_span(span: Span, escape_markdown: bool = True) -> str:
     # 将单个 span 渲染成 markdown 片段。
     # 这里只负责“渲染成什么文本”，不决定后面是否补空格。
-    span_type = span["type"]
+    span_type = span.type
     content = ""
 
     if span_type == ContentType.TEXT:
@@ -382,7 +383,7 @@ def _join_rendered_span(
     if span_type == ContentType.INTERLINE_EQUATION:
         return content, ""
 
-    is_last_span = span_idx == len(line["spans"]) - 1
+    is_last_span = span_idx == len(line.spans) - 1
 
     if block_lang in CJK_LANGS:
         if is_last_span and span_type != ContentType.INLINE_EQUATION:
@@ -403,7 +404,7 @@ def _join_rendered_span(
 def _line_prefix(line_idx: int, line: Line, list_line_break: str = "  \n") -> str:
     # 处理进入新 list item 前的 block 级换行。
     # 这里保留历史语义：list 起始行前插入一个 hard break。
-    if line_idx >= 1 and line.get(ListLineTag.IS_LIST_START_LINE, False):
+    if line_idx >= 1 and line._is_list_start:
         return list_line_break
     return ""
 
@@ -411,15 +412,15 @@ def _line_prefix(line_idx: int, line: Line, list_line_break: str = "  \n") -> st
 def _next_line_starts_with_lowercase_text(para_block: Block, line_idx: int) -> bool:
     # 判断下一行是否以小写英文文本开头。
     # 这个条件用于决定西文行尾的连字符是否应与下一行合并。
-    if line_idx + 1 >= len(para_block["lines"]):
+    if line_idx + 1 >= len(para_block.lines):
         return False
 
-    next_line_spans = para_block["lines"][line_idx + 1].get("spans")
+    next_line_spans = para_block.lines[line_idx + 1].spans
     if not next_line_spans:
         return False
 
     next_span = next_line_spans[0]
-    if next_span.get("type") != ContentType.TEXT:
+    if next_span.type != ContentType.TEXT:
         return False
 
     next_content = _normalize_text_content(next_span.get("content", ""))
@@ -447,7 +448,7 @@ def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list
         ref_group = []
 
     for para_block in para_blocks or []:
-        if para_block.get("type") == BlockType.REF_TEXT:
+        if para_block.type == BlockType.REF_TEXT:
             ref_group.append(para_block)
             continue
 
@@ -481,7 +482,7 @@ def _split_list_item_blocks(para_block: Block) -> list[Block]:
     current_lines = []
 
     for line_idx, line in enumerate(para_block.lines):
-        if line_idx > 0 and line.get(ListLineTag.IS_LIST_START_LINE, False) and current_lines:
+        if line_idx > 0 and line._is_list_start and current_lines:
             item_blocks.append(
                 {
                     "type": BlockType.TEXT,
@@ -506,7 +507,7 @@ def _get_body_data(para_block: Block) -> tuple[str, str]:
     def get_data_from_spans(lines: list[Line]) -> tuple[str, str]:
         for line in lines:
             for span in line.spans:
-                span_type = span.get("type")
+                span_type = span.type
                 if span_type == ContentType.TABLE:
                     return span.get("image_path", ""), span.get("html", "")
                 if span_type == ContentType.CHART:
@@ -518,8 +519,8 @@ def _get_body_data(para_block: Block) -> tuple[str, str]:
         return "", ""
 
     if "blocks" in para_block:
-        for block in para_block["blocks"]:
-            block_type = block.get("type")
+        for block in para_block.blocks:
+            block_type = block.type
             if block_type in [
                 BlockType.IMAGE_BODY,
                 BlockType.TABLE_BODY,
@@ -537,11 +538,11 @@ def _get_body_data(para_block: Block) -> tuple[str, str]:
 def merge_para_with_text_v2(para_block: Block) -> str:
     block_lang = detect_lang(_collect_text_for_lang_detection(para_block))
     para_content = []
-    para_type = para_block.get("type")
+    para_type = para_block.type
 
     for line_idx, line in enumerate(para_block.lines):
         for span_idx, span in enumerate(line.spans):
-            span_type = span.get("type")
+            span_type = span.type
 
             if span_type == ContentType.TEXT:
                 content = _normalize_text_content(span.get("content", ""))
@@ -549,7 +550,7 @@ def merge_para_with_text_v2(para_block: Block) -> str:
                     continue
 
                 output_type = ContentTypeV2.SPAN_PHONETIC if para_type == BlockType.PHONETIC else ContentTypeV2.SPAN_TEXT
-                is_last_span = span_idx == len(line["spans"]) - 1
+                is_last_span = span_idx == len(line.spans) - 1
 
                 if block_lang in CJK_LANGS:
                     rendered_content = content if is_last_span else f"{content} "
@@ -596,7 +597,7 @@ def merge_para_with_text_v2(para_block: Block) -> str:
 def make_blocks_to_content_list(
     para_block: Block, img_buket_path: str, page_idx: int, page_size: list[int]
 ) -> list[dict[str, Any]]:
-    para_type = para_block["type"]
+    para_type = para_block.type
     para_content = None
     if para_type in [
         BlockType.TEXT,
@@ -638,13 +639,13 @@ def make_blocks_to_content_list(
         if title_level != 0:
             para_content["text_level"] = title_level
     elif para_type == BlockType.INTERLINE_EQUATION:
-        if len(para_block["lines"]) == 0 or len(para_block["lines"][0]["spans"]) == 0:
+        if len(para_block.lines) == 0 or len(para_block.lines[0]["spans"]) == 0:
             return None
         para_content = {
             "type": ContentType.EQUATION,
             "img_path": f"{img_buket_path}/{para_block['lines'][0]['spans'][0].get('image_path', '')}",
         }
-        if para_block["lines"][0]["spans"][0].get("content", ""):
+        if para_block.lines[0]["spans"][0].get("content", ""):
             para_content["text"] = merge_para_with_text(para_block)
             para_content["text_format"] = "latex"
     elif para_type == BlockType.IMAGE:
@@ -655,24 +656,24 @@ def make_blocks_to_content_list(
         if image_content:
             para_content["content"] = image_content
         _apply_visual_sub_type(para_content, para_block)
-        for block in para_block["blocks"]:
-            if block["type"] == BlockType.IMAGE_BODY:
+        for block in para_block.blocks:
+            if block.type == BlockType.IMAGE_BODY:
                 for line in block["lines"]:
-                    for span in line["spans"]:
-                        if span["type"] == ContentType.IMAGE:
+                    for span in line.spans:
+                        if span.type == ContentType.IMAGE:
                             if span.get("image_path", ""):
                                 para_content["img_path"] = f"{img_buket_path}/{span['image_path']}"
-            if block["type"] == BlockType.IMAGE_CAPTION:
+            if block.type == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(merge_para_with_text(block))
-            if block["type"] == BlockType.IMAGE_FOOTNOTE:
+            if block.type == BlockType.IMAGE_FOOTNOTE:
                 para_content[BlockType.IMAGE_FOOTNOTE].append(merge_para_with_text(block))
     elif para_type == BlockType.TABLE:
         para_content = {"type": ContentType.TABLE, "img_path": "", BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
-        for block in para_block["blocks"]:
-            if block["type"] == BlockType.TABLE_BODY:
+        for block in para_block.blocks:
+            if block.type == BlockType.TABLE_BODY:
                 for line in block["lines"]:
-                    for span in line["spans"]:
-                        if span["type"] == ContentType.TABLE:
+                    for span in line.spans:
+                        if span.type == ContentType.TABLE:
                             if span.get("html", ""):
                                 para_content[BlockType.TABLE_BODY] = _format_embedded_html(
                                     span["html"],
@@ -682,9 +683,9 @@ def make_blocks_to_content_list(
                             if span.get("image_path", ""):
                                 para_content["img_path"] = f"{img_buket_path}/{span['image_path']}"
 
-            if block["type"] == BlockType.TABLE_CAPTION:
+            if block.type == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(merge_para_with_text(block))
-            if block["type"] == BlockType.TABLE_FOOTNOTE:
+            if block.type == BlockType.TABLE_FOOTNOTE:
                 para_content[BlockType.TABLE_FOOTNOTE].append(merge_para_with_text(block))
     elif para_type == BlockType.CHART:
         para_content = {
@@ -695,14 +696,14 @@ def make_blocks_to_content_list(
             BlockType.CHART_FOOTNOTE: [],
         }
         for block in para_block.blocks:
-            if block["type"] == BlockType.CHART_BODY:
+            if block.type == BlockType.CHART_BODY:
                 for line in block["lines"]:
-                    for span in line["spans"]:
-                        if span["type"] == ContentType.CHART and span.get("image_path", ""):
+                    for span in line.spans:
+                        if span.type == ContentType.CHART and span.get("image_path", ""):
                             para_content["img_path"] = f"{img_buket_path}/{span['image_path']}"
-            if block["type"] == BlockType.CHART_CAPTION:
+            if block.type == BlockType.CHART_CAPTION:
                 para_content[BlockType.CHART_CAPTION].append(merge_para_with_text(block))
-            if block["type"] == BlockType.CHART_FOOTNOTE:
+            if block.type == BlockType.CHART_FOOTNOTE:
                 para_content[BlockType.CHART_FOOTNOTE].append(merge_para_with_text(block))
     elif para_type == BlockType.CODE:
         para_content = {
@@ -713,11 +714,11 @@ def make_blocks_to_content_list(
         }
         for block in para_block.blocks:
             render_block = _inherit_parent_code_render_metadata(block, para_block)
-            if block["type"] == BlockType.CODE_BODY:
+            if block.type == BlockType.CODE_BODY:
                 para_content[BlockType.CODE_BODY] = merge_para_with_text(render_block)
-            if block["type"] == BlockType.CODE_CAPTION:
+            if block.type == BlockType.CODE_CAPTION:
                 para_content[BlockType.CODE_CAPTION].append(merge_para_with_text(block))
-            if block["type"] == BlockType.CODE_FOOTNOTE:
+            if block.type == BlockType.CODE_FOOTNOTE:
                 para_content[BlockType.CODE_FOOTNOTE].append(merge_para_with_text(block))
 
     if not para_content:
@@ -732,7 +733,7 @@ def make_blocks_to_content_list(
 
 
 def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_size: list[int]) -> list[dict[str, Any]]:
-    para_type = para_block["type"]
+    para_type = para_block.type
     para_content = None
 
     if para_type in [
@@ -802,9 +803,9 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
         image_footnote = []
         image_path, image_content = _get_body_data(para_block)
         for block in para_block.blocks:
-            if block["type"] == BlockType.IMAGE_CAPTION:
+            if block.type == BlockType.IMAGE_CAPTION:
                 image_caption.extend(merge_para_with_text_v2(block))
-            if block["type"] == BlockType.IMAGE_FOOTNOTE:
+            if block.type == BlockType.IMAGE_FOOTNOTE:
                 image_footnote.extend(merge_para_with_text_v2(block))
         para_content = {
             "type": ContentTypeV2.IMAGE,
@@ -814,7 +815,7 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
                 "image_footnote": image_footnote,
             },
         }
-        if image_content or para_block.get("sub_type"):
+        if image_content or para_block.sub_type:
             para_content["content"]["content"] = image_content
         _apply_visual_sub_type(para_content, para_block)
     elif para_type == BlockType.TABLE:
@@ -828,9 +829,9 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
         else:
             table_type = ContentTypeV2.TABLE_SIMPLE
         for block in para_block.blocks:
-            if block["type"] == BlockType.TABLE_CAPTION:
+            if block.type == BlockType.TABLE_CAPTION:
                 table_caption.extend(merge_para_with_text_v2(block))
-            if block["type"] == BlockType.TABLE_FOOTNOTE:
+            if block.type == BlockType.TABLE_FOOTNOTE:
                 table_footnote.extend(merge_para_with_text_v2(block))
         para_content = {
             "type": ContentTypeV2.TABLE,
@@ -848,9 +849,9 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
         chart_footnote = []
         image_path, _ = _get_body_data(para_block)
         for block in para_block.blocks:
-            if block["type"] == BlockType.CHART_CAPTION:
+            if block.type == BlockType.CHART_CAPTION:
                 chart_caption.extend(merge_para_with_text_v2(block))
-            if block["type"] == BlockType.CHART_FOOTNOTE:
+            if block.type == BlockType.CHART_FOOTNOTE:
                 chart_footnote.extend(merge_para_with_text_v2(block))
         para_content = {
             "type": ContentTypeV2.CHART,
@@ -866,11 +867,11 @@ def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_
         code_footnote = []
         code_content = []
         for block in para_block.blocks:
-            if block["type"] == BlockType.CODE_CAPTION:
+            if block.type == BlockType.CODE_CAPTION:
                 code_caption.extend(merge_para_with_text_v2(block))
-            if block["type"] == BlockType.CODE_FOOTNOTE:
+            if block.type == BlockType.CODE_FOOTNOTE:
                 code_footnote.extend(merge_para_with_text_v2(block))
-            if block["type"] == BlockType.CODE_BODY:
+            if block.type == BlockType.CODE_BODY:
                 code_content = merge_para_with_text_v2(block)
 
         sub_type = para_block["sub_type"]

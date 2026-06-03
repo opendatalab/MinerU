@@ -20,7 +20,6 @@ from ...utils.visual_magic_model_utils import (
     fallback_leading_table_continuation_captions,
     find_best_visual_parent,
 )
-from .para_split import ListLineTag
 from .pipeline_middle_json_mkcontent import _merge_para_text
 
 if TYPE_CHECKING:
@@ -139,11 +138,11 @@ class MagicModel:
 
     @staticmethod
     def __fix_text_block(block: Block) -> Block:
-        if block["type"] == BlockType.TEXT and is_vertical_text_block_by_spans(block["spans"]):
+        if block.type == BlockType.TEXT and is_vertical_text_block_by_spans(block["spans"]):
             # layout 偶发会把竖排正文识别为横排 text，这里用旧版 span 高宽比规则兜底。
-            block["type"] = BlockType.VERTICAL_TEXT
+            block.type = BlockType.VERTICAL_TEXT
 
-        if block["type"] == BlockType.VERTICAL_TEXT:
+        if block.type == BlockType.VERTICAL_TEXT:
             # 如果是纵向文本块，则按纵向lines处理
             block_lines = merge_spans_to_vertical_line(block["spans"])
             sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
@@ -151,16 +150,16 @@ class MagicModel:
             block_lines = merge_spans_to_line(block["spans"])
             sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
 
-        if block["type"] == BlockType.CODE:
+        if block.type == BlockType.CODE:
             for line in sort_block_lines:
-                line[ListLineTag.IS_LIST_START_LINE] = True
+                line._is_list_start = True
             code_content = _merge_para_text({"lines": sort_block_lines}, False, "\n")
             guess_lang = guess_language_by_text(code_content)
             if guess_lang not in ["txt", "unknown"]:
                 block["sub_type"] = "code"
                 block["guess_lang"] = guess_lang
 
-        block["lines"] = sort_block_lines
+        block.lines = sort_block_lines
         del block["spans"]
         return block
 
@@ -256,7 +255,7 @@ class MagicModel:
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
             ]:
-                span = Span(type=span_type, bbox=block["bbox"])
+                span = Span(type=span_type, bbox=block.bbox)
                 if span_type == ContentType.IMAGE and block.get("sub_type") == "seal":
                     seal_text = self.__normalize_seal_text(block.get("text"))
                     if seal_text:
@@ -272,17 +271,17 @@ class MagicModel:
                 self.all_image_spans.append(span)
                 # 构造line对象
                 spans = [span]
-                line = Line(spans=spans, bbox=block["bbox"])
-                block["lines"] = [line]
+                line = Line(spans=spans, bbox=block.bbox)
+                block.lines = [line]
             else:
                 # span填充
-                if block["type"] == BlockType.FORMULA_NUMBER:
+                if block.type == BlockType.FORMULA_NUMBER:
                     block_spans = span_matcher.collect_for_block(
-                        block["bbox"],
+                        block.bbox,
                         overlap_ratio_getter=self.__formula_number_overlap_ratio,
                     )
                 else:
-                    block_spans = span_matcher.collect_for_block(block["bbox"])
+                    block_spans = span_matcher.collect_for_block(block.bbox)
 
                 block["spans"] = block_spans
                 block = self.__fix_text_block(block)
@@ -350,14 +349,14 @@ class MagicModel:
             return
 
         ordered_blocks = sorted(self.page_blocks, key=lambda x: x["index"])
-        original_type_by_index = {block["index"]: block["type"] for block in ordered_blocks}
-        position_by_index = {block["index"]: pos for pos, block in enumerate(ordered_blocks)}
-        main_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_MAIN_TYPES]
-        child_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_CHILD_TYPES]
+        original_type_by_index = {block.index: block.type for block in ordered_blocks}
+        position_by_index = {block.index: pos for pos, block in enumerate(ordered_blocks)}
+        main_blocks = [block for block in ordered_blocks if original_type_by_index[block.index] in self.VISUAL_MAIN_TYPES]
+        child_blocks = [block for block in ordered_blocks if original_type_by_index[block.index] in self.VISUAL_CHILD_TYPES]
 
         child_parent_map: dict[int, int | None] = {}
         grouped_children: dict[int, dict[str, list[Block]]] = {
-            main_block["index"]: {"captions": [], "footnotes": []} for main_block in main_blocks
+            main_block.index: {"captions": [], "footnotes": []} for main_block in main_blocks
         }
 
         for child_block in child_blocks:
@@ -368,22 +367,22 @@ class MagicModel:
                 original_type_by_index,
                 position_by_index,
             )
-            child_parent_map[child_block["index"]] = None if parent_block is None else parent_block["index"]
+            child_parent_map[child_block.index] = None if parent_block is None else parent_block.index
 
         for child_block in child_blocks:
-            original_child_type = original_type_by_index[child_block["index"]]
-            parent_index = child_parent_map[child_block["index"]]
+            original_child_type = original_type_by_index[child_block.index]
+            parent_index = child_parent_map[child_block.index]
 
             if parent_index is None:
-                child_block["type"] = BlockType.TEXT
-                self.__sync_layout_det_type(child_block["index"], BlockType.TEXT)
+                child_block.type = BlockType.TEXT
+                self.__sync_layout_det_type(child_block.index, BlockType.TEXT)
                 continue
 
             parent_type = original_type_by_index[parent_index]
             child_kind = self.__child_kind(original_child_type)
             mapped_type = self.VISUAL_TYPE_MAPPING[parent_type][child_kind]
-            child_block["type"] = mapped_type
-            self.__sync_layout_det_type(child_block["index"], mapped_type)
+            child_block.type = mapped_type
+            self.__sync_layout_det_type(child_block.index, mapped_type)
             grouped_children[parent_index][f"{child_kind}s"].append(child_block)
 
         self.image_groups = []
@@ -392,10 +391,10 @@ class MagicModel:
 
         rebuilt_page_blocks: list[Block] = []
         for block in ordered_blocks:
-            original_block_type = original_type_by_index[block["index"]]
+            original_block_type = original_type_by_index[block.index]
 
             if original_block_type in self.VISUAL_CHILD_TYPES:
-                if child_parent_map[block["index"]] is None:
+                if child_parent_map[block.index] is None:
                     rebuilt_page_blocks.append(block)
                 continue
 
@@ -408,21 +407,18 @@ class MagicModel:
             if original_block_type in [BlockType.IMAGE, BlockType.CHART]:
                 body_block.pop("sub_type", None)
             captions = sorted(
-                [
-                    self.__make_child_block(caption, mapping["caption"])
-                    for caption in grouped_children[block["index"]]["captions"]
-                ],
+                [self.__make_child_block(caption, mapping["caption"]) for caption in grouped_children[block.index]["captions"]],
                 key=lambda x: x["index"],
             )
             footnotes = sorted(
                 [
                     self.__make_child_block(footnote, mapping["footnote"])
-                    for footnote in grouped_children[block["index"]]["footnotes"]
+                    for footnote in grouped_children[block.index]["footnotes"]
                 ],
                 key=lambda x: x["index"],
             )
 
-            self.__sync_layout_det_type(block["index"], mapping["body"])
+            self.__sync_layout_det_type(block.index, mapping["body"])
 
             group_info = {
                 f"{original_block_type}_body": body_block,
@@ -438,10 +434,10 @@ class MagicModel:
 
             two_layer_block = Block(
                 type=original_block_type,
-                bbox=block["bbox"],
+                bbox=block.bbox,
                 blocks=[body_block, *captions, *footnotes],
             )
-            two_layer_block["index"] = block["index"]
+            two_layer_block.index = block.index
             if block.get("score"):
                 two_layer_block["score"] = block["score"]
             if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.get("sub_type"):
@@ -460,7 +456,7 @@ class MagicModel:
         original_type_by_index: dict[int, str],
         position_by_index: dict[int, int],
     ) -> Block | None:
-        child_type = original_type_by_index[child_block["index"]]
+        child_type = original_type_by_index[child_block.index]
         if child_type not in self.VISUAL_CHILD_TYPES:
             return None
 

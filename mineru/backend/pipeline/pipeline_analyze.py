@@ -43,8 +43,8 @@ class ModelSingleton:
     def get_model(
         self,
         lang: str | None = None,
-        formula_enable: bool | None = None,
-        table_enable: bool | None = None,
+        formula_enable: bool = True,
+        table_enable: bool = True,
     ) -> MineruPipelineModel:
         key = (lang, formula_enable, table_enable)
         with self._lock:

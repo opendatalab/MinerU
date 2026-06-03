@@ -220,7 +220,6 @@ BLOCK_TYPES = {
 #     BlockType.DOC_TITLE,
 #     BlockType.PARAGRAPH_TITLE,
 # ]
-# OCR_DET_LINES_KEY = "_ocr_det_lines"
 # OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
 #     BlockType.LIST,
 #     BlockType.INDEX,
@@ -366,12 +365,15 @@ def _install_dict_compat(*classes) -> None:
 # ── model types ─────────────────────────────────────────────────────
 
 
+EMPTY_BBOX = (0.0, 0.0, 0.0, 0.0)
+
+
 @dataclass
 class Span:
     """Leaf node of the block tree.  Holds text, formula, image, or table content."""
 
     type: str
-    bbox: tuple[float, float, float, float] | None = None
+    bbox: tuple[float, float, float, float]
     content: str = ""
     score: float = 0.0
     image_path: str = ""
@@ -380,12 +382,14 @@ class Span:
     latex: str = ""
     _extra: dict = field(default_factory=dict)
 
+    # Internal
+    _cross_page: bool = False
+
     @classmethod
     def from_dict(cls, d: dict) -> Span:
-        bbox = d.get("bbox")
         return cls(
             type=d["type"],
-            bbox=tuple(bbox) if bbox else None,
+            bbox=tuple(d["bbox"]),
             content=d.get("content", ""),
             score=d.get("score", 0.0),
             image_path=d.get("image_path", ""),
@@ -399,47 +403,67 @@ class Span:
 class Line:
     """A line within a block, containing one or more spans."""
 
+    bbox: tuple[float, float, float, float]
     spans: list[Span] = field(default_factory=list)
-    bbox: tuple[float, float, float, float] | None = None
     _extra: dict = field(default_factory=dict)
+
+    # Internal
+    _is_list_start: bool = False
+    _is_list_end: bool = False
 
     @classmethod
     def from_dict(cls, d: dict) -> Line:
-        return cls(spans=[Span.from_dict(s) for s in d.get("spans", [])])
+        return cls(
+            bbox=tuple(d["bbox"]),
+            spans=[Span.from_dict(s) for s in d.get("spans", [])],
+        )
 
 
 @dataclass
 class Block:
     """A layout block on a page.  May nest child blocks (e.g. list items, image body)."""
 
+    # Required
+    index: int
     type: str
-    bbox: tuple[float, float, float, float] | None = None
+    bbox: tuple[float, float, float, float]
     lines: list[Line] = field(default_factory=list)
     blocks: list[Block] = field(default_factory=list)
+
+    # Optional
+    angle: int | None = None
+    score: float | None = None
     level: int | None = None
-    section_number: str = ""
     sub_type: str = ""
-    html: str = ""
-    merge_prev: bool = False
-    index: int | None = None
     guess_lang: str = ""
+    merge_prev: bool = False
+    section_number: str = ""
+    html: str = ""
+
+    # Internal
+    _cross_page: bool = False
+    _lines_deleted: bool = False
+    _ocr_det_lines: list[Line] = field(default_factory=list)
+    _line_avg_height: int = 0
+
     _extra: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> Block:
-        bbox = d.get("bbox")
         return cls(
+            index=d["index"],
             type=d["type"],
-            bbox=tuple(bbox) if bbox else None,
+            bbox=tuple(d["bbox"]),
             lines=[Line.from_dict(line) for line in d.get("lines", [])],
             blocks=[Block.from_dict(b) for b in d.get("blocks", [])],
+            angle=d.get("angle"),
+            score=d.get("score"),
             level=d.get("level"),
-            section_number=d.get("section_number", ""),
             sub_type=d.get("sub_type", ""),
-            html=d.get("html", ""),
-            merge_prev=d.get("merge_prev", False),
-            index=d.get("index"),
             guess_lang=d.get("guess_lang", ""),
+            merge_prev=d.get("merge_prev", False),
+            section_number=d.get("section_number", ""),
+            html=d.get("html", ""),
         )
 
     def all_spans(self) -> Iterator[Span]:

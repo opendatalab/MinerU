@@ -60,6 +60,7 @@ dependencies = [
     "fastapi",
     "python-multipart",
     "uvicorn",
+    "lxml-stubs",
 ]
 
 [project.optional-dependencies]

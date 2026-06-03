@@ -3,11 +3,10 @@ import json
 from io import BytesIO
 
 from loguru import logger
-from pypdf import PdfReader, PdfWriter, PageObject
+from pypdf import PageObject, PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
 from .enum_class import BlockType, ContentType, SplitFlag
-
 
 # 文本类 block 共用 text bbox 样式，避免新增文本形态时遗漏多个绘制入口。
 TEXT_LIKE_BLOCK_TYPES_FOR_BBOX = {
@@ -46,25 +45,25 @@ def cal_canvas_rect(page, bbox):
         rect: [x0, y0, width, height] representing the rectangle coordinates on the canvas.
     """
     page_width, page_height = float(page.cropbox[2]), float(page.cropbox[3])
-    
-    actual_width = page_width    # The width of the final PDF display
+
+    actual_width = page_width  # The width of the final PDF display
     actual_height = page_height  # The height of the final PDF display
-    
+
     rotation_obj = page.get("/Rotate", 0)
     try:
         rotation = int(rotation_obj) % 360  # cast rotation to int to handle IndirectObject
     except (ValueError, TypeError) as e:
         logger.warning(f"Invalid /Rotate value {rotation_obj!r} on page; defaulting to 0. Error: {e}")
         rotation = 0
-    
+
     if rotation in [90, 270]:
         # PDF is rotated 90 degrees or 270 degrees, and the width and height need to be swapped
         actual_width, actual_height = actual_height, actual_width
-        
+
     x0, y0, x1, y1 = bbox
     rect_w = abs(x1 - x0)
     rect_h = abs(y1 - y0)
-    
+
     if rotation == 270:
         rect_w, rect_h = rect_h, rect_w
         x0 = actual_height - y1
@@ -74,12 +73,12 @@ def cal_canvas_rect(page, bbox):
         # y0 stays the same
     elif rotation == 90:
         rect_w, rect_h = rect_h, rect_w
-        x0, y0 = y0, x0 
+        x0, y0 = y0, x0
     else:
         # rotation == 0
         y0 = page_height - y1
-    
-    rect = [x0, y0, rect_w, rect_h]        
+
+    rect = [x0, y0, rect_w, rect_h]
     return rect
 
 
@@ -88,7 +87,7 @@ def draw_bbox_without_number(i, bbox_list, page, c, rgb_config, fill_config):
     page_data = bbox_list[i]
 
     for bbox in page_data:
-        rect = cal_canvas_rect(page, bbox)  # Define the rectangle  
+        rect = cal_canvas_rect(page, bbox)  # Define the rectangle
 
         if fill_config:  # filled rectangle
             c.setFillColorRGB(new_rgb[0], new_rgb[1], new_rgb[2], 0.3)
@@ -107,8 +106,8 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
 
     for j, bbox in enumerate(page_data):
         # 确保bbox的每个元素都是float
-        rect = cal_canvas_rect(page, bbox)  # Define the rectangle  
-        
+        rect = cal_canvas_rect(page, bbox)  # Define the rectangle
+
         if draw_bbox:
             if fill_config:
                 c.setFillColorRGB(*new_rgb, 0.3)
@@ -118,7 +117,7 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
                 c.rect(rect[0], rect[1], rect[2], rect[3], stroke=1, fill=0)
         c.setFillColorRGB(*new_rgb, 1.0)
         c.setFontSize(size=10)
-        
+
         c.saveState()
         rotation_obj = page.get("/Rotate", 0)
         try:
@@ -135,7 +134,7 @@ def draw_bbox_with_number(i, bbox_list, page, c, rgb_config, fill_config, draw_b
             c.translate(rect[0] - 2, rect[1] + 10)
         elif rotation == 270:
             c.translate(rect[0] + rect[2] - 10, rect[1] - 2)
-            
+
         c.rotate(rotation)
         c.drawString(0, 0, str(j + 1))
         c.restoreState()
@@ -167,8 +166,8 @@ def draw_layout_bbox(pdf_info, pdf_bytes, out_path, filename):
         list_items = []
         indices = []
 
-        for dropped_bbox in page['discarded_blocks']:
-            page_dropped_list.append(dropped_bbox['bbox'])
+        for dropped_bbox in page["discarded_blocks"]:
+            page_dropped_list.append(dropped_bbox["bbox"])
         dropped_bbox_list.append(page_dropped_list)
         for block in _get_layout_source_blocks(page):
             bbox = block["bbox"]
@@ -323,16 +322,16 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
     dropped_list = []
 
     def get_span_info(span):
-        if span['type'] == ContentType.TEXT:
-            page_text_list.append(span['bbox'])
-        elif span['type'] == ContentType.INLINE_EQUATION:
-            page_inline_equation_list.append(span['bbox'])
-        elif span['type'] == ContentType.INTERLINE_EQUATION:
-            page_interline_equation_list.append(span['bbox'])
-        elif span['type'] in [ContentType.IMAGE, ContentType.CHART]:
-            page_image_list.append(span['bbox'])
-        elif span['type'] == ContentType.TABLE:
-            page_table_list.append(span['bbox'])
+        if span["type"] == ContentType.TEXT:
+            page_text_list.append(span["bbox"])
+        elif span["type"] == ContentType.INLINE_EQUATION:
+            page_inline_equation_list.append(span["bbox"])
+        elif span["type"] == ContentType.INTERLINE_EQUATION:
+            page_interline_equation_list.append(span["bbox"])
+        elif span["type"] in [ContentType.IMAGE, ContentType.CHART]:
+            page_image_list.append(span["bbox"])
+        elif span["type"] == ContentType.TABLE:
+            page_table_list.append(span["bbox"])
 
     for page in pdf_info:
         page_text_list = []
@@ -342,24 +341,23 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         page_table_list = []
         page_dropped_list = []
 
-
         # 构造dropped_list
-        for block in page['discarded_blocks']:
-            for line in block['lines']:
-                for span in line['spans']:
-                    page_dropped_list.append(span['bbox'])
+        for block in page["discarded_blocks"]:
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    page_dropped_list.append(span["bbox"])
         dropped_list.append(page_dropped_list)
         # 构造其余useful_list
         # for block in page['para_blocks']:  # span直接用分段合并前的结果就可以
-        for block in page['preproc_blocks']:
-            if block['type'] in SPAN_SOURCE_BLOCK_TYPES:
-                for line in block['lines']:
-                    for span in line['spans']:
+        for block in page["preproc_blocks"]:
+            if block["type"] in SPAN_SOURCE_BLOCK_TYPES:
+                for line in block["lines"]:
+                    for span in line["spans"]:
                         get_span_info(span)
-            elif block['type'] in [BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE]:
-                for sub_block in block['blocks']:
-                    for line in sub_block['lines']:
-                        for span in line['spans']:
+            elif block["type"] in [BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE]:
+                for sub_block in block["blocks"]:
+                    for line in sub_block["lines"]:
+                        for span in line["spans"]:
                             get_span_info(span)
         text_list.append(page_text_list)
         inline_equation_list.append(page_inline_equation_list)
@@ -381,7 +379,7 @@ def draw_span_bbox(pdf_info, pdf_bytes, out_path, filename):
         c = canvas.Canvas(packet, pagesize=custom_page_size)
 
         # 获取当前页面的数据
-        draw_bbox_without_number(i, text_list, page, c,[255, 0, 0], False)
+        draw_bbox_without_number(i, text_list, page, c, [255, 0, 0], False)
         draw_bbox_without_number(i, inline_equation_list, page, c, [0, 255, 0], False)
         draw_bbox_without_number(i, interline_equation_list, page, c, [0, 0, 255], False)
         draw_bbox_without_number(i, image_list, page, c, [255, 204, 0], False)
@@ -423,5 +421,6 @@ if __name__ == "__main__":
         pdf_ann = json.load(f)
     pdf_info = pdf_ann["pdf_info"]
     from mineru.utils.pdf_document import PDFDocument
+
     doc = PDFDocument(pdf_bytes)
     doc.draw_layout_bbox(pdf_info, "examples/output_with_layout.pdf")

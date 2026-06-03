@@ -9,7 +9,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, Generator, Iterator
+from typing import Any, AsyncIterator, Generator, Iterator
 
 import pypdfium2 as pdfium
 from loguru import logger
@@ -386,17 +386,14 @@ def _predictor_uses_mlx(predictor: MinerUClient, backend: str | None = None) -> 
     return type(client).__module__.endswith(".mlx_client")
 
 
-def _maybe_enable_serial_execution(
-    predictor: MinerUClient,
-    backend: str | None = None,
-) -> MinerUClient:
+def _maybe_enable_serial_execution(predictor: MinerUClient, backend: str | None = None) -> MinerUClient:
     if _predictor_uses_mlx(predictor, backend) and not hasattr(predictor, "_mineru_execution_lock"):
-        predictor._mineru_execution_lock = threading.Lock()
+        setattr(predictor, "_mineru_execution_lock", threading.Lock())
     return predictor
 
 
 @contextmanager
-def predictor_execution_guard(predictor: MinerUClient) -> None:
+def predictor_execution_guard(predictor: MinerUClient) -> Iterator[None]:
     lock = getattr(predictor, "_mineru_execution_lock", None)
     if lock is None:
         yield
@@ -406,7 +403,7 @@ def predictor_execution_guard(predictor: MinerUClient) -> None:
 
 
 @asynccontextmanager
-async def aio_predictor_execution_guard(predictor: MinerUClient) -> None:
+async def aio_predictor_execution_guard(predictor: MinerUClient) -> AsyncIterator[None]:
     lock = getattr(predictor, "_mineru_execution_lock", None)
     if lock is None:
         yield
