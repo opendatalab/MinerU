@@ -7,6 +7,7 @@ from mineru.utils.boxbase import (
 )
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
+from mineru.types import Block, Span
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
     merge_spans_to_line, line_sort_spans_by_left_to_right, is_vertical_text_block_by_spans
 from mineru.utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
@@ -128,12 +129,6 @@ class MagicModel:
         self.__classify_visual_blocks()
         self.__build_return_blocks()
 
-        # convert all block lists to typed Block objects
-        from mineru.types import block_from_dict
-
-        self.preproc_blocks = [block_from_dict(b) for b in self.preproc_blocks]
-        self.discarded_blocks = [block_from_dict(b) for b in self.discarded_blocks]
-
 
     @staticmethod
     def __fix_text_block(block):
@@ -171,13 +166,13 @@ class MagicModel:
 
     @staticmethod
     def __copy_block_fields(block, **overrides):
-        copied_block = {
-            key: value
-            for key, value in block.items()
-            if key not in {"cls_id", "label"}
-        }
-        copied_block.update(overrides)
-        return copied_block
+        extra = {k: v for k, v in block.items()
+                 if k not in {"cls_id", "label"} and k not in Block.__dataclass_fields__}
+        return Block(
+            type=overrides.pop("type", block.get("type", "")),
+            bbox=overrides.pop("bbox", block.get("bbox")),
+            _extra={**extra, **overrides},
+        )
 
 
     @staticmethod
@@ -266,10 +261,7 @@ class MagicModel:
                 ContentType.CHART,
                 ContentType.INTERLINE_EQUATION,
             ]:
-                span = {
-                    "bbox": block["bbox"],
-                    "type": span_type,
-                }
+                span = Span(type=span_type, bbox=block["bbox"])
                 if span_type == ContentType.IMAGE and block.get("sub_type") == "seal":
                     seal_text = self.__normalize_seal_text(block.get("text"))
                     if seal_text:

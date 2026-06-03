@@ -51,12 +51,20 @@ def _extra_delitem(self, key: str) -> None:
     del self._extra[key]
 
 
+def _extra_pop(self, key: str, default: Any = None) -> Any:
+    val = _extra_get(self, key, default)
+    if key in self._extra:
+        del self._extra[key]
+    return val
+
+
 def _install_dict_compat(*classes) -> None:
     for cls in classes:
         cls.__getitem__ = _extra_getitem
         cls.__setitem__ = _extra_setitem
         cls.__delitem__ = _extra_delitem
         cls.get = _extra_get
+        cls.pop = _extra_pop
         cls.__contains__ = _extra_contains
 
 
