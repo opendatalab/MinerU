@@ -24,9 +24,27 @@ def _load_union_make(backend: str):
         from ..backend.vlm.vlm_middle_json_mkcontent import union_make
 
         return union_make
+    if backend == "flash":
+        return _flash_union_make
     from ..backend.office.office_middle_json_mkcontent import union_make
 
     return union_make
+
+
+def _flash_union_make(pages: list, mode) -> str | list:
+    """Minimal union_make for flash: just concatenate text from spans."""
+    from ..utils.enum_class import MakeMode
+
+    if mode == MakeMode.MM_MD:
+        parts: list[str] = []
+        for p in pages:
+            for block in getattr(p, "para_blocks", []):
+                for line in getattr(block, "lines", []):
+                    for span in getattr(line, "spans", []):
+                        if getattr(span, "content", ""):
+                            parts.append(span.content)
+        return "\n\n".join(parts)
+    return []
 
 
 @dataclass
@@ -56,6 +74,22 @@ class ParseResult:
         markdown = union_make(self.pages, MakeMode.MM_MD)
         assert isinstance(markdown, str)
         return markdown
+
+    def markdown_with_markers(self, *, page_count: int | None = None) -> str:
+        """Generate markdown with page boundary markers (<!-- page N of M -->)."""
+        total = page_count or len(self.pages)
+        union_make = _load_union_make(self._backend)
+        parts: list[str] = []
+        for p in self.pages:
+            page_num = p.page_idx + 1  # 1-based
+            parts.append(f"<!-- page {page_num} of {total} -->")
+            try:
+                page_md = union_make([p], MakeMode.MM_MD)
+                if isinstance(page_md, str) and page_md.strip():
+                    parts.append(page_md)
+            except Exception:
+                pass
+        return "\n\n".join(parts)
 
     def content_list(self) -> list[dict[str, Any]]:
         union_make = _load_union_make(self._backend)

@@ -95,7 +95,48 @@ def parse(
             start_page_id=start_page_id,
             end_page_id=end_page_id,
         )
+    elif backend == "flash":
+        return _parse_flash(path, start_page_id, end_page_id, output_dir)
     else:
         raise ValueError(f"Unknown backend: {backend}")
 
     return parser.parse(path)
+
+
+def _parse_flash(path: str | Path, start_page_id: int, end_page_id: int | None,
+                output_dir: str = "./output") -> ParseResult:
+    """Flash parse — extract text via pypdfium2 and build proper ParseResult."""
+    from pathlib import Path as P
+
+    from ..backend.flash.pdf_extractor import extract_text
+    from .. import version
+    from .types import Block, Line, PageInfo, Span
+
+    path = P(path)
+    text = extract_text(str(path), start_page=start_page_id, end_page=end_page_id)
+    pages_text = text.split("\n\n")  # each page separated by double newline
+
+    page_count = len(pages_text)
+    current_page = start_page_id
+
+    pages: list[PageInfo] = []
+    for pt in pages_text:
+        if not pt.strip():
+            continue
+        block = Block(
+            type="text",
+            lines=[Line(spans=[Span(type="text", content=pt.strip())])],
+        )
+        page = PageInfo(
+            page_idx=current_page,
+            para_blocks=[block],
+        )
+        pages.append(page)
+        current_page += 1
+
+    return ParseResult(
+        pages=pages,
+        _backend="flash",
+        _version_name=version.__version__,
+        _file_name=path.stem,
+    )

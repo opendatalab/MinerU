@@ -1,0 +1,1 @@
+# Flash tier: CPU-only lightweight PDF text extraction.

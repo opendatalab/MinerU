@@ -1,0 +1,113 @@
+"""mineru server — server lifecycle management."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import time
+
+import typer
+
+from mineru.constants import SOCKET_PATH
+from mineru.cli_next.output import format_server_status, print_error, print_success, print_info
+
+app = typer.Typer(help="Server lifecycle management", no_args_is_help=True)
+
+
+def _server_running() -> bool:
+    if not os.path.exists(SOCKET_PATH):
+        return False
+    try:
+        from mineru.server.client import MineruClient
+        c = MineruClient(timeout=3)
+        c.server_status()
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_sock(timeout: float = 15.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if os.path.exists(SOCKET_PATH):
+            time.sleep(0.3)
+            if _server_running():
+                return True
+        time.sleep(0.3)
+    return False
+
+
+@app.command()
+def start() -> None:
+    """Start the mineru server in the background."""
+    if _server_running():
+        print_info("Server is already running.")
+        return
+
+    # Clean stale socket
+    try:
+        os.unlink(SOCKET_PATH)
+    except OSError:
+        pass
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "mineru.server.app"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    if not _wait_for_sock():
+        proc.kill()
+        print_error("Server failed to start within 15 seconds.")
+        raise typer.Exit(1)
+
+    print_success(f"Server started (PID {proc.pid}). Socket: {SOCKET_PATH}")
+
+
+@app.command()
+def stop() -> None:
+    """Stop the mineru server gracefully."""
+    if not _server_running():
+        print_info("Server is not running.")
+        return
+
+    try:
+        from mineru.server.client import MineruClient
+        c = MineruClient(timeout=5)
+        c.shutdown()
+    except Exception:
+        pass
+
+    time.sleep(0.5)
+    try:
+        os.unlink(SOCKET_PATH)
+    except OSError:
+        pass
+
+    print_success("Server stopped.")
+
+
+@app.command()
+def restart() -> None:
+    """Restart the mineru server."""
+    if _server_running():
+        stop()
+        time.sleep(1)
+    start()
+
+
+@app.command()
+def status() -> None:
+    """Show server status."""
+    if not _server_running():
+        print_info("Server is not running.")
+        return
+
+    try:
+        from mineru.server.client import MineruClient
+        c = MineruClient(timeout=5)
+        data = c.server_status()
+        format_server_status(data)
+    except Exception as exc:
+        print_error(str(exc))

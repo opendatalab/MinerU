@@ -47,7 +47,7 @@
 | UDS | `/tmp/mineru.sock` | `0600` | CLI / MCP / 桌面端通信 |
 | TCP | `127.0.0.1:<随机端口>` | loopback only | 可选，供浏览器访问 Web UI (P1) |
 
-Server 启动后写入 lock 文件 `~/MinerU/server.lock`，内容为 PID 和 TCP 端口。CLI 通过此文件发现 server 状态。
+Server 启动后 UDS sock 文件位于 `/tmp/mineru.sock`（权限 0600）。CLI 通过 sock 连接检测 server 状态。TCP 端口按 config 中 `http.enabled` 决定是否启动。
 
 ---
 
@@ -83,7 +83,7 @@ Core（数据层：DB、FTS、文件 IO）
 | Service | 依赖 | 职责 |
 |---------|------|------|
 | `ParseService` | DB, FTS, ConfigService | 接收解析请求、文件注册（SHA-256 + metadata）、分配任务、管理 per-tier 解析状态 |
-| `SearchService` | DB, FTS | 内容搜索 (fts_index)、文件名搜索 (fts_filenames) |
+| `SearchService` | DB, FTS | 内容搜索 (fts_contents)、文件名搜索 (fts_filenames) |
 | `ConfigService` | DB | KV 配置读写、Watch 目录 CRUD、Parsing-Rules CRUD、路径排除判断 |
 | `CleanupService` | DB | 孤儿文档清理、已删除文件清理、解析缓存清理 |
 
@@ -111,11 +111,14 @@ CREATE TABLE files (
     ext             TEXT    NOT NULL,
     size_bytes      INTEGER NOT NULL,
     mtime_ms        INTEGER NOT NULL,
+    birthtime_ms    INTEGER,           -- 文件创建时间，Unix epoch ms
     sha256          TEXT    REFERENCES docs(sha256),
     watch_id        INTEGER REFERENCES watch_targets(id),
     scan_status     TEXT    NOT NULL DEFAULT 'active',  -- active / deleted / unreachable
-    reg_locked_at   INTEGER,          -- 注册锁，Unix epoch ms
-    reg_error       TEXT,
+    locked_at       INTEGER,           -- Unix epoch ms
+    error_code      TEXT,              -- 错误码，e.g. "permission_denied"
+    error_msg       TEXT,              -- 人类可读错误描述
+    deleted_at      INTEGER,           -- 标记删除时间，Unix epoch ms
     first_seen_at   INTEGER NOT NULL,  -- Unix epoch ms
     updated_at      INTEGER NOT NULL   -- Unix epoch ms
 );
@@ -136,44 +139,113 @@ CREATE TABLE docs (
     lang            TEXT,
     title           TEXT,
     author          TEXT,
+    subject         TEXT,
+    keywords        TEXT,
     is_encrypted    INTEGER NOT NULL DEFAULT 0,
+    is_scanned      INTEGER NOT NULL DEFAULT 0,
+    meta_tier       TEXT,               -- 当前 metadata 的来源 tier，NULL 表示注册阶段
     first_seen_at   INTEGER NOT NULL,  -- Unix epoch ms
     updated_at      INTEGER NOT NULL   -- Unix epoch ms
 );
 ```
 
-> **注意**：`docs` 表不含解析状态字段（无 `parse_status`、`preview_text` 等），解析状态全部在 `doc_parses` 表中按 tier 独立管理。注册阶段仅填充 metadata（SHA-256、page_count、mime_type 等），不提取预览文本——预览文本由 flash tier 的解析产出。
+> **docs 元数据填充策略**：
+> - **注册阶段**（register_file）：SHA-256 已全量读文件，顺手通过 pypdfium2 / python-docx 提取 metadata，成本可忽略。page_count 准确（pypdfium2 仅读 Catalog），title/author/subject/keywords 取自文件 metadata（可能不准，做保护性截断：title≤500、author≤200、subject≤1000、keywords≤1000）。`meta_tier=NULL`
+> - **解析完成后**（ParseWorker）：引擎产出的 metadata 仅在 `tier ≥ meta_tier`（或 meta_tier 为 NULL）时 UPDATE docs 覆盖，同时更新 `meta_tier`。同一 tier 的多次批次不会重复更新
+> - 解析状态全部在 `parses` 表中按 tier 独立管理
 
-#### doc_parses — 每个 tier 独立的解析记录
+#### parses — 解析记录（每次解析请求为一行）
 
 ```sql
-CREATE TABLE doc_parses (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    sha256          TEXT    NOT NULL REFERENCES docs(sha256),
-    tier            TEXT    NOT NULL,  -- flash / standard / pro
-    parse_status    TEXT    NOT NULL DEFAULT 'pending',  -- pending / parsing / done / error
-    parsed_pages    TEXT,              -- JSON array, e.g. [1,2,3,4,5]
-    total_pages     INTEGER,
-    parse_locked_at INTEGER,           -- Unix epoch ms
-    parse_error     TEXT,
-    parse_path      TEXT,              -- 解析产物存储路径
-    parsed_at       INTEGER,           -- Unix epoch ms
-    created_at      INTEGER NOT NULL,  -- Unix epoch ms
-    updated_at      INTEGER NOT NULL,  -- Unix epoch ms
-    UNIQUE(sha256, tier)
+CREATE TABLE parses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sha256      TEXT    NOT NULL REFERENCES docs(sha256),
+    tier        TEXT    NOT NULL,         -- flash / standard / pro
+    pages       TEXT    NOT NULL,         -- 页码范围，正值已展开，e.g. "1~5,46~50"
+    status      TEXT    NOT NULL DEFAULT 'pending',  -- pending / parsing / done / failed
+    priority    INTEGER NOT NULL DEFAULT 0,
+    locked_at   INTEGER,                 -- Unix epoch ms
+    error_code  TEXT,                   -- 错误码，e.g. "parse_timeout"
+    error_msg   TEXT,                   -- 人类可读错误描述
+    output_path TEXT,                    -- 解析产物存储路径
+    done_at     INTEGER,                 -- Unix epoch ms
+    created_at  INTEGER NOT NULL,        -- Unix epoch ms
+    updated_at  INTEGER NOT NULL         -- Unix epoch ms
 );
 
-CREATE INDEX idx_doc_parses_status ON doc_parses(parse_status);
+CREATE INDEX idx_parses_status ON parses(status, priority DESC, created_at ASC);
+CREATE INDEX idx_parses_doc ON parses(sha256, tier);
 ```
 
-> **设计要点**：每个 tier 的解析记录独立存储在 `doc_parses` 表中，同一文档可同时拥有 flash、standard、pro 三份解析结果。`parsed_pages` 记录已解析的页码列表，支持增量解析。`--force` 时删除对应 tier 的记录后重建。
+**pages 字段**：
+- 用 range 字符串描述，如 `"1~5"`、`"1~5,46~50"`、`"1~1000"`
+- 仅存正值——用户输入的负索引（如 `-5~-1`）和 `all` 在插入前根据 `docs.page_count` 展开为正值
+- 不存储为逐页展开的数组（1000 页全解析存 `"1~1000"`，不是 `"1,2,3,...,1000"`）
 
-#### fts_index — 全文搜索索引（flash 解析文本）
+**并发**：Worker 获取单条 batch：
+```sql
+UPDATE parses
+SET locked_at=?, status='parsing'
+WHERE id = (
+    SELECT id FROM parses
+    WHERE status='pending' AND (locked_at IS NULL OR locked_at<?)
+    ORDER BY priority DESC, created_at ASC LIMIT 1
+)
+RETURNING *;
+```
+
+**增量解析**：同一 sha256+tier 可有多行（如 1~5 和 6~10 是两个 batch），各自独立执行。Agent 等待时 `priority=1`，Watch 后台 `priority=0`。
+
+**Force 重解析**：直接 `INSERT` 新行即可（允许与已有行 pages 重叠）：
+
+```python
+# --force --pages 4~7
+await db.execute(
+    "INSERT INTO parses (sha256, tier, pages, status, priority, created_at, updated_at) "
+    "VALUES (?, ?, ?, 'pending', 1, ?, ?)",
+    (sha256, tier, "4~7", now_ms(), now_ms())
+)
+```
+
+**缓存命中**（`request_parse()` 时）：查该 (sha256, tier) 所有 done 行，按 `done_at DESC` 排序取最新覆盖：
+
+```python
+def pages_covered(request_pages: str, done_rows: list[dict]) -> bool:
+    """检查请求的 pages 是否已被 done 批次完全覆盖。
+    按 done_at 倒序，取最新 batch 的覆盖范围。"""
+    needed = parse_range_set(request_pages)      # → {1,2,3,4,5}
+    covered = set()
+    for r in sorted(done_rows, key=lambda r: r["done_at"], reverse=True):
+        covered |= parse_range_set(r["pages"])
+        if needed <= covered:
+            return True
+    return False
+```
+
+**Compaction**（后台定时任务）：合并同一 (sha256, tier) 的 done 行，消除重叠和邻接区间，减少 parses 表记录数：
+
+```
+合并前                         合并后
+"1~5" + "6~10"             → "1~10"
+"1~5" + "4~7"              → "1~7"
+"1~5" + "6~10" + "12~15"   → "1~10" + "12~15"
+
+算法：
+1. 取出所有 done 行，展开 pages 为整数集合
+2. 排序后合并邻接区间（e.g. [1..5]+[6..10] → "1~10"）
+3. DELETE 旧 done 行 + INSERT 合并后的新行
+4. done_at 取被合并行中的最大值
+```
+
+Compaction 不在解析 critical path，作为低优先级后台周期性任务运行。
+
+#### fts_contents — 全文搜索索引
 
 ```sql
-CREATE VIRTUAL TABLE fts_index USING fts5(
-    doc_sha256 UNINDEXED,
-    indexed_text,
+CREATE VIRTUAL TABLE fts_contents USING fts5(
+    sha256 UNINDEXED,
+    tier UNINDEXED,             -- 当前内容的来源 tier
+    text,
     title,
     author,
     filename,
@@ -181,25 +253,35 @@ CREATE VIRTUAL TABLE fts_index USING fts5(
 );
 ```
 
-#### fts_parsed — 全文搜索索引（standard/pro 完整解析文本）
+**FTS 更新策略**：保留最高 tier 的内容。
 
-```sql
-CREATE VIRTUAL TABLE fts_parsed USING fts5(
-    doc_sha256 UNINDEXED,
-    full_text,
-    title,
-    author,
-    filename,
-    tokenize='unicode61'
-);
+```python
+TIER_ORDER = {"flash": 0, "standard": 1, "pro": 2}
+MAX_FTS_CHARS = 30_000   # 超出则 head+tail 截断（前 15K + 后 15K）
+
+async def update_fts(sha256, text, title, author, filename, tier):
+    existing = await db.fetchone(
+        "SELECT tier FROM fts_contents WHERE sha256=?", (sha256,))
+    if existing and TIER_ORDER[existing["tier"]] >= TIER_ORDER[tier]:
+        return  # 跳过——当前已有更高或同 tier 的内容
+
+    text = truncate_head_tail(text, MAX_FTS_CHARS)
+    await db.execute(
+        "INSERT OR REPLACE INTO fts_contents (sha256, text, title, author, filename, tier) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (sha256, text, title or "", author or "", filename, tier))
 ```
+
+- flash 先完成 → 写入；standard 后完成 → 覆盖；pro 后完成 → 再覆盖
+- pro 先完成 → 写入；flash 后完成 → 跳过（pro > flash）
+- 搜索只查这一张表，完整内容从解析产物文件读取
 
 #### fts_filenames — 文件名搜索
 
 ```sql
 CREATE VIRTUAL TABLE fts_filenames USING fts5(
     file_id UNINDEXED,
-    filename_text,
+    filename,
     ext,
     tokenize='unicode61'
 );
@@ -303,25 +385,25 @@ INSERT INTO config (key, value) VALUES
 ```sql
 -- RegistrationWorker 获取任务
 UPDATE files
-SET reg_locked_at = ?
+SET locked_at = ?
 WHERE id = (
     SELECT id FROM files
     WHERE sha256 IS NULL
       AND scan_status = 'active'
-      AND (reg_locked_at IS NULL OR reg_locked_at < ?)
+      AND (locked_at IS NULL OR locked_at < ?)
     ORDER BY first_seen_at ASC
     LIMIT 1
 )
 RETURNING *;
 
 -- ParseWorker 获取任务
-UPDATE doc_parses
-SET parse_locked_at = ?, parse_status = 'parsing'
+UPDATE parses
+SET locked_at = ?, status = 'parsing'
 WHERE id = (
-    SELECT id FROM doc_parses
-    WHERE parse_status = 'pending'
-      AND (parse_locked_at IS NULL OR parse_locked_at < ?)
-    ORDER BY created_at ASC
+    SELECT id FROM parses
+    WHERE status = 'pending'
+      AND (locked_at IS NULL OR locked_at < ?)
+    ORDER BY priority DESC, created_at ASC
     LIMIT 1
 )
 RETURNING *;
@@ -344,11 +426,11 @@ RETURNING *;
   - 计算 SHA-256
   - 提取 metadata (mime_type, page_count, title, author)
   - FTS 索引文件名
-  - 触发默认 flash 解析（INSERT INTO doc_parses, tier='flash', parse_status='pending'）
+  - 触发默认 flash 解析（INSERT INTO parses (sha256, tier, pages, status='pending', priority=0)）
 
 阶段 2: 解析（ParseWorker）
-  - flash tier：提取首尾各 5 页文本，写入 fts_index
-  - standard/pro tier：完整解析，写入 fts_parsed
+  - flash tier：提取首尾各 5 页文本，写入 fts_contents
+  - standard/pro tier：完整解析，写入 fts_contents（覆盖 flash 的）
 ```
 
 > **设计简化**：everydoc 的 L1 Index（注册 + 预览文本提取）在 MinerU 中被拆为：注册（仅 SHA-256 + metadata）+ flash 解析（首尾页文本）。用户无需理解"索引"和"解析"两个概念——所有内容提取都是 parse，只是 tier 不同。
@@ -359,16 +441,15 @@ RETURNING *;
 Watch 检测到文件事件
   → 过滤（ext 白名单 + exclude 规则）
   → INSERT OR IGNORE INTO files (path, filename, ext, size_bytes, mtime_ms, sha256=NULL)
-  → RegistrationWorker.acquire_task(): UPDATE files SET reg_locked_at WHERE sha256 IS NULL
+  → RegistrationWorker.acquire_task(): UPDATE files SET locked_at WHERE sha256 IS NULL
   → process_file():
        1. compute SHA-256 (asyncio.to_thread)
-       2. INSERT OR IGNORE INTO docs (sha256, size_bytes)
-       3. extract metadata (title, author, page_count, mime_type)
-       4. FTS insert fts_filenames
-       5. UPDATE files SET sha256=?, reg_locked_at=NULL
-       6. check parsing-rules → 命中时用规则指定的 tier，否则用 default_tier (flash)
-       7. INSERT INTO doc_parses (sha256, tier, parse_status='pending')
-  → 失败时: UPDATE files SET sha256=NULL, reg_error=?（可重试）
+       2. INSERT OR IGNORE INTO docs (sha256, size_bytes, page_count, title, author, subject, keywords, is_encrypted)
+       3. FTS insert fts_filenames
+       4. UPDATE files SET sha256=?, locked_at=NULL
+       5. check parsing-rules
+       6. INSERT INTO parses (sha256, tier, pages, status='pending', priority=0)
+  → 失败时: UPDATE files SET sha256=NULL, error_code=?, error_msg=?（可重试）
 ```
 
 ### 5.3 解析请求
@@ -378,22 +459,23 @@ Watch 检测到文件事件
   → CLI → Product SDK (client.py) → Server POST /parse
   → ParseService.request_parse():
        1. 查 files 表获取 sha256（如果文件未注册，先同步注册）
-       2. 查 doc_parses WHERE sha256=? AND tier='standard'
-       3. 已有记录且 parsed_pages 覆盖请求范围 → 直接返回缓存
-       4. 否则 → INSERT OR UPDATE doc_parses (parse_status='pending', parsed_pages 合并)
-       5. --force 时 → DELETE + INSERT
+       2. 查 parses WHERE sha256=? AND tier=? AND status='done'
+       3. 已有 done 批次的 pages 覆盖请求范围 → 直接返回缓存
+       4. 否则 → INSERT INTO parses (sha256, tier, pages, priority=1)
+       5. --force 时 → DELETE FROM parses WHERE sha256=? AND tier=?，再 INSERT
   → ParseWorker.acquire_task()
   → process_doc():
-       1. 从 doc_parses 读取 tier、待解析页码
+       1. 从 parses 读取 sha256、tier、pages
        2. resolve_engine(tier) 确定 backend
        3. 调用 mineru.parser.parse(path, tier=..., pages=...)
        4. 写入解析产物到 ~/MinerU/parsed/{sha256[:2]}/{sha256}/{tier}/
-       5. flash → UPDATE fts_index；standard/pro → UPDATE fts_parsed
-       6. UPDATE doc_parses SET parse_status='done', parsed_pages=?, parsed_at=?
-  → 失败时: UPDATE doc_parses SET parse_status='error', parse_error=?
+       5. INSERT OR REPLACE fts_contents（仅当新 tier ≥ 当前 tier；截断到 30K head+tail）
+       6. UPDATE parses SET status='done', done_at=?
+       7. UPDATE docs（引擎能拿到更好的 title/author/subject/keywords/lang/is_scanned 时覆盖）
+  → 失败时: UPDATE parses SET status='failed', error_code=?, error_msg=?
 ```
 
-### 5.3 解析产物存储
+### 5.4 解析产物存储
 
 ```
 ~/MinerU/
@@ -417,19 +499,18 @@ Watch 检测到文件事件
 
 每个 tier 独立目录，互不覆盖。
 
-### 5.4 搜索
-
+### 5.5 搜索
 ```
 用户请求: mineru search "关键词"
   → SearchService.search():
        1. 分词（jieba / unicode61）
-       2. FTS5 MATCH on fts_parsed（优先）+ fts_index（补充）
+       2. FTS5 MATCH on fts_contents
        3. JOIN files/docs 获取元数据
-       4. 按 doc_sha256 去重（同一文档可能有多个路径）
+       4. 按 sha256 去重（同一文档可能有多个路径）
        5. 结果标注解析状态（flash / standard / pro）
 ```
 
-### 5.5 可插拔设备
+### 5.6 可插拔设备
 
 ```
 DeviceMonitor 每 5 秒检测:
@@ -459,8 +540,8 @@ async def startup():
     await db.initialize()
 
     # 3. 崩溃恢复：清理 stale 锁
-    await db.execute("UPDATE files SET reg_locked_at = NULL WHERE reg_locked_at IS NOT NULL")
-    await db.execute("UPDATE doc_parses SET parse_locked_at = NULL, parse_status = 'error' WHERE parse_status = 'parsing'")
+    await db.execute("UPDATE files SET locked_at = NULL WHERE locked_at IS NOT NULL")
+    await db.execute("UPDATE parses SET locked_at = NULL, status = 'failed' WHERE status = 'parsing'")
 
     # 4. 创建 services
     config_svc = ConfigService(db)
@@ -474,8 +555,8 @@ async def startup():
         asyncio.create_task(parse_worker.run())
     asyncio.create_task(device_monitor.run())
 
-    # 6. 写入 lock 文件
-    write_lock_file(pid=os.getpid(), port=tcp_port)
+    # 6. 启动 uvicorn（UDS + 可选 TCP）
+    await uvicorn_server.serve()
 ```
 
 ### 6.2 关闭
@@ -491,8 +572,7 @@ async def shutdown():
     # 2. 关闭数据库连接
     await db.close()
 
-    # 3. 删除 lock 文件和 socket 文件
-    remove_lock_file()
+    # 3. 删除 socket 文件
     remove_socket()
 ```
 
@@ -502,8 +582,8 @@ Server 启动时执行以下恢复操作：
 
 | 操作 | 目的 |
 |------|------|
-| 清除所有 `reg_locked_at` | 释放因崩溃而未释放的注册锁 |
-| 清除所有 `parse_locked_at`，将 `parsing` 状态改为 `error` | 释放解析锁，标记为可重试 |
+| `UPDATE files SET locked_at=NULL` | 释放因崩溃而未释放的注册锁 |
+| `UPDATE parses SET locked_at=NULL, status='failed' WHERE status='parsing'` | 释放解析锁，标记为可重试 |
 | 检查已注册文件的活性（`os.path.exists`） | 标记已删除的文件 |
 
 ---
@@ -521,9 +601,8 @@ Server 启动时执行以下恢复操作：
 | `data_dir` | `~/MinerU` | 数据目录根路径 |
 | `default_tier` | `flash` | Watch 自动解析的默认 tier |
 | `scan_interval_sec` | `300` | Watch 全量扫描间隔（秒） |
-| `index_lock_timeout_sec` | `60` | 注册锁超时 |
+| `reg_lock_timeout_sec` | `60` | 注册锁超时 |
 | `parse_lock_timeout_sec` | `1800` | 解析锁超时（30 分钟） |
-| `fts_preview_kb` | `30` | 预览文本截取大小（KB） |
 
 ### 7.3 Watch 目录
 
@@ -614,14 +693,15 @@ Watch 自动发现以下类型的文件：
 - **查询阶段**：jieba 切词后用空格连接
 - **展示阶段**：`strip_sep()` 去除分隔符
 
-### 9.2 两张 FTS 表
+### 9.2 FTS 截断策略
 
-| 表 | 数据来源 | 时机 |
-|---|---------|------|
-| `fts_index` | flash tier 解析的首尾页文本 | flash 解析完成时 |
-| `fts_parsed` | standard/pro tier 的完整解析文本 | standard/pro 解析完成时 |
+| 表 | 数据来源 | 截断规则 |
+|---|---------|---------|
+| `fts_contents` | 解析产出的文本 | ≤30K 字符存全文；>30K 取前 15K + 后 15K（对齐段落边界） |
 
-搜索时优先查 `fts_parsed`（覆盖更全），`fts_index` 作为补充（仅 flash 解析的文件也能搜到首尾页内容）。
+flash 的首尾各 5 页文本通常在 30K 限制内，不会触发截断。standard/pro 的完整解析文档若超出限制，用 head+tail 保留首尾搜索能力。
+
+同一文档永远只有一行 FTS 记录，无需跨表合并。完整内容从解析产物 markdown 文件中读取。
 
 ---
 
@@ -631,9 +711,9 @@ Watch 自动发现以下类型的文件：
 
 | 层级 | 示例 | 存储位置 | 恢复策略 |
 |------|------|---------|---------|
-| File 级 | 路径不存在、权限不足 | `files.reg_error` | 清除 sha256，可重试 |
-| Doc 级 | 文件损坏、加密 | `files.reg_error` | 不自动重试，需用户介入 |
-| Parse 级 | 引擎崩溃、超时、OOM | `doc_parses.parse_error` | 标记 `parse_status='error'`，可通过 `--force` 重试 |
+| File 级 | 路径不存在、权限不足 | `files.error_code` | 清除 sha256，可重试 |
+| Doc 级 | 文件损坏、加密 | `files.error_code` | 不自动重试 |
+| Parse 级 | 引擎崩溃、超时、OOM | `parses.error_code` | 标记 `status='failed'`，可重试 |
 
 ---
 
@@ -650,6 +730,7 @@ Watch 自动发现以下类型的文件：
 | `aiosqlite` | 异步 SQLite |
 | `watchfiles` | 文件系统监控（FSEvents / inotify） |
 | `jieba` | 中文分词（FTS 索引） |
+| `pypdfium2` | PDF page_count / metadata 读取 + flash 引擎文本提取 |
 
 ### 11.2 现有依赖（保持不变）
 
