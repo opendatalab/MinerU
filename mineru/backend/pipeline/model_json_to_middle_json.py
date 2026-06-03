@@ -5,7 +5,6 @@ from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.pipeline.model_init import (
     AtomModelSingleton,
-    run_ocr_rec_inference,
 )
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half
@@ -139,15 +138,6 @@ def _extract_text_from_block(block):
     return "".join(text_parts).strip()
 
 
-def _iter_block_spans(block):
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
-            yield span
-
-    for sub_block in block.get("blocks", []):
-        yield from _iter_block_spans(sub_block)
-
-
 def _normalize_formula_tag_content(tag_content):
     tag_content = full_to_half(tag_content.strip())
     if tag_content.startswith("("):
@@ -204,48 +194,15 @@ def _optimize_formula_number_blocks(pdf_info_list):
 
 
 def _apply_post_ocr(pdf_info_list, lang=None):
-    need_ocr_list = []
-    img_crop_list = []
-
-    for page_info in pdf_info_list:
-        for block in page_info.get('preproc_blocks', []):
-            for span in _iter_block_spans(block):
-                if 'np_img' in span:
-                    need_ocr_list.append(span)
-                    # Keep post-OCR rec aligned with the main OCR pipeline for vertical tall crops.
-                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
-                    span.pop('np_img')
-
-        for block in page_info.get('discarded_blocks', []):
-            for span in _iter_block_spans(block):
-                if 'np_img' in span:
-                    need_ocr_list.append(span)
-                    # Keep post-OCR rec aligned with the main OCR pipeline for vertical tall crops.
-                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
-                    span.pop('np_img')
-
-    if len(img_crop_list) == 0:
-        return
+    from mineru.backend.utils.middle_json_utils import apply_post_ocr
 
     atom_model_manager = AtomModelSingleton()
     ocr_model = atom_model_manager.get_atom_model(
-        atom_model_name='ocr',
+        atom_model_name="ocr",
         det_db_box_thresh=0.3,
-        lang=lang
+        lang=lang,
     )
-    ocr_res_list = run_ocr_rec_inference(
-        ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
-    )[0]
-    assert len(ocr_res_list) == len(
-        need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
-    for index, span in enumerate(need_ocr_list):
-        ocr_text, ocr_score = ocr_res_list[index]
-        if ocr_score > OcrConfidence.min_confidence:
-            span['content'] = ocr_text
-            span['score'] = float(f"{ocr_score:.3f}")
-        else:
-            span['content'] = ''
-            span['score'] = 0.0
+    apply_post_ocr(pdf_info_list, ocr_model)
 
 
 def _post_block_process(pdf_info_list):

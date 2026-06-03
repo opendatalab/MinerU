@@ -2,24 +2,19 @@
 
 import os
 
-from tqdm import tqdm
-
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.para_block_utils import (
     OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
-    iter_block_spans,
     merge_para_text_blocks,
 )
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.backend.pipeline.model_init import run_ocr_rec_inference
 from mineru.utils.config_reader import get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 from mineru.version import __version__
@@ -123,38 +118,9 @@ def blocks_to_page_info(
 
 
 def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
-    need_ocr_list = []
-    img_crop_list = []
-    for page_info in pdf_info_list:
-        for block in page_info.get('preproc_blocks', []):
-            for span in iter_block_spans(block):
-                if 'np_img' in span:
-                    need_ocr_list.append(span)
-                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
-                    span.pop('np_img')
-        for block in page_info.get('discarded_blocks', []):
-            for span in iter_block_spans(block):
-                if 'np_img' in span:
-                    need_ocr_list.append(span)
-                    img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
-                    span.pop('np_img')
-    if len(img_crop_list) > 0:
-        ocr_res_list = run_ocr_rec_inference(
-            hybrid_pipeline_model.ocr_model.ocr,
-            img_crop_list,
-            det=False,
-            tqdm_enable=True,
-        )[0]
-        assert len(ocr_res_list) == len(
-            need_ocr_list), f'ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}'
-        for index, span in enumerate(need_ocr_list):
-            ocr_text, ocr_score = ocr_res_list[index]
-            if ocr_score > OcrConfidence.min_confidence:
-                span['content'] = ocr_text
-                span['score'] = float(f"{ocr_score:.3f}")
-            else:
-                span['content'] = ''
-                span['score'] = 0.0
+    from mineru.backend.utils.middle_json_utils import apply_post_ocr
+
+    apply_post_ocr(pdf_info_list, hybrid_pipeline_model.ocr_model)
 
 
 def _normalize_split_title_blocks(pdf_info_list):

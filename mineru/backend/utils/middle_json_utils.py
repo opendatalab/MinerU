@@ -1,7 +1,8 @@
 """Shared middle_json build template for PDF backends (pipeline / vlm / hybrid).
 
 Each backend still owns its ``init``, ``append``, and ``finalize`` helpers;
-this module just removes the copy-pasted orchestration boilerplate.
+this module also provides shared post-processing helpers that were duplicated
+across backends.
 """
 
 from __future__ import annotations
@@ -54,3 +55,51 @@ def build_middle_json(
     finalize_fn(middle_json["pdf_info"], **kwargs)
     close_pdfium_document(pdf_doc)
     return middle_json
+
+
+def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
+    """Run OCR recognition on residual ``np_img`` crops inside spans.
+
+    Common to Pipeline and Hybrid.  The caller provides the OCR model object
+    (which has an ``ocr`` attribute pointing to the inference engine).
+    """
+    from mineru.backend.pipeline.model_init import run_ocr_rec_inference
+    from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+
+    need_ocr_list = []
+    img_crop_list = []
+
+    for page_info in pdf_info_list:
+        for blocks_key in ("preproc_blocks", "discarded_blocks"):
+            for block in page_info.get(blocks_key, []):
+                for span in _iter_block_spans(block):
+                    if "np_img" in span:
+                        need_ocr_list.append(span)
+                        img_crop_list.append(rotate_vertical_crop_if_needed(span["np_img"]))
+                        span.pop("np_img")
+
+    if not img_crop_list:
+        return
+
+    ocr_res_list = run_ocr_rec_inference(
+        ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
+    )[0]
+    assert len(ocr_res_list) == len(need_ocr_list), (
+        f"ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}"
+    )
+    for index, span in enumerate(need_ocr_list):
+        ocr_text, ocr_score = ocr_res_list[index]
+        if ocr_score > OcrConfidence.min_confidence:
+            span["content"] = ocr_text
+            span["score"] = float(f"{ocr_score:.3f}")
+        else:
+            span["content"] = ""
+            span["score"] = 0.0
+
+
+def _iter_block_spans(block: dict):
+    """Depth-first generator yielding every span in a block tree."""
+    for line in block.get("lines", []):
+        yield from line.get("spans", [])
+    for child in block.get("blocks", []):
+        yield from _iter_block_spans(child)
