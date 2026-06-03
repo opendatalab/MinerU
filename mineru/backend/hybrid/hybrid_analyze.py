@@ -70,7 +70,7 @@ not_extract_list = [item.value for item in NotExtractType]
 HYBRID_OCR_DET_TEXT_TYPES = set(not_extract_list)
 
 
-def _is_hybrid_ocr_det_candidate(block):
+def _is_hybrid_ocr_det_candidate(block: dict) -> bool:
     """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
     return (block.get("type") or block.get("label")) in HYBRID_OCR_DET_TEXT_TYPES
 
@@ -99,11 +99,11 @@ def ocr_det(
     *,
     fill_text: bool = True,
 ):
-    def _set_temp_pixel_bbox(res, pixel_bbox):
+    def _set_temp_pixel_bbox(res: dict, pixel_bbox: list[int]) -> None:
         res["_normalized_bbox"] = list(res["bbox"])
         res["bbox"] = pixel_bbox
 
-    def _restore_normalized_bbox(res):
+    def _restore_normalized_bbox(res: dict) -> None:
         normalized_bbox = res.pop("_normalized_bbox", None)
         if normalized_bbox is not None:
             res["bbox"] = normalized_bbox
@@ -726,7 +726,7 @@ def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enabl
     return ocr_enable and language in ["ch", "en"] and inline_formula_enable and not force_pipeline
 
 
-def _close_images(images_list):
+def _close_images(images_list: list) -> None:
     for image_dict in images_list or []:
         pil_img = image_dict.get("img_pil")
         if pil_img is not None:
