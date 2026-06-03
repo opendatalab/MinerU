@@ -7,7 +7,7 @@ from mineru.utils.boxbase import (
 )
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
-from mineru.types import Block, Span
+from mineru.types import Block, Line, Span
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
     merge_spans_to_line, line_sort_spans_by_left_to_right, is_vertical_text_block_by_spans
 from mineru.utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
@@ -277,7 +277,8 @@ class MagicModel:
                 self.all_image_spans.append(span)
                 # 构造line对象
                 spans = [span]
-                line = {"bbox": block["bbox"], "spans": spans}
+                line = Line(spans=spans)
+                line["bbox"] = block["bbox"]
                 block["lines"] = [line]
             else:
                 # span填充
@@ -325,21 +326,21 @@ class MagicModel:
         for layout_det in layout_dets:
             if self.__is_inline_formula_block(layout_det):
                 layout_det.pop("index", None)
-                self.page_inline_formula.append({
-                    "bbox": layout_det["bbox"],
-                    "type": ContentType.INLINE_EQUATION,
-                    "content": layout_det["latex"],
-                    "score": layout_det["score"],
-                })
+                self.page_inline_formula.append(Span(
+                    type=ContentType.INLINE_EQUATION,
+                    bbox=layout_det["bbox"],
+                    content=layout_det["latex"],
+                    score=layout_det["score"],
+                ))
                 continue
 
             if self.__is_ocr_text_block(layout_det):
-                self.page_ocr_res.append({
-                    "bbox": layout_det["bbox"],
-                    "type": ContentType.TEXT,
-                    "content": layout_det["text"],
-                    "score": layout_det["score"],
-                })
+                self.page_ocr_res.append(Span(
+                    type=ContentType.TEXT,
+                    bbox=layout_det["bbox"],
+                    content=layout_det["text"],
+                    score=layout_det["score"],
+                ))
                 continue
 
             if "index" in layout_det:
@@ -452,13 +453,14 @@ class MagicModel:
             else:
                 self.chart_groups.append(group_info)
 
-            two_layer_block = {
-                "type": original_block_type,
-                "bbox": block["bbox"],
-                "blocks": [body_block, *captions, *footnotes],
-                "index": block["index"],
-                "score": block.get("score"),
-            }
+            two_layer_block = Block(
+                type=original_block_type,
+                bbox=block["bbox"],
+                blocks=[body_block, *captions, *footnotes],
+            )
+            two_layer_block["index"] = block["index"]
+            if block.get("score"):
+                two_layer_block["score"] = block["score"]
             if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.get("sub_type"):
                 two_layer_block["sub_type"] = block["sub_type"]
             # 对blocks按index排序
