@@ -16,7 +16,7 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
+from mineru.utils.pdfium_guard import pdfium_guard
 from mineru.version import __version__
 
 

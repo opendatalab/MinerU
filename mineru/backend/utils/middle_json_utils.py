@@ -7,6 +7,7 @@ across backends.
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable
 
 from tqdm import tqdm
@@ -36,23 +37,16 @@ def build_middle_json(
     finalize_fn(pdf_info_list, **kwargs):
         Post-processing applied once all pages are ready.
     """
-    from ....utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
+    from ...utils.pdfium_guard import close_pdfium_document
 
     middle_json = init_fn(**kwargs)
     with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
-        for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
-            page_index = offset
-            page = None
-            try:
-                with pdfium_guard():
-                    page = pdf_doc[page_index]
-                page_info = page_cvt_fn(
-                    page_data, image_dict, page, image_writer, page_index, **kwargs
-                )
-            finally:
-                close_pdfium_child(page)
-            middle_json["pdf_info"].append(page_info)
-            progress_bar.update(1)
+        append_pages(
+            middle_json, model_list, images_list, pdf_doc, image_writer,
+            page_cvt_fn=page_cvt_fn,
+            progress_bar=progress_bar,
+            **kwargs,
+        )
 
     finalize_fn(middle_json["pdf_info"], **kwargs)
     close_pdfium_document(pdf_doc)
@@ -77,7 +71,7 @@ def append_pages(
     is ``page_cvt_fn``, which converts one page's model output into a
     page_info dict.
     """
-    from ....utils.pdfium_guard import close_pdfium_child, pdfium_guard
+    from ...utils.pdfium_guard import close_pdfium_child, pdfium_guard
 
     for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
         page_index = page_start_index + offset
@@ -86,8 +80,13 @@ def append_pages(
             with pdfium_guard():
                 page = pdf_doc[page_index]
             page_info = page_cvt_fn(
-                page_data, image_dict, page, image_writer, page_index, **kwargs
+                copy.deepcopy(page_data), image_dict, page, image_writer, page_index, **kwargs
             )
+            if page_info is None:
+                with pdfium_guard():
+                    page_w, page_h = map(int, page.get_size())
+                page_info = {"preproc_blocks": [], "page_idx": page_index,
+                             "page_size": [page_w, page_h], "discarded_blocks": []}
         finally:
             close_pdfium_child(page)
         middle_json["pdf_info"].append(page_info)
@@ -119,12 +118,8 @@ def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
     if not img_crop_list:
         return
 
-    ocr_res_list = run_ocr_rec_inference(
-        ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
-    )[0]
-    assert len(ocr_res_list) == len(need_ocr_list), (
-        f"ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}"
-    )
+    ocr_res_list = run_ocr_rec_inference(ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True)[0]
+    assert len(ocr_res_list) == len(need_ocr_list), f"ocr_res_list: {len(ocr_res_list)}, need_ocr_list: {len(need_ocr_list)}"
     for index, span in enumerate(need_ocr_list):
         ocr_text, ocr_score = ocr_res_list[index]
         if ocr_score > OcrConfidence.min_confidence:

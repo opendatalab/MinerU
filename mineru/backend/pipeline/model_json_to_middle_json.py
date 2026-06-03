@@ -1,5 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import copy
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
@@ -14,7 +13,7 @@ from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_inf
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
+from mineru.utils.pdfium_guard import pdfium_guard
 
 
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
@@ -61,41 +60,6 @@ def build_page_model_info(page_layout_dets, page_index, pil_img):
     return {'layout_dets': page_layout_dets, 'page_info': page_info_dict}
 
 
-def append_page_model_infos_to_middle_json(
-    middle_json,
-    page_model_infos,
-    images_list,
-    pdf_doc,
-    image_writer,
-    page_start_index=0,
-    ocr_enable=False,
-    progress_bar=None,
-):
-    for offset, (page_model_info, image_dict) in enumerate(zip(page_model_infos, images_list)):
-        page_index = page_start_index + offset
-        page = None
-        try:
-            with pdfium_guard():
-                page = pdf_doc[page_index]
-            page_info = page_model_info_to_page_info(
-                copy.deepcopy(page_model_info),
-                image_dict,
-                page,
-                image_writer,
-                page_index,
-                ocr_enable=ocr_enable,
-            )
-            if page_info is None:
-                with pdfium_guard():
-                    page_w, page_h = map(int, page.get_size())
-                page_info = make_page_info_dict([], page_index, page_w, page_h, [])
-        finally:
-            close_pdfium_child(page)
-        middle_json["pdf_info"].append(page_info)
-        if progress_bar is not None:
-            progress_bar.update(1)
-
-
 def append_batch_results_to_middle_json(
     middle_json,
     batch_results,
@@ -116,12 +80,15 @@ def append_batch_results_to_middle_json(
     if model_list is not None:
         model_list.extend(page_model_infos)
 
-    append_page_model_infos_to_middle_json(
+    from mineru.backend.utils.middle_json_utils import append_pages
+
+    append_pages(
         middle_json,
         page_model_infos,
         images_list,
         pdf_doc,
         image_writer,
+        page_cvt_fn=page_model_info_to_page_info,
         page_start_index=page_start_index,
         ocr_enable=ocr_enable,
         progress_bar=progress_bar,
