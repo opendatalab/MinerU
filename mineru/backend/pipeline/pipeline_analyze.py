@@ -89,7 +89,7 @@ def _get_ocr_enable(pdf_bytes, parse_method: str) -> bool:
     return False
 
 
-def _close_images(images_list):
+def _close_images(images_list: list) -> None:
     for image_dict in images_list or []:
         pil_img = image_dict.get("img_pil")
         if pil_img is not None:
@@ -99,7 +99,7 @@ def _close_images(images_list):
                 pass
 
 
-def _format_doc_slices(batch_slices):
+def _format_doc_slices(batch_slices: list) -> list:
     return ",".join(f"doc{item['doc_index']}:{item['page_start'] + 1}-{item['page_end'] + 1}" for item in batch_slices)
 
 
