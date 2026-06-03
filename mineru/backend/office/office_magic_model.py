@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from loguru import logger
 
 from mineru.utils.enum_class import ContentType, BlockType
+from mineru.types import Block, Line, Span
 from mineru.utils.magic_model_utils import tie_up_category_by_index
 
 
@@ -42,30 +43,18 @@ class MagicModel:
 
             elif block_type in ["image"]:
                 block_type = BlockType.IMAGE_BODY
-                span = {
-                    "type": ContentType.IMAGE,
-                    "image_base64": block_content,
-                }
+                span = Span(type=ContentType.IMAGE, image_base64=block_content)
             elif block_type in ["table"]:
                 block_type = BlockType.TABLE_BODY
-                span = {
-                    "type": ContentType.TABLE,
-                    "html": clean_table_html(block_content),
-                }
+                span = Span(type=ContentType.TABLE, html=clean_table_html(block_content))
             elif block_type in ["chart"]:
                 block_type = BlockType.CHART_BODY
-                span = {
-                    "type": ContentType.CHART,
-                    "content": block_content,
-                }
+                span = Span(type=ContentType.CHART, content=block_content)
                 if block_info.get("image_base64"):
                     span["image_base64"] = block_info["image_base64"]
             elif block_type in ["equation"]:
                 block_type = BlockType.INTERLINE_EQUATION
-                span = {
-                    "type": ContentType.INTERLINE_EQUATION,
-                    "content": block_content,
-                }
+                span = Span(type=ContentType.INTERLINE_EQUATION, content=block_content)
             elif block_type in ["list"]:
                 # 解析嵌套列表结构，生成与VLM一致的blocks结构
                 parsed_list = parse_list_block(block_info)
@@ -86,22 +75,18 @@ class MagicModel:
                 continue
 
             # 处理span类型并添加到all_spans
-            if isinstance(span, dict):
-                line = {
-                    "spans": [span]
-                }
+            if isinstance(span, Span):
+                line = Line(spans=[span])
             elif isinstance(span, list):
-                line = {
-                    "spans":span
-                }
+                line = Line(spans=span)
             else:
                 raise ValueError(f"Unsupported span type: {type(span)}")
 
-            block = {
-                    "type": block_type,
-                    "lines": [line],
-                    "index": index,
-            }
+            block = Block(
+                type=block_type,
+                lines=[line],
+            )
+            block["index"] = index
             anchor = block_info.get("anchor")
             if (
                 isinstance(anchor, str)
@@ -156,14 +141,6 @@ class MagicModel:
         for block in not_include_image_blocks + not_include_table_blocks + not_include_chart_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
-
-        # convert all block lists to typed Block objects
-        from mineru.types import block_from_dict
-
-        for attr in ("image_blocks", "table_blocks", "chart_blocks",
-                     "title_blocks", "text_blocks", "interline_equation_blocks",
-                     "list_blocks", "index_blocks", "discarded_blocks"):
-            setattr(self, attr, [block_from_dict(b) for b in getattr(self, attr)])
 
 
     def get_list_blocks(self):
@@ -282,10 +259,7 @@ def parse_text_block_spans(content: str) -> list:
         if not candidates:
             remaining_text = content[last_end:]
             if remaining_text:
-                spans.append({
-                    "type": ContentType.TEXT,
-                    "content": remaining_text
-                })
+                spans.append(Span(type=ContentType.TEXT, content=remaining_text))
             break
 
         # 取位置最小的标签
@@ -295,28 +269,19 @@ def parse_text_block_spans(content: str) -> list:
         if next_tag_pos > last_end:
             text_before = content[last_end:next_tag_pos]
             if text_before:
-                spans.append({
-                    "type": ContentType.TEXT,
-                    "content": text_before
-                })
+                spans.append(Span(type=ContentType.TEXT, content=text_before))
 
         # 处理行内公式
         if next_tag_type == 'eq':
             eq_end = content.find('</eq>', next_tag_pos)
             if eq_end != -1:
                 formula_content = content[next_tag_pos + 4:eq_end]
-                spans.append({
-                    "type": ContentType.INLINE_EQUATION,
-                    "content": formula_content
-                })
-                pos = eq_end + 5  # 跳过</eq>
+                spans.append(Span(type=ContentType.INLINE_EQUATION, content=formula_content))
+                pos = eq_end + 5
                 last_end = pos
             else:
                 # 未找到闭合标签，将<eq>作为普通文本处理
-                spans.append({
-                    "type": ContentType.TEXT,
-                    "content": content[last_end:]
-                })
+                spans.append(Span(type=ContentType.TEXT, content=content[last_end:]))
                 break
 
         # 处理带样式的文本标签
@@ -328,21 +293,15 @@ def parse_text_block_spans(content: str) -> list:
                 tag_open_end = content.find('>', next_tag_pos) + 1
                 text_content = content[tag_open_end:text_end]
                 style_str = text_tag_match.group(1) if text_tag_match and text_tag_match.start() == next_tag_pos else None
-                span = {
-                    "type": ContentType.TEXT,
-                    "content": text_content
-                }
+                span = Span(type=ContentType.TEXT, content=text_content)
                 if style_str:
                     span["style"] = [s.strip() for s in style_str.split(',') if s.strip()]
                 spans.append(span)
-                pos = text_end + 7  # 跳过 </text>
+                pos = text_end + 7
                 last_end = pos
             else:
                 # 未找到闭合标签，作为普通文本处理
-                spans.append({
-                    "type": ContentType.TEXT,
-                    "content": content[last_end:]
-                })
+                spans.append(Span(type=ContentType.TEXT, content=content[last_end:]))
                 break
 
         # 处理超链接
@@ -361,38 +320,30 @@ def parse_text_block_spans(content: str) -> list:
                 if children and link_url:
                     if len(children) == 1:
                         child = children[0]
-                        span = {
-                            "type": ContentType.HYPERLINK,
-                            "content": child["content"],
-                            "url": link_url,
-                        }
+                        span = Span(
+                            type=ContentType.HYPERLINK,
+                            content=child["content"],
+                        )
+                        span["url"] = link_url
                         if child.get("style"):
                             span["style"] = child["style"]
                     else:
-                        span = {
-                            "type": ContentType.HYPERLINK,
-                            "content": ''.join(
-                                child["content"] for child in children
-                            ),
-                            "url": link_url,
-                            "children": children,
-                        }
+                        span = Span(
+                            type=ContentType.HYPERLINK,
+                            content=''.join(child["content"] for child in children),
+                        )
+                        span["url"] = link_url
+                        span["children"] = children
                     spans.append(span)
-                    pos = hyperlink_end + 12  # 跳过</hyperlink>
+                    pos = hyperlink_end + 12
                     last_end = pos
                 else:
                     # 超链接格式不正确，作为普通文本处理
-                    spans.append({
-                        "type": ContentType.TEXT,
-                        "content": content[last_end:]
-                    })
+                    spans.append(Span(type=ContentType.TEXT, content=content[last_end:]))
                     break
             else:
                 # 未找到闭合标签，将<hyperlink>作为普通文本处理
-                spans.append({
-                    "type": ContentType.TEXT,
-                    "content": content[last_end:]
-                })
+                spans.append(Span(type=ContentType.TEXT, content=content[last_end:]))
                 break
 
     return spans
@@ -421,10 +372,7 @@ def parse_list_block(list_block: dict):
             # 解析文本项（可能包含行内公式和超链接）
             text_content = item.get("content", "")
             spans = parse_text_block_spans(text_content)
-            text_block = {
-                "type": BlockType.TEXT,
-                "lines": [{"spans": spans}]
-            }
+            text_block = Block(type=BlockType.TEXT, lines=[Line(spans=spans)])
             blocks.append(text_block)
 
         elif item_type == "list":
@@ -434,12 +382,9 @@ def parse_list_block(list_block: dict):
                 blocks.append(nested_list)
 
     # 构建当前列表block
-    result = {
-        "type": BlockType.LIST,
-        "attribute": list_block.get("attribute", "unordered"),
-        "ilevel": list_block.get("ilevel", 0),
-        "blocks": blocks
-    }
+    result = Block(type=BlockType.LIST, blocks=blocks)
+    result["attribute"] = list_block.get("attribute", "unordered")
+    result["ilevel"] = list_block.get("ilevel", 0)
     if "start" in list_block:
         result["start"] = list_block["start"]
 
@@ -468,10 +413,7 @@ def parse_index_block(index_block: dict):
         if item_type == "text":
             text_content = item.get("content", "")
             spans = parse_text_block_spans(text_content)
-            text_block = {
-                "type": BlockType.TEXT,
-                "lines": [{"spans": spans}]
-            }
+            text_block = Block(type=BlockType.TEXT, lines=[Line(spans=spans)])
             anchor = item.get("anchor")
             if isinstance(anchor, str) and anchor.strip():
                 text_block["anchor"] = anchor.strip()
@@ -482,11 +424,8 @@ def parse_index_block(index_block: dict):
             if nested_index:
                 blocks.append(nested_index)
 
-    result = {
-        "type": BlockType.INDEX,
-        "ilevel": index_block.get("ilevel", 0),
-        "blocks": blocks
-    }
+    result = Block(type=BlockType.INDEX, blocks=blocks)
+    result["ilevel"] = index_block.get("ilevel", 0)
 
     return result
 
