@@ -3,12 +3,12 @@ import time
 from io import BytesIO
 
 from loguru import logger
-from mineru.backend.office.model_output_to_middle_json import result_to_middle_json
 
-from mineru.model.xlsx.main import convert_binary
+from ...model.xlsx.main import convert_binary
+from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_xlsx_analyze(file_bytes, image_writer=None):
+def office_xlsx_analyze(file_bytes: bytes, image_writer: Any = None) -> dict:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
@@ -16,9 +16,7 @@ def office_xlsx_analyze(file_bytes, image_writer=None):
 
     infer_time = round(time.time() - infer_start, 2)
     safe_time = max(infer_time, 0.01)
-    logger.debug(
-        f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s"
-    )
+    logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s")
 
     middle_json = result_to_middle_json(
         results,
@@ -33,15 +31,13 @@ if __name__ == "__main__":
     # works no matter what the current working directory is when the
     # module is executed.  Allow the user to override the path via a
     # command-line argument for even greater flexibility.
-    from pathlib import Path
     import argparse
+    from pathlib import Path
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
     default_xlsx = script_root / "demo" / "office_docs" / "xlsx_01.xlsx"
 
-    parser = argparse.ArgumentParser(
-        description="Quick demo runner for office_xlsx_analyze"
-    )
+    parser = argparse.ArgumentParser(description="Quick demo runner for office_xlsx_analyze")
     parser.add_argument(
         "xlsx",
         nargs="?",

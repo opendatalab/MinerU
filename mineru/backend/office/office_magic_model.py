@@ -12,7 +12,7 @@ from mineru.utils.magic_model_utils import tie_up_category_by_index
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list):
+    def __init__(self, page_blocks: list) -> None:
         self.page_blocks = page_blocks
 
         blocks = []
@@ -143,31 +143,31 @@ class MagicModel:
             self.text_blocks.append(block)
 
 
-    def get_list_blocks(self):
+    def get_list_blocks(self) -> list[Block]:
         return self.list_blocks
 
-    def get_index_blocks(self):
+    def get_index_blocks(self) -> list[Block]:
         return self.index_blocks
 
-    def get_image_blocks(self):
+    def get_image_blocks(self) -> list[Block]:
         return self.image_blocks
 
-    def get_table_blocks(self):
+    def get_table_blocks(self) -> list[Block]:
         return self.table_blocks
 
-    def get_chart_blocks(self):
+    def get_chart_blocks(self) -> list[Block]:
         return self.chart_blocks
 
-    def get_title_blocks(self):
+    def get_title_blocks(self) -> list[Block]:
         return self.title_blocks
 
-    def get_text_blocks(self):
+    def get_text_blocks(self) -> list[Block]:
         return self.text_blocks
 
-    def get_interline_equation_blocks(self):
+    def get_interline_equation_blocks(self) -> list[Block]:
         return self.interline_equation_blocks
 
-    def get_discarded_blocks(self):
+    def get_discarded_blocks(self) -> list[Block]:
         return self.discarded_blocks
 
 
