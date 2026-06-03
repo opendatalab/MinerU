@@ -27,10 +27,10 @@ from mineru.cli.api_protocol import (
     API_PROTOCOL_VERSION,
     DEFAULT_MAX_CONCURRENT_REQUESTS,
 )
+from mineru.utils.check_sys_env import is_linux_environment
 from mineru.utils.config_reader import (
     get_max_concurrent_requests as read_max_concurrent_requests,
 )
-from mineru.utils.check_sys_env import is_linux_environment
 
 HEALTH_ENDPOINT = "/health"
 TASKS_ENDPOINT = "/tasks"
@@ -144,7 +144,7 @@ def get_effective_local_api_launch_mode(
     return default
 
 
-def build_managed_process_popen_kwargs() -> dict[str, object]:
+def build_managed_process_popen_kwargs() -> dict[str, Any]:
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         if creationflags:
@@ -373,10 +373,7 @@ def _validate_local_api_launch_mode_cli_args(
     launch_mode: str,
     cli_args: Sequence[str],
 ) -> None:
-    if (
-        launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN
-        and _cli_args_include_flag(cli_args, "--reload")
-    ):
+    if launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN and _cli_args_include_flag(cli_args, "--reload"):
         raise click.ClickException(
             "Local mineru-api spawn launch mode does not support --reload. "
             "Remove --reload or set MINERU_LOCAL_API_LAUNCH_MODE=subprocess."
@@ -390,9 +387,7 @@ def _build_local_api_server_env(
 ) -> tuple[dict[str, str], tuple[str, ...]]:
     env = os.environ.copy()
     env["MINERU_API_OUTPUT_ROOT"] = str(output_root)
-    env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(
-        read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS)
-    )
+    env["MINERU_API_MAX_CONCURRENT_REQUESTS"] = str(read_max_concurrent_requests(default=DEFAULT_MAX_CONCURRENT_REQUESTS))
     env["MINERU_API_DISABLE_ACCESS_LOG"] = "1"
 
     unset_env_names: list[str] = []
@@ -488,9 +483,7 @@ class LocalAPIServer:
         # parsing startup when launched with stdin=PIPE and an EOF-based
         # shutdown watcher, so we only enable that path on non-Windows
         # subprocess launches.
-        self._use_stdin_shutdown_watcher = (
-            self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS and os.name != "nt"
-        )
+        self._use_stdin_shutdown_watcher = self._launch_mode == LOCAL_API_LAUNCH_MODE_SUBPROCESS and os.name != "nt"
         env, unset_env_names = _build_local_api_server_env(
             self.output_root,
             use_stdin_shutdown_watcher=self._use_stdin_shutdown_watcher,
@@ -699,9 +692,7 @@ def resolve_effective_max_concurrent_requests(
     server_max: int,
 ) -> int:
     if local_max <= 0 or server_max <= 0:
-        raise ValueError(
-            "local_max and server_max must both be positive integers"
-        )
+        raise ValueError("local_max and server_max must both be positive integers")
     return min(local_max, server_max)
 
 
@@ -728,27 +719,20 @@ def response_detail(response: httpx.Response) -> str:
 def validate_server_health_payload(payload: dict, base_url: str) -> ServerHealth:
     status = payload.get("status")
     if status != "healthy":
-        raise click.ClickException(
-            f"MinerU API at {base_url} is not healthy: {json.dumps(payload, ensure_ascii=False)}"
-        )
+        raise click.ClickException(f"MinerU API at {base_url} is not healthy: {json.dumps(payload, ensure_ascii=False)}")
 
     protocol_version = payload.get("protocol_version")
     if protocol_version != API_PROTOCOL_VERSION:
         raise click.ClickException(
-            f"MinerU API at {base_url} returned protocol_version={protocol_version}, "
-            f"expected {API_PROTOCOL_VERSION}"
+            f"MinerU API at {base_url} returned protocol_version={protocol_version}, expected {API_PROTOCOL_VERSION}"
         )
 
     max_concurrent_requests = payload.get("max_concurrent_requests")
     processing_window_size = payload.get("processing_window_size")
     if not isinstance(max_concurrent_requests, int) or max_concurrent_requests <= 0:
-        raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid positive max_concurrent_requests"
-        )
+        raise click.ClickException(f"MinerU API at {base_url} did not return a valid positive max_concurrent_requests")
     if not isinstance(processing_window_size, int):
-        raise click.ClickException(
-            f"MinerU API at {base_url} did not return a valid processing_window_size"
-        )
+        raise click.ClickException(f"MinerU API at {base_url} did not return a valid processing_window_size")
 
     return ServerHealth(
         base_url=base_url,
@@ -764,8 +748,7 @@ async def fetch_server_health(
     response = await client.get(f"{base_url}{HEALTH_ENDPOINT}")
     if response.status_code != 200:
         raise click.ClickException(
-            f"Failed to query MinerU API health from {base_url}: "
-            f"{response.status_code} {response_detail(response)}"
+            f"Failed to query MinerU API health from {base_url}: {response.status_code} {response_detail(response)}"
         )
     return validate_server_health_payload(response.json(), base_url)
 
@@ -784,9 +767,7 @@ async def wait_for_local_api_ready(
         if process is not None and _managed_process_exit_code(process) is not None:
             if local_server._launch_mode == LOCAL_API_LAUNCH_MODE_SPAWN:
                 local_server.stop()
-            raise click.ClickException(
-                "Local mineru-api exited before becoming healthy."
-            )
+            raise click.ClickException("Local mineru-api exited before becoming healthy.")
         try:
             return await fetch_server_health(client, local_server.base_url)
         except click.ClickException as exc:
@@ -869,10 +850,7 @@ def submit_parse_task_sync(
             with ExitStack() as stack:
                 files = []
                 for upload_asset in upload_assets:
-                    mime_type = (
-                        mimetypes.guess_type(upload_asset.upload_name)[0]
-                        or "application/octet-stream"
-                    )
+                    mime_type = mimetypes.guess_type(upload_asset.upload_name)[0] or "application/octet-stream"
                     file_handle = stack.enter_context(open(upload_asset.path, "rb"))
                     files.append(
                         (
@@ -892,15 +870,11 @@ def submit_parse_task_sync(
                 )
     except httpx.TimeoutException as exc:
         raise click.ClickException(
-            f"Timed out submitting parsing task to {task_url}. "
-            "The server may still be starting up or initializing the model."
+            f"Timed out submitting parsing task to {task_url}. The server may still be starting up or initializing the model."
         ) from exc
 
     if response.status_code != 202:
-        raise click.ClickException(
-            f"Failed to submit parsing task: "
-            f"{response.status_code} {response_detail(response)}"
-        )
+        raise click.ClickException(f"Failed to submit parsing task: {response.status_code} {response_detail(response)}")
 
     payload = response.json()
     task_id = payload.get("task_id")
@@ -908,11 +882,7 @@ def submit_parse_task_sync(
     result_url = payload.get("result_url")
     file_names = payload.get("file_names")
     queued_ahead = payload.get("queued_ahead")
-    if (
-        not isinstance(task_id, str)
-        or not isinstance(status_url, str)
-        or not isinstance(result_url, str)
-    ):
+    if not isinstance(task_id, str) or not isinstance(status_url, str) or not isinstance(result_url, str):
         raise click.ClickException("MinerU API returned an invalid task payload")
 
     normalized_file_names: tuple[str, ...] = ()
@@ -954,8 +924,7 @@ async def wait_for_task_result(
             continue
         if response.status_code != 200:
             raise click.ClickException(
-                f"Failed to query task status for {task_label}: "
-                f"{response.status_code} {response_detail(response)}"
+                f"Failed to query task status for {task_label}: {response.status_code} {response_detail(response)}"
             )
 
         payload = response.json()
@@ -978,14 +947,10 @@ async def wait_for_task_result(
         if status == "completed":
             return
         raise click.ClickException(
-            f"Task {submit_response.task_id} failed for {task_label}: "
-            f"{json.dumps(payload, ensure_ascii=False)}"
+            f"Task {submit_response.task_id} failed for {task_label}: {json.dumps(payload, ensure_ascii=False)}"
         )
 
-    raise click.ClickException(
-        f"Timed out waiting for result of task {submit_response.task_id} "
-        f"for {task_label}"
-    )
+    raise click.ClickException(f"Timed out waiting for result of task {submit_response.task_id} for {task_label}")
 
 
 async def download_result_zip(
@@ -1011,8 +976,7 @@ async def download_result_zip(
             content_type = response.headers.get("content-type", "")
             if "application/zip" not in content_type:
                 raise click.ClickException(
-                    f"Expected a ZIP result for {task_label}, "
-                    f"got content-type={content_type or 'unknown'}"
+                    f"Expected a ZIP result for {task_label}, got content-type={content_type or 'unknown'}"
                 )
 
             with open(zip_file_path, "wb") as handle:
@@ -1024,8 +988,7 @@ async def download_result_zip(
     except httpx.TimeoutException as exc:
         zip_file_path.unlink(missing_ok=True)
         raise click.ClickException(
-            f"Timed out downloading result ZIP for task {submit_response.task_id} "
-            f"for {task_label}"
+            f"Timed out downloading result ZIP for task {submit_response.task_id} for {task_label}"
         ) from exc
     except asyncio.CancelledError:
         zip_file_path.unlink(missing_ok=True)
@@ -1044,14 +1007,10 @@ def safe_extract_zip(zip_path: Path, output_dir: Path) -> None:
         for member in zip_file.infolist():
             member_path = PurePosixPath(member.filename)
             if member_path.is_absolute() or ".." in member_path.parts:
-                raise click.ClickException(
-                    f"Refusing to extract unsafe ZIP entry: {member.filename}"
-                )
+                raise click.ClickException(f"Refusing to extract unsafe ZIP entry: {member.filename}")
             target_path = (output_root / Path(*member_path.parts)).resolve()
             if target_path != output_root and output_root not in target_path.parents:
-                raise click.ClickException(
-                    f"Refusing to extract unsafe ZIP entry: {member.filename}"
-                )
+                raise click.ClickException(f"Refusing to extract unsafe ZIP entry: {member.filename}")
 
             if member.is_dir():
                 target_path.mkdir(parents=True, exist_ok=True)

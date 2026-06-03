@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import re
+from typing import Any
 
 from loguru import logger
 from PIL import Image
@@ -43,7 +44,7 @@ OCR_DET_LINE_BLOCK_TYPES = set(not_extract_list) | {
 }
 
 
-def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict[str, object], block: Block) -> None:
+def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict[str, Any], block: Block) -> None:
     if raw_block_type != BlockType.TEXT:
         return
     if "merge_prev" in block_info:
@@ -53,7 +54,7 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict[str, obj
 class MagicModel:
     def __init__(
         self,
-        page_model_list: list[dict[str, object]],
+        page_model_list: list[dict[str, Any]],
         page: object,
         scale: float,
         page_pil_img: Image.Image,
@@ -377,8 +378,8 @@ class MagicModel:
 
     @staticmethod
     def _split_page_model_list(
-        page_model_list: list[dict[str, object]],
-    ) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+        page_model_list: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
         page_blocks = []
         page_inline_formula = []
         page_ocr_res = []

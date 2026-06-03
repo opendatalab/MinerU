@@ -132,7 +132,7 @@ def _link_index_entries_by_anchor(middle_json: dict[str, Any]) -> None:
                 text_block["anchor"] = anchor
 
 
-def result_to_middle_json(model_output_blocks_list: list[list[dict[str, object]]], image_writer: object) -> dict[str, object]:
+def result_to_middle_json(model_output_blocks_list: list[list[dict[str, Any]]], image_writer: object) -> dict[str, Any]:
     middle_json = {"pdf_info": [], "_backend": "office", "_version_name": __version__}
     for index, page_blocks in enumerate(model_output_blocks_list):
         page_info = blocks_to_page_info(page_blocks, image_writer, index)

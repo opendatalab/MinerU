@@ -351,7 +351,7 @@ def parse_text_block_spans(content: str) -> list[Span]:
     return spans
 
 
-def parse_list_block(list_block: dict[str, object]) -> Block:
+def parse_list_block(list_block: dict[str, Any]) -> Block:
     """
     递归解析嵌套列表结构，生成与VLM一致的blocks结构。
 
@@ -393,7 +393,7 @@ def parse_list_block(list_block: dict[str, object]) -> Block:
     return result
 
 
-def parse_index_block(index_block: dict[str, object]) -> Block:
+def parse_index_block(index_block: dict[str, Any]) -> Block:
     """
     递归解析嵌套索引结构（目录），生成与list一致的blocks结构。
 
@@ -571,11 +571,11 @@ def code_content_clean(content: str) -> str:
     return ""
 
 
-def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, object_block_type: str) -> list[dict[str, object]]:
+def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, object_block_type: str) -> list[dict[str, Any]]:
     """基于index的主客体关联包装函数"""
 
     # 定义获取主体和客体对象的函数
-    def get_subjects() -> list[dict[str, object]]:
+    def get_subjects() -> list[dict[str, Any]]:
         return [
             {"lines": block.lines, "index": block.index}
             for block in filter(
@@ -584,7 +584,7 @@ def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, obj
             )
         ]
 
-    def get_objects() -> list[dict[str, object]]:
+    def get_objects() -> list[dict[str, Any]]:
         return [
             {"lines": block.lines, "index": block.index}
             for block in filter(
@@ -601,7 +601,7 @@ def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, obj
     )
 
 
-def get_type_blocks(blocks: list[Block], block_type: Literal["image", "table", "chart"]) -> list[dict[str, object]]:
+def get_type_blocks(blocks: list[Block], block_type: Literal["image", "table", "chart"]) -> list[dict[str, Any]]:
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
     ret = []
     for v in with_captions:

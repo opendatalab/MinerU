@@ -107,7 +107,7 @@ def _format_doc_slices(batch_slices: list[dict[str, int]]) -> str:
 
 
 def _finalize_processing_window_context(
-    context: dict[str, object],
+    context: dict[str, Any],
     on_doc_ready: Callable[..., object],
     client_side_output_generation: bool = False,
 ) -> None:
@@ -135,7 +135,7 @@ def _finalize_processing_window_context(
 
 
 def _emit_zero_page_contexts(
-    doc_contexts: list[dict[str, object]],
+    doc_contexts: list[dict[str, Any]],
     on_doc_ready: Callable[..., object],
     client_side_output_generation: bool = False,
 ) -> None:
@@ -324,7 +324,6 @@ def batch_image_analyze(
     formula_enable: bool = True,
     table_enable: bool = True,
 ) -> object:
-
     from .batch_analyze import BatchAnalyze
 
     model_manager = ModelSingleton()

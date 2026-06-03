@@ -434,7 +434,7 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, object], list[list[dict[str, object]]]]:
+) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
@@ -528,7 +528,7 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: Any,
-) -> tuple[dict[str, object], list[list[dict[str, object]]]]:
+) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)

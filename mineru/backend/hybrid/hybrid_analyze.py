@@ -372,8 +372,8 @@ def _has_doc_title_overlap(title_bbox: list[float], doc_title_bboxes: list[list[
 
 
 def _apply_layout_title_split(
-    model_list: list[list[dict[str, object]]],
-    images_layout_res: list[list[dict[str, object]]],
+    model_list: list[list[dict[str, Any]]],
+    images_layout_res: list[list[dict[str, Any]]],
     page_sizes: list[list[int]],
     overlap_threshold: float = LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
 ) -> None:
@@ -396,7 +396,7 @@ def _predict_layout_for_title_split(
     hybrid_pipeline_model: MineruHybridModel,
     images: list[Image.Image],
     batch_ratio: int,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     """执行layout小模型检测，专门为Hybrid标题拆分提供页面layout结果。"""
     return run_layout_inference(
         hybrid_pipeline_model.layout_model.batch_predict,
@@ -412,7 +412,7 @@ def _process_ocr_and_formulas(
     inline_formula_enable: bool,
     _ocr_enable: bool,
     batch_ratio: int = 1,
-) -> tuple[list[list[dict[str, object]]], MineruHybridModel]:
+) -> tuple[list[list[dict[str, Any]]], MineruHybridModel]:
     """处理OCR和公式识别"""
 
     # 遍历model_list,对文本块截图交由OCR识别
@@ -573,7 +573,7 @@ def _apply_layout_title_split_for_window(
     model_list: list[ExtractResult],
     language: str | None,
     batch_ratio: int,
-) -> None:
+) -> MineruHybridModel:
     """为VLM-OCR路径补跑layout小模型，先基于VLM原始title做OCR det，再拆分标题。"""
     hybrid_model_singleton = HybridModelSingleton()
     hybrid_pipeline_model = hybrid_model_singleton.get_model(
@@ -611,8 +611,8 @@ def _apply_layout_title_split_for_window(
 
 
 def _normalize_bbox(
-    inline_formula_list: list[list[dict[str, object]]],
-    ocr_res_list: list[list[dict[str, object]]],
+    inline_formula_list: list[list[dict[str, Any]]],
+    ocr_res_list: list[list[dict[str, Any]]],
     images_pil_list: list[Image.Image],
 ) -> None:
     """归一化坐标并生成最终结果"""
@@ -647,11 +647,11 @@ def _build_ocr_text_model_item(ocr_res: dict[str, Any], keep_text: bool = True) 
 
 
 def _merge_page_sidecar_items(
-    model_list: list[list[dict[str, object]]],
-    inline_formula_list: list[list[dict[str, object]]],
-    ocr_res_list: list[list[dict[str, object]]],
+    model_list: list[list[dict[str, Any]]],
+    inline_formula_list: list[list[dict[str, Any]]],
+    ocr_res_list: list[list[dict[str, Any]]],
     keep_ocr_text: bool = True,
-) -> list[list[dict[str, object]]]:
+) -> list[list[dict[str, Any]]]:
     merged_model_list = []
     for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(model_list, inline_formula_list, ocr_res_list):
         merged_page_model_list = list(page_model_list)
@@ -745,7 +745,7 @@ def doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: object,
-) -> tuple[dict[str, object], list[list[dict[str, object]]], bool]:
+) -> tuple[dict[str, Any], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
@@ -889,7 +889,7 @@ async def aio_doc_analyze(
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs: object,
-) -> tuple[dict[str, object], list[list[dict[str, object]]], bool]:
+) -> tuple[dict[str, Any], list[list[dict[str, Any]]], bool]:
     client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
