@@ -40,9 +40,9 @@ def blocks_to_page_info(
     replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
     page_info = make_page_info_dict(
-        page_index,
-        page_w,
-        page_h,
+        preproc_blocks,
+        page_index, page_w, page_h,
+        discarded_blocks,
     )
 
     return page_info
