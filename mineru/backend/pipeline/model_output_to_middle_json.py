@@ -11,7 +11,7 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.parser.types import PageInfo, block_from_dict
+from mineru.types import PageInfo, block_from_dict
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5

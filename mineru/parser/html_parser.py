@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup, Tag
 
 from .base import DocumentParser
 from .parse_result import ParseResult
-from .types import Block, Line, PageInfo, Span
+from mineru.types import Block, Line, PageInfo, Span
 
 
 class HtmlParser(DocumentParser):

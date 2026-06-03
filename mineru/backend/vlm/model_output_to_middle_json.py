@@ -16,7 +16,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import pdfium_guard
-from mineru.parser.types import PageInfo, block_from_dict
+from mineru.types import PageInfo, block_from_dict
 from mineru.version import __version__
 
 

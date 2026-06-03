@@ -6,7 +6,7 @@ from typing import Any
 from mineru.backend.utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType
-from mineru.parser.types import PageInfo, block_from_dict
+from mineru.types import PageInfo, block_from_dict
 from mineru.version import __version__
 
 

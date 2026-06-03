@@ -8,7 +8,7 @@ from .html_parser import HtmlParser
 from .office_parser import DocxParser, OfficeBaseParser, PptxParser, XlsxParser
 from .parse_result import ParseResult
 from .pdf_parser import PdfBaseParser, PdfHybridParser, PdfPipelineParser, PdfVlmParser
-from .types import Block, Line, PageInfo, Span
+from mineru.types import Block, Line, PageInfo, Span
 from .api_parser import MinerUApiParser
 
 __all__ = [
@@ -110,7 +110,7 @@ def _parse_flash(path: str | Path, start_page_id: int, end_page_id: int | None,
 
     from ..backend.flash.pdf_extractor import extract_text
     from .. import version
-    from .types import Block, Line, PageInfo, Span
+    from mineru.types import Block, Line, PageInfo, Span
 
     path = P(path)
     text = extract_text(str(path), start_page=start_page_id, end_page=end_page_id)

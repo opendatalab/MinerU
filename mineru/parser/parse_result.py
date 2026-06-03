@@ -10,7 +10,7 @@ from typing import Any
 
 from ..utils.enum_class import MakeMode
 from ..utils.pdf_document import PDFDocument
-from .types import PageInfo
+from mineru.types import PageInfo
 
 _INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;]+);base64,([^\"]+)", re.DOTALL)
 

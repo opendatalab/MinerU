@@ -9,7 +9,7 @@ from PIL import Image
 from .pdfium_guard import close_pdfium_document, get_pdfium_document_page_count, open_pdfium_document, pdfium_guard
 
 if TYPE_CHECKING:
-    from mineru.parser.types import PageInfo
+    from mineru.types import PageInfo
 
 
 class PDFDocument:

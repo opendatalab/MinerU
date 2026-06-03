@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from tqdm import tqdm
 
-from mineru.parser.types import PageInfo
+from mineru.types import PageInfo
 
 
 def build_middle_json(

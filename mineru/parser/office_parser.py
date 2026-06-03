@@ -7,7 +7,7 @@ from typing import Any
 
 from .base import DocumentParser
 from .parse_result import ParseResult
-from .types import PageInfo
+from mineru.types import PageInfo
 
 
 class OfficeBaseParser(DocumentParser, ABC):

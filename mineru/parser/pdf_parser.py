@@ -8,8 +8,7 @@ from typing import Any
 
 from .base import DocumentParser
 from .parse_result import ParseResult
-from .types import PageInfo
-
+from mineru.types import PageInfo
 
 _IMAGE_SUFFIXES = frozenset({"png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"})
 
@@ -115,7 +114,6 @@ class PdfBaseParser(DocumentParser):
             _file_name=file_name,
             _model_output=model_output if self.return_model_output else None,
         )
-
 
 
 class PdfVlmParser(PdfBaseParser):
@@ -283,4 +281,3 @@ class PdfHybridParser(PdfBaseParser):
         )
 
         return middle_json, model_list
-
