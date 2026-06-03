@@ -1,8 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
 
-from tqdm import tqdm
-
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.para_block_utils import (
     build_para_blocks_from_preproc,
@@ -16,7 +14,7 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 from mineru.version import __version__
 
 
@@ -118,17 +116,11 @@ def finalize_middle_json(pdf_info_list):
 
 
 def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
-    middle_json = init_middle_json()
-    with tqdm(total=len(model_output_blocks_list), desc="Processing pages") as progress_bar:
-        append_page_blocks_to_middle_json(
-            middle_json,
-            model_output_blocks_list,
-            images_list,
-            pdf_doc,
-            image_writer,
-            progress_bar=progress_bar,
-        )
+    from mineru.backend.utils.middle_json_utils import build_middle_json
 
-    finalize_middle_json(middle_json["pdf_info"])
-    close_pdfium_document(pdf_doc)
-    return middle_json
+    return build_middle_json(
+        model_output_blocks_list, images_list, pdf_doc, image_writer,
+        init_fn=init_middle_json,
+        append_fn=append_page_blocks_to_middle_json,
+        finalize_fn=finalize_middle_json,
+    )

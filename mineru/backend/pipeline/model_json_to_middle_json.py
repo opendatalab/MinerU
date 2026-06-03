@@ -1,8 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
 
-from tqdm import tqdm
-
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.pipeline.model_init import (
@@ -18,7 +16,7 @@ from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 
 
 def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
@@ -293,21 +291,16 @@ def init_middle_json():
 
 
 def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=None, ocr_enable=False, formula_enable=None):
-    middle_json = init_middle_json()
-    with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
-        append_page_model_infos_to_middle_json(
-            middle_json,
-            model_list,
-            images_list,
-            pdf_doc,
-            image_writer,
-            ocr_enable=ocr_enable,
-            progress_bar=progress_bar,
-        )
+    from mineru.backend.utils.middle_json_utils import build_middle_json
 
-    finalize_middle_json(middle_json["pdf_info"], lang=lang)
-    close_pdfium_document(pdf_doc)
-    return middle_json
+    return build_middle_json(
+        model_list, images_list, pdf_doc, image_writer,
+        init_fn=init_middle_json,
+        append_fn=append_page_model_infos_to_middle_json,
+        finalize_fn=finalize_middle_json,
+        lang=lang,
+        ocr_enable=ocr_enable,
+    )
 
 
 def make_page_info_dict(blocks, page_id, page_w, page_h, discarded_blocks):

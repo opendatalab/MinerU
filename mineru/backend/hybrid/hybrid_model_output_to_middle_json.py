@@ -21,7 +21,7 @@ from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
+from mineru.utils.pdfium_guard import close_pdfium_child, pdfium_guard
 from mineru.version import __version__
 
 
@@ -295,25 +295,14 @@ def result_to_middle_json(
         _vlm_ocr_enable,
         hybrid_pipeline_model,
 ):
-    middle_json = init_middle_json(_ocr_enable, _vlm_ocr_enable)
+    from mineru.backend.utils.middle_json_utils import build_middle_json
 
-    with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
-        append_page_model_list_to_middle_json(
-            middle_json,
-            model_list,
-            images_list,
-            pdf_doc,
-            image_writer,
-            _ocr_enable=_ocr_enable,
-            _vlm_ocr_enable=_vlm_ocr_enable,
-            progress_bar=progress_bar,
-        )
-
-    finalize_middle_json(
-        middle_json["pdf_info"],
-        hybrid_pipeline_model,
-        _ocr_enable,
-        _vlm_ocr_enable,
+    return build_middle_json(
+        model_list, images_list, pdf_doc, image_writer,
+        init_fn=init_middle_json,
+        append_fn=append_page_model_list_to_middle_json,
+        finalize_fn=finalize_middle_json,
+        _ocr_enable=_ocr_enable,
+        _vlm_ocr_enable=_vlm_ocr_enable,
+        hybrid_pipeline_model=hybrid_pipeline_model,
     )
-    close_pdfium_document(pdf_doc)
-    return middle_json
