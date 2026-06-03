@@ -20,6 +20,10 @@ from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+from mineru.utils.span_pre_proc import (
+    _clear_post_ocr_fallback,
+    _restore_post_ocr_fallback,
+)
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
 from mineru.version import __version__
@@ -152,6 +156,9 @@ def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
             if ocr_score > OcrConfidence.min_confidence:
                 span['content'] = ocr_text
                 span['score'] = float(f"{ocr_score:.3f}")
+                _clear_post_ocr_fallback(span)
+            elif _restore_post_ocr_fallback(span):
+                continue
             else:
                 span['content'] = ''
                 span['score'] = 0.0
