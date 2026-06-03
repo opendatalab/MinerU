@@ -6,7 +6,7 @@ from typing import Any
 from mineru.backend.utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType
-from mineru.parser.types import PageInfo
+from mineru.parser.types import PageInfo, block_from_dict
 from mineru.version import __version__
 
 
@@ -62,6 +62,9 @@ def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -
     ])
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
+
+    page_blocks = [block_from_dict(b) for b in page_blocks]
+    discarded_blocks = [block_from_dict(b) for b in discarded_blocks]
 
     page_info = PageInfo(
         para_blocks=page_blocks,

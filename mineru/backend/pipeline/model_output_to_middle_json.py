@@ -11,7 +11,7 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.parser.types import PageInfo
+from mineru.parser.types import PageInfo, block_from_dict
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
@@ -52,7 +52,11 @@ def blocks_to_page_info(page_model_info: dict, image_dict: dict, page: Any, imag
     """构造page_info"""
     replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
-    page_info = make_page_info_dict(preproc_blocks, page_index, page_w, page_h, discarded_blocks)
+    page_info = make_page_info_dict(
+        [block_from_dict(b) for b in preproc_blocks],
+        page_index, page_w, page_h,
+        [block_from_dict(b) for b in discarded_blocks],
+    )
 
     return page_info
 

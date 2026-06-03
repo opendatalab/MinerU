@@ -4,42 +4,84 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
+# ── dict-compatibility for dataclass-backed model objects ──────────
+#
+# Block / Line / Span / PageInfo are dataclasses whose canonical fields
+# are declared below.  Backend code (MagicModel, para_split, union_make)
+# also attaches *internal processing fields* (``index``, ``page_num``,
+# ``_ocr_det_lines``, etc.) via ``block["key"] = value``.  Those
+# non-canonical keys are stored in ``_extra`` so that the dataclass
+# signature stays clean while still providing full dict compatibility
+# during migration.
 
-def _make_getitem(cls_name: str):
-    """Generate dict-access compatibility methods."""
 
-    def __getitem__(self, key: str) -> Any:
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            raise KeyError(key) from None
+def _extra_getitem(self, key: str) -> Any:
+    try:
+        return getattr(self, key)
+    except AttributeError:
+        pass
+    try:
+        return self._extra[key]
+    except (AttributeError, KeyError):
+        raise KeyError(key) from None
 
-    def __setitem__(self, key: str, value: Any) -> None:
-        if not hasattr(self, key):
-            raise KeyError(key)
+
+def _extra_setitem(self, key: str, value: Any) -> None:
+    if hasattr(self, key):
         setattr(self, key, value)
+    else:
+        self._extra[key] = value
 
-    def get(self, key: str, default: Any = None) -> Any:
-        try:
-            val = getattr(self, key)
-        except AttributeError:
-            return default
-        if val is None and default is not None:
-            return default
-        return val
 
-    def __contains__(self, key: str) -> bool:
-        return hasattr(self, key)
+def _extra_get(self, key: str, default: Any = None) -> Any:
+    try:
+        val = getattr(self, key)
+    except AttributeError:
+        return self._extra.get(key, default)
+    return default if val is None and default is not None else val
 
-    __getitem__.__qualname__ = f"{cls_name}.__getitem__"
-    __getitem__.__name__ = "__getitem__"
-    __setitem__.__qualname__ = f"{cls_name}.__setitem__"
-    __setitem__.__name__ = "__setitem__"
-    get.__qualname__ = f"{cls_name}.get"
-    get.__name__ = "get"
-    __contains__.__qualname__ = f"{cls_name}.__contains__"
-    __contains__.__name__ = "__contains__"
-    return __getitem__, __setitem__, get, __contains__
+
+def _extra_contains(self, key: str) -> bool:
+    return hasattr(self, key) or key in self._extra
+
+
+def _install_dict_compat(*classes) -> None:
+    for cls in classes:
+        cls.__getitem__ = _extra_getitem
+        cls.__setitem__ = _extra_setitem
+        cls.get = _extra_get
+        cls.__contains__ = _extra_contains
+
+
+# ── conversion helpers (dict → typed) ──────────────────────────────
+
+
+def block_from_dict(d: dict) -> Block:
+    return Block(
+        **{k: v for k, v in d.items()
+           if k in Block.__dataclass_fields__},
+        _extra={k: v for k, v in d.items()
+                if k not in Block.__dataclass_fields__},
+    )
+
+
+def line_from_dict(d: dict) -> Line:
+    return Line(
+        spans=[span_from_dict(s) for s in d.get("spans", [])],
+        _extra={k: v for k, v in d.items() if k != "spans"},
+    )
+
+
+def span_from_dict(d: dict) -> Span:
+    return Span(
+        **{k: v for k, v in d.items()
+           if k in Span.__dataclass_fields__},
+        _extra={k: v for k, v in d.items()
+                if k not in Span.__dataclass_fields__},
+    )
+
+
+# ── model types ─────────────────────────────────────────────────────
 
 
 @dataclass
@@ -54,8 +96,7 @@ class Span:
     image_base64: str = ""
     html: str = ""
     latex: str = ""
-
-    __getitem__, __setitem__, get, __contains__ = _make_getitem("Span")  # type: ignore[assignment]
+    _extra: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> Span:
@@ -77,8 +118,7 @@ class Line:
     """A line within a block, containing one or more spans."""
 
     spans: list[Span] = field(default_factory=list)
-
-    __getitem__, __setitem__, get, __contains__ = _make_getitem("Line")  # type: ignore[assignment]
+    _extra: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> Line:
@@ -98,8 +138,7 @@ class Block:
     sub_type: str = ""
     html: str = ""
     merge_prev: bool = False
-
-    __getitem__, __setitem__, get, __contains__ = _make_getitem("Block")  # type: ignore[assignment]
+    _extra: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> Block:
@@ -133,8 +172,7 @@ class PageInfo:
     preproc_blocks: list[Block] = field(default_factory=list)
     para_blocks: list[Block] = field(default_factory=list)
     discarded_blocks: list[Block] = field(default_factory=list)
-
-    __getitem__, __setitem__, get, __contains__ = _make_getitem("PageInfo")  # type: ignore[assignment]
+    _extra: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> PageInfo:
@@ -146,3 +184,6 @@ class PageInfo:
             para_blocks=[Block.from_dict(b) for b in d.get("para_blocks", [])],
             discarded_blocks=[Block.from_dict(b) for b in d.get("discarded_blocks", [])],
         )
+
+
+_install_dict_compat(Span, Line, Block, PageInfo)

@@ -16,7 +16,7 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import pdfium_guard
-from mineru.parser.types import PageInfo
+from mineru.parser.types import PageInfo, block_from_dict
 from mineru.version import __version__
 
 
@@ -66,6 +66,9 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     ])
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
+
+    page_blocks = [block_from_dict(b) for b in page_blocks]
+    discarded_blocks = [block_from_dict(b) for b in discarded_blocks]
 
     page_info = PageInfo(
         preproc_blocks=page_blocks,
