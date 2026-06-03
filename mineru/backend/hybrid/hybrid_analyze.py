@@ -12,14 +12,12 @@ from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType
 from tqdm import tqdm
 
-from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
+from mineru.backend.hybrid.model_output_to_middle_json import (
     apply_server_side_postprocess,
     blocks_to_page_info,
     finalize_middle_json,
     init_middle_json,
 )
-from mineru.backend.utils.middle_json_utils import append_pages
-from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import (
     HybridModelSingleton,
     run_layout_inference,
@@ -27,20 +25,29 @@ from mineru.backend.pipeline.model_init import (
     run_ocr_det_inference,
     run_ocr_rec_inference,
 )
+from mineru.backend.utils.middle_json_utils import append_pages
+from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.vlm.vlm_analyze import (
     ModelSingleton,
+    _get_model_async,
+    _maybe_enable_serial_execution,
     aio_predictor_execution_guard,
     predictor_execution_guard,
-    _maybe_enable_serial_execution,
-    _get_model_async,
 )
 from mineru.data.data_reader_writer import DataWriter
 from mineru.utils.boxbase import calculate_overlap_area_2_minbox_area_ratio
 from mineru.utils.config_reader import get_device, get_processing_window_size
-from mineru.utils.enum_class import ImageType, NotExtractType, BlockType as MineruBlockType
-from mineru.utils.model_utils import crop_img, get_vram, clean_memory
-from mineru.utils.ocr_utils import get_adjusted_mfdetrec_res, get_ocr_result_list, sorted_boxes, merge_det_boxes, \
-    update_det_boxes, OcrConfidence
+from mineru.utils.enum_class import BlockType as MineruBlockType
+from mineru.utils.enum_class import ImageType, NotExtractType
+from mineru.utils.model_utils import clean_memory, crop_img, get_vram
+from mineru.utils.ocr_utils import (
+    OcrConfidence,
+    get_adjusted_mfdetrec_res,
+    get_ocr_result_list,
+    merge_det_boxes,
+    sorted_boxes,
+    update_det_boxes,
+)
 from mineru.utils.pdf_classify import classify
 from mineru.utils.pdf_image_tools import (
     aio_load_images_from_pdf_bytes_range,
@@ -52,7 +59,7 @@ from mineru.utils.pdfium_guard import (
     open_pdfium_document,
 )
 
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'  # 让mps可以fallback
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"  # 让mps可以fallback
 
 LAYOUT_BASE_BATCH_SIZE = 1
 MFR_BASE_BATCH_SIZE = 16
@@ -67,15 +74,20 @@ def _is_hybrid_ocr_det_candidate(block):
     """判断 Hybrid 文本类块是否需要 OCR det 生成行级视觉信息。"""
     return (block.get("type") or block.get("label")) in HYBRID_OCR_DET_TEXT_TYPES
 
-def ocr_classify(pdf_bytes, parse_method: str = 'auto',) -> bool:
+
+def ocr_classify(
+    pdf_bytes,
+    parse_method: str = "auto",
+) -> bool:
     # 确定OCR设置
     _ocr_enable = False
-    if parse_method == 'auto':
-        if classify(pdf_bytes) == 'ocr':
+    if parse_method == "auto":
+        if classify(pdf_bytes) == "ocr":
             _ocr_enable = True
-    elif parse_method == 'ocr':
+    elif parse_method == "ocr":
         _ocr_enable = True
     return _ocr_enable
+
 
 def ocr_det(
     hybrid_pipeline_model,
@@ -100,31 +112,25 @@ def ocr_det(
     if not hybrid_pipeline_model.enable_ocr_det_batch:
         # 非批处理模式 - 逐页处理
         for np_image, page_mfd_res, page_results in tqdm(
-            zip(np_images, mfd_res, model_list),
-            total=len(np_images),
-            desc="OCR-det"
+            zip(np_images, mfd_res, model_list), total=len(np_images), desc="OCR-det"
         ):
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
                 if not _is_hybrid_ocr_det_candidate(res):
                     continue
-                x0 = max(0, int(res['bbox'][0] * img_width))
-                y0 = max(0, int(res['bbox'][1] * img_height))
-                x1 = min(img_width, int(res['bbox'][2] * img_width))
-                y1 = min(img_height, int(res['bbox'][3] * img_height))
+                x0 = max(0, int(res["bbox"][0] * img_width))
+                y0 = max(0, int(res["bbox"][1] * img_height))
+                x1 = min(img_width, int(res["bbox"][2] * img_width))
+                y1 = min(img_height, int(res["bbox"][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
                 _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
                 try:
-                    new_image, useful_list = crop_img(
-                        res, np_image, crop_paste_x=50, crop_paste_y=50
-                    )
+                    new_image, useful_list = crop_img(res, np_image, crop_paste_x=50, crop_paste_y=50)
                 finally:
                     _restore_normalized_bbox(res)
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                    page_mfd_res, useful_list
-                )
+                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
                 ocr_res = run_ocr_det_inference(
                     hybrid_pipeline_model.ocr_model.ocr,
@@ -147,34 +153,26 @@ def ocr_det(
         # 收集所有需要OCR检测的裁剪图像
         all_cropped_images_info = []
 
-        for np_image, page_mfd_res, page_results in zip(
-                np_images, mfd_res, model_list
-        ):
+        for np_image, page_mfd_res, page_results in zip(np_images, mfd_res, model_list):
             ocr_res_list.append([])
             img_height, img_width = np_image.shape[:2]
             for res in page_results:
                 if not _is_hybrid_ocr_det_candidate(res):
                     continue
-                x0 = max(0, int(res['bbox'][0] * img_width))
-                y0 = max(0, int(res['bbox'][1] * img_height))
-                x1 = min(img_width, int(res['bbox'][2] * img_width))
-                y1 = min(img_height, int(res['bbox'][3] * img_height))
+                x0 = max(0, int(res["bbox"][0] * img_width))
+                y0 = max(0, int(res["bbox"][1] * img_height))
+                x1 = min(img_width, int(res["bbox"][2] * img_width))
+                y1 = min(img_height, int(res["bbox"][3] * img_height))
                 if x1 <= x0 or y1 <= y0:
                     continue
                 _set_temp_pixel_bbox(res, [x0, y0, x1, y1])
                 try:
-                    new_image, useful_list = crop_img(
-                        res, np_image, crop_paste_x=50, crop_paste_y=50
-                    )
+                    new_image, useful_list = crop_img(res, np_image, crop_paste_x=50, crop_paste_y=50)
                 finally:
                     _restore_normalized_bbox(res)
-                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(
-                    page_mfd_res, useful_list
-                )
+                adjusted_mfdetrec_res = get_adjusted_mfdetrec_res(page_mfd_res, useful_list)
                 bgr_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-                all_cropped_images_info.append((
-                    bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]
-                ))
+                all_cropped_images_info.append((bgr_image, useful_list, adjusted_mfdetrec_res, ocr_res_list[-1]))
 
         # 按分辨率分组并同时完成padding
         RESOLUTION_GROUP_STRIDE = 64  # 32
@@ -219,12 +217,14 @@ def ocr_det(
                     dt_boxes_merged = merge_det_boxes(dt_boxes_sorted) if dt_boxes_sorted else []
 
                     # 根据公式位置更新检测框
-                    dt_boxes_final = (update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
-                                      if dt_boxes_merged and adjusted_mfdetrec_res
-                                      else dt_boxes_merged)
+                    dt_boxes_final = (
+                        update_det_boxes(dt_boxes_merged, adjusted_mfdetrec_res)
+                        if dt_boxes_merged and adjusted_mfdetrec_res
+                        else dt_boxes_merged
+                    )
 
                     if dt_boxes_final:
-                        ocr_res = [box.tolist() if hasattr(box, 'tolist') else box for box in dt_boxes_final]
+                        ocr_res = [box.tolist() if hasattr(box, "tolist") else box for box in dt_boxes_final]
                         ocr_result_list = get_ocr_result_list(
                             ocr_res,
                             useful_list,
@@ -235,6 +235,7 @@ def ocr_det(
                         ocr_page_res_list.extend(ocr_result_list)
     return ocr_res_list
 
+
 def mask_image_regions(np_images, model_list):
     # 根据vlm返回的结果，在每一页中将image、table、equation块mask成白色背景图像
     for np_image, vlm_page_results in zip(np_images, model_list):
@@ -242,8 +243,8 @@ def mask_image_regions(np_images, model_list):
         # 收集需要mask的区域
         mask_regions = []
         for block in vlm_page_results:
-            if block['type'] in [BlockType.IMAGE, BlockType.TABLE, BlockType.EQUATION]:
-                bbox = block['bbox']
+            if block["type"] in [BlockType.IMAGE, BlockType.TABLE, BlockType.EQUATION]:
+                bbox = block["bbox"]
                 # 批量转换归一化坐标到像素坐标,并进行边界检查
                 x0 = max(0, int(bbox[0] * img_width))
                 y0 = max(0, int(bbox[1] * img_height))
@@ -260,17 +261,12 @@ def mask_image_regions(np_images, model_list):
 
 def normalize_bbox_to_unit(item, page_width, page_height):
     """将像素级bbox归一化为[0, 1]区间"""
-    bbox = item.get('bbox')
+    bbox = item.get("bbox")
     if bbox is None or len(bbox) != 4:
         return False
 
     x0, y0, x1, y1 = [float(v) for v in bbox]
-    if (
-        0.0 <= x0 <= 1.0
-        and 0.0 <= y0 <= 1.0
-        and 0.0 <= x1 <= 1.0
-        and 0.0 <= y1 <= 1.0
-    ):
+    if 0.0 <= x0 <= 1.0 and 0.0 <= y0 <= 1.0 and 0.0 <= x1 <= 1.0 and 0.0 <= y1 <= 1.0:
         normalized_bbox = [x0, y0, x1, y1]
     else:
         normalized_bbox = [
@@ -279,12 +275,12 @@ def normalize_bbox_to_unit(item, page_width, page_height):
             x1 / page_width,
             y1 / page_height,
         ]
-    item['bbox'] = [round(min(max(v, 0), 1), 3) for v in normalized_bbox]
+    item["bbox"] = [round(min(max(v, 0), 1), 3) for v in normalized_bbox]
     return True
 
 
 def _formula_item_to_pixel_bbox(item):
-    bbox = item.get('bbox')
+    bbox = item.get("bbox")
     if bbox is not None and len(bbox) == 4:
         return [int(float(v)) for v in bbox]
 
@@ -296,17 +292,17 @@ def _build_inline_formula_inputs(images_layout_res):
     for layout_res in images_layout_res:
         page_inline_formula_inputs = []
         for res in layout_res:
-            if res.get('label') not in ['inline_formula', 'display_formula']:
+            if res.get("label") not in ["inline_formula", "display_formula"]:
                 continue
-            bbox = res.get('bbox')
+            bbox = res.get("bbox")
             if bbox is None or len(bbox) != 4:
                 continue
             page_inline_formula_inputs.append(
                 {
                     "label": "inline_formula",
                     "bbox": list(bbox),
-                    "score": float(res.get('score', 0.0)),
-                    "latex": res.get('latex', ''),
+                    "score": float(res.get("score", 0.0)),
+                    "latex": res.get("latex", ""),
                 }
             )
         inline_formula_inputs.append(page_inline_formula_inputs)
@@ -319,7 +315,7 @@ def _build_formula_mask_inputs(images_layout_res):
     for layout_res in images_layout_res:
         page_masks = []
         for res in layout_res:
-            if res.get('label') not in ['inline_formula', 'display_formula']:
+            if res.get("label") not in ["inline_formula", "display_formula"]:
                 continue
             bbox = _formula_item_to_pixel_bbox(res)
             if bbox is not None:
@@ -373,8 +369,7 @@ def _collect_layout_doc_title_bboxes(layout_res, page_size):
 def _has_doc_title_overlap(title_bbox, doc_title_bboxes, overlap_threshold):
     """判断VLM标题框是否与任一layout doc_title框达到最小框重叠阈值。"""
     return any(
-        calculate_overlap_area_2_minbox_area_ratio(title_bbox, doc_title_bbox)
-        >= overlap_threshold
+        calculate_overlap_area_2_minbox_area_ratio(title_bbox, doc_title_bbox) >= overlap_threshold
         for doc_title_bbox in doc_title_bboxes
     )
 
@@ -484,9 +479,9 @@ def _process_ocr_and_formulas(
         img_crop_list = []
         for page_ocr_res_list in ocr_res_list:
             for ocr_res in page_ocr_res_list:
-                if 'np_img' in ocr_res:
+                if "np_img" in ocr_res:
                     need_ocr_list.append((page_ocr_res_list, ocr_res))
-                    img_crop_list.append(ocr_res.pop('np_img'))
+                    img_crop_list.append(ocr_res.pop("np_img"))
         if len(img_crop_list) > 0:
             # Process OCR
             ocr_result_list = run_ocr_rec_inference(
@@ -497,14 +492,16 @@ def _process_ocr_and_formulas(
             )[0]
 
             # Verify we have matching counts
-            assert len(ocr_result_list) == len(need_ocr_list), f'ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}'
+            assert len(ocr_result_list) == len(need_ocr_list), (
+                f"ocr_result_list: {len(ocr_result_list)}, need_ocr_list: {len(need_ocr_list)}"
+            )
 
             items_to_remove = []
             # Process OCR results for this language
             for index, (page_ocr_res_list, need_ocr_res) in enumerate(need_ocr_list):
                 ocr_text, ocr_score = ocr_result_list[index]
-                need_ocr_res['text'] = ocr_text
-                need_ocr_res['score'] = float(f"{ocr_score:.3f}")
+                need_ocr_res["text"] = ocr_text
+                need_ocr_res["score"] = float(f"{ocr_score:.3f}")
                 should_remove = False
                 if ocr_score < OcrConfidence.min_confidence:
                     should_remove = True
@@ -512,10 +509,10 @@ def _process_ocr_and_formulas(
                     layout_res_bbox = need_ocr_res.get("bbox")
                     if layout_res_bbox is None and need_ocr_res.get("poly") is not None:
                         layout_res_bbox = [
-                            need_ocr_res['poly'][0],
-                            need_ocr_res['poly'][1],
-                            need_ocr_res['poly'][4],
-                            need_ocr_res['poly'][5],
+                            need_ocr_res["poly"][0],
+                            need_ocr_res["poly"][1],
+                            need_ocr_res["poly"][4],
+                            need_ocr_res["poly"][5],
                         ]
                     if layout_res_bbox is None:
                         should_remove = True
@@ -523,13 +520,32 @@ def _process_ocr_and_formulas(
                     layout_res_width = layout_res_bbox[2] - layout_res_bbox[0]
                     layout_res_height = layout_res_bbox[3] - layout_res_bbox[1]
                     if (
-                            ocr_text in [
-                                '（204号', '（20', '（2', '（2号', '（20号', '号','（204',
-                                '(cid:)', '(ci:)', '(cd:1)', 'cd:)', 'c)', '(cd:)', 'c', 'id:)',
-                                ':)', '√:)', '√i:)', '−i:)', '−:' , 'i:)',
-                            ]
-                            and ocr_score < 0.8
-                            and layout_res_width < layout_res_height
+                        ocr_text
+                        in [
+                            "（204号",
+                            "（20",
+                            "（2",
+                            "（2号",
+                            "（20号",
+                            "号",
+                            "（204",
+                            "(cid:)",
+                            "(ci:)",
+                            "(cd:1)",
+                            "cd:)",
+                            "c)",
+                            "(cd:)",
+                            "c",
+                            "id:)",
+                            ":)",
+                            "√:)",
+                            "√i:)",
+                            "−i:)",
+                            "−:",
+                            "i:)",
+                        ]
+                        and ocr_score < 0.8
+                        and layout_res_width < layout_res_height
                     ):
                         should_remove = True
 
@@ -603,9 +619,7 @@ def _normalize_bbox(
     images_pil_list,
 ):
     """归一化坐标并生成最终结果"""
-    for page_inline_formula_list, page_ocr_res_list, page_pil_image in zip(
-            inline_formula_list, ocr_res_list, images_pil_list
-    ):
+    for page_inline_formula_list, page_ocr_res_list, page_pil_image in zip(inline_formula_list, ocr_res_list, images_pil_list):
         if page_inline_formula_list or page_ocr_res_list:
             page_width, page_height = page_pil_image.size
             # 处理公式列表
@@ -642,14 +656,10 @@ def _merge_page_sidecar_items(
     keep_ocr_text=True,
 ):
     merged_model_list = []
-    for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
-            model_list, inline_formula_list, ocr_res_list
-    ):
+    for page_model_list, page_inline_formula_list, page_ocr_res_list in zip(model_list, inline_formula_list, ocr_res_list):
         merged_page_model_list = list(page_model_list)
         merged_page_model_list.extend(
-            _build_inline_formula_model_item(formula)
-            for formula in page_inline_formula_list
-            if formula.get("bbox") is not None
+            _build_inline_formula_model_item(formula) for formula in page_inline_formula_list if formula.get("bbox") is not None
         )
         merged_page_model_list.extend(
             _build_ocr_text_model_item(ocr_res, keep_text=keep_ocr_text)
@@ -713,12 +723,7 @@ def _should_enable_vlm_ocr(ocr_enable: bool, language: str, inline_formula_enabl
         return True
 
     force_pipeline = os.getenv("MINERU_HYBRID_FORCE_PIPELINE_ENABLE", "0").lower() in ("1", "true", "yes")
-    return (
-            ocr_enable
-            and language in ["ch", "en"]
-            and inline_formula_enable
-            and not force_pipeline
-    )
+    return ocr_enable and language in ["ch", "en"] and inline_formula_enable and not force_pipeline
 
 
 def _close_images(images_list):
@@ -732,21 +737,19 @@ def _close_images(images_list):
 
 
 def doc_analyze(
-        pdf_bytes,
-        image_writer: DataWriter | None,
-        predictor: MinerUClient | None = None,
-        backend="transformers",
-        parse_method: str = 'auto',
-        language: str = 'ch',
-        inline_formula_enable: bool = True,
-        model_path: str | None = None,
-        server_url: str | None = None,
-        image_analysis: bool = True,
-        **kwargs,
+    pdf_bytes,
+    image_writer: DataWriter | None,
+    predictor: MinerUClient | None = None,
+    backend="transformers",
+    parse_method: str = "auto",
+    language: str = "ch",
+    inline_formula_enable: bool = True,
+    model_path: str | None = None,
+    server_url: str | None = None,
+    image_analysis: bool = True,
+    **kwargs,
 ):
-    client_side_output_generation = bool(
-        kwargs.pop("client_side_output_generation", False)
-    )
+    client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -764,14 +767,10 @@ def doc_analyze(
         page_count = get_pdfium_document_page_count(pdf_doc)
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
-        total_windows = (
-            (page_count + effective_window_size - 1) // effective_window_size
-            if effective_window_size
-            else 0
-        )
+        total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
         logger.info(
-            f'Hybrid processing-window run. page_count={page_count}, '
-            f'window_size={configured_window_size}, total_windows={total_windows}'
+            f"Hybrid processing-window run. page_count={page_count}, "
+            f"window_size={configured_window_size}, total_windows={total_windows}"
         )
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
@@ -792,9 +791,9 @@ def doc_analyze(
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(
-                        f'Hybrid processing window {window_index + 1}/{total_windows}: '
-                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                        f'({len(images_pil_list)} pages)'
+                        f"Hybrid processing window {window_index + 1}/{total_windows}: "
+                        f"pages {window_start + 1}-{window_end + 1}/{page_count} "
+                        f"({len(images_pil_list)} pages)"
                     )
                     if _vlm_ocr_enable:
                         with predictor_execution_guard(predictor):
@@ -855,8 +854,7 @@ def doc_analyze(
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
             logger.debug(
-                f"processing-window infer finished, cost: {infer_time}, "
-                f"speed: {round(len(model_list) / infer_time, 3)} page/s"
+                f"processing-window infer finished, cost: {infer_time}, speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
         if client_side_output_generation:
@@ -887,17 +885,15 @@ async def aio_doc_analyze(
     image_writer: DataWriter | None,
     predictor: MinerUClient | None = None,
     backend="transformers",
-    parse_method: str = 'auto',
-    language: str = 'ch',
+    parse_method: str = "auto",
+    language: str = "ch",
     inline_formula_enable: bool = True,
     model_path: str | None = None,
     server_url: str | None = None,
     image_analysis: bool = True,
     **kwargs,
 ):
-    client_side_output_generation = bool(
-        kwargs.pop("client_side_output_generation", False)
-    )
+    client_side_output_generation = bool(kwargs.pop("client_side_output_generation", False))
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
@@ -915,14 +911,10 @@ async def aio_doc_analyze(
         page_count = get_pdfium_document_page_count(pdf_doc)
         configured_window_size = get_processing_window_size(default=64)
         effective_window_size = min(page_count, configured_window_size) if page_count else 0
-        total_windows = (
-            (page_count + effective_window_size - 1) // effective_window_size
-            if effective_window_size
-            else 0
-        )
+        total_windows = (page_count + effective_window_size - 1) // effective_window_size if effective_window_size else 0
         logger.info(
-            f'Hybrid processing-window run. page_count={page_count}, '
-            f'window_size={configured_window_size}, total_windows={total_windows}'
+            f"Hybrid processing-window run. page_count={page_count}, "
+            f"window_size={configured_window_size}, total_windows={total_windows}"
         )
 
         batch_ratio = get_batch_ratio(device) if not _vlm_ocr_enable else 1
@@ -942,9 +934,9 @@ async def aio_doc_analyze(
                 try:
                     images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
                     logger.info(
-                        f'Hybrid processing window {window_index + 1}/{total_windows}: '
-                        f'pages {window_start + 1}-{window_end + 1}/{page_count} '
-                        f'({len(images_pil_list)} pages)'
+                        f"Hybrid processing window {window_index + 1}/{total_windows}: "
+                        f"pages {window_start + 1}-{window_end + 1}/{page_count} "
+                        f"({len(images_pil_list)} pages)"
                     )
                     if _vlm_ocr_enable:
                         async with aio_predictor_execution_guard(predictor):
@@ -1007,8 +999,7 @@ async def aio_doc_analyze(
         infer_time = round(time.time() - infer_start, 2)
         if infer_time > 0 and page_count > 0:
             logger.debug(
-                f"processing-window infer finished, cost: {infer_time}, "
-                f"speed: {round(len(model_list) / infer_time, 3)} page/s"
+                f"processing-window infer finished, cost: {infer_time}, speed: {round(len(model_list) / infer_time, 3)} page/s"
             )
 
         if client_side_output_generation:

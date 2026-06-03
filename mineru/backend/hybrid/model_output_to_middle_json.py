@@ -184,11 +184,11 @@ def finalize_middle_json_from_preproc(pdf_info_list):
 
 
 def finalize_middle_json(
-    pdf_info_list,
-    hybrid_pipeline_model,
-    _ocr_enable,
-    _vlm_ocr_enable,
-):
+    pdf_info_list: list[PageInfo],
+    hybrid_pipeline_model: Any,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
+) -> None:
     """保持旧入口语义：服务端先做必要 post-OCR，再执行完整 finalize。"""
     apply_server_side_postprocess(
         pdf_info_list,
@@ -200,14 +200,14 @@ def finalize_middle_json(
 
 
 def result_to_middle_json(
-    model_list,
-    images_list,
-    pdf_doc,
-    image_writer,
-    _ocr_enable,
-    _vlm_ocr_enable,
-    hybrid_pipeline_model,
-):
+    model_list: list,
+    images_list: list,
+    pdf_doc: Any,
+    image_writer: Any,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
+    hybrid_pipeline_model: Any,
+) -> dict:
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(
