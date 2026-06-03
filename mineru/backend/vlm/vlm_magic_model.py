@@ -6,6 +6,7 @@ from loguru import logger
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
+from mineru.types import Block, Line, Span
 from mineru.utils.visual_magic_model_utils import (
     GENERIC_CHILD_TYPES,
     IMAGE_BLOCK_BODY,
@@ -115,20 +116,17 @@ class MagicModel:
             switch_code_to_algorithm = False
 
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
-                span = {
-                    "bbox": block_bbox,
-                    "type": span_type,
-                }
+                span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE:
                     span["html"] = block_content
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span["content"] = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
-                span = {
-                    "bbox": block_bbox,
-                    "type": span_type,
-                    "content": isolated_formula_clean(block_content),
-                }
+                span = Span(
+                    type=span_type,
+                    bbox=block_bbox,
+                    content=isolated_formula_clean(block_content),
+                )
             else:
                 if block_content:
                     block_content = clean_content(block_content)
@@ -155,23 +153,19 @@ class MagicModel:
                         if start > last_end:
                             text_before = block_content[last_end:start]
                             if text_before.strip():
-                                spans.append(
-                                    {
-                                        "bbox": block_bbox,
-                                        "type": ContentType.TEXT,
-                                        "content": text_before,
-                                    }
-                                )
+                                spans.append(Span(
+                                    type=ContentType.TEXT,
+                                    bbox=block_bbox,
+                                    content=text_before,
+                                ))
 
                         # 添加公式（去除\(和\)）
                         formula = match.group(1)
-                        spans.append(
-                            {
-                                "bbox": block_bbox,
-                                "type": ContentType.INLINE_EQUATION,
-                                "content": formula.strip(),
-                            }
-                        )
+                        spans.append(Span(
+                            type=ContentType.INLINE_EQUATION,
+                            bbox=block_bbox,
+                            content=formula.strip(),
+                        ))
 
                         last_end = end
 
@@ -179,24 +173,22 @@ class MagicModel:
                     if last_end < len(block_content):
                         text_after = block_content[last_end:]
                         if text_after.strip():
-                            spans.append(
-                                {
-                                    "bbox": block_bbox,
-                                    "type": ContentType.TEXT,
-                                    "content": text_after,
-                                }
-                            )
+                            spans.append(Span(
+                                type=ContentType.TEXT,
+                                bbox=block_bbox,
+                                content=text_after,
+                            ))
 
                     span = spans
                 else:
-                    span = {
-                        "bbox": block_bbox,
-                        "type": span_type,
-                        "content": block_content,
-                    }
+                    span = Span(
+                        type=span_type,
+                        bbox=block_bbox,
+                        content=block_content,
+                    )
 
             # 处理span类型并添加到all_spans
-            if isinstance(span, dict) and "bbox" in span:
+            if isinstance(span, Span):
                 self.all_spans.append(span)
                 spans = [span]
             elif isinstance(span, list):
@@ -211,21 +203,16 @@ class MagicModel:
             if block_type == BlockType.CODE_BODY:
                 if switch_code_to_algorithm and code_block_sub_type == "code":
                     code_block_sub_type = "algorithm"
-                line = {
-                    "bbox": block_bbox,
-                    "spans": spans,
-                    "extra": {"type": code_block_sub_type, "guess_lang": guess_lang},
-                }
+                line = Line(spans=spans)
+                line["bbox"] = block_bbox
+                line["extra"] = {"type": code_block_sub_type, "guess_lang": guess_lang}
             else:
-                line = {"bbox": block_bbox, "spans": spans}
+                line = Line(spans=spans)
+                line["bbox"] = block_bbox
 
-            block = {
-                "bbox": block_bbox,
-                "type": block_type,
-                "angle": block_angle,
-                "lines": [line],
-                "index": index,
-            }
+            block = Block(type=block_type, bbox=block_bbox, lines=[line])
+            block["angle"] = block_angle
+            block["index"] = index
             if block_sub_type:
                 block["sub_type"] = block_sub_type
             if raw_block_type == "table" and "cell_merge" in block_info:
