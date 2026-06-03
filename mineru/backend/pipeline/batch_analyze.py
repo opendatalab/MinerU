@@ -248,7 +248,7 @@ class BatchAnalyze:
         ocr_result[:] = sorted_result
 
     @staticmethod
-    def _normalize_table_ocr_rec_text(text):
+    def _normalize_table_ocr_rec_text(text: str) -> str:
         """规范化表格 OCR rec 的已知误识别，避免后续表格模型消费错误文本。"""
         if not isinstance(text, str):
             return text
