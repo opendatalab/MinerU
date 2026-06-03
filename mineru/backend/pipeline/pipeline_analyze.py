@@ -9,7 +9,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from .model_init import MineruPipelineModel, PIPELINE_MODEL_INIT_LOCK
-from .model_json_to_middle_json import (
+from .model_output_to_middle_json import (
     apply_server_side_postprocess,
     append_batch_results_to_middle_json,
     finalize_middle_json,
