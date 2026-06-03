@@ -7,7 +7,7 @@ from loguru import logger
 from mineru.utils.table_merge import merge_table
 
 
-def cross_page_table_merge(pdf_info: list[dict]):
+def cross_page_table_merge(pdf_info: list[dict]) -> None:
     """Merge tables that span across multiple pages in a PDF document.
 
     Args:
@@ -26,7 +26,7 @@ def cross_page_table_merge(pdf_info: list[dict]):
         pass
 
 
-def exclude_progress_bar_idle_time(progress_bar, idle_since: float | None, now: float | None = None):
+def exclude_progress_bar_idle_time(progress_bar: Any, idle_since: float | None, now: float | None = None) -> float | None:
     """Exclude non-processing idle time from a reused tqdm progress bar."""
     if progress_bar is None or idle_since is None:
         return

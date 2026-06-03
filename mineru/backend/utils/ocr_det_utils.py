@@ -9,7 +9,7 @@ from mineru.utils.pdf_image_tools import get_crop_img
 OCR_DET_PADDING = 50
 
 
-def get_ch_lite_ocr_det_model():
+def get_ch_lite_ocr_det_model() -> Any:
     try:
         from mineru.backend.pipeline.model_init import AtomModelSingleton
     except Exception as e:
@@ -28,7 +28,7 @@ def get_ch_lite_ocr_det_model():
     )
 
 
-def detect_ocr_boxes_from_padded_crop(bbox, page_pil_img, scale, ocr_model=None, padding=OCR_DET_PADDING):
+def detect_ocr_boxes_from_padded_crop(bbox: list[float], page_pil_img: Any, scale: float, ocr_model: Any = None, padding: int = OCR_DET_PADDING) -> list:
     if not bbox:
         return [], padding
 

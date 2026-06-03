@@ -38,12 +38,12 @@ def iter_block_spans(block):
         yield from iter_block_spans(sub_block)
 
 
-def build_para_blocks_from_preproc(pdf_info_list):
+def build_para_blocks_from_preproc(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
         page_info["para_blocks"] = copy.deepcopy(page_info.get("preproc_blocks", []))
 
 
-def merge_para_text_blocks(pdf_info_list, auto_merge_by_det=False):
+def merge_para_text_blocks(pdf_info_list: list[PageInfo], auto_merge_by_det: bool = False) -> None:
     ordered_blocks = []
     for page_info in pdf_info_list:
         page_idx = page_info.get("page_idx")
@@ -202,7 +202,7 @@ def can_auto_merge_text_blocks(
     return _has_mergeable_block_bbox_relation(current_block, previous_block)
 
 
-def cleanup_internal_para_block_metadata(pdf_info_list):
+def cleanup_internal_para_block_metadata(pdf_info_list: list[PageInfo]) -> None:
     for page_info in pdf_info_list:
         for block_key in ["preproc_blocks", "para_blocks", "discarded_blocks"]:
             for block in page_info.get(block_key, []):
@@ -274,17 +274,17 @@ def _find_previous_ref_text_list_block(
     return ordered_blocks[previous_index]
 
 
-def _is_ref_text_list_block(block):
+def _is_ref_text_list_block(block: Block) -> bool:
     """判断 list block 是否为引用文本列表，只允许这种列表自动拼接。"""
     return block.get("type") == BlockType.LIST and block.get("sub_type") == BlockType.REF_TEXT
 
 
-def _resolve_auto_metric_lines(block):
+def _resolve_auto_metric_lines(block: Block) -> None:
     """优先使用 OCR det 行提示；没有提示时退回 block 自身 lines。"""
     return block.get(OCR_DET_LINES_KEY) or block.get("lines", [])
 
 
-def _resolve_local_metric_lines(block):
+def _resolve_local_metric_lines(block: Block) -> None:
     """过滤跨页追加行，避免已合并内容污染后续本地几何判定。"""
     metric_lines = _resolve_auto_metric_lines(block)
     local_metric_lines = [
@@ -315,7 +315,7 @@ def _mark_lines_cross_page(lines):
             span[SplitFlag.CROSS_PAGE] = True
 
 
-def _is_cross_page_line(line):
+def _is_cross_page_line(line: Line) -> bool:
     """判断整行是否来自跨页追加，供几何度量时排除。"""
     spans = line.get("spans", [])
     return bool(spans) and all(span.get(SplitFlag.CROSS_PAGE) for span in spans)
@@ -379,7 +379,7 @@ def _has_mergeable_block_bbox_relation(current_block, previous_block):
     return current_block["bbox"][1] < previous_block["bbox"][3]
 
 
-def _cleanup_block_internal_metadata(block):
+def _cleanup_block_internal_metadata(block: Block) -> None:
     """递归清理只供 finalize 内部流程使用的临时字段。"""
     for metadata_key in INTERNAL_BLOCK_METADATA_KEYS:
         block.pop(metadata_key, None)

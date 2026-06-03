@@ -136,7 +136,7 @@ def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
             span["score"] = 0.0
 
 
-def _iter_block_spans(block: dict):
+def _iter_block_spans(block: Block) -> Iterator[Span]:
     """Depth-first generator yielding every span in a block tree."""
     for line in block.get("lines", []):
         yield from line.get("spans", [])
