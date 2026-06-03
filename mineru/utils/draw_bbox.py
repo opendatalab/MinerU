@@ -422,5 +422,6 @@ if __name__ == "__main__":
     with open(json_path, "r", encoding="utf-8") as f:
         pdf_ann = json.load(f)
     pdf_info = pdf_ann["pdf_info"]
-    # 调用可视化函数,输出到examples目录
-    draw_layout_bbox(pdf_info, pdf_bytes, "examples", "output_with_layout.pdf")
+    from mineru.utils.pdf_document import PDFDocument
+    doc = PDFDocument(pdf_bytes)
+    doc.draw_layout_bbox(pdf_info, "examples/output_with_layout.pdf")

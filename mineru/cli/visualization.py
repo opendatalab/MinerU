@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from mineru.utils.pdf_document import PDFDocument
 
 
 VISUALIZATION_FINISHED = "finished"
@@ -68,11 +68,12 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
 
     try:
         pdf_bytes = origin_pdf_path.read_bytes()
+        doc = PDFDocument(pdf_bytes)
         generated_files = [f"{job.document_stem}_layout.pdf"]
-        draw_layout_bbox(pdf_info, pdf_bytes, str(job.parse_dir), generated_files[0])
+        doc.draw_layout_bbox(pdf_info, str(job.parse_dir / generated_files[0]))
         if job.draw_span:
             generated_files.append(f"{job.document_stem}_span.pdf")
-            draw_span_bbox(pdf_info, pdf_bytes, str(job.parse_dir), generated_files[1])
+            doc.draw_span_bbox(pdf_info, str(job.parse_dir / generated_files[1]))
     except Exception as exc:
         return VisualizationResult(
             document_stem=job.document_stem,
