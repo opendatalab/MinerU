@@ -1,9 +1,14 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import base64
 import html
 import re
+from typing import Any
 
 import cv2
+import numpy as np
+from PIL import Image
 from loguru import logger
 from tqdm import tqdm
 from collections import defaultdict
@@ -16,6 +21,7 @@ from .model_init import (
     run_ocr_det_inference,
     run_ocr_rec_inference,
 )
+from .pipeline_analyze import ModelSingleton
 from .model_list import AtomicModel
 from ...utils.config_reader import (
     get_formula_enable,
@@ -50,15 +56,15 @@ TABLE_OCR_REC_REGEX_REPLACEMENTS = (
 class BatchAnalyze:
     def __init__(
         self,
-        model_manager,
+        model_manager: ModelSingleton,
         batch_ratio: int,
-        formula_enable,
-        table_enable,
+        formula_enable: bool,
+        table_enable: bool,
         enable_ocr_det_batch: bool = True,
         table_ori_cls_batch_enabled: bool | None = None,
         text_ocr_det_batch_enabled: bool | None = None,
         mask_inline_formula_for_ocr_det: bool = True,
-    ):
+    ) -> None:
         self.batch_ratio = batch_ratio
         self.formula_enable = get_formula_enable(formula_enable)
         self.table_enable = get_table_enable(table_enable)
@@ -112,7 +118,7 @@ class BatchAnalyze:
         if not ocr_enable or not layout_res:
             return
 
-        def keep_item(item: dict) -> bool:
+        def keep_item(item: dict[str, Any]) -> bool:
             if item.get("label") != "ocr_text":
                 return True
 
@@ -198,11 +204,11 @@ class BatchAnalyze:
         ]
 
     @staticmethod
-    def _table_supports_inline_objects(table_res_dict: dict) -> bool:
+    def _table_supports_inline_objects(table_res_dict: dict[str, Any]) -> bool:
         return str(table_res_dict.get("rotate_label", "0")) == "0"
 
     @staticmethod
-    def _apply_table_rotate_label(table_res_dict: dict, rotate_label: str) -> None:
+    def _apply_table_rotate_label(table_res_dict: dict[str, Any], rotate_label: str) -> None:
         """根据方向预测结果写回标签，并同步旋转无线和有线表格图片。"""
         rotate_label = str(rotate_label or "0")
         table_res_dict["rotate_label"] = rotate_label
@@ -350,7 +356,7 @@ class BatchAnalyze:
         return table_inline_objects
 
 
-    def __call__(self, images_with_extra_info: list) -> list:
+    def __call__(self, images_with_extra_info: list[tuple[Image.Image, bool, str]]) -> list[list[dict[str, Any]]]:
         if len(images_with_extra_info) == 0:
             return []
 
@@ -440,7 +446,7 @@ class BatchAnalyze:
                                           })
 
             for table_res in table_res_list:
-                def get_crop_table_img(scale):
+                def get_crop_table_img(scale: float) -> Image.Image:
                     bbox = normalize_to_int_bbox(
                         [float(v) / float(scale) for v in table_res["bbox"]]
                     )

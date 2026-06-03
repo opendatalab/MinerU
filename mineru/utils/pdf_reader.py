@@ -5,19 +5,20 @@ from io import BytesIO
 from loguru import logger
 from PIL import Image
 from pypdfium2 import PdfBitmap, PdfPage
-from mineru.utils.pdfium_guard import pdfium_guard
+
+from .pdfium_guard import pdfium_guard
 
 
 def page_to_image(
     page: PdfPage,
     dpi: int = 200,
     max_width_or_height: int = 3500,  # changed from 4500 to 3500
-) -> (Image.Image, float):
+) -> tuple[Image.Image, float]:
     with pdfium_guard():
         scale = dpi / 72
 
         long_side_length = max(*page.get_size())
-        if (long_side_length*scale) > max_width_or_height:
+        if (long_side_length * scale) > max_width_or_height:
             scale = max_width_or_height / long_side_length
 
         bitmap: PdfBitmap | None = None

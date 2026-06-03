@@ -1,18 +1,18 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import html as html_lib
 import re
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
-from loguru import logger
-
-from mineru.utils.enum_class import ContentType, BlockType
-from mineru.types import Block, Line, Span
-from mineru.utils.magic_model_utils import tie_up_category_by_index
+from ...types import Block, Line, Span
+from ...utils.enum_class import BlockType, ContentType
+from ...utils.magic_model_utils import tie_up_category_by_index
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list) -> None:
+    def __init__(self, page_blocks: list[dict[str, Any]]) -> None:
         self.page_blocks = page_blocks
 
         blocks = []
@@ -23,7 +23,6 @@ class MagicModel:
 
         # 解析每个块
         for index, block_info in enumerate(page_blocks):
-
             block_type = block_info["type"]
             block_content = block_info.get("content", "")
             if not block_content and block_type != BlockType.CHART:
@@ -125,7 +124,13 @@ class MagicModel:
                 self.ref_text_blocks.append(block)
             elif block["type"] in [BlockType.PHONETIC]:
                 self.phonetic_blocks.append(block)
-            elif block["type"] in [BlockType.HEADER, BlockType.FOOTER, BlockType.PAGE_NUMBER, BlockType.ASIDE_TEXT, BlockType.PAGE_FOOTNOTE]:
+            elif block["type"] in [
+                BlockType.HEADER,
+                BlockType.FOOTER,
+                BlockType.PAGE_NUMBER,
+                BlockType.ASIDE_TEXT,
+                BlockType.PAGE_FOOTNOTE,
+            ]:
                 self.discarded_blocks.append(block)
             elif block["type"] == BlockType.LIST:
                 self.list_blocks.append(block)
@@ -141,7 +146,6 @@ class MagicModel:
         for block in not_include_image_blocks + not_include_table_blocks + not_include_chart_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
-
 
     def get_list_blocks(self) -> list[Block]:
         return self.list_blocks
@@ -171,19 +175,19 @@ class MagicModel:
         return self.discarded_blocks
 
 
-def _parse_style_list(style_str: str | None) -> list:
+def _parse_style_list(style_str: str | None) -> list[str]:
     """解析逗号分隔的 Office inline style 字符串。"""
     if not style_str:
         return []
-    return [style.strip() for style in style_str.split(',') if style.strip()]
+    return [style.strip() for style in style_str.split(",") if style.strip()]
 
 
-def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re) -> tuple:
+def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re: re.Pattern[str]) -> tuple[str, list[Span], str]:
     """解析一个 hyperlink 内部的多个 text 子片段，并保留每段样式。"""
-    url_start = hyperlink_content.find('<url>')
-    url_end = hyperlink_content.find('</url>')
+    url_start = hyperlink_content.find("<url>")
+    url_end = hyperlink_content.find("</url>")
     if url_start == -1 or url_end == -1 or url_end < url_start:
-        return [], ''
+        return [], ""
 
     children = []
     pos = 0
@@ -192,13 +196,13 @@ def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re) -> tuple
         if text_match is None or text_match.start() >= url_start:
             break
 
-        text_end = hyperlink_content.find('</text>', text_match.end())
+        text_end = hyperlink_content.find("</text>", text_match.end())
         if text_end == -1 or text_end > url_start:
-            return [], ''
+            return [], ""
 
         child = {
             "type": ContentType.TEXT,
-            "content": hyperlink_content[text_match.end():text_end],
+            "content": hyperlink_content[text_match.end() : text_end],
         }
         style = _parse_style_list(text_match.group(1))
         if style:
@@ -206,10 +210,10 @@ def _parse_hyperlink_text_children(hyperlink_content: str, text_tag_re) -> tuple
         children.append(child)
         pos = text_end + 7
 
-    return children, hyperlink_content[url_start + 5:url_end]
+    return children, hyperlink_content[url_start + 5 : url_end]
 
 
-def parse_text_block_spans(content: str) -> list:
+def parse_text_block_spans(content: str) -> list[Span]:
     """
     解析文本类block的content，提取其中的文本、行内公式、超链接和字体样式。
 
@@ -239,9 +243,9 @@ def parse_text_block_spans(content: str) -> list:
 
     while pos < len(content):
         # 查找行内公式标签 <eq>...</eq>
-        eq_start = content.find('<eq>', pos)
+        eq_start = content.find("<eq>", pos)
         # 查找超链接标签 <hyperlink>
-        hyperlink_start = content.find('<hyperlink>', pos)
+        hyperlink_start = content.find("<hyperlink>", pos)
         # 查找带样式的文本标签 <text ...>（顶层，不在 hyperlink 内部）
         text_tag_match = _text_tag_re.search(content, pos)
         text_tag_start = text_tag_match.start() if text_tag_match else -1
@@ -249,11 +253,11 @@ def parse_text_block_spans(content: str) -> list:
         # 收集所有有效的标签位置
         candidates = []
         if eq_start != -1:
-            candidates.append((eq_start, 'eq'))
+            candidates.append((eq_start, "eq"))
         if hyperlink_start != -1:
-            candidates.append((hyperlink_start, 'hyperlink'))
+            candidates.append((hyperlink_start, "hyperlink"))
         if text_tag_start != -1:
-            candidates.append((text_tag_start, 'text'))
+            candidates.append((text_tag_start, "text"))
 
         # 没有找到任何标签，处理剩余文本
         if not candidates:
@@ -272,10 +276,10 @@ def parse_text_block_spans(content: str) -> list:
                 spans.append(Span(type=ContentType.TEXT, content=text_before))
 
         # 处理行内公式
-        if next_tag_type == 'eq':
-            eq_end = content.find('</eq>', next_tag_pos)
+        if next_tag_type == "eq":
+            eq_end = content.find("</eq>", next_tag_pos)
             if eq_end != -1:
-                formula_content = content[next_tag_pos + 4:eq_end]
+                formula_content = content[next_tag_pos + 4 : eq_end]
                 spans.append(Span(type=ContentType.INLINE_EQUATION, content=formula_content))
                 pos = eq_end + 5
                 last_end = pos
@@ -285,17 +289,17 @@ def parse_text_block_spans(content: str) -> list:
                 break
 
         # 处理带样式的文本标签
-        elif next_tag_type == 'text':
-            text_end = content.find('</text>', next_tag_pos)
+        elif next_tag_type == "text":
+            text_end = content.find("</text>", next_tag_pos)
             if text_end != -1:
                 # text_tag_match 对应当前 next_tag_pos 的匹配
                 # 重新匹配确保位置对齐
-                tag_open_end = content.find('>', next_tag_pos) + 1
+                tag_open_end = content.find(">", next_tag_pos) + 1
                 text_content = content[tag_open_end:text_end]
                 style_str = text_tag_match.group(1) if text_tag_match and text_tag_match.start() == next_tag_pos else None
                 span = Span(type=ContentType.TEXT, content=text_content)
                 if style_str:
-                    span["style"] = [s.strip() for s in style_str.split(',') if s.strip()]
+                    span["style"] = [s.strip() for s in style_str.split(",") if s.strip()]
                 spans.append(span)
                 pos = text_end + 7
                 last_end = pos
@@ -305,11 +309,11 @@ def parse_text_block_spans(content: str) -> list:
                 break
 
         # 处理超链接
-        elif next_tag_type == 'hyperlink':
-            hyperlink_end = content.find('</hyperlink>', next_tag_pos)
+        elif next_tag_type == "hyperlink":
+            hyperlink_end = content.find("</hyperlink>", next_tag_pos)
             if hyperlink_end != -1:
                 # 提取超链接内容
-                hyperlink_content = content[next_tag_pos + 11:hyperlink_end]
+                hyperlink_content = content[next_tag_pos + 11 : hyperlink_end]
 
                 # 解析内部的一个或多个 <text [style="..."]> 和一个 <url> 标签
                 children, link_url = _parse_hyperlink_text_children(
@@ -330,7 +334,7 @@ def parse_text_block_spans(content: str) -> list:
                     else:
                         span = Span(
                             type=ContentType.HYPERLINK,
-                            content=''.join(child["content"] for child in children),
+                            content="".join(child["content"] for child in children),
                         )
                         span["url"] = link_url
                         span["children"] = children
@@ -349,7 +353,7 @@ def parse_text_block_spans(content: str) -> list:
     return spans
 
 
-def parse_list_block(list_block: dict):
+def parse_list_block(list_block: dict[str, object]) -> Block:
     """
     递归解析嵌套列表结构，生成与VLM一致的blocks结构。
 
@@ -391,7 +395,7 @@ def parse_list_block(list_block: dict):
     return result
 
 
-def parse_index_block(index_block: dict):
+def parse_index_block(index_block: dict[str, object]) -> Block:
     """
     递归解析嵌套索引结构（目录），生成与list一致的blocks结构。
 
@@ -473,23 +477,23 @@ def clean_table_html(html: str) -> str:
         return ""
 
     # 需要保留的属性（对表格结构有用）
-    preserved_attrs = {'colspan', 'rowspan'}
+    preserved_attrs = {"colspan", "rowspan"}
     # img 标签需要额外保留的属性（内联 base64 图片内容）
-    img_preserved_attrs = {'src', 'alt', 'width', 'height'}
+    img_preserved_attrs = {"src", "alt", "width", "height"}
     # a 标签只保留清洗后的 href，避免表格超链接在中间层被清掉。
-    anchor_preserved_attrs = {'href'}
+    anchor_preserved_attrs = {"href"}
 
-    def clean_tag(match):
+    def clean_tag(match: re.Match[str]) -> str:
         """清洗单个标签，只保留结构相关的属性"""
         full_tag = match.group(0)
         tag_name = match.group(1).lower()
 
         # 自闭合标签的处理
-        is_self_closing = full_tag.rstrip().endswith('/>')
+        is_self_closing = full_tag.rstrip().endswith("/>")
 
         # img 标签额外保留图片相关属性（如内联 base64 src）
-        current_preserved = preserved_attrs | (img_preserved_attrs if tag_name == 'img' else set())
-        current_preserved |= anchor_preserved_attrs if tag_name == 'a' else set()
+        current_preserved = preserved_attrs | (img_preserved_attrs if tag_name == "img" else set())
+        current_preserved |= anchor_preserved_attrs if tag_name == "a" else set()
 
         # 提取需要保留的属性
         kept_attrs = []
@@ -518,33 +522,35 @@ def clean_table_html(html: str) -> str:
 
         # 重建标签
         if kept_attrs:
-            attrs_str = ' ' + ' '.join(kept_attrs)
+            attrs_str = " " + " ".join(kept_attrs)
         else:
-            attrs_str = ''
+            attrs_str = ""
 
         if is_self_closing:
-            return f'<{tag_name}{attrs_str}/>'
+            return f"<{tag_name}{attrs_str}/>"
         else:
-            return f'<{tag_name}{attrs_str}>'
+            return f"<{tag_name}{attrs_str}>"
 
     # 匹配开始标签（包括自闭合标签），捕获标签名
     # 匹配 <tagname ...> 或 <tagname .../>
-    tag_pattern = r'<(\w+)(?:\s+[^>]*)?\s*/?>'
+    tag_pattern = r"<(\w+)(?:\s+[^>]*)?\s*/?>"
 
     result = re.sub(tag_pattern, clean_tag, html)
 
     return result
 
 
-def isolated_formula_clean(txt):
+def isolated_formula_clean(txt: str) -> str:
     latex = txt[:]
-    if latex.startswith("\\["): latex = latex[2:]
-    if latex.endswith("\\]"): latex = latex[:-2]
+    if latex.startswith("\\["):
+        latex = latex[2:]
+    if latex.endswith("\\]"):
+        latex = latex[:-2]
     latex = latex.strip()
     return latex
 
 
-def code_content_clean(content):
+def code_content_clean(content: str) -> str:
     """清理代码内容，移除Markdown代码块的开始和结束标记"""
     if not content:
         return ""
@@ -567,10 +573,11 @@ def code_content_clean(content):
     return ""
 
 
-def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
+def __tie_up_category_by_index(blocks: list[Block], subject_block_type: str, object_block_type: str) -> list[dict[str, object]]:
     """基于index的主客体关联包装函数"""
+
     # 定义获取主体和客体对象的函数
-    def get_subjects():
+    def get_subjects() -> list[dict[str, object]]:
         return list(
             map(
                 lambda x: {"lines": x["lines"], "index": x["index"]},
@@ -581,7 +588,7 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
             )
         )
 
-    def get_objects():
+    def get_objects() -> list[dict[str, object]]:
         return list(
             map(
                 lambda x: {"lines": x["lines"], "index": x["index"]},
@@ -600,7 +607,7 @@ def __tie_up_category_by_index(blocks, subject_block_type, object_block_type):
     )
 
 
-def get_type_blocks(blocks, block_type: Literal["image", "table", "chart"]):
+def get_type_blocks(blocks: list[Block], block_type: Literal["image", "table", "chart"]) -> list[dict[str, object]]:
     with_captions = __tie_up_category_by_index(blocks, f"{block_type}_body", f"{block_type}_caption")
     ret = []
     for v in with_captions:
@@ -612,7 +619,7 @@ def get_type_blocks(blocks, block_type: Literal["image", "table", "chart"]):
     return ret
 
 
-def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "chart"]):
+def fix_two_layer_blocks(blocks: list[Block], fix_type: Literal["image", "table", "chart"]) -> list[Block]:
     need_fix_blocks = get_type_blocks(blocks, fix_type)
     fixed_blocks = []
     not_include_blocks = []
@@ -681,7 +688,7 @@ def fix_two_layer_blocks(blocks, fix_type: Literal["image", "table", "chart"]):
     return fixed_blocks, not_include_blocks
 
 
-def classify_caption_blocks(page_blocks: list) -> list:
+def classify_caption_blocks(page_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     对page_blocks中的caption块进行分类，将其分类为image_caption、table_caption或chart_caption。
 

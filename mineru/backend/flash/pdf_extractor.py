@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pypdfium2
+
 
 def extract_text(filepath: str, start_page: int = 0, end_page: int | None = None) -> str:
     """Extract plain text from a PDF file using pypdfium2.
@@ -14,7 +16,6 @@ def extract_text(filepath: str, start_page: int = 0, end_page: int | None = None
     Returns:
         Extracted text as a string, one page per `\\n\\n`.
     """
-    import pypdfium2
 
     pdf = pypdfium2.PdfDocument(filepath)
     try:

@@ -1,4 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from ...types import Block, Line, Span
 from ...utils.boxbase import calculate_overlap_area_2_minbox_area_ratio, calculate_overlap_area_in_bbox1_area_ratio
 from ...utils.enum_class import BlockType, ContentType
@@ -19,9 +23,12 @@ from ...utils.visual_magic_model_utils import (
 from .para_split import ListLineTag
 from .pipeline_middle_json_mkcontent import _merge_para_text
 
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
+
 
 class MagicModel:
-    PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES = {
+    PP_DOCLAYOUT_V2_LABELS_TO_BLOCK_TYPES: dict[str, str] = {
         "abstract": BlockType.ABSTRACT,
         "algorithm": BlockType.CODE,
         "aside_text": BlockType.ASIDE_TEXT,
@@ -47,9 +54,9 @@ class MagicModel:
         "vision_footnote": BlockType.FOOTNOTE,
     }
 
-    VISUAL_MAIN_TYPES = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE)
-    VISUAL_CHILD_TYPES = (BlockType.CAPTION, BlockType.FOOTNOTE)
-    VISUAL_TYPE_MAPPING = {
+    VISUAL_MAIN_TYPES: tuple[str, ...] = (BlockType.IMAGE, BlockType.TABLE, BlockType.CHART, BlockType.CODE)
+    VISUAL_CHILD_TYPES: tuple[str, ...] = (BlockType.CAPTION, BlockType.FOOTNOTE)
+    VISUAL_TYPE_MAPPING: dict[str, dict[str, str]] = {
         BlockType.IMAGE: {
             "body": BlockType.IMAGE_BODY,
             "caption": BlockType.IMAGE_CAPTION,
@@ -74,23 +81,23 @@ class MagicModel:
 
     def __init__(
         self,
-        page_model_info: dict,
-        page=None,
-        scale=1,
-        page_pil_img=None,
-        page_w=None,
-        page_h=None,
-        ocr_enable=False,
-    ):
+        page_model_info: dict[str, Any],
+        page: object = None,
+        scale: float = 1,
+        page_pil_img: PILImage | None = None,
+        page_w: int = 0,
+        page_h: int = 0,
+        ocr_enable: bool = False,
+    ) -> None:
         self.__page_model_info = page_model_info
-        self.page_inline_formula = []
-        self.page_ocr_res = []
-        self.page_blocks = []
-        self.image_groups = []
-        self.table_groups = []
-        self.chart_groups = []
-        self.all_image_spans = []
-        self.__layout_det_by_index = {}
+        self.page_inline_formula: list[Span] = []
+        self.page_ocr_res: list[Span] = []
+        self.page_blocks: list[Block] = []
+        self.image_groups: list[dict[str, Any]] = []
+        self.table_groups: list[dict[str, Any]] = []
+        self.chart_groups: list[dict[str, Any]] = []
+        self.all_image_spans: list[Span] = []
+        self.__layout_det_by_index: dict[int, dict[str, Any]] = {}
         self.__scale = scale
         self.__fix_axis()  # bbox坐标修正，删除高度或者宽度小于等于0的spans
         self.__post_process()  # index重排，填充行内公式和文本span
@@ -131,7 +138,7 @@ class MagicModel:
         self.__build_return_blocks()
 
     @staticmethod
-    def __fix_text_block(block):
+    def __fix_text_block(block: Block) -> Block:
         if block["type"] == BlockType.TEXT and is_vertical_text_block_by_spans(block["spans"]):
             # layout 偶发会把竖排正文识别为横排 text，这里用旧版 span 高宽比规则兜底。
             block["type"] = BlockType.VERTICAL_TEXT
@@ -158,7 +165,7 @@ class MagicModel:
         return block
 
     @staticmethod
-    def __copy_block_fields(block, **overrides):
+    def __copy_block_fields(block: dict[str, Any], **overrides: Any) -> Block:
         extra = {k: v for k, v in block.items() if k not in {"cls_id", "label"} and k not in Block.__dataclass_fields__}
         return Block(
             type=overrides.pop("type", block.get("type", "")),
@@ -167,20 +174,20 @@ class MagicModel:
         )
 
     @staticmethod
-    def __is_inline_formula_block(layout_det: dict) -> bool:
+    def __is_inline_formula_block(layout_det: dict[str, Any]) -> bool:
         return layout_det.get("label") == "inline_formula" or layout_det.get("cls_id") == 15
 
     @staticmethod
-    def __is_ocr_text_block(layout_det: dict) -> bool:
+    def __is_ocr_text_block(layout_det: dict[str, Any]) -> bool:
         return layout_det.get("label") == "ocr_text"
 
     @staticmethod
-    def __is_seal_layout_block(layout_det: dict) -> bool:
+    def __is_seal_layout_block(layout_det: dict[str, Any]) -> bool:
         """判断原始 layout 是否为印章，输出层会将其规范为 image 子类型。"""
         return layout_det.get("label") == "seal"
 
     @staticmethod
-    def __normalize_seal_text(content):
+    def __normalize_seal_text(content: str | list[str]) -> str:
         """将 seal OCR 的列表或字符串结果规范为 VLM 一致的多行字符串。"""
         if isinstance(content, list):
             return "\n".join(str(item) for item in content if str(item).strip())
@@ -188,11 +195,11 @@ class MagicModel:
             return content.strip()
         return ""
 
-    def __build_return_blocks(self):
-        self.preproc_blocks = []
-        self.discarded_blocks = []
+    def __build_return_blocks(self) -> None:
+        self.preproc_blocks: list[Block] = []
+        self.discarded_blocks: list[Block] = []
         for block in self.page_blocks:
-            if block["type"] in [
+            if block.type in [
                 BlockType.HEADER,
                 BlockType.FOOTER,
                 BlockType.PAGE_NUMBER,
@@ -202,20 +209,20 @@ class MagicModel:
                 self.discarded_blocks.append(block)
             else:
                 # 单独处理code block
-                if block["type"] in [BlockType.CODE]:
-                    for sub_block in block["blocks"]:
-                        if sub_block["type"] == BlockType.CODE_BODY:
+                if block.type in [BlockType.CODE]:
+                    for sub_block in block.blocks:
+                        if sub_block.type == BlockType.CODE_BODY:
                             block["sub_type"] = sub_block.pop("sub_type", "algorithm")
                             if block["sub_type"] == "code":
                                 block["guess_lang"] = sub_block.pop("guess_lang", "txt")
 
                 self.preproc_blocks.append(block)
 
-    def __build_page_blocks(self):
+    def __build_page_blocks(self) -> None:
         span_type = "unknown"
         span_matcher = SpanBlockMatcher(self.page_text_inline_formula_spans)
         for block in self.page_blocks:
-            if block["type"] in [
+            if block.type in [
                 BlockType.ABSTRACT,
                 BlockType.CODE,
                 BlockType.ASIDE_TEXT,
@@ -234,13 +241,13 @@ class MagicModel:
                 BlockType.FOOTNOTE,
             ]:
                 span_type = ContentType.TEXT
-            elif block["type"] in [BlockType.IMAGE]:
+            elif block.type in [BlockType.IMAGE]:
                 span_type = ContentType.IMAGE
-            elif block["type"] in [BlockType.TABLE]:
+            elif block.type in [BlockType.TABLE]:
                 span_type = ContentType.TABLE
-            elif block["type"] in [BlockType.CHART]:
+            elif block.type in [BlockType.CHART]:
                 span_type = ContentType.CHART
-            elif block["type"] in [BlockType.INTERLINE_EQUATION]:
+            elif block.type in [BlockType.INTERLINE_EQUATION]:
                 span_type = ContentType.INTERLINE_EQUATION
 
             if span_type in [
@@ -265,8 +272,7 @@ class MagicModel:
                 self.all_image_spans.append(span)
                 # 构造line对象
                 spans = [span]
-                line = Line(spans=spans)
-                line["bbox"] = block["bbox"]
+                line = Line(spans=spans, bbox=block["bbox"])
                 block["lines"] = [line]
             else:
                 # span填充
@@ -283,15 +289,15 @@ class MagicModel:
         self.page_text_inline_formula_spans = span_matcher.remaining_spans()
 
     @staticmethod
-    def __formula_number_overlap_ratio(span, block_bbox):
+    def __formula_number_overlap_ratio(span: Span, block_bbox: list[float]) -> float:
         """公式编号框较窄时，沿用最小框重叠比例提高回填召回。"""
         return max(
             calculate_overlap_area_in_bbox1_area_ratio(span["bbox"], block_bbox),
             calculate_overlap_area_2_minbox_area_ratio(span["bbox"], block_bbox),
         )
 
-    def __fix_axis(self):
-        need_remove_list = []
+    def __fix_axis(self) -> None:
+        need_remove_list: list[dict[str, Any]] = []
         layout_dets = self.__page_model_info["layout_dets"]
         for layout_det in layout_dets:
             x0, y0, x1, y1 = layout_det["bbox"]
@@ -308,7 +314,7 @@ class MagicModel:
         for need_remove in need_remove_list:
             layout_dets.remove(need_remove)
 
-    def __post_process(self):
+    def __post_process(self) -> None:
         next_index = 1
         layout_dets = self.__page_model_info["layout_dets"]
         for layout_det in layout_dets:
@@ -339,7 +345,7 @@ class MagicModel:
                 layout_det["index"] = next_index
                 next_index += 1
 
-    def __classify_visual_blocks(self):
+    def __classify_visual_blocks(self) -> None:
         if not self.page_blocks:
             return
 
@@ -349,8 +355,10 @@ class MagicModel:
         main_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_MAIN_TYPES]
         child_blocks = [block for block in ordered_blocks if original_type_by_index[block["index"]] in self.VISUAL_CHILD_TYPES]
 
-        child_parent_map = {}
-        grouped_children = {main_block["index"]: {"captions": [], "footnotes": []} for main_block in main_blocks}
+        child_parent_map: dict[int, int | None] = {}
+        grouped_children: dict[int, dict[str, list[Block]]] = {
+            main_block["index"]: {"captions": [], "footnotes": []} for main_block in main_blocks
+        }
 
         for child_block in child_blocks:
             parent_block = self.__find_best_visual_parent(
@@ -382,7 +390,7 @@ class MagicModel:
         self.table_groups = []
         self.chart_groups = []
 
-        rebuilt_page_blocks = []
+        rebuilt_page_blocks: list[Block] = []
         for block in ordered_blocks:
             original_block_type = original_type_by_index[block["index"]]
 
@@ -446,12 +454,12 @@ class MagicModel:
 
     def __find_best_visual_parent(
         self,
-        child_block,
-        main_blocks,
-        ordered_blocks,
-        original_type_by_index,
-        position_by_index,
-    ):
+        child_block: Block,
+        main_blocks: list[Block],
+        ordered_blocks: list[Block],
+        original_type_by_index: dict[int, str],
+        position_by_index: dict[int, int],
+    ) -> Block | None:
         child_type = original_type_by_index[child_block["index"]]
         if child_type not in self.VISUAL_CHILD_TYPES:
             return None
@@ -466,46 +474,46 @@ class MagicModel:
         )
 
     @staticmethod
-    def __child_kind(block_type):
+    def __child_kind(block_type: str) -> str:
         if block_type == BlockType.CAPTION:
             return "caption"
         return "footnote"
 
     @staticmethod
-    def __make_child_block(block, block_type):
+    def __make_child_block(block: Block, block_type: str) -> Block:
         return MagicModel.__copy_block_fields(block, type=block_type)
 
-    def __sync_layout_det_type(self, block_index, block_type):
+    def __sync_layout_det_type(self, block_index: int, block_type: str) -> None:
         layout_det = self.__layout_det_by_index.get(block_index)
         if layout_det is not None:
             layout_det["type"] = block_type
 
-    def get_page_blocks(self):
+    def get_page_blocks(self) -> list[Block]:
         return self.page_blocks
 
-    def get_all_image_spans(self):
+    def get_all_image_spans(self) -> list[Span]:
         return self.all_image_spans
 
-    def get_preproc_blocks(self):
+    def get_preproc_blocks(self) -> list[Block]:
         return self.preproc_blocks
 
-    def get_discarded_blocks(self):
+    def get_discarded_blocks(self) -> list[Block]:
         return self.discarded_blocks
 
-    def get_imgs(self):
+    def get_imgs(self) -> list[dict[str, Any]]:
         return self.image_groups
 
-    def get_tables(self):
+    def get_tables(self) -> list[dict[str, Any]]:
         return self.table_groups
 
-    def get_charts(self):
+    def get_charts(self) -> list[dict[str, Any]]:
         return self.chart_groups
 
-    def get_image_blocks(self):
-        return [block for block in self.page_blocks if block["type"] == BlockType.IMAGE]
+    def get_image_blocks(self) -> list[Block]:
+        return [block for block in self.page_blocks if block.type == BlockType.IMAGE]
 
-    def get_table_blocks(self):
-        return [block for block in self.page_blocks if block["type"] == BlockType.TABLE]
+    def get_table_blocks(self) -> list[Block]:
+        return [block for block in self.page_blocks if block.type == BlockType.TABLE]
 
-    def get_chart_blocks(self):
-        return [block for block in self.page_blocks if block["type"] == BlockType.CHART]
+    def get_chart_blocks(self) -> list[Block]:
+        return [block for block in self.page_blocks if block.type == BlockType.CHART]

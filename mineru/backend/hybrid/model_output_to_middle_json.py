@@ -1,10 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
+from __future__ import annotations
+
 import os
 from typing import Any
 
-from ...types import PageInfo
-
+from ...data.data_reader_writer import DataWriter
+from ...types import Block, PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.cut_image import cut_image_and_table
 from ...utils.enum_class import BlockType, ContentType
@@ -12,7 +14,9 @@ from ...utils.hash_utils import bytes_md5
 from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...version import __version__
+from ..pipeline.model_init import MineruHybridModel
 from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.middle_json_utils import apply_post_ocr, build_middle_json
 from ..utils.para_block_utils import (
     OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
@@ -23,7 +27,7 @@ from ..utils.runtime_utils import cross_page_table_merge
 from .hybrid_magic_model import MagicModel
 
 
-def _resolve_title_line_avg_height(title_block):
+def _resolve_title_line_avg_height(title_block: Block) -> int:
     """解析标题平均行高：优先复用 Hybrid OCR det 行提示，再回退到原始行或块高。"""
     for lines_key in [OCR_DET_LINES_KEY, "lines"]:
         line_heights = []
@@ -44,10 +48,10 @@ def _resolve_title_line_avg_height(title_block):
 
 
 def blocks_to_page_info(
-    page_model_list: list,
-    image_dict: dict,
+    page_model_list: list[dict[str, Any]],
+    image_dict: dict[str, Any],
     page: Any,
-    image_writer: Any,
+    image_writer: DataWriter,
     page_index: int,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
@@ -113,7 +117,6 @@ def blocks_to_page_info(
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-
     page_info = PageInfo(
         preproc_blocks=page_blocks,
         discarded_blocks=discarded_blocks,
@@ -123,13 +126,11 @@ def blocks_to_page_info(
     return page_info
 
 
-def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
-    from mineru.backend.utils.middle_json_utils import apply_post_ocr
-
+def _apply_post_ocr(pdf_info_list: list[PageInfo], hybrid_pipeline_model: MineruHybridModel) -> None:
     apply_post_ocr(pdf_info_list, hybrid_pipeline_model.ocr_model)
 
 
-def _normalize_split_title_blocks(pdf_info_list):
+def _normalize_split_title_blocks(pdf_info_list: list[PageInfo]) -> None:
     """将Hybrid内部拆分标题统一为输出层通用title，并补齐默认标题层级。"""
     title_type_to_level = {
         BlockType.DOC_TITLE: 1,
@@ -145,7 +146,7 @@ def _normalize_split_title_blocks(pdf_info_list):
                 block["level"] = title_level
 
 
-def init_middle_json(_ocr_enable, _vlm_ocr_enable):
+def init_middle_json(_ocr_enable: bool, _vlm_ocr_enable: bool) -> dict[str, Any]:
     return {
         "pdf_info": [],
         "_backend": "hybrid",
@@ -156,17 +157,17 @@ def init_middle_json(_ocr_enable, _vlm_ocr_enable):
 
 
 def apply_server_side_postprocess(
-    pdf_info_list,
-    hybrid_pipeline_model,
-    _ocr_enable,
-    _vlm_ocr_enable,
-):
+    pdf_info_list: list[PageInfo],
+    hybrid_pipeline_model: MineruHybridModel,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
+) -> None:
     """执行 Hybrid 只能在服务端完成的 post-OCR，避免客户端依赖 pipeline OCR 模型。"""
     if not (_vlm_ocr_enable or _ocr_enable):
         _apply_post_ocr(pdf_info_list, hybrid_pipeline_model)
 
 
-def finalize_middle_json_from_preproc(pdf_info_list):
+def finalize_middle_json_from_preproc(pdf_info_list: list[PageInfo]) -> None:
     """从 Hybrid preproc_blocks 执行完整 finalize，供服务端完整路径和客户端复用。"""
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(
@@ -185,7 +186,7 @@ def finalize_middle_json_from_preproc(pdf_info_list):
 
 def finalize_middle_json(
     pdf_info_list: list[PageInfo],
-    hybrid_pipeline_model: Any,
+    hybrid_pipeline_model: MineruHybridModel,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
 ) -> None:
@@ -200,16 +201,14 @@ def finalize_middle_json(
 
 
 def result_to_middle_json(
-    model_list: list,
-    images_list: list,
+    model_list: list[list[dict[str, Any]]],
+    images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: Any,
+    image_writer: DataWriter,
     _ocr_enable: bool,
     _vlm_ocr_enable: bool,
-    hybrid_pipeline_model: Any,
-) -> dict:
-    from mineru.backend.utils.middle_json_utils import build_middle_json
-
+    hybrid_pipeline_model: MineruHybridModel,
+) -> dict[str, Any]:
     return build_middle_json(
         model_list,
         images_list,

@@ -1,7 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import os
 from typing import Any
 
+from mineru_vl_utils.structs import ExtractResult
+
+from ...data.data_reader_writer import DataWriter
 from ...types import PageInfo
 from ...utils.config_reader import get_table_enable
 from ...utils.cut_image import cut_image_and_table
@@ -11,6 +16,7 @@ from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...version import __version__
 from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.middle_json_utils import build_middle_json
 from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
@@ -20,7 +26,13 @@ from ..utils.runtime_utils import cross_page_table_merge
 from .vlm_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_writer: Any, page_index: int) -> PageInfo:
+def blocks_to_page_info(
+    page_blocks: ExtractResult,
+    image_dict: dict[str, Any],
+    page: Any,
+    image_writer: DataWriter | None,
+    page_index: int,
+) -> PageInfo:
     """将blocks转换为页面信息"""
 
     scale = image_dict["scale"]
@@ -46,7 +58,7 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     all_spans = magic_model.get_all_spans()
     # 对image/table/chart/interline_equation的span截图
     for span in all_spans:
-        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
+        if span.type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     replace_inline_table_images(table_blocks, image_writer, page_index)
@@ -69,7 +81,6 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-
     page_info = PageInfo(
         preproc_blocks=page_blocks,
         discarded_blocks=discarded_blocks,
@@ -79,7 +90,7 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     return page_info
 
 
-def init_middle_json() -> dict:
+def init_middle_json() -> dict[str, Any]:
     return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
 
 
@@ -97,9 +108,12 @@ def finalize_middle_json(pdf_info_list: list[PageInfo]) -> None:
     cleanup_internal_para_block_metadata(pdf_info_list)
 
 
-def result_to_middle_json(model_output_blocks_list: list, images_list: list, pdf_doc: Any, image_writer: Any) -> dict:
-    from mineru.backend.utils.middle_json_utils import build_middle_json
-
+def result_to_middle_json(
+    model_output_blocks_list: list[list[dict[str, Any]]],
+    images_list: list[dict[str, Any]],
+    pdf_doc: Any,
+    image_writer: DataWriter,
+) -> dict[str, Any]:
     return build_middle_json(
         model_output_blocks_list,
         images_list,

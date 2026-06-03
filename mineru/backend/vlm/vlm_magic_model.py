@@ -1,7 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import re
 
 from loguru import logger
+from mineru_vl_utils.structs import ContentBlock, ExtractResult
 
 from ...types import Block, Line, Span
 from ...utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
@@ -20,7 +23,7 @@ from ...utils.visual_magic_model_utils import (
 )
 
 
-def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict, block: Block) -> None:
+def _copy_raw_text_block_metadata(raw_block_type: str, block_info: ContentBlock, block: Block) -> None:
     if raw_block_type != BlockType.TEXT:
         return
     if "merge_prev" in block_info:
@@ -28,14 +31,14 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict, block: 
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width: int, height: int) -> None:
+    def __init__(self, page_blocks: ExtractResult, width: int, height: int) -> None:
         self.page_blocks = page_blocks
 
         blocks = []
         self.all_spans = []
         # 解析每个块
-        for index, block_info in enumerate(page_blocks):
-            block_bbox = block_info["bbox"]
+        for index, content_block in enumerate(page_blocks):
+            block_bbox = content_block["bbox"]
             try:
                 x1, y1, x2, y2 = block_bbox
                 x_1, y_1, x_2, y_2 = (
@@ -49,14 +52,14 @@ class MagicModel:
                 if y_2 < y_1:
                     y_1, y_2 = y_2, y_1
                 block_bbox = (x_1, y_1, x_2, y_2)
-                block_type = block_info["type"]
+                block_type = content_block["type"]
                 raw_block_type = block_type
-                block_content = block_info.get("content")
-                block_angle = block_info.get("angle", 0)
-                block_sub_type = block_info.get("sub_type") if raw_block_type in ["image", "chart"] else None
+                block_content = content_block.get("content", "")
+                block_angle = content_block.get("angle", 0)
+                block_sub_type = content_block.get("sub_type") if raw_block_type in ["image", "chart"] else None
             except Exception as e:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
-                logger.warning(f"Invalid block format: {block_info}, error: {e}")
+                logger.warning(f"Invalid block format: {content_block}, error: {e}")
                 continue
 
             span_type = "unknown"
@@ -114,9 +117,9 @@ class MagicModel:
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
                 span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE:
-                    span["html"] = block_content
+                    span.html = block_content
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
-                    span["content"] = block_content
+                    span.content = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
                 span = Span(
                     type=span_type,
@@ -203,21 +206,19 @@ class MagicModel:
             if block_type == BlockType.CODE_BODY:
                 if switch_code_to_algorithm and code_block_sub_type == "code":
                     code_block_sub_type = "algorithm"
-                line = Line(spans=spans)
-                line["bbox"] = block_bbox
+                line = Line(spans=spans, bbox=block_bbox)
                 line["extra"] = {"type": code_block_sub_type, "guess_lang": guess_lang}
             else:
-                line = Line(spans=spans)
-                line["bbox"] = block_bbox
+                line = Line(spans=spans, bbox=block_bbox)
 
             block = Block(type=block_type, bbox=block_bbox, lines=[line])
             block["angle"] = block_angle
             block["index"] = index
             if block_sub_type:
                 block["sub_type"] = block_sub_type
-            if raw_block_type == "table" and "cell_merge" in block_info:
-                block["cell_merge"] = block_info["cell_merge"]
-            _copy_raw_text_block_metadata(raw_block_type, block_info, block)
+            if raw_block_type == "table" and "cell_merge" in content_block:
+                block["cell_merge"] = content_block["cell_merge"]
+            _copy_raw_text_block_metadata(raw_block_type, content_block, block)
 
             blocks.append(block)
 
@@ -326,24 +327,18 @@ class MagicModel:
         return self.all_spans
 
 
-def fix_list_blocks(list_blocks: list[Block], text_blocks: list[Block], ref_text_blocks: list[Block]) -> tuple[list[Block], list[Block], list[Block]]:
+def fix_list_blocks(
+    list_blocks: list[Block], text_blocks: list[Block], ref_text_blocks: list[Block]
+) -> tuple[list[Block], list[Block], list[Block]]:
     for list_block in list_blocks:
-        list_block["blocks"] = []
-        if "lines" in list_block:
-            del list_block["lines"]
+        list_block.lines = []
 
     temp_text_blocks = text_blocks + ref_text_blocks
     need_remove_blocks = []
     for block in temp_text_blocks:
         for list_block in list_blocks:
-            if (
-                calculate_overlap_area_in_bbox1_area_ratio(
-                    block["bbox"],
-                    list_block["bbox"],
-                )
-                >= 0.8
-            ):
-                list_block["blocks"].append(block)
+            if calculate_overlap_area_in_bbox1_area_ratio(block.bbox, list_block.bbox) >= 0.8:
+                list_block.blocks.append(block)
                 need_remove_blocks.append(block)
                 break
 
@@ -354,20 +349,20 @@ def fix_list_blocks(list_blocks: list[Block], text_blocks: list[Block], ref_text
             ref_text_blocks.remove(block)
 
     # 移除blocks为空的list_block
-    list_blocks = [lb for lb in list_blocks if lb["blocks"]]
+    list_blocks = [lb for lb in list_blocks if lb.blocks]
 
     for list_block in list_blocks:
         # 统计list_block["blocks"]中所有block的type，用众数作为list_block的sub_type
         type_count = {}
-        for sub_block in list_block["blocks"]:
-            sub_block_type = sub_block["type"]
+        for sub_block in list_block.blocks:
+            sub_block_type = sub_block.type
             if sub_block_type not in type_count:
                 type_count[sub_block_type] = 0
             type_count[sub_block_type] += 1
 
         if type_count:
-            list_block["sub_type"] = max(type_count, key=type_count.get)
+            list_block.sub_type = max(type_count, key=type_count.get)  # type: ignore
         else:
-            list_block["sub_type"] = "unknown"
+            list_block.sub_type = "unknown"
 
     return list_blocks, text_blocks, ref_text_blocks

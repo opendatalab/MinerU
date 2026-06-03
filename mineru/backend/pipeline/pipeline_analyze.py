@@ -1,7 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import os
 import time
-from typing import List, Tuple
+from collections.abc import Callable
+from typing import Any, List, Tuple
 
 import pypdfium2 as pdfium
 from loguru import logger
@@ -31,7 +34,7 @@ class ModelSingleton:
     _models = {}
     _lock = PIPELINE_MODEL_INIT_LOCK
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> ModelSingleton:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -39,10 +42,10 @@ class ModelSingleton:
 
     def get_model(
         self,
-        lang=None,
-        formula_enable=None,
-        table_enable=None,
-    ):
+        lang: str | None = None,
+        formula_enable: bool | None = None,
+        table_enable: bool | None = None,
+    ) -> MineruPipelineModel:
         key = (lang, formula_enable, table_enable)
         with self._lock:
             if key not in self._models:
@@ -55,10 +58,10 @@ class ModelSingleton:
 
 
 def custom_model_init(
-    lang=None,
-    formula_enable=True,
-    table_enable=True,
-):
+    lang: str | None = None,
+    formula_enable: bool = True,
+    table_enable: bool = True,
+) -> MineruPipelineModel:
     model_init_start = time.time()
     # 从配置文件读取model-dir和device
     device = get_device()
@@ -81,7 +84,7 @@ def custom_model_init(
     return custom_model
 
 
-def _get_ocr_enable(pdf_bytes, parse_method: str) -> bool:
+def _get_ocr_enable(pdf_bytes: bytes, parse_method: str) -> bool:
     if parse_method == "auto":
         return classify(pdf_bytes) == "ocr"
     if parse_method == "ocr":
@@ -89,7 +92,7 @@ def _get_ocr_enable(pdf_bytes, parse_method: str) -> bool:
     return False
 
 
-def _close_images(images_list: list) -> None:
+def _close_images(images_list: list[dict[str, Any]]) -> None:
     for image_dict in images_list or []:
         pil_img = image_dict.get("img_pil")
         if pil_img is not None:
@@ -99,15 +102,15 @@ def _close_images(images_list: list) -> None:
                 pass
 
 
-def _format_doc_slices(batch_slices: list) -> list:
+def _format_doc_slices(batch_slices: list[dict[str, int]]) -> str:
     return ",".join(f"doc{item['doc_index']}:{item['page_start'] + 1}-{item['page_end'] + 1}" for item in batch_slices)
 
 
 def _finalize_processing_window_context(
-    context,
-    on_doc_ready,
-    client_side_output_generation=False,
-):
+    context: dict[str, object],
+    on_doc_ready: Callable[..., object],
+    client_side_output_generation: bool = False,
+) -> None:
     if context["closed"]:
         return
     if client_side_output_generation:
@@ -132,10 +135,10 @@ def _finalize_processing_window_context(
 
 
 def _emit_zero_page_contexts(
-    doc_contexts,
-    on_doc_ready,
-    client_side_output_generation=False,
-):
+    doc_contexts: list[dict[str, object]],
+    on_doc_ready: Callable[..., object],
+    client_side_output_generation: bool = False,
+) -> None:
     for context in doc_contexts:
         if context["page_count"] == 0 and not context["closed"]:
             _finalize_processing_window_context(
@@ -146,15 +149,15 @@ def _emit_zero_page_contexts(
 
 
 def doc_analyze_streaming(
-    pdf_bytes_list,
-    image_writer_list,
-    lang_list,
-    on_doc_ready,
+    pdf_bytes_list: list[bytes],
+    image_writer_list: list[object],
+    lang_list: list[str | None],
+    on_doc_ready: Callable[..., object],
     parse_method: str = "auto",
-    formula_enable=True,
-    table_enable=True,
-    client_side_output_generation=False,
-):
+    formula_enable: bool = True,
+    table_enable: bool = True,
+    client_side_output_generation: bool = False,
+) -> None:
     if not (len(pdf_bytes_list) == len(image_writer_list) == len(lang_list)):
         raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
 
@@ -316,7 +319,11 @@ def doc_analyze_streaming(
                 context["closed"] = True
 
 
-def batch_image_analyze(images_with_extra_info: List[Tuple[Image.Image, bool, str]], formula_enable=True, table_enable=True):
+def batch_image_analyze(
+    images_with_extra_info: List[Tuple[Image.Image, bool, str]],
+    formula_enable: bool = True,
+    table_enable: bool = True,
+) -> object:
 
     from .batch_analyze import BatchAnalyze
 

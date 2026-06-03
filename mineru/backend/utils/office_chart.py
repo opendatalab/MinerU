@@ -89,7 +89,7 @@ def html_table_from_excel_bytes(excel_bytes: bytes) -> str:
     return ""
 
 
-def _extract_non_empty_worksheet_rows(worksheet) -> list[list[str]]:
+def _extract_non_empty_worksheet_rows(worksheet: object) -> list[list[str]]:
     """提取工作表中首尾有内容的行，避免空 sheet 或尾部空列撑大兜底表格。"""
     raw_rows: list[list[str]] = []
     for row in worksheet.iter_rows(values_only=True):
@@ -345,7 +345,7 @@ def render_chart_html_from_cache(spec: ChartSpec) -> str:
     return ""
 
 
-def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
+def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook: object) -> str:
     categories = []
 
     for series in spec.series:
@@ -389,7 +389,7 @@ def _render_category_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
     return _render_html_table(headers, columns, row_count)
 
 
-def _render_scatter_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
+def _render_scatter_like_chart_from_workbook(spec: ChartSpec, workbook: object) -> str:
     x_sequences, series_names, series_y_values = _read_scatter_axes_from_workbook(
         spec,
         workbook,
@@ -402,7 +402,7 @@ def _render_scatter_like_chart_from_workbook(spec: ChartSpec, workbook) -> str:
     )
 
 
-def _render_bubble_chart_from_workbook(spec: ChartSpec, workbook) -> str:
+def _render_bubble_chart_from_workbook(spec: ChartSpec, workbook: object) -> str:
     x_sequences, series_names, series_y_values, series_sizes = _read_bubble_axes_from_workbook(
         spec,
         workbook,
@@ -457,7 +457,9 @@ def _render_bubble_chart_from_cache(spec: ChartSpec) -> str:
     )
 
 
-def _read_scatter_axes_from_workbook(spec: ChartSpec, workbook):
+def _read_scatter_axes_from_workbook(
+    spec: ChartSpec, workbook: object
+) -> tuple[list[list[float]] | None, list[str], list[list[float]]]:
     x_sequences = []
     series_names = []
     series_y_values = []
@@ -482,7 +484,9 @@ def _read_scatter_axes_from_workbook(spec: ChartSpec, workbook):
     return x_sequences, series_names, series_y_values
 
 
-def _read_bubble_axes_from_workbook(spec: ChartSpec, workbook):
+def _read_bubble_axes_from_workbook(
+    spec: ChartSpec, workbook: object
+) -> tuple[list[list[float]] | None, list[str], list[list[float]], list[list[float]]]:
     x_sequences = []
     series_names = []
     series_y_values = []
@@ -510,7 +514,7 @@ def _read_bubble_axes_from_workbook(spec: ChartSpec, workbook):
     return x_sequences, series_names, series_y_values, series_sizes
 
 
-def _read_formula_vector(workbook, formula: str):
+def _read_formula_vector(workbook: object, formula: str) -> tuple[str, list[object]] | None:
     parsed = _parse_formula(formula)
     if parsed is None:
         return None
@@ -536,7 +540,7 @@ def _read_formula_vector(workbook, formula: str):
     return sheet_name, values
 
 
-def _read_formula_scalar(workbook, formula: str) -> str | None:
+def _read_formula_scalar(workbook: object, formula: str) -> str | None:
     read_result = _read_formula_vector(workbook, formula)
     if read_result is None:
         return None
@@ -551,7 +555,7 @@ def _read_formula_scalar(workbook, formula: str) -> str | None:
     return _stringify_cell_value(value)
 
 
-def _parse_formula(formula: str):
+def _parse_formula(formula: str) -> tuple[str, int, int, int, int] | None:
     formula = formula.strip()
     if not formula:
         return None
@@ -574,7 +578,7 @@ def _unescape_formula_sheet_name(sheet_name: str) -> str:
     return sheet_name.replace("''", "'")
 
 
-def _extract_reference_formula(container) -> str | None:
+def _extract_reference_formula(container: object) -> str | None:
     ref_element = _find_reference_element(container)
     if ref_element is None:
         return None
@@ -585,7 +589,7 @@ def _extract_reference_formula(container) -> str | None:
 
 
 def _extract_reference_cache(
-    container,
+    container: object,
     *,
     date_hint: bool = False,
     date_1904: bool = False,
@@ -612,7 +616,7 @@ def _extract_reference_cache(
 
 
 def _extract_cache_points(
-    cache_element,
+    cache_element: object,
     *,
     date_hint: bool = False,
     date_1904: bool = False,
@@ -645,7 +649,7 @@ def _extract_cache_points(
     return [points.get(index, "") for index in range(max_index + 1)]
 
 
-def _extract_multilevel_string_cache(ref_element) -> list[str]:
+def _extract_multilevel_string_cache(ref_element: object) -> list[str]:
     level_maps = []
     max_index = -1
     for level in ref_element.findall("c:multiLvlStrCache/c:lvl", namespaces=_NS):
@@ -680,7 +684,7 @@ def _extract_multilevel_string_cache(ref_element) -> list[str]:
     return rows
 
 
-def _extract_tx_formula(tx_element) -> str | None:
+def _extract_tx_formula(tx_element: object) -> str | None:
     if tx_element is None:
         return None
     str_ref = tx_element.find("c:strRef", namespaces=_NS)
@@ -692,7 +696,7 @@ def _extract_tx_formula(tx_element) -> str | None:
     return formula_element.text.strip()
 
 
-def _extract_tx_text(tx_element) -> str | None:
+def _extract_tx_text(tx_element: object) -> str | None:
     if tx_element is None:
         return None
 
@@ -708,14 +712,14 @@ def _extract_tx_text(tx_element) -> str | None:
     return None
 
 
-def _extract_title_text(title_element) -> str:
+def _extract_title_text(title_element: object) -> str:
     if title_element is None:
         return ""
     texts = title_element.findall(".//a:t", namespaces=_NS)
     return "".join(text.text or "" for text in texts).strip()
 
 
-def _find_reference_element(container):
+def _find_reference_element(container: object) -> object | None:
     if container is None:
         return None
     for tag_name in ("strRef", "numRef", "multiLvlStrRef"):
@@ -725,14 +729,14 @@ def _find_reference_element(container):
     return None
 
 
-def _first_non_none(*values):
+def _first_non_none(*values: object) -> object | None:
     for value in values:
         if value is not None:
             return value
     return None
 
 
-def _collect_plot_elements(plot_area) -> list[tuple[str, Any]]:
+def _collect_plot_elements(plot_area: object) -> list[tuple[str, object]]:
     plot_elements = []
     for child in plot_area:
         if not isinstance(child.tag, str):
@@ -753,14 +757,14 @@ def _plot_kind_from_tag_name(tag_name: str, has_date_axis: bool) -> str:
     return "category"
 
 
-def _chart_uses_date_1904(root) -> bool:
+def _chart_uses_date_1904(root: object) -> bool:
     date_1904 = root.find("c:date1904", namespaces=_NS)
     if date_1904 is None:
         return False
     return date_1904.get("val") == "1"
 
 
-def _resolve_series_name(series: SeriesSpec, index: int, workbook=None) -> str:
+def _resolve_series_name(series: SeriesSpec, index: int, workbook: object = None) -> str:
     if workbook is not None and series.name_formula:
         workbook_name = _read_formula_scalar(workbook, series.name_formula)
         if workbook_name:
@@ -919,7 +923,7 @@ def _stringify_cache_value(
 
 
 def _stringify_cell_value(
-    value: Any,
+    value: object,
     *,
     date_hint: bool = False,
     date_1904: bool = False,
@@ -963,7 +967,7 @@ def _excel_serial_to_iso(serial: float, *, date_1904: bool = False) -> str | Non
     return str(excel_value)
 
 
-def _stringify_non_date_value(value: Any) -> str:
+def _stringify_non_date_value(value: object) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value)

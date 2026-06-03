@@ -8,24 +8,30 @@ across backends.
 from __future__ import annotations
 
 import copy
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, TypeVar
 
 from tqdm import tqdm
 
-from mineru.types import PageInfo
+from ...data.data_reader_writer import DataWriter
+from ...types import Block, PageInfo, Span
+from ...utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
+from ...utils.pdfium_guard import close_pdfium_child, close_pdfium_document, pdfium_guard
+from ..pipeline.model_init import run_ocr_rec_inference
+
+T = TypeVar("T")
 
 
 def build_middle_json(
-    model_list: list,
-    images_list: list,
+    model_list: list[T],
+    images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: Any,
+    image_writer: DataWriter,
     *,
-    init_fn: Callable[..., dict],
-    page_cvt_fn: Callable[..., dict],
+    init_fn: Callable[..., dict[str, Any]],
+    page_cvt_fn: Callable[[T], PageInfo],
     finalize_fn: Callable[..., None],
     **kwargs: Any,
-) -> dict:
+) -> dict[str, Any]:
     """Shared orchestration for the three PDF backends.
 
     Parameters
@@ -39,12 +45,15 @@ def build_middle_json(
     finalize_fn(pdf_info_list, **kwargs):
         Post-processing applied once all pages are ready.
     """
-    from ...utils.pdfium_guard import close_pdfium_document
 
     middle_json = init_fn(**kwargs)
     with tqdm(total=len(model_list), desc="Processing pages") as progress_bar:
         append_pages(
-            middle_json, model_list, images_list, pdf_doc, image_writer,
+            middle_json,
+            model_list,
+            images_list,
+            pdf_doc,
+            image_writer,
             page_cvt_fn=page_cvt_fn,
             progress_bar=progress_bar,
             **kwargs,
@@ -56,13 +65,13 @@ def build_middle_json(
 
 
 def append_pages(
-    middle_json: dict,
-    model_list: list,
-    images_list: list,
+    middle_json: dict[str, Any],
+    model_list: list[T],
+    images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: Any,
+    image_writer: DataWriter | None,
     *,
-    page_cvt_fn: Callable[..., dict],
+    page_cvt_fn: Callable[[T, dict, Any, DataWriter | None, int], PageInfo],
     page_start_index: int = 0,
     progress_bar: Any = None,
     **kwargs: Any,
@@ -73,7 +82,6 @@ def append_pages(
     is ``page_cvt_fn``, which converts one page's model output into a
     page_info dict.
     """
-    from ...utils.pdfium_guard import close_pdfium_child, pdfium_guard
 
     for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
         page_index = page_start_index + offset
@@ -81,9 +89,7 @@ def append_pages(
         try:
             with pdfium_guard():
                 page = pdf_doc[page_index]
-            page_info = page_cvt_fn(
-                copy.deepcopy(page_data), image_dict, page, image_writer, page_index, **kwargs
-            )
+            page_info = page_cvt_fn(copy.deepcopy(page_data), image_dict, page, image_writer, page_index, **kwargs)
             if page_info is None:
                 with pdfium_guard():
                     page_w, page_h = map(int, page.get_size())
@@ -100,14 +106,12 @@ def append_pages(
             progress_bar.update(1)
 
 
-def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
+def apply_post_ocr(pdf_info_list: list[PageInfo], ocr_model: Any) -> None:
     """Run OCR recognition on residual ``np_img`` crops inside spans.
 
     Common to Pipeline and Hybrid.  The caller provides the OCR model object
     (which has an ``ocr`` attribute pointing to the inference engine).
     """
-    from mineru.backend.pipeline.model_init import run_ocr_rec_inference
-    from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
 
     need_ocr_list = []
     img_crop_list = []
@@ -138,7 +142,7 @@ def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
 
 def _iter_block_spans(block: Block) -> Iterator[Span]:
     """Depth-first generator yielding every span in a block tree."""
-    for line in block.get("lines", []):
-        yield from line.get("spans", [])
-    for child in block.get("blocks", []):
+    for line in block.lines:
+        yield from line.spans
+    for child in block.blocks:
         yield from _iter_block_spans(child)

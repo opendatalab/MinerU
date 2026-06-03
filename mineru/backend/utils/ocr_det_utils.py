@@ -1,17 +1,19 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
+from typing import Any
+
 import cv2
 import numpy as np
 from loguru import logger
 
-from mineru.utils.pdf_image_tools import get_crop_img
+from ...utils.pdf_image_tools import get_crop_img
 
 OCR_DET_PADDING = 50
 
 
 def get_ch_lite_ocr_det_model() -> Any:
     try:
-        from mineru.backend.pipeline.model_init import AtomModelSingleton
+        from ..pipeline.model_init import AtomModelSingleton
     except Exception as e:
         logger.error(
             "Failed to import AtomModelSingleton, OCR detection will not work. If you want to use OCR features, "
@@ -20,15 +22,12 @@ def get_ch_lite_ocr_det_model() -> Any:
         raise e
 
     atom_model_manager = AtomModelSingleton()
-    return atom_model_manager.get_atom_model(
-        atom_model_name='ocr',
-        ocr_show_log=False,
-        det_db_box_thresh=0.3,
-        lang='ch_lite'
-    )
+    return atom_model_manager.get_atom_model(atom_model_name="ocr", ocr_show_log=False, det_db_box_thresh=0.3, lang="ch_lite")
 
 
-def detect_ocr_boxes_from_padded_crop(bbox: list[float], page_pil_img: Any, scale: float, ocr_model: Any = None, padding: int = OCR_DET_PADDING) -> list:
+def detect_ocr_boxes_from_padded_crop(
+    bbox: list[float], page_pil_img: Any, scale: float, ocr_model: Any = None, padding: int = OCR_DET_PADDING
+) -> tuple[list[dict[str, Any]], int]:
     if not bbox:
         return [], padding
 

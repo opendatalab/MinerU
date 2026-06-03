@@ -1,16 +1,18 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import re
 from collections import defaultdict
 from typing import Any
 
-from ...types import PageInfo
+from ...types import Block, PageInfo
 from ...utils.enum_class import BlockType
 from ...version import __version__
 from ..utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from .office_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -> PageInfo:
+def blocks_to_page_info(page_blocks: list[dict[str, Any]], image_writer: Any, page_index: int) -> PageInfo:
     """将blocks转换为页面信息"""
 
     magic_model = MagicModel(page_blocks)
@@ -21,23 +23,23 @@ def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -
     if image_writer:
         # Write embedded images to local storage via image_writer
         for img_block in image_blocks:
-            for sub_block in img_block.get("blocks", []):
-                if sub_block.get("type") != "image_body":
+            for sub_block in img_block.blocks:
+                if sub_block.type != "image_body":
                     continue
-                for line in sub_block.get("lines", []):
-                    for span in line.get("spans", []):
+                for line in sub_block.lines:
+                    for span in line.spans:
                         save_span_image_if_needed(span, image_writer, page_index)
 
         replace_inline_table_images(table_blocks, image_writer, page_index)
 
         # Replace inline base64 images inside chart content with local paths
         for chart_block in chart_blocks:
-            for sub_block in chart_block.get("blocks", []):
-                if sub_block.get("type") != "chart_body":
+            for sub_block in chart_block.blocks:
+                if sub_block.type != "chart_body":
                     continue
-                for line in sub_block.get("lines", []):
-                    for span in line.get("spans", []):
-                        if span.get("type") != "chart":
+                for line in sub_block.lines:
+                    for span in line.spans:
+                        if span.type != "chart":
                             continue
                         save_span_image_if_needed(span, image_writer, page_index)
 
@@ -72,7 +74,7 @@ def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -
     return page_info
 
 
-def _extract_section_parts_from_content(content: str, level: int):
+def _extract_section_parts_from_content(content: str, level: int) -> list[int] | None:
     """Try to extract a leading section number (e.g. '1.2.1') from title content.
 
     Returns a list of ints [n1, n2, ..., nL] when the number of parts equals
@@ -89,16 +91,16 @@ def _extract_section_parts_from_content(content: str, level: int):
     return None
 
 
-def _collect_index_text_blocks(index_block: dict, result: list[dict]) -> None:
+def _collect_index_text_blocks(index_block: Block, result: list[Block]) -> None:
     """Depth-first collect TOC leaf text blocks."""
-    for child in index_block.get("blocks", []):
-        if child.get("type") == BlockType.INDEX:
+    for child in index_block.blocks:
+        if child.type == BlockType.INDEX:
             _collect_index_text_blocks(child, result)
-        elif child.get("type") == BlockType.TEXT:
+        elif child.type == BlockType.TEXT:
             result.append(child)
 
 
-def _link_index_entries_by_anchor(middle_json: dict) -> None:
+def _link_index_entries_by_anchor(middle_json: dict[str, Any]) -> None:
     """Keep TOC anchors only when they exist on parsed body blocks."""
     pdf_info = middle_json.get("pdf_info", [])
     valid_anchors: set[str] = set()
@@ -116,7 +118,7 @@ def _link_index_entries_by_anchor(middle_json: dict) -> None:
         for block in page_info.get("para_blocks", []):
             if block.get("type") != BlockType.INDEX:
                 continue
-            toc_text_blocks: list[dict] = []
+            toc_text_blocks: list[Block] = []
             _collect_index_text_blocks(block, toc_text_blocks)
             for text_block in toc_text_blocks:
                 anchor = text_block.get("anchor")
@@ -130,7 +132,7 @@ def _link_index_entries_by_anchor(middle_json: dict) -> None:
                 text_block["anchor"] = anchor
 
 
-def result_to_middle_json(model_output_blocks_list, image_writer):
+def result_to_middle_json(model_output_blocks_list: list[list[dict[str, object]]], image_writer: object) -> dict[str, object]:
     middle_json = {"pdf_info": [], "_backend": "office", "_version_name": __version__}
     for index, page_blocks in enumerate(model_output_blocks_list):
         page_info = blocks_to_page_info(page_blocks, image_writer, index)

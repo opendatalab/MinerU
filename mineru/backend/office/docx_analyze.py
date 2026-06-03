@@ -1,14 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import time
 from io import BytesIO
+from typing import Any
 
 from loguru import logger
 
+from ...data.data_reader_writer import FileBasedDataWriter
 from ...model.docx.main import convert_binary
 from .model_output_to_middle_json import result_to_middle_json
 
 
-def office_docx_analyze(file_bytes: bytes, image_writer: Any = None) -> dict:
+def office_docx_analyze(file_bytes: bytes, image_writer: Any = None) -> dict[str, Any]:
     infer_start = time.time()
 
     file_stream = BytesIO(file_bytes)
@@ -18,11 +20,7 @@ def office_docx_analyze(file_bytes: bytes, image_writer: Any = None) -> dict:
     safe_time = max(infer_time, 0.01)
     logger.debug(f"infer finished, cost: {infer_time}, speed: {round(len(results) / safe_time, 3)} page/s")
 
-    middle_json = result_to_middle_json(
-        results,
-        image_writer,
-    )
-
+    middle_json = result_to_middle_json(results, image_writer)
     return middle_json, results
 
 
@@ -32,6 +30,7 @@ if __name__ == "__main__":
     # module is executed.  Allow the user to override the path via a
     # command-line argument for even greater flexibility.
     import argparse
+    import json
     from pathlib import Path
 
     script_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -48,7 +47,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     docx_path = Path(args.docx)
-    from mineru.data.data_reader_writer import FileBasedDataWriter
 
     with open(docx_path, "rb") as f:
         file_bytes = f.read()
@@ -57,7 +55,5 @@ if __name__ == "__main__":
         file_bytes,
         image_writer=image_writer,
     )
-
-    import json
 
     logger.info(json.dumps(middle_json, indent=2, ensure_ascii=False))

@@ -1,39 +1,40 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import json
 import os
+from typing import Any
 
 from loguru import logger
 from packaging import version
 
-from mineru.utils.check_sys_env import is_windows_environment, is_linux_environment
-from mineru.utils.config_reader import get_device
-from mineru.utils.model_utils import get_vram
+from ...utils.check_sys_env import is_linux_environment, is_windows_environment
+from ...utils.config_reader import get_device
+from ...utils.model_utils import get_vram
 
 
 def enable_custom_logits_processors() -> bool:
     import torch
-    from vllm import __version__ as vllm_version
+    from vllm import __version__ as vllm_version  # type: ignore
 
     if torch.cuda.is_available():
         major, minor = torch.cuda.get_device_capability()
         # 正确计算Compute Capability
         compute_capability = f"{major}.{minor}"
-    elif hasattr(torch, 'npu') and torch.npu.is_available():
+    elif hasattr(torch, "npu") and torch.npu.is_available():  # type: ignore
         compute_capability = "8.0"
-    elif hasattr(torch, 'gcu') and torch.gcu.is_available():
+    elif hasattr(torch, "gcu") and torch.gcu.is_available():  # type: ignore
         compute_capability = "8.0"
-    elif hasattr(torch, 'musa') and torch.musa.is_available():
+    elif hasattr(torch, "musa") and torch.musa.is_available():  # type: ignore
         compute_capability = "8.0"
-    elif hasattr(torch, 'mlu') and torch.mlu.is_available():
+    elif hasattr(torch, "mlu") and torch.mlu.is_available():  # type: ignore
         compute_capability = "8.0"
-    elif hasattr(torch, 'sdaa') and torch.sdaa.is_available():
+    elif hasattr(torch, "sdaa") and torch.sdaa.is_available():  # type: ignore
         compute_capability = "8.0"
-    
     else:
         logger.info("CUDA not available, disabling custom_logits_processors")
         return False
 
     # 安全地处理环境变量
-    vllm_use_v1_str = os.getenv('VLLM_USE_V1', "1")
+    vllm_use_v1_str = os.getenv("VLLM_USE_V1", "1")
     if vllm_use_v1_str.isdigit():
         vllm_use_v1 = int(vllm_use_v1_str)
     else:
@@ -47,13 +48,22 @@ def enable_custom_logits_processors() -> bool:
         return False
     elif version.parse(compute_capability) < version.parse("8.0"):
         if version.parse(vllm_version) >= version.parse("0.10.2"):
-            logger.info(f"compute_capability: {compute_capability} < 8.0, but vllm version: {vllm_version} >= 0.10.2, enable custom_logits_processors")
+            logger.info(
+                f"compute_capability: {compute_capability} < 8.0, but vllm version: {vllm_version} >= 0.10.2,"
+                " enable custom_logits_processors"
+            )
             return True
         else:
-            logger.info(f"compute_capability: {compute_capability} < 8.0 and vllm version: {vllm_version} < 0.10.2, disable custom_logits_processors")
+            logger.info(
+                f"compute_capability: {compute_capability} < 8.0 and vllm version: {vllm_version} < 0.10.2,"
+                " disable custom_logits_processors"
+            )
             return False
     else:
-        logger.info(f"compute_capability: {compute_capability} >= 8.0 and vllm version: {vllm_version} >= 0.10.1, enable custom_logits_processors")
+        logger.info(
+            f"compute_capability: {compute_capability} >= 8.0 and vllm version: {vllm_version} >= 0.10.1,"
+            " enable custom_logits_processors"
+        )
         return True
 
 
@@ -62,6 +72,7 @@ def set_lmdeploy_backend(device_type: str) -> str:
         lmdeploy_backend = "pytorch"
     elif device_type.lower() in ["cuda"]:
         import torch
+
         if not torch.cuda.is_available():
             raise ValueError("CUDA is not available.")
         if is_windows_environment():
@@ -81,14 +92,18 @@ def set_lmdeploy_backend(device_type: str) -> str:
 
 
 def set_default_gpu_memory_utilization() -> float:
-    from vllm import __version__ as vllm_version
+    from vllm import __version__ as vllm_version  # type: ignore
+
     device = get_device()
     gpu_memory = get_vram(device)
     default_gpu_memory_utilization = 0.5
     if version.parse(vllm_version) >= version.parse("0.11.0") and gpu_memory <= 8:
         default_gpu_memory_utilization = 0.7
 
-    logger.debug(f"vllm_version: {vllm_version}, gpu_memory: {gpu_memory} GB, default_gpu_memory_utilization: {default_gpu_memory_utilization}")
+    logger.debug(
+        f"vllm_version: {vllm_version}, gpu_memory: {gpu_memory} GB,"
+        f" default_gpu_memory_utilization: {default_gpu_memory_utilization}"
+    )
     return default_gpu_memory_utilization
 
 
@@ -103,10 +118,10 @@ def set_default_batch_size() -> int:
             batch_size = 4
         else:
             batch_size = 1
-        logger.info(f'gpu_memory: {gpu_memory} GB, batch_size: {batch_size}')
+        logger.info(f"gpu_memory: {gpu_memory} GB, batch_size: {batch_size}")
 
     except Exception as e:
-        logger.warning(f'Error determining VRAM: {e}, using default batch_ratio: 1')
+        logger.warning(f"Error determining VRAM: {e}, using default batch_ratio: 1")
         batch_size = 1
     return batch_size
 
@@ -126,16 +141,22 @@ def _get_device_config(device_type: str) -> dict | None:
         "corex": {
             "compilation_config_dict": {
                 "cudagraph_mode": "FULL_DECODE_ONLY",
-                "level": 0
+                "level": 0,
             },
         },
         "kxpu": {
             "compilation_config_dict": {
                 "splitting_ops": [
-                    "vllm.unified_attention", "vllm.unified_attention_with_output",
-                    "vllm.unified_attention_with_output_kunlun", "vllm.mamba_mixer2",
-                    "vllm.mamba_mixer", "vllm.short_conv", "vllm.linear_attention",
-                    "vllm.plamo2_mamba_mixer", "vllm.gdn_attention", "vllm.sparse_attn_indexer"
+                    "vllm.unified_attention",
+                    "vllm.unified_attention_with_output",
+                    "vllm.unified_attention_with_output_kunlun",
+                    "vllm.mamba_mixer2",
+                    "vllm.mamba_mixer",
+                    "vllm.short_conv",
+                    "vllm.linear_attention",
+                    "vllm.plamo2_mamba_mixer",
+                    "vllm.gdn_attention",
+                    "vllm.sparse_attn_indexer",
                 ]
             },
             "block_size": 128,
@@ -149,30 +170,30 @@ def _get_device_config(device_type: str) -> dict | None:
     return DEVICE_CONFIGS.get(device_type.lower())
 
 
-def _check_server_arg_exists(args: list, arg_name: str) -> bool:
+def _check_server_arg_exists(args: list[str], arg_name: str) -> bool:
     """检查命令行参数列表中是否已存在指定参数"""
     return any(arg == f"--{arg_name}" or arg.startswith(f"--{arg_name}=") for arg in args)
 
 
-def _add_server_arg_if_missing(args: list, arg_name: str, value: str) -> None:
+def _add_server_arg_if_missing(args: list[str], arg_name: str, value: str) -> None:
     """如果参数不存在，则添加到命令行参数列表"""
     if not _check_server_arg_exists(args, arg_name):
         args.extend([f"--{arg_name}", value])
 
 
-def _add_server_flag_if_missing(args: list, flag_name: str) -> None:
+def _add_server_flag_if_missing(args: list[str], flag_name: str) -> None:
     """如果 flag 不存在，则添加到命令行参数列表"""
     if not _check_server_arg_exists(args, flag_name):
         args.append(f"--{flag_name}")
 
 
-def _add_engine_kwarg_if_missing(kwargs: dict, key: str, value: Any) -> None:
+def _add_engine_kwarg_if_missing(kwargs: dict[str, Any], key: str, value: object) -> None:
     """如果参数不存在，则添加到 kwargs 字典"""
     if key not in kwargs:
         kwargs[key] = value
 
 
-def mod_kwargs_by_device_type(kwargs_or_args: dict | list, vllm_mode: str) -> dict | list:
+def mod_kwargs_by_device_type(kwargs_or_args: dict[str, Any] | list[str], vllm_mode: str) -> dict[str, Any] | list[str]:
     """根据设备类型修改 vllm 配置参数
 
     Args:
@@ -196,16 +217,11 @@ def mod_kwargs_by_device_type(kwargs_or_args: dict | list, vllm_mode: str) -> di
     return kwargs_or_args
 
 
-def _apply_server_config(args: list, config: dict) -> None:
+def _apply_server_config(args: list[str], config: dict[str, Any]) -> None:
     """应用 server 模式的配置"""
-    import json
-
     for key, value in config.items():
         if key == "compilation_config_dict":
-            _add_server_arg_if_missing(
-                args, "compilation-config",
-                json.dumps(value, separators=(',', ':'))
-            )
+            _add_server_arg_if_missing(args, "compilation-config", json.dumps(value, separators=(",", ":")))
         else:
             # 转换 key 格式: block_size -> block-size
             arg_name = key.replace("_", "-")
@@ -215,10 +231,10 @@ def _apply_server_config(args: list, config: dict) -> None:
             _add_server_arg_if_missing(args, arg_name, str(value))
 
 
-def _apply_engine_config(kwargs: dict, config: dict, vllm_mode: str) -> None:
+def _apply_engine_config(kwargs: dict[str, Any], config: dict[str, Any], vllm_mode: str) -> None:
     """应用 engine 模式的配置"""
     try:
-        from vllm.config import CompilationConfig
+        from vllm.config import CompilationConfig  # type: ignore
     except ImportError:
         raise ImportError("Please install vllm to use the vllm-async-engine backend.")
 

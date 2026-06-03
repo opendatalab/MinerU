@@ -1,13 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import threading
-from io import BytesIO
 from contextlib import contextmanager
-from typing import Any, Callable, Sequence, TypeVar
+from io import BytesIO
+from typing import Any, Callable, Iterator, Sequence, TypeVar
 
 from loguru import logger
 
-from mineru.utils.pdf_page_id import get_end_page_id
-
+from .pdf_page_id import get_end_page_id
 
 _pdfium_lock = threading.RLock()
 
@@ -15,7 +14,7 @@ T = TypeVar("T")
 
 
 @contextmanager
-def pdfium_guard():
+def pdfium_guard() -> Iterator[None]:
     with _pdfium_lock:
         yield
 
@@ -124,19 +123,13 @@ def rewrite_pdf_bytes_with_pdfium(
 
             if page_indices is not None:
                 normalized_page_indices = sorted(
-                    {
-                        page_index
-                        for page_index in page_indices
-                        if 0 <= page_index < total_page_count
-                    }
+                    {page_index for page_index in page_indices if 0 <= page_index < total_page_count}
                 )
                 if not normalized_page_indices:
                     return b""
             else:
                 normalized_end_page_id = get_end_page_id(end_page_id, total_page_count)
-                normalized_page_indices = list(
-                    range(start_page_id, normalized_end_page_id + 1)
-                )
+                normalized_page_indices = list(range(start_page_id, normalized_end_page_id + 1))
 
             output_doc = pdfium.PdfDocument.new()
             output_doc.import_pages(pdf_doc, normalized_page_indices)

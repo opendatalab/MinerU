@@ -1,13 +1,17 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import os
 import time
+from typing import Any
 
 from loguru import logger
 
-from mineru.utils.table_merge import merge_table
+from ...types import PageInfo
+from ...utils.table_merge import merge_table
 
 
-def cross_page_table_merge(pdf_info: list[dict]) -> None:
+def cross_page_table_merge(pdf_info: list[PageInfo]) -> None:
     """Merge tables that span across multiple pages in a PDF document.
 
     Args:
@@ -16,13 +20,13 @@ def cross_page_table_merge(pdf_info: list[dict]) -> None:
     Returns:
         None
     """
-    is_merge_table = os.getenv('MINERU_TABLE_MERGE_ENABLE', 'true')
-    if is_merge_table.lower() in ['true', '1', 'yes']:
+    is_merge_table = os.getenv("MINERU_TABLE_MERGE_ENABLE", "true")
+    if is_merge_table.lower() in ["true", "1", "yes"]:
         merge_table(pdf_info)
-    elif is_merge_table.lower() in ['false', '0', 'no']:
+    elif is_merge_table.lower() in ["false", "0", "no"]:
         pass
     else:
-        logger.warning(f'unknown MINERU_TABLE_MERGE_ENABLE config: {is_merge_table}, pass')
+        logger.warning(f"unknown MINERU_TABLE_MERGE_ENABLE config: {is_merge_table}, pass")
         pass
 
 

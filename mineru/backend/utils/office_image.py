@@ -4,12 +4,11 @@ from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Final
 
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from loguru import logger
+from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from mineru.utils.check_sys_env import is_windows_environment
-from mineru.utils.pdf_reader import image_to_b64str
-
+from ...utils.check_sys_env import is_windows_environment
+from ...utils.pdf_reader import image_to_b64str
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -35,9 +34,7 @@ def is_vector_image(pil_image: Image.Image) -> bool:
     return (getattr(pil_image, "format", None) or "").upper() in VECTOR_IMAGE_FORMATS
 
 
-def is_vector_image_part(
-    part_name: object | None = None, content_type: str | None = None
-) -> bool:
+def is_vector_image_part(part_name: object | None = None, content_type: str | None = None) -> bool:
     suffix = PurePosixPath(str(part_name or "")).suffix.lower()
     if suffix in VECTOR_IMAGE_EXTENSIONS:
         return True
@@ -45,9 +42,7 @@ def is_vector_image_part(
     return normalized_content_type in VECTOR_IMAGE_CONTENT_TYPES
 
 
-def _vector_image_format_label(
-    part_name: object | None = None, content_type: str | None = None
-) -> str:
+def _vector_image_format_label(part_name: object | None = None, content_type: str | None = None) -> str:
     suffix = PurePosixPath(str(part_name or "")).suffix.lower()
     normalized_content_type = (content_type or "").lower()
     if suffix == ".wmf" or "wmf" in normalized_content_type:
@@ -70,9 +65,7 @@ def _load_placeholder_font(font_size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def create_text_placeholder(
-    size: tuple[int, int], lines: list[str]
-) -> Image.Image:
+def create_text_placeholder(size: tuple[int, int], lines: list[str]) -> Image.Image:
     width = max(int(size[0]), 1)
     height = max(int(size[1]), 1)
     placeholder = Image.new("RGB", (width, height), (240, 240, 240))
@@ -98,9 +91,7 @@ def create_text_placeholder(
     for font_size in range(max(min(width, height) // 7, 10), 7, -1):
         font = _load_placeholder_font(font_size)
         spacing = max(2, font_size // 4)
-        bbox = draw.multiline_textbbox(
-            (0, 0), text, font=font, spacing=spacing, align="center"
-        )
+        bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing, align="center")
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         if text_width <= max_text_width and text_height <= max_text_height:
@@ -109,9 +100,7 @@ def create_text_placeholder(
         text = fallback_text
         font = _load_placeholder_font(max(min(width, height) // 5, 10))
         spacing = 2
-        bbox = draw.multiline_textbbox(
-            (0, 0), text, font=font, spacing=spacing, align="center"
-        )
+        bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=spacing, align="center")
 
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
@@ -142,25 +131,17 @@ def get_standard_vector_placeholder_data_uri() -> str:
     return _standard_vector_placeholder_data_uri()
 
 
-def serialize_vector_image_with_placeholder(
-    pil_image: Image.Image, image_format_override: str | None = None
-) -> str:
-    image_format = (
-        image_format_override or getattr(pil_image, "format", None) or "WMF/EMF"
-    ).upper()
+def serialize_vector_image_with_placeholder(pil_image: Image.Image, image_format_override: str | None = None) -> str:
+    image_format = (image_format_override or getattr(pil_image, "format", None) or "WMF/EMF").upper()
 
     if is_windows_environment():
         try:
             pil_image.load()
             return image_to_b64str(pil_image, image_format="PNG")
         except PIL_IMAGE_LOAD_ERRORS as e:
-            logger.warning(
-                f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead."
-            )
+            logger.warning(f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
     else:
-        logger.warning(
-            f"Skipping {image_format} image on non-Windows environment, size: {pil_image.size}"
-        )
+        logger.warning(f"Skipping {image_format} image on non-Windows environment, size: {pil_image.size}")
 
     return get_standard_vector_placeholder_data_uri()
 
@@ -207,10 +188,7 @@ def serialize_office_image(
         pil_image = Image.open(BytesIO(image_data))
         pil_image.load()
     except PIL_IMAGE_LOAD_ERRORS as e:
-        logger.warning(
-            f"Warning: image cannot be loaded by Pillow: {e}, "
-            f"part_name={part_name}, content_type={content_type}"
-        )
+        logger.warning(f"Warning: image cannot be loaded by Pillow: {e}, part_name={part_name}, content_type={content_type}")
         return None
 
     if is_vector_image(pil_image):
@@ -219,9 +197,7 @@ def serialize_office_image(
     if pil_image.mode == "RGB":
         return image_to_b64str(pil_image, image_format="JPEG")
 
-    if pil_image.mode in {"RGBA", "LA"} or (
-        pil_image.mode == "P" and "transparency" in pil_image.info
-    ):
+    if pil_image.mode in {"RGBA", "LA"} or (pil_image.mode == "P" and "transparency" in pil_image.info):
         return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
 
     return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")

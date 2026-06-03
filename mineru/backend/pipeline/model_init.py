@@ -1,6 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from __future__ import annotations
+
 import os
 import threading
+from collections.abc import Callable
+from typing import Any
 
 import torch
 from loguru import logger
@@ -28,7 +32,9 @@ PIPELINE_OCR_REC_INFERENCE_LOCK = threading.RLock()
 PIPELINE_INFERENCE_LOCKS_ENABLED = os.getenv("MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS", "False").lower() in ["true", "1", "yes"]
 
 
-def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs):
+def _run_with_inference_lock(
+    inference_lock: threading.RLock, inference_callable: Callable[..., Any], *args: Any, **kwargs: Any
+) -> object:
     """按实验开关决定是否在指定推理锁内执行真实 native 模型调用。"""
     if not PIPELINE_INFERENCE_LOCKS_ENABLED:
         return inference_callable(*args, **kwargs)
@@ -37,22 +43,22 @@ def _run_with_inference_lock(inference_lock, inference_callable, *args, **kwargs
         return inference_callable(*args, **kwargs)
 
 
-def run_layout_inference(inference_callable, *args, **kwargs):
+def run_layout_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 Layout 模型调用。"""
     return _run_with_inference_lock(PIPELINE_LAYOUT_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-def run_mfr_inference(inference_callable, *args, **kwargs):
+def run_mfr_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 MFR 模型调用。"""
     return _run_with_inference_lock(PIPELINE_MFR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-def run_ocr_det_inference(inference_callable, *args, **kwargs):
+def run_ocr_det_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 OCR det 模型调用。"""
     return _run_with_inference_lock(PIPELINE_OCR_DET_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-def run_ocr_rec_inference(inference_callable, *args, **kwargs):
+def run_ocr_rec_inference(inference_callable: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """按实验开关执行共享 OCR rec 模型调用。"""
     return _run_with_inference_lock(PIPELINE_OCR_REC_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
@@ -67,7 +73,7 @@ else:
     MFR_MODEL = "unimernet_small"
 
 
-def table_orientation_cls_model_init():
+def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.OCR,
@@ -80,11 +86,11 @@ def table_orientation_cls_model_init():
     return cls_model
 
 
-def table_cls_model_init():
+def table_cls_model_init() -> PaddleTableClsModel:
     return PaddleTableClsModel()
 
 
-def wired_table_model_init(lang: str | None = None) -> Any:
+def wired_table_model_init(lang: str | None = None) -> UnetTableModel:
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.OCR, det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang, enable_merge_det_boxes=False
@@ -93,7 +99,7 @@ def wired_table_model_init(lang: str | None = None) -> Any:
     return table_model
 
 
-def wireless_table_model_init(lang: str | None = None) -> Any:
+def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModel.OCR, det_db_box_thresh=0.5, det_db_unclip_ratio=1.6, lang=lang, enable_merge_det_boxes=False
@@ -102,7 +108,7 @@ def wireless_table_model_init(lang: str | None = None) -> Any:
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str = "cpu") -> Any:
+def mfr_model_init(weight_dir: str, device: str = "cpu") -> UnimernetModel | FormulaRecognizer:
     if MFR_MODEL == "unimernet_small":
         mfr_model = UnimernetModel(weight_dir, device)
     elif MFR_MODEL == "pp_formulanet_plus_m":
@@ -113,15 +119,19 @@ def mfr_model_init(weight_dir: str, device: str = "cpu") -> Any:
     return mfr_model
 
 
-def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> Any:
+def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> PPDocLayoutV2LayoutModel:
     if str(device).startswith("npu"):
         device = torch.device(device)
     model = PPDocLayoutV2LayoutModel(weight, device)
     return model
 
 
-def ocr_model_init(det_db_box_thresh: float = 0.5, lang: str | None = None, det_db_unclip_ratio: float = 1.5, enable_merge_det_boxes: bool = True) -> Any:
-
+def ocr_model_init(
+    det_db_box_thresh: float = 0.5,
+    lang: str | None = None,
+    det_db_unclip_ratio: float = 1.5,
+    enable_merge_det_boxes: bool = True,
+) -> PytorchPaddleOCR:
     if lang in [None, "ch"]:
         use_dilation = True
         det_db_unclip_ratio = 1.8
@@ -147,18 +157,17 @@ def ocr_model_init(det_db_box_thresh: float = 0.5, lang: str | None = None, det_
 
 
 class AtomModelSingleton:
-    _instance = None
-    _models = {}
-    _lock = PIPELINE_MODEL_INIT_LOCK
+    _instance: AtomModelSingleton | None = None
+    _models: dict[object, object] = {}
+    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> AtomModelSingleton:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
         return cls._instance
 
-    def get_atom_model(self, atom_model_name: str, **kwargs):
-
+    def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
         lang = kwargs.get("lang", None)
 
         if atom_model_name in [AtomicModel.WiredTable, AtomicModel.WirelessTable]:
@@ -222,22 +231,22 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
 
 
 class MineruPipelineModel:
-    def __init__(self, **kwargs):
-        self.formula_config = kwargs.get("formula_config")
-        self.apply_formula = self.formula_config.get("enable", True)
-        self.table_config = kwargs.get("table_config")
-        self.apply_table = self.table_config.get("enable", True)
-        self.lang = kwargs.get("lang", None)
-        self.device = kwargs.get("device", "cpu")
+    def __init__(self, **kwargs: Any) -> None:
+        self.formula_config: dict[str, Any] = kwargs.get("formula_config", {})
+        self.apply_formula: bool = self.formula_config.get("enable", True)
+        self.table_config: dict[str, Any] = kwargs.get("table_config", {})
+        self.apply_table: bool = self.table_config.get("enable", True)
+        self.lang: str | None = kwargs.get("lang", None)
+        self.device: str = kwargs.get("device", "cpu")
         logger.info("DocAnalysis init, this may take some times......")
         atom_model_manager = AtomModelSingleton()
 
         if self.apply_formula:
             # 初始化公式解析模型
             if MFR_MODEL == "unimernet_small":
-                mfr_model_path = ModelPath.unimernet_small
+                mfr_model_path: str = ModelPath.unimernet_small
             elif MFR_MODEL == "pp_formulanet_plus_m":
-                mfr_model_path = ModelPath.pp_formulanet_plus_m
+                mfr_model_path: str = ModelPath.pp_formulanet_plus_m
             else:
                 logger.error("MFR model name not allow")
                 exit(1)
@@ -280,11 +289,11 @@ class MineruPipelineModel:
 
 
 class HybridModelSingleton:
-    _instance = None
-    _models = {}
-    _lock = PIPELINE_MODEL_INIT_LOCK
+    _instance: HybridModelSingleton | None = None
+    _models: dict[object, object] = {}
+    _lock: threading.RLock = PIPELINE_MODEL_INIT_LOCK
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any) -> HybridModelSingleton:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -292,9 +301,9 @@ class HybridModelSingleton:
 
     def get_model(
         self,
-        lang=None,
-        formula_enable=None,
-    ):
+        lang: str | None = None,
+        formula_enable: bool | None = None,
+    ) -> MineruHybridModel:
         key = (lang, formula_enable)
         with self._lock:
             if key not in self._models:
@@ -305,15 +314,15 @@ class HybridModelSingleton:
         return self._models[key]
 
 
-def ocr_det_batch_setting():
-    import torch
+def ocr_det_batch_setting() -> bool:
+    import torch as _torch
     from packaging import version
 
     device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
     if device_type.lower() in ["corex"]:
         enable_ocr_det_batch = False
     else:
-        if version.parse(torch.__version__) >= version.parse("2.8.0"):
+        if version.parse(_torch.__version__) >= version.parse("2.8.0"):
             os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
         enable_ocr_det_batch = True
 
@@ -323,18 +332,18 @@ def ocr_det_batch_setting():
 class MineruHybridModel:
     def __init__(
         self,
-        device=None,
-        lang=None,
-        formula_enable=True,
-    ):
+        device: str | None = None,
+        lang: str | None = None,
+        formula_enable: bool = True,
+    ) -> None:
         if device is not None:
-            self.device = device
+            self.device: str = device
         else:
-            self.device = get_device()
+            self.device: str = get_device()
 
-        self.lang = lang
+        self.lang: str | None = lang
 
-        self.enable_ocr_det_batch = ocr_det_batch_setting()
+        self.enable_ocr_det_batch: bool = ocr_det_batch_setting()
 
         if str(self.device).startswith("npu"):
             try:
@@ -368,9 +377,9 @@ class MineruHybridModel:
         if formula_enable:
             # 初始化公式解析模型
             if MFR_MODEL == "unimernet_small":
-                mfr_model_path = ModelPath.unimernet_small
+                mfr_model_path: str = ModelPath.unimernet_small
             elif MFR_MODEL == "pp_formulanet_plus_m":
-                mfr_model_path = ModelPath.pp_formulanet_plus_m
+                mfr_model_path: str = ModelPath.pp_formulanet_plus_m
             else:
                 logger.error("MFR model name not allow")
                 exit(1)

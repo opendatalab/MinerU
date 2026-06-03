@@ -10,18 +10,13 @@ from loguru import logger
 from mineru.utils.config_reader import get_llm_aided_config
 from mineru.utils.llm_aided import llm_aided_title
 
-
 SUPPORTED_PDF_BACKENDS = {"pipeline", "vlm", "hybrid"}
 
 
 def _resolve_title_aided_config() -> dict[str, Any] | None:
     """从本地配置解析标题分级开关。"""
     llm_aided_config = get_llm_aided_config()
-    title_aided_config = (
-        llm_aided_config.get("title_aided")
-        if isinstance(llm_aided_config, dict)
-        else None
-    )
+    title_aided_config = llm_aided_config.get("title_aided") if isinstance(llm_aided_config, dict) else None
     if not isinstance(title_aided_config, dict) or not title_aided_config:
         return None
     if not title_aided_config.get("enable", False):
@@ -68,7 +63,7 @@ def finalize_client_side_middle_json(middle_json: dict[str, Any]) -> dict[str, A
             pdf_info,
         )
     elif backend == "hybrid":
-        from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
+        from mineru.backend.hybrid.model_output_to_middle_json import (
             finalize_middle_json_from_preproc,
         )
 

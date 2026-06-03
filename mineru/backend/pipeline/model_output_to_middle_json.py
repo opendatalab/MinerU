@@ -1,7 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import Any
 
-from ...types import PageInfo
+from ...data.data_reader_writer import DataWriter
+from ...types import Block, PageInfo, Span
 from ...utils.char_utils import full_to_half
 from ...utils.cut_image import cut_image_and_table
 from ...utils.enum_class import BlockType, ContentType
@@ -10,6 +11,7 @@ from ...utils.pdfium_guard import pdfium_guard
 from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from ...version import __version__
 from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.middle_json_utils import append_pages, apply_post_ocr, build_middle_json
 from ..utils.runtime_utils import cross_page_table_merge
 from .model_init import AtomModelSingleton
 from .para_split import para_split
@@ -17,7 +19,12 @@ from .pipeline_magic_model import MagicModel
 
 
 def blocks_to_page_info(
-    page_model_info: dict, image_dict: dict, page: Any, image_writer: Any, page_index: int, ocr_enable: bool = False
+    page_model_info: dict[str, Any],
+    image_dict: dict[str, Any],
+    page: Any,
+    image_writer: DataWriter,
+    page_index: int,
+    ocr_enable: bool = False,
 ) -> PageInfo:
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
@@ -33,7 +40,7 @@ def blocks_to_page_info(
 
     # 对image/table/chart/interline_equation的span截图
     for span in all_image_spans:
-        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
+        if span.type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     """构造page_info"""
@@ -41,27 +48,29 @@ def blocks_to_page_info(
 
     page_info = make_page_info_dict(
         preproc_blocks,
-        page_index, page_w, page_h,
+        page_index,
+        page_w,
+        page_h,
         discarded_blocks,
     )
 
     return page_info
 
 
-def build_page_model_info(page_layout_dets: list, page_index: int, pil_img: Any) -> dict:
+def build_page_model_info(page_layout_dets: list[dict[str, Any]], page_index: int, pil_img: Any) -> dict[str, Any]:
     page_info_dict = {"page_no": page_index, "width": pil_img.width, "height": pil_img.height}
     return {"layout_dets": page_layout_dets, "page_info": page_info_dict}
 
 
 def append_batch_results_to_middle_json(
-    middle_json: dict,
-    batch_results: list,
-    images_list: list,
+    middle_json: dict[str, Any],
+    batch_results: list[list[dict[str, Any]]],
+    images_list: list[dict[str, Any]],
     pdf_doc: Any,
-    image_writer: Any,
+    image_writer: DataWriter,
     page_start_index: int = 0,
     ocr_enable: bool = False,
-    model_list: list | None = None,
+    model_list: list[dict[str, Any]] | None = None,
     progress_bar: Any = None,
 ) -> None:
     page_model_infos = []
@@ -72,8 +81,6 @@ def append_batch_results_to_middle_json(
 
     if model_list is not None:
         model_list.extend(page_model_infos)
-
-    from mineru.backend.utils.middle_json_utils import append_pages
 
     append_pages(
         middle_json,
@@ -90,8 +97,8 @@ def append_batch_results_to_middle_json(
 
 def _extract_text_from_block(block: Block) -> str:
     text_parts = []
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
+    for line in block.lines:
+        for span in line.spans:
             if span.get("type") == ContentType.TEXT:
                 text_parts.append(span.get("content", ""))
     return "".join(text_parts).strip()
@@ -107,8 +114,8 @@ def _normalize_formula_tag_content(tag_content: str) -> str:
 
 
 def _get_interline_equation_span(block: Block) -> Span | None:
-    for line in block.get("lines", []):
-        for span in line.get("spans", []):
+    for line in block.lines:
+        for span in line.spans:
             if span.get("type") == ContentType.INTERLINE_EQUATION:
                 return span
     return None
@@ -153,8 +160,6 @@ def _optimize_formula_number_blocks(pdf_info_list: list[PageInfo]) -> None:
 
 
 def _apply_post_ocr(pdf_info_list: list[PageInfo], lang: str | None = None) -> None:
-    from mineru.backend.utils.middle_json_utils import apply_post_ocr
-
     atom_model_manager = AtomModelSingleton()
     ocr_model = atom_model_manager.get_atom_model(
         atom_model_name="ocr",
@@ -202,13 +207,19 @@ def finalize_middle_json(
     finalize_middle_json_from_preproc(pdf_info_list)
 
 
-def init_middle_json() -> dict:
+def init_middle_json() -> dict[str, Any]:
     return {"pdf_info": [], "_backend": "pipeline", "_version_name": __version__}
 
 
-def result_to_middle_json(model_list: list, images_list: list, pdf_doc: Any, image_writer: Any, lang: str | None = None, ocr_enable: bool = False, formula_enable: bool | None = None) -> dict:
-    from mineru.backend.utils.middle_json_utils import build_middle_json
-
+def result_to_middle_json(
+    model_list: list[list[dict[str, Any]]],
+    images_list: list[dict[str, Any]],
+    pdf_doc: Any,
+    image_writer: DataWriter,
+    lang: str | None = None,
+    ocr_enable: bool = False,
+    formula_enable: bool | None = None,
+) -> dict[str, Any]:
     return build_middle_json(
         model_list,
         images_list,
@@ -222,7 +233,7 @@ def result_to_middle_json(model_list: list, images_list: list, pdf_doc: Any, ima
     )
 
 
-def make_page_info_dict(blocks: list, page_id: int, page_w: int, page_h: int, discarded_blocks: list) -> PageInfo:
+def make_page_info_dict(blocks: list[Block], page_id: int, page_w: int, page_h: int, discarded_blocks: list[Block]) -> PageInfo:
     return PageInfo(
         preproc_blocks=blocks,
         page_idx=page_id,
