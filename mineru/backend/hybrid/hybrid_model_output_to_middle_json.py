@@ -14,7 +14,7 @@ from mineru.backend.utils.para_block_utils import (
 )
 from mineru.backend.hybrid.hybrid_magic_model import MagicModel
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.backend.pipeline.model_init import run_ocr_rec_inference
+from mineru.backend.pipeline.model_init import run_ocr_inference
 from mineru.utils.config_reader import get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
@@ -139,7 +139,7 @@ def _apply_post_ocr(pdf_info_list, hybrid_pipeline_model):
                     img_crop_list.append(rotate_vertical_crop_if_needed(span['np_img']))
                     span.pop('np_img')
     if len(img_crop_list) > 0:
-        ocr_res_list = run_ocr_rec_inference(
+        ocr_res_list = run_ocr_inference(
             hybrid_pipeline_model.ocr_model.ocr,
             img_crop_list,
             det=False,

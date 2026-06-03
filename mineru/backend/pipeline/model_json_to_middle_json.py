@@ -7,7 +7,7 @@ from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
 from mineru.backend.pipeline.model_init import (
     AtomModelSingleton,
-    run_ocr_rec_inference,
+    run_ocr_inference,
 )
 from mineru.backend.pipeline.para_split import para_split
 from mineru.utils.char_utils import full_to_half
@@ -235,7 +235,7 @@ def _apply_post_ocr(pdf_info_list, lang=None):
         det_db_box_thresh=0.3,
         lang=lang
     )
-    ocr_res_list = run_ocr_rec_inference(
+    ocr_res_list = run_ocr_inference(
         ocr_model.ocr, img_crop_list, det=False, tqdm_enable=True
     )[0]
     assert len(ocr_res_list) == len(
