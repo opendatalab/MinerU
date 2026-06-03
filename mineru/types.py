@@ -45,10 +45,17 @@ def _extra_contains(self, key: str) -> bool:
     return hasattr(self, key) or key in self._extra
 
 
+def _extra_delitem(self, key: str) -> None:
+    if hasattr(self, key):
+        raise KeyError(f"Cannot delete canonical field '{key}'")
+    del self._extra[key]
+
+
 def _install_dict_compat(*classes) -> None:
     for cls in classes:
         cls.__getitem__ = _extra_getitem
         cls.__setitem__ = _extra_setitem
+        cls.__delitem__ = _extra_delitem
         cls.get = _extra_get
         cls.__contains__ = _extra_contains
 
@@ -56,7 +63,9 @@ def _install_dict_compat(*classes) -> None:
 # ── conversion helpers (dict → typed) ──────────────────────────────
 
 
-def block_from_dict(d: dict) -> Block:
+def block_from_dict(d: dict | Block) -> Block:
+    if isinstance(d, Block):
+        return d
     return Block(
         **{k: v for k, v in d.items()
            if k in Block.__dataclass_fields__},

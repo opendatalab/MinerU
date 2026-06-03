@@ -128,6 +128,12 @@ class MagicModel:
         self.__classify_visual_blocks()
         self.__build_return_blocks()
 
+        # convert all block lists to typed Block objects
+        from mineru.types import block_from_dict
+
+        self.preproc_blocks = [block_from_dict(b) for b in self.preproc_blocks]
+        self.discarded_blocks = [block_from_dict(b) for b in self.discarded_blocks]
+
 
     @staticmethod
     def __fix_text_block(block):

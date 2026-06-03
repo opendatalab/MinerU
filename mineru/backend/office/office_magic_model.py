@@ -157,6 +157,14 @@ class MagicModel:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
+        # convert all block lists to typed Block objects
+        from mineru.types import block_from_dict
+
+        for attr in ("image_blocks", "table_blocks", "chart_blocks",
+                     "title_blocks", "text_blocks", "interline_equation_blocks",
+                     "list_blocks", "index_blocks", "discarded_blocks"):
+            setattr(self, attr, [block_from_dict(b) for b in getattr(self, attr)])
+
 
     def get_list_blocks(self):
         return self.list_blocks
