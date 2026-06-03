@@ -3,11 +3,11 @@ import re
 
 from loguru import logger
 
-from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
-from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.guess_suffix_or_lang import guess_language_by_text
-from mineru.types import Block, Line, Span
-from mineru.utils.visual_magic_model_utils import (
+from ...types import Block, Line, Span
+from ...utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
+from ...utils.enum_class import BlockType, ContentType
+from ...utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.visual_magic_model_utils import (
     GENERIC_CHILD_TYPES,
     IMAGE_BLOCK_BODY,
     VISUAL_MAIN_TYPES,
@@ -53,11 +53,7 @@ class MagicModel:
                 raw_block_type = block_type
                 block_content = block_info.get("content")
                 block_angle = block_info.get("angle", 0)
-                block_sub_type = (
-                    block_info.get("sub_type")
-                    if raw_block_type in ["image", "chart"]
-                    else None
-                )
+                block_sub_type = block_info.get("sub_type") if raw_block_type in ["image", "chart"] else None
             except Exception as e:
                 # 如果解析失败，可能是因为格式不正确，跳过这个块
                 logger.warning(f"Invalid block format: {block_info}, error: {e}")
@@ -153,19 +149,23 @@ class MagicModel:
                         if start > last_end:
                             text_before = block_content[last_end:start]
                             if text_before.strip():
-                                spans.append(Span(
-                                    type=ContentType.TEXT,
-                                    bbox=block_bbox,
-                                    content=text_before,
-                                ))
+                                spans.append(
+                                    Span(
+                                        type=ContentType.TEXT,
+                                        bbox=block_bbox,
+                                        content=text_before,
+                                    )
+                                )
 
                         # 添加公式（去除\(和\)）
                         formula = match.group(1)
-                        spans.append(Span(
-                            type=ContentType.INLINE_EQUATION,
-                            bbox=block_bbox,
-                            content=formula.strip(),
-                        ))
+                        spans.append(
+                            Span(
+                                type=ContentType.INLINE_EQUATION,
+                                bbox=block_bbox,
+                                content=formula.strip(),
+                            )
+                        )
 
                         last_end = end
 
@@ -173,11 +173,13 @@ class MagicModel:
                     if last_end < len(block_content):
                         text_after = block_content[last_end:]
                         if text_after.strip():
-                            spans.append(Span(
-                                type=ContentType.TEXT,
-                                bbox=block_bbox,
-                                content=text_after,
-                            ))
+                            spans.append(
+                                Span(
+                                    type=ContentType.TEXT,
+                                    bbox=block_bbox,
+                                    content=text_after,
+                                )
+                            )
 
                     span = spans
                 else:
@@ -195,9 +197,7 @@ class MagicModel:
                 self.all_spans.extend(span)
                 spans = span
             else:
-                raise ValueError(
-                    f"Invalid span type: {span_type}, expected dict or list, got {type(span)}"
-                )
+                raise ValueError(f"Invalid span type: {span_type}, expected dict or list, got {type(span)}")
 
             # 构造 line 对象
             if block_type == BlockType.CODE_BODY:
@@ -289,15 +289,6 @@ class MagicModel:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
-        # convert all block lists to typed Block objects
-        from mineru.types import block_from_dict
-
-        for attr in ("image_blocks", "table_blocks", "chart_blocks", "code_blocks",
-                     "title_blocks", "text_blocks", "interline_equation_blocks",
-                     "list_blocks", "ref_text_blocks", "phonetic_blocks",
-                     "discarded_blocks"):
-            setattr(self, attr, [block_from_dict(b) for b in getattr(self, attr)])
-
     def get_list_blocks(self):
         return self.list_blocks
 
@@ -333,6 +324,8 @@ class MagicModel:
 
     def get_all_spans(self):
         return self.all_spans
+
+
 def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
     for list_block in list_blocks:
         list_block["blocks"] = []
