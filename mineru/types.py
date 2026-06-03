@@ -68,34 +68,6 @@ def _install_dict_compat(*classes) -> None:
         cls.__contains__ = _extra_contains
 
 
-# ── conversion helpers (dict → typed) ──────────────────────────────
-
-
-def block_from_dict(d: dict | Block) -> Block:
-    if isinstance(d, Block):
-        return d
-    return Block(
-        **{k: v for k, v in d.items()
-           if k in Block.__dataclass_fields__},
-        _extra={k: v for k, v in d.items()
-                if k not in Block.__dataclass_fields__},
-    )
-
-
-def line_from_dict(d: dict) -> Line:
-    return Line(
-        spans=[span_from_dict(s) for s in d.get("spans", [])],
-        _extra={k: v for k, v in d.items() if k != "spans"},
-    )
-
-
-def span_from_dict(d: dict) -> Span:
-    return Span(
-        **{k: v for k, v in d.items()
-           if k in Span.__dataclass_fields__},
-        _extra={k: v for k, v in d.items()
-                if k not in Span.__dataclass_fields__},
-    )
 
 
 # ── model types ─────────────────────────────────────────────────────

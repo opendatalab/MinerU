@@ -1,38 +1,30 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from typing import Any
 
-from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.backend.pipeline.model_init import (
-    AtomModelSingleton,
-)
-from mineru.backend.pipeline.para_split import para_split
-from mineru.utils.char_utils import full_to_half
-from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.types import PageInfo, block_from_dict
-from mineru.backend.pipeline.pipeline_magic_model import MagicModel
-from mineru.version import __version__
-from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.pdfium_guard import pdfium_guard
+from ...types import PageInfo
+from ...utils.char_utils import full_to_half
+from ...utils.cut_image import cut_image_and_table
+from ...utils.enum_class import BlockType, ContentType
+from ...utils.hash_utils import bytes_md5
+from ...utils.pdfium_guard import pdfium_guard
+from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
+from ...version import __version__
+from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.runtime_utils import cross_page_table_merge
+from .model_init import AtomModelSingleton
+from .para_split import para_split
+from .pipeline_magic_model import MagicModel
 
 
-def blocks_to_page_info(page_model_info: dict, image_dict: dict, page: Any, image_writer: Any, page_index: int, ocr_enable: bool = False) -> PageInfo:
+def blocks_to_page_info(
+    page_model_info: dict, image_dict: dict, page: Any, image_writer: Any, page_index: int, ocr_enable: bool = False
+) -> PageInfo:
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
     with pdfium_guard():
         page_w, page_h = map(int, page.get_size())
-    magic_model = MagicModel(
-        page_model_info,
-        page,
-        scale,
-        page_pil_img,
-        page_w,
-        page_h,
-        ocr_enable
-    )
+    magic_model = MagicModel(page_model_info, page, scale, page_pil_img, page_w, page_h, ocr_enable)
 
     """从magic_model对象中获取后面会用到的区块信息"""
     preproc_blocks = magic_model.get_preproc_blocks()
@@ -41,29 +33,24 @@ def blocks_to_page_info(page_model_info: dict, image_dict: dict, page: Any, imag
 
     # 对image/table/chart/interline_equation的span截图
     for span in all_image_spans:
-        if span["type"] in [
-            ContentType.IMAGE,
-            ContentType.TABLE,
-            ContentType.CHART,
-            ContentType.INTERLINE_EQUATION
-        ]:
+        if span["type"] in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART, ContentType.INTERLINE_EQUATION]:
             span = cut_image_and_table(span, page_pil_img, page_img_md5, page_index, image_writer, scale=scale)
 
     """构造page_info"""
     replace_inline_table_images(preproc_blocks, image_writer, page_index)
 
     page_info = make_page_info_dict(
-        [block_from_dict(b) for b in preproc_blocks],
-        page_index, page_w, page_h,
-        [block_from_dict(b) for b in discarded_blocks],
+        page_index,
+        page_w,
+        page_h,
     )
 
     return page_info
 
 
 def build_page_model_info(page_layout_dets, page_index, pil_img):
-    page_info_dict = {'page_no': page_index, 'width': pil_img.width, 'height': pil_img.height}
-    return {'layout_dets': page_layout_dets, 'page_info': page_info_dict}
+    page_info_dict = {"page_no": page_index, "width": pil_img.width, "height": pil_img.height}
+    return {"layout_dets": page_layout_dets, "page_info": page_info_dict}
 
 
 def append_batch_results_to_middle_json(
@@ -80,7 +67,7 @@ def append_batch_results_to_middle_json(
     page_model_infos = []
     for offset, (image_dict, page_layout_dets) in enumerate(zip(images_list, batch_results)):
         page_index = page_start_index + offset
-        page_model_info = build_page_model_info(page_layout_dets, page_index, image_dict['img_pil'])
+        page_model_info = build_page_model_info(page_layout_dets, page_index, image_dict["img_pil"])
         page_model_infos.append(page_model_info)
 
     if model_list is not None:
@@ -223,7 +210,10 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(
-        model_list, images_list, pdf_doc, image_writer,
+        model_list,
+        images_list,
+        pdf_doc,
+        image_writer,
         init_fn=init_middle_json,
         page_cvt_fn=blocks_to_page_info,
         finalize_fn=finalize_middle_json,

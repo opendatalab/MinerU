@@ -2,22 +2,22 @@
 import os
 from typing import Any
 
-from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils.para_block_utils import (
+from ...types import PageInfo
+from ...utils.config_reader import get_table_enable
+from ...utils.cut_image import cut_image_and_table
+from ...utils.enum_class import ContentType
+from ...utils.hash_utils import bytes_md5
+from ...utils.pdfium_guard import pdfium_guard
+from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
+from ...version import __version__
+from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.para_block_utils import (
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
     merge_para_text_blocks,
 )
-from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.backend.vlm.vlm_magic_model import MagicModel
-from mineru.utils.config_reader import get_table_enable
-from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType
-from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import pdfium_guard
-from mineru.types import PageInfo, block_from_dict
-from mineru.version import __version__
+from ..utils.runtime_utils import cross_page_table_merge
+from .vlm_magic_model import MagicModel
 
 
 def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_writer: Any, page_index: int) -> PageInfo:
@@ -52,23 +52,23 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_blocks = []
-    page_blocks.extend([
-        *image_blocks,
-        *table_blocks,
-        *chart_blocks,
-        *code_blocks,
-        *ref_text_blocks,
-        *phonetic_blocks,
-        *title_blocks,
-        *text_blocks,
-        *interline_equation_blocks,
-        *list_blocks,
-    ])
+    page_blocks.extend(
+        [
+            *image_blocks,
+            *table_blocks,
+            *chart_blocks,
+            *code_blocks,
+            *ref_text_blocks,
+            *phonetic_blocks,
+            *title_blocks,
+            *text_blocks,
+            *interline_equation_blocks,
+            *list_blocks,
+        ]
+    )
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_blocks = [block_from_dict(b) for b in page_blocks]
-    discarded_blocks = [block_from_dict(b) for b in discarded_blocks]
 
     page_info = PageInfo(
         preproc_blocks=page_blocks,
@@ -88,7 +88,7 @@ def finalize_middle_json(pdf_info_list):
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(pdf_info_list)
 
-    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
@@ -101,7 +101,10 @@ def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(
-        model_output_blocks_list, images_list, pdf_doc, image_writer,
+        model_output_blocks_list,
+        images_list,
+        pdf_doc,
+        image_writer,
         init_fn=init_middle_json,
         page_cvt_fn=blocks_to_page_info,
         finalize_fn=finalize_middle_json,

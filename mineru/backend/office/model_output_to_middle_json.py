@@ -3,11 +3,11 @@ import re
 from collections import defaultdict
 from typing import Any
 
-from mineru.backend.utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
-from mineru.backend.office.office_magic_model import MagicModel
-from mineru.utils.enum_class import BlockType
-from mineru.types import PageInfo, block_from_dict
-from mineru.version import __version__
+from ...utils.enum_class import BlockType
+from ...types import PageInfo
+from ...version import __version__
+from ..utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
+from .office_magic_model import MagicModel
 
 
 def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -> PageInfo:
@@ -19,7 +19,6 @@ def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -
     chart_blocks = magic_model.get_chart_blocks()
 
     if image_writer:
-
         # Write embedded images to local storage via image_writer
         for img_block in image_blocks:
             for sub_block in img_block.get("blocks", []):
@@ -50,21 +49,21 @@ def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
 
     page_blocks = []
-    page_blocks.extend([
-        *image_blocks,
-        *chart_blocks,
-        *table_blocks,
-        *title_blocks,
-        *text_blocks,
-        *interline_equation_blocks,
-        *list_blocks,
-        *index_blocks,
-    ])
+    page_blocks.extend(
+        [
+            *image_blocks,
+            *chart_blocks,
+            *table_blocks,
+            *title_blocks,
+            *text_blocks,
+            *interline_equation_blocks,
+            *list_blocks,
+            *index_blocks,
+        ]
+    )
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_blocks = [block_from_dict(b) for b in page_blocks]
-    discarded_blocks = [block_from_dict(b) for b in discarded_blocks]
 
     page_info = PageInfo(
         para_blocks=page_blocks,
@@ -83,9 +82,9 @@ def _extract_section_parts_from_content(content: str, level: int):
         '1.2.1建立...'         (Chinese text immediately after number)
         '2.2.1 ALKBH5 ...'    (space separator)
     """
-    match = re.match(r'^(\d+(?:\.\d+)*)', content.strip())
+    match = re.match(r"^(\d+(?:\.\d+)*)", content.strip())
     if match:
-        parts = [int(p) for p in match.group(1).split('.')]
+        parts = [int(p) for p in match.group(1).split(".")]
         if len(parts) == level:
             return parts
     return None
@@ -133,7 +132,7 @@ def _link_index_entries_by_anchor(middle_json: dict) -> None:
 
 
 def result_to_middle_json(model_output_blocks_list, image_writer):
-    middle_json = {"pdf_info": [], "_backend":"office", "_version_name": __version__}
+    middle_json = {"pdf_info": [], "_backend": "office", "_version_name": __version__}
     for index, page_blocks in enumerate(model_output_blocks_list):
         page_info = blocks_to_page_info(page_blocks, image_writer, index)
         middle_json["pdf_info"].append(page_info)
@@ -155,9 +154,7 @@ def result_to_middle_json(model_output_blocks_list, image_writer):
                     if deeper > level:
                         section_counters[deeper] = 0
                 # Build section number string, e.g. "1.2.1"
-                section_number = ".".join(
-                    str(section_counters[l]) for l in range(1, level + 1)
-                )
+                section_number = ".".join(str(section_counters[l]) for l in range(1, level + 1))
                 block["section_number"] = section_number
             else:
                 # Some documents embed the section number directly in the content

@@ -3,23 +3,24 @@
 import os
 from typing import Any
 
-from mineru.backend.utils.html_image_utils import replace_inline_table_images
-from mineru.backend.utils.para_block_utils import (
+from ...types import PageInfo
+
+from ...utils.config_reader import get_table_enable
+from ...utils.cut_image import cut_image_and_table
+from ...utils.enum_class import BlockType, ContentType
+from ...utils.hash_utils import bytes_md5
+from ...utils.pdfium_guard import pdfium_guard
+from ...utils.title_level_postprocess import apply_title_leveling_to_pdf_info
+from ...version import __version__
+from ..utils.html_image_utils import replace_inline_table_images
+from ..utils.para_block_utils import (
     OCR_DET_LINES_KEY,
     build_para_blocks_from_preproc,
     cleanup_internal_para_block_metadata,
     merge_para_text_blocks,
 )
-from mineru.backend.hybrid.hybrid_magic_model import MagicModel
-from mineru.backend.utils.runtime_utils import cross_page_table_merge
-from mineru.utils.config_reader import get_table_enable
-from mineru.utils.cut_image import cut_image_and_table
-from mineru.utils.enum_class import ContentType, BlockType
-from mineru.utils.hash_utils import bytes_md5
-from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
-from mineru.utils.pdfium_guard import pdfium_guard
-from mineru.types import PageInfo, block_from_dict
-from mineru.version import __version__
+from ..utils.runtime_utils import cross_page_table_merge
+from .hybrid_magic_model import MagicModel
 
 
 def _resolve_title_line_avg_height(title_block):
@@ -43,13 +44,13 @@ def _resolve_title_line_avg_height(title_block):
 
 
 def blocks_to_page_info(
-        page_model_list: list,
-        image_dict: dict,
-        page: Any,
-        image_writer: Any,
-        page_index: int,
-        _ocr_enable: bool,
-        _vlm_ocr_enable: bool,
+    page_model_list: list,
+    image_dict: dict,
+    page: Any,
+    image_writer: Any,
+    page_index: int,
+    _ocr_enable: bool,
+    _vlm_ocr_enable: bool,
 ) -> PageInfo:
     """将blocks转换为页面信息"""
 
@@ -81,7 +82,7 @@ def blocks_to_page_info(
 
     # 标题平均行高是 finalized middle json 的稳定字段，供服务端和客户端标题分级共用。
     for title_block in title_blocks:
-        title_block['line_avg_height'] = _resolve_title_line_avg_height(title_block)
+        title_block["line_avg_height"] = _resolve_title_line_avg_height(title_block)
 
     text_blocks = magic_model.get_text_blocks()
     interline_equation_blocks = magic_model.get_interline_equation_blocks()
@@ -95,23 +96,23 @@ def blocks_to_page_info(
     replace_inline_table_images(table_blocks, image_writer, page_index)
 
     page_blocks = []
-    page_blocks.extend([
-        *image_blocks,
-        *table_blocks,
-        *chart_blocks,
-        *code_blocks,
-        *ref_text_blocks,
-        *phonetic_blocks,
-        *title_blocks,
-        *text_blocks,
-        *interline_equation_blocks,
-        *list_blocks,
-    ])
+    page_blocks.extend(
+        [
+            *image_blocks,
+            *table_blocks,
+            *chart_blocks,
+            *code_blocks,
+            *ref_text_blocks,
+            *phonetic_blocks,
+            *title_blocks,
+            *text_blocks,
+            *interline_equation_blocks,
+            *list_blocks,
+        ]
+    )
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_blocks = [block_from_dict(b) for b in page_blocks]
-    discarded_blocks = [block_from_dict(b) for b in discarded_blocks]
 
     page_info = PageInfo(
         preproc_blocks=page_blocks,
@@ -150,7 +151,7 @@ def init_middle_json(_ocr_enable, _vlm_ocr_enable):
         "_backend": "hybrid",
         "_ocr_enable": _ocr_enable,
         "_vlm_ocr_enable": _vlm_ocr_enable,
-        "_version_name": __version__
+        "_version_name": __version__,
     }
 
 
@@ -173,7 +174,7 @@ def finalize_middle_json_from_preproc(pdf_info_list):
         auto_merge_by_det=True,
     )
 
-    table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
+    table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
     if table_enable:
         cross_page_table_merge(pdf_info_list)
 
@@ -199,18 +200,21 @@ def finalize_middle_json(
 
 
 def result_to_middle_json(
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        _ocr_enable,
-        _vlm_ocr_enable,
-        hybrid_pipeline_model,
+    model_list,
+    images_list,
+    pdf_doc,
+    image_writer,
+    _ocr_enable,
+    _vlm_ocr_enable,
+    hybrid_pipeline_model,
 ):
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(
-        model_list, images_list, pdf_doc, image_writer,
+        model_list,
+        images_list,
+        pdf_doc,
+        image_writer,
         init_fn=init_middle_json,
         page_cvt_fn=blocks_to_page_info,
         finalize_fn=finalize_middle_json,
