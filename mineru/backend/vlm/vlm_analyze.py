@@ -284,7 +284,7 @@ def _iter_shutdown_candidates(predictor: MinerUClient) -> list:
 
     seen_ids = set()
 
-    def _yield_candidate(candidate):
+    def _yield_candidate(candidate: Any) -> Iterator[Any]:
         if candidate is None:
             return
         candidate_id = id(candidate)
