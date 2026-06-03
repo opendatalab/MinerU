@@ -79,11 +79,11 @@ def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_wr
     return page_info
 
 
-def init_middle_json():
+def init_middle_json() -> dict:
     return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
 
 
-def finalize_middle_json(pdf_info_list):
+def finalize_middle_json(pdf_info_list: list[PageInfo]) -> None:
     """从 VLM preproc_blocks 执行完整 finalize，客户端和服务端完整路径共用。"""
     build_para_blocks_from_preproc(pdf_info_list)
     merge_para_text_blocks(pdf_info_list)
@@ -97,7 +97,7 @@ def finalize_middle_json(pdf_info_list):
     cleanup_internal_para_block_metadata(pdf_info_list)
 
 
-def result_to_middle_json(model_output_blocks_list, images_list, pdf_doc, image_writer):
+def result_to_middle_json(model_output_blocks_list: list, images_list: list, pdf_doc: Any, image_writer: Any) -> dict:
     from mineru.backend.utils.middle_json_utils import build_middle_json
 
     return build_middle_json(

@@ -166,7 +166,7 @@ def _add_server_flag_if_missing(args: list, flag_name: str) -> None:
         args.append(f"--{flag_name}")
 
 
-def _add_engine_kwarg_if_missing(kwargs: dict, key: str, value) -> None:
+def _add_engine_kwarg_if_missing(kwargs: dict, key: str, value: Any) -> None:
     """如果参数不存在，则添加到 kwargs 字典"""
     if key not in kwargs:
         kwargs[key] = value

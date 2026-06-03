@@ -278,7 +278,7 @@ async def _get_model_async(
     )
 
 
-def _iter_shutdown_candidates(predictor: MinerUClient):
+def _iter_shutdown_candidates(predictor: MinerUClient) -> list:
     runtime_handles = getattr(predictor, "_mineru_runtime_handles", {})
     client = getattr(predictor, "client", None)
 
@@ -389,7 +389,7 @@ def _maybe_enable_serial_execution(
 
 
 @contextmanager
-def predictor_execution_guard(predictor: MinerUClient):
+def predictor_execution_guard(predictor: MinerUClient) -> None:
     lock = getattr(predictor, "_mineru_execution_lock", None)
     if lock is None:
         yield
@@ -399,7 +399,7 @@ def predictor_execution_guard(predictor: MinerUClient):
 
 
 @asynccontextmanager
-async def aio_predictor_execution_guard(predictor: MinerUClient):
+async def aio_predictor_execution_guard(predictor: MinerUClient) -> None:
     lock = getattr(predictor, "_mineru_execution_lock", None)
     if lock is None:
         yield
@@ -411,7 +411,7 @@ async def aio_predictor_execution_guard(predictor: MinerUClient):
         lock.release()
 
 
-def _close_images(images_list):
+def _close_images(images_list: list) -> None:
     for image_dict in images_list or []:
         pil_img = image_dict.get("img_pil")
         if pil_img is not None:

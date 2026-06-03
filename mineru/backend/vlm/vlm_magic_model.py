@@ -20,7 +20,7 @@ from ...utils.visual_magic_model_utils import (
 )
 
 
-def _copy_raw_text_block_metadata(raw_block_type, block_info, block):
+def _copy_raw_text_block_metadata(raw_block_type: str, block_info: dict, block: Block) -> None:
     if raw_block_type != BlockType.TEXT:
         return
     if "merge_prev" in block_info:
@@ -28,7 +28,7 @@ def _copy_raw_text_block_metadata(raw_block_type, block_info, block):
 
 
 class MagicModel:
-    def __init__(self, page_blocks: list, width, height):
+    def __init__(self, page_blocks: list, width: int, height: int) -> None:
         self.page_blocks = page_blocks
 
         blocks = []
@@ -289,44 +289,44 @@ class MagicModel:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
 
-    def get_list_blocks(self):
+    def get_list_blocks(self) -> list[Block]:
         return self.list_blocks
 
-    def get_image_blocks(self):
+    def get_image_blocks(self) -> list[Block]:
         return self.image_blocks
 
-    def get_table_blocks(self):
+    def get_table_blocks(self) -> list[Block]:
         return self.table_blocks
 
-    def get_chart_blocks(self):
+    def get_chart_blocks(self) -> list[Block]:
         return self.chart_blocks
 
-    def get_code_blocks(self):
+    def get_code_blocks(self) -> list[Block]:
         return self.code_blocks
 
-    def get_ref_text_blocks(self):
+    def get_ref_text_blocks(self) -> list[Block]:
         return self.ref_text_blocks
 
-    def get_phonetic_blocks(self):
+    def get_phonetic_blocks(self) -> list[Block]:
         return self.phonetic_blocks
 
-    def get_title_blocks(self):
+    def get_title_blocks(self) -> list[Block]:
         return self.title_blocks
 
-    def get_text_blocks(self):
+    def get_text_blocks(self) -> list[Block]:
         return self.text_blocks
 
-    def get_interline_equation_blocks(self):
+    def get_interline_equation_blocks(self) -> list[Block]:
         return self.interline_equation_blocks
 
-    def get_discarded_blocks(self):
+    def get_discarded_blocks(self) -> list[Block]:
         return self.discarded_blocks
 
-    def get_all_spans(self):
+    def get_all_spans(self) -> list[Span]:
         return self.all_spans
 
 
-def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
+def fix_list_blocks(list_blocks: list[Block], text_blocks: list[Block], ref_text_blocks: list[Block]) -> tuple[list[Block], list[Block], list[Block]]:
     for list_block in list_blocks:
         list_block["blocks"] = []
         if "lines" in list_block:
