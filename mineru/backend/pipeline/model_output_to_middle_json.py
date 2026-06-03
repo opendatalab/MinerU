@@ -1,4 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
+from typing import Any
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.runtime_utils import cross_page_table_merge
@@ -10,13 +11,14 @@ from mineru.utils.char_utils import full_to_half
 from mineru.utils.cut_image import cut_image_and_table
 from mineru.utils.enum_class import ContentType, BlockType
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
+from mineru.parser.types import PageInfo
 from mineru.backend.pipeline.pipeline_magic_model import MagicModel
 from mineru.version import __version__
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdfium_guard import pdfium_guard
 
 
-def blocks_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
+def blocks_to_page_info(page_model_info: dict, image_dict: dict, page: Any, image_writer: Any, page_index: int, ocr_enable: bool = False) -> PageInfo:
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
@@ -226,11 +228,10 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     )
 
 
-def make_page_info_dict(blocks, page_id, page_w, page_h, discarded_blocks):
-    return_dict = {
-        'preproc_blocks': blocks,
-        'page_idx': page_id,
-        'page_size': [page_w, page_h],
-        'discarded_blocks': discarded_blocks,
-    }
-    return return_dict
+def make_page_info_dict(blocks: list, page_id: int, page_w: int, page_h: int, discarded_blocks: list) -> PageInfo:
+    return PageInfo(
+        preproc_blocks=blocks,
+        page_idx=page_id,
+        page_size=[page_w, page_h],
+        discarded_blocks=discarded_blocks,
+    )

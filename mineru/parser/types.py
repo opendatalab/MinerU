@@ -129,7 +129,7 @@ class PageInfo:
     """Parsed content of a single page."""
 
     page_idx: int
-    page_size: tuple[int, int] | None = None
+    page_size: tuple[int, int] | list[int, int] | None = None
     preproc_blocks: list[Block] = field(default_factory=list)
     para_blocks: list[Block] = field(default_factory=list)
     discarded_blocks: list[Block] = field(default_factory=list)

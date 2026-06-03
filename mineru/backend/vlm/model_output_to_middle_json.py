@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import os
+from typing import Any
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.para_block_utils import (
@@ -15,10 +16,11 @@ from mineru.utils.enum_class import ContentType
 from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.title_level_postprocess import apply_title_leveling_to_pdf_info
 from mineru.utils.pdfium_guard import pdfium_guard
+from mineru.parser.types import PageInfo
 from mineru.version import __version__
 
 
-def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index) -> dict:
+def blocks_to_page_info(page_blocks: list, image_dict: dict, page: Any, image_writer: Any, page_index: int) -> PageInfo:
     """将blocks转换为页面信息"""
 
     scale = image_dict["scale"]
@@ -65,12 +67,12 @@ def blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_info = {
-        "preproc_blocks": page_blocks,
-        "discarded_blocks": discarded_blocks,
-        "page_size": [width, height],
-        "page_idx": page_index,
-    }
+    page_info = PageInfo(
+        preproc_blocks=page_blocks,
+        discarded_blocks=discarded_blocks,
+        page_size=[width, height],
+        page_idx=page_index,
+    )
     return page_info
 
 

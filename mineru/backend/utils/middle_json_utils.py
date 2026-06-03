@@ -12,6 +12,8 @@ from typing import Any, Callable
 
 from tqdm import tqdm
 
+from mineru.parser.types import PageInfo
+
 
 def build_middle_json(
     model_list: list,
@@ -85,8 +87,12 @@ def append_pages(
             if page_info is None:
                 with pdfium_guard():
                     page_w, page_h = map(int, page.get_size())
-                page_info = {"preproc_blocks": [], "page_idx": page_index,
-                             "page_size": [page_w, page_h], "discarded_blocks": []}
+                page_info = PageInfo(
+                    preproc_blocks=[],
+                    page_idx=page_index,
+                    page_size=[page_w, page_h],
+                    discarded_blocks=[],
+                )
         finally:
             close_pdfium_child(page)
         middle_json["pdf_info"].append(page_info)

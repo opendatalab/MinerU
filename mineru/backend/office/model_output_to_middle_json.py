@@ -1,14 +1,16 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
 from collections import defaultdict
+from typing import Any
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
 from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType
+from mineru.parser.types import PageInfo
 from mineru.version import __version__
 
 
-def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
+def blocks_to_page_info(page_blocks: list, image_writer: Any, page_index: int) -> PageInfo:
     """将blocks转换为页面信息"""
 
     magic_model = MagicModel(page_blocks)
@@ -61,7 +63,11 @@ def blocks_to_page_info(page_blocks, image_writer, page_index) -> dict:
     # 对page_blocks根据index的值进行排序
     page_blocks.sort(key=lambda x: x["index"])
 
-    page_info = {"para_blocks": page_blocks, "discarded_blocks": discarded_blocks, "page_idx": page_index}
+    page_info = PageInfo(
+        para_blocks=page_blocks,
+        discarded_blocks=discarded_blocks,
+        page_idx=page_index,
+    )
     return page_info
 
 
