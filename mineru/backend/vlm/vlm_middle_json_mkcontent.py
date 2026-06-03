@@ -8,6 +8,7 @@ from loguru import logger
 from mineru.utils.char_utils import full_to_half_exclude_marks, is_hyphen_at_line_end
 from mineru.utils.config_reader import get_latex_delimiter_config, get_formula_enable, get_table_enable
 from mineru.utils.enum_class import MakeMode, BlockType, ContentType, ContentTypeV2
+from mineru.types import Block
 from mineru.utils.language import detect_lang
 from mineru.backend.utils.markdown_utils import (
     escape_conservative_markdown_text,
@@ -29,7 +30,7 @@ inline_left_delimiter = delimiters['inline']['left']
 inline_right_delimiter = delimiters['inline']['right']
 
 
-def _prefix_table_img_src(html, img_buket_path):
+def _prefix_table_img_src(html: str, img_buket_path: str) -> str:
     """Prefix non-data image sources in table HTML with img_buket_path."""
     if not html or not img_buket_path:
         return html
@@ -41,7 +42,7 @@ def _prefix_table_img_src(html, img_buket_path):
     )
 
 
-def _replace_eq_tags_in_table_html(html):
+def _replace_eq_tags_in_table_html(html: str) -> str:
     """Replace <eq>...</eq> tags in table HTML with inline math delimiters."""
     if not html:
         return html
@@ -56,19 +57,19 @@ def _replace_eq_tags_in_table_html(html):
     )
 
 
-def _format_embedded_html(html, img_buket_path):
+def _format_embedded_html(html: str, img_buket_path: str) -> str:
     """Normalize embedded table HTML for markdown/content outputs."""
     return _replace_eq_tags_in_table_html(_prefix_table_img_src(html, img_buket_path))
 
 
-def _normalize_text_content(content):
+def _normalize_text_content(content: str | None) -> str:
     """将 VLM 文本 span 的空 content 规范为空字符串，再做全角转半角。"""
     if content is None:
         return ''
     return full_to_half_exclude_marks(content)
 
 
-def _has_following_joinable_span(para_block, line_idx, span_idx):
+def _has_following_joinable_span(para_block: Block, line_idx: int, span_idx: int) -> bool:
     """判断当前 span 后面是否还有可拼接文本，避免把分隔空格落到段落末尾。"""
     for next_line_idx in range(line_idx, len(para_block['lines'])):
         next_line = para_block['lines'][next_line_idx]
@@ -84,7 +85,7 @@ def _has_following_joinable_span(para_block, line_idx, span_idx):
     return False
 
 
-def _build_media_path(img_buket_path, image_path):
+def _build_media_path(img_buket_path: str, image_path: str) -> str:
     if not image_path:
         return ''
     if not img_buket_path:
@@ -92,13 +93,13 @@ def _build_media_path(img_buket_path, image_path):
     return f"{img_buket_path}/{image_path}"
 
 
-def _apply_visual_sub_type(para_content, para_block):
+def _apply_visual_sub_type(para_content: dict, para_block: Block) -> None:
     sub_type = para_block.get('sub_type')
     if sub_type:
         para_content['sub_type'] = sub_type
 
 
-def _build_visual_details_block(content, span_type, summary_override=''):
+def _build_visual_details_block(content: str, span_type: str, summary_override: str = '') -> str:
     if not isinstance(content, str) or not content.strip():
         return ''
 
@@ -115,7 +116,7 @@ def _build_visual_details_block(content, span_type, summary_override=''):
     )
 
 
-def _build_visual_body_segments(image_path, content, img_buket_path, span_type, summary_override=''):
+def _build_visual_body_segments(image_path: str, content: str, img_buket_path: str, span_type: str, summary_override: str = '') -> list[tuple[str, str]]:
     body_segments = []
     media_path = _build_media_path(img_buket_path, image_path)
     if media_path:
@@ -132,7 +133,7 @@ def _build_visual_body_segments(image_path, content, img_buket_path, span_type, 
     return body_segments
 
 
-def _get_blocks_in_index_order(blocks):
+def _get_blocks_in_index_order(blocks: list[Block]) -> list[Block]:
     return [
         block
         for _, block in sorted(
@@ -142,7 +143,7 @@ def _get_blocks_in_index_order(blocks):
     ]
 
 
-def _render_code_block_markdown(block, para_block):
+def _render_code_block_markdown(block: Block, para_block: Block) -> str:
     code_text = merge_para_with_text(block)
     if para_block.get('sub_type') == BlockType.CODE:
         guess_lang = para_block.get('guess_lang', 'txt')
@@ -150,7 +151,7 @@ def _render_code_block_markdown(block, para_block):
     return code_text
 
 
-def _render_visual_block_segments(block, para_block, img_buket_path='', table_enable=True):
+def _render_visual_block_segments(block: Block, para_block: Block, img_buket_path: str = '', table_enable: bool = True) -> list[tuple[str, str]]:
     block_type = block['type']
 
     if block_type in [
@@ -229,13 +230,13 @@ def _render_visual_block_segments(block, para_block, img_buket_path='', table_en
     return []
 
 
-def _get_visual_block_separator(prev_segment_kind, current_segment_kind):
+def _get_visual_block_separator(prev_segment_kind: str, current_segment_kind: str) -> str:
     if prev_segment_kind == 'html_block' or current_segment_kind == 'html_block':
         return '\n\n'
     return '  \n'
 
 
-def _merge_visual_blocks_to_markdown(para_block, img_buket_path='', table_enable=True):
+def _merge_visual_blocks_to_markdown(para_block: Block, img_buket_path: str = '', table_enable: bool = True) -> str:
     rendered_segments = []
     for block in _get_blocks_in_index_order(para_block.get('blocks', [])):
         rendered_segments.extend(
@@ -258,12 +259,7 @@ def _merge_visual_blocks_to_markdown(para_block, img_buket_path='', table_enable
     return para_text
 
 
-def merge_para_with_text(
-    para_block,
-    formula_enable=True,
-    img_buket_path='',
-    escape_text_block_prefix=True,
-):
+def merge_para_with_text(para_block: Block, formula_enable: bool = True, img_buket_path: str = '', escape_text_block_prefix: bool = True) -> str:
     block_text = ''
     for line in para_block['lines']:
         for span in line['spans']:
@@ -344,7 +340,7 @@ def merge_para_with_text(
     return para_text
 
 
-def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, img_buket_path=''):
+def mk_blocks_to_markdown(para_blocks: list[Block], make_mode: str, formula_enable: bool, table_enable: bool, img_buket_path: str = '') -> str:
     page_markdown = []
     for para_block in para_blocks:
         para_text = ''
@@ -407,7 +403,7 @@ def mk_blocks_to_markdown(para_blocks, make_mode, formula_enable, table_enable, 
     return page_markdown
 
 
-def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):
+def make_blocks_to_content_list(para_block: Block, img_buket_path: str, page_idx: int, page_size: list[int]) -> dict:
     para_type = para_block['type']
     para_content = {}
     if para_type in [
@@ -523,7 +519,7 @@ def make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size)
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
+def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_size: list[int]) -> dict:
     para_type = para_block['type']
     para_content = {}
     if para_type in [
@@ -752,7 +748,7 @@ def make_blocks_to_content_list_v2(para_block, img_buket_path, page_size):
 
 
 
-def get_body_data(para_block):
+def get_body_data(para_block: Block) -> tuple[str, str]:
     """
     Extract image_path and body content from para_block
     Returns:
@@ -793,7 +789,7 @@ def get_body_data(para_block):
     return get_data_from_spans(para_block.get('lines', []))
 
 
-def merge_para_with_text_v2(para_block):
+def merge_para_with_text_v2(para_block: Block) -> str:
     block_text = ''
     for line in para_block['lines']:
         for span in line['spans']:
@@ -882,7 +878,7 @@ def merge_para_with_text_v2(para_block):
 def union_make(pdf_info_dict: list,
                make_mode: str,
                img_buket_path: str = '',
-               ):
+               ) -> str | list:
 
     formula_enable = get_formula_enable(os.getenv('MINERU_VLM_FORMULA_ENABLE', 'True').lower() == 'true')
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
@@ -922,7 +918,7 @@ def union_make(pdf_info_dict: list,
     return None
 
 
-def get_title_level(block):
+def get_title_level(block: Block) -> int:
     title_level = block.get('level', 1)
     if title_level > 4:
         title_level = 4
