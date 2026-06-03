@@ -76,7 +76,7 @@ def _is_hybrid_ocr_det_candidate(block: dict) -> bool:
 
 
 def ocr_classify(
-    pdf_bytes,
+    pdf_bytes: bytes,
     parse_method: str = "auto",
 ) -> bool:
     # 确定OCR设置
@@ -90,15 +90,15 @@ def ocr_classify(
 
 
 def ocr_det(
-    hybrid_pipeline_model,
-    np_images,
-    model_list,
-    mfd_res,
-    _ocr_enable,
-    batch_ratio: int = 1,
-    *,
-    fill_text: bool = True,
-):
+        hybrid_pipeline_model: Any,
+        np_images: list,
+        model_list: list,
+        mfd_res: list,
+        _ocr_enable: bool,
+        batch_ratio: int = 1,
+        *,
+        fill_text: bool = True,
+    ) -> None:
     def _set_temp_pixel_bbox(res: dict, pixel_bbox: list[int]) -> None:
         res["_normalized_bbox"] = list(res["bbox"])
         res["bbox"] = pixel_bbox
@@ -236,7 +236,7 @@ def ocr_det(
     return ocr_res_list
 
 
-def mask_image_regions(np_images, model_list):
+def mask_image_regions(np_images: list, model_list: list) -> list:
     # 根据vlm返回的结果，在每一页中将image、table、equation块mask成白色背景图像
     for np_image, vlm_page_results in zip(np_images, model_list):
         img_height, img_width = np_image.shape[:2]
@@ -259,7 +259,7 @@ def mask_image_regions(np_images, model_list):
     return np_images
 
 
-def normalize_bbox_to_unit(item, page_width, page_height):
+def normalize_bbox_to_unit(item: dict, page_width: int, page_height: int) -> None:
     """将像素级bbox归一化为[0, 1]区间"""
     bbox = item.get("bbox")
     if bbox is None or len(bbox) != 4:
@@ -279,7 +279,7 @@ def normalize_bbox_to_unit(item, page_width, page_height):
     return True
 
 
-def _formula_item_to_pixel_bbox(item):
+def _formula_item_to_pixel_bbox(item: dict) -> list[int]:
     bbox = item.get("bbox")
     if bbox is not None and len(bbox) == 4:
         return [int(float(v)) for v in bbox]
@@ -287,7 +287,7 @@ def _formula_item_to_pixel_bbox(item):
     return None
 
 
-def _build_inline_formula_inputs(images_layout_res):
+def _build_inline_formula_inputs(images_layout_res: list) -> list:
     inline_formula_inputs = []
     for layout_res in images_layout_res:
         page_inline_formula_inputs = []
@@ -309,7 +309,7 @@ def _build_inline_formula_inputs(images_layout_res):
     return inline_formula_inputs
 
 
-def _build_formula_mask_inputs(images_layout_res):
+def _build_formula_mask_inputs(images_layout_res: list) -> list:
     """从 layout 检测结果提取公式框，供 OCR det 规避行内/行间公式区域。"""
     page_formula_masks = []
     for layout_res in images_layout_res:
@@ -324,7 +324,7 @@ def _build_formula_mask_inputs(images_layout_res):
     return page_formula_masks
 
 
-def _normalize_page_size(page_image):
+def _normalize_page_size(page_image: Any) -> list[int]:
     """从PIL或numpy图像中读取页面宽高，供归一化bbox还原为像素bbox。"""
     if hasattr(page_image, "size"):
         return page_image.size
@@ -333,7 +333,7 @@ def _normalize_page_size(page_image):
     return width, height
 
 
-def _bbox_to_pixel_bbox(bbox, page_size):
+def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[int]:
     """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
     if bbox is None or len(bbox) != 4:
         return None
@@ -354,7 +354,7 @@ def _bbox_to_pixel_bbox(bbox, page_size):
     return [left, top, right, bottom]
 
 
-def _collect_layout_doc_title_bboxes(layout_res, page_size):
+def _collect_layout_doc_title_bboxes(layout_res: list, page_size: list[int]) -> list[list[float]]:
     """只收集layout小模型输出的doc_title框，忽略paragraph_title等其他类型。"""
     doc_title_bboxes = []
     for layout_item in layout_res or []:
@@ -366,7 +366,7 @@ def _collect_layout_doc_title_bboxes(layout_res, page_size):
     return doc_title_bboxes
 
 
-def _has_doc_title_overlap(title_bbox, doc_title_bboxes, overlap_threshold):
+def _has_doc_title_overlap(title_bbox: list[float], doc_title_bboxes: list[list[float]], overlap_threshold: float) -> bool:
     """判断VLM标题框是否与任一layout doc_title框达到最小框重叠阈值。"""
     return any(
         calculate_overlap_area_2_minbox_area_ratio(title_bbox, doc_title_bbox) >= overlap_threshold
@@ -630,7 +630,7 @@ def _normalize_bbox(
                 normalize_bbox_to_unit(ocr_res, page_width, page_height)
 
 
-def _build_inline_formula_model_item(formula):
+def _build_inline_formula_model_item(formula: dict) -> dict:
     return {
         "type": "inline_formula",
         "bbox": list(formula["bbox"]),
@@ -639,7 +639,7 @@ def _build_inline_formula_model_item(formula):
     }
 
 
-def _build_ocr_text_model_item(ocr_res, keep_text=True):
+def _build_ocr_text_model_item(ocr_res: dict, keep_text: bool = True) -> dict:
     """构造 OCR det sidecar；VLM-OCR 路径可只保留空文本行提示。"""
     return {
         "type": "ocr_text",
