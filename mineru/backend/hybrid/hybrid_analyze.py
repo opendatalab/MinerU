@@ -14,10 +14,11 @@ from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     apply_server_side_postprocess,
-    append_page_results_to_middle_json,
+    blocks_to_page_info,
     finalize_middle_json,
     init_middle_json,
 )
+from mineru.backend.utils.middle_json_utils import append_pages
 from mineru.backend.utils.runtime_utils import exclude_progress_bar_idle_time
 from mineru.backend.pipeline.model_init import (
     HybridModelSingleton,
@@ -832,12 +833,13 @@ def doc_analyze(
                             last_append_end_time,
                             now=time.time(),
                         )
-                    append_page_results_to_middle_json(
+                    append_pages(
                         middle_json,
                         window_model_list,
                         images_list,
                         pdf_doc,
                         image_writer,
+                        page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,
@@ -983,12 +985,13 @@ async def aio_doc_analyze(
                             last_append_end_time,
                             now=time.time(),
                         )
-                    append_page_results_to_middle_json(
+                    append_pages(
                         middle_json,
                         window_model_list,
                         images_list,
                         pdf_doc,
                         image_writer,
+                        page_cvt_fn=blocks_to_page_info,
                         page_start_index=window_start,
                         _ocr_enable=_ocr_enable,
                         _vlm_ocr_enable=_vlm_ocr_enable,

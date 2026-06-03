@@ -149,41 +149,6 @@ def init_middle_json(_ocr_enable, _vlm_ocr_enable):
     }
 
 
-def append_page_results_to_middle_json(
-    middle_json,
-    model_list,
-    images_list,
-    pdf_doc,
-    image_writer,
-    page_start_index=0,
-    _ocr_enable=False,
-    _vlm_ocr_enable=False,
-    progress_bar=None,
-):
-    for offset, (page_model_list, image_dict) in enumerate(
-        zip(model_list, images_list)
-    ):
-        page_index = page_start_index + offset
-        page = None
-        try:
-            with pdfium_guard():
-                page = pdf_doc[page_index]
-            page_info = blocks_to_page_info(
-                page_model_list,
-                image_dict,
-                page,
-                image_writer,
-                page_index,
-                _ocr_enable,
-                _vlm_ocr_enable,
-            )
-        finally:
-            close_pdfium_child(page)
-        middle_json["pdf_info"].append(page_info)
-        if progress_bar is not None:
-            progress_bar.update(1)
-
-
 def apply_server_side_postprocess(
     pdf_info_list,
     hybrid_pipeline_model,

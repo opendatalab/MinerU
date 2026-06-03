@@ -59,6 +59,42 @@ def build_middle_json(
     return middle_json
 
 
+def append_pages(
+    middle_json: dict,
+    model_list: list,
+    images_list: list,
+    pdf_doc: Any,
+    image_writer: Any,
+    *,
+    page_cvt_fn: Callable[..., dict],
+    page_start_index: int = 0,
+    progress_bar: Any = None,
+    **kwargs: Any,
+) -> None:
+    """Append per-page results to ``middle_json["pdf_info"]``.
+
+    Shared across Pipeline / VLM / Hybrid.  The only backend-specific piece
+    is ``page_cvt_fn``, which converts one page's model output into a
+    page_info dict.
+    """
+    from ....utils.pdfium_guard import close_pdfium_child, pdfium_guard
+
+    for offset, (page_data, image_dict) in enumerate(zip(model_list, images_list)):
+        page_index = page_start_index + offset
+        page = None
+        try:
+            with pdfium_guard():
+                page = pdf_doc[page_index]
+            page_info = page_cvt_fn(
+                page_data, image_dict, page, image_writer, page_index, **kwargs
+            )
+        finally:
+            close_pdfium_child(page)
+        middle_json["pdf_info"].append(page_info)
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+
 def apply_post_ocr(pdf_info_list: list, ocr_model: Any) -> None:
     """Run OCR recognition on residual ``np_img`` crops inside spans.
 

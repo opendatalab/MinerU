@@ -78,29 +78,6 @@ def init_middle_json():
     return {"pdf_info": [], "_backend": "vlm", "_version_name": __version__}
 
 
-def append_page_blocks_to_middle_json(
-    middle_json,
-    model_output_blocks_list,
-    images_list,
-    pdf_doc,
-    image_writer,
-    page_start_index=0,
-    progress_bar=None,
-):
-    for offset, (page_blocks, image_dict) in enumerate(zip(model_output_blocks_list, images_list)):
-        page_index = page_start_index + offset
-        page = None
-        try:
-            with pdfium_guard():
-                page = pdf_doc[page_index]
-            page_info = blocks_to_page_info(page_blocks, image_dict, page, image_writer, page_index)
-        finally:
-            close_pdfium_child(page)
-        middle_json["pdf_info"].append(page_info)
-        if progress_bar is not None:
-            progress_bar.update(1)
-
-
 def finalize_middle_json(pdf_info_list):
     """从 VLM preproc_blocks 执行完整 finalize，客户端和服务端完整路径共用。"""
     build_para_blocks_from_preproc(pdf_info_list)
