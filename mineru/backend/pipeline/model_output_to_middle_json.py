@@ -16,7 +16,7 @@ from mineru.utils.hash_utils import bytes_md5
 from mineru.utils.pdfium_guard import pdfium_guard
 
 
-def page_model_info_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
+def blocks_to_page_info(page_model_info, image_dict, page, image_writer, page_index, ocr_enable=False):
     scale = image_dict["scale"]
     page_pil_img = image_dict["img_pil"]
     page_img_md5 = bytes_md5(page_pil_img.tobytes())
@@ -88,7 +88,7 @@ def append_batch_results_to_middle_json(
         images_list,
         pdf_doc,
         image_writer,
-        page_cvt_fn=page_model_info_to_page_info,
+        page_cvt_fn=blocks_to_page_info,
         page_start_index=page_start_index,
         ocr_enable=ocr_enable,
         progress_bar=progress_bar,
@@ -219,7 +219,7 @@ def result_to_middle_json(model_list, images_list, pdf_doc, image_writer, lang=N
     return build_middle_json(
         model_list, images_list, pdf_doc, image_writer,
         init_fn=init_middle_json,
-        page_cvt_fn=page_model_info_to_page_info,
+        page_cvt_fn=blocks_to_page_info,
         finalize_fn=finalize_middle_json,
         lang=lang,
         ocr_enable=ocr_enable,
