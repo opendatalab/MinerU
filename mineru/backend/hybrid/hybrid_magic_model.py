@@ -7,6 +7,7 @@ from loguru import logger
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType, NotExtractType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
+from mineru.types import Block, Line, Span
 from mineru.utils.span_block_fix import fix_text_block
 from mineru.utils.span_pre_proc import SpanBlockMatcher, txt_spans_extract
 from mineru.utils.visual_magic_model_utils import (
@@ -75,24 +76,20 @@ class MagicModel:
             inline_formula["bbox"] = list(self.cal_real_bbox(inline_formula["bbox"]))
             inline_formula_latex = inline_formula.pop("latex", "")
             if inline_formula_latex:
-                page_text_inline_formula_spans.append(
-                    {
-                        "bbox": inline_formula["bbox"],
-                        "type": ContentType.INLINE_EQUATION,
-                        "content": inline_formula_latex,
-                        "score": inline_formula["score"],
-                    }
-                )
+                page_text_inline_formula_spans.append(Span(
+                    type=ContentType.INLINE_EQUATION,
+                    bbox=inline_formula["bbox"],
+                    content=inline_formula_latex,
+                    score=inline_formula["score"],
+                ))
         for ocr_res in self.page_ocr_res:
             ocr_res["bbox"] = list(self.cal_real_bbox(ocr_res["bbox"]))
-            page_text_inline_formula_spans.append(
-                {
-                    "bbox": ocr_res["bbox"],
-                    "type": ContentType.TEXT,
-                    "content": ocr_res.get("text", ""),
-                    "score": ocr_res["score"],
-                }
-            )
+            page_text_inline_formula_spans.append(Span(
+                type=ContentType.TEXT,
+                bbox=ocr_res["bbox"],
+                content=ocr_res.get("text", ""),
+                score=ocr_res["score"],
+            ))
         if not _vlm_ocr_enable and not _ocr_enable:
             virtual_block = [0, 0, width, height, None, None, None, "text"]
             page_text_inline_formula_spans = txt_spans_extract(
@@ -179,20 +176,16 @@ class MagicModel:
 
             span = None
             if span_type in [ContentType.IMAGE, ContentType.TABLE, ContentType.CHART]:
-                span = {
-                    "bbox": block_bbox,
-                    "type": span_type,
-                }
+                span = Span(type=span_type, bbox=block_bbox)
                 if span_type == ContentType.TABLE:
                     span["html"] = block_content
                 elif raw_block_type in ["image", "chart"] and block_content is not None:
                     span["content"] = block_content
             elif span_type == ContentType.INTERLINE_EQUATION:
-                span = {
-                    "bbox": block_bbox,
-                    "type": span_type,
-                    "content": isolated_formula_clean(block_content),
-                }
+                span = Span(
+                    type=span_type, bbox=block_bbox,
+                    content=isolated_formula_clean(block_content),
+                )
             elif _vlm_ocr_enable or block_type not in not_extract_list:
                 # vlm_ocr_enable 模式下，所有文本块都直接使用 block 的内容
                 # 非 vlm_ocr_enable 模式下，非提取块仍沿用直接内容模式
@@ -217,57 +210,43 @@ class MagicModel:
                         if start > last_end:
                             text_before = block_content[last_end:start]
                             if text_before.strip():
-                                spans.append(
-                                    {
-                                        "bbox": block_bbox,
-                                        "type": ContentType.TEXT,
-                                        "content": text_before,
-                                    }
-                                )
+                                spans.append(Span(
+                                    type=ContentType.TEXT, bbox=block_bbox,
+                                    content=text_before,
+                                ))
 
                         formula = match.group(1)
-                        spans.append(
-                            {
-                                "bbox": block_bbox,
-                                "type": ContentType.INLINE_EQUATION,
-                                "content": formula.strip(),
-                            }
-                        )
+                        spans.append(Span(
+                            type=ContentType.INLINE_EQUATION, bbox=block_bbox,
+                            content=formula.strip(),
+                        ))
 
                         last_end = end
 
                     if last_end < len(block_content):
                         text_after = block_content[last_end:]
                         if text_after.strip():
-                            spans.append(
-                                {
-                                    "bbox": block_bbox,
-                                    "type": ContentType.TEXT,
-                                    "content": text_after,
-                                }
-                            )
+                            spans.append(Span(
+                                type=ContentType.TEXT, bbox=block_bbox,
+                                content=text_after,
+                            ))
 
                     span = spans
                 else:
-                    span = {
-                        "bbox": block_bbox,
-                        "type": span_type,
-                        "content": block_content,
-                    }
+                    span = Span(
+                        type=span_type, bbox=block_bbox,
+                        content=block_content,
+                    )
 
-            if (
-                span_type
-                in [
-                    ContentType.IMAGE,
-                    ContentType.TABLE,
-                    ContentType.CHART,
-                    ContentType.INTERLINE_EQUATION,
-                ]
-                or (_vlm_ocr_enable or block_type not in not_extract_list)
-            ):
+            if span_type in [
+                ContentType.IMAGE,
+                ContentType.TABLE,
+                ContentType.CHART,
+                ContentType.INTERLINE_EQUATION,
+            ] or (_vlm_ocr_enable or block_type not in not_extract_list):
                 if span is None:
                     continue
-                if isinstance(span, dict) and "bbox" in span:
+                if isinstance(span, Span):
                     self.all_spans.append(span)
                     spans = [span]
                 elif isinstance(span, list):
@@ -281,24 +260,16 @@ class MagicModel:
                 if block_type == BlockType.CODE_BODY:
                     if switch_code_to_algorithm and code_block_sub_type == "code":
                         code_block_sub_type = "algorithm"
-                    line = {
-                        "bbox": block_bbox,
-                        "spans": spans,
-                        "extra": {
-                            "type": code_block_sub_type,
-                            "guess_lang": guess_lang,
-                        },
-                    }
+                    line = Line(spans=spans)
+                    line["bbox"] = block_bbox
+                    line["extra"] = {"type": code_block_sub_type, "guess_lang": guess_lang}
                 else:
-                    line = {"bbox": block_bbox, "spans": spans}
+                    line = Line(spans=spans)
+                    line["bbox"] = block_bbox
 
-                block = {
-                    "bbox": block_bbox,
-                    "type": block_type,
-                    "angle": block_angle,
-                    "lines": [line],
-                    "index": index,
-                }
+                block = Block(type=block_type, bbox=block_bbox, lines=[line])
+                block["angle"] = block_angle
+                block["index"] = index
                 if block_sub_type:
                     block["sub_type"] = block_sub_type
                 if raw_block_type == "table" and "cell_merge" in block_info:
@@ -396,15 +367,6 @@ class MagicModel:
         for block in unmatched_child_blocks:
             block["type"] = BlockType.TEXT
             self.text_blocks.append(block)
-
-        # convert all block lists to typed Block objects
-        from mineru.types import block_from_dict
-
-        for attr in ("image_blocks", "table_blocks", "chart_blocks", "code_blocks",
-                     "title_blocks", "text_blocks", "interline_equation_blocks",
-                     "list_blocks", "ref_text_blocks", "phonetic_blocks",
-                     "discarded_blocks"):
-            setattr(self, attr, [block_from_dict(b) for b in getattr(self, attr)])
 
     @staticmethod
     def _split_page_model_list(page_model_list):
