@@ -14,7 +14,7 @@ class ListLineTag:
     IS_LIST_END_LINE = 'is_list_end_line'
 
 
-def __process_blocks(blocks):
+def __process_blocks(blocks: list[Block]) -> list[Block]:
     # 对所有block预处理
     # 1.通过title和interline_equation将block分组
     # 2.bbox边界根据line信息重置
@@ -57,7 +57,7 @@ def __process_blocks(blocks):
     return result
 
 
-def __is_list_or_index_block(block):
+def __is_list_or_index_block(block: Block) -> bool:
     if block['type'] == BlockType.VERTICAL_TEXT:
         return BlockType.VERTICAL_TEXT
     if block['type'] == BlockType.INDEX:
@@ -262,7 +262,7 @@ def __is_list_or_index_block(block):
         return BlockType.TEXT
 
 
-def __merge_2_text_blocks(block1, block2):
+def __merge_2_text_blocks(block1: Block, block2: Block) -> Block | None:
     if len(block1['lines']) > 0 and len(block2['lines']) > 0:
         first_line = block1['lines'][0]
         line_height = first_line['bbox'][3] - first_line['bbox'][1]
@@ -306,7 +306,7 @@ def __merge_2_text_blocks(block1, block2):
     return block1, block2
 
 
-def __merge_2_vertical_text_blocks(block1, block2):
+def __merge_2_vertical_text_blocks(block1: Block, block2: Block) -> Block | None:
     if len(block1['lines']) > 0 and len(block2['lines']) > 0:
         first_line = block1['lines'][0]
         line_width = first_line['bbox'][2] - first_line['bbox'][0]
@@ -343,7 +343,7 @@ def __merge_2_vertical_text_blocks(block1, block2):
     return block1, block2
 
 
-def __merge_2_list_blocks(block1, block2):
+def __merge_2_list_blocks(block1: Block, block2: Block) -> Block | None:
     if block1['page_num'] != block2['page_num']:
         for line in block1['lines']:
             for span in line['spans']:
@@ -355,7 +355,7 @@ def __merge_2_list_blocks(block1, block2):
     return block1, block2
 
 
-def __is_list_group(text_blocks_group):
+def __is_list_group(text_blocks_group: list[Block]) -> bool:
     # list group的特征是一个group内的所有block都满足以下条件
     # 1.每个block都不超过3行 2. 每个block 的左边界都比较接近(逻辑简单点先不加这个规则)
     for block in text_blocks_group:
@@ -366,7 +366,7 @@ def __is_list_group(text_blocks_group):
     return True
 
 
-def __para_merge_page(blocks):
+def __para_merge_page(blocks: list[Block]) -> list[Block]:
     page_text_blocks_groups = __process_blocks(blocks)
     for text_blocks_group in page_text_blocks_groups:
         if len(text_blocks_group) > 0:
@@ -412,7 +412,7 @@ def __para_merge_page(blocks):
             continue
 
 
-def para_split(page_info_list):
+def para_split(page_info_list: list[PageInfo]) -> None:
     all_blocks = []
     for page_info in page_info_list:
         blocks = copy.deepcopy(page_info['preproc_blocks'])
