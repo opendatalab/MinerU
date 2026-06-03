@@ -184,30 +184,6 @@ def append_page_results_to_middle_json(
             progress_bar.update(1)
 
 
-def append_page_model_list_to_middle_json(
-    middle_json,
-    model_list,
-    images_list,
-    pdf_doc,
-    image_writer,
-    page_start_index=0,
-    _ocr_enable=False,
-    _vlm_ocr_enable=False,
-    progress_bar=None,
-):
-    append_page_results_to_middle_json(
-        middle_json,
-        model_list,
-        images_list,
-        pdf_doc,
-        image_writer,
-        page_start_index=page_start_index,
-        _ocr_enable=_ocr_enable,
-        _vlm_ocr_enable=_vlm_ocr_enable,
-        progress_bar=progress_bar,
-    )
-
-
 def apply_server_side_postprocess(
     pdf_info_list,
     hybrid_pipeline_model,

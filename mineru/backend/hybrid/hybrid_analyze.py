@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     apply_server_side_postprocess,
-    append_page_model_list_to_middle_json,
+    append_page_results_to_middle_json,
     finalize_middle_json,
     init_middle_json,
 )
@@ -832,7 +832,7 @@ def doc_analyze(
                             last_append_end_time,
                             now=time.time(),
                         )
-                    append_page_model_list_to_middle_json(
+                    append_page_results_to_middle_json(
                         middle_json,
                         window_model_list,
                         images_list,
@@ -983,7 +983,7 @@ async def aio_doc_analyze(
                             last_append_end_time,
                             now=time.time(),
                         )
-                    append_page_model_list_to_middle_json(
+                    append_page_results_to_middle_json(
                         middle_json,
                         window_model_list,
                         images_list,
