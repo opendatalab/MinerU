@@ -1,6 +1,8 @@
 /* demo 页面嵌入 Gradio，需要隐藏右侧目录列并释放主内容宽度。 */
 .md-main__inner:has(.mineru-demo-page) {
-  max-width: 100%;
+  width: min(calc(100% - 3rem), 112rem);
+  max-width: none;
+  margin-inline: auto;
 }
 
 .md-main__inner:has(.mineru-demo-page) .md-sidebar--secondary {
@@ -22,8 +24,17 @@
 .mineru-demo-iframe {
   display: block;
   width: 100%;
-  min-height: calc(-40px + 100vh);
-  height: 1746px;
+  height: clamp(760px, calc(100vh - 12rem), 1180px);
   border: 0;
   overflow: auto;
+}
+
+@media screen and (max-width: 76.2344em) {
+  .md-main__inner:has(.mineru-demo-page) {
+    width: 100%;
+  }
+
+  .mineru-demo-iframe {
+    height: clamp(640px, calc(100vh - 8rem), 960px);
+  }
 }
