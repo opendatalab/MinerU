@@ -180,3 +180,10 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
 ]
+
+[tool.ruff]
+line-length = 128
+
+[tool.ruff.lint]
+select = ["C", "E", "F", "W", "ANN"]
+ignore = ["C901", "ANN204", "ANN401"]

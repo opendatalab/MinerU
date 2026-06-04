@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import asyncio
+import multiprocessing
 import os
 import sys
 import threading
@@ -343,8 +344,12 @@ async def mark_task_completed(
 
 def create_visualization_context() -> Optional[VisualizationContext]:
     try:
+        spawn_context = multiprocessing.get_context("spawn")
         return VisualizationContext(
-            executor=ProcessPoolExecutor(max_workers=1),
+            executor=ProcessPoolExecutor(
+                max_workers=1,
+                mp_context=spawn_context,
+            ),
             futures=[],
         )
     except Exception as exc:
@@ -626,9 +631,8 @@ def build_request_form_data(
     image_analysis: bool = True,
     client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
-    # 开启客户端输出生成时，服务端只负责返回 middle json、图片和原文件。
+    # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
     return_md = not client_side_output_generation
-    return_model_output = not client_side_output_generation
     return_content_list = not client_side_output_generation
     return _api_client.build_parse_request_form_data(
         lang_list=[lang],
@@ -642,7 +646,7 @@ def build_request_form_data(
         end_page_id=end_page_id,
         return_md=return_md,
         return_middle_json=True,
-        return_model_output=return_model_output,
+        return_model_output=True,
         return_content_list=return_content_list,
         return_images=True,
         response_format_zip=True,

@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import re
+from ctypes import byref, c_int, create_string_buffer
 from io import BytesIO
 
 import pypdfium2 as pdfium
@@ -7,6 +8,7 @@ import pypdfium2.raw as pdfium_c
 from loguru import logger
 from pypdf import PdfReader
 from mineru.utils.pdfium_guard import (
+    close_pdfium_child,
     close_pdfium_document,
     open_pdfium_document,
     pdfium_guard,
@@ -18,6 +20,8 @@ HIGH_IMAGE_COVERAGE_THRESHOLD = 0.8
 TEXT_QUALITY_MIN_CHARS = 300
 TEXT_QUALITY_BAD_THRESHOLD = 0.03
 UNICODE_MAP_ERROR_RATIO_THRESHOLD = 0.04
+CID_FONT_USAGE_RATIO_THRESHOLD = 0.01
+CID_FONT_USAGE_COUNT_THRESHOLD = 30
 MAX_PAGE_ASPECT_RATIO = 10.0
 SUSPICIOUS_CJK_72XX_START = 0x7280
 SUSPICIOUS_CJK_72XX_END = 0x72DF
@@ -103,7 +107,20 @@ def classify(pdf_bytes):
                 )
                 return "ocr"
 
-            if detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+            cid_font_signal = get_cid_font_signal_pypdf(pdf_bytes, page_indices)
+            cid_font_usage_signal = _get_cid_font_usage_signal_from_samples(
+                text_samples,
+                cid_font_signal,
+            )
+            if cid_font_usage_signal["triggered"]:
+                logger.debug(
+                    "Classify PDF as OCR due to high CID font usage without ToUnicode: "
+                    f"page={cid_font_usage_signal['page_index'] + 1}, "
+                    f"fonts={cid_font_usage_signal['font_names']}, "
+                    f"chars={cid_font_usage_signal['cid_font_char_count']}, "
+                    f"total={cid_font_usage_signal['total_chars']}, "
+                    f"ratio={cid_font_usage_signal['cid_font_usage_ratio']:.4f}"
+                )
                 return "ocr"
 
             text_quality_signal = _get_text_quality_signal_from_samples(text_samples)
@@ -196,35 +213,88 @@ def get_extreme_aspect_ratio_page_pdfium(
     page_indices,
     max_page_aspect_ratio: float = MAX_PAGE_ASPECT_RATIO,
 ):
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
-        page_width, page_height = page.get_size()
-        if page_width <= 0 or page_height <= 0:
-            continue
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                page_width, page_height = page.get_size()
+                if page_width <= 0 or page_height <= 0:
+                    continue
 
-        aspect_ratio = max(page_width / page_height, page_height / page_width)
-        if aspect_ratio > max_page_aspect_ratio:
-            return page_index, aspect_ratio
+                aspect_ratio = max(page_width / page_height, page_height / page_width)
+                if aspect_ratio > max_page_aspect_ratio:
+                    return page_index, aspect_ratio
+            finally:
+                close_pdfium_child(page)
 
     return None, None
 
 
-def _collect_pdfium_text_samples(pdf_doc, page_indices):
-    """一次性收集抽样页的 textpage 和文本，避免分类链路重复读取 PDFium 文本。"""
-    text_samples = []
-
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
+def _collect_pdfium_text_sample_from_page(page_index, page):
+    """从单页 PDFium 对象提取纯 Python 文本统计，并在调用方释放子对象。"""
+    text_page = None
+    try:
         text_page = page.get_textpage()
         text = text_page.get_text_bounded()
-        text_samples.append(
-            {
-                "page_index": page_index,
-                "text_page": text_page,
-                "text": text,
-                "cleaned_text": re.sub(r"\s+", "", text),
-            }
-        )
+        char_count = text_page.count_chars()
+        null_char_count = 0
+        replacement_char_count = 0
+        control_char_count = 0
+        private_use_char_count = 0
+        unicode_map_error_count = 0
+        font_name_counts = {}
+
+        for char_index in range(char_count):
+            unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
+            if unicode_code == 0:
+                null_char_count += 1
+            elif unicode_code == 0xFFFD:
+                replacement_char_count += 1
+            elif _is_disallowed_control_unicode(unicode_code):
+                control_char_count += 1
+            elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
+                private_use_char_count += 1
+
+            if pdfium_c.FPDFText_HasUnicodeMapError(text_page, char_index):
+                unicode_map_error_count += 1
+
+            font_name = _normalize_pdf_font_name(
+                _get_pdfium_char_font_name(text_page, char_index)
+            )
+            if font_name:
+                font_name_counts[font_name] = font_name_counts.get(font_name, 0) + 1
+
+        return {
+            "page_index": page_index,
+            "text": text,
+            "cleaned_text": re.sub(r"\s+", "", text),
+            "char_count": char_count,
+            "null_char_count": null_char_count,
+            "replacement_char_count": replacement_char_count,
+            "control_char_count": control_char_count,
+            "private_use_char_count": private_use_char_count,
+            "unicode_map_error_count": unicode_map_error_count,
+            "font_name_counts": font_name_counts,
+        }
+    finally:
+        close_pdfium_child(text_page)
+
+
+def _collect_pdfium_text_samples(pdf_doc, page_indices):
+    """一次性收集抽样页文本统计，返回纯 Python 数据，避免缓存 PDFium 子对象。"""
+    text_samples = []
+
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                text_samples.append(
+                    _collect_pdfium_text_sample_from_page(page_index, page)
+                )
+            finally:
+                close_pdfium_child(page)
 
     return text_samples
 
@@ -247,7 +317,7 @@ def get_avg_cleaned_chars_per_page_pdfium(pdf_doc, page_indices):
 
 
 def _get_text_quality_signal_from_samples(text_samples):
-    """基于已缓存的 PDFium textpage 统计异常字符质量信号。"""
+    """基于已缓存的抽样页字符计数统计异常字符质量信号。"""
     total_chars = 0
     null_char_count = 0
     replacement_char_count = 0
@@ -255,20 +325,11 @@ def _get_text_quality_signal_from_samples(text_samples):
     private_use_char_count = 0
 
     for text_sample in text_samples:
-        text_page = text_sample["text_page"]
-        char_count = text_page.count_chars()
-        total_chars += char_count
-
-        for char_index in range(char_count):
-            unicode_code = pdfium_c.FPDFText_GetUnicode(text_page, char_index)
-            if unicode_code == 0:
-                null_char_count += 1
-            elif unicode_code == 0xFFFD:
-                replacement_char_count += 1
-            elif _is_disallowed_control_unicode(unicode_code):
-                control_char_count += 1
-            elif _PRIVATE_USE_AREA_START <= unicode_code <= _PRIVATE_USE_AREA_END:
-                private_use_char_count += 1
+        total_chars += text_sample["char_count"]
+        null_char_count += text_sample["null_char_count"]
+        replacement_char_count += text_sample["replacement_char_count"]
+        control_char_count += text_sample["control_char_count"]
+        private_use_char_count += text_sample["private_use_char_count"]
 
     abnormal_chars = (
         null_char_count
@@ -302,13 +363,8 @@ def _get_unicode_map_error_signal_from_samples(text_samples):
     unicode_map_error_count = 0
 
     for text_sample in text_samples:
-        text_page = text_sample["text_page"]
-        char_count = text_page.count_chars()
-        total_chars += char_count
-
-        for char_index in range(char_count):
-            if pdfium_c.FPDFText_HasUnicodeMapError(text_page, char_index):
-                unicode_map_error_count += 1
+        total_chars += text_sample["char_count"]
+        unicode_map_error_count += text_sample["unicode_map_error_count"]
 
     unicode_map_error_ratio = 0.0
     if total_chars > 0:
@@ -319,6 +375,102 @@ def _get_unicode_map_error_signal_from_samples(text_samples):
         "unicode_map_error_count": unicode_map_error_count,
         "unicode_map_error_ratio": unicode_map_error_ratio,
     }
+
+
+def _normalize_pdf_font_name(font_name) -> str:
+    """规范化 PDF 字体名，统一 pypdf 的 NameObject 和 PDFium 返回值格式。"""
+    if font_name is None:
+        return ""
+    return str(font_name).strip().lstrip("/")
+
+
+def _get_pdfium_char_font_name(text_page, char_index: int) -> str:
+    """读取 PDFium 字符级字体名，用于统计可疑 CID 字体的实际使用比例。"""
+    flags = c_int()
+    buffer_length = pdfium_c.FPDFText_GetFontInfo(
+        text_page,
+        char_index,
+        None,
+        0,
+        byref(flags),
+    )
+    if buffer_length <= 0:
+        return ""
+
+    font_name_buffer = create_string_buffer(buffer_length)
+    actual_length = pdfium_c.FPDFText_GetFontInfo(
+        text_page,
+        char_index,
+        font_name_buffer,
+        buffer_length,
+        byref(flags),
+    )
+    if actual_length <= 0:
+        return ""
+
+    return font_name_buffer.value.decode("utf-8", errors="ignore")
+
+
+def _get_cid_font_usage_signal_from_samples(text_samples, cid_font_signal):
+    """基于 PDFium 字符级字体名统计可疑 CID 字体在抽样页中的真实使用比例。"""
+    best_signal = {
+        "triggered": False,
+        "page_index": None,
+        "font_names": [],
+        "cid_font_char_count": 0,
+        "total_chars": 0,
+        "cid_font_usage_ratio": 0.0,
+    }
+    if not cid_font_signal or not cid_font_signal.get("triggered"):
+        return best_signal
+
+    page_fonts = cid_font_signal.get("page_fonts") or {}
+    for text_sample in text_samples:
+        page_index = text_sample.get("page_index")
+        cid_font_names = {
+            _normalize_pdf_font_name(font_name)
+            for font_name in page_fonts.get(page_index, set())
+        }
+        cid_font_names.discard("")
+        if not cid_font_names:
+            continue
+
+        total_chars = text_sample["char_count"]
+        if total_chars <= 0:
+            continue
+
+        font_name_counts = text_sample.get("font_name_counts") or {}
+        matched_font_names = cid_font_names.intersection(font_name_counts)
+        cid_font_char_count = sum(
+            font_name_counts[font_name] for font_name in matched_font_names
+        )
+
+        cid_font_usage_ratio = cid_font_char_count / total_chars
+        signal = {
+            "triggered": False,
+            "page_index": page_index,
+            "font_names": sorted(matched_font_names),
+            "cid_font_char_count": cid_font_char_count,
+            "total_chars": total_chars,
+            "cid_font_usage_ratio": cid_font_usage_ratio,
+        }
+        if (
+            cid_font_char_count >= CID_FONT_USAGE_COUNT_THRESHOLD
+            and cid_font_usage_ratio >= CID_FONT_USAGE_RATIO_THRESHOLD
+        ):
+            signal["triggered"] = True
+            return signal
+
+        if (
+            signal["cid_font_usage_ratio"],
+            signal["cid_font_char_count"],
+        ) > (
+            best_signal["cid_font_usage_ratio"],
+            best_signal["cid_font_char_count"],
+        ):
+            best_signal = signal
+
+    return best_signal
 
 
 def _get_u72xx_text_signal_from_samples(text_samples):
@@ -435,8 +587,10 @@ def _get_sampled_ascii_punct_signal_from_samples(text_samples):
     return best_signal
 
 
-def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+def get_cid_font_signal_pypdf(pdf_bytes, page_indices):
+    """收集抽样页中无 ToUnicode 的 Identity CID 字体资源，供后续按实际字符使用量判定。"""
     reader = PdfReader(BytesIO(pdf_bytes))
+    page_fonts = {}
 
     for page_index in page_indices:
         page = reader.pages[page_index]
@@ -448,7 +602,7 @@ def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
         if not fonts:
             continue
 
-        for _, font_ref in fonts.items():
+        for font_key, font_ref in fonts.items():
             font = _resolve_pdf_object(font_ref)
             if not font:
                 continue
@@ -464,9 +618,20 @@ def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
                 and has_descendant_fonts
                 and not has_to_unicode
             ):
-                return True
+                font_name = font.get("/BaseFont") or font_key
+                page_fonts.setdefault(page_index, set()).add(
+                    _normalize_pdf_font_name(font_name)
+                )
 
-    return False
+    return {
+        "triggered": bool(page_fonts),
+        "page_fonts": page_fonts,
+    }
+
+
+def detect_cid_font_signal_pypdf(pdf_bytes, page_indices):
+    """兼容旧接口：只返回是否存在无 ToUnicode 的 Identity CID 字体资源。"""
+    return get_cid_font_signal_pypdf(pdf_bytes, page_indices)["triggered"]
 
 
 def _resolve_pdf_object(obj):
@@ -478,23 +643,33 @@ def _resolve_pdf_object(obj):
 def get_high_image_coverage_ratio_pdfium(pdf_doc, page_indices):
     high_image_coverage_pages = 0
 
-    for page_index in page_indices:
-        page = pdf_doc[page_index]
-        page_bbox = page.get_bbox()
-        page_area = abs(
-            (page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1])
-        )
-        image_area = 0.0
+    with pdfium_guard():
+        for page_index in page_indices:
+            page = None
+            try:
+                page = pdf_doc[page_index]
+                page_bbox = page.get_bbox()
+                page_area = abs(
+                    (page_bbox[2] - page_bbox[0]) * (page_bbox[3] - page_bbox[1])
+                )
+                image_area = 0.0
 
-        for page_object in page.get_objects(
-            filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
-        ):
-            left, bottom, right, top = page_object.get_pos()
-            image_area += max(0.0, right - left) * max(0.0, top - bottom)
+                for page_object in page.get_objects(
+                    filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3
+                ):
+                    try:
+                        left, bottom, right, top = page_object.get_pos()
+                        image_area += max(0.0, right - left) * max(0.0, top - bottom)
+                    finally:
+                        close_pdfium_child(page_object)
 
-        coverage_ratio = min(image_area / page_area, 1.0) if page_area > 0 else 0.0
-        if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
-            high_image_coverage_pages += 1
+                coverage_ratio = (
+                    min(image_area / page_area, 1.0) if page_area > 0 else 0.0
+                )
+                if coverage_ratio >= HIGH_IMAGE_COVERAGE_THRESHOLD:
+                    high_image_coverage_pages += 1
+            finally:
+                close_pdfium_child(page)
 
     if not page_indices:
         return 0.0

@@ -168,53 +168,56 @@ def doc_analyze_streaming(
         raise ValueError("pdf_bytes_list, image_writer_list, and lang_list must have the same length")
 
     doc_contexts = []
-    total_pages = 0
-    for doc_index, (pdf_bytes, image_writer, lang) in enumerate(
-        zip(pdf_bytes_list, image_writer_list, lang_list)
-    ):
-        _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
-        pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
-        page_count = get_pdfium_document_page_count(pdf_doc)
-        total_pages += page_count
-        doc_contexts.append(
-            {
-                'doc_index': doc_index,
-                'pdf_bytes': pdf_bytes,
-                'pdf_doc': pdf_doc,
-                'page_count': page_count,
-                'next_page_idx': 0,
-                'middle_json': init_middle_json(),
-                'model_list': [],
-                'image_writer': image_writer,
-                'lang': lang,
-                'ocr_enable': _ocr_enable,
-                'closed': False,
-            }
+    try:
+        total_pages = 0
+        for doc_index, (pdf_bytes, image_writer, lang) in enumerate(
+            zip(pdf_bytes_list, image_writer_list, lang_list)
+        ):
+            _ocr_enable = _get_ocr_enable(pdf_bytes, parse_method)
+            pdf_doc = open_pdfium_document(pdfium.PdfDocument, pdf_bytes)
+            try:
+                page_count = get_pdfium_document_page_count(pdf_doc)
+                context = {
+                    'doc_index': doc_index,
+                    'pdf_bytes': pdf_bytes,
+                    'pdf_doc': pdf_doc,
+                    'page_count': page_count,
+                    'next_page_idx': 0,
+                    'middle_json': init_middle_json(),
+                    'model_list': [],
+                    'image_writer': image_writer,
+                    'lang': lang,
+                    'ocr_enable': _ocr_enable,
+                    'closed': False,
+                }
+            except Exception:
+                close_pdfium_document(pdf_doc)
+                raise
+            total_pages += page_count
+            doc_contexts.append(context)
+
+        if total_pages == 0:
+            _emit_zero_page_contexts(
+                doc_contexts,
+                on_doc_ready,
+                client_side_output_generation=client_side_output_generation,
+            )
+            return
+
+        window_size = get_processing_window_size(default=64)
+        total_batches = (total_pages + window_size - 1) // window_size
+        logger.info(
+            f'Pipeline processing-window multi-file run. doc_count={len(doc_contexts)}, '
+            f'total_pages={total_pages}, window_size={window_size}, total_batches={total_batches}'
         )
 
-    if total_pages == 0:
         _emit_zero_page_contexts(
             doc_contexts,
             on_doc_ready,
             client_side_output_generation=client_side_output_generation,
         )
-        return
-
-    window_size = get_processing_window_size(default=64)
-    total_batches = (total_pages + window_size - 1) // window_size
-    logger.info(
-        f'Pipeline processing-window multi-file run. doc_count={len(doc_contexts)}, '
-        f'total_pages={total_pages}, window_size={window_size}, total_batches={total_batches}'
-    )
-
-    _emit_zero_page_contexts(
-        doc_contexts,
-        on_doc_ready,
-        client_side_output_generation=client_side_output_generation,
-    )
-    processed_pages = 0
-    infer_start = time.time()
-    try:
+        processed_pages = 0
+        infer_start = time.time()
         progress_bar = None
         last_append_end_time = None
         try:
@@ -264,44 +267,47 @@ def doc_analyze_streaming(
                     f'batch_pages={len(batch_images)}, doc_slices={_format_doc_slices(batch_slices)}'
                 )
 
-                batch_results = batch_image_analyze(
-                    batch_images,
-                    formula_enable=formula_enable,
-                    table_enable=table_enable,
-                )
-                if progress_bar is None:
-                    progress_bar = tqdm(total=total_pages, desc="Processing pages")
-                else:
-                    exclude_progress_bar_idle_time(
-                        progress_bar,
-                        last_append_end_time,
-                        now=time.time(),
+                try:
+                    batch_results = batch_image_analyze(
+                        batch_images,
+                        formula_enable=formula_enable,
+                        table_enable=table_enable,
                     )
-
-                result_offset = 0
-                for context, images_list, page_start, take_count in batch_payloads:
-                    result_slice = batch_results[result_offset: result_offset + take_count]
-                    append_batch_results_to_middle_json(
-                        context['middle_json'],
-                        result_slice,
-                        images_list,
-                        context['pdf_doc'],
-                        context['image_writer'],
-                        page_start_index=page_start,
-                        ocr_enable=context['ocr_enable'],
-                        model_list=context['model_list'],
-                        progress_bar=progress_bar,
-                    )
-                    result_offset += take_count
-                    _close_images(images_list)
-                    images_list.clear()
-
-                    if context['next_page_idx'] >= context['page_count'] and not context['closed']:
-                        _finalize_processing_window_context(
-                            context,
-                            on_doc_ready,
-                            client_side_output_generation=client_side_output_generation,
+                    if progress_bar is None:
+                        progress_bar = tqdm(total=total_pages, desc="Processing pages")
+                    else:
+                        exclude_progress_bar_idle_time(
+                            progress_bar,
+                            last_append_end_time,
+                            now=time.time(),
                         )
+
+                    result_offset = 0
+                    for context, images_list, page_start, take_count in batch_payloads:
+                        result_slice = batch_results[result_offset: result_offset + take_count]
+                        append_batch_results_to_middle_json(
+                            context['middle_json'],
+                            result_slice,
+                            images_list,
+                            context['pdf_doc'],
+                            context['image_writer'],
+                            page_start_index=page_start,
+                            ocr_enable=context['ocr_enable'],
+                            model_list=context['model_list'],
+                            progress_bar=progress_bar,
+                        )
+                        result_offset += take_count
+
+                        if context['next_page_idx'] >= context['page_count'] and not context['closed']:
+                            _finalize_processing_window_context(
+                                context,
+                                on_doc_ready,
+                                client_side_output_generation=client_side_output_generation,
+                            )
+                finally:
+                    for _context, images_list, _page_start, _take_count in batch_payloads:
+                        _close_images(images_list)
+                        images_list.clear()
 
                 last_append_end_time = time.time()
                 processed_pages += len(batch_images)
