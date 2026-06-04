@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import math
-from typing import Any, List
+from typing import Any
 
 import pypdfium2 as pdfium
 from pdftext.pdf.chars import deduplicate_chars, get_chars
@@ -44,7 +44,7 @@ def get_page_chars(
         with pdfium_guard():
             if textpage is None:
                 textpage = page.get_textpage()
-            page_bbox: List[float] = page.get_bbox()
+            page_bbox = page.get_bbox()
             page_width = math.ceil(abs(page_bbox[2] - page_bbox[0]))
             page_height = math.ceil(abs(page_bbox[1] - page_bbox[3]))
 

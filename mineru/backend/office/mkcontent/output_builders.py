@@ -748,7 +748,7 @@ def union_make(
     pdf_info_dict: list[dict[str, Any]],
     make_mode: MakeMode,
     img_buket_path: str = "",
-) -> list[str]:
+) -> list[str] | None:
 
     output_content = []
     for page_info in pdf_info_dict:

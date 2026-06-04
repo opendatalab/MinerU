@@ -69,6 +69,18 @@ class TableMergeState:
     dirty: bool = False
 
 
+def _colspan(cell: Any) -> int:
+    val = cell.get("colspan", "1")
+    assert isinstance(val, str)
+    return int(val)
+
+
+def _rowspan(cell: Any) -> int:
+    val = cell.get("rowspan", "1")
+    assert isinstance(val, str)
+    return int(val)
+
+
 def _normalize_cell_text(cell: Tag) -> str:
     return "".join(full_to_half(cell.get_text()).split())
 
@@ -106,8 +118,8 @@ def _scan_rows(rows: list[Tag], initial_occupied: dict[int, set[int]] | None = N
             while col_idx in occupied_row:
                 col_idx += 1
 
-            colspan = int(cell.get("colspan", 1))
-            rowspan = int(cell.get("rowspan", 1))
+            colspan = _colspan(cell)
+            rowspan = _rowspan(cell)
             actual_cols += colspan
 
             for row_offset in range(rowspan):
@@ -150,8 +162,8 @@ def _build_row_signature(row: Tag, effective_cols: int) -> RowSignature:
     cells = row.find_all(["td", "th"])
     return RowSignature(
         effective_cols=effective_cols,
-        colspans=tuple(int(cell.get("colspan", 1)) for cell in cells),
-        rowspans=tuple(int(cell.get("rowspan", 1)) for cell in cells),
+        colspans=tuple(_colspan(cell) for cell in cells),
+        rowspans=tuple(_rowspan(cell) for cell in cells),
         normalized_texts=tuple(_normalize_cell_text(cell) for cell in cells),
         display_texts=tuple(_display_cell_text(cell) for cell in cells),
     )
@@ -381,7 +393,7 @@ def calculate_row_columns(row: Tag) -> int:
     column_count = 0
 
     for cell in cells:
-        colspan = int(cell.get("colspan", 1))
+        colspan = _colspan(cell)
         column_count += colspan
 
     return column_count
@@ -425,8 +437,8 @@ def _scan_row_visual_sources(
         for cell_idx, cell in enumerate(cells):
             while col_idx in occupied_row:
                 col_idx += 1
-            colspan = int(cell.get("colspan", 1))
-            rowspan = int(cell.get("rowspan", 1))
+            colspan = _colspan(cell)
+            rowspan = _rowspan(cell)
             source_marker = (r_idx, cell_idx)
             for ro in range(rowspan):
                 target_idx = r_idx + ro
@@ -467,7 +479,7 @@ def build_visual_col_mapping(
         while col_idx in target_occupied and target_occupied[col_idx][0] < target_row_index:
             col_idx += 1
         mapping.append(col_idx)
-        colspan = int(cell.get("colspan", 1))
+        colspan = _colspan(cell)
         col_idx += colspan
     return mapping
 
@@ -641,7 +653,7 @@ def _expand_header_count_by_rowspan(rows: list[Tag], header_count: int) -> int:
     while row_idx < expanded_header_count:
         row = rows[row_idx]
         for cell in row.find_all(["td", "th"]):
-            rowspan = int(cell.get("rowspan", 1))
+            rowspan = _rowspan(cell)
             if rowspan > 1:
                 expanded_header_count = max(expanded_header_count, row_idx + rowspan)
                 expanded_header_count = min(expanded_header_count, len(rows))
@@ -744,8 +756,8 @@ def check_row_columns_match(row1: Tag, row2: Tag) -> bool:
     if len(cells1) != len(cells2):
         return False
     for cell1, cell2 in zip(cells1, cells2):
-        colspan1 = int(cell1.get("colspan", 1))
-        colspan2 = int(cell2.get("colspan", 1))
+        colspan1 = _colspan(cell1)
+        colspan2 = _colspan(cell2)
         if colspan1 != colspan2:
             return False
     return True
@@ -785,7 +797,7 @@ def adjust_table_rows_colspan(
             cols_diff = target_cols - current_row_effective_cols
             if cols_diff > 0:
                 last_cell = cells[-1]
-                current_last_span = int(last_cell.get("colspan", 1))
+                current_last_span = _colspan(last_cell)
                 last_cell["colspan"] = str(current_last_span + cols_diff)
 
 
@@ -828,7 +840,7 @@ def _carry_rowspan_structure_to_next_row(rows: list[Tag], row_idx: int) -> None:
     carried_cells = []
 
     for cell, start_vcol in zip(current_cells, current_vcol_map):
-        rowspan = int(cell.get("rowspan", 1))
+        rowspan = _rowspan(cell)
         if rowspan <= 1 or _cell_has_semantic_content(cell):
             continue
 
@@ -865,11 +877,11 @@ def _clip_overlapped_blank_rowspan_cells(
         cells = row.find_all(["td", "th"])
         visual_col_map = build_visual_col_mapping(rows, row_idx)
         for cell, start_vcol in zip(cells, visual_col_map):
-            rowspan = int(cell.get("rowspan", 1))
+            rowspan = _rowspan(cell)
             if rowspan <= 1 or _cell_has_semantic_content(cell):
                 continue
 
-            colspan = int(cell.get("colspan", 1))
+            colspan = _colspan(cell)
             occupied_cols = set(range(start_vcol, start_vcol + colspan))
             if not occupied_cols:
                 continue
@@ -928,7 +940,7 @@ def _apply_cell_merge(
     cell_merge 按视觉列索引对齐，通过构建视觉列映射来正确匹配
     两个表格中可能因 rowspan 而具有不同 <td> 元素数量的行。
     """
-    cell_merge = current_state.owner_block.get("cell_merge")
+    cell_merge = current_state.owner_block._cell_merge
     if not cell_merge:
         return
 

@@ -172,7 +172,7 @@ class SpanBlockMatcher:
         self.grid = self._build_grid(self.spans)
 
     @staticmethod
-    def _get_grid_size(spans: list[Span]) -> int:
+    def _get_grid_size(spans: list[Span]) -> float:
         """根据 span 高度估算索引网格大小，避免过细或过粗。"""
         heights = [
             span.bbox[3] - span.bbox[1] for span in spans if span.bbox and span.bbox[3] > span.bbox[1]

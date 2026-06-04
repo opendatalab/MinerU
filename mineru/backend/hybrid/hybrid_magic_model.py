@@ -64,7 +64,7 @@ class MagicModel:
         _vlm_ocr_enable: bool,
     ) -> None:
         (
-            self.page_blocks,
+            page_blocks,
             self.page_inline_formula,
             self.page_ocr_res,
         ) = self._split_page_model_list(copy.deepcopy(page_model_list))
@@ -72,8 +72,8 @@ class MagicModel:
         self.width = width
         self.height = height
 
-        blocks = []
-        self.all_spans = []
+        blocks: list[Block] = []
+        self.all_spans: list[Span] = []
 
         page_text_inline_formula_spans = []
         for inline_formula in self.page_inline_formula:
@@ -111,7 +111,7 @@ class MagicModel:
         span_matcher = SpanBlockMatcher(page_text_inline_formula_spans)
 
         # 解析每个块
-        for index, block_info in enumerate(self.page_blocks):
+        for index, block_info in enumerate(page_blocks):
             try:
                 block_bbox = self.cal_real_bbox(block_info["bbox"])
                 block_type = block_info["type"]
@@ -273,17 +273,15 @@ class MagicModel:
                 if block_type == BlockType.CODE_BODY:
                     if switch_code_to_algorithm and code_block_sub_type == "code":
                         code_block_sub_type = "algorithm"
-                    line = Line(spans=spans, bbox=block_bbox)
-                    line["extra"] = {"type": code_block_sub_type, "guess_lang": guess_lang}
+                    line = Line(spans=spans, bbox=block_bbox, _code_type=code_block_sub_type, _code_guess_lang=guess_lang)
                 else:
                     line = Line(spans=spans, bbox=block_bbox)
 
                 block = Block(index=index, type=block_type, bbox=block_bbox, lines=[line], angle=block_angle)
-                block.index = index
                 if block_sub_type:
                     block.sub_type = block_sub_type
                 if raw_block_type == "table" and "cell_merge" in block_info:
-                    block["cell_merge"] = block_info["cell_merge"]
+                    block._cell_merge = block_info["cell_merge"]
                 if _vlm_ocr_enable and self._supports_ocr_det_lines(block_type):
                     ocr_det_lines = self._build_ocr_det_lines(span_matcher.collect_for_block(block_bbox))
                     if ocr_det_lines:
@@ -291,14 +289,8 @@ class MagicModel:
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
             else:
                 block_spans = span_matcher.collect_for_block(block_bbox)
-
-                block = {
-                    "bbox": block_bbox,
-                    "type": block_type,
-                    "angle": block_angle,
-                    "spans": block_spans,
-                    "index": index,
-                }
+                block = Block(index=index, type=block_type, bbox=block_bbox, angle=block_angle)
+                block._fix_spans = block_spans
                 block = fix_text_block(block)
                 _copy_raw_text_block_metadata(raw_block_type, block_info, block)
 
@@ -307,17 +299,17 @@ class MagicModel:
         fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
         fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
 
-        self.image_blocks = []
-        self.table_blocks = []
-        self.chart_blocks = []
-        self.interline_equation_blocks = []
-        self.text_blocks = []
-        self.title_blocks = []
-        self.code_blocks = []
-        self.discarded_blocks = []
-        self.ref_text_blocks = []
-        self.phonetic_blocks = []
-        self.list_blocks = []
+        self.image_blocks: list[Block] = []
+        self.table_blocks: list[Block] = []
+        self.chart_blocks: list[Block] = []
+        self.interline_equation_blocks: list[Block] = []
+        self.text_blocks: list[Block] = []
+        self.title_blocks: list[Block] = []
+        self.code_blocks: list[Block] = []
+        self.discarded_blocks: list[Block] = []
+        self.ref_text_blocks: list[Block] = []
+        self.phonetic_blocks: list[Block] = []
+        self.list_blocks: list[Block] = []
 
         for block in blocks:
             if block.type in VISUAL_MAIN_TYPES or block.type in GENERIC_CHILD_TYPES:
@@ -326,7 +318,7 @@ class MagicModel:
                 self.interline_equation_blocks.append(block)
             elif block.type == BlockType.TEXT:
                 self.text_blocks.append(block)
-            elif block["type"] in [
+            elif block.type in [
                 BlockType.TITLE,
                 BlockType.DOC_TITLE,
                 BlockType.PARAGRAPH_TITLE,
@@ -364,10 +356,11 @@ class MagicModel:
                 if block.type == BlockType.CODE_BODY:
                     if block.lines:
                         line = block.lines[0]
-                        code_block.sub_type = line["extra"]["type"]
+                        code_block.sub_type = line._code_type or ""
+                        line._code_type = None
                         if code_block.sub_type == "code":
-                            code_block.guess_lang = line["extra"]["guess_lang"]
-                        del line["extra"]
+                            code_block.guess_lang = line._code_guess_lang or ""
+                            line._code_guess_lang = None
                     else:
                         code_block.sub_type = "code"
                         code_block.guess_lang = "txt"

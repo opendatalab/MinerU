@@ -138,16 +138,16 @@ class MagicModel:
 
     @staticmethod
     def __fix_text_block(block: Block) -> Block:
-        if block.type == BlockType.TEXT and is_vertical_text_block_by_spans(block["spans"]):
+        if block.type == BlockType.TEXT and is_vertical_text_block_by_spans(block._fix_spans):
             # layout 偶发会把竖排正文识别为横排 text，这里用旧版 span 高宽比规则兜底。
             block.type = BlockType.VERTICAL_TEXT
 
         if block.type == BlockType.VERTICAL_TEXT:
             # 如果是纵向文本块，则按纵向lines处理
-            block_lines = merge_spans_to_vertical_line(block["spans"])
+            block_lines = merge_spans_to_vertical_line(block._fix_spans)
             sort_block_lines = vertical_line_sort_spans_from_top_to_bottom(block_lines)
         else:
-            block_lines = merge_spans_to_line(block["spans"])
+            block_lines = merge_spans_to_line(block._fix_spans)
             sort_block_lines = line_sort_spans_by_left_to_right(block_lines)
 
         if block.type == BlockType.CODE:
@@ -156,11 +156,11 @@ class MagicModel:
             code_content = _merge_para_text({"lines": sort_block_lines}, False, "\n")
             guess_lang = guess_language_by_text(code_content)
             if guess_lang not in ["txt", "unknown"]:
-                block["sub_type"] = "code"
-                block["guess_lang"] = guess_lang
+                block.sub_type = "code"
+                block.guess_lang = guess_lang
 
         block.lines = sort_block_lines
-        del block["spans"]
+        block._fix_spans = []
         return block
 
     @staticmethod
@@ -211,9 +211,11 @@ class MagicModel:
                 if block.type in [BlockType.CODE]:
                     for sub_block in block.blocks:
                         if sub_block.type == BlockType.CODE_BODY:
-                            block["sub_type"] = sub_block.pop("sub_type", "algorithm")
-                            if block["sub_type"] == "code":
-                                block["guess_lang"] = sub_block.pop("guess_lang", "txt")
+                            block.sub_type = sub_block.sub_type or "algorithm"
+                            sub_block.sub_type = ""
+                            if block.sub_type == "code":
+                                block.guess_lang = sub_block.guess_lang or "txt"
+                                sub_block.guess_lang = ""
 
                 self.preproc_blocks.append(block)
 
@@ -256,16 +258,16 @@ class MagicModel:
                 ContentType.INTERLINE_EQUATION,
             ]:
                 span = Span(type=span_type, bbox=block.bbox)
-                if span_type == ContentType.IMAGE and block.get("sub_type") == "seal":
+                if span_type == ContentType.IMAGE and block.sub_type == "seal":
                     seal_text = self.__normalize_seal_text(block.get("text"))
                     if seal_text:
-                        span["content"] = seal_text
+                        span.content = seal_text
                     block.pop("text", None)
                 if span_type == ContentType.TABLE:
-                    span["html"] = block.get("html", "")
-                    block.pop("html", None)
+                    span.html = block.html
+                    block.html = ""
                 if span_type == ContentType.INTERLINE_EQUATION:
-                    span["content"] = block.get("latex", "")
+                    span.content = block.get("latex", "")
                     block.pop("latex", None)
 
                 self.all_image_spans.append(span)
@@ -283,7 +285,7 @@ class MagicModel:
                 else:
                     block_spans = span_matcher.collect_for_block(block.bbox)
 
-                block["spans"] = block_spans
+                block._fix_spans = block_spans
                 block = self.__fix_text_block(block)
         self.page_text_inline_formula_spans = span_matcher.remaining_spans()
 
@@ -291,8 +293,8 @@ class MagicModel:
     def __formula_number_overlap_ratio(span: Span, block_bbox: list[float]) -> float:
         """公式编号框较窄时，沿用最小框重叠比例提高回填召回。"""
         return max(
-            calculate_overlap_area_in_bbox1_area_ratio(span["bbox"], block_bbox),
-            calculate_overlap_area_2_minbox_area_ratio(span["bbox"], block_bbox),
+            calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block_bbox),
+            calculate_overlap_area_2_minbox_area_ratio(span.bbox, block_bbox),
         )
 
     def __fix_axis(self) -> None:
@@ -348,7 +350,7 @@ class MagicModel:
         if not self.page_blocks:
             return
 
-        ordered_blocks = sorted(self.page_blocks, key=lambda x: x["index"])
+        ordered_blocks = sorted(self.page_blocks, key=lambda x: x.index)
         original_type_by_index = {block.index: block.type for block in ordered_blocks}
         position_by_index = {block.index: pos for pos, block in enumerate(ordered_blocks)}
         main_blocks = [block for block in ordered_blocks if original_type_by_index[block.index] in self.VISUAL_MAIN_TYPES]
@@ -405,17 +407,17 @@ class MagicModel:
             mapping = self.VISUAL_TYPE_MAPPING[original_block_type]
             body_block = self.__make_child_block(block, mapping["body"])
             if original_block_type in [BlockType.IMAGE, BlockType.CHART]:
-                body_block.pop("sub_type", None)
+                body_block.sub_type = ""
             captions = sorted(
                 [self.__make_child_block(caption, mapping["caption"]) for caption in grouped_children[block.index]["captions"]],
-                key=lambda x: x["index"],
+                key=lambda x: x.index,
             )
             footnotes = sorted(
                 [
                     self.__make_child_block(footnote, mapping["footnote"])
                     for footnote in grouped_children[block.index]["footnotes"]
                 ],
-                key=lambda x: x["index"],
+                key=lambda x: x.index,
             )
 
             self.__sync_layout_det_type(block.index, mapping["body"])
@@ -433,17 +435,16 @@ class MagicModel:
                 self.chart_groups.append(group_info)
 
             two_layer_block = Block(
+                index=block.index,
                 type=original_block_type,
                 bbox=block.bbox,
                 blocks=[body_block, *captions, *footnotes],
+                score=block.score,
             )
-            two_layer_block.index = block.index
-            if block.score is not None:
-                two_layer_block.score = block.score
             if original_block_type in [BlockType.IMAGE, BlockType.CHART] and block.sub_type:
                 two_layer_block.sub_type = block.sub_type
             # 对blocks按index排序
-            two_layer_block["blocks"].sort(key=lambda x: x["index"])
+            two_layer_block.blocks.sort(key=lambda x: x.index)
             rebuilt_page_blocks.append(two_layer_block)
 
         self.page_blocks = rebuilt_page_blocks

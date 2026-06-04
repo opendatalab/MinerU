@@ -45,8 +45,8 @@ def merge_spans_to_line(spans: list[dict[str, Any]], threshold: float = 0.6) -> 
 
 
 def _is_overlaps_y_exceeds_threshold(
-    bbox1: list[float],
-    bbox2: list[float],
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
     overlap_ratio_threshold: float = 0.8,
 ) -> bool:
     """检查两个bbox在y轴上是否有重叠，并且该重叠区域的高度占两个bbox高度更低的那个超过80%"""
@@ -62,8 +62,8 @@ def _is_overlaps_y_exceeds_threshold(
 
 
 def _is_overlaps_x_exceeds_threshold(
-    bbox1: list[float],
-    bbox2: list[float],
+    bbox1: list[float] | tuple[float, ...],
+    bbox2: list[float] | tuple[float, ...],
     overlap_ratio_threshold: float = 0.8,
 ) -> bool:
     """检查两个bbox在x轴上是否有重叠，并且该重叠区域的宽度占两个bbox宽度更低的那个超过指定阈值"""

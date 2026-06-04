@@ -91,7 +91,7 @@ def get_blocks_in_index_order(blocks: list[Block]) -> list[Block]:
     ]
 
 
-def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> None:
+def _inherit_parent_code_render_metadata(block: Block, parent_block: Block) -> Block | dict[str, Any]:
     # pipeline_magic_model 会把 code_body 的 sub_type/guess_lang 提升到父 code block。
     # markdown 渲染 code_body 时需要把这两个字段临时透传回来，但不能修改原始输入。
     if block.type != BlockType.CODE_BODY:
@@ -459,7 +459,7 @@ def merge_adjacent_ref_text_blocks_for_content(para_blocks: list[Block]) -> list
     return merged_blocks
 
 
-def _build_bbox(para_bbox: list[float], page_size: list[int]) -> tuple[int, int, int, int]:
+def _build_bbox(para_bbox: list[float], page_size: list[int]) -> list[int] | None:
     if not para_bbox or not page_size:
         return None
 
@@ -732,7 +732,7 @@ def make_blocks_to_content_list(
     return para_content
 
 
-def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_size: list[int]) -> list[dict[str, Any]]:
+def make_blocks_to_content_list_v2(para_block: Block, img_buket_path: str, page_size: list[int]) -> list[dict[str, Any]] | None:
     para_type = para_block.type
     para_content = None
 

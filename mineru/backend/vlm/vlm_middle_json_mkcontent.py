@@ -855,7 +855,7 @@ def union_make(
     pdf_info_dict: list,
     make_mode: str,
     img_buket_path: str = "",
-) -> str | list:
+) -> str | list | None:
     formula_enable = get_formula_enable(os.getenv("MINERU_VLM_FORMULA_ENABLE", "True").lower() == "true")
     table_enable = get_table_enable(os.getenv("MINERU_VLM_TABLE_ENABLE", "True").lower() == "true")
 

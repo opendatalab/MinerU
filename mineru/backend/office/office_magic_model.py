@@ -13,10 +13,8 @@ from ..utils.magic_model_utils import tie_up_category_by_index
 
 class MagicModel:
     def __init__(self, page_blocks: list[dict[str, Any]]) -> None:
-        self.page_blocks = page_blocks
-
         blocks: list[Block] = []
-        self.all_spans = []
+        self.all_spans: list[Span] = []
 
         # 对caption块进行分类，将其分类为image_caption, table_caption, chart_caption
         page_blocks = classify_caption_blocks(page_blocks)

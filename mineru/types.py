@@ -411,6 +411,9 @@ class Line:
     _is_list_start: bool = False
     _is_list_end: bool = False
 
+    _code_type: str | None = None
+    _code_guess_lang: str | None = None
+
     @classmethod
     def from_dict(cls, d: dict) -> Line:
         return cls(
@@ -445,6 +448,8 @@ class Block:
     _lines_deleted: bool = False
     _ocr_det_lines: list[Line] = field(default_factory=list)
     _line_avg_height: int = 0
+    _cell_merge: list[int] = field(default_factory=list)
+    _fix_spans: list[Span] = field(default_factory=list)
 
     _extra: dict = field(default_factory=dict)
 

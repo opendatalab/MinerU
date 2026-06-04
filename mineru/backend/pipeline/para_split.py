@@ -245,7 +245,7 @@ def __is_list_or_index_block(block: Block) -> str:
         return BlockType.TEXT
 
 
-def __merge_2_text_blocks(block1: Block, block2: Block) -> Block | None:
+def __merge_2_text_blocks(block1: Block, block2: Block) -> tuple[Block, Block]:
     if len(block1.lines) > 0 and len(block2.lines) > 0:
         first_line = block1.lines[0]
         line_height = first_line.bbox[3] - first_line.bbox[1]
@@ -289,7 +289,7 @@ def __merge_2_text_blocks(block1: Block, block2: Block) -> Block | None:
     return block1, block2
 
 
-def __merge_2_vertical_text_blocks(block1: Block, block2: Block) -> Block | None:
+def __merge_2_vertical_text_blocks(block1: Block, block2: Block) -> tuple[Block, Block]:
     if len(block1.lines) > 0 and len(block2.lines) > 0:
         first_line = block1.lines[0]
         line_width = first_line.bbox[2] - first_line.bbox[0]
@@ -326,7 +326,7 @@ def __merge_2_vertical_text_blocks(block1: Block, block2: Block) -> Block | None
     return block1, block2
 
 
-def __merge_2_list_blocks(block1: Block, block2: Block) -> Block | None:
+def __merge_2_list_blocks(block1: Block, block2: Block) -> tuple[Block, Block]:
     if block1["page_num"] != block2["page_num"]:
         for line in block1.lines:
             for span in line.spans:

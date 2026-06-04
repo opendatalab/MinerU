@@ -32,10 +32,8 @@ def _copy_raw_text_block_metadata(raw_block_type: str, block_info: ContentBlock,
 
 class MagicModel:
     def __init__(self, page_blocks: ExtractResult, width: int, height: int) -> None:
-        self.page_blocks = page_blocks
-
-        blocks = []
-        self.all_spans = []
+        blocks: list[Block] = []
+        self.all_spans: list[Span] = []
         # 解析每个块
         for index, content_block in enumerate(page_blocks):
             block_bbox = content_block["bbox"]
@@ -206,16 +204,20 @@ class MagicModel:
             if block_type == BlockType.CODE_BODY:
                 if switch_code_to_algorithm and code_block_sub_type == "code":
                     code_block_sub_type = "algorithm"
-                line = Line(spans=spans, bbox=block_bbox)
-                line["extra"] = {"type": code_block_sub_type, "guess_lang": guess_lang}
+                line = Line(spans=spans, bbox=block_bbox, _code_type=code_block_sub_type, _code_guess_lang=guess_lang)
             else:
                 line = Line(spans=spans, bbox=block_bbox)
 
-            block = Block(index=index, type=block_type, bbox=block_bbox, lines=[line], angle=block_angle)
-            if block_sub_type:
-                block["sub_type"] = block_sub_type
+            block = Block(
+                index=index,
+                type=block_type,
+                bbox=block_bbox,
+                lines=[line],
+                angle=block_angle,
+                sub_type=block_sub_type or "",
+            )
             if raw_block_type == "table" and "cell_merge" in content_block:
-                block["cell_merge"] = content_block["cell_merge"]
+                block._cell_merge = content_block["cell_merge"]
             _copy_raw_text_block_metadata(raw_block_type, content_block, block)
 
             blocks.append(block)
@@ -223,32 +225,32 @@ class MagicModel:
         fallback_inline_caption_fragments(blocks, VISUAL_MAIN_TYPES)
         fallback_leading_table_continuation_captions(blocks, VISUAL_MAIN_TYPES)
 
-        self.image_blocks = []
-        self.table_blocks = []
-        self.chart_blocks = []
-        self.interline_equation_blocks = []
-        self.text_blocks = []
-        self.title_blocks = []
-        self.code_blocks = []
-        self.discarded_blocks = []
-        self.ref_text_blocks = []
-        self.phonetic_blocks = []
-        self.list_blocks = []
+        self.image_blocks: list[Block] = []
+        self.table_blocks: list[Block] = []
+        self.chart_blocks: list[Block] = []
+        self.interline_equation_blocks: list[Block] = []
+        self.text_blocks: list[Block] = []
+        self.title_blocks: list[Block] = []
+        self.code_blocks: list[Block] = []
+        self.discarded_blocks: list[Block] = []
+        self.ref_text_blocks: list[Block] = []
+        self.phonetic_blocks: list[Block] = []
+        self.list_blocks: list[Block] = []
 
         for block in blocks:
-            if block["type"] in VISUAL_MAIN_TYPES or block["type"] in GENERIC_CHILD_TYPES:
+            if block.type in VISUAL_MAIN_TYPES or block.type in GENERIC_CHILD_TYPES:
                 continue
-            elif block["type"] == BlockType.INTERLINE_EQUATION:
+            elif block.type == BlockType.INTERLINE_EQUATION:
                 self.interline_equation_blocks.append(block)
-            elif block["type"] == BlockType.TEXT:
+            elif block.type == BlockType.TEXT:
                 self.text_blocks.append(block)
-            elif block["type"] == BlockType.TITLE:
+            elif block.type == BlockType.TITLE:
                 self.title_blocks.append(block)
-            elif block["type"] == BlockType.REF_TEXT:
+            elif block.type == BlockType.REF_TEXT:
                 self.ref_text_blocks.append(block)
-            elif block["type"] == BlockType.PHONETIC:
+            elif block.type == BlockType.PHONETIC:
                 self.phonetic_blocks.append(block)
-            elif block["type"] in [
+            elif block.type in [
                 BlockType.HEADER,
                 BlockType.FOOTER,
                 BlockType.PAGE_NUMBER,
@@ -256,7 +258,7 @@ class MagicModel:
                 BlockType.PAGE_FOOTNOTE,
             ]:
                 self.discarded_blocks.append(block)
-            elif block["type"] == BlockType.LIST:
+            elif block.type == BlockType.LIST:
                 self.list_blocks.append(block)
 
         self.list_blocks, self.text_blocks, self.ref_text_blocks = fix_list_blocks(
@@ -272,20 +274,21 @@ class MagicModel:
         self.code_blocks = visual_groups[BlockType.CODE]
 
         for code_block in self.code_blocks:
-            for block in code_block["blocks"]:
-                if block["type"] == BlockType.CODE_BODY:
-                    if block["lines"]:
-                        line = block["lines"][0]
-                        code_block["sub_type"] = line["extra"]["type"]
-                        if code_block["sub_type"] == "code":
-                            code_block["guess_lang"] = line["extra"]["guess_lang"]
-                        del line["extra"]
+            for block in code_block.blocks:
+                if block.type == BlockType.CODE_BODY:
+                    if block.lines:
+                        line = block.lines[0]
+                        code_block.sub_type = line._code_type or ""
+                        line._code_type = None
+                        if code_block.sub_type == "code":
+                            code_block.guess_lang = line._code_guess_lang or ""
+                            line._code_guess_lang = None
                     else:
-                        code_block["sub_type"] = "code"
-                        code_block["guess_lang"] = "txt"
+                        code_block.sub_type = "code"
+                        code_block.guess_lang = "txt"
 
         for block in unmatched_child_blocks:
-            block["type"] = BlockType.TEXT
+            block.type = BlockType.TEXT
             self.text_blocks.append(block)
 
     def get_list_blocks(self) -> list[Block]:

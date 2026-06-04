@@ -63,26 +63,24 @@ def blocks_to_page_info(
 
     replace_inline_table_images(table_blocks, image_writer, page_index)
 
-    page_blocks = []
-    page_blocks.extend(
-        [
-            *image_blocks,
-            *table_blocks,
-            *chart_blocks,
-            *code_blocks,
-            *ref_text_blocks,
-            *phonetic_blocks,
-            *title_blocks,
-            *text_blocks,
-            *interline_equation_blocks,
-            *list_blocks,
-        ]
-    )
+    blocks = [
+        *image_blocks,
+        *table_blocks,
+        *chart_blocks,
+        *code_blocks,
+        *ref_text_blocks,
+        *phonetic_blocks,
+        *title_blocks,
+        *text_blocks,
+        *interline_equation_blocks,
+        *list_blocks,
+    ]
+
     # 对page_blocks根据index的值进行排序
-    page_blocks.sort(key=lambda x: x["index"])
+    blocks.sort(key=lambda x: x.index)
 
     page_info = PageInfo(
-        preproc_blocks=page_blocks,
+        preproc_blocks=blocks,
         discarded_blocks=discarded_blocks,
         page_size=[width, height],
         page_idx=page_index,

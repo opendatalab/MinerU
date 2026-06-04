@@ -321,7 +321,7 @@ def _build_formula_mask_inputs(images_layout_res: list[dict[str, Any]]) -> list[
     return page_formula_masks
 
 
-def _normalize_page_size(page_image: Any) -> list[int]:
+def _normalize_page_size(page_image: Any) -> tuple[int, int]:
     """从PIL或numpy图像中读取页面宽高，供归一化bbox还原为像素bbox。"""
     if hasattr(page_image, "size"):
         return page_image.size
@@ -330,7 +330,7 @@ def _normalize_page_size(page_image: Any) -> list[int]:
     return width, height
 
 
-def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[int] | None:
+def _bbox_to_pixel_bbox(bbox: list[float], page_size: list[int]) -> list[float] | None:
     """将归一化或像素bbox统一成像素bbox，异常bbox返回None。"""
     if bbox is None or len(bbox) != 4:
         return None
