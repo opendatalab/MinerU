@@ -9,6 +9,21 @@ The exact set of generated files depends on the backend and the input document t
 - **Visual debugging files**: Help users intuitively understand the document parsing process and results
 - **Structured data files**: Contain detailed parsing data for secondary development
 - In multimodal markdown output, `image` / `chart` blocks render the screenshot first; when `content` exists, a collapsed HTML `<details>` block is appended after the image, using the block `sub_type` as the summary label when available and falling back to `image content` or `chart content`
+- When external visual details enrichment is enabled, MinerU keeps its original visual content and appends an additional `### Didactic interpretation` section inside the same `<details>` block. The external endpoint may receive cropped images and nearby context configured by the user.
+
+Example enriched visual block:
+
+```md
+![](images/xxx.jpg)
+<details>
+<summary>candlestick</summary>
+
+<MinerU visual content>
+
+### Didactic interpretation
+<external VLM enrichment>
+</details>
+```
 
 The following sections provide detailed descriptions of each file's purpose and format.
 

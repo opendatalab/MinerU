@@ -25,6 +25,13 @@ class ParseRequestOptions:
     formula_enable: bool
     table_enable: bool
     image_analysis: bool
+    details_image_analysis: bool
+    details_vlm_url: Optional[str]
+    details_vlm_model: Optional[str]
+    details_vlm_api_key: str
+    details_vlm_timeout: int
+    details_vlm_max_concurrency: int
+    details_vlm_language: str
     server_url: Optional[str]
     return_md: bool
     return_middle_json: bool
@@ -117,6 +124,34 @@ async def parse_request_form(
         bool,
         Form(description="Enable image/chart analysis for VLM and hybrid backends."),
     ] = True,
+    details_image_analysis: Annotated[
+        bool,
+        Form(description="Enable external VLM enrichment for referenced image/chart details."),
+    ] = False,
+    details_vlm_url: Annotated[
+        Optional[str],
+        Form(description="OpenAI-compatible base URL for details image analysis."),
+    ] = None,
+    details_vlm_model: Annotated[
+        Optional[str],
+        Form(description="Model name for details image analysis."),
+    ] = None,
+    details_vlm_api_key: Annotated[
+        str,
+        Form(description="Optional API key for details image analysis."),
+    ] = "",
+    details_vlm_timeout: Annotated[
+        int,
+        Form(description="Per-image timeout in seconds for details image analysis."),
+    ] = 120,
+    details_vlm_max_concurrency: Annotated[
+        int,
+        Form(description="Maximum parallel external VLM calls for details image analysis."),
+    ] = 1,
+    details_vlm_language: Annotated[
+        str,
+        Form(description="Output language for enriched details."),
+    ] = "auto",
     server_url: Annotated[
         Optional[str],
         Form(
@@ -184,7 +219,18 @@ async def parse_request_form(
         ),
         backend=backend,
         server_url=server_url,
+        details_vlm_url=details_vlm_url,
     )
+    if details_image_analysis and not details_vlm_url:
+        raise HTTPException(
+            status_code=400,
+            detail="details_vlm_url is required when details_image_analysis is enabled",
+        )
+    if details_image_analysis and not details_vlm_model:
+        raise HTTPException(
+            status_code=400,
+            detail="details_vlm_model is required when details_image_analysis is enabled",
+        )
     if client_side_output_generation:
         return_md = False
         return_middle_json = True
@@ -201,6 +247,13 @@ async def parse_request_form(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        details_image_analysis=details_image_analysis,
+        details_vlm_url=details_vlm_url,
+        details_vlm_model=details_vlm_model,
+        details_vlm_api_key=details_vlm_api_key,
+        details_vlm_timeout=details_vlm_timeout,
+        details_vlm_max_concurrency=details_vlm_max_concurrency,
+        details_vlm_language=details_vlm_language,
         server_url=server_url,
         return_md=return_md,
         return_middle_json=return_middle_json,

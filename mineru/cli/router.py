@@ -1185,6 +1185,7 @@ async def submit_router_task(
         ),
         backend=payload.get_field_value("backend") or "",
         server_url=payload.get_field_value("server_url"),
+        details_vlm_url=payload.get_field_value("details_vlm_url"),
     )
     worker_pool: WorkerPool = request.app.state.worker_pool
     registry: RouterTaskRegistry = request.app.state.router_task_registry

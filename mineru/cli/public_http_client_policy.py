@@ -4,8 +4,8 @@ from loguru import logger
 
 
 PUBLIC_HTTP_CLIENT_DISABLED_DETAIL = (
-    "Publicly exposed API disables *-http-client backends and server_url by "
-    "default. Rebind to 127.0.0.1 or start with "
+    "Publicly exposed API disables *-http-client backends, server_url, and "
+    "details_vlm_url by default. Rebind to 127.0.0.1 or start with "
     "--allow-public-http-client if you understand the SSRF risk."
 )
 
@@ -30,10 +30,15 @@ def validate_public_http_client_request(
     allow_public_http_client: bool,
     backend: str,
     server_url: str | None,
+    details_vlm_url: str | None = None,
 ) -> None:
     if not public_bind_exposed or allow_public_http_client:
         return
-    if backend.endswith("-http-client") or bool(server_url and server_url.strip()):
+    if (
+        backend.endswith("-http-client")
+        or bool(server_url and server_url.strip())
+        or bool(details_vlm_url and details_vlm_url.strip())
+    ):
         raise HTTPException(status_code=400, detail=PUBLIC_HTTP_CLIENT_DISABLED_DETAIL)
 
 
@@ -56,8 +61,8 @@ def warn_if_public_http_client_policy(
         )
         return
     logger.warning(
-        "MinerU {} is listening on {}. Disabling *-http-client backends and "
-        "server_url by default because these inputs let callers choose remote HTTP "
+        "MinerU {} is listening on {}. Disabling *-http-client backends, "
+        "server_url, and details_vlm_url by default because these inputs let callers choose remote HTTP "
         "inference endpoints; when the API is publicly reachable, that creates SSRF "
         "and internal network probing risk.",
         service_name,

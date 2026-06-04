@@ -1,5 +1,41 @@
 # 命令行参数进阶
 
+## 使用外部 VLM 增强视觉详情
+
+MinerU 可以选择性地调用外部 OpenAI-compatible VLM endpoint，为已有的 `image` 和 `chart` 详情追加教学式解释。该功能主要面向 RAG 场景：MinerU 提取的视觉数据仍作为基础内容，外部 VLM 只补充更利于检索和问答的语义解释。
+
+该功能默认关闭。启用后，MinerU 仍负责主要的文档解析、版面识别、图片裁剪、表格提取、视觉 `sub_type` 分类以及基础视觉内容生成。外部 VLM 只会处理已经存在 MinerU `content` 的 `image` / `chart` 块，并将结果追加为 `### Didactic interpretation` 小节。
+
+示例：
+
+```bash
+mineru \
+  -p input.pdf \
+  -o output \
+  -b vlm-auto-engine \
+  --details-image-analysis true \
+  --details-vlm-url http://127.0.0.1:11434/v1 \
+  --details-vlm-model qwen-vl-model \
+  --details-vlm-timeout 180 \
+  --details-vlm-max-concurrency 2 \
+  --details-vlm-language zh
+```
+
+参数说明：
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `--details-image-analysis` | `false` | 启用外部 VLM 对已引用的 `image` / `chart` 详情进行增强。 |
+| `--details-vlm-url` | 未设置 | 外部 VLM 的 OpenAI-compatible base URL。启用增强时必填。 |
+| `--details-vlm-model` | 未设置 | 发送给外部 VLM endpoint 的模型名称。启用增强时必填。 |
+| `--details-vlm-api-key` | 空 | 可选 API key，会作为 bearer token 发送给外部 VLM endpoint。 |
+| `--details-vlm-timeout` | `120` | 单张图片请求超时时间，单位为秒。 |
+| `--details-vlm-max-concurrency` | `1` | 外部 VLM 并发请求数上限。请根据 endpoint 能力和调用成本谨慎调高。 |
+| `--details-vlm-language` | `auto` | 追加解释的输出语言。使用 `auto` 时会尽量根据文档语言自动判断。 |
+
+> [!IMPORTANT]
+> 配置的外部 VLM endpoint 可能会接收裁剪后的视觉图片、caption、footnote 以及附近正文上下文。请仅在符合隐私和数据治理要求的 endpoint 上启用该功能。
+
 ## 推理引擎参数透传
 
 ### 参数传递说明

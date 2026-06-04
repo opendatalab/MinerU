@@ -629,6 +629,13 @@ def build_request_form_data(
     start_page_id: int,
     end_page_id: Optional[int],
     image_analysis: bool = True,
+    details_image_analysis: bool = False,
+    details_vlm_url: Optional[str] = None,
+    details_vlm_model: Optional[str] = None,
+    details_vlm_api_key: str = "",
+    details_vlm_timeout: int = 120,
+    details_vlm_max_concurrency: int = 1,
+    details_vlm_language: str = "auto",
     client_side_output_generation: bool = False,
 ) -> dict[str, str | list[str]]:
     # 开启客户端输出生成时，只关闭客户端会重建的最终产物。
@@ -641,6 +648,13 @@ def build_request_form_data(
         formula_enable=formula_enable,
         table_enable=table_enable,
         image_analysis=image_analysis,
+        details_image_analysis=details_image_analysis,
+        details_vlm_url=details_vlm_url,
+        details_vlm_model=details_vlm_model,
+        details_vlm_api_key=details_vlm_api_key,
+        details_vlm_timeout=details_vlm_timeout,
+        details_vlm_max_concurrency=details_vlm_max_concurrency,
+        details_vlm_language=details_vlm_language,
         server_url=server_url,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
@@ -873,6 +887,13 @@ async def run_orchestrated_cli(
     formula_enable: bool,
     table_enable: bool,
     image_analysis: bool = True,
+    details_image_analysis: bool = False,
+    details_vlm_url: Optional[str] = None,
+    details_vlm_model: Optional[str] = None,
+    details_vlm_api_key: str = "",
+    details_vlm_timeout: int = 120,
+    details_vlm_max_concurrency: int = 1,
+    details_vlm_language: str = "auto",
     client_side_output_generation: bool = False,
     extra_cli_args: tuple[str, ...] = (),
 ) -> None:
@@ -880,6 +901,10 @@ async def run_orchestrated_cli(
         raise click.ClickException("--start must be greater than or equal to 0")
     if end_page_id is not None and end_page_id < 0:
         raise click.ClickException("--end must be greater than or equal to 0")
+    if details_image_analysis and not details_vlm_url:
+        raise click.ClickException("--details-vlm-url is required when --details-image-analysis is enabled")
+    if details_image_analysis and not details_vlm_model:
+        raise click.ClickException("--details-vlm-model is required when --details-image-analysis is enabled")
     if api_url is None:
         try:
             ensure_backend_dependencies(backend)
@@ -941,6 +966,13 @@ async def run_orchestrated_cli(
                 formula_enable=formula_enable,
                 table_enable=table_enable,
                 image_analysis=image_analysis,
+                details_image_analysis=details_image_analysis,
+                details_vlm_url=details_vlm_url,
+                details_vlm_model=details_vlm_model,
+                details_vlm_api_key=details_vlm_api_key,
+                details_vlm_timeout=details_vlm_timeout,
+                details_vlm_max_concurrency=details_vlm_max_concurrency,
+                details_vlm_language=details_vlm_language,
                 server_url=server_url,
                 start_page_id=start_page_id,
                 end_page_id=end_page_id,
@@ -1130,6 +1162,55 @@ async def run_orchestrated_cli(
     help="Enable image/chart analysis for VLM and hybrid backends. Default is True. ",
 )
 @click.option(
+    "--details-image-analysis",
+    "details_image_analysis",
+    type=bool,
+    default=False,
+    help="Enable external VLM enrichment for referenced image/chart details. Default is False.",
+)
+@click.option(
+    "--details-vlm-url",
+    "details_vlm_url",
+    type=str,
+    default=None,
+    help="OpenAI-compatible base URL for details image analysis.",
+)
+@click.option(
+    "--details-vlm-model",
+    "details_vlm_model",
+    type=str,
+    default=None,
+    help="Model name for details image analysis.",
+)
+@click.option(
+    "--details-vlm-api-key",
+    "details_vlm_api_key",
+    type=str,
+    default="",
+    help="Optional API key for details image analysis. Default is empty.",
+)
+@click.option(
+    "--details-vlm-timeout",
+    "details_vlm_timeout",
+    type=int,
+    default=120,
+    help="Per-image timeout in seconds for details image analysis. Default is 120.",
+)
+@click.option(
+    "--details-vlm-max-concurrency",
+    "details_vlm_max_concurrency",
+    type=int,
+    default=1,
+    help="Maximum parallel external VLM calls for details image analysis. Default is 1.",
+)
+@click.option(
+    "--details-vlm-language",
+    "details_vlm_language",
+    type=str,
+    default="auto",
+    help="Output language for enriched details. Default is auto.",
+)
+@click.option(
     "--client-side-output-generation",
     "client_side_output_generation",
     type=bool,
@@ -1153,6 +1234,13 @@ def main(
     formula_enable: bool,
     table_enable: bool,
     image_analysis: bool,
+    details_image_analysis: bool,
+    details_vlm_url: Optional[str],
+    details_vlm_model: Optional[str],
+    details_vlm_api_key: str,
+    details_vlm_timeout: int,
+    details_vlm_max_concurrency: int,
+    details_vlm_language: str,
     client_side_output_generation: bool,
 ) -> None:
     asyncio.run(
@@ -1169,6 +1257,13 @@ def main(
             formula_enable=formula_enable,
             table_enable=table_enable,
             image_analysis=image_analysis,
+            details_image_analysis=details_image_analysis,
+            details_vlm_url=details_vlm_url,
+            details_vlm_model=details_vlm_model,
+            details_vlm_api_key=details_vlm_api_key,
+            details_vlm_timeout=details_vlm_timeout,
+            details_vlm_max_concurrency=details_vlm_max_concurrency,
+            details_vlm_language=details_vlm_language,
             client_side_output_generation=client_side_output_generation,
             extra_cli_args=tuple(ctx.args),
         )

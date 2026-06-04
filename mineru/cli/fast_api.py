@@ -150,6 +150,13 @@ class AsyncParseTask:
     formula_enable: bool
     table_enable: bool
     image_analysis: bool
+    details_image_analysis: bool
+    details_vlm_url: Optional[str]
+    details_vlm_model: Optional[str]
+    details_vlm_api_key: str
+    details_vlm_timeout: int
+    details_vlm_max_concurrency: int
+    details_vlm_language: str
     server_url: Optional[str]
     return_md: bool
     return_middle_json: bool
@@ -837,6 +844,13 @@ async def run_parse_job(
         formula_enable=request_options.formula_enable,
         table_enable=request_options.table_enable,
         image_analysis=request_options.image_analysis,
+        details_image_analysis=request_options.details_image_analysis,
+        details_vlm_url=request_options.details_vlm_url,
+        details_vlm_model=request_options.details_vlm_model,
+        details_vlm_api_key=request_options.details_vlm_api_key,
+        details_vlm_timeout=request_options.details_vlm_timeout,
+        details_vlm_max_concurrency=request_options.details_vlm_max_concurrency,
+        details_vlm_language=request_options.details_vlm_language,
         server_url=request_options.server_url,
         f_draw_layout_bbox=False,
         f_draw_span_bbox=False,
@@ -895,6 +909,13 @@ async def create_async_parse_task(
             formula_enable=request_options.formula_enable,
             table_enable=request_options.table_enable,
             image_analysis=request_options.image_analysis,
+            details_image_analysis=request_options.details_image_analysis,
+            details_vlm_url=request_options.details_vlm_url,
+            details_vlm_model=request_options.details_vlm_model,
+            details_vlm_api_key=request_options.details_vlm_api_key,
+            details_vlm_timeout=request_options.details_vlm_timeout,
+            details_vlm_max_concurrency=request_options.details_vlm_max_concurrency,
+            details_vlm_language=request_options.details_vlm_language,
             server_url=request_options.server_url,
             return_md=request_options.return_md,
             return_middle_json=request_options.return_middle_json,
