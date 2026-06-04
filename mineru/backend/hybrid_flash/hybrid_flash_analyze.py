@@ -32,7 +32,10 @@ from mineru.utils.pdfium_guard import (
 from mineru.version import __version__
 
 
-VLM_VISUAL_LABELS = {"image", "chart"}
+VLM_VISUAL_LABELS = {"image", "chart", "seal"}
+VLM_VISUAL_TYPE_BY_LABEL = {
+    "seal": "image",
+}
 VLM_TEXT_LABEL_TO_TYPE = {
     "abstract": "text",
     "algorithm": "code",
@@ -122,7 +125,7 @@ def _vlm_type_for_layout_det(layout_det: dict, vlm_ocr_enable: bool, table_enabl
     if label == "display_formula":
         return "equation"
     if label in VLM_VISUAL_LABELS:
-        return label if image_analysis else None
+        return VLM_VISUAL_TYPE_BY_LABEL.get(label, label) if image_analysis else None
     if vlm_ocr_enable:
         return VLM_TEXT_LABEL_TO_TYPE.get(label)
     return None
@@ -201,6 +204,13 @@ def _merge_vlm_sidecar_result(layout_dets: list[dict], sidecar_blocks) -> None:
         block_content = block.get("content")
         label = layout_det.get("label")
 
+        if label == "seal":
+            if block_content is not None:
+                layout_det["text"] = block_content
+                layout_det["content"] = block_content
+            layout_det["sub_type"] = "seal"
+            continue
+
         if label in VLM_VISUAL_LABELS:
             if block_content is not None:
                 layout_det["content"] = block_content
@@ -247,20 +257,25 @@ def _build_analyze_meta(ocr_enable: bool, vlm_ocr_enable: bool) -> dict:
     }
 
 
+def _build_pipeline_batch_options(vlm_ocr_enable: bool) -> dict:
+    """构造 hybrid-flash 调用 pipeline batch 时的识别策略。"""
+    if vlm_ocr_enable:
+        return {
+            "formula_recognition_scope": "none",
+            "ocr_rec_enable": False,
+        }
+    return {
+        "formula_recognition_scope": "inline_only",
+        "ocr_rec_enable": True,
+    }
+
+
 def _get_device_for_cleanup():
     """获取清理显存用device；测试或轻量环境缺少torch时退回CPU。"""
     try:
         return get_device()
     except NameError:
         return "cpu"
-
-
-def _ensure_external_layout_api(predictor) -> None:
-    """确认mineru-vl-utils已提供外部layout抽取接口，避免静默走错VLM layout路径。"""
-    if not hasattr(predictor, "batch_extract_with_layout"):
-        raise AttributeError(
-            "hybrid-flash requires mineru-vl-utils with `MinerUClient.batch_extract_with_layout` support"
-        )
 
 
 def doc_analyze(
@@ -281,7 +296,6 @@ def doc_analyze(
     if predictor is None:
         predictor = ModelSingleton().get_model(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
-    _ensure_external_layout_api(predictor)
 
     device = _get_device_for_cleanup()
     ocr_enable = _get_ocr_enable(pdf_bytes, parse_method=parse_method)
@@ -331,7 +345,8 @@ def doc_analyze(
                         pipeline_inputs,
                         formula_enable=inline_formula_enable,
                         table_enable=False,
-                        formula_recognition_scope="inline_only",
+                        seal_ocr_rec_enable=False,
+                        **_build_pipeline_batch_options(vlm_ocr_enable),
                     )
                     vlm_blocks_list = [
                         _build_vlm_layout_blocks(
@@ -409,10 +424,6 @@ async def aio_doc_analyze(
     if predictor is None:
         predictor = await _get_model_async(backend, model_path, server_url, **kwargs)
     predictor = _maybe_enable_serial_execution(predictor, backend)
-    if not hasattr(predictor, "aio_batch_extract_with_layout"):
-        raise AttributeError(
-            "hybrid-flash requires mineru-vl-utils with `MinerUClient.aio_batch_extract_with_layout` support"
-        )
 
     device = _get_device_for_cleanup()
     ocr_enable = _get_ocr_enable(pdf_bytes, parse_method=parse_method)
@@ -443,7 +454,8 @@ async def aio_doc_analyze(
                     pipeline_inputs,
                     formula_enable=inline_formula_enable,
                     table_enable=False,
-                    formula_recognition_scope="inline_only",
+                    seal_ocr_rec_enable=False,
+                    **_build_pipeline_batch_options(vlm_ocr_enable),
                 )
                 vlm_blocks_list = [
                     _build_vlm_layout_blocks(

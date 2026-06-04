@@ -58,11 +58,15 @@ class BatchAnalyze:
         text_ocr_det_batch_enabled: bool | None = None,
         mask_inline_formula_for_ocr_det: bool = True,
         formula_recognition_scope: str = "all",
+        ocr_rec_enable: bool = True,
+        seal_ocr_rec_enable: bool = True,
     ):
         self.batch_ratio = batch_ratio
         self.formula_enable = get_formula_enable(formula_enable)
         self.table_enable = get_table_enable(table_enable)
         self.model_manager = model_manager
+        self.ocr_rec_enable = ocr_rec_enable
+        self.seal_ocr_rec_enable = seal_ocr_rec_enable
         self.enable_ocr_det_batch = enable_ocr_det_batch
         self.table_ori_cls_batch_enabled = (
             enable_ocr_det_batch if table_ori_cls_batch_enabled is None else table_ori_cls_batch_enabled
@@ -73,9 +77,9 @@ class BatchAnalyze:
         self.mask_inline_formula_for_ocr_det = (
             get_ocr_det_mask_inline_formula_enable(mask_inline_formula_for_ocr_det)
         )
-        if formula_recognition_scope not in {"all", "inline_only"}:
+        if formula_recognition_scope not in {"all", "inline_only", "none"}:
             raise ValueError(f"Unsupported formula_recognition_scope: {formula_recognition_scope}")
-        # 控制公式识别范围，默认保持pipeline原行为；hybrid-flash只让pipeline处理行内公式。
+        # 控制公式识别范围，默认保持pipeline原行为；hybrid-flash可只保留公式det而跳过MFR。
         self.formula_recognition_scope = formula_recognition_scope
 
     @staticmethod
@@ -264,6 +268,9 @@ class BatchAnalyze:
                 return match.expand(replacement)
         return text
 
+    def _formula_recognition_enabled(self) -> bool:
+        return self.formula_enable and self.formula_recognition_scope != "none"
+
     @classmethod
     def _extract_table_inline_objects(
         cls,
@@ -362,7 +369,7 @@ class BatchAnalyze:
 
         self.model = self.model_manager.get_model(
             lang=None,
-            formula_enable=self.formula_enable,
+            formula_enable=self._formula_recognition_enabled(),
             table_enable=self.table_enable,
         )
         atom_model_manager = AtomModelSingleton()
@@ -381,35 +388,42 @@ class BatchAnalyze:
         clean_vram(self.model.device, vram_threshold=8)
 
         if self.formula_enable:
-            formula_labels = ["display_formula", "inline_formula"]
+            all_formula_labels = ["display_formula", "inline_formula"]
+            formula_labels = all_formula_labels
             if self.formula_recognition_scope == "inline_only":
                 formula_labels = ["inline_formula"]
             images_mfd_res = []
             for layout_res in images_layout_res:
                 page_formula_res = []
                 for res in layout_res:
-                    if res.get("label") in formula_labels:
+                    if res.get("label") in all_formula_labels:
                         res.setdefault("latex", "")
+                    if res.get("label") in formula_labels:
                         page_formula_res.append(res)
                 images_mfd_res.append(page_formula_res)
 
-            # 公式识别
-            images_formula_list = run_mfr_inference(
-                self.model.mfr_model.batch_predict,
-                images_mfd_res,
-                np_images,
-                batch_size=self.batch_ratio * MFR_BASE_BATCH_SIZE,
-            )
-            mfr_count = 0
-            for image_index in range(len(np_images)):
-                mfr_count += len(images_formula_list[image_index])
-                for formula_res, formula_with_latex in zip(
-                    images_mfd_res[image_index], images_formula_list[image_index]
-                ):
-                    formula_res["latex"] = formula_with_latex.get("latex", "")
+            if self.formula_recognition_scope != "none":
+                # 公式识别
+                images_formula_list = run_mfr_inference(
+                    self.model.mfr_model.batch_predict,
+                    images_mfd_res,
+                    np_images,
+                    batch_size=self.batch_ratio * MFR_BASE_BATCH_SIZE,
+                )
+                mfr_count = 0
+                for image_index in range(len(np_images)):
+                    mfr_count += len(images_formula_list[image_index])
+                    for formula_res, formula_with_latex in zip(
+                        images_mfd_res[image_index], images_formula_list[image_index]
+                    ):
+                        formula_res["latex"] = formula_with_latex.get("latex", "")
 
-            # 清理显存
-            clean_vram(self.model.device, vram_threshold=8)
+                # 清理显存
+                clean_vram(self.model.device, vram_threshold=8)
+            else:
+                for page_formula_res in images_mfd_res:
+                    for formula_res in page_formula_res:
+                        formula_res["latex"] = ""
 
         else:
             for layout_res in images_layout_res:
@@ -417,6 +431,8 @@ class BatchAnalyze:
                 layout_res[:] = [res for res in layout_res if res.get("label") != "inline_formula"]
 
 
+
+        ocr_should_recognize_text = bool(self.ocr_rec_enable)
 
         ocr_res_list_all_page = []
         table_res_list_all_page = []
@@ -768,7 +784,7 @@ class BatchAnalyze:
                                 ocr_result_list = get_ocr_result_list(
                                     ocr_res,
                                     useful_list,
-                                    ocr_res_list_dict['ocr_enable'],
+                                    ocr_res_list_dict['ocr_enable'] and ocr_should_recognize_text,
                                     bgr_image,
                                     _lang,
                                 )
@@ -812,7 +828,7 @@ class BatchAnalyze:
                         ocr_result_list = get_ocr_result_list(
                             ocr_res,
                             useful_list,
-                            ocr_res_list_dict['ocr_enable'],
+                            ocr_res_list_dict['ocr_enable'] and ocr_should_recognize_text,
                             bgr_image,
                             _lang,
                         )
@@ -901,10 +917,11 @@ class BatchAnalyze:
                     total_processed += len(img_crop_list)
 
         seal_ocr_items = []
-        for ocr_res_list_dict in ocr_res_list_all_page:
-            for layout_res_item in ocr_res_list_dict['layout_res']:
-                if layout_res_item.get("label") == "seal":
-                    seal_ocr_items.append((ocr_res_list_dict, layout_res_item))
+        if self.seal_ocr_rec_enable:
+            for ocr_res_list_dict in ocr_res_list_all_page:
+                for layout_res_item in ocr_res_list_dict['layout_res']:
+                    if layout_res_item.get("label") == "seal":
+                        seal_ocr_items.append((ocr_res_list_dict, layout_res_item))
 
         seal_ocr_model = None
         for ocr_res_list_dict, layout_res_item in tqdm(seal_ocr_items, desc="Seal Predict"):
@@ -952,7 +969,7 @@ class BatchAnalyze:
         for ocr_res_list_dict in ocr_res_list_all_page:
             self._prune_empty_ocr_text_blocks(
                 ocr_res_list_dict["layout_res"],
-                ocr_res_list_dict["ocr_enable"],
+                ocr_res_list_dict["ocr_enable"] and self.ocr_rec_enable,
             )
 
         return images_layout_res
